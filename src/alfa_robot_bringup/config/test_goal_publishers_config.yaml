@@ -13,8 +13,13 @@
 # limitations under the License.
 
 #
-# Source of this file are templates in
-# [RosTeamWorkspace](https://github.com/b-robotized/ros_team_workspace) repository.
+# 本次只用左臂 leftjoint2, leftjoint3, leftjoint4
+# 整机操作时取消 alfa_robot_controllers.yaml 中的关节注释，
+# 并将下方 joints 和 positions 改为 12 关节格式
+#
+# 12关节顺序: turn, updown, leftarmbase, leftjoint1, leftjoint2, leftjoint3, leftjoint4,
+#             rightarmbase, rightjoint1, rightjoint2, rightjoint3, rightjoint4
+# 整机示例: pos1: [0.0, 0.5, 0.0, 0.25, 0.785, 0.785, 0.785, 0.0, 0.25, 0.785, 0.785, 0.785]
 #
 
 publisher_forward_position_controller:
@@ -24,10 +29,10 @@ publisher_forward_position_controller:
     wait_sec_between_publish: 5
 
     goal_names: ["pos1", "pos2", "pos3", "pos4"]
-    pos1: [0.785, 0.785, 0.785, 0.785, 0.785, 0.785]
-    pos2: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    pos3: [-0.785, -0.785, -0.785, -0.785, -0.785, -0.785]
-    pos4: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    pos1: [0.785, 0.785, 0.785]
+    pos2: [0.0, 0.0, 0.0]
+    pos3: [-0.785, -0.785, -0.785]
+    pos4: [0.0, 0.0, 0.0]
 
 
 publisher_joint_trajectory_controller:
@@ -35,23 +40,20 @@ publisher_joint_trajectory_controller:
 
     controller_name: "joint_trajectory_controller"
     wait_sec_between_publish: 6
-    repeat_the_same_goal: 1 # useful to simulate continuous inputs
+    repeat_the_same_goal: 1
 
     goal_time_from_start: 3.0
     goal_names: ["pos1", "pos2", "pos3", "pos4"]
     pos1:
-      positions: [0.785, 0.785, 0.785, 0.785, 0.785, 0.785]
+      positions: [0.785, 0.785, 0.785]
     pos2:
-      positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      positions: [0.0, 0.0, 0.0]
     pos3:
-      positions: [-0.785, -0.785, -0.785, -0.785, -0.785, -0.785]
+      positions: [-0.785, -0.785, -0.785]
     pos4:
-      positions: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      positions: [0.0, 0.0, 0.0]
 
     joints:
-      - joint1
-      - joint2
-      - joint3
-      - joint4
-      - joint5
-      - joint6
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4

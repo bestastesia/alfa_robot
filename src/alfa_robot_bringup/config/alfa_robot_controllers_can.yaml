@@ -1,0 +1,19 @@
+# 实机 CAN 控制专用 - 仅 joint_state_broadcaster 和 forward_position_controller
+# 避免与 joint_trajectory_controller 争抢接口
+
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    forward_position_controller:
+      type: position_controllers/JointGroupPositionController
+
+forward_position_controller:
+  ros__parameters:
+    joints:
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4

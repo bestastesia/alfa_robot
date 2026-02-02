@@ -85,14 +85,23 @@ private:
   void sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data);
   bool parseMotorStatus2(const uint8_t * data, double & position, double & velocity);
   uint8_t getMotorIdForJoint(const std::string & joint_name);
-  void convertPositionToCanFormat(double position_rad, int32_t & angle_control);
+  void convertPositionToCanFormat(double position_rad, uint32_t & angle_control);
   
   // Legacy vectors (for other joints that are not controlled via CAN)
-  std::vector<double> hw_commands_;
   std::vector<double> hw_states_;
+  std::vector<double> hw_velocities_legacy_;
+  std::vector<double> hw_accelerations_legacy_;
+  std::vector<double> hw_commands_;
+  std::vector<double> hw_velocity_commands_legacy_;
+  // 伪造 velocity/acceleration 用：上一周期位置与速度（非 CAN 关节）
+  std::vector<double> previous_states_legacy_;
+  std::vector<double> previous_velocities_legacy_;
   
   // Check if a joint should be controlled via CAN
   bool isCanControlledJoint(const std::string & joint_name);
+  
+  // Check if a joint uses velocity command (wheel joints)
+  bool isVelocityControlledJoint(const std::string & joint_name);
 };
 
 }  // namespace alfa_robot_hardware

@@ -9,6 +9,7 @@
   <xacro:arg name="sim_gazebo_classic" default="false"/>
   <xacro:arg name="sim_gazebo" default="false"/>
   <xacro:arg name="simulation_controllers" default=""/>
+  <xacro:arg name="real_hardware_plugin" default="alfa_robot_hardware/AlfaRobotHW"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.xacro"/>
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
@@ -29,6 +30,7 @@
     mock_sensor_commands="$(arg mock_sensor_commands)"
     sim_gazebo_classic="$(arg sim_gazebo_classic)"
     sim_gazebo="$(arg sim_gazebo)"
-    simulation_controllers="$(arg simulation_controllers)"/>
+    simulation_controllers="$(arg simulation_controllers)"
+    real_hardware_plugin="$(arg real_hardware_plugin)"/>
 
 </robot>

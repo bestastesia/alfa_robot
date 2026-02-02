@@ -21,17 +21,22 @@ namespace alfa_robot_hardware
 {
 bool AlfaRobotHW::isCanControlledJoint(const std::string & joint_name)
 {
-  // Only leftjoint2, leftjoint3, leftjoint4, rightjoint2, rightjoint3, rightjoint4
-  return joint_name.find("leftjoint2") != std::string::npos ||
-         joint_name.find("leftjoint3") != std::string::npos ||
-         joint_name.find("leftjoint4") != std::string::npos ||
-         joint_name.find("rightjoint2") != std::string::npos ||
-         joint_name.find("rightjoint3") != std::string::npos ||
-         joint_name.find("rightjoint4") != std::string::npos;
+  // 仅以下 6 个关节为 CAN 控制，使用精确匹配避免前缀/相似名误判（如 leftjoint21）
+  return joint_name == "leftjoint2" || joint_name == "leftjoint3" ||
+         joint_name == "leftjoint4" || joint_name == "rightjoint2" ||
+         joint_name == "rightjoint3" || joint_name == "rightjoint4";
+}
+
+bool AlfaRobotHW::isVelocityControlledJoint(const std::string & joint_name)
+{
+  // 底盘轮子：velocity 命令接口，需在 export_command_interfaces 中导出 velocity
+  return joint_name == "left back" || joint_name == "left forward" ||
+         joint_name == "right back" || joint_name == "right forward";
 }
 
 hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   const hardware_interface::HardwareInfo & info)
+  // 调用父类的on_init方法
 {
   if (hardware_interface::SystemInterface::on_init(info) != CallbackReturn::SUCCESS)
   {
@@ -41,7 +46,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   // Initialize CAN socket
   can_socket_ = -1;
   
-  // Read CAN interface parameter
+  // Read CAN interface parameter 
   can_interface_ = "can0";  // Default
   for (const auto & param : info_.hardware_parameters)
   {
@@ -64,6 +69,13 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     {
       continue;
     }
+    // 仅支持 6 个 CAN 关节，超过则报错
+    if (motor_id > 6)
+    {
+      RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"), 
+                   "Too many CAN-controlled joints! Maximum is 6.");
+      return CallbackReturn::ERROR;
+    }
     
     // Assign motor ID to joint
     joint_to_motor_id_[joint.name] = motor_id;
@@ -74,34 +86,33 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
                 "CAN-controlled joint '%s' mapped to motor ID %d", 
                 joint.name.c_str(), motor_id);
     
-    motor_id++;
     state_index++;
     cmd_index++;
-    
-    if (motor_id > 6)
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"), 
-                   "Too many CAN-controlled joints! Maximum is 6.");
-      return CallbackReturn::ERROR;
-    }
+    motor_id++;
   }
-  
+   // 输出初始化信息
   const size_t num_can_joints = joint_to_motor_id_.size();
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), 
               "Initialized %zu CAN-controlled joints", num_can_joints);
   
-  // Initialize state vectors (6 CAN-controlled joints, 3 states each)
+  // 存放CAN控制的关节状态向量
   hw_positions_.resize(num_can_joints, 0.0);
   hw_velocities_.resize(num_can_joints, 0.0);
   hw_accelerations_.resize(num_can_joints, 0.0);
   previous_velocities_.resize(num_can_joints, 0.0);
   
-  // Initialize command vectors (position control for these 6 joints)
+  // 存放CAN控制的关节命令向量 只写了位置控制
   hw_position_commands_.resize(num_can_joints, 0.0);
   
-  // Legacy vectors (for all joints, including non-CAN controlled ones)
-  hw_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
+  // 所有关节的状态/命令向量（非 CAN 关节用于伪造 velocity/acceleration 接口，初始 0 避免 NaN）
+  const size_t num_joints = info_.joints.size();
+  hw_states_.resize(num_joints, 0.0);
+  hw_commands_.resize(num_joints, 0.0);
+  hw_velocities_legacy_.resize(num_joints, 0.0);
+  hw_accelerations_legacy_.resize(num_joints, 0.0);
+  hw_velocity_commands_legacy_.resize(num_joints, 0.0);
+  previous_states_legacy_.resize(num_joints, 0.0);
+  previous_velocities_legacy_.resize(num_joints, 0.0);
 
   return CallbackReturn::SUCCESS;
 }
@@ -131,7 +142,7 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
   {
     if (isCanControlledJoint(joint.name))
     {
-      // Export position, velocity, and acceleration interfaces for CAN-controlled joints
+      // 输出CAN控制关节的状态接口
       auto state_index_it = joint_to_state_index_.find(joint.name);
       if (state_index_it != joint_to_state_index_.end())
       {
@@ -146,13 +157,17 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
     }
     else
     {
-      // For non-CAN controlled joints, use legacy state interface
+      // 非 CAN 关节也需导出 position / velocity / acceleration，否则 joint_state_broadcaster 等会报 missing state interfaces
       for (size_t i = 0; i < info_.joints.size(); ++i)
       {
         if (info_.joints[i].name == joint.name)
         {
           state_interfaces.emplace_back(hardware_interface::StateInterface(
             joint.name, hardware_interface::HW_IF_POSITION, &hw_states_[i]));
+          state_interfaces.emplace_back(hardware_interface::StateInterface(
+            joint.name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_legacy_[i]));
+          state_interfaces.emplace_back(hardware_interface::StateInterface(
+            joint.name, hardware_interface::HW_IF_ACCELERATION, &hw_accelerations_legacy_[i]));
           break;
         }
       }
@@ -181,13 +196,21 @@ std::vector<hardware_interface::CommandInterface> AlfaRobotHW::export_command_in
     }
     else
     {
-      // For non-CAN controlled joints, use legacy command interface
+      // 非 CAN 关节：轮子用 velocity 接口，其余用 position 接口（与 URDF/forward_velocity_controller 一致）
       for (size_t i = 0; i < info_.joints.size(); ++i)
       {
         if (info_.joints[i].name == joint.name)
         {
-          command_interfaces.emplace_back(hardware_interface::CommandInterface(
-            joint.name, hardware_interface::HW_IF_POSITION, &hw_commands_[i]));
+          if (isVelocityControlledJoint(joint.name))
+          {
+            command_interfaces.emplace_back(hardware_interface::CommandInterface(
+              joint.name, hardware_interface::HW_IF_VELOCITY, &hw_velocity_commands_legacy_[i]));
+          }
+          else
+          {
+            command_interfaces.emplace_back(hardware_interface::CommandInterface(
+              joint.name, hardware_interface::HW_IF_POSITION, &hw_commands_[i]));
+          }
           break;
         }
       }
@@ -325,6 +348,40 @@ hardware_interface::return_type AlfaRobotHW::read(
     }
   }
 
+  // 非 CAN 关节：伪造 position/velocity/acceleration 以满足控制器对 state 接口的要求
+  const double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
+  for (size_t i = 0; i < info_.joints.size(); ++i)
+  {
+    if (isCanControlledJoint(info_.joints[i].name))
+    {
+      continue;
+    }
+    if (isVelocityControlledJoint(info_.joints[i].name))
+    {
+      // 速度控制关节：位置积分，速度=命令，加速度伪造为 0
+      hw_velocities_legacy_[i] = hw_velocity_commands_legacy_[i];
+      if (dt > 0.0)
+      {
+        hw_states_[i] += hw_velocities_legacy_[i] * dt;
+      }
+      hw_accelerations_legacy_[i] = 0.0;
+    }
+    else
+    {
+      // 位置控制关节：状态跟随命令，velocity/acceleration 用数值微分伪造
+      hw_states_[i] = hw_commands_[i];
+      if (dt > 0.0)
+      {
+        hw_velocities_legacy_[i] =
+          (hw_states_[i] - previous_states_legacy_[i]) / dt;
+        hw_accelerations_legacy_[i] =
+          (hw_velocities_legacy_[i] - previous_velocities_legacy_[i]) / dt;
+      }
+      previous_states_legacy_[i] = hw_states_[i];
+      previous_velocities_legacy_[i] = hw_velocities_legacy_[i];
+    }
+  }
+
   return hardware_interface::return_type::OK;
 }
 
@@ -352,22 +409,22 @@ hardware_interface::return_type AlfaRobotHW::write(
       continue;
     }
     
-    // Position control command (0xA3): Multi-turn position closed-loop control command 1
+    // 单圈位置闭环控制命令 2 (0xA6): DATA[1]=spinDirection, DATA[2-3]=maxSpeed(LE), DATA[4-7]=angleControl(LE), 0-360°->0-1296000
     double position_rad = hw_position_commands_[cmd_index_it->second];
-    int32_t angle_control;
+    uint32_t angle_control;
     convertPositionToCanFormat(position_rad, angle_control);
-    
-    // Construct CAN frame: DATA[0]=0xA3, DATA[4-7]=angleControl (little-endian)
-    uint8_t frame_data[8] = {0};
-    frame_data[1] = 0;  // DATA[1] = NULL
-    frame_data[2] = 0;  // DATA[2] = NULL
-    frame_data[3] = 0;  // DATA[3] = NULL
-    frame_data[4] = static_cast<uint8_t>(angle_control & 0xFF);
-    frame_data[5] = static_cast<uint8_t>((angle_control >> 8) & 0xFF);
-    frame_data[6] = static_cast<uint8_t>((angle_control >> 16) & 0xFF);
-    frame_data[7] = static_cast<uint8_t>((angle_control >> 24) & 0xFF);
-    
-    sendMotorCommand(motor_id, 0xA3, &frame_data[1]);
+    const uint8_t spin_direction = (position_rad < 0.0) ? 0x10u : 0x00u;  // 负角度反转
+    const uint16_t max_speed_dps = 360;  // 1 dps/LSB
+
+    uint8_t frame_data[7] = {0};
+    frame_data[0] = spin_direction;
+    frame_data[1] = static_cast<uint8_t>(max_speed_dps & 0xFF);
+    frame_data[2] = static_cast<uint8_t>((max_speed_dps >> 8) & 0xFF);
+    frame_data[3] = static_cast<uint8_t>(angle_control & 0xFF);
+    frame_data[4] = static_cast<uint8_t>((angle_control >> 8) & 0xFF);
+    frame_data[5] = static_cast<uint8_t>((angle_control >> 16) & 0xFF);
+    frame_data[6] = static_cast<uint8_t>((angle_control >> 24) & 0xFF);
+    sendMotorCommand(motor_id, 0xA6, frame_data);
   }
 
   return hardware_interface::return_type::OK;
@@ -539,30 +596,31 @@ uint8_t AlfaRobotHW::getMotorIdForJoint(const std::string & joint_name)
   return 0;  // Invalid motor ID
 }
 
-void AlfaRobotHW::convertPositionToCanFormat(double position_rad, int32_t & angle_control)
+void AlfaRobotHW::convertPositionToCanFormat(double position_rad, uint32_t & angle_control)
 {
-  // Convert rad to 0.01degree: angleControl = position_rad * 18000.0 / PI
-  angle_control = static_cast<int32_t>(position_rad * 18000.0 / M_PI);
+  // 单圈位置控制 2：0-360° 对应 0-1296000 (1°=3600 LSB)，角度归一化到 [0,360)，再除以减速比 36 避免转太多圈
+  double angle_deg = std::fmod(position_rad * 180.0 / M_PI, 360.0);
+  if (angle_deg < 0.0) angle_deg += 360.0;
+  angle_control = static_cast<uint32_t>(angle_deg * 3600.0 / 36.0);
+  if (angle_control > 36000u) angle_control = 36000u;  // 1296000/36
 }
 
 bool AlfaRobotHW::parseMotorStatus2(const uint8_t * data, double & position, double & velocity)
 {
-  // Parse status2 reply: DATA[0]=cmd, DATA[1]=temp, DATA[2-3]=iq/power, 
-  // DATA[4-5]=speed (int16_t, 1 DPS/LSB), DATA[6-7]=encoder (uint16_t)
-  
-  // Extract speed (int16_t, little-endian, 1 DPS/LSB)
+  constexpr int GEAR_RATIO = 36;
+  // 0x92: 多圈绝对值，DATA[4-7]=32bit 多圈绝对值(电机圈数，小端)，输出角 = 电机圈数/36 * 2π
+  if (data[0] == 0x92)
+  {
+    int32_t multi_turn = static_cast<int32_t>(data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24));
+    position = static_cast<double>(multi_turn) / GEAR_RATIO * 2.0 * M_PI;  // 电机圈 -> 输出弧度
+    velocity = 0.0;  // 0x92 回复通常无速度，可后续按协议补充
+    return true;
+  }
+  // status2: DATA[4-5]=speed(motor DPS), DATA[6-7]=encoder(motor side)
   int16_t speed_dps = static_cast<int16_t>(data[4] | (data[5] << 8));
-  velocity = static_cast<double>(speed_dps) * M_PI / 180.0;  // Convert DPS to rad/s
-  
-  // Extract encoder (uint16_t, little-endian)
+  velocity = static_cast<double>(speed_dps) / GEAR_RATIO * M_PI / 180.0;
   uint16_t encoder = static_cast<uint16_t>(data[6] | (data[7] << 8));
-  
-  // Convert encoder to position (assuming 16-bit encoder, 0-65535)
-  // This is a simplified conversion - actual conversion depends on gear ratio
-  // For now, we'll use encoder value directly and convert to radians
-  // Assuming full range (65535) corresponds to 2*PI radians
-  position = static_cast<double>(encoder) * 2.0 * M_PI / 65535.0;
-  
+  position = static_cast<double>(encoder) * 2.0 * M_PI / 65535.0 / GEAR_RATIO;
   return true;
 }
 
