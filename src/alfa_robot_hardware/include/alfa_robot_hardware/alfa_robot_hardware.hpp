@@ -9,6 +9,7 @@
 #ifndef ALFA_ROBOT_HARDWARE__ALFA_ROBOT_HARDWARE_HPP_
 #define ALFA_ROBOT_HARDWARE__ALFA_ROBOT_HARDWARE_HPP_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
@@ -57,50 +58,66 @@ public:
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
 private:
+  // Motor gear ratio (output = motor_angle / kGearRatio)
+  static constexpr int kGearRatio = 36;
+
   // CAN communication
   int can_socket_;
   std::string can_interface_;
-  
-  // Joint to motor ID mapping (only for leftjoint2-4 and rightjoint2-4, 6 joints total)
+
+  // Max speed for position control (0xA4), in motor dps. 1 dps/LSB. Configurable via hardware_parameters.
+  uint16_t max_speed_dps_{360};
+
+  // Joint to motor ID mapping (CAN position joints: leftjoint2-4, rightjoint2-4, 6 joints total)
   std::map<std::string, uint8_t> joint_to_motor_id_;
-  
-  // State vectors (for 6 controlled joints: leftjoint2-4, rightjoint2-4)
+
+  // State vectors (for 6 CAN position joints: leftjoint2-4, rightjoint2-4)
   std::vector<double> hw_positions_;
   std::vector<double> hw_velocities_;
   std::vector<double> hw_accelerations_;
-  std::vector<double> previous_velocities_;  // For acceleration calculation
-  
-  // Command vectors (position control for these 6 joints)
+  std::vector<double> previous_velocities_;   // For acceleration calculation
+  std::vector<double> previous_positions_;   // For velocity estimation from position diff
+
+  // Command vectors (position control for CAN joints)
   std::vector<double> hw_position_commands_;
-  
+
+  // Franka-style: avoid jump on first activation - initialize commands with current position
+  bool first_position_update_{true};
+
   // Index mapping for state/command vectors
   std::map<std::string, size_t> joint_to_state_index_;
   std::map<std::string, size_t> joint_to_cmd_index_;
-  
+
+  // Initialize position commands with current read-back (first pass after activation)
+  void initializePositionCommands();
+
   // CAN communication helper functions
   bool initCanInterface(const std::string & interface);
   void closeCanInterface();
   bool sendCanFrame(uint32_t can_id, const uint8_t * data, uint8_t dlc);
   bool receiveCanFrame(uint32_t & can_id, uint8_t * data, uint8_t & dlc);
   void sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data);
-  bool parseMotorStatus2(const uint8_t * data, double & position, double & velocity);
   uint8_t getMotorIdForJoint(const std::string & joint_name);
-  void convertPositionToCanFormat(double position_rad, uint32_t & angle_control);
-  
-  // Legacy vectors (for other joints that are not controlled via CAN)
+
+  // Protocol 0x92: parse motor reply (DATA[1-7] = motorAngle, 7 bytes, 0.01 deg/LSB)
+  // Returns position in radians (output side, after gear ratio)
+  bool parseMotorAngleReply0x92(const uint8_t * data, double & position_rad);
+
+  // Protocol 0xA4: convert position_rad to angleControl (int32_t) and fill frame_data[2-7]
+  void convertPositionToCanFormat0xA4(
+    double position_rad, uint8_t * frame_data);
+
+  // Legacy vectors for placeholder joints (turn, updown, armbase, joint1, wheels)
+  // TODO: replace with actual hardware when implemented
   std::vector<double> hw_states_;
   std::vector<double> hw_velocities_legacy_;
   std::vector<double> hw_accelerations_legacy_;
   std::vector<double> hw_commands_;
   std::vector<double> hw_velocity_commands_legacy_;
-  // 伪造 velocity/acceleration 用：上一周期位置与速度（非 CAN 关节）
   std::vector<double> previous_states_legacy_;
   std::vector<double> previous_velocities_legacy_;
-  
-  // Check if a joint should be controlled via CAN
+
   bool isCanControlledJoint(const std::string & joint_name);
-  
-  // Check if a joint uses velocity command (wheel joints)
   bool isVelocityControlledJoint(const std::string & joint_name);
 };
 

@@ -109,6 +109,20 @@ def generate_launch_description():
             description="Plugin for real hardware control (used when use_mock_hardware:=false).",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "can_interface",
+            default_value="can0",
+            description="CAN interface name for real hardware (e.g. can0, vcan0).",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "max_speed_dps",
+            default_value="360",
+            description="Max motor speed in deg/s for position control (0xA4 protocol).",
+        )
+    )
 
     # Initialize Arguments
     runtime_config_package = LaunchConfiguration("runtime_config_package")
@@ -121,6 +135,8 @@ def generate_launch_description():
     robot_controller = LaunchConfiguration("robot_controller")
     use_joint_gui_control = LaunchConfiguration("use_joint_gui_control")
     real_hardware_plugin = LaunchConfiguration("real_hardware_plugin")
+    can_interface = LaunchConfiguration("can_interface")
+    max_speed_dps = LaunchConfiguration("max_speed_dps")
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -142,6 +158,12 @@ def generate_launch_description():
             " ",
             "real_hardware_plugin:=",
             real_hardware_plugin,
+            " ",
+            "can_interface:=",
+            can_interface,
+            " ",
+            "max_speed_dps:=",
+            max_speed_dps,
             " ",
         ]
     )

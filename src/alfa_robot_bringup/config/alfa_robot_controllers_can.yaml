@@ -1,5 +1,6 @@
 # 实机 CAN 控制专用 - 仅 joint_state_broadcaster 和 forward_position_controller
-# 避免与 joint_trajectory_controller 争抢接口
+# leftjoint2,3,4 使用 0x92 读角度、0xA4 多圈位置闭环控制
+# 启动: use_mock_hardware:=false controllers_file:=alfa_robot_controllers_can.yaml
 
 controller_manager:
   ros__parameters:
@@ -9,7 +10,7 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     forward_position_controller:
-      type: position_controllers/JointGroupPositionController
+      type: forward_command_controller/ForwardCommandController
 
 forward_position_controller:
   ros__parameters:
@@ -17,3 +18,4 @@ forward_position_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+    interface_name: position
