@@ -1,6 +1,5 @@
 # 实机 CAN 控制专用 - 仅 joint_state_broadcaster 和 forward_position_controller
-# leftjoint2,3,4 使用 0x92 读角度、0xA4 多圈位置闭环控制
-# 启动: use_mock_hardware:=false controllers_file:=alfa_robot_controllers_can.yaml
+# 启动前请执行: sudo ip link set can0 txqueuelen 256  (防止 ENOBUFS)
 
 controller_manager:
   ros__parameters:
@@ -18,4 +17,7 @@ forward_position_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
     interface_name: position

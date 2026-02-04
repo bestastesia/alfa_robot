@@ -37,7 +37,7 @@ controller_manager:
     joint_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-# 位置控制器 - 本次只用左臂 leftjoint2,3,4
+# 位置控制器 - 本次只用joint2,3,4
 forward_position_controller:
   ros__parameters:
     joints:
@@ -50,9 +50,9 @@ forward_position_controller:
       - leftjoint4
       # - rightarmbase
       # - rightjoint1
-      # - rightjoint2
-      # - rightjoint3
-      # - rightjoint4
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
     interface_name: position
 
 # 速度控制器 - 底盘轮子 (left back, left forward, right back, right forward)

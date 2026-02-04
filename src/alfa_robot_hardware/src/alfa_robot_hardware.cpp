@@ -6,12 +6,24 @@
 // Unauthorized copying of this file, via any medium is strictly prohibited.
 // The file is considered confidential.
 
+/**
+ * Alfa Robot ros2_control 硬件接口 - Franka 风格
+ * 协议：0x92 读取多圈角度，0xA4 多圈位置闭环控制，减速比 1:36
+ * 启动前请执行: sudo ip link set can0 txqueuelen 256  (防止 ENOBUFS)
+ */
+
+namespace
+{
+constexpr unsigned int kCanInterFrameDelayUs = 150;
+}
+
 #include <limits>
 #include <vector>
 #include <cmath>
 #include <algorithm>
 #include <cstring>
 #include <cerrno>
+#include <unistd.h>
 
 #include "alfa_robot_hardware/alfa_robot_hardware.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -19,6 +31,13 @@
 
 namespace alfa_robot_hardware
 {
+
+static bool hasInfinite(const std::vector<double> & vec)
+{
+  return std::any_of(vec.begin(), vec.end(),
+    [](double v) { return !std::isfinite(v); });
+}
+
 bool AlfaRobotHW::isCanControlledJoint(const std::string & joint_name)
 {
   return joint_name == "leftjoint2" || joint_name == "leftjoint3" ||
@@ -30,12 +49,6 @@ bool AlfaRobotHW::isVelocityControlledJoint(const std::string & joint_name)
 {
   return joint_name == "left back" || joint_name == "left forward" ||
          joint_name == "right back" || joint_name == "right forward";
-}
-
-static bool hasInfinite(const std::vector<double> & vec)
-{
-  return std::any_of(vec.begin(), vec.end(),
-    [](double v) { return !std::isfinite(v); });
 }
 
 hardware_interface::CallbackReturn AlfaRobotHW::on_init(
@@ -64,7 +77,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
         max_speed_dps_ = static_cast<uint16_t>(std::stoul(param.second));
         RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "max_speed_dps set to: %u", max_speed_dps_);
       }
-      catch (const std::exception & e)
+      catch (const std::exception &)
       {
         RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"), "Invalid max_speed_dps, using default 360");
       }
@@ -160,7 +173,7 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
     }
     else
     {
-      // Placeholder: export state for non-CAN joints (turn, updown, armbase, joint1, wheels)
+      // ========== TODO: 占位关节 - 待实现 ==========
       for (size_t i = 0; i < info_.joints.size(); ++i)
       {
         if (info_.joints[i].name == joint.name)
@@ -360,7 +373,16 @@ hardware_interface::return_type AlfaRobotHW::read(
 
   initializePositionCommands();
 
-  // ========== TODO: Placeholder joints - replace with actual hardware read ==========
+  // 确保 CAN 关节状态均为有限值，避免控制器因 NaN/Inf 报错
+  for (size_t i = 0; i < hw_positions_.size(); ++i)
+  {
+    if (!std::isfinite(hw_positions_[i])) hw_positions_[i] = 0.0;
+    if (!std::isfinite(hw_velocities_[i])) hw_velocities_[i] = 0.0;
+    if (!std::isfinite(hw_accelerations_[i])) hw_accelerations_[i] = 0.0;
+  }
+
+  // ========== TODO: 占位关节 - 替换为实际硬件读取 ==========
+  // turn, updown, leftarmbase, rightarmbase, leftjoint1, rightjoint1, left/right back, left/right forward
   for (size_t i = 0; i < info_.joints.size(); ++i)
   {
     if (isCanControlledJoint(info_.joints[i].name))
@@ -396,9 +418,16 @@ hardware_interface::return_type AlfaRobotHW::read(
 hardware_interface::return_type AlfaRobotHW::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
+  // 若命令含 NaN/Inf，用当前读取位置替代，避免 controller update 报错
   if (hasInfinite(hw_position_commands_))
   {
-    return hardware_interface::return_type::ERROR;
+    for (size_t i = 0; i < hw_position_commands_.size() && i < hw_positions_.size(); ++i)
+    {
+      if (!std::isfinite(hw_position_commands_[i]))
+      {
+        hw_position_commands_[i] = hw_positions_[i];
+      }
+    }
   }
 
   for (const auto & joint : info_.joints)
@@ -427,9 +456,6 @@ hardware_interface::return_type AlfaRobotHW::write(
   }
 
   // ========== TODO: turn / velocity 关节写入逻辑 - 待实现 ==========
-  // turn: position control
-  // leftjoint1, rightjoint1, updown, leftarmbase, rightarmbase: velocity control
-  // left back, left forward, right back, right forward: velocity control
 
   return hardware_interface::return_type::OK;
 }
@@ -470,6 +496,14 @@ bool AlfaRobotHW::initCanInterface(const std::string & interface)
     close(can_socket_);
     can_socket_ = -1;
     return false;
+  }
+
+  // 增大发送缓冲区，减轻 ENOBUFS (No buffer space available)
+  const int sndbuf_size = 65536;
+  if (setsockopt(can_socket_, SOL_SOCKET, SO_SNDBUF, &sndbuf_size, sizeof(sndbuf_size)) < 0)
+  {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Failed to set SO_SNDBUF: %s", strerror(errno));
   }
 
   int flags = fcntl(can_socket_, F_GETFL, 0);
@@ -571,7 +605,10 @@ void AlfaRobotHW::sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uin
     memset(&frame_data[1], 0, 7);
   }
 
-  sendCanFrame(can_id, frame_data, 8);
+  if (sendCanFrame(can_id, frame_data, 8))
+  {
+    usleep(kCanInterFrameDelayUs);
+  }
 }
 
 uint8_t AlfaRobotHW::getMotorIdForJoint(const std::string & joint_name)
@@ -613,9 +650,8 @@ bool AlfaRobotHW::parseMotorAngleReply0x92(const uint8_t * data, double & positi
 
 void AlfaRobotHW::convertPositionToCanFormat0xA4(double position_rad, uint8_t * frame_data)
 {
-  // 0xA4: DATA[0]=0x00, DATA[1-2]=maxSpeed(uint16_t), DATA[3-6]=angleControl(int32_t)
-  // angleControl: 0.01 deg/LSB at motor side. output_deg = position_rad * 180/pi
-  // motor_angle_deg = output_deg * kGearRatio => angleControl = motor_angle_deg * 100
+  // 0xA4: DATA[0]=0x00, DATA[1-2]=maxSpeed, DATA[3-6]=angleControl
+  // angleControl: 0.01 deg/LSB at motor side
   double angle_deg = position_rad * 180.0 / M_PI;
   int32_t angle_control = static_cast<int32_t>(angle_deg * 100.0 * static_cast<double>(kGearRatio));
 

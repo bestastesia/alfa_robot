@@ -39,7 +39,7 @@ Consult the repository and [ros2_control documentation](https://ros-controls.git
 
 1. Start robot's hardware and load controllers (default configuration starts mock hardware)
    ```
-   ros2 launch alfa_robot_bringup alfa_robot.launch.py
+   ros2 launch alfa_robot_bringup alfa_robot.launch.xml
    ```
 
 2. Open another terminal and check if your hardware is loaded properly:
@@ -53,28 +53,9 @@ Consult the repository and [ros2_control documentation](https://ros-controls.git
 4. Check the result as described in the [result](#result) section.
 
 
-## Testing the real robot (CAN hardware)
+## Testing the real robot using ros2_control-framework
 
-For real CAN hardware (leftjoint2,3,4) using 0x92/0xA4 protocol:
-
-1. Start with CAN launch (brings up AlfaRobotHW, forward_position_controller):
-   ```
-   ros2 launch alfa_robot_bringup alfa_robot_can.launch.py
-   ```
-   Or with custom CAN interface / speed:
-   ```
-   ros2 launch alfa_robot_bringup alfa_robot.launch.py use_mock_hardware:=false controllers_file:=alfa_robot_controllers_can.yaml can_interface:=can0 max_speed_dps:=360
-   ```
-
-2. GUI control (joint sliders -> forward_position_controller):
-   ```
-   ros2 launch alfa_robot_bringup alfa_robot.launch.py use_mock_hardware:=false controllers_file:=alfa_robot_controllers_can.yaml use_joint_gui_control:=true
-   ```
-
-3. Test publisher (sends pos1..pos4 every 5s):
-   ```
-   ros2 launch alfa_robot_bringup test_forward_position_controller.launch.py
-   ```
+**TBD**
 
 
 ## Loading Controllers

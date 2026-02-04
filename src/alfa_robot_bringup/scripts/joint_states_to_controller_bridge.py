@@ -20,7 +20,10 @@ class JointStatesToControllerBridge(Node):
     def __init__(self):
         super().__init__("joint_states_to_controller_bridge")
 
-        self.declare_parameter("joint_names", ["leftjoint2", "leftjoint3", "leftjoint4"])
+        self.declare_parameter(
+            "joint_names",
+            ["leftjoint2", "leftjoint3", "leftjoint4", "rightjoint2", "rightjoint3", "rightjoint4"],
+        )
         self.declare_parameter("command_topic", "/forward_position_controller/commands")
         self.declare_parameter("joint_states_topic", "/joint_states_gui")
 

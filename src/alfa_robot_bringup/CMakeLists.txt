@@ -17,7 +17,9 @@ install(
 )
 
 install(
-  PROGRAMS scripts/joint_states_to_controller_bridge.py
+  PROGRAMS
+    scripts/joint_states_to_controller_bridge.py
+    scripts/setup_can.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 

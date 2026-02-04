@@ -10,8 +10,6 @@
   <xacro:arg name="sim_gazebo" default="false"/>
   <xacro:arg name="simulation_controllers" default=""/>
   <xacro:arg name="real_hardware_plugin" default="alfa_robot_hardware/AlfaRobotHW"/>
-  <xacro:arg name="can_interface" default="can0"/>
-  <xacro:arg name="max_speed_dps" default="360"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.xacro"/>
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
@@ -33,8 +31,6 @@
     sim_gazebo_classic="$(arg sim_gazebo_classic)"
     sim_gazebo="$(arg sim_gazebo)"
     simulation_controllers="$(arg simulation_controllers)"
-    real_hardware_plugin="$(arg real_hardware_plugin)"
-    can_interface="$(arg can_interface)"
-    max_speed_dps="$(arg max_speed_dps)"/>
+    real_hardware_plugin="$(arg real_hardware_plugin)"/>
 
 </robot>
