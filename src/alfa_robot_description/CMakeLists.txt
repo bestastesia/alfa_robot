@@ -16,9 +16,10 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+# 显式安装 collision 网格，确保 RViz/Gazebo 能解析 package://.../collision/*.STL
 install(
-  DIRECTORY config launch meshes rviz urdf test
-  DESTINATION share/${PROJECT_NAME}
+  DIRECTORY meshes/alfa_robot/collision
+  DESTINATION share/${PROJECT_NAME}/meshes/alfa_robot/collision
 )
 
 if(BUILD_TESTING)

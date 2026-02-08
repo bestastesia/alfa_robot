@@ -1,4 +1,4 @@
-# Copyright (c) 20224 b»robotized group
+# Copyright (c) 2025 b»robotized group
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,12 +13,9 @@
 # limitations under the License.
 
 #
-# Joint names from alfa_robot_macro.ros2_control.xacro:
-# Position: turn, updown, leftarmbase, leftjoint1, leftjoint2, leftjoint3, leftjoint4
-#           rightarmbase, rightjoint1, rightjoint2, rightjoint3, rightjoint4
-# Velocity: left back, left forward, right back, right forward
-#
-# 整机操作时取消注释下方被注释的关节即可
+# Gazebo (GZ) / ros2_control: base, left arm, right arm, wheels (velocity).
+# Position: base (turn, updown), left_arm (leftarmbase, leftjoint1-4), right_arm (rightarmbase, rightjoint1-4).
+# Velocity: forward_velocity_controller (left back, left forward, right back, right forward).
 #
 
 controller_manager:
@@ -28,34 +25,45 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    forward_position_controller:
+    base_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+    left_arm_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+    right_arm_position_controller:
       type: forward_command_controller/ForwardCommandController
 
     forward_velocity_controller:
       type: forward_command_controller/ForwardCommandController
 
-    joint_trajectory_controller:
-      type: joint_trajectory_controller/JointTrajectoryController
-
-# 位置控制器 - 本次只用joint2,3,4
-forward_position_controller:
+base_position_controller:
   ros__parameters:
     joints:
-      # - turn
-      # - updown
-      # - leftarmbase
-      # - leftjoint1
+      - turn
+      - updown
+    interface_name: position
+
+left_arm_position_controller:
+  ros__parameters:
+    joints:
+      - leftarmbase
+      - leftjoint1
       - leftjoint2
       - leftjoint3
       - leftjoint4
-      # - rightarmbase
-      # - rightjoint1
+    interface_name: position
+
+right_arm_position_controller:
+  ros__parameters:
+    joints:
+      - rightarmbase
+      - rightjoint1
       - rightjoint2
       - rightjoint3
       - rightjoint4
     interface_name: position
 
-# 速度控制器 - 底盘轮子 (left back, left forward, right back, right forward)
 forward_velocity_controller:
   ros__parameters:
     joints:
@@ -64,34 +72,3 @@ forward_velocity_controller:
       - right back
       - right forward
     interface_name: velocity
-
-# 轨迹控制器 - 本次只用左臂 leftjoint2,3,4
-joint_trajectory_controller:
-  ros__parameters:
-    joints:
-      # - turn
-      # - updown
-      # - leftarmbase
-      # - leftjoint1
-      - leftjoint2
-      - leftjoint3
-      - leftjoint4
-      # - rightarmbase
-      # - rightjoint1
-      # - rightjoint2
-      # - rightjoint3
-      # - rightjoint4
-
-    command_interfaces:
-      - position
-    state_interfaces:
-      - position
-      - velocity
-
-    state_publish_rate: 50.0
-    action_monitor_rate: 20.0
-
-    allow_partial_joints_goal: false
-    constraints:
-      stopped_velocity_tolerance: 0.01
-      goal_time: 0.0

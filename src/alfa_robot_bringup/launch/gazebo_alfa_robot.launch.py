@@ -13,167 +13,221 @@
 # limitations under the License.
 
 #
-# Gazebo Classic 仿真启动文件
-# 依赖: sudo apt install ros-humble-gazebo-ros-pkgs ros-humble-gazebo-ros2-control
+# Gazebo (GZ / Ignition) 仿真启动文件
+# 依赖: ros-humble-ros-gz-sim, ros-humble-gz-ros2-control (Humble + Fortress)
 #
 
-from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler, TimerAction
-from launch.conditions import IfCondition
+import os
+import xacro
+
+from ament_index_python.packages import get_package_share_directory
+
+from launch import LaunchDescription, LaunchContext
+from launch.actions import (
+    DeclareLaunchArgument,
+    OpaqueFunction,
+    ExecuteProcess,
+    RegisterEventHandler,
+    IncludeLaunchDescription,
+)
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+
+
+def get_robot_description(context: LaunchContext, simulation_controllers_path: str):
+    """Generate URDF with sim_gazebo:=true and spawn robot_state_publisher."""
+    xacro_path = os.path.join(
+        get_package_share_directory("alfa_robot_description"),
+        "urdf",
+        "alfa_robot.urdf.xacro",
+    )
+    robot_description_config = xacro.process_file(
+        xacro_path,
+        mappings={
+            "prefix": "",
+            "use_mock_hardware": "false",
+            "mock_sensor_commands": "false",
+            "sim_gazebo_classic": "false",
+            "sim_gazebo": "true",
+            "simulation_controllers": simulation_controllers_path,
+            "real_hardware_plugin": "alfa_robot_hardware/AlfaRobotHW",
+        },
+    )
+    robot_description = {"robot_description": robot_description_config.toxml()}
+
+    robot_state_publisher = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher",
+        output="both",
+        parameters=[robot_description, {"use_sim_time": True}],
+    )
+    return [robot_state_publisher]
 
 
 def generate_launch_description():
-    declared_arguments = []
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "robot_controller",
-            default_value="forward_position_controller",
-            choices=["forward_position_controller", "joint_trajectory_controller"],
-            description="Controller to spawn for arm control.",
-        )
+    use_rviz_arg = DeclareLaunchArgument(
+        "use_rviz",
+        default_value="true",
+        description="Launch RViz for visualization.",
     )
-    declared_arguments.append(
-        DeclareLaunchArgument(
-            "use_rviz",
-            default_value="true",
-            description="Launch RViz for visualization.",
-        )
+    namespace_arg = DeclareLaunchArgument(
+        "namespace",
+        default_value="",
+        description="Namespace for the robot.",
     )
 
-    robot_controller = LaunchConfiguration("robot_controller")
     use_rviz = LaunchConfiguration("use_rviz")
+    namespace = LaunchConfiguration("namespace")
 
-    description_package = "alfa_robot_description"
-    description_file = "alfa_robot.urdf.xacro"
-    runtime_config_package = "alfa_robot_bringup"
-    controllers_file = "alfa_robot_controllers.yaml"
-
-    # 控制器配置文件路径 (gazebo_ros2_control 插件需要)
-    simulation_controllers_path = PathJoinSubstitution(
-        [FindPackageShare(runtime_config_package), "config", controllers_file]
+    # Absolute path to controller yaml (required by gz_ros2_control plugin)
+    bringup_share = get_package_share_directory("alfa_robot_bringup")
+    simulation_controllers_path = os.path.join(
+        bringup_share, "config", "alfa_robot_controllers.yaml"
     )
 
-    # 生成 robot_description (Gazebo 模式)
-    robot_description_content = Command(
-        [
-            PathJoinSubstitution([FindExecutable(name="xacro")]),
-            " ",
-            PathJoinSubstitution(
-                [FindPackageShare(description_package), "urdf", description_file]
-            ),
-            " ",
-            "use_mock_hardware:=false",
-            " ",
-            "sim_gazebo_classic:=true",
-            " ",
-            "simulation_controllers:=",
-            simulation_controllers_path,
-            " ",
-        ]
-    )
-    robot_description = {"robot_description": robot_description_content}
-
-    # 启动 Gazebo 空世界 (默认 empty.world)
-    gazebo_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            [
-                PathJoinSubstitution(
-                    [FindPackageShare("gazebo_ros"), "launch", "gazebo.launch.py"]
-                )
-            ]
+    robot_state_publisher = OpaqueFunction(
+        function=lambda context: get_robot_description(
+            context, simulation_controllers_path
         ),
     )
 
-    # robot_state_publisher
-    robot_state_publisher_node = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        output="both",
-        parameters=[robot_description],
+    # GZ resource path for meshes
+    desc_share = get_package_share_directory("alfa_robot_description")
+    os.environ["GZ_SIM_RESOURCE_PATH"] = os.path.dirname(desc_share)
+
+    pkg_ros_gz_sim = get_package_share_directory("ros_gz_sim")
+    gazebo_empty_world = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_ros_gz_sim, "launch", "gz_sim.launch.py")
+        ),
+        launch_arguments={"gz_args": "empty.sdf -r"}.items(),
     )
 
-    # 将机器人 spawn 到 Gazebo
-    spawn_entity_node = Node(
-        package="gazebo_ros",
-        executable="spawn_entity.py",
-        arguments=[
-            "-topic", "robot_description",
-            "-entity", "alfa_robot",
-            "-x", "0",
-            "-y", "0",
-            "-z", "0.5",
+    spawn = Node(
+        package="ros_gz_sim",
+        executable="create",
+        namespace=namespace,
+        arguments=["-topic", "/robot_description"],
+        output="screen",
+    )
+
+    # Controller loaders (chain: spawn -> joint_state_broadcaster -> base -> left_arm -> right_arm -> velocity)
+    load_joint_state_broadcaster = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "control",
+            "load_controller",
+            "--set-state",
+            "active",
+            "joint_state_broadcaster",
+        ],
+        output="screen",
+    )
+    load_base_position_controller = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "control",
+            "load_controller",
+            "--set-state",
+            "active",
+            "base_position_controller",
+        ],
+        output="screen",
+    )
+    load_left_arm_position_controller = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "control",
+            "load_controller",
+            "--set-state",
+            "active",
+            "left_arm_position_controller",
+        ],
+        output="screen",
+    )
+    load_right_arm_position_controller = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "control",
+            "load_controller",
+            "--set-state",
+            "active",
+            "right_arm_position_controller",
+        ],
+        output="screen",
+    )
+    load_forward_velocity_controller = ExecuteProcess(
+        cmd=[
+            "ros2",
+            "control",
+            "load_controller",
+            "--set-state",
+            "active",
+            "forward_velocity_controller",
         ],
         output="screen",
     )
 
-    # 延迟 spawn，等待 Gazebo 就绪 (5秒)
-    # 使用 TimerAction 而非 OnProcessStart，因为 IncludeLaunchDescription 不能作为 target_action
-    delay_spawn_after_gazebo = TimerAction(
-        period=5.0,
-        actions=[
-            robot_state_publisher_node,
-            spawn_entity_node,
-        ],
-    )
-
-    # 加载 joint_state_broadcaster
-    joint_state_broadcaster_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
-    )
-
-    # 加载位置控制器
-    robot_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        arguments=[robot_controller, "-c", "/controller_manager"],
-    )
-
-    # 延迟加载控制器 (spawn 完成后)
-    delay_joint_state_broadcaster = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=spawn_entity_node,
-            on_exit=[
-                TimerAction(
-                    period=2.0,
-                    actions=[joint_state_broadcaster_spawner],
-                ),
-            ],
-        )
-    )
-    delay_robot_controller = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=joint_state_broadcaster_spawner,
-            on_exit=[robot_controller_spawner],
-        )
-    )
-
-    # RViz
-    rviz_config_file = PathJoinSubstitution(
-        [FindPackageShare(description_package), "rviz", "alfa_robot.rviz"]
-    )
+    rviz_config_file = os.path.join(desc_share, "rviz", "alfa_robot.rviz")
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
         name="rviz2",
+        namespace=namespace,
         output="log",
         arguments=["-d", rviz_config_file],
+        parameters=[{"use_sim_time": True}],
         condition=IfCondition(use_rviz),
     )
 
-    return LaunchDescription(
-        declared_arguments
-        + [
-            gazebo_launch,
-            delay_spawn_after_gazebo,
-            delay_joint_state_broadcaster,
-            delay_robot_controller,
-            rviz_node,
-        ]
+    joint_state_publisher_node = Node(
+        package="joint_state_publisher",
+        executable="joint_state_publisher",
+        name="joint_state_publisher",
+        namespace=namespace,
+        parameters=[{"source_list": ["joint_states"], "rate": 30, "use_sim_time": True}],
     )
+
+    return LaunchDescription([
+        use_rviz_arg,
+        namespace_arg,
+        gazebo_empty_world,
+        robot_state_publisher,
+        rviz_node,
+        spawn,
+        joint_state_publisher_node,
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=spawn,
+                on_exit=[load_joint_state_broadcaster],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=load_joint_state_broadcaster,
+                on_exit=[load_base_position_controller],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=load_base_position_controller,
+                on_exit=[load_left_arm_position_controller],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=load_left_arm_position_controller,
+                on_exit=[load_right_arm_position_controller],
+            )
+        ),
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=load_right_arm_position_controller,
+                on_exit=[load_forward_velocity_controller],
+            )
+        ),
+    ])
