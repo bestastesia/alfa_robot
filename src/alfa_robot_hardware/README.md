@@ -1,6 +1,6 @@
 # alfa_robot_hardware
 
-Alfa 机器人 CAN 电机 ros2_control 硬件接口插件，采用 Franka 风格（首次激活时命令与当前反馈同步），支持多圈角度读取与位置闭环控制。
+Alfa 机器人 CAN 电机 ros2_control 硬件接口插件，支持多圈角度读取与位置闭环控制。
 
 ![License](https://img.shields.io/badge/License-Apache-2.0-blue.svg)
 
