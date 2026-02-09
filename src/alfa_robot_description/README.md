@@ -1,314 +1,213 @@
-alfa_robot_description
-==========================================
+# alfa_robot_description
 
-Robot description package for alfa_robot.
+Alfa 机器人描述包：URDF/xacro 模型、网格、rviz 配置与 ros2_control 接口定义，用于可视化、仿真与真实硬件控制。
 
-![Licence](https://img.shields.io/badge/License-Apache-2.0-blue.svg)
+![License](https://img.shields.io/badge/License-Apache-2.0-blue.svg)
 
-# Quick Start Instructions
+---
 
-If you are familiar with ROS 2, here are the quick-and-dirty build instructions.
+## 主要内容概括
 
-  ```
-  cd $COLCON_WS
-  sudo apt-get update
-  sudo apt-get upgrade
-  git clone git@github.com:alfa_robot_description/alfa_robot_description.git src/alfa_robot_description
-  vcs import src --input src/alfa_robot_description/alfa_robot_description.humble.repos
-  vcs import src --input src/alfa_robot_description/alfa_robot_description.humble.upstream.repos
-  source /opt/ros/humble/setup.bash
-  rosdep install --ignore-src --from-paths src -y -r
-  colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release    # Faster and more efficient build type
-  cd ..
-  ```
-If you end up with missing dependencies, install them using commands from [Setup ROS Workspace](#setup-ros-workspace) section.
+- **功能**：提供 Alfa 机器人的完整机器人描述（几何、惯性、关节/连杆树）、可选 ros2_control 配置（真实硬件 / Mock / Gazebo Classic / Gazebo 仿真），以及用于查看与测试的 launch 与 RViz 配置。
+- **机器人结构**：底盘（base + turn + updown）→ 左右臂（leftarmbase/rightarmbase → joint1–4）+ 底盘下四轮（left/right back/forward）；关节含回转（continuous）、平移（prismatic），与 ros2_control 的 position/velocity 接口一一对应。
+- **依赖**：`robot_state_publisher`、`xacro`、`rviz2`、`joint_state_publisher_gui`；若与 `controller_manager` 联合使用需配合 `alfa_robot_hardware` 或相应仿真插件。
 
-# How to use this Package and ROS Introduction
+---
 
- - [Workflow With Docker](#workflow-with-docker)
-   * [Quick Start Using ROS with Docker (RosTeamWorkspace)](#quick-start-using-ros-with-docker-rosteamworkspace)
- - [Install and Build](#install-and-build)
-   * [Install ROS Humble and Development Tooling](#install-ros-humble-and-development-tooling)
-   * [Setup ROS Workspace](#setup-ros-workspace)
-   * [Configure and Build Workspace](#configure-and-build-workspace)
- - [Running Executables](#running-executables)
-   * [Using the Local Workspace](#using-the-local-workspace)
- - [Testing and Linting](#testing-and-linting)
- - [Creating a new ROS 2 Package](#creating-a-new-ros2-package)
- - [References](#references)
+## 系统版本与依赖
 
-## Workflow With [Docker](https://docs.docker.com/)
+| 项目 | 说明 |
+|------|------|
+| **ROS 2** | 主要针对 **Humble**（见 `alfa_robot_description.humble.repos`） |
+| **Ubuntu** | 建议 22.04（与 Humble 匹配） |
+| **构建** | CMake ≥ 3.8，ament_cmake |
+| **运行依赖** | `joint_state_publisher_gui`、`robot_state_publisher`、`rviz2`、`xacro` |
+| **测试依赖** | `ament_cmake_pytest`、`launch_testing_ament_cmake`、`launch_testing_ros`、`liburdfdom-tools`、`xacro` |
 
-> **NOTE:** If you do not use Docker in the current workflow you can skip this section and jump to [Install and Build](#install-and-build)
+本包**不直接依赖** `ros2_control` 或 `controller_manager`，但 URDF 内嵌的 `<ros2_control>` 会在被上层 launch 加载时由 controller_manager 解析；真实硬件需配合 `alfa_robot_hardware` 包。
 
-We usually use a separate [Docker](https://docs.docker.com/) container for each of the projects/workspaces we work on.
-An internal tool from [Stogl Robotics](https://b-robotized.com) called [Ros Team Workspace (RTW)](https://rtw.b-robotized.com) simplifies the creation and work with  Docker based workspaces.
-The tool is targeted toward developers.
+---
 
-Installation of docker depends on the operating system you are using. Instructions can be found here: [Windows](https://docs.docker.com/desktop/install/windows-install/), [Mac](https://docs.docker.com/desktop/install/mac-install/) and [Linux](https://docs.docker.com/desktop/install/linux-install/).
+## 接口规范
 
-### Quick Start Using ROS with Docker (ros_team_workspace)
+### 1. Xacro 入口与参数
 
-Using [Ros Team Workspace (RTW)](https://rtw.b-robotized.com) you can easily with the following command:
-```
-setup-ros-workspace-docker WS_FOLDER_NAME ROS_DISTRO
-```
-and then after sourcing the new workspace with the `_WS_FOLDER_NAME` command, you can switch to the workspace with the:
-```
-rtw_switch_to_docker
-```
-command.
+**主入口**：`urdf/alfa_robot.urdf.xacro`
 
-## Install and Build
+| 参数名 | 类型 | 默认值 | 说明 |
+|--------|------|--------|------|
+| `prefix` | string | `""` | 关节/连杆名前缀，多机时使用 |
+| `use_mock_hardware` | bool | `false` | 使用 Mock 硬件（命令回显到状态） |
+| `mock_sensor_commands` | bool | `false` | Mock 时是否启用传感器命令接口 |
+| `sim_gazebo_classic` | bool | `false` | 使用 Gazebo Classic 的 ros2_control 插件 |
+| `sim_gazebo` | bool | `false` | 使用 Gazebo (Ignition/Fortress) 的 gz_ros2_control 插件 |
+| `simulation_controllers` | string | `""` | 仿真时控制器 yaml 路径（传给 Gazebo 插件） |
+| `real_hardware_plugin` | string | `alfa_robot_hardware/AlfaRobotHW` | 真实硬件时的 SystemInterface 插件名 |
 
-### Install ROS Humble and Development Tooling
+### 2. 关节与 ros2_control 接口（与 alfa_robot_hardware 一致）
 
-These instructions assume you are running Ubuntu 20.04:
+- **位置控制（position）**  
+  turn, updown, leftarmbase, leftjoint1–4, rightarmbase, rightjoint1–4：均提供 `position` 命令 + `position`/`velocity`/`acceleration` 状态；限位在 `alfa_robot_macro.ros2_control.xacro` 中定义（如 turn ±π，updown [-0.15, 1.0]，armbase ±0.3 等）。
+- **速度控制（velocity）**  
+  `left back`、`left forward`、`right back`、`right forward`：仅 `velocity` 命令 + `position`/`velocity`/`acceleration` 状态。
 
-1. [Install ROS 2 Humble](https://index.ros.org/doc/ros2/Installation/Humble/Linux-Install-Debians/).
-   You can stop following along with the tutorial after you complete the section titled: [Environment setup](https://index.ros.org/doc/ros2/Installation/Humble/Linux-Install-Debians/#environment-setup).
-   Make sure you setup your environment with:
-   ```
-   source /opt/ros/humble/setup.bash
-   ```
+关节名、类型与 `alfa_robot_hardware` 中 `isCanControlledJoint` / `isVelocityControlledJoint` 等保持一致，便于同一套描述既用于可视化又用于真实/仿真控制。
 
-   > **NOTE:** You may want to add that line to your `~/.bashrc`
+### 3. Launch 参数（对外接口）
 
-   > **NOTE:** There is also a `zsh` version of the setup script.
+- **view_alfa_robot.launch.py**：`description_package`（默认 `alfa_robot_description`）、`prefix`（默认 `""`）。
+- **alfa_robot.launch.xml**：`description_package`、`robot_name`、`prefix`、`use_mock_hardware`、`mock_sensor_commands`、`launch_rviz`；内部通过 `$(command xacro ...)` 生成 `robot_description`，并启动 `robot_state_publisher` 与可选的 `rviz2`。
 
-1. [Install ROS 2 Build Tools](https://index.ros.org/doc/ros2/Installation/Humble/Linux-Development-Setup/#install-development-tools-and-ros-tools).
-   You do not need to build ROS 2 from source.
-   Simply install the tooling under the section titled "Install development tools and ROS tools".
+### 4. 文件与资源路径
 
-1. Install `ccache`:
-   ```
-   sudo apt install ccache
-   ```
+- 网格：`package://alfa_robot_description/meshes/alfa_robot/visual/<link>.STL`、`.../collision/<link>.STL`。
+- RViz 配置：`rviz/alfa_robot.rviz`。
+- 测试：`test/alfa_robot_test_urdf_xacro.py` 使用安装后的 `urdf/alfa_robot.urdf.xacro`（需传入默认参数），经 xacro 展开后由 `check_urdf` 校验。
 
-1. Setup `colcon mixin` [Reference](https://github.com/colcon/colcon-mixin-repository) for convenience commands.
-   ```
-   sudo apt install python3-colcon-mixin
-   colcon mixin add default https://raw.githubusercontent.com/colcon/colcon-mixin-repository/master/index.yaml
-   colcon mixin update default
-   ```
+---
 
-### Setup ROS Workspace
+## 架构详解
 
-1. Create a colcon workspace:
-   ```
-   export COLCON_WS=~/workspace/ros_ws_humble
-   mkdir -p $COLCON_WS/src
-   ```
-
-   > **NOTE:** Feel free to change `~/workspace/ros_ws_humble` to whatever absolute path you want.
-
-   > **NOTE:** Over time you will probably have multiple ROS workspaces, so it makes sense to them all in a subfolder.
-     Also, it is good practice to put the ROS version in the name of the workspace, for different tests you could just add a suffix to the base name `ros_ws_humble`.
-
-1. Download the required repositories and install package dependencies:
-   ```
-   cd $COLCON_WS
-   git clone git@github.com:alfa_robot_description/alfa_robot_description.git src/alfa_robot_description
-   vcs import src --input src/alfa_robot_description/alfa_robot_description.humble.repos
-   vcs import src --input src/alfa_robot_description/alfa_robot_description.humble.repos
-   rosdep install --ignore-src --from-paths src -y -r       # install also is there are unreleased packages
-   ```
-
-   Sometimes packages do not list all their dependencies so `rosdep` will not install everything.
-   If you are getting missing dependency errors, try manually install the following packages:
-   ```
-   sudo apt install ros2-humble-forward_command_controller ros2-humble-joint_state_broadcaster ros2-humble-joint_trajectory_controller ros2-humble-xacro
-   ```
-
-### Configure and Build Workspace:
-To configure and build workspace execute following commands:
-  ```
-  cd $COLCON_WS
-  colcon build --symlink-install --mixin rel-with-deb-info compile-commands ccache
-  ```
-
-## Running Executable
-
-See `README.md` files of the packages for information regarding running executables.
-
-<Add here some concrete data about current repository>
-
-### Using the Local Workspace
-
-To use the local workspace you have to source it by using local setup script:
-  ```
-  source $COLCON_WS/install/local_setup.bash
-  ```
-Since there are many errors one unintentionally do with wrong sourcing, please check also [Notes on Sourcing ROS Workspace](#notes-on-sourcing-ros-workspace).
-
-#### Notes on Sourcing ROS Workspace
-
-Sourcing of a workspace appends the binary and resource directories to appropriate environment variables.
-It is important that you do not run the build command in the same terminal that you have previously sourced your local workspace.
-This can cause dependency resolution issues.
-Here is some advice copied from [Official ROS Workspace Tutorial](https://index.ros.org/doc/ros2/Tutorials/Workspace/Creating-A-Workspace/) on this:
-
-Before sourcing the overlay, it is very important that you open a new terminal, separate from the one where you built the workspace.
-Sourcing an overlay in the same terminal where you built, or likewise building where an overlay is sourced, may create complex issues.
-
-Sourcing the local_setup of the overlay will only add the packages available in the overlay to your environment.
-`setup` sources the overlay as well as the underlay it was created in, allowing you to utilize both workspaces.
-
-So, sourcing your main ROS 2 installation’s setup and then the dev_ws overlay’s local_setup, like you just did, is the same as just sourcing dev_ws’s setup, because that includes the environment of the underlay it was created in.
-
-
-## Testing and Linting
-
-To test the packages packages built from source, use the following command with [colcon](https://colcon.readthedocs.io/en/released/).
-In order to run tests and linters you will have had to already built the workspace.
-To run the tests use following commands:
-  ```
-  cd $COLCON_WS
-  colcon test
-  colcon test-result
-  ```
-
-There are `--mixin` arguments that can be used to control testing with linters, specifically `linters-only` and `linters-skip`.
-
-## Creating a new ROS 2 Package
-
-If you need to create a new ROS 2 package it is helpful to start with the official boilerplate for a ROS 2 package.
-The command `ros2 pkg` can be used to generate the boilerplate details.
-For example to create a new ROS 2 package called `example_package` with a node called `example_node` and library called `example_library` use this command:
-  ```
-  ros2 pkg create --build-type ament_cmake --node-name example_node --library-name example_library example_package
-  ```
-
-## References
-
-Here are some useful references for developing with ROS 2:
-
- - [Official ROS 2 Tutorials](https://index.ros.org/doc/ros2/Tutorials/)
-   * [Launchfile](https://index.ros.org/doc/ros2/Tutorials/Launch-Files/Creating-Launch-Files/)
-   * [Package](https://index.ros.org/doc/ros2/Tutorials/Creating-Your-First-ROS2-Package/)
-   * [Parameters](https://index.ros.org/doc/ros2/Tutorials/Parameters/Understanding-ROS2-Parameters/)
-   * [Workspace](https://index.ros.org/doc/ros2/Tutorials/Workspace/Creating-A-Workspace/)
- - [Example ROS packages](https://github.com/ros2/examples)
- - [Colcon Documentation](https://colcon.readthedocs.io/en/released/#)
- - [ROS 2 Design Documentation](https://design.ros2.org/)
- - [ROS 2 Launch Architecture](https://github.com/ros2/launch/blob/master/launch/doc/source/architecture.rst)
-
-Descriptions, meshes, and visualization files for the robots and environments. Corresponding launch and test files are also stored here.
-
-The structure and files in this package are generated using [RosTeamWorkspace script setup-robot-description](https://rtw.b-robotized.com/master/use-cases/ros_packages/setup_robot_description_package.html). You can use the same script to generate initial files for other robots.
-
-## General details about robot description packages
-
-This description package follows, as much as possible, the recommendations from [ROS-Industrial Consortium about robot support packages](https://wiki.ros.org/Industrial/Tutorials/WorkingWithRosIndustrialRobotSupportPackages).
-The general package structure is the following:
+### 1. 目录与文件职责
 
 ```
-<manufacturer|robot_name>_description/             # Robot's description files
-├── [CMakeLists.txt]                               # if ament_cmake is used (recommended)
-├── package.xml
-├── [setup.py]                                     # if amend_python is used
-├── [setup.cfg]                                    # if amend_python is used
-├── config/                                        # general YAML files for a robot
-│   └── <robot_name>_<someting_specific>.yaml
-├── launch/                                        # launch files related to testing robots' description
-│   └── test_<robot_name>_description.launch.py
-├── meshes/                                        # meshes used in <robot_name>_macro.urdf.xacro
-│   ├── collision
-│   │   └── <robot_name|robot_model>               # meshes are sorted by robot name or model
-│   │       ├── <link_xy>.stl
-│   │       └── ...
-│   └── visual
-│       └── <robot_name|robot_model>
-│           ├── <link_xy>.dae
-│           └── ...
-├── rviz/                                          # rviz display configurations
-│   └── <robot_name>_default.rviz
-└── urdf/                                          # URDF file for the robot
-    ├── common.xacro                               # Common XACRO definitions
-    ├── <robot_name>.urdf.xacro                    # Main URDF for a robot - loads macro and other files
-    └── <robot_name|robot_model>
-        ├── <robot_name>_macro.xacro               # Macro file of the robot - can add prefix, define origin, etc.
-        └── <robot_name>_macro.ros2_control.xacro  # URDF-part used to configure ros2_control
-
+alfa_robot_description/
+├── config/                    # 预留配置（当前 .gitkeep）
+├── launch/
+│   ├── alfa_robot.launch.xml  # robot_state_publisher + 可选 rviz，xacro 带 use_mock 等参数
+│   └── view_alfa_robot.launch.py  # 可视化：joint_state_publisher_gui + robot_state_publisher + rviz2
+├── meshes/alfa_robot/
+│   ├── collision/            # 碰撞用 STL（base, turn, updown, armbase, joint1-4, wheel 等）
+│   └── visual/               # 显示用 STL（含 base_chassis, left/right back/forward 等）
+├── rviz/
+│   └── alfa_robot.rviz       # RViz 显示配置
+├── urdf/
+│   ├── alfa_robot.urdf.xacro              # 入口：world + alfa_robot macro + alfa_robot_ros2_control macro
+│   ├── alfa_robot/
+│   │   ├── alfa_robot_macro.xacro         # 连杆/关节树、惯性、视觉/碰撞几何
+│   │   └── alfa_robot_macro.ros2_control.xacro  # ros2_control 与 Gazebo 插件块
+│   └── common/
+│       ├── inertials.xacro   # 惯性宏（sphere/cylinder/box 等）
+│       └── materials.xacro   # 材质（black, grey, white, blue, arm_grey）
+└── test/
+    └── alfa_robot_test_urdf_xacro.py  # pytest：xacro 展开 + check_urdf 校验
 ```
 
-### Testing the validity of robot description
+### 2. 机器人拓扑（简要）
 
-1. Go to the root of your workspace folder (there where `src`, `build`, `install` and `log` files are).
-2. Install the package by calling `colcon build --symlink-install --packages-select alfa_robot_description`
-3. (Re-)Source environment `source install/setup.bash`
+- **world** → base_link（fixed base_joint，可带 origin 偏移）  
+  → turn_link（continuous turn）  
+  → updown_link（prismatic updown）  
+  → leftarmbase_link / rightarmbase_link（prismatic）  
+  → leftjoint1_link / rightjoint1_link（prismatic）  
+  → leftjoint2–4_link / rightjoint2–4_link（continuous）；  
+  另：base_link → base_chassis_link（fixed）→ 四个轮子连杆（left/right back/forward，continuous）。
+- 连杆命名：关节名 + `_link`（如 `turn` → `turn_link`），与 Gazebo 等兼容；网格与惯性在 macro 中按 link 定义。
 
+### 3. ros2_control 与仿真切换
 
-> **NOTE:** If you use [RosTeamWorkspace (RTW)](https://rtw.b-robotized.com) than instead of the previous three steps, use `cb alfa_robot_description` command.
+- 在 `alfa_robot_macro.ros2_control.xacro` 中按 xacro 条件选择插件：
+  - `use_mock_hardware` → `mock_components/GenericSystem`
+  - `sim_gazebo_classic` → `gazebo_ros2_control/GazeboSystem`
+  - `sim_gazebo` → `gz_ros2_control/GazeboSimSystem`
+  - 否则 → `real_hardware_plugin`（默认 `alfa_robot_hardware/AlfaRobotHW`）
+- Gazebo Classic/新 Gazebo 块中通过 `simulation_controllers` 传入控制器 yaml 路径；真实硬件时不在本包内启动 controller_manager，由上层 bringup 启动。
 
-Now, launch description test:
+### 4. 安装与测试
+
+- `CMakeLists.txt` 将 `config`、`launch`、`meshes`、`rviz`、`urdf`、`test` 安装到 `share/alfa_robot_description`，并显式安装 `meshes/alfa_robot/collision`，保证 `package://` 解析到碰撞网格。
+- 单元测试：`ament_add_pytest_test(test_alfa_robot_urdf_xacro, ...)` 调用 `alfa_robot_test_urdf_xacro.py`，用安装后的 xacro 生成 URDF 并用 `check_urdf` 检查合法性。
+
+---
+
+## 启动与调试终端命令
+
+### 1. 编译
+
+在工作空间根目录（如 `alfa_robot_ws`）下：
+
+```bash
+cd ~/alfa_robot_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select alfa_robot_description
+source install/setup.bash
 ```
-ros2 launch alfa_robot_description view_alfa_robot.launch.xml
+
+如需符号链接便于修改 xacro 后不重装：
+
+```bash
+colcon build --packages-select alfa_robot_description --symlink-install
+source install/setup.bash
 ```
-or
-```
+
+### 2. 仅可视化（无 controller_manager）
+
+**方式一：带关节滑条的 RViz（推荐调试模型）**
+
+```bash
 ros2 launch alfa_robot_description view_alfa_robot.launch.py
 ```
 
-If there are no issues with the description, two windows are opened: `rviz2` and `Joint State Publisher`.
-Rviz2 visualizes the robot's state and Joint state Publisher to changes joint values using sliders or generates random but valid configurations.
+会启动：`joint_state_publisher_gui`、`robot_state_publisher`、`rviz2`（配置来自 `rviz/alfa_robot.rviz`）。可通过 GUI 拖拽关节或随机配置检查运动学与外观。
 
-Descriptions, meshes, and visualization files for the robots and environments. Corresponding launch and test files are also stored here.
+**方式二：仅发布 robot_description + RViz**
 
-The structure and files in this package are generated using [RosTeamWorkspace script setup-robot-description](https://rtw.b-robotized.com/master/use-cases/ros_packages/setup_robot_description_package.html). You can use the same script to generate initial files for other robots.
-
-## General details about robot description packages
-
-This description package follows, as much as possible, the recommendations from [ROS-Industrial Consortium about robot support packages](https://wiki.ros.org/Industrial/Tutorials/WorkingWithRosIndustrialRobotSupportPackages).
-The general package structure is the following:
-
-```
-<manufacturer|robot_name>_description/             # Robot's description files
-├── [CMakeLists.txt]                               # if ament_cmake is used (recommended)
-├── package.xml
-├── [setup.py]                                     # if amend_python is used
-├── [setup.cfg]                                    # if amend_python is used
-├── config/                                        # general YAML files for a robot
-│   └── <robot_name>_<someting_specific>.yaml
-├── launch/                                        # launch files related to testing robots' description
-│   └── test_<robot_name>_description.launch.py
-├── meshes/                                        # meshes used in <robot_name>_macro.urdf.xacro
-│   ├── collision
-│   │   └── <robot_name|robot_model>               # meshes are sorted by robot name or model
-│   │       ├── <link_xy>.stl
-│   │       └── ...
-│   └── visual
-│       └── <robot_name|robot_model>
-│           ├── <link_xy>.dae
-│           └── ...
-├── rviz/                                          # rviz display configurations
-│   └── <robot_name>_default.rviz
-└── urdf/                                          # URDF file for the robot
-    ├── common.xacro                               # Common XACRO definitions
-    ├── <robot_name>.urdf.xacro                    # Main URDF for a robot - loads macro and other files
-    └── <robot_name|robot_model>
-        ├── <robot_name>_macro.xacro               # Macro file of the robot - can add prefix, define origin, etc.
-        └── <robot_name>_macro.ros2_control.xacro  # URDF-part used to configure ros2_control
-
+```bash
+ros2 launch alfa_robot_description alfa_robot.launch.xml
 ```
 
-### Testing the validity of robot description
+使用默认参数时，会通过 xacro 生成描述（默认真实硬件插件名，未启动 controller_manager）；需有外部节点发布 `/joint_states` 才能看到机器人动。
 
-1. Go to the root of your workspace folder (there where `src`, `build`, `install` and `log` files are).
-2. Install the package by calling `colcon build --symlink-install --packages-select alfa_robot_description`
-3. (Re-)Source environment `source install/setup.bash`
+带 mock 硬件描述（仅改变 URDF 内插件，仍不启动 controller_manager）：
 
-
-> **NOTE:** If you use [RosTeamWorkspace (RTW)](https://rtw.b-robotized.com) than instead of the previous three steps, use `cb alfa_robot_description` command.
-
-Now, launch description test:
-```
-ros2 launch alfa_robot_description view_alfa_robot.launch.xml
-```
-or
-```
-ros2 launch alfa_robot_description view_alfa_robot.launch.py
+```bash
+ros2 launch alfa_robot_description alfa_robot.launch.xml use_mock_hardware:=true
 ```
 
-If there are no issues with the description, two windows are opened: `rviz2` and `Joint State Publisher`.
-Rviz2 visualizes the robot's state and Joint state Publisher to changes joint values using sliders or generates random but valid configurations.
+### 3. 多机或自定义前缀
+
+```bash
+ros2 launch alfa_robot_description view_alfa_robot.launch.py prefix:=robot1_
+```
+
+关节/连杆名会带 `robot1_` 前缀；若与 controller 配合，控制器配置中的关节名也需一致。
+
+### 4. 检查 URDF/xacro 合法性（调试）
+
+先安装并 source，再手动执行 xacro + check_urdf：
+
+```bash
+source install/setup.bash
+xacro src/alfa_robot_description/urdf/alfa_robot.urdf.xacro > /tmp/alfa.urdf
+check_urdf /tmp/alfa.urdf
+```
+
+### 5. 单元测试
+
+```bash
+cd ~/alfa_robot_ws
+source install/setup.bash
+colcon test --packages-select alfa_robot_description
+colcon test-result --verbose
+```
+
+测试会从安装目录读取 `alfa_robot.urdf.xacro`，用 xacro 展开并调用 `check_urdf`，验证描述语法与拓扑正确。
+
+### 6. 与真实硬件 / 控制栈联合启动
+
+本包只提供描述与可选 launch；带 controller_manager 的完整 bringup 通常由其他包（如 `alfa_robot_bringup`）提供，例如：
+
+```bash
+ros2 launch alfa_robot_bringup alfa_robot_control.launch.py
+```
+
+该 launch 会加载本包的 xacro（含 `real_hardware_plugin=alfa_robot_hardware/AlfaRobotHW`）、启动 `robot_state_publisher`、`controller_manager` 等。具体 launch 名以你工程为准。
+
+---
+
+## 小结
+
+- **接口规范**：xacro 参数（prefix、use_mock_hardware、sim_gazebo、real_hardware_plugin 等）、关节与 ros2_control 的 position/velocity 定义、launch 参数与 `package://` 资源路径。
+- **系统版本**：ROS 2 Humble、Ubuntu 22.04，依赖 `robot_state_publisher`、`xacro`、`rviz2`、`joint_state_publisher_gui`。
+- **启动/调试**：编译 `colcon build --packages-select alfa_robot_description`；可视化 `view_alfa_robot.launch.py` 或 `alfa_robot.launch.xml`；校验 `xacro` + `check_urdf`；测试 `colcon test --packages-select alfa_robot_description`。
+- **架构**：入口 xacro 组合 macro（几何+关节树）与 ros2_control macro，支持真实/Mock/Gazebo 多种插件；mesh 与 rviz 配置独立；测试保证 xacro 展开后 URDF 合法。

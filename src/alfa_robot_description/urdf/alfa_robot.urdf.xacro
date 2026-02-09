@@ -20,7 +20,7 @@
   <!-- Load robot's macro with parameters -->
   <!-- set prefix if multiple robots are used -->
   <xacro:alfa_robot prefix="$(arg prefix)" parent="world">
-    <origin xyz="0 0 0" rpy="0 0 0"/>          <!-- position robot in the world -->
+    <origin xyz="0 0 0.09" rpy="0 0 0"/>          <!-- position robot in the world -->
   </xacro:alfa_robot>
 
   <xacro:alfa_robot_ros2_control
