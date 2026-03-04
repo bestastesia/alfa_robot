@@ -4,8 +4,8 @@
 # Licensed under the Apache License, Version 2.0 (the "License");
 
 """
-桥接节点：将 joint_state_publisher_gui 的滑块输出转发到 forward_position_controller。
-订阅 /joint_states_gui，提取指定关节位置，发布到 /forward_position_controller/commands。
+桥接节点：将 joint_state_publisher_gui 的滑块输出转发到位置控制器。
+订阅 /joint_states_gui，提取指定关节位置，发布到控制器 commands topic。
 """
 
 import rclpy
@@ -22,9 +22,13 @@ class JointStatesToControllerBridge(Node):
 
         self.declare_parameter(
             "joint_names",
-            ["leftjoint2", "leftjoint3", "leftjoint4", "rightjoint2", "rightjoint3", "rightjoint4"],
+            [
+                "turn", "updown",
+                "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4",
+                "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4",
+            ],
         )
-        self.declare_parameter("command_topic", "/forward_position_controller/commands")
+        self.declare_parameter("command_topic", "/all_position_controller/commands")
         self.declare_parameter("joint_states_topic", "/joint_states_gui")
 
         self.joint_names = self.get_parameter("joint_names").get_parameter_value().string_array_value

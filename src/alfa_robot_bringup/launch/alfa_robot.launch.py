@@ -89,9 +89,9 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             "robot_controller",
-            default_value="forward_position_controller",
-            choices=["forward_position_controller", "joint_trajectory_controller"],
-            description="Robot controller to start. Use forward_position_controller for CAN hardware.",
+            default_value="all_position_controller",
+            choices=["all_position_controller", "forward_position_controller", "joint_trajectory_controller"],
+            description="Robot controller to start. Use all_position_controller for GUI testing.",
         )
     )
     declared_arguments.append(
@@ -109,6 +109,22 @@ def generate_launch_description():
             description="Plugin for real hardware control (used when use_mock_hardware:=false).",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "canopen_profile_velocity",
+            default_value="50000",
+            description="CANopen (Leisai) motor profile velocity in pulses/s. "
+            "50000≈3.8mm/s, 100000≈7.6mm/s, 500000≈38mm/s.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "canopen_profile_accel",
+            default_value="50000",
+            description="CANopen (Leisai) motor profile acceleration in pulses/s². "
+            "Controls how fast the motor ramps up to profile velocity.",
+        )
+    )
 
     # Initialize Arguments
     runtime_config_package = LaunchConfiguration("runtime_config_package")
@@ -121,6 +137,8 @@ def generate_launch_description():
     robot_controller = LaunchConfiguration("robot_controller")
     use_joint_gui_control = LaunchConfiguration("use_joint_gui_control")
     real_hardware_plugin = LaunchConfiguration("real_hardware_plugin")
+    canopen_profile_velocity = LaunchConfiguration("canopen_profile_velocity")
+    canopen_profile_accel = LaunchConfiguration("canopen_profile_accel")
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -142,6 +160,12 @@ def generate_launch_description():
             " ",
             "real_hardware_plugin:=",
             real_hardware_plugin,
+            " ",
+            "canopen_profile_velocity:=",
+            canopen_profile_velocity,
+            " ",
+            "canopen_profile_accel:=",
+            canopen_profile_accel,
             " ",
         ]
     )

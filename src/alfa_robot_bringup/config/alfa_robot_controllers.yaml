@@ -37,6 +37,9 @@ controller_manager:
     forward_velocity_controller:
       type: forward_command_controller/ForwardCommandController
 
+    all_position_controller:
+      type: forward_command_controller/ForwardCommandController
+
 base_position_controller:
   ros__parameters:
     joints:
@@ -72,3 +75,21 @@ forward_velocity_controller:
       - right back
       - right forward
     interface_name: velocity
+
+# GUI 调试用：一个控制器覆盖全部 12 个位置关节
+all_position_controller:
+  ros__parameters:
+    joints:
+      - turn
+      - updown
+      - leftarmbase
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - rightarmbase
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+    interface_name: position
