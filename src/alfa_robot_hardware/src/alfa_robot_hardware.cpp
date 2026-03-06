@@ -7,30 +7,17 @@
 // The file is considered confidential.
 
 /**
- * Alfa Robot ros2_control 硬件接口 - Franka 风格
- * 协议：0x92 读取多圈角度，0xA4 多圈位置闭环控制，减速比 1:36
- * 双 CAN 总线：左臂 can0，右臂 can1
- * CANopen 总线：can3 (updown + leftarmbase + leftjoint1 + rightarmbase + rightjoint1)
- * 启动前请执行:
- *   sudo ip link set can0 txqueuelen 256
- *   sudo ip link set can1 txqueuelen 256
- *   sudo ip link set can3 txqueuelen 256
+ * Alfa Robot ros2_control 硬件接口 - Franka 风格重构版
+ * 通信层解耦到 CanBus 类，本类仅负责 ros2_control 接口适配
  */
 
-namespace
-{
-constexpr unsigned int kCanInterFrameDelayUs = 150;
-}
+#include "alfa_robot_hardware/alfa_robot_hardware.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <vector>
-#include <cmath>
-#include <algorithm>
-#include <cstring>
-#include <cerrno>
-#include <unistd.h>
 
-#include "alfa_robot_hardware/alfa_robot_hardware.hpp"
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -72,91 +59,111 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     return CallbackReturn::ERROR;
   }
 
-  can_socket_left_ = -1;
-  can_socket_right_ = -1;
-  can_interface_left_ = "can0";
-  can_interface_right_ = "can1";
-  can_socket_canopen_ = -1;
-  can_interface_canopen_ = "can3";
-  can_socket_base_ = -1;
-  can_interface_base_ = "can2";
-  max_speed_dps_ = 360;
+  // Parse hardware_parameters into CanBusConfig
+  can_bus_config_.can_interface_left = "can0";
+  can_bus_config_.can_interface_right = "can1";
+  can_bus_config_.can_interface_base = "can2";
+  can_bus_config_.can_interface_canopen = "can3";
+  can_bus_config_.max_speed_dps = 360;
+  can_bus_config_.canopen_profile_velocity = 50000;
+  can_bus_config_.canopen_profile_accel = 50000;
+  can_bus_config_.filter_cutoff_hz = 50.0;
+  can_bus_config_.max_velocity_rad_per_s = 3.14;
+  can_bus_config_.max_velocity_m_per_s = 0.01;
+  can_bus_config_.low_pass_filter_active = false;
+  can_bus_config_.rate_limiter_active = true;
 
   for (const auto & param : info_.hardware_parameters)
   {
     if (param.first == "can_interface_left")
     {
-      can_interface_left_ = param.second;
-      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Left arm CAN interface: %s", can_interface_left_.c_str());
+      can_bus_config_.can_interface_left = param.second;
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "Left arm CAN interface: %s", can_bus_config_.can_interface_left.c_str());
     }
     else if (param.first == "can_interface_right")
     {
-      can_interface_right_ = param.second;
-      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Right arm CAN interface: %s", can_interface_right_.c_str());
+      can_bus_config_.can_interface_right = param.second;
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "Right arm CAN interface: %s", can_bus_config_.can_interface_right.c_str());
     }
-    else if (param.first == "can_interface")
+    else if (param.first == "can_interface_base")
     {
-      // Legacy single-bus param: apply to both if per-arm params not set
-      can_interface_left_ = param.second;
-      can_interface_right_ = param.second;
-      RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-        "Deprecated 'can_interface' param used — prefer 'can_interface_left' / 'can_interface_right'. "
-        "Setting both to: %s", param.second.c_str());
+      can_bus_config_.can_interface_base = param.second;
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "Base CAN interface: %s", can_bus_config_.can_interface_base.c_str());
+    }
+    else if (param.first == "can_interface_canopen")
+    {
+      can_bus_config_.can_interface_canopen = param.second;
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "CANopen CAN interface: %s", can_bus_config_.can_interface_canopen.c_str());
     }
     else if (param.first == "max_speed_dps")
     {
       try
       {
-        max_speed_dps_ = static_cast<uint16_t>(std::stoul(param.second));
-        RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "max_speed_dps set to: %u", max_speed_dps_);
+        can_bus_config_.max_speed_dps = static_cast<uint16_t>(std::stoul(param.second));
+        RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+          "max_speed_dps: %u", can_bus_config_.max_speed_dps);
       }
       catch (const std::exception &)
       {
-        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"), "Invalid max_speed_dps, using default 360");
+        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+          "Invalid max_speed_dps, using default 360");
       }
-    }
-    else if (param.first == "can_interface_canopen")
-    {
-      can_interface_canopen_ = param.second;
-      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-        "CANopen CAN interface: %s", can_interface_canopen_.c_str());
-    }
-    else if (param.first == "can_interface_base")
-    {
-      can_interface_base_ = param.second;
-      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-        "Base CAN interface (turn + updown): %s", can_interface_base_.c_str());
     }
     else if (param.first == "canopen_profile_velocity")
     {
       try {
-        canopen_profile_velocity_ = static_cast<uint32_t>(std::stoul(param.second));
+        can_bus_config_.canopen_profile_velocity = static_cast<uint32_t>(std::stoul(param.second));
         RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-          "CANopen profile velocity: %u pps (%.1f mm/s)",
-          canopen_profile_velocity_,
-          canopen_profile_velocity_ / kCanopenPulsesPerMeter * 1000.0);
+          "CANopen profile velocity: %u pps", can_bus_config_.canopen_profile_velocity);
       } catch (const std::exception &) {
         RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-          "Invalid canopen_profile_velocity, using default %u", canopen_profile_velocity_);
+          "Invalid canopen_profile_velocity, using default");
       }
     }
     else if (param.first == "canopen_profile_accel")
     {
       try {
-        canopen_profile_accel_ = static_cast<uint32_t>(std::stoul(param.second));
+        can_bus_config_.canopen_profile_accel = static_cast<uint32_t>(std::stoul(param.second));
         RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-          "CANopen profile acceleration: %u pps²", canopen_profile_accel_);
+          "CANopen profile acceleration: %u pps²", can_bus_config_.canopen_profile_accel);
       } catch (const std::exception &) {
         RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-          "Invalid canopen_profile_accel, using default %u", canopen_profile_accel_);
+          "Invalid canopen_profile_accel, using default");
       }
+    }
+    else if (param.first == "filter_cutoff_hz")
+    {
+      try {
+        can_bus_config_.filter_cutoff_hz = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_velocity_rad_per_s")
+    {
+      try {
+        can_bus_config_.max_velocity_rad_per_s = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_velocity_m_per_s")
+    {
+      try {
+        can_bus_config_.max_velocity_m_per_s = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "enable_filter")
+    {
+      can_bus_config_.low_pass_filter_active = (param.second == "true");
+    }
+    else if (param.first == "enable_rate_limiter")
+    {
+      can_bus_config_.rate_limiter_active = (param.second == "true");
     }
   }
 
-  // Explicit motor_id mapping (per-bus physical IDs, CAN ID = 0x140 + motor_id)
-  // can0: leftjoint2=1, leftjoint3=2, leftjoint4=3
-  // can1: rightjoint2=4, rightjoint3=5, rightjoint4=6
-  // can2: turn=1
+  // Build RMD motor ID mapping
   static const std::map<std::string, uint8_t> kRmdMotorIds = {
     {"turn", 1},
     {"leftjoint2", 1}, {"leftjoint3", 2}, {"leftjoint4", 3},
@@ -164,13 +171,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   };
 
   size_t state_index = 0;
-
   for (const auto & joint : info_.joints)
   {
-    if (!isCanControlledJoint(joint.name))
-    {
-      continue;
-    }
+    if (!isCanControlledJoint(joint.name)) { continue; }
     auto id_it = kRmdMotorIds.find(joint.name);
     if (id_it == kRmdMotorIds.end())
     {
@@ -184,16 +187,13 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     joint_to_cmd_index_[joint.name] = state_index;
 
     RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "RMD joint '%s' → motor ID %d, state/cmd index %zu",
+      "RMD joint '%s' → motor ID %d, index %zu",
       joint.name.c_str(), id_it->second, state_index);
 
     state_index++;
   }
 
   const size_t num_can_joints = joint_to_motor_id_.size();
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "Initialized %zu CAN-controlled joints", num_can_joints);
-
   hw_positions_.resize(num_can_joints, 0.0);
   hw_velocities_.resize(num_can_joints, 0.0);
   hw_accelerations_.resize(num_can_joints, 0.0);
@@ -201,7 +201,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   previous_positions_.resize(num_can_joints, 0.0);
   hw_position_commands_.resize(num_can_joints, 0.0);
 
-  // Initialize CANopen joints on can3 (single bus, unique node IDs)
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+    "Initialized %zu RMD joints", num_can_joints);
+
+  // Build CANopen node ID mapping
   canopen_joint_to_node_id_["updown"] = 1;
   canopen_joint_to_node_id_["leftarmbase"] = 2;
   canopen_joint_to_node_id_["leftjoint1"] = 3;
@@ -228,8 +231,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   canopen_previous_velocities_.resize(num_canopen, 0.0);
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "Initialized %zu CANopen joints on %s", num_canopen, can_interface_canopen_.c_str());
+    "Initialized %zu CANopen joints", num_canopen);
 
+  // Legacy placeholder joints
   const size_t num_joints = info_.joints.size();
   hw_states_.resize(num_joints, 0.0);
   hw_commands_.resize(num_joints, 0.0);
@@ -245,70 +249,15 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
 hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Try to initialize each CAN bus — missing buses are non-fatal (WARN only)
-  if (initCanInterface(can_interface_left_, can_socket_left_))
+  can_bus_ = std::make_unique<CanBus>(can_bus_config_);
+  if (!can_bus_->openInterfaces())
   {
-    can_left_available_ = true;
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "Left arm CAN bus configured: %s", can_interface_left_.c_str());
-  }
-  else
-  {
-    can_left_available_ = false;
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "Left arm CAN bus '%s' not available — left arm joints will be inactive",
-      can_interface_left_.c_str());
+    RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"),
+      "Failed to open CAN interfaces");
+    return CallbackReturn::ERROR;
   }
 
-  if (initCanInterface(can_interface_right_, can_socket_right_))
-  {
-    can_right_available_ = true;
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "Right arm CAN bus configured: %s", can_interface_right_.c_str());
-  }
-  else
-  {
-    can_right_available_ = false;
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "Right arm CAN bus '%s' not available — right arm joints will be inactive",
-      can_interface_right_.c_str());
-  }
-
-  if (initCanInterface(can_interface_canopen_, can_socket_canopen_))
-  {
-    can_canopen_available_ = true;
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen bus configured: %s", can_interface_canopen_.c_str());
-  }
-  else
-  {
-    can_canopen_available_ = false;
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen bus '%s' not available — CANopen joints will be inactive",
-      can_interface_canopen_.c_str());
-  }
-
-  if (initCanInterface(can_interface_base_, can_socket_base_))
-  {
-    can_base_available_ = true;
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "Base bus configured: %s (turn RMD)", can_interface_base_.c_str());
-  }
-  else
-  {
-    can_base_available_ = false;
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "Base bus '%s' not available — turn joint will be inactive",
-      can_interface_base_.c_str());
-  }
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "Hardware configured: can0(%s) can1(%s) can2(%s) can3(%s)",
-    can_left_available_ ? "OK" : "N/A",
-    can_right_available_ ? "OK" : "N/A",
-    can_base_available_ ? "OK" : "N/A",
-    can_canopen_available_ ? "OK" : "N/A");
-
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware configured");
   return CallbackReturn::SUCCESS;
 }
 
@@ -348,7 +297,6 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
     }
     else
     {
-      // ========== TODO: 占位关节 - 待实现 ==========
       for (size_t i = 0; i < info_.joints.size(); ++i)
       {
         if (info_.joints[i].name == joint.name)
@@ -407,7 +355,6 @@ std::vector<hardware_interface::CommandInterface> AlfaRobotHW::export_command_in
           }
           else
           {
-            // TODO: wheels only remain as legacy
             command_interfaces.emplace_back(hardware_interface::CommandInterface(
               joint.name, hardware_interface::HW_IF_POSITION, &hw_commands_[i]));
           }
@@ -431,233 +378,113 @@ void AlfaRobotHW::initializePositionCommands()
     hw_position_commands_[i] = hw_positions_[i];
   }
   first_position_update_ = false;
+
+  if (!canopen_first_position_update_)
+  {
+    return;
+  }
+  for (size_t i = 0; i < canopen_position_commands_.size(); ++i)
+  {
+    canopen_position_commands_[i] = canopen_positions_[i];
+  }
+  canopen_first_position_update_ = false;
 }
 
 hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  // Activate RMD motors (skip if bus unavailable)
-  uint8_t run_cmd_data[7] = {0};
-  for (const auto & joint_motor_pair : joint_to_motor_id_)
+  if (!can_bus_->enableMotors(joint_to_motor_id_, canopen_joint_to_node_id_))
   {
-    int sock = getCanSocketForRmdJoint(joint_motor_pair.first);
-    if (sock < 0)
+    RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"), "Failed to enable motors");
+    return CallbackReturn::ERROR;
+  }
+
+  // Initialize CANopen position commands from initial read
+  for (const auto & pair : canopen_joint_to_node_id_)
+  {
+    if (can_bus_->enabledCanopenNodes().find(pair.second) == can_bus_->enabledCanopenNodes().end())
     {
-      RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-        "Skipping RMD motor activation for '%s' — bus not available",
-        joint_motor_pair.first.c_str());
       continue;
     }
-    uint8_t motor_id = joint_motor_pair.second;
-    sendMotorCommand(sock, motor_id, 0x88, run_cmd_data);
-    RCLCPP_DEBUG(rclcpp::get_logger("AlfaRobotHW"),
-      "Sent run command to motor ID %d (joint: %s)",
-      motor_id, joint_motor_pair.first.c_str());
+    auto idx_it = canopen_joint_to_index_.find(pair.first);
+    if (idx_it == canopen_joint_to_index_.end()) { continue; }
+
+    double pos_m = 0.0;
+    if (can_bus_->canopenReadPosition(pair.second, pos_m))
+    {
+      size_t idx = idx_it->second;
+      canopen_positions_[idx] = pos_m;
+      canopen_position_commands_[idx] = pos_m;
+      canopen_previous_positions_[idx] = pos_m;
+    }
   }
 
-  usleep(10000);
-
+  // First read to initialize RMD positions
   first_position_update_ = true;
+  canopen_first_position_update_ = true;
   read(rclcpp::Time(0), rclcpp::Duration(0, 0));
 
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "Hardware activated, CAN-controlled motors started");
-
-  // Activate CANopen motors (non-fatal: WARN on failure)
-  canopen_enabled_nodes_.clear();
-  if (can_canopen_available_)
-  {
-    for (const auto & pair : canopen_joint_to_node_id_)
-    {
-      if (canopenEnableMotor(can_socket_canopen_, pair.second))
-      {
-        canopen_enabled_nodes_.insert(pair.second);
-      }
-      else
-      {
-        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-          "Failed to enable CANopen motor: joint '%s', node %d — continuing without it",
-          pair.first.c_str(), pair.second);
-      }
-    }
-
-    // Read initial CANopen positions (only for enabled nodes)
-    for (const auto & pair : canopen_joint_to_node_id_)
-    {
-      if (canopen_enabled_nodes_.find(pair.second) == canopen_enabled_nodes_.end()) { continue; }
-      auto idx_it = canopen_joint_to_index_.find(pair.first);
-      if (idx_it == canopen_joint_to_index_.end()) { continue; }
-      double pos = 0.0;
-      if (canopenReadPosition(can_socket_canopen_, pair.second, pos))
-      {
-        canopen_positions_[idx_it->second] = pos;
-        canopen_position_commands_[idx_it->second] = pos;
-        canopen_previous_positions_[idx_it->second] = pos;
-      }
-      else
-      {
-        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-          "Failed to read initial position for '%s' — defaulting to 0.0",
-          pair.first.c_str());
-      }
-    }
-
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen motors: %zu/%zu enabled",
-      canopen_enabled_nodes_.size(), canopen_joint_to_node_id_.size());
-  }
-  else
-  {
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen bus not available — skipping all CANopen motor activation");
-  }
-  canopen_first_position_update_ = false;
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "CANopen motors activation complete");
-
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware activated");
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  uint8_t close_cmd_data[7] = {0};
-  for (const auto & joint_motor_pair : joint_to_motor_id_)
-  {
-    int sock = getCanSocketForRmdJoint(joint_motor_pair.first);
-    if (sock < 0) { continue; }
-    uint8_t motor_id = joint_motor_pair.second;
-    sendMotorCommand(sock, motor_id, 0x80, close_cmd_data);
-    RCLCPP_DEBUG(rclcpp::get_logger("AlfaRobotHW"),
-      "Sent close command to motor ID %d (joint: %s)",
-      motor_id, joint_motor_pair.first.c_str());
-  }
-
-  usleep(10000);
-  closeCanInterface(can_socket_left_);
-  can_left_available_ = false;
-  closeCanInterface(can_socket_right_);
-  can_right_available_ = false;
-
-  // Disable CANopen motors
-  if (can_canopen_available_)
-  {
-    for (const auto & pair : canopen_joint_to_node_id_)
-    {
-      canopenDisableMotor(can_socket_canopen_, pair.second);
-    }
-  }
-  closeCanInterface(can_socket_canopen_);
-  can_canopen_available_ = false;
-  closeCanInterface(can_socket_base_);
-  can_base_available_ = false;
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "Hardware deactivated, CAN-controlled motors stopped");
-
+  can_bus_->stopAll(joint_to_motor_id_, canopen_joint_to_node_id_);
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
 }
 
 hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  std::map<uint8_t, double> motor_positions;
+  auto state = can_bus_->readOnce(joint_to_motor_id_);
+  double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
 
-  // Send 0x92 read requests to all RMD motors (routed by joint name)
-  uint8_t read_cmd_data[7] = {0};
-  for (const auto & joint_motor_pair : joint_to_motor_id_)
+  // Update RMD buffers
+  for (auto & [name, motor_id] : joint_to_motor_id_)
   {
-    int sock = getCanSocketForRmdJoint(joint_motor_pair.first);
-    if (sock < 0) { continue; }
-    uint8_t motor_id = joint_motor_pair.second;
-    sendMotorCommand(sock, motor_id, 0x92, read_cmd_data);
-  }
-
-  // Receive replies from each RMD bus
-  auto receive_from_bus = [&](int socket_fd, size_t max_frames) {
-    if (socket_fd < 0) { return; }
-    for (size_t i = 0; i < max_frames; ++i)
+    auto it = state.rmd_positions.find(motor_id);
+    if (it == state.rmd_positions.end() || !it->second.valid) { continue; }
+    size_t idx = joint_to_state_index_[name];
+    double pos = it->second.position_rad;
+    hw_positions_[idx] = pos;
+    if (dt > 0.0)
     {
-      uint32_t can_id;
-      uint8_t data[8];
-      uint8_t dlc;
-
-      if (!receiveCanFrame(socket_fd, can_id, data, dlc))
-      {
-        break;
-      }
-
-      if (can_id >= 0x140 && can_id <= 0x140 + 6 && dlc >= 8)
-      {
-        uint8_t motor_id = static_cast<uint8_t>(can_id - 0x140);
-        double position_rad;
-        if (parseMotorAngleReply0x92(data, position_rad))
-        {
-          motor_positions[motor_id] = position_rad;
-        }
-      }
+      hw_velocities_[idx] = (pos - previous_positions_[idx]) / dt;
+      hw_accelerations_[idx] = (hw_velocities_[idx] - previous_velocities_[idx]) / dt;
     }
-  };
-
-  size_t num_left = 0;
-  size_t num_right = 0;
-  size_t num_base = 0;
-  for (const auto & p : joint_to_motor_id_)
-  {
-    if (p.first == "turn") { ++num_base; }
-    else if (p.second <= 3) { ++num_left; }
-    else { ++num_right; }
+    previous_positions_[idx] = pos;
+    previous_velocities_[idx] = hw_velocities_[idx];
   }
 
-  receive_from_bus(can_socket_left_, num_left);
-  receive_from_bus(can_socket_right_, num_right);
-  receive_from_bus(can_socket_base_, num_base);
-
-  const double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
-
-  for (const auto & joint : info_.joints)
+  // Update CANopen buffers
+  for (auto & [name, node_id] : canopen_joint_to_node_id_)
   {
-    if (!isCanControlledJoint(joint.name))
+    if (can_bus_->enabledCanopenNodes().find(node_id) == can_bus_->enabledCanopenNodes().end())
     {
       continue;
     }
-
-    uint8_t motor_id = getMotorIdForJoint(joint.name);
-    if (motor_id == 0)
+    auto it = state.canopen_states.find(node_id);
+    if (it == state.canopen_states.end() || !it->second.valid) { continue; }
+    size_t idx = canopen_joint_to_index_[name];
+    double pos = static_cast<double>(it->second.actual_position_pulses) / CanBus::kCanopenPulsesPerMeter;
+    canopen_positions_[idx] = pos;
+    if (dt > 0.0)
     {
-      continue;
+      canopen_velocities_[idx] = (pos - canopen_previous_positions_[idx]) / dt;
+      canopen_accelerations_[idx] =
+        (canopen_velocities_[idx] - canopen_previous_velocities_[idx]) / dt;
     }
-
-    auto state_index_it = joint_to_state_index_.find(joint.name);
-    if (state_index_it == joint_to_state_index_.end())
-    {
-      continue;
-    }
-
-    size_t state_index = state_index_it->second;
-
-    auto pos_it = motor_positions.find(motor_id);
-    if (pos_it != motor_positions.end())
-    {
-      double new_position = pos_it->second;
-      hw_positions_[state_index] = new_position;
-
-      if (dt > 0.0)
-      {
-        hw_velocities_[state_index] = (new_position - previous_positions_[state_index]) / dt;
-        hw_accelerations_[state_index] =
-          (hw_velocities_[state_index] - previous_velocities_[state_index]) / dt;
-      }
-
-      previous_positions_[state_index] = new_position;
-      previous_velocities_[state_index] = hw_velocities_[state_index];
-    }
+    canopen_previous_positions_[idx] = pos;
+    canopen_previous_velocities_[idx] = canopen_velocities_[idx];
   }
 
+  // Franka-style: initialize commands in read()
   initializePositionCommands();
 
-  // 确保 CAN 关节状态均为有限值，避免控制器因 NaN/Inf 报错
+  // NaN safety
   for (size_t i = 0; i < hw_positions_.size(); ++i)
   {
     if (!std::isfinite(hw_positions_[i])) hw_positions_[i] = 0.0;
@@ -665,36 +492,14 @@ hardware_interface::return_type AlfaRobotHW::read(
     if (!std::isfinite(hw_accelerations_[i])) hw_accelerations_[i] = 0.0;
   }
 
-  // ========== CANopen joints: read position via SDO ==========
-  if (can_canopen_available_)
+  for (size_t i = 0; i < canopen_positions_.size(); ++i)
   {
-    for (const auto & pair : canopen_joint_to_node_id_)
-    {
-      if (canopen_enabled_nodes_.find(pair.second) == canopen_enabled_nodes_.end()) { continue; }
-      auto idx_it = canopen_joint_to_index_.find(pair.first);
-      if (idx_it == canopen_joint_to_index_.end()) { continue; }
-      size_t idx = idx_it->second;
-
-      double pos_m = 0.0;
-      if (canopenReadPosition(can_socket_canopen_, pair.second, pos_m))
-      {
-        canopen_positions_[idx] = pos_m;
-
-        if (dt > 0.0)
-        {
-          canopen_velocities_[idx] = (pos_m - canopen_previous_positions_[idx]) / dt;
-          canopen_accelerations_[idx] =
-            (canopen_velocities_[idx] - canopen_previous_velocities_[idx]) / dt;
-        }
-
-        canopen_previous_positions_[idx] = pos_m;
-        canopen_previous_velocities_[idx] = canopen_velocities_[idx];
-      }
-    }
+    if (!std::isfinite(canopen_positions_[i])) canopen_positions_[i] = 0.0;
+    if (!std::isfinite(canopen_velocities_[i])) canopen_velocities_[i] = 0.0;
+    if (!std::isfinite(canopen_accelerations_[i])) canopen_accelerations_[i] = 0.0;
   }
 
-  // ========== TODO: 占位关节 - 替换为实际硬件读取 ==========
-  // left/right back, left/right forward (velocity control wheels)
+  // Legacy placeholder joints
   for (size_t i = 0; i < info_.joints.size(); ++i)
   {
     if (isCanControlledJoint(info_.joints[i].name) || isCanopenControlledJoint(info_.joints[i].name))
@@ -728,477 +533,43 @@ hardware_interface::return_type AlfaRobotHW::read(
 }
 
 hardware_interface::return_type AlfaRobotHW::write(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  // 若命令含 NaN/Inf，用当前读取位置替代，避免 controller update 报错
-  if (hasInfinite(hw_position_commands_))
+  // Franka-style: NaN check returns ERROR
+  if (hasInfinite(hw_position_commands_) || hasInfinite(canopen_position_commands_))
   {
-    for (size_t i = 0; i < hw_position_commands_.size() && i < hw_positions_.size(); ++i)
-    {
-      if (!std::isfinite(hw_position_commands_[i]))
-      {
-        hw_position_commands_[i] = hw_positions_[i];
-      }
-    }
+    return hardware_interface::return_type::ERROR;
   }
 
-  for (const auto & joint : info_.joints)
+  // Franka-style: first_update guard
+  if (first_position_update_ || canopen_first_position_update_)
   {
-    if (!isCanControlledJoint(joint.name))
+    return hardware_interface::return_type::OK;
+  }
+
+  double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.001;
+
+  // Assemble RMD commands
+  std::map<uint8_t, double> rmd_cmds;
+  for (auto & [name, motor_id] : joint_to_motor_id_)
+  {
+    rmd_cmds[motor_id] = hw_position_commands_[joint_to_cmd_index_[name]];
+  }
+
+  // Assemble CANopen commands
+  std::map<uint8_t, double> canopen_cmds;
+  for (auto & [name, node_id] : canopen_joint_to_node_id_)
+  {
+    if (can_bus_->enabledCanopenNodes().find(node_id) == can_bus_->enabledCanopenNodes().end())
     {
       continue;
     }
-
-    uint8_t motor_id = getMotorIdForJoint(joint.name);
-    if (motor_id == 0)
-    {
-      continue;
-    }
-
-    auto cmd_index_it = joint_to_cmd_index_.find(joint.name);
-    if (cmd_index_it == joint_to_cmd_index_.end())
-    {
-      continue;
-    }
-
-    double position_rad = hw_position_commands_[cmd_index_it->second];
-    uint8_t frame_data[7];
-    convertPositionToCanFormat0xA4(position_rad, frame_data);
-    int sock = getCanSocketForRmdJoint(joint.name);
-    if (sock < 0) { continue; }
-    sendMotorCommand(sock, motor_id, 0xA4, frame_data);
+    canopen_cmds[node_id] = canopen_position_commands_[canopen_joint_to_index_[name]];
   }
 
-  // ========== CANopen joints: write position via SDO ==========
-  if (can_canopen_available_)
-  {
-    for (const auto & pair : canopen_joint_to_node_id_)
-    {
-      if (canopen_enabled_nodes_.find(pair.second) == canopen_enabled_nodes_.end()) { continue; }
-      auto idx_it = canopen_joint_to_index_.find(pair.first);
-      if (idx_it == canopen_joint_to_index_.end()) { continue; }
-      size_t idx = idx_it->second;
-
-      double cmd = canopen_position_commands_[idx];
-      if (!std::isfinite(cmd)) { cmd = canopen_positions_[idx]; }
-
-      canopenWritePosition(can_socket_canopen_, pair.second, cmd);
-    }
-  }
-
-  // ========== TODO: velocity 关节（轮子）写入逻辑 - 待实现 ==========
+  can_bus_->writeOnce(rmd_cmds, canopen_cmds, dt);
 
   return hardware_interface::return_type::OK;
-}
-
-bool AlfaRobotHW::initCanInterface(const std::string & interface, int & socket_fd)
-{
-  socket_fd = socket(AF_CAN, SOCK_RAW, CAN_RAW);
-  if (socket_fd < 0)
-  {
-    RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"),
-      "Failed to create CAN socket: %s", strerror(errno));
-    return false;
-  }
-
-  struct ifreq ifr;
-  strncpy(ifr.ifr_name, interface.c_str(), IFNAMSIZ - 1);
-  ifr.ifr_name[IFNAMSIZ - 1] = '\0';
-
-  if (ioctl(socket_fd, SIOCGIFINDEX, &ifr) < 0)
-  {
-    RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"),
-      "Failed to get CAN interface index for %s: %s",
-      interface.c_str(), strerror(errno));
-    close(socket_fd);
-    socket_fd = -1;
-    return false;
-  }
-
-  struct sockaddr_can addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.can_family = AF_CAN;
-  addr.can_ifindex = ifr.ifr_ifindex;
-
-  if (bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-  {
-    RCLCPP_ERROR(rclcpp::get_logger("AlfaRobotHW"),
-      "Failed to bind CAN socket: %s", strerror(errno));
-    close(socket_fd);
-    socket_fd = -1;
-    return false;
-  }
-
-  // 增大发送缓冲区，减轻 ENOBUFS (No buffer space available)
-  const int sndbuf_size = 65536;
-  if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &sndbuf_size, sizeof(sndbuf_size)) < 0)
-  {
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "Failed to set SO_SNDBUF: %s", strerror(errno));
-  }
-
-  int flags = fcntl(socket_fd, F_GETFL, 0);
-  if (flags >= 0)
-  {
-    fcntl(socket_fd, F_SETFL, flags | O_NONBLOCK);
-  }
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "CAN interface %s initialized successfully", interface.c_str());
-  return true;
-}
-
-void AlfaRobotHW::closeCanInterface(int & socket_fd)
-{
-  if (socket_fd >= 0)
-  {
-    close(socket_fd);
-    socket_fd = -1;
-    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "CAN socket closed");
-  }
-}
-
-bool AlfaRobotHW::sendCanFrame(int socket_fd, uint32_t can_id, const uint8_t * data, uint8_t dlc)
-{
-  if (socket_fd < 0)
-  {
-    return false;
-  }
-
-  struct can_frame frame;
-  frame.can_id = can_id;
-  frame.can_dlc = dlc;
-  memcpy(frame.data, data, dlc);
-
-  ssize_t nbytes = ::write(socket_fd, &frame, sizeof(struct can_frame));
-  if (nbytes < 0)
-  {
-    if (errno != EAGAIN && errno != EWOULDBLOCK)
-    {
-      RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-        "Failed to send CAN frame (ID: 0x%X): %s", can_id, strerror(errno));
-    }
-    return false;
-  }
-
-  if (nbytes != static_cast<ssize_t>(sizeof(struct can_frame)))
-  {
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "Partial CAN frame sent: %zd bytes", nbytes);
-    return false;
-  }
-
-  return true;
-}
-
-bool AlfaRobotHW::receiveCanFrame(int socket_fd, uint32_t & can_id, uint8_t * data, uint8_t & dlc)
-{
-  if (socket_fd < 0)
-  {
-    return false;
-  }
-
-  struct can_frame frame;
-  ssize_t nbytes = ::read(socket_fd, &frame, sizeof(struct can_frame));
-
-  if (nbytes < 0)
-  {
-    if (errno != EAGAIN && errno != EWOULDBLOCK)
-    {
-      RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-        "Failed to receive CAN frame: %s", strerror(errno));
-    }
-    return false;
-  }
-
-  if (nbytes == static_cast<ssize_t>(sizeof(struct can_frame)))
-  {
-    can_id = frame.can_id & CAN_SFF_MASK;
-    dlc = frame.can_dlc;
-    memcpy(data, frame.data, dlc);
-    return true;
-  }
-
-  return false;
-}
-
-int AlfaRobotHW::getCanSocketForRmdJoint(const std::string & joint_name)
-{
-  if (joint_name == "turn") { return can_socket_base_; }
-  if (joint_name.rfind("left", 0) == 0) { return can_socket_left_; }
-  return can_socket_right_;
-}
-
-void AlfaRobotHW::sendMotorCommand(int socket_fd, uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data)
-{
-  uint32_t can_id = 0x140 + motor_id;
-  uint8_t frame_data[8];
-  frame_data[0] = cmd_byte;
-  if (data != nullptr)
-  {
-    memcpy(&frame_data[1], data, 7);
-  }
-  else
-  {
-    memset(&frame_data[1], 0, 7);
-  }
-
-  if (sendCanFrame(socket_fd, can_id, frame_data, 8))
-  {
-    usleep(kCanInterFrameDelayUs);
-  }
-}
-
-uint8_t AlfaRobotHW::getMotorIdForJoint(const std::string & joint_name)
-{
-  auto it = joint_to_motor_id_.find(joint_name);
-  if (it != joint_to_motor_id_.end())
-  {
-    return it->second;
-  }
-  return 0;
-}
-
-bool AlfaRobotHW::parseMotorAngleReply0x92(const uint8_t * data, double & position_rad)
-{
-  if (data[0] != 0x92)
-  {
-    return false;
-  }
-
-  // DATA[1-7] = motorAngle 7 bytes (little-endian), 0.01 deg/LSB
-  // Reconstruct 56-bit signed value with sign extension from bit 55
-  int64_t raw = static_cast<int64_t>(data[1]) |
-    (static_cast<int64_t>(data[2]) << 8) |
-    (static_cast<int64_t>(data[3]) << 16) |
-    (static_cast<int64_t>(data[4]) << 24) |
-    (static_cast<int64_t>(data[5]) << 32) |
-    (static_cast<int64_t>(data[6]) << 40) |
-    (static_cast<int64_t>(data[7]) << 48);
-
-  if (data[7] & 0x80)
-  {
-    raw |= (static_cast<int64_t>(0xFFULL) << 56);
-  }
-
-  double angle_deg = static_cast<double>(raw) * 0.01;
-  position_rad = angle_deg * M_PI / 180.0 / static_cast<double>(kGearRatio);
-  return true;
-}
-
-void AlfaRobotHW::convertPositionToCanFormat0xA4(double position_rad, uint8_t * frame_data)
-{
-  // 0xA4: DATA[0]=0x00, DATA[1-2]=maxSpeed, DATA[3-6]=angleControl
-  // angleControl: 0.01 deg/LSB at motor side
-  double angle_deg = position_rad * 180.0 / M_PI;
-  int32_t angle_control = static_cast<int32_t>(angle_deg * 100.0 * static_cast<double>(kGearRatio));
-
-  frame_data[0] = 0x00;
-  frame_data[1] = static_cast<uint8_t>(max_speed_dps_ & 0xFF);
-  frame_data[2] = static_cast<uint8_t>((max_speed_dps_ >> 8) & 0xFF);
-  frame_data[3] = static_cast<uint8_t>(angle_control & 0xFF);
-  frame_data[4] = static_cast<uint8_t>((angle_control >> 8) & 0xFF);
-  frame_data[5] = static_cast<uint8_t>((angle_control >> 16) & 0xFF);
-  frame_data[6] = static_cast<uint8_t>((angle_control >> 24) & 0xFF);
-}
-
-// ========== CANopen (Leisai) SDO communication ==========
-
-bool AlfaRobotHW::canopenNmtSend(int socket_fd, uint8_t command, uint8_t node_id)
-{
-  // NMT frame: CAN ID = 0x000, DLC = 2, DATA = [command, node_id]
-  uint8_t data[2] = {command, node_id};
-  return sendCanFrame(socket_fd, 0x000, data, 2);
-}
-
-bool AlfaRobotHW::canopenSdoWrite(int socket_fd, uint8_t node_id,
-  uint16_t index, uint8_t subindex, const uint8_t * data, uint8_t size)
-{
-  // Expedited SDO write: CAN ID = 0x600 + node_id
-  // CMD byte: 0x2F (1 byte), 0x2B (2 bytes), 0x23 (4 bytes)
-  uint8_t cmd;
-  switch (size)
-  {
-    case 1: cmd = 0x2F; break;
-    case 2: cmd = 0x2B; break;
-    case 3: cmd = 0x27; break;
-    case 4: cmd = 0x23; break;
-    default: return false;
-  }
-
-  uint8_t frame[8] = {0};
-  frame[0] = cmd;
-  frame[1] = static_cast<uint8_t>(index & 0xFF);
-  frame[2] = static_cast<uint8_t>((index >> 8) & 0xFF);
-  frame[3] = subindex;
-  for (uint8_t i = 0; i < size; ++i)
-  {
-    frame[4 + i] = data[i];
-  }
-
-  if (!sendCanFrame(socket_fd, 0x600 + node_id, frame, 8))
-  {
-    return false;
-  }
-
-  usleep(kCanInterFrameDelayUs);
-
-  // Read SDO response (0x580 + node_id), expect CMD = 0x60
-  uint32_t resp_id;
-  uint8_t resp_data[8];
-  uint8_t resp_dlc;
-  if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
-  {
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen SDO write timeout: node %d, index 0x%04X", node_id, index);
-    return false;
-  }
-
-  if (resp_id != (0x580u + node_id) || resp_data[0] == 0x80)
-  {
-    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-      "CANopen SDO write error: node %d, index 0x%04X, abort=0x%02X%02X%02X%02X",
-      node_id, index, resp_data[7], resp_data[6], resp_data[5], resp_data[4]);
-    return false;
-  }
-
-  return true;
-}
-
-bool AlfaRobotHW::canopenSdoRead(int socket_fd, uint8_t node_id,
-  uint16_t index, uint8_t subindex, uint8_t * data, uint8_t & size)
-{
-  // Expedited SDO read: CAN ID = 0x600 + node_id, CMD = 0x40
-  uint8_t frame[8] = {0};
-  frame[0] = 0x40;
-  frame[1] = static_cast<uint8_t>(index & 0xFF);
-  frame[2] = static_cast<uint8_t>((index >> 8) & 0xFF);
-  frame[3] = subindex;
-
-  if (!sendCanFrame(socket_fd, 0x600 + node_id, frame, 8))
-  {
-    return false;
-  }
-
-  usleep(kCanInterFrameDelayUs);
-
-  uint32_t resp_id;
-  uint8_t resp_data[8];
-  uint8_t resp_dlc;
-  if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
-  {
-    return false;
-  }
-
-  if (resp_id != (0x580u + node_id) || resp_data[0] == 0x80)
-  {
-    return false;
-  }
-
-  // Determine size from response CMD byte
-  uint8_t resp_cmd = resp_data[0];
-  if (resp_cmd == 0x4F) { size = 1; }
-  else if (resp_cmd == 0x4B) { size = 2; }
-  else if (resp_cmd == 0x47) { size = 3; }
-  else if (resp_cmd == 0x43) { size = 4; }
-  else { size = 4; }
-
-  memcpy(data, &resp_data[4], size);
-  return true;
-}
-
-bool AlfaRobotHW::canopenEnableMotor(int socket_fd, uint8_t node_id)
-{
-  // NMT: reset node, then start remote control
-  canopenNmtSend(socket_fd, 0x81, node_id);
-  usleep(100000);  // 100ms wait for reset
-  canopenNmtSend(socket_fd, 0x01, node_id);
-  usleep(10000);
-
-  // State machine: Shutdown (0x06) → Switch On (0x07) → Operation Enable (0x0F)
-  uint8_t cw[2];
-
-  cw[0] = 0x06; cw[1] = 0x00;
-  if (!canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2)) { return false; }
-  usleep(5000);
-
-  cw[0] = 0x07; cw[1] = 0x00;
-  if (!canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2)) { return false; }
-  usleep(5000);
-
-  cw[0] = 0x0F; cw[1] = 0x00;
-  if (!canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2)) { return false; }
-  usleep(5000);
-
-  // Set Profile Position mode (0x6060 = 1)
-  uint8_t mode = 1;
-  if (!canopenSdoWrite(socket_fd, node_id, 0x6060, 0x00, &mode, 1)) { return false; }
-
-  // Set profile velocity (configurable, default 50000 pps ≈ 3.8mm/s)
-  uint8_t vel[4];
-  memcpy(vel, &canopen_profile_velocity_, 4);
-  if (!canopenSdoWrite(socket_fd, node_id, 0x6081, 0x00, vel, 4)) { return false; }
-
-  // Set profile acceleration/deceleration
-  uint8_t acc[4];
-  memcpy(acc, &canopen_profile_accel_, 4);
-  canopenSdoWrite(socket_fd, node_id, 0x6083, 0x00, acc, 4);
-  canopenSdoWrite(socket_fd, node_id, 0x6084, 0x00, acc, 4);
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "CANopen motor node %d enabled (PP mode)", node_id);
-  return true;
-}
-
-bool AlfaRobotHW::canopenDisableMotor(int socket_fd, uint8_t node_id)
-{
-  // Control word: Switched On (0x07) then Shutdown (0x06)
-  uint8_t cw[2];
-  cw[0] = 0x07; cw[1] = 0x00;
-  canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2);
-  usleep(5000);
-  cw[0] = 0x06; cw[1] = 0x00;
-  canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2);
-
-  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-    "CANopen motor node %d disabled", node_id);
-  return true;
-}
-
-bool AlfaRobotHW::canopenReadPosition(int socket_fd, uint8_t node_id, double & position_m)
-{
-  // Read 0x6064 (Position actual value, int32, pulses)
-  uint8_t data[4];
-  uint8_t size;
-  if (!canopenSdoRead(socket_fd, node_id, 0x6064, 0x00, data, size))
-  {
-    return false;
-  }
-  int32_t pulses;
-  memcpy(&pulses, data, 4);
-  position_m = static_cast<double>(pulses) / kCanopenPulsesPerMeter;
-  return true;
-}
-
-bool AlfaRobotHW::canopenWritePosition(int socket_fd, uint8_t node_id, double position_m)
-{
-  // Write target position (0x607A, int32, pulses)
-  int32_t pulses = static_cast<int32_t>(position_m * kCanopenPulsesPerMeter);
-  uint8_t data[4];
-  memcpy(data, &pulses, 4);
-  if (!canopenSdoWrite(socket_fd, node_id, 0x607A, 0x00, data, 4))
-  {
-    return false;
-  }
-
-  // Trigger motion: control word 0x2F (absolute, start immediately)
-  uint8_t cw[2] = {0x2F, 0x00};
-  canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2);
-  usleep(200);
-  // Rising edge: 0x3F
-  cw[0] = 0x3F;
-  canopenSdoWrite(socket_fd, node_id, 0x6040, 0x00, cw, 2);
-  return true;
 }
 
 }  // namespace alfa_robot_hardware

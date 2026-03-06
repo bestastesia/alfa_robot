@@ -16,6 +16,7 @@ add_library(
   alfa_robot_hardware
   SHARED
   src/alfa_robot_hardware.cpp
+  src/can_bus.cpp
 )
 target_include_directories(
   alfa_robot_hardware
