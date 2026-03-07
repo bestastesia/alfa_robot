@@ -28,7 +28,7 @@ struct CanBusConfig
   uint32_t canopen_profile_velocity{50000};
   uint32_t canopen_profile_accel{50000};
   double filter_cutoff_hz{50.0};
-  double max_velocity_rad_per_s{3.14};
+  double max_velocity_rad_per_s{62.8};
   double max_velocity_m_per_s{0.01};
   bool low_pass_filter_active{false};
   bool rate_limiter_active{true};
@@ -147,7 +147,6 @@ private:
     uint16_t index, uint8_t subindex, const uint8_t * data, uint8_t size);
   bool canopenSdoRead(int socket_fd, uint8_t node_id,
     uint16_t index, uint8_t subindex, uint8_t * data, uint8_t & size);
-  bool canopenConfigurePdo(int socket_fd, uint8_t node_id);
   bool canopenDisableMotor(int socket_fd, uint8_t node_id);
   bool canopenSendSync(int socket_fd);
   bool canopenPdoWritePosition(int socket_fd, uint8_t node_id,

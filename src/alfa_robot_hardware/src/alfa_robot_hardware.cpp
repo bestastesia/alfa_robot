@@ -14,8 +14,10 @@
 #include "alfa_robot_hardware/alfa_robot_hardware.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
+#include <thread>
 #include <vector>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -64,11 +66,11 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   can_bus_config_.can_interface_right = "can1";
   can_bus_config_.can_interface_base = "can2";
   can_bus_config_.can_interface_canopen = "can3";
-  can_bus_config_.max_speed_dps = 360;
+  can_bus_config_.max_speed_dps = 1440;
   can_bus_config_.canopen_profile_velocity = 50000;
   can_bus_config_.canopen_profile_accel = 50000;
   can_bus_config_.filter_cutoff_hz = 50.0;
-  can_bus_config_.max_velocity_rad_per_s = 3.14;
+  can_bus_config_.max_velocity_rad_per_s = 12.56;
   can_bus_config_.max_velocity_m_per_s = 0.01;
   can_bus_config_.low_pass_filter_active = false;
   can_bus_config_.rate_limiter_active = true;
@@ -160,6 +162,24 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     else if (param.first == "enable_rate_limiter")
     {
       can_bus_config_.rate_limiter_active = (param.second == "true");
+    }
+    else if (param.first == "use_safe_shutdown")
+    {
+      use_safe_shutdown_ = (param.second == "true");
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "Safe shutdown: %s", use_safe_shutdown_ ? "enabled" : "disabled");
+    }
+    else if (param.first.find("safe_position_") == 0)
+    {
+      std::string joint_name = param.first.substr(14);  // Remove "safe_position_" prefix
+      try {
+        safe_positions_[joint_name] = std::stod(param.second);
+        RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+          "Safe position for '%s': %.3f rad", joint_name.c_str(), safe_positions_[joint_name]);
+      } catch (const std::exception &) {
+        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+          "Invalid safe position value for '%s'", joint_name.c_str());
+      }
     }
   }
 
@@ -413,6 +433,11 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
     if (can_bus_->canopenReadPosition(pair.second, pos_m))
     {
       size_t idx = idx_it->second;
+      // 减速比处理：leftarmbase 和 rightarmbase 有 3:1 减速机，电机位置需除以 3
+      if (pair.first == "leftarmbase" || pair.first == "rightarmbase")
+      {
+        pos_m = pos_m / 3.0;
+      }
       canopen_positions_[idx] = pos_m;
       canopen_position_commands_[idx] = pos_m;
       canopen_previous_positions_[idx] = pos_m;
@@ -431,6 +456,22 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
 hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  if (use_safe_shutdown_ && !safe_positions_.empty())
+  {
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+      "Moving to safe position before deactivation...");
+
+    if (!moveToSafePosition(5.0))
+    {
+      RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+        "Failed to reach safe position within timeout, proceeding with emergency stop");
+    }
+    else
+    {
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Safe position reached");
+    }
+  }
+
   can_bus_->stopAll(joint_to_motor_id_, canopen_joint_to_node_id_);
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
@@ -470,6 +511,11 @@ hardware_interface::return_type AlfaRobotHW::read(
     if (it == state.canopen_states.end() || !it->second.valid) { continue; }
     size_t idx = canopen_joint_to_index_[name];
     double pos = static_cast<double>(it->second.actual_position_pulses) / CanBus::kCanopenPulsesPerMeter;
+    // 减速比处理：leftarmbase 和 rightarmbase 有 3:1 减速机，电机位置需除以 3
+    if (name == "leftarmbase" || name == "rightarmbase")
+    {
+      pos = pos / 3.0;
+    }
     canopen_positions_[idx] = pos;
     if (dt > 0.0)
     {
@@ -564,12 +610,100 @@ hardware_interface::return_type AlfaRobotHW::write(
     {
       continue;
     }
-    canopen_cmds[node_id] = canopen_position_commands_[canopen_joint_to_index_[name]];
+    double cmd = canopen_position_commands_[canopen_joint_to_index_[name]];
+    // 减速比处理：leftarmbase 和 rightarmbase 有 3:1 减速机，关节位置需乘以 3
+    if (name == "leftarmbase" || name == "rightarmbase")
+    {
+      cmd = cmd * 3.0;
+    }
+    canopen_cmds[node_id] = cmd;
   }
 
   can_bus_->writeOnce(rmd_cmds, canopen_cmds, dt);
 
   return hardware_interface::return_type::OK;
+}
+
+bool AlfaRobotHW::moveToSafePosition(double timeout_seconds)
+{
+  const double position_tolerance = 0.05;  // 0.05 rad (~2.86 degrees)
+  const double control_period = 0.01;      // 10ms control loop
+  const int max_iterations = static_cast<int>(timeout_seconds / control_period);
+
+  // Set safe position commands
+  for (const auto & [joint_name, safe_pos] : safe_positions_)
+  {
+    if (isCanControlledJoint(joint_name))
+    {
+      auto it = joint_to_cmd_index_.find(joint_name);
+      if (it != joint_to_cmd_index_.end())
+      {
+        hw_position_commands_[it->second] = safe_pos;
+      }
+    }
+    else if (isCanopenControlledJoint(joint_name))
+    {
+      auto it = canopen_joint_to_index_.find(joint_name);
+      if (it != canopen_joint_to_index_.end())
+      {
+        canopen_position_commands_[it->second] = safe_pos;
+      }
+    }
+  }
+
+  // Control loop to reach safe position
+  for (int i = 0; i < max_iterations; ++i)
+  {
+    // Read current positions
+    read(rclcpp::Time(0), rclcpp::Duration::from_seconds(control_period));
+
+    // Write commands
+    write(rclcpp::Time(0), rclcpp::Duration::from_seconds(control_period));
+
+    // Check if all joints reached safe position
+    bool all_reached = true;
+    for (const auto & [joint_name, safe_pos] : safe_positions_)
+    {
+      double current_pos = 0.0;
+      bool found = false;
+
+      if (isCanControlledJoint(joint_name))
+      {
+        auto it = joint_to_state_index_.find(joint_name);
+        if (it != joint_to_state_index_.end())
+        {
+          current_pos = hw_positions_[it->second];
+          found = true;
+        }
+      }
+      else if (isCanopenControlledJoint(joint_name))
+      {
+        auto it = canopen_joint_to_index_.find(joint_name);
+        if (it != canopen_joint_to_index_.end())
+        {
+          current_pos = canopen_positions_[it->second];
+          found = true;
+        }
+      }
+
+      if (found && std::abs(current_pos - safe_pos) > position_tolerance)
+      {
+        all_reached = false;
+        break;
+      }
+    }
+
+    if (all_reached)
+    {
+      return true;
+    }
+
+    // Sleep for control period
+    std::this_thread::sleep_for(
+      std::chrono::milliseconds(static_cast<int>(control_period * 1000)));
+  }
+
+  return false;  // Timeout
 }
 
 }  // namespace alfa_robot_hardware

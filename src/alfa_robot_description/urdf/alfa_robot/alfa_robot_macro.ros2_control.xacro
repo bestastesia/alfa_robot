@@ -34,6 +34,23 @@
           <param name="can_interface_base">can2</param>
           <param name="canopen_profile_velocity">${canopen_profile_velocity}</param>
           <param name="canopen_profile_accel">${canopen_profile_accel}</param>
+
+          <!-- Safe shutdown configuration -->
+          <param name="use_safe_shutdown">true</param>
+
+          <!-- Safe positions (rad for revolute, m for prismatic) -->
+          <param name="safe_position_turn">0.0</param>
+          <param name="safe_position_updown">0.0</param>
+          <param name="safe_position_leftarmbase">0.0</param>
+          <param name="safe_position_leftjoint1">0.0</param>
+          <param name="safe_position_leftjoint2">0.0</param>
+          <param name="safe_position_leftjoint3">-1.57</param>
+          <param name="safe_position_leftjoint4">0.0</param>
+          <param name="safe_position_rightarmbase">0.0</param>
+          <param name="safe_position_rightjoint1">0.0</param>
+          <param name="safe_position_rightjoint2">0.0</param>
+          <param name="safe_position_rightjoint3">-1.57</param>
+          <param name="safe_position_rightjoint4">0.0</param>
         </xacro:unless>
       </hardware>
       <!-- turn (continuous) -->

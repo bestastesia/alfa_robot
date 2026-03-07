@@ -86,6 +86,11 @@ private:
   bool canopen_first_position_update_{true};
 
   void initializePositionCommands();
+  bool moveToSafePosition(double timeout_seconds = 5.0);
+
+  // Safe position configuration
+  std::map<std::string, double> safe_positions_;
+  bool use_safe_shutdown_{true};
 
   // Legacy placeholder joints (wheels)
   std::vector<double> hw_states_;

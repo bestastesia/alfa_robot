@@ -144,7 +144,7 @@ bool CanBus::enableMotors(
   }
   usleep(10000);
 
-  // ========== CANopen motors: 6-phase activation ==========
+  // ========== CANopen motors: simplified activation (PDO pre-configured) ==========
   canopen_enabled_nodes_.clear();
   canopen_new_setpoint_active_.clear();
   canopen_last_target_pulses_.clear();
@@ -157,36 +157,15 @@ bool CanBus::enableMotors(
     return true;
   }
 
-  // Phase 1: NMT reset all nodes → Pre-Operational
+  // Phase 1: NMT start all nodes → Operational (PDO already configured)
   for (const auto & pair : canopen_joint_to_node_id)
   {
-    canopenNmtSend(can_socket_canopen_, 0x81, pair.second);
+    canopenNmtSend(can_socket_canopen_, 0x01, pair.second);
+    canopen_enabled_nodes_.insert(pair.second);
   }
-  usleep(150000);
+  usleep(50000);
 
-  // Phase 2: Dynamic PDO mapping (must be in Pre-Operational)
-  for (const auto & pair : canopen_joint_to_node_id)
-  {
-    if (canopenConfigurePdo(can_socket_canopen_, pair.second))
-    {
-      canopen_enabled_nodes_.insert(pair.second);
-    }
-    else
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "PDO mapping FAILED for node %d (joint '%s') — excluded from control",
-        pair.second, pair.first.c_str());
-    }
-  }
-
-  // Phase 3: NMT start all nodes → Operational (PDO active)
-  for (uint8_t node_id : canopen_enabled_nodes_)
-  {
-    canopenNmtSend(can_socket_canopen_, 0x01, node_id);
-  }
-  usleep(20000);
-
-  // Phase 4: CiA 402 state machine + mode setup
+  // Phase 2: CiA 402 state machine + mode setup
   std::set<uint8_t> fully_enabled;
   for (uint8_t node_id : canopen_enabled_nodes_)
   {
@@ -217,11 +196,11 @@ bool CanBus::enableMotors(
 
     fully_enabled.insert(node_id);
     RCLCPP_INFO(rclcpp::get_logger("CanBus"),
-      "CANopen node %d enabled (PP mode, PDO active)", node_id);
+      "CANopen node %d enabled (PP mode)", node_id);
   }
   canopen_enabled_nodes_ = fully_enabled;
 
-  // Phase 5: Read initial positions via SDO (last SDO before PDO-only)
+  // Phase 3: Read initial positions via SDO
   for (const auto & pair : canopen_joint_to_node_id)
   {
     if (canopen_enabled_nodes_.find(pair.second) == canopen_enabled_nodes_.end()) { continue; }
@@ -244,7 +223,7 @@ bool CanBus::enableMotors(
     canopen_new_setpoint_active_[pair.second] = false;
   }
 
-  // Phase 6: Prime SYNC cycle
+  // Phase 4: Prime SYNC cycle
   primeSyncCycle();
 
   RCLCPP_INFO(rclcpp::get_logger("CanBus"),
@@ -761,191 +740,6 @@ bool CanBus::canopenSdoRead(int socket_fd, uint8_t node_id,
   else { size = 4; }
 
   memcpy(data, &resp_data[4], size);
-  return true;
-}
-
-bool CanBus::canopenConfigurePdo(int socket_fd, uint8_t node_id)
-{
-  // TxPDO1: disable
-  {
-    uint32_t cob_id = (0x180u + node_id) | 0x80000000u;
-    uint8_t d[4];
-    memcpy(d, &cob_id, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1800, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to disable TxPDO1", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: transmission type = 1 (SYNC)
-  {
-    uint8_t tt = 1;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1800, 0x02, &tt, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to set TxPDO1 transmission type", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: inhibit time = 1ms
-  {
-    uint16_t inhibit_time_100us = 10;
-    uint8_t d[2];
-    memcpy(d, &inhibit_time_100us, 2);
-    canopenSdoWrite(socket_fd, node_id, 0x1800, 0x03, d, 2);
-  }
-
-  // TxPDO1: clear mapping
-  {
-    uint8_t zero = 0;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1A00, 0x00, &zero, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to clear TxPDO1 mapping", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: map statusword (0x6041, 16bit)
-  {
-    uint32_t map = 0x60410010;
-    uint8_t d[4];
-    memcpy(d, &map, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1A00, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to map TxPDO1 statusword", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: map actual_position (0x6064, 32bit)
-  {
-    uint32_t map = 0x60640020;
-    uint8_t d[4];
-    memcpy(d, &map, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1A00, 0x02, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to map TxPDO1 actual_position", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: set mapping count = 2
-  {
-    uint8_t count = 2;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1A00, 0x00, &count, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to set TxPDO1 mapping count", node_id);
-      return false;
-    }
-  }
-
-  // TxPDO1: re-enable
-  {
-    uint32_t cob_id = 0x180u + node_id;
-    uint8_t d[4];
-    memcpy(d, &cob_id, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1800, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to re-enable TxPDO1", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: disable
-  {
-    uint32_t cob_id = (0x200u + node_id) | 0x80000000u;
-    uint8_t d[4];
-    memcpy(d, &cob_id, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1400, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to disable RxPDO1", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: transmission type = 1 (SYNC)
-  {
-    uint8_t tt = 1;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1400, 0x02, &tt, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to set RxPDO1 transmission type", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: clear mapping
-  {
-    uint8_t zero = 0;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1600, 0x00, &zero, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to clear RxPDO1 mapping", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: map controlword (0x6040, 16bit)
-  {
-    uint32_t map = 0x60400010;
-    uint8_t d[4];
-    memcpy(d, &map, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1600, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to map RxPDO1 controlword", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: map target_position (0x607A, 32bit)
-  {
-    uint32_t map = 0x607A0020;
-    uint8_t d[4];
-    memcpy(d, &map, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1600, 0x02, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to map RxPDO1 target_position", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: set mapping count = 2
-  {
-    uint8_t count = 2;
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1600, 0x00, &count, 1))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to set RxPDO1 mapping count", node_id);
-      return false;
-    }
-  }
-
-  // RxPDO1: re-enable
-  {
-    uint32_t cob_id = 0x200u + node_id;
-    uint8_t d[4];
-    memcpy(d, &cob_id, 4);
-    if (!canopenSdoWrite(socket_fd, node_id, 0x1400, 0x01, d, 4))
-    {
-      RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
-        "Node %d: failed to re-enable RxPDO1", node_id);
-      return false;
-    }
-  }
-
-  RCLCPP_INFO(rclcpp::get_logger("CanBus"),
-    "Node %d: PDO mapping complete", node_id);
   return true;
 }
 
