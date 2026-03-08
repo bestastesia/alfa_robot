@@ -150,6 +150,16 @@ bool CanBus::enableMotors(
   canopen_last_target_pulses_.clear();
   pdo_cache_.clear();
 
+  filter_initialized_ = false;
+  ruckig_rmd_.clear();
+  ruckig_input_rmd_.clear();
+  ruckig_output_rmd_.clear();
+  ruckig_canopen_.clear();
+  ruckig_input_canopen_.clear();
+  ruckig_output_canopen_.clear();
+  prev_filtered_rmd_.clear();
+  prev_filtered_canopen_.clear();
+
   if (!can_canopen_available_)
   {
     RCLCPP_WARN(rclcpp::get_logger("CanBus"),
@@ -332,15 +342,46 @@ void CanBus::writeOnce(
       }
       prev_filtered_canopen_[node_id] = filtered;
 
-      // Rate limiter
+      // Ruckig trajectory smoother (jerk-limited)
       if (config_.rate_limiter_active && filter_initialized_)
       {
-        double delta = filtered - prev_cmd_canopen_[node_id];
-        double max_delta = config_.max_velocity_m_per_s * dt;
-        delta = std::clamp(delta, -max_delta, max_delta);
-        filtered = prev_cmd_canopen_[node_id] + delta;
+        if (ruckig_canopen_.find(node_id) == ruckig_canopen_.end())
+        {
+          double safe_dt = std::max(dt, 0.001);
+          ruckig_canopen_.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(node_id),
+            std::forward_as_tuple(safe_dt));
+          auto & inp = ruckig_input_canopen_[node_id];
+          inp.current_position = {filtered};
+          inp.current_velocity = {0.0};
+          inp.current_acceleration = {0.0};
+          inp.max_velocity = {config_.max_velocity_m_per_s};
+          inp.max_acceleration = {config_.max_acceleration_m_per_s2};
+          inp.max_jerk = {config_.max_jerk_m_per_s3};
+        }
+
+        auto & otg = ruckig_canopen_.at(node_id);
+        auto & inp = ruckig_input_canopen_[node_id];
+        auto & out = ruckig_output_canopen_[node_id];
+
+        inp.target_position = {filtered};
+        inp.target_velocity = {0.0};
+        inp.target_acceleration = {0.0};
+
+        auto result = otg.update(inp, out);
+        if (result == ruckig::Result::Working || result == ruckig::Result::Finished)
+        {
+          filtered = out.new_position[0];
+          out.pass_to_input(inp);
+        }
+        else
+        {
+          RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CanBus"), *rclcpp::Clock::make_shared(),
+            1000, "Ruckig error on CANopen node %d: result=%d, using unsmoothed value",
+            node_id, static_cast<int>(result));
+        }
       }
-      prev_cmd_canopen_[node_id] = filtered;
 
       int32_t target_pulses = static_cast<int32_t>(filtered * kCanopenPulsesPerMeter);
       uint16_t controlword = computeControlword(node_id, target_pulses);
@@ -367,15 +408,46 @@ void CanBus::writeOnce(
     }
     prev_filtered_rmd_[motor_id] = filtered;
 
-    // Rate limiter
+    // Ruckig trajectory smoother (jerk-limited)
     if (config_.rate_limiter_active && filter_initialized_)
     {
-      double delta = filtered - prev_cmd_rmd_[motor_id];
-      double max_delta = config_.max_velocity_rad_per_s * dt;
-      delta = std::clamp(delta, -max_delta, max_delta);
-      filtered = prev_cmd_rmd_[motor_id] + delta;
+      if (ruckig_rmd_.find(motor_id) == ruckig_rmd_.end())
+      {
+        double safe_dt = std::max(dt, 0.001);
+        ruckig_rmd_.emplace(
+          std::piecewise_construct,
+          std::forward_as_tuple(motor_id),
+          std::forward_as_tuple(safe_dt));
+        auto & inp = ruckig_input_rmd_[motor_id];
+        inp.current_position = {filtered};
+        inp.current_velocity = {0.0};
+        inp.current_acceleration = {0.0};
+        inp.max_velocity = {config_.max_velocity_rad_per_s};
+        inp.max_acceleration = {config_.max_acceleration_rad_per_s2};
+        inp.max_jerk = {config_.max_jerk_rad_per_s3};
+      }
+
+      auto & otg = ruckig_rmd_.at(motor_id);
+      auto & inp = ruckig_input_rmd_[motor_id];
+      auto & out = ruckig_output_rmd_[motor_id];
+
+      inp.target_position = {filtered};
+      inp.target_velocity = {0.0};
+      inp.target_acceleration = {0.0};
+
+      auto result = otg.update(inp, out);
+      if (result == ruckig::Result::Working || result == ruckig::Result::Finished)
+      {
+        filtered = out.new_position[0];
+        out.pass_to_input(inp);
+      }
+      else
+      {
+        RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CanBus"), *rclcpp::Clock::make_shared(),
+          1000, "Ruckig error on RMD motor %d: result=%d, using unsmoothed value",
+          motor_id, static_cast<int>(result));
+      }
     }
-    prev_cmd_rmd_[motor_id] = filtered;
 
     uint8_t frame_data[7];
     convertPositionToCanFormat0xA4(filtered, frame_data);

@@ -15,6 +15,8 @@
 #include <set>
 #include <string>
 
+#include <ruckig/ruckig.hpp>
+
 namespace alfa_robot_hardware
 {
 
@@ -29,8 +31,12 @@ struct CanBusConfig
   uint32_t canopen_profile_accel{50000};
   double filter_cutoff_hz{50.0};
   double max_velocity_rad_per_s{62.8};
+  double max_acceleration_rad_per_s2{50.0};
+  double max_jerk_rad_per_s3{500.0};
   double max_velocity_m_per_s{0.01};
-  bool low_pass_filter_active{false};
+  double max_acceleration_m_per_s2{0.05};
+  double max_jerk_m_per_s3{0.5};
+  bool low_pass_filter_active{true};
   bool rate_limiter_active{true};
 };
 
@@ -116,10 +122,17 @@ private:
 
   // Filtering state
   std::map<uint8_t, double> prev_filtered_rmd_;
-  std::map<uint8_t, double> prev_cmd_rmd_;
   std::map<uint8_t, double> prev_filtered_canopen_;
-  std::map<uint8_t, double> prev_cmd_canopen_;
-  bool filter_initialized_{false};
+  bool filter_initialized_{true};
+
+  // Ruckig trajectory generators (one per joint)
+  std::map<uint8_t, ruckig::Ruckig<1>> ruckig_rmd_;
+  std::map<uint8_t, ruckig::InputParameter<1>> ruckig_input_rmd_;
+  std::map<uint8_t, ruckig::OutputParameter<1>> ruckig_output_rmd_;
+
+  std::map<uint8_t, ruckig::Ruckig<1>> ruckig_canopen_;
+  std::map<uint8_t, ruckig::InputParameter<1>> ruckig_input_canopen_;
+  std::map<uint8_t, ruckig::OutputParameter<1>> ruckig_output_canopen_;
 
   // Mutex for real-time methods
   std::mutex control_mutex_;

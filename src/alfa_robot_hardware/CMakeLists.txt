@@ -12,6 +12,11 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 
+find_library(RUCKIG_LIB ruckig PATHS /home/kkozia/ruckig/build)
+if(NOT RUCKIG_LIB)
+  message(FATAL_ERROR "Ruckig library not found. Build ruckig first: cd /home/kkozia/ruckig/build && cmake .. && make")
+endif()
+
 add_library(
   alfa_robot_hardware
   SHARED
@@ -23,12 +28,18 @@ target_include_directories(
   PUBLIC
   include
 )
+target_include_directories(
+  alfa_robot_hardware
+  SYSTEM PUBLIC
+  /home/kkozia/ruckig/include
+)
 ament_target_dependencies(
   alfa_robot_hardware
   hardware_interface
   rclcpp
   rclcpp_lifecycle
 )
+target_link_libraries(alfa_robot_hardware ${RUCKIG_LIB})
 # prevent pluginlib from using boost
 target_compile_definitions(alfa_robot_hardware PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")
 

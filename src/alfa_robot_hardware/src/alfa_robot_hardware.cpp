@@ -70,8 +70,12 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   can_bus_config_.canopen_profile_velocity = 50000;
   can_bus_config_.canopen_profile_accel = 50000;
   can_bus_config_.filter_cutoff_hz = 50.0;
-  can_bus_config_.max_velocity_rad_per_s = 12.56;
+  can_bus_config_.max_velocity_rad_per_s = 2.0;
+  can_bus_config_.max_acceleration_rad_per_s2 = 4.0;
+  can_bus_config_.max_jerk_rad_per_s3 = 20.0;
   can_bus_config_.max_velocity_m_per_s = 0.01;
+  can_bus_config_.max_acceleration_m_per_s2 = 0.05;
+  can_bus_config_.max_jerk_m_per_s3 = 0.5;
   can_bus_config_.low_pass_filter_active = false;
   can_bus_config_.rate_limiter_active = true;
 
@@ -112,7 +116,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
       catch (const std::exception &)
       {
         RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
-          "Invalid max_speed_dps, using default 360");
+          "Invalid max_speed_dps, using default 1440");
       }
     }
     else if (param.first == "canopen_profile_velocity")
@@ -153,6 +157,30 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     {
       try {
         can_bus_config_.max_velocity_m_per_s = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_acceleration_rad_per_s2")
+    {
+      try {
+        can_bus_config_.max_acceleration_rad_per_s2 = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_jerk_rad_per_s3")
+    {
+      try {
+        can_bus_config_.max_jerk_rad_per_s3 = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_acceleration_m_per_s2")
+    {
+      try {
+        can_bus_config_.max_acceleration_m_per_s2 = std::stod(param.second);
+      } catch (const std::exception &) {}
+    }
+    else if (param.first == "max_jerk_m_per_s3")
+    {
+      try {
+        can_bus_config_.max_jerk_m_per_s3 = std::stod(param.second);
       } catch (const std::exception &) {}
     }
     else if (param.first == "enable_filter")
@@ -389,25 +417,23 @@ std::vector<hardware_interface::CommandInterface> AlfaRobotHW::export_command_in
 
 void AlfaRobotHW::initializePositionCommands()
 {
-  if (!first_position_update_)
+  if (first_position_update_)
   {
-    return;
+    for (size_t i = 0; i < hw_position_commands_.size(); ++i)
+    {
+      hw_position_commands_[i] = hw_positions_[i];
+    }
+    first_position_update_ = false;
   }
-  for (size_t i = 0; i < hw_position_commands_.size(); ++i)
-  {
-    hw_position_commands_[i] = hw_positions_[i];
-  }
-  first_position_update_ = false;
 
-  if (!canopen_first_position_update_)
+  if (canopen_first_position_update_)
   {
-    return;
+    for (size_t i = 0; i < canopen_position_commands_.size(); ++i)
+    {
+      canopen_position_commands_[i] = canopen_positions_[i];
+    }
+    canopen_first_position_update_ = false;
   }
-  for (size_t i = 0; i < canopen_position_commands_.size(); ++i)
-  {
-    canopen_position_commands_[i] = canopen_positions_[i];
-  }
-  canopen_first_position_update_ = false;
 }
 
 hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
