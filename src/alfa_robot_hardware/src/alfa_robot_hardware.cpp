@@ -66,18 +66,18 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   can_bus_config_.can_interface_right = "can1";
   can_bus_config_.can_interface_base = "can2";
   can_bus_config_.can_interface_canopen = "can3";
-  can_bus_config_.max_speed_dps = 1440;
+  can_bus_config_.max_speed_dps = 1800;
   can_bus_config_.canopen_profile_velocity = 50000;
   can_bus_config_.canopen_profile_accel = 50000;
   can_bus_config_.filter_cutoff_hz = 50.0;
-  can_bus_config_.max_velocity_rad_per_s = 2.0;
-  can_bus_config_.max_acceleration_rad_per_s2 = 4.0;
-  can_bus_config_.max_jerk_rad_per_s3 = 20.0;
+  can_bus_config_.max_velocity_rad_per_s = 3.0;
+  can_bus_config_.max_acceleration_rad_per_s2 = 5.0;
+  can_bus_config_.max_jerk_rad_per_s3 = 10.0;
   can_bus_config_.max_velocity_m_per_s = 0.01;
   can_bus_config_.max_acceleration_m_per_s2 = 0.05;
   can_bus_config_.max_jerk_m_per_s3 = 0.5;
   can_bus_config_.low_pass_filter_active = false;
-  can_bus_config_.rate_limiter_active = true;
+  can_bus_config_.rate_limiter_active = false;
 
   for (const auto & param : info_.hardware_parameters)
   {
@@ -211,11 +211,11 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     }
   }
 
-  // Build RMD motor ID mapping
-  static const std::map<std::string, uint8_t> kRmdMotorIds = {
-    {"turn", 1},
-    {"leftjoint2", 1}, {"leftjoint3", 2}, {"leftjoint4", 3},
-    {"rightjoint2", 4}, {"rightjoint3", 5}, {"rightjoint4", 6},
+  // Build RMD motor ID mapping (joint → motor_id + bus)
+  static const std::map<std::string, RmdMotorInfo> kRmdMotorIds = {
+    {"turn",        {1, RmdBus::BASE}},
+    {"leftjoint2",  {1, RmdBus::LEFT}},  {"leftjoint3",  {2, RmdBus::LEFT}},  {"leftjoint4",  {3, RmdBus::LEFT}},
+    {"rightjoint2", {4, RmdBus::RIGHT}}, {"rightjoint3", {5, RmdBus::RIGHT}}, {"rightjoint4", {6, RmdBus::RIGHT}},
   };
 
   size_t state_index = 0;
@@ -235,8 +235,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     joint_to_cmd_index_[joint.name] = state_index;
 
     RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
-      "RMD joint '%s' → motor ID %d, index %zu",
-      joint.name.c_str(), id_it->second, state_index);
+      "RMD joint '%s' → motor ID %d, bus %d, index %zu",
+      joint.name.c_str(), id_it->second.motor_id,
+      static_cast<int>(id_it->second.bus), state_index);
 
     state_index++;
   }
@@ -475,6 +476,57 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   canopen_first_position_update_ = true;
   read(rclcpp::Time(0), rclcpp::Duration(0, 0));
 
+  // Capture turn joint's current raw position as software zero
+  {
+    auto it = joint_to_state_index_.find("turn");
+    if (it != joint_to_state_index_.end())
+    {
+      size_t idx = it->second;
+      turn_zero_offset_rad_ = hw_positions_[idx];
+      hw_positions_[idx] = 0.0;
+      previous_positions_[idx] = 0.0;
+      hw_position_commands_[joint_to_cmd_index_["turn"]] = 0.0;
+      RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+        "Turn zero offset captured: %.4f rad (%.2f deg)",
+        turn_zero_offset_rad_, turn_zero_offset_rad_ * 180.0 / M_PI);
+    }
+  }
+
+  // Trajectory logging service node
+  traj_log_node_ = rclcpp::Node::make_shared("traj_log_service");
+
+  // SetBool: data=true → start (motor_id=6 for rightjoint4), data=false → stop
+  traj_log_start_srv_ = traj_log_node_->create_service<std_srvs::srv::SetBool>(
+    "traj_log/start_stop",
+    [this](const std_srvs::srv::SetBool::Request::SharedPtr req,
+           std_srvs::srv::SetBool::Response::SharedPtr res) {
+      if (req->data) {
+        // Default to motor_id 6 (rightjoint4), can be extended later
+        can_bus_->startTrajectoryLog(6);
+        res->success = true;
+        res->message = "Trajectory logging started for motor 6";
+      } else {
+        can_bus_->stopTrajectoryLog();
+        res->success = true;
+        res->message = "Trajectory logging stopped";
+      }
+    });
+
+  // Trigger: dump CSV
+  traj_log_dump_srv_ = traj_log_node_->create_service<std_srvs::srv::Trigger>(
+    "traj_log/dump",
+    [this](const std_srvs::srv::Trigger::Request::SharedPtr /*req*/,
+           std_srvs::srv::Trigger::Response::SharedPtr res) {
+      can_bus_->stopTrajectoryLog();
+      can_bus_->dumpTrajectoryLog("/tmp/traj_log.csv");
+      res->success = true;
+      res->message = "Trajectory log saved to /tmp/traj_log.csv";
+    });
+
+  traj_log_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  traj_log_executor_->add_node(traj_log_node_);
+  traj_log_thread_ = std::thread([this]() { traj_log_executor_->spin(); });
+
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware activated");
   return CallbackReturn::SUCCESS;
 }
@@ -482,6 +534,20 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
 hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
+  // Cleanup trajectory logging service
+  if (traj_log_executor_)
+  {
+    traj_log_executor_->cancel();
+  }
+  if (traj_log_thread_.joinable())
+  {
+    traj_log_thread_.join();
+  }
+  traj_log_node_.reset();
+  traj_log_start_srv_.reset();
+  traj_log_dump_srv_.reset();
+  traj_log_executor_.reset();
+
   if (use_safe_shutdown_ && !safe_positions_.empty())
   {
     RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
@@ -510,12 +576,17 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
 
   // Update RMD buffers
-  for (auto & [name, motor_id] : joint_to_motor_id_)
+  for (auto & [name, info] : joint_to_motor_id_)
   {
-    auto it = state.rmd_positions.find(motor_id);
+    auto it = state.rmd_positions.find(name);
     if (it == state.rmd_positions.end() || !it->second.valid) { continue; }
     size_t idx = joint_to_state_index_[name];
     double pos = it->second.position_rad;
+    // Apply software zero offset for turn joint
+    if (name == "turn")
+    {
+      pos -= turn_zero_offset_rad_;
+    }
     hw_positions_[idx] = pos;
     if (dt > 0.0)
     {
@@ -619,13 +690,19 @@ hardware_interface::return_type AlfaRobotHW::write(
     return hardware_interface::return_type::OK;
   }
 
-  double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.001;
+  double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.005;
 
   // Assemble RMD commands
-  std::map<uint8_t, double> rmd_cmds;
-  for (auto & [name, motor_id] : joint_to_motor_id_)
+  std::map<std::string, double> rmd_cmds;
+  for (auto & [name, info] : joint_to_motor_id_)
   {
-    rmd_cmds[motor_id] = hw_position_commands_[joint_to_cmd_index_[name]];
+    double cmd = hw_position_commands_[joint_to_cmd_index_[name]];
+    // Apply software zero offset for turn joint
+    if (name == "turn")
+    {
+      cmd += turn_zero_offset_rad_;
+    }
+    rmd_cmds[name] = cmd;
   }
 
   // Assemble CANopen commands

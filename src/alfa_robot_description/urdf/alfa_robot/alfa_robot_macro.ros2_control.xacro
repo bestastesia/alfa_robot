@@ -44,12 +44,12 @@
           <param name="safe_position_leftarmbase">0.0</param>
           <param name="safe_position_leftjoint1">0.0</param>
           <param name="safe_position_leftjoint2">0.0</param>
-          <param name="safe_position_leftjoint3">-1.57</param>
+          <param name="safe_position_leftjoint3">0.0</param>
           <param name="safe_position_leftjoint4">0.0</param>
           <param name="safe_position_rightarmbase">0.0</param>
           <param name="safe_position_rightjoint1">0.0</param>
           <param name="safe_position_rightjoint2">0.0</param>
-          <param name="safe_position_rightjoint3">-1.57</param>
+          <param name="safe_position_rightjoint3">0.0</param>
           <param name="safe_position_rightjoint4">0.0</param>
         </xacro:unless>
       </hardware>

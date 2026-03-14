@@ -13,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "alfa_robot_hardware/can_bus.hpp"
@@ -21,7 +22,10 @@
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/macros.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include "std_srvs/srv/trigger.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 
 namespace alfa_robot_hardware
 {
@@ -57,7 +61,7 @@ private:
   CanBusConfig can_bus_config_;
 
   // RMD joint mappings
-  std::map<std::string, uint8_t> joint_to_motor_id_;
+  std::map<std::string, RmdMotorInfo> joint_to_motor_id_;
   std::map<std::string, size_t> joint_to_state_index_;
   std::map<std::string, size_t> joint_to_cmd_index_;
 
@@ -85,6 +89,9 @@ private:
   bool first_position_update_{true};
   bool canopen_first_position_update_{true};
 
+  // Software zero offset for turn joint (captured at activation)
+  double turn_zero_offset_rad_{0.0};
+
   void initializePositionCommands();
   bool moveToSafePosition(double timeout_seconds = 5.0);
 
@@ -105,6 +112,13 @@ private:
   static bool isCanControlledJoint(const std::string & name);
   static bool isVelocityControlledJoint(const std::string & name);
   static bool isCanopenControlledJoint(const std::string & name);
+
+  // Trajectory logging service node
+  rclcpp::Node::SharedPtr traj_log_node_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr traj_log_start_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr traj_log_dump_srv_;
+  rclcpp::executors::SingleThreadedExecutor::SharedPtr traj_log_executor_;
+  std::thread traj_log_thread_;
 };
 
 }  // namespace alfa_robot_hardware

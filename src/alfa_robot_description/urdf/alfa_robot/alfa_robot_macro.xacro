@@ -402,6 +402,12 @@
       </collision>
     </link>
 
+    <!-- right_ee_link (virtual end effector for MoveIt2 planning) -->
+    <link name="${prefix}right_ee_link"/>
+
+    <!-- left_ee_link (virtual end effector for MoveIt2 planning) -->
+    <link name="${prefix}left_ee_link"/>
+
     <!-- END LINKS -->
 
     <!-- JOINTS -->
@@ -426,7 +432,7 @@
       <parent link="${prefix}turn_link"/>
       <child link="${prefix}updown_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-0.15" upper="1" effort="0" velocity="0"/>
+      <limit lower="-0.15" upper="1" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftarmbase -->
@@ -435,7 +441,7 @@
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}leftarmbase_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-0.3" upper="0.3" effort="0" velocity="0"/>
+      <limit lower="-0.15" upper="0.15" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint1 -->
@@ -444,7 +450,7 @@
       <parent link="${prefix}leftarmbase_link"/>
       <child link="${prefix}leftjoint1_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-0.5" upper="0.5" effort="0" velocity="0"/>
+      <limit lower="0" upper="0.5" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint2 -->
@@ -464,11 +470,19 @@
     </joint>
 
     <!-- leftjoint4 -->
-    <joint name="${prefix}leftjoint4" type="continuous">
+    <joint name="${prefix}leftjoint4" type="revolute">
       <origin xyz="0.00058164 0.044646 0.115" rpy="-1.5708 0 -0.013027"/>
       <parent link="${prefix}leftjoint3_link"/>
       <child link="${prefix}leftjoint4_link"/>
       <axis xyz="0 0 -1"/>
+      <limit lower="-3.14" upper="0" effort="1000" velocity="1000"/>
+    </joint>
+
+    <!-- left_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
+    <joint name="${prefix}left_ee_joint" type="fixed">
+      <origin xyz="-0.275 -0.0308 -0.02825" rpy="0 0 0"/>
+      <parent link="${prefix}leftjoint4_link"/>
+      <child link="${prefix}left_ee_link"/>
     </joint>
 
     <!-- rightarmbase -->
@@ -477,7 +491,7 @@
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}rightarmbase_link"/>
       <axis xyz="0 0 -1"/>
-      <limit lower="-0.3" upper="0.3" effort="0" velocity="0"/>
+      <limit lower="-0.15" upper="0.15" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint1 -->
@@ -486,7 +500,7 @@
       <parent link="${prefix}rightarmbase_link"/>
       <child link="${prefix}rightjoint1_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="0" upper="0.5" effort="0" velocity="0"/>
+      <limit lower="0" upper="0.5" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint2 -->
@@ -506,11 +520,19 @@
     </joint>
 
     <!-- rightjoint4 -->
-    <joint name="${prefix}rightjoint4" type="continuous">
+    <joint name="${prefix}rightjoint4" type="revolute">
       <origin xyz="-0.0003624 -0.044649 0.115" rpy="-1.5708 0 3.1335"/>
       <parent link="${prefix}rightjoint3_link"/>
       <child link="${prefix}rightjoint4_link"/>
       <axis xyz="0 0 1"/>
+      <limit lower="-3.14" upper="0" effort="1000" velocity="1000"/>
+    </joint>
+
+    <!-- right_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
+    <joint name="${prefix}right_ee_joint" type="fixed">
+      <origin xyz="0.275 -0.0308 -0.02825" rpy="0 0 0"/>
+      <parent link="${prefix}rightjoint4_link"/>
+      <child link="${prefix}right_ee_link"/>
     </joint>
 
     <!-- base_chassis_link_joint -->
@@ -526,7 +548,7 @@
       <parent link="${prefix}base_chassis_link"/>
       <child link="${prefix}left back_link"/>
       <axis xyz="0 0 -1"/>
-      <limit effort="0" velocity="10"/>
+      <limit effort="1000" velocity="10"/>
     </joint>
 
     <!-- left forward -->
@@ -535,7 +557,7 @@
       <parent link="${prefix}base_chassis_link"/>
       <child link="${prefix}left forward_link"/>
       <axis xyz="0 0 -1"/>
-      <limit effort="0" velocity="10"/>
+      <limit effort="1000" velocity="10"/>
     </joint>
 
     <!-- right back -->
@@ -544,7 +566,7 @@
       <parent link="${prefix}base_chassis_link"/>
       <child link="${prefix}right back_link"/>
       <axis xyz="0 0 -1"/>
-      <limit effort="0" velocity="10"/>
+      <limit effort="1000" velocity="10"/>
     </joint>
 
     <!-- right forward -->
@@ -553,7 +575,7 @@
       <parent link="${prefix}base_chassis_link"/>
       <child link="${prefix}right forward_link"/>
       <axis xyz="0 0 -1"/>
-      <limit effort="0" velocity="10"/>
+      <limit effort="1000" velocity="10"/>
     </joint>
     <!-- END JOINTS -->
 

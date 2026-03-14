@@ -11,6 +11,7 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(std_srvs REQUIRED)
 
 find_library(RUCKIG_LIB ruckig PATHS /home/kkozia/ruckig/build)
 if(NOT RUCKIG_LIB)
@@ -38,8 +39,15 @@ ament_target_dependencies(
   hardware_interface
   rclcpp
   rclcpp_lifecycle
+  std_srvs
 )
-target_link_libraries(alfa_robot_hardware ${RUCKIG_LIB})
+target_link_libraries(alfa_robot_hardware /home/kkozia/ruckig/build/libruckig.so)
+target_link_options(alfa_robot_hardware PRIVATE "LINKER:--disable-new-dtags")
+set_target_properties(alfa_robot_hardware PROPERTIES
+  INSTALL_RPATH "/home/kkozia/ruckig/build"
+  BUILD_RPATH "/home/kkozia/ruckig/build"
+  INSTALL_RPATH_USE_LINK_PATH FALSE
+)
 # prevent pluginlib from using boost
 target_compile_definitions(alfa_robot_hardware PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")
 
@@ -83,6 +91,7 @@ ament_export_dependencies(
   pluginlib
   rclcpp
   rclcpp_lifecycle
+  std_srvs
 )
 
 ament_package()

@@ -10,10 +10,12 @@
 #define ALFA_ROBOT_HARDWARE__CAN_BUS_HPP_
 
 #include <cstdint>
+#include <fstream>
 #include <map>
 #include <mutex>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <ruckig/ruckig.hpp>
 
@@ -53,9 +55,17 @@ struct CanopenPdoState
   bool valid{false};
 };
 
+enum class RmdBus : uint8_t { LEFT, RIGHT, BASE };
+
+struct RmdMotorInfo
+{
+  uint8_t motor_id{0};
+  RmdBus bus{RmdBus::LEFT};
+};
+
 struct AllJointState
 {
-  std::map<uint8_t, RmdJointState> rmd_positions;
+  std::map<std::string, RmdJointState> rmd_positions;   // key: joint name
   std::map<uint8_t, CanopenPdoState> canopen_states;
 };
 
@@ -63,7 +73,7 @@ class CanBus
 {
 public:
   static constexpr int kGearRatio = 36;
-  static constexpr double kCanopenPulsesPerMeter = 13107200.0;
+  static constexpr double kCanopenPulsesPerMeter = 1000000.0;  // 10000 pulses/rev, 10mm lead
 
   explicit CanBus(const CanBusConfig & config);
   ~CanBus();
@@ -72,22 +82,37 @@ public:
   bool openInterfaces();
   void closeInterfaces();
   bool enableMotors(
-    const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+    const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
     const std::map<std::string, uint8_t> & canopen_joint_to_node_id);
   void disableMotors(
-    const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+    const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
     const std::map<std::string, uint8_t> & canopen_joint_to_node_id);
   void stopAll(
-    const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+    const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
     const std::map<std::string, uint8_t> & canopen_joint_to_node_id);
 
   // Real-time (non-blocking, mutex-protected)
   AllJointState readOnce(
-    const std::map<std::string, uint8_t> & rmd_joint_to_motor_id);
+    const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor);
   void writeOnce(
-    const std::map<uint8_t, double> & rmd_cmds_rad,
+    const std::map<std::string, double> & rmd_cmds_rad,
     const std::map<uint8_t, double> & canopen_cmds_m,
     double dt);
+
+  // Trajectory logging
+  struct TrajectoryLogEntry
+  {
+    double time_s{0.0};
+    uint8_t motor_id{0};
+    double p_cmd{0.0};    // Position command after Ruckig
+    double v_cmd{0.0};    // Velocity from Ruckig
+    double a_cmd{0.0};    // Acceleration from Ruckig
+    double p_raw{0.0};    // Raw position command before Ruckig
+  };
+
+  void startTrajectoryLog(uint8_t motor_id);
+  void stopTrajectoryLog();
+  void dumpTrajectoryLog(const std::string & filepath) const;
 
   // Queries
   const std::set<uint8_t> & enabledCanopenNodes() const;
@@ -121,14 +146,14 @@ private:
   std::map<uint8_t, int32_t> canopen_last_target_pulses_;
 
   // Filtering state
-  std::map<uint8_t, double> prev_filtered_rmd_;
+  std::map<std::string, double> prev_filtered_rmd_;
   std::map<uint8_t, double> prev_filtered_canopen_;
   bool filter_initialized_{true};
 
   // Ruckig trajectory generators (one per joint)
-  std::map<uint8_t, ruckig::Ruckig<1>> ruckig_rmd_;
-  std::map<uint8_t, ruckig::InputParameter<1>> ruckig_input_rmd_;
-  std::map<uint8_t, ruckig::OutputParameter<1>> ruckig_output_rmd_;
+  std::map<std::string, ruckig::Ruckig<1>> ruckig_rmd_;
+  std::map<std::string, ruckig::InputParameter<1>> ruckig_input_rmd_;
+  std::map<std::string, ruckig::OutputParameter<1>> ruckig_output_rmd_;
 
   std::map<uint8_t, ruckig::Ruckig<1>> ruckig_canopen_;
   std::map<uint8_t, ruckig::InputParameter<1>> ruckig_input_canopen_;
@@ -149,7 +174,10 @@ private:
   void sendMotorCommand(int socket_fd, uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data);
   bool parseMotorAngleReply0x92(const uint8_t * data, double & position_rad);
   void convertPositionToCanFormat0xA4(double position_rad, uint8_t * frame_data);
-  int getCanSocketForRmdMotorId(uint8_t motor_id);
+  int getCanSocket(RmdBus bus);
+
+  // Stored RMD joint mapping (set during enableMotors)
+  std::map<std::string, RmdMotorInfo> rmd_joint_info_;
 
   // RMD bus drain helper
   void drainRmdResponses(int socket_fd, std::map<uint8_t, RmdJointState> & positions);
@@ -168,6 +196,12 @@ private:
 
   // Controlword computation for PP mode new-setpoint edge
   uint16_t computeControlword(uint8_t node_id, int32_t target_pulses);
+
+  // Trajectory logging state
+  bool traj_log_active_{false};
+  uint8_t traj_log_motor_id_{0};
+  double traj_log_time_{0.0};
+  std::vector<TrajectoryLogEntry> traj_log_;
 };
 
 }  // namespace alfa_robot_hardware

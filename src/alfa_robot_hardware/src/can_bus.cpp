@@ -122,25 +122,28 @@ void CanBus::closeInterfaces()
 }
 
 bool CanBus::enableMotors(
-  const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+  const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
   const std::map<std::string, uint8_t> & canopen_joint_to_node_id)
 {
+  // Store RMD joint mapping for readOnce/writeOnce
+  rmd_joint_info_ = rmd_joint_to_motor;
+
   // ========== RMD motors: send 0x88 run command ==========
   uint8_t run_cmd_data[7] = {0};
-  for (const auto & pair : rmd_joint_to_motor_id)
+  for (const auto & pair : rmd_joint_to_motor)
   {
-    uint8_t motor_id = pair.second;
-    int sock = getCanSocketForRmdMotorId(motor_id);
+    const auto & info = pair.second;
+    int sock = getCanSocket(info.bus);
     if (sock < 0)
     {
       RCLCPP_WARN(rclcpp::get_logger("CanBus"),
         "Skipping RMD motor %d (joint '%s') — bus not available",
-        motor_id, pair.first.c_str());
+        info.motor_id, pair.first.c_str());
       continue;
     }
-    sendMotorCommand(sock, motor_id, 0x88, run_cmd_data);
+    sendMotorCommand(sock, info.motor_id, 0x88, run_cmd_data);
     RCLCPP_DEBUG(rclcpp::get_logger("CanBus"),
-      "Sent run command to RMD motor %d (joint '%s')", motor_id, pair.first.c_str());
+      "Sent run command to RMD motor %d (joint '%s')", info.motor_id, pair.first.c_str());
   }
   usleep(10000);
 
@@ -238,7 +241,7 @@ bool CanBus::enableMotors(
 
   RCLCPP_INFO(rclcpp::get_logger("CanBus"),
     "Motors enabled: RMD=%zu, CANopen=%zu/%zu",
-    rmd_joint_to_motor_id.size(),
+    rmd_joint_to_motor.size(),
     canopen_enabled_nodes_.size(),
     canopen_joint_to_node_id.size());
 
@@ -246,17 +249,17 @@ bool CanBus::enableMotors(
 }
 
 void CanBus::disableMotors(
-  const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+  const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
   const std::map<std::string, uint8_t> & /*canopen_joint_to_node_id*/)
 {
   // RMD: send 0x80 stop command
   uint8_t close_cmd_data[7] = {0};
-  for (const auto & pair : rmd_joint_to_motor_id)
+  for (const auto & pair : rmd_joint_to_motor)
   {
-    uint8_t motor_id = pair.second;
-    int sock = getCanSocketForRmdMotorId(motor_id);
+    const auto & info = pair.second;
+    int sock = getCanSocket(info.bus);
     if (sock < 0) { continue; }
-    sendMotorCommand(sock, motor_id, 0x80, close_cmd_data);
+    sendMotorCommand(sock, info.motor_id, 0x80, close_cmd_data);
   }
   usleep(10000);
 
@@ -273,15 +276,15 @@ void CanBus::disableMotors(
 }
 
 void CanBus::stopAll(
-  const std::map<std::string, uint8_t> & rmd_joint_to_motor_id,
+  const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor,
   const std::map<std::string, uint8_t> & canopen_joint_to_node_id)
 {
-  disableMotors(rmd_joint_to_motor_id, canopen_joint_to_node_id);
+  disableMotors(rmd_joint_to_motor, canopen_joint_to_node_id);
   closeInterfaces();
 }
 
 AllJointState CanBus::readOnce(
-  const std::map<std::string, uint8_t> & rmd_joint_to_motor_id)
+  const std::map<std::string, RmdMotorInfo> & rmd_joint_to_motor)
 {
   std::lock_guard<std::mutex> lock(control_mutex_);
 
@@ -298,25 +301,46 @@ AllJointState CanBus::readOnce(
     state.canopen_states = pdo_cache_;
   }
 
-  // ========== RMD: send 0x92 + drain responses ==========
+  // ========== RMD: send 0x92 per joint (bus-aware) ==========
   uint8_t read_cmd_data[7] = {0};
-  for (const auto & pair : rmd_joint_to_motor_id)
+  for (const auto & [name, info] : rmd_joint_to_motor)
   {
-    uint8_t motor_id = pair.second;
-    int sock = getCanSocketForRmdMotorId(motor_id);
+    int sock = getCanSocket(info.bus);
     if (sock < 0) { continue; }
-    sendMotorCommand(sock, motor_id, 0x92, read_cmd_data);
+    sendMotorCommand(sock, info.motor_id, 0x92, read_cmd_data);
   }
 
-  drainRmdResponses(can_socket_left_, state.rmd_positions);
-  drainRmdResponses(can_socket_right_, state.rmd_positions);
-  drainRmdResponses(can_socket_base_, state.rmd_positions);
+  // Drain each bus into a temporary motor_id-keyed map per bus
+  std::map<uint8_t, RmdJointState> left_positions, right_positions, base_positions;
+  drainRmdResponses(can_socket_left_, left_positions);
+  drainRmdResponses(can_socket_right_, right_positions);
+  drainRmdResponses(can_socket_base_, base_positions);
+
+  // Map back to joint names
+  for (const auto & [name, info] : rmd_joint_to_motor)
+  {
+    std::map<uint8_t, RmdJointState> * bus_map = nullptr;
+    switch (info.bus)
+    {
+      case RmdBus::LEFT:  bus_map = &left_positions;  break;
+      case RmdBus::RIGHT: bus_map = &right_positions; break;
+      case RmdBus::BASE:  bus_map = &base_positions;  break;
+    }
+    if (bus_map)
+    {
+      auto it = bus_map->find(info.motor_id);
+      if (it != bus_map->end())
+      {
+        state.rmd_positions[name] = it->second;
+      }
+    }
+  }
 
   return state;
 }
 
 void CanBus::writeOnce(
-  const std::map<uint8_t, double> & rmd_cmds_rad,
+  const std::map<std::string, double> & rmd_cmds_rad,
   const std::map<uint8_t, double> & canopen_cmds_m,
   double dt)
 {
@@ -347,7 +371,7 @@ void CanBus::writeOnce(
       {
         if (ruckig_canopen_.find(node_id) == ruckig_canopen_.end())
         {
-          double safe_dt = std::max(dt, 0.001);
+          double safe_dt = std::max(dt, 0.005);
           ruckig_canopen_.emplace(
             std::piecewise_construct,
             std::forward_as_tuple(node_id),
@@ -390,13 +414,22 @@ void CanBus::writeOnce(
   }
 
   // ========== RMD joints ==========
-  for (const auto & pair : rmd_cmds_rad)
+  for (const auto & [name, cmd_raw] : rmd_cmds_rad)
   {
-    uint8_t motor_id = pair.first;
-    int sock = getCanSocketForRmdMotorId(motor_id);
-    if (sock < 0) { continue; }
+    auto info_it = rmd_joint_info_.find(name);
+    if (info_it == rmd_joint_info_.end()) { continue; }
+    const auto & info = info_it->second;
+    uint8_t motor_id = info.motor_id;
+    int sock = getCanSocket(info.bus);
+    if (sock < 0) {
+      if (traj_log_active_ && motor_id == traj_log_motor_id_) {
+        RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CanBus"), *rclcpp::Clock::make_shared(),
+          1000, "Traj log: motor %d skipped, socket unavailable", motor_id);
+      }
+      continue;
+    }
 
-    double cmd = pair.second;
+    double cmd = cmd_raw;
     double filtered = cmd;
 
     // Low-pass filter
@@ -404,21 +437,21 @@ void CanBus::writeOnce(
     {
       double rc = 1.0 / (2.0 * M_PI * config_.filter_cutoff_hz);
       double alpha = dt / (dt + rc);
-      filtered = prev_filtered_rmd_[motor_id] + alpha * (cmd - prev_filtered_rmd_[motor_id]);
+      filtered = prev_filtered_rmd_[name] + alpha * (cmd - prev_filtered_rmd_[name]);
     }
-    prev_filtered_rmd_[motor_id] = filtered;
+    prev_filtered_rmd_[name] = filtered;
 
     // Ruckig trajectory smoother (jerk-limited)
     if (config_.rate_limiter_active && filter_initialized_)
     {
-      if (ruckig_rmd_.find(motor_id) == ruckig_rmd_.end())
+      if (ruckig_rmd_.find(name) == ruckig_rmd_.end())
       {
-        double safe_dt = std::max(dt, 0.001);
+        double safe_dt = std::max(dt, 0.005);
         ruckig_rmd_.emplace(
           std::piecewise_construct,
-          std::forward_as_tuple(motor_id),
+          std::forward_as_tuple(name),
           std::forward_as_tuple(safe_dt));
-        auto & inp = ruckig_input_rmd_[motor_id];
+        auto & inp = ruckig_input_rmd_[name];
         inp.current_position = {filtered};
         inp.current_velocity = {0.0};
         inp.current_acceleration = {0.0};
@@ -427,9 +460,9 @@ void CanBus::writeOnce(
         inp.max_jerk = {config_.max_jerk_rad_per_s3};
       }
 
-      auto & otg = ruckig_rmd_.at(motor_id);
-      auto & inp = ruckig_input_rmd_[motor_id];
-      auto & out = ruckig_output_rmd_[motor_id];
+      auto & otg = ruckig_rmd_.at(name);
+      auto & inp = ruckig_input_rmd_[name];
+      auto & out = ruckig_output_rmd_[name];
 
       inp.target_position = {filtered};
       inp.target_velocity = {0.0};
@@ -444,9 +477,27 @@ void CanBus::writeOnce(
       else
       {
         RCLCPP_WARN_THROTTLE(rclcpp::get_logger("CanBus"), *rclcpp::Clock::make_shared(),
-          1000, "Ruckig error on RMD motor %d: result=%d, using unsmoothed value",
-          motor_id, static_cast<int>(result));
+          1000, "Ruckig error on RMD joint '%s' (motor %d): result=%d, using unsmoothed value",
+          name.c_str(), motor_id, static_cast<int>(result));
       }
+    }
+
+    // Trajectory logging
+    if (traj_log_active_ && motor_id == traj_log_motor_id_)
+    {
+      TrajectoryLogEntry entry;
+      entry.time_s = traj_log_time_;
+      entry.motor_id = motor_id;
+      entry.p_raw = cmd;
+      entry.p_cmd = filtered;
+      if (config_.rate_limiter_active && ruckig_rmd_.find(name) != ruckig_rmd_.end())
+      {
+        auto & inp_log = ruckig_input_rmd_.at(name);
+        entry.v_cmd = inp_log.current_velocity[0];
+        entry.a_cmd = inp_log.current_acceleration[0];
+      }
+      traj_log_.push_back(entry);
+      traj_log_time_ += dt;
     }
 
     uint8_t frame_data[7];
@@ -680,11 +731,14 @@ void CanBus::convertPositionToCanFormat0xA4(double position_rad, uint8_t * frame
   frame_data[6] = static_cast<uint8_t>((angle_control >> 24) & 0xFF);
 }
 
-int CanBus::getCanSocketForRmdMotorId(uint8_t motor_id)
+int CanBus::getCanSocket(RmdBus bus)
 {
-  if (motor_id == 1 && can_base_available_) { return can_socket_base_; }
-  if (motor_id <= 3 && can_left_available_) { return can_socket_left_; }
-  if (motor_id >= 4 && motor_id <= 6 && can_right_available_) { return can_socket_right_; }
+  switch (bus)
+  {
+    case RmdBus::BASE:  return can_base_available_  ? can_socket_base_  : -1;
+    case RmdBus::LEFT:  return can_left_available_  ? can_socket_left_  : -1;
+    case RmdBus::RIGHT: return can_right_available_ ? can_socket_right_ : -1;
+  }
   return -1;
 }
 
@@ -753,26 +807,42 @@ bool CanBus::canopenSdoWrite(int socket_fd, uint8_t node_id,
     return false;
   }
 
-  usleep(kCanInterFrameDelayUs);
+  // Wait for SDO response, filtering out PDO/SYNC/heartbeat frames
+  const uint32_t expected_id = 0x580u + node_id;
+  constexpr int kMaxRetries = 50;
+  constexpr unsigned int kRetryDelayUs = 200;
 
-  uint32_t resp_id;
-  uint8_t resp_data[8];
-  uint8_t resp_dlc;
-  if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
+  for (int attempt = 0; attempt < kMaxRetries; ++attempt)
   {
-    RCLCPP_WARN(rclcpp::get_logger("CanBus"),
-      "CANopen SDO write timeout: node %d, index 0x%04X", node_id, index);
-    return false;
+    usleep(kRetryDelayUs);
+
+    uint32_t resp_id;
+    uint8_t resp_data[8];
+    uint8_t resp_dlc;
+    if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
+    {
+      continue;  // Nothing available yet, retry
+    }
+
+    if (resp_id != expected_id)
+    {
+      continue;  // Not our SDO response (PDO, SYNC, etc.), skip
+    }
+
+    if (resp_data[0] == 0x80)
+    {
+      RCLCPP_WARN(rclcpp::get_logger("CanBus"),
+        "CANopen SDO write abort: node %d, index 0x%04X", node_id, index);
+      return false;
+    }
+
+    return true;
   }
 
-  if (resp_id != (0x580u + node_id) || resp_data[0] == 0x80)
-  {
-    RCLCPP_WARN(rclcpp::get_logger("CanBus"),
-      "CANopen SDO write error: node %d, index 0x%04X", node_id, index);
-    return false;
-  }
-
-  return true;
+  RCLCPP_WARN(rclcpp::get_logger("CanBus"),
+    "CANopen SDO write timeout: node %d, index 0x%04X (no response in %d ms)",
+    node_id, index, (kMaxRetries * kRetryDelayUs) / 1000);
+  return false;
 }
 
 bool CanBus::canopenSdoRead(int socket_fd, uint8_t node_id,
@@ -789,30 +859,49 @@ bool CanBus::canopenSdoRead(int socket_fd, uint8_t node_id,
     return false;
   }
 
-  usleep(kCanInterFrameDelayUs);
+  // Wait for SDO response, filtering out PDO/SYNC/heartbeat frames
+  const uint32_t expected_id = 0x580u + node_id;
+  constexpr int kMaxRetries = 50;
+  constexpr unsigned int kRetryDelayUs = 200;
 
-  uint32_t resp_id;
-  uint8_t resp_data[8];
-  uint8_t resp_dlc;
-  if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
+  for (int attempt = 0; attempt < kMaxRetries; ++attempt)
   {
-    return false;
+    usleep(kRetryDelayUs);
+
+    uint32_t resp_id;
+    uint8_t resp_data[8];
+    uint8_t resp_dlc;
+    if (!receiveCanFrame(socket_fd, resp_id, resp_data, resp_dlc))
+    {
+      continue;
+    }
+
+    if (resp_id != expected_id)
+    {
+      continue;
+    }
+
+    if (resp_data[0] == 0x80)
+    {
+      RCLCPP_WARN(rclcpp::get_logger("CanBus"),
+        "CANopen SDO read abort: node %d, index 0x%04X", node_id, index);
+      return false;
+    }
+
+    uint8_t resp_cmd = resp_data[0];
+    if (resp_cmd == 0x4F) { size = 1; }
+    else if (resp_cmd == 0x4B) { size = 2; }
+    else if (resp_cmd == 0x47) { size = 3; }
+    else if (resp_cmd == 0x43) { size = 4; }
+    else { size = 4; }
+
+    memcpy(data, &resp_data[4], size);
+    return true;
   }
 
-  if (resp_id != (0x580u + node_id) || resp_data[0] == 0x80)
-  {
-    return false;
-  }
-
-  uint8_t resp_cmd = resp_data[0];
-  if (resp_cmd == 0x4F) { size = 1; }
-  else if (resp_cmd == 0x4B) { size = 2; }
-  else if (resp_cmd == 0x47) { size = 3; }
-  else if (resp_cmd == 0x43) { size = 4; }
-  else { size = 4; }
-
-  memcpy(data, &resp_data[4], size);
-  return true;
+  RCLCPP_WARN(rclcpp::get_logger("CanBus"),
+    "CANopen SDO read timeout: node %d, index 0x%04X", node_id, index);
+  return false;
 }
 
 bool CanBus::canopenDisableMotor(int socket_fd, uint8_t node_id)
@@ -910,6 +999,45 @@ uint16_t CanBus::computeControlword(uint8_t node_id, int32_t target_pulses)
   }
 
   return controlword;
+}
+
+void CanBus::startTrajectoryLog(uint8_t motor_id)
+{
+  std::lock_guard<std::mutex> lock(control_mutex_);
+  traj_log_.clear();
+  traj_log_.reserve(30000);  // 30s at 1ms
+  traj_log_motor_id_ = motor_id;
+  traj_log_time_ = 0.0;
+  traj_log_active_ = true;
+  RCLCPP_INFO(rclcpp::get_logger("CanBus"),
+    "Trajectory logging started for motor %d, active=%d", motor_id, traj_log_active_);
+}
+
+void CanBus::stopTrajectoryLog()
+{
+  std::lock_guard<std::mutex> lock(control_mutex_);
+  traj_log_active_ = false;
+  RCLCPP_INFO(rclcpp::get_logger("CanBus"),
+    "Trajectory logging stopped, %zu entries", traj_log_.size());
+}
+
+void CanBus::dumpTrajectoryLog(const std::string & filepath) const
+{
+  std::ofstream ofs(filepath);
+  if (!ofs.is_open()) {
+    RCLCPP_ERROR(rclcpp::get_logger("CanBus"),
+      "Failed to open %s for trajectory log", filepath.c_str());
+    return;
+  }
+  ofs << "time_s,motor_id,p_raw,p_cmd,v_cmd,a_cmd\n";
+  for (const auto & e : traj_log_) {
+    ofs << e.time_s << "," << static_cast<int>(e.motor_id) << ","
+        << e.p_raw << "," << e.p_cmd << ","
+        << e.v_cmd << "," << e.a_cmd << "\n";
+  }
+  ofs.close();
+  RCLCPP_INFO(rclcpp::get_logger("CanBus"),
+    "Trajectory log saved to %s (%zu entries)", filepath.c_str(), traj_log_.size());
 }
 
 }  // namespace alfa_robot_hardware
