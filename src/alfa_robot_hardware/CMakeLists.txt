@@ -30,7 +30,7 @@ ament_target_dependencies(
   rclcpp
   rclcpp_lifecycle
   std_srvs
-)
+  )
 # prevent pluginlib from using boost
 target_compile_definitions(alfa_robot_hardware PUBLIC "PLUGINLIB__DISABLE_BOOST_FUNCTIONS")
 
