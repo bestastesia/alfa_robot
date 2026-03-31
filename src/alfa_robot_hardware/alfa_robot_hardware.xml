@@ -1,0 +1,9 @@
+<library path="alfa_robot_hardware">
+  <class name="alfa_robot_hardware/AlfaRobotHW"
+         type="alfa_robot_hardware::AlfaRobotHW"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>
+      ros2_control hardware interface.
+    </description>
+  </class>
+</library>
