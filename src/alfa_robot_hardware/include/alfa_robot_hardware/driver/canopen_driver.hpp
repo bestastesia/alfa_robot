@@ -50,6 +50,10 @@ public:
   // Initial SYNC + drain (call once after enableNodes to prime PDO cache).
   void primeSyncCycle();
 
+  // Returns position from PDO cache for a specific node (no SYNC triggered).
+  // Returns false if node has no valid cached data.
+  bool getCachedPosition(uint8_t node_id, double & position_m) const;
+
   bool isNodeEnabled(uint8_t node_id) const;
   const std::set<uint8_t> & enabledNodes() const { return enabled_nodes_; }
   bool isOpen() const { return socket_fd_ >= 0; }

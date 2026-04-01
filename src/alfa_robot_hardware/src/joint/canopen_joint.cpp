@@ -36,11 +36,10 @@ void CanopenJoint::read(double dt)
 {
   if (!driver_.isNodeEnabled(cfg_.node_id)) { return; }
 
-  auto positions = driver_.readPositions();
-  auto it = positions.find(cfg_.node_id);
-  if (it == positions.end()) { return; }
+  double raw_m = 0.0;
+  if (!driver_.getCachedPosition(cfg_.node_id, raw_m)) { return; }
 
-  double pos = it->second / cfg_.gear_ratio;
+  double pos = raw_m / cfg_.gear_ratio;
   if (!std::isfinite(pos)) { pos = 0.0; }
 
   position_ = pos;
@@ -55,7 +54,7 @@ void CanopenJoint::read(double dt)
 
   if (first_read_) {
     position_cmd_  = pos;
-    prev_filtered_ = it->second;  // raw motor-side value
+    prev_filtered_ = raw_m;  // raw motor-side value
     first_read_    = false;
   }
 }
