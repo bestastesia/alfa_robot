@@ -7,21 +7,14 @@
 #include <cmath>
 
 #include "alfa_robot_hardware/joint/wheel_joint.hpp"
-// Directly compile implementation until CMakeLists links alfa_robot_hardware (Task 8)
-#include "../src/joint/wheel_joint.cpp"  // NOLINT(build/include)
 
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
-// And compile the implementation directly until CMakeLists links the library (Task 8):
-#include "../src/driver/rmd_driver.cpp"  // NOLINT(build/include)
 
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
-#include "../src/driver/canopen_driver.cpp"  // NOLINT(build/include)
 
 #include "alfa_robot_hardware/joint/rmd_joint.hpp"
-#include "../src/joint/rmd_joint.cpp"  // NOLINT(build/include)
 
 #include "alfa_robot_hardware/joint/canopen_joint.hpp"
-#include "../src/joint/canopen_joint.cpp"  // NOLINT(build/include)
 #include "alfa_robot_hardware/service/trajectory_logger.hpp"
 
 namespace alfa_robot_hardware
