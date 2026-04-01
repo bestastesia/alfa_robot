@@ -10,6 +10,10 @@
 // Directly compile implementation until CMakeLists links alfa_robot_hardware (Task 8)
 #include "../src/joint/wheel_joint.cpp"  // NOLINT(build/include)
 
+#include "alfa_robot_hardware/driver/rmd_driver.hpp"
+// And compile the implementation directly until CMakeLists links the library (Task 8):
+#include "../src/driver/rmd_driver.cpp"  // NOLINT(build/include)
+
 namespace alfa_robot_hardware
 {
 
@@ -110,6 +114,65 @@ TEST(WheelJointTest, ReadWithZeroDtDoesNotCrash)
   WheelJoint joint2("some_joint", WheelJoint::ControlMode::Position);
   joint2.activate();
   EXPECT_NO_THROW(joint2.read(0.0));
+}
+
+TEST(RmdDriverTest, ParseMotorAngleReply_Zero)
+{
+  uint8_t data[8] = {0x92, 0, 0, 0, 0, 0, 0, 0};
+  double pos;
+  EXPECT_TRUE(RmdDriver::parseMotorAngleReply(data, pos));
+  EXPECT_NEAR(pos, 0.0, 1e-9);
+}
+
+TEST(RmdDriverTest, ParseMotorAngleReply_WrongCmd)
+{
+  uint8_t data[8] = {0xA4, 0, 0, 0, 0, 0, 0, 0};
+  double pos;
+  EXPECT_FALSE(RmdDriver::parseMotorAngleReply(data, pos));
+}
+
+TEST(RmdDriverTest, ParseMotorAngleReply_180deg)
+{
+  // raw=18000 => angle_deg=180 => pos_rad = pi/36
+  // 18000 = 0x4650, little-endian bytes 1-2: 0x50, 0x46
+  uint8_t data[8] = {0x92, 0x50, 0x46, 0, 0, 0, 0, 0};
+  double pos;
+  ASSERT_TRUE(RmdDriver::parseMotorAngleReply(data, pos));
+  EXPECT_NEAR(pos, M_PI / 36.0, 1e-6);
+}
+
+TEST(RmdDriverTest, ParseMotorAngleReply_Negative)
+{
+  // raw = -18000 => sign-extended from byte[7] MSB
+  // -18000 = 0xFFFFFFFFFFFFB9B0 => bytes[1..7]: 0xB0,0xB9,0xFF,0xFF,0xFF,0xFF,0xFF
+  uint8_t data[8] = {0x92, 0xB0, 0xB9, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  double pos;
+  ASSERT_TRUE(RmdDriver::parseMotorAngleReply(data, pos));
+  EXPECT_NEAR(pos, -M_PI / 36.0, 1e-6);
+}
+
+TEST(RmdDriverTest, ConvertPositionRoundTrip)
+{
+  double orig = 1.234;
+  uint8_t fd[7];
+  RmdDriver::convertPositionToCanFormat(orig, 1800, fd);
+  int32_t ac = static_cast<int32_t>(fd[3]) | (static_cast<int32_t>(fd[4]) << 8) |
+               (static_cast<int32_t>(fd[5]) << 16) | (static_cast<int32_t>(fd[6]) << 24);
+  double recovered = static_cast<double>(ac) / 100.0 / 36.0 * M_PI / 180.0;
+  EXPECT_NEAR(recovered, orig, 0.001);  // 0.01 deg resolution
+}
+
+TEST(RmdDriverTest, OpenFailsOnBogusInterface)
+{
+  RmdDriver drv({"bogus_can99", 1800});
+  EXPECT_FALSE(drv.open());
+  EXPECT_FALSE(drv.isOpen());
+}
+
+TEST(RmdDriverTest, ReadPositionsEmptyWhenNotOpen)
+{
+  RmdDriver drv({"bogus_can99", 1800});
+  EXPECT_TRUE(drv.readPositions({1, 2}).empty());
 }
 
 }  // namespace alfa_robot_hardware
