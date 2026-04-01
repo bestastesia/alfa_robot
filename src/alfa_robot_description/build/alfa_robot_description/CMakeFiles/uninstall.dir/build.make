@@ -53,10 +53,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/kzoia/alfa_robot_ws/src/alfa_robot_description
+CMAKE_SOURCE_DIR = /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/kzoia/alfa_robot_ws/src/alfa_robot_description/build/alfa_robot_description
+CMAKE_BINARY_DIR = /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description
 
 # Utility rule file for uninstall.
 
@@ -78,6 +78,6 @@ CMakeFiles/uninstall.dir/clean:
 .PHONY : CMakeFiles/uninstall.dir/clean
 
 CMakeFiles/uninstall.dir/depend:
-	cd /home/kzoia/alfa_robot_ws/src/alfa_robot_description/build/alfa_robot_description && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/kzoia/alfa_robot_ws/src/alfa_robot_description /home/kzoia/alfa_robot_ws/src/alfa_robot_description /home/kzoia/alfa_robot_ws/src/alfa_robot_description/build/alfa_robot_description /home/kzoia/alfa_robot_ws/src/alfa_robot_description/build/alfa_robot_description /home/kzoia/alfa_robot_ws/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/uninstall.dir/DependInfo.cmake --color=$(COLOR)
+	cd /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description /home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/uninstall.dir/DependInfo.cmake --color=$(COLOR)
 .PHONY : CMakeFiles/uninstall.dir/depend
 

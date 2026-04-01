@@ -69,8 +69,21 @@
       <!-- updown (prismatic) -->
       <joint name="${prefix}updown">
         <command_interface name="position">
-          <param name="min">-0.15</param>
+          <param name="min">0</param>
           <param name="max">1.0</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- plate (prismatic, new) -->
+      <joint name="${prefix}plate">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.5</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -82,8 +95,8 @@
       <!-- leftarmbase (prismatic) -->
       <joint name="${prefix}rightarmbase">
         <command_interface name="position">
-          <param name="min">-0.3</param>
-          <param name="max">0.3</param>
+          <param name="min">0</param>
+          <param name="max">0.16</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -147,8 +160,8 @@
       <!-- rightarmbase (prismatic) -->
       <joint name="${prefix}leftarmbase">
         <command_interface name="position">
-          <param name="min">-0.3</param>
-          <param name="max">0.3</param>
+          <param name="min">0</param>
+          <param name="max">0.2</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -209,45 +222,6 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- left back (continuous, velocity control) -->
-      <joint name="${prefix}right_back">
-        <command_interface name="velocity"/>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- left forward (continuous, velocity control) -->
-      <joint name="${prefix}right_forward">
-        <command_interface name="velocity"/>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- right back (continuous, velocity control) -->
-      <joint name="${prefix}left_back">
-        <command_interface name="velocity"/>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- right forward (continuous, velocity control) -->
-      <joint name="${prefix}left_forward">
-        <command_interface name="velocity"/>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
     </ros2_control>
 
     <xacro:if value="$(arg sim_gazebo_classic)">
