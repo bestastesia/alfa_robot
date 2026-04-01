@@ -345,7 +345,7 @@
       <parent link="${prefix}turn_link"/>
       <child link="${prefix}updown_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="0" upper="1" effort="1000" velocity="1"/>
+      <limit lower="0" upper="0.95" effort="1000" velocity="1"/>
     </joint>
 
     <!-- plate (new joint) -->
@@ -354,7 +354,7 @@
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}plate_link"/>
       <axis xyz="1 0 0"/>
-      <limit lower="0" upper="0.5" effort="1000" velocity="0.5"/>
+      <limit lower="0" upper="0.5" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftarmbase -->
@@ -362,8 +362,8 @@
       <origin xyz="-0.16145 -0.31517 0.146" rpy="0 0 0"/>
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}rightarmbase_link"/>
-      <axis xyz="0 1 0"/>
-      <limit lower="0" upper="0.16" effort="1000" velocity="0.5"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="0" upper="0.12" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint1 -->
@@ -372,23 +372,25 @@
       <parent link="${prefix}rightarmbase_link"/>
       <child link="${prefix}rightjoint1_link"/>
       <axis xyz="1 0 0"/>
-      <limit lower="0" upper="0.5" effort="1000" velocity="0.5"/>
+      <limit lower="0" upper="0.4" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint2 -->
-    <joint name="${prefix}rightjoint2" type="continuous">
+    <joint name="${prefix}rightjoint2" type="revolute">
       <origin xyz="0.67445 -0.035997 0.04964" rpy="0 1.5708 0"/>
       <parent link="${prefix}rightjoint1_link"/>
       <child link="${prefix}rightjoint2_link"/>
       <axis xyz="0 0 1"/>
+      <limit lower="-2.35" upper="2.35" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint3 -->
-    <joint name="${prefix}rightjoint3" type="continuous">
+    <joint name="${prefix}rightjoint3" type="revolute">
       <origin xyz="0.19998 0.0021836 0.0834" rpy="0 0 0"/>
       <parent link="${prefix}rightjoint2_link"/>
       <child link="${prefix}rightjoint3_link"/>
       <axis xyz="0 0 1"/>
+      <limit lower="-2.35" upper="2.35" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- leftjoint4 -->
@@ -397,7 +399,7 @@
       <parent link="${prefix}rightjoint3_link"/>
       <child link="${prefix}rightjoint4_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="1000" velocity="1000"/>
+      <limit lower="0" upper="3.14" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- left_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
@@ -413,7 +415,7 @@
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}leftarmbase_link"/>
       <axis xyz="0 1 0"/>
-      <limit lower="0" upper="0.2" effort="1000" velocity="0.5"/>
+      <limit lower="0" upper="0.12" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint1 -->
@@ -422,7 +424,7 @@
       <parent link="${prefix}leftarmbase_link"/>
       <child link="${prefix}leftjoint1_link"/>
       <axis xyz="1 0 0"/>
-      <limit lower="0" upper="0.5" effort="1000" velocity="0.5"/>
+      <limit lower="0" upper="0.4" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint2 -->
@@ -431,6 +433,7 @@
       <parent link="${prefix}leftjoint1_link"/>
       <child link="${prefix}leftjoint2_link"/>
       <axis xyz="0 0 1"/>
+      <limit lower="-2.35" upper="2.35" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint3 -->
@@ -439,6 +442,7 @@
       <parent link="${prefix}leftjoint2_link"/>
       <child link="${prefix}leftjoint3_link"/>
       <axis xyz="0 0 1"/>
+      <limit lower="-2.35" upper="2.35" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- rightjoint4 -->
@@ -447,7 +451,7 @@
       <parent link="${prefix}leftjoint3_link"/>
       <child link="${prefix}leftjoint4_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="1000" velocity="1000"/>
+      <limit lower="0" upper="3.14" effort="1000" velocity="1000"/>
     </joint>
 
     <!-- right_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
