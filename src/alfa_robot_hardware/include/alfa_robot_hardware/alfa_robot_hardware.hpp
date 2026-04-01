@@ -9,10 +9,8 @@
 #include "alfa_robot_hardware/joint/i_joint.hpp"
 #include "alfa_robot_hardware/joint/rmd_joint.hpp"
 #include "alfa_robot_hardware/joint/canopen_joint.hpp"
-#include "alfa_robot_hardware/joint/wheel_joint.hpp"
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
-#include "alfa_robot_hardware/service/trajectory_logger.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -52,9 +50,6 @@ private:
 
   // All joints (single list — no type dispatch in AlfaRobotHW)
   std::vector<std::unique_ptr<IJoint>> joints_;
-
-  // Services
-  std::unique_ptr<TrajectoryLogger> traj_logger_;
 
   // Safe shutdown config
   std::map<std::string, double> safe_positions_;

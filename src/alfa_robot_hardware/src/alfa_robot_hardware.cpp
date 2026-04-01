@@ -95,10 +95,6 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
     }
   }
 
-  // Start trajectory logger service
-  auto traj_node = rclcpp::Node::make_shared("traj_log_service");
-  traj_logger_ = std::make_unique<TrajectoryLogger>(traj_node);
-  // (record() is called from write() — no driver callback needed for now)
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware activated");
   return CallbackReturn::SUCCESS;
@@ -107,8 +103,6 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
 hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   const rclcpp_lifecycle::State &)
 {
-  traj_logger_.reset();
-
   if (use_safe_shutdown_ && !safe_positions_.empty()) {
     moveAllToSafePositions(5.0);
   }
@@ -200,11 +194,6 @@ void AlfaRobotHW::buildJoints()
   joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
     CanopenJoint::Config{5, 1.0, 0.0}, *canopen_));
 
-  // Wheel joints (velocity-controlled placeholders)
-  for (const auto * wheel : {"left_back", "left_forward", "right_back", "right_forward"}) {
-    joints_.push_back(std::make_unique<WheelJoint>(
-      wheel, WheelJoint::ControlMode::Velocity));
-  }
 }
 
 bool AlfaRobotHW::moveAllToSafePositions(double timeout_s)
