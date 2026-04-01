@@ -8,6 +8,7 @@
 
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -189,6 +190,7 @@ bool CanopenDriver::readPositionSdo(uint8_t node_id, double & position_m)
   uint8_t data[4];
   uint8_t size;
   if (!sdoRead(node_id, 0x6064, 0x00, data, size)) { return false; }
+  if (size != 4) { return false; }  // 0x6064 is always 32-bit in CiA-402
   int32_t pulses;
   memcpy(&pulses, data, 4);
   position_m = static_cast<double>(pulses) / kPulsesPerMeter;
@@ -228,7 +230,7 @@ uint16_t CanopenDriver::computeControlword(
 bool CanopenDriver::sendCanFrame(uint32_t can_id, const uint8_t * data, uint8_t dlc)
 {
   if (socket_fd_ < 0) { return false; }
-  struct can_frame frame;
+  struct can_frame frame{};
   frame.can_id  = can_id;
   frame.can_dlc = dlc;
   memcpy(frame.data, data, dlc);
@@ -244,6 +246,7 @@ bool CanopenDriver::receiveCanFrame(uint32_t & can_id, uint8_t * data, uint8_t &
   }
   can_id = frame.can_id & CAN_SFF_MASK;
   dlc    = frame.can_dlc;
+  dlc = std::min(frame.can_dlc, static_cast<uint8_t>(8u));
   memcpy(data, frame.data, dlc);
   return true;
 }

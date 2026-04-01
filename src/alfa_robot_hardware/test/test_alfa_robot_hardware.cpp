@@ -198,7 +198,7 @@ TEST(CanopenDriverTest, ComputeControlword_SameTarget_KeepsSetpoint)
   EXPECT_EQ(last_target, 1000);
 }
 
-TEST(CanopenDriverTest, ComputeControlword_NewTarget_ClearsFirstThenSets)
+TEST(CanopenDriverTest, ComputeControlword_NewTarget_ClearsAndSets)
 {
   bool ns_active = true;
   int32_t last_target = 1000;
