@@ -57,6 +57,61 @@ TEST(WheelJointTest, NameReturnsCorrectly)
   EXPECT_EQ(joint.name(), "right_back");
 }
 
+TEST(WheelJointTest, VelocityModeIntegratesPosition)
+{
+  WheelJoint joint("left_back", WheelJoint::ControlMode::Velocity);
+  joint.activate();
+
+  // Get velocity command interface pointer
+  auto ci = joint.exportCommandInterfaces();
+  // ci[0] is velocity_cmd_. We set it by calling read with velocity_cmd_ = 1.0
+  // But we can't set the command from outside without a handle.
+  // Test: at dt=0 nothing happens
+  joint.read(0.0);
+  auto si = joint.exportStateInterfaces();
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);  // position stays 0
+
+  // Test: at dt=0.1 with velocity_cmd_=0, position stays 0
+  joint.read(0.1);
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);
+  EXPECT_NEAR(si[1].get_value(), 0.0, 1e-9);  // velocity = velocity_cmd_ = 0
+  EXPECT_NEAR(si[2].get_value(), 0.0, 1e-9);  // acceleration = 0
+}
+
+TEST(WheelJointTest, VelocityModeAccelerationIsZero)
+{
+  WheelJoint joint("left_back", WheelJoint::ControlMode::Velocity);
+  joint.activate();
+  joint.read(0.1);
+  auto si = joint.exportStateInterfaces();
+  // In velocity mode, acceleration is always 0 regardless of velocity change
+  EXPECT_NEAR(si[2].get_value(), 0.0, 1e-9);
+}
+
+TEST(WheelJointTest, PositionModeFollowsCommand)
+{
+  WheelJoint joint("some_joint", WheelJoint::ControlMode::Position);
+  joint.activate();
+  joint.read(0.0);  // dt=0, nothing should change
+  auto si = joint.exportStateInterfaces();
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);  // position = position_cmd_ = 0
+
+  // After read with dt=0: position = 0, velocity unchanged
+  joint.read(0.0);
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);
+}
+
+TEST(WheelJointTest, ReadWithZeroDtDoesNotCrash)
+{
+  WheelJoint joint("left_back", WheelJoint::ControlMode::Velocity);
+  joint.activate();
+  EXPECT_NO_THROW(joint.read(0.0));
+
+  WheelJoint joint2("some_joint", WheelJoint::ControlMode::Position);
+  joint2.activate();
+  EXPECT_NO_THROW(joint2.read(0.0));
+}
+
 }  // namespace alfa_robot_hardware
 
 int main(int argc, char ** argv)
