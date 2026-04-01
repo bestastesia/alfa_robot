@@ -17,6 +17,9 @@
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
 #include "../src/driver/canopen_driver.cpp"  // NOLINT(build/include)
 
+#include "alfa_robot_hardware/joint/rmd_joint.hpp"
+#include "../src/joint/rmd_joint.cpp"  // NOLINT(build/include)
+
 namespace alfa_robot_hardware
 {
 
@@ -231,6 +234,46 @@ TEST(CanopenDriverTest, IsNodeEnabledReturnsFalseWhenNotEnabled)
   CanopenDriver drv({"bogus_can99", 50000, 50000});
   EXPECT_FALSE(drv.isNodeEnabled(1));
   EXPECT_FALSE(drv.isNodeEnabled(5));
+}
+
+// ── RmdJoint Tests ───────────────────────────────────────────────────────────
+
+TEST(RmdJointTest, ActivateWithNoDriverKeepsFirstReadTrue)
+{
+  // Driver is not open -> readPositions returns empty -> activate does NOT clear first_read_
+  RmdDriver drv({"bogus", 1800});
+  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  joint.activate();
+  // first_read_ still true -> write() is a no-op -> position stays 0
+  auto si = joint.exportStateInterfaces();
+  ASSERT_EQ(si.size(), 3u);
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);
+}
+
+TEST(RmdJointTest, WriteIsNoOpBeforeFirstRead)
+{
+  RmdDriver drv({"bogus", 1800});
+  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  // Never called read() -> write() must not crash
+  EXPECT_NO_THROW(joint.write(0.01));
+}
+
+TEST(RmdJointTest, ExportsThreeStateAndOneCommandInterface)
+{
+  RmdDriver drv({"bogus", 1800});
+  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  EXPECT_EQ(joint.exportStateInterfaces().size(), 3u);
+  EXPECT_EQ(joint.exportCommandInterfaces().size(), 1u);
+  EXPECT_EQ(joint.exportCommandInterfaces()[0].get_interface_name(), "position");
+}
+
+TEST(RmdJointTest, MoveToSafePositionReturnsFalseWithNoHardware)
+{
+  // With no hardware, read never updates position, so tolerance never met
+  RmdDriver drv({"bogus", 1800});
+  RmdJoint joint("turn", {1, 0.0, 0.0}, drv);
+  // timeout_s=0.05 -> 5 iterations -> position stays 0, target=1.0 -> false
+  EXPECT_FALSE(joint.moveToSafePosition(1.0, 0.05));
 }
 
 }  // namespace alfa_robot_hardware
