@@ -18,6 +18,9 @@ public:
 
   RmdJoint(std::string name, Config cfg, RmdDriver & driver);
 
+  RmdJoint(const RmdJoint &) = delete;
+  RmdJoint & operator=(const RmdJoint &) = delete;
+
   // Reads initial position from driver and initializes buffers.
   bool activate() override;
   void deactivate() override;

@@ -69,6 +69,11 @@ void RmdJoint::write(double dt)
 
 void RmdJoint::captureCurrentPositionAsZero()
 {
+  if (first_read_) {
+    RCLCPP_WARN(rclcpp::get_logger("RmdJoint"),
+      "%s captureCurrentPositionAsZero called before first read — ignored", name_.c_str());
+    return;
+  }
   // Current read gives: position_ = raw - zero_offset_rad
   // We want new zero = raw = position_ + zero_offset_rad
   cfg_.zero_offset_rad += position_;

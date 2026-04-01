@@ -276,6 +276,21 @@ TEST(RmdJointTest, MoveToSafePositionReturnsFalseWithNoHardware)
   EXPECT_FALSE(joint.moveToSafePosition(1.0, 0.05));
 }
 
+
+TEST(RmdJointTest, CaptureCurrentPositionAsZeroUpdatesOffset)
+{
+  // We cannot inject a real driver position, but we can verify the guard:
+  // calling before first read is a no-op (offset stays 0)
+  RmdDriver drv({"bogus", 1800});
+  RmdJoint joint("turn", {1, 0.5, 0.0}, drv);
+  // Before first read: captureCurrentPositionAsZero is a no-op
+  joint.captureCurrentPositionAsZero();
+  // offset was 0.5, position_ was 0 -> guard fires -> offset unchanged
+  // write() still no-op (first_read_ true) -> no crash
+  EXPECT_NO_THROW(joint.write(0.01));
+  auto si = joint.exportStateInterfaces();
+  EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);  // position still 0
+}
 }  // namespace alfa_robot_hardware
 
 int main(int argc, char ** argv)
