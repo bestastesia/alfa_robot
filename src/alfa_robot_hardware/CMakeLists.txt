@@ -59,7 +59,9 @@ if(BUILD_TESTING)
     test_alfa_robot_hardware
     hardware_interface
     pluginlib
+    rclcpp
     ros2_control_test_assets
+    std_srvs
   )
 endif()
 

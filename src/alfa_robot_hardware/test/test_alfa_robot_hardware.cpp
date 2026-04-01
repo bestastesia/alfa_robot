@@ -22,6 +22,7 @@
 
 #include "alfa_robot_hardware/joint/canopen_joint.hpp"
 #include "../src/joint/canopen_joint.cpp"  // NOLINT(build/include)
+#include "alfa_robot_hardware/service/trajectory_logger.hpp"
 
 namespace alfa_robot_hardware
 {
@@ -320,6 +321,19 @@ TEST(CanopenJointTest, NodeDisabled_MoveToSafePositionReturnsTrue)
   CanopenDriver drv({"bogus", 50000, 50000});
   CanopenJoint joint("updown", {1, 1.0, 0.0}, drv);
   EXPECT_TRUE(joint.moveToSafePosition(0.0, 5.0));
+}
+
+// -- TrajectoryLogger Tests --------------------------------------------------
+// Note: Constructor requires a live rclcpp node -- full record/dump tested in integration.
+// Unit test only verifies Entry struct default values.
+
+TEST(TrajectoryLoggerTest, EntryDefaultValues)
+{
+  TrajectoryLogger::Entry e;
+  EXPECT_EQ(e.motor_id, 0u);
+  EXPECT_NEAR(e.time_s, 0.0, 1e-9);
+  EXPECT_NEAR(e.p_raw,  0.0, 1e-9);
+  EXPECT_NEAR(e.p_cmd,  0.0, 1e-9);
 }
 }  // namespace alfa_robot_hardware
 
