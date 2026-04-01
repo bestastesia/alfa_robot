@@ -17,7 +17,12 @@ add_library(
   alfa_robot_hardware
   SHARED
   src/alfa_robot_hardware.cpp
-  src/can_bus.cpp
+  src/driver/rmd_driver.cpp
+  src/driver/canopen_driver.cpp
+  src/joint/rmd_joint.cpp
+  src/joint/canopen_joint.cpp
+  src/joint/wheel_joint.cpp
+  src/service/trajectory_logger.cpp
 )
 target_include_directories(
   alfa_robot_hardware
