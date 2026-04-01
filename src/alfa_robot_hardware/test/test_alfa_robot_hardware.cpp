@@ -14,6 +14,9 @@
 // And compile the implementation directly until CMakeLists links the library (Task 8):
 #include "../src/driver/rmd_driver.cpp"  // NOLINT(build/include)
 
+#include "alfa_robot_hardware/driver/canopen_driver.hpp"
+#include "../src/driver/canopen_driver.cpp"  // NOLINT(build/include)
+
 namespace alfa_robot_hardware
 {
 
@@ -173,6 +176,61 @@ TEST(RmdDriverTest, ReadPositionsEmptyWhenNotOpen)
 {
   RmdDriver drv({"bogus_can99", 1800});
   EXPECT_TRUE(drv.readPositions({1, 2}).empty());
+}
+
+TEST(CanopenDriverTest, ComputeControlword_FirstCommand_SetsNewSetpoint)
+{
+  bool ns_active = false;
+  int32_t last_target = 0;
+  uint16_t cw = CanopenDriver::computeControlword(ns_active, last_target, 0);
+  // !ns_active → set new setpoint
+  EXPECT_EQ(cw, 0x003F);
+  EXPECT_TRUE(ns_active);
+}
+
+TEST(CanopenDriverTest, ComputeControlword_SameTarget_KeepsSetpoint)
+{
+  bool ns_active = true;
+  int32_t last_target = 1000;
+  uint16_t cw = CanopenDriver::computeControlword(ns_active, last_target, 1000);
+  EXPECT_EQ(cw, 0x003F);
+  EXPECT_TRUE(ns_active);
+  EXPECT_EQ(last_target, 1000);
+}
+
+TEST(CanopenDriverTest, ComputeControlword_NewTarget_ClearsFirstThenSets)
+{
+  bool ns_active = true;
+  int32_t last_target = 1000;
+  // First call: changed && ns_active → clear
+  uint16_t cw1 = CanopenDriver::computeControlword(ns_active, last_target, 2000);
+  EXPECT_EQ(cw1, 0x002F);
+  EXPECT_FALSE(ns_active);
+  EXPECT_EQ(last_target, 2000);
+  // Second call: same target, !ns_active → set
+  uint16_t cw2 = CanopenDriver::computeControlword(ns_active, last_target, 2000);
+  EXPECT_EQ(cw2, 0x003F);
+  EXPECT_TRUE(ns_active);
+}
+
+TEST(CanopenDriverTest, OpenFailsOnBogusInterface)
+{
+  CanopenDriver drv({"bogus_can99", 50000, 50000});
+  EXPECT_FALSE(drv.open());
+  EXPECT_FALSE(drv.isOpen());
+}
+
+TEST(CanopenDriverTest, ReadPositionsEmptyWhenNotOpen)
+{
+  CanopenDriver drv({"bogus_can99", 50000, 50000});
+  EXPECT_TRUE(drv.readPositions().empty());
+}
+
+TEST(CanopenDriverTest, IsNodeEnabledReturnsFalseWhenNotEnabled)
+{
+  CanopenDriver drv({"bogus_can99", 50000, 50000});
+  EXPECT_FALSE(drv.isNodeEnabled(1));
+  EXPECT_FALSE(drv.isNodeEnabled(5));
 }
 
 }  // namespace alfa_robot_hardware
