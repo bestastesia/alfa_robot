@@ -20,6 +20,9 @@
 #include "alfa_robot_hardware/joint/rmd_joint.hpp"
 #include "../src/joint/rmd_joint.cpp"  // NOLINT(build/include)
 
+#include "alfa_robot_hardware/joint/canopen_joint.hpp"
+#include "../src/joint/canopen_joint.cpp"  // NOLINT(build/include)
+
 namespace alfa_robot_hardware
 {
 
@@ -290,6 +293,33 @@ TEST(RmdJointTest, CaptureCurrentPositionAsZeroUpdatesOffset)
   EXPECT_NO_THROW(joint.write(0.01));
   auto si = joint.exportStateInterfaces();
   EXPECT_NEAR(si[0].get_value(), 0.0, 1e-9);  // position still 0
+}
+
+// ── CanopenJoint Tests ──────────────────────────────────────────────────────
+
+TEST(CanopenJointTest, ExportsThreeStateAndOneCommandInterface)
+{
+  CanopenDriver drv({"bogus", 50000, 50000});
+  CanopenJoint joint("updown", {1, 1.0, 0.0}, drv);
+  EXPECT_EQ(joint.exportStateInterfaces().size(), 3u);
+  auto ci = joint.exportCommandInterfaces();
+  EXPECT_EQ(ci.size(), 1u);
+  EXPECT_EQ(ci[0].get_interface_name(), "position");
+}
+
+TEST(CanopenJointTest, WriteIsNoOpBeforeFirstRead)
+{
+  CanopenDriver drv({"bogus", 50000, 50000});
+  CanopenJoint joint("updown", {1, 1.0, 0.0}, drv);
+  EXPECT_NO_THROW(joint.write(0.01));
+}
+
+TEST(CanopenJointTest, NodeDisabled_MoveToSafePositionReturnsTrue)
+{
+  // Node not enabled -> moveToSafePosition returns true immediately (no-op)
+  CanopenDriver drv({"bogus", 50000, 50000});
+  CanopenJoint joint("updown", {1, 1.0, 0.0}, drv);
+  EXPECT_TRUE(joint.moveToSafePosition(0.0, 5.0));
 }
 }  // namespace alfa_robot_hardware
 
