@@ -5,6 +5,8 @@
 namespace alfa_robot_hardware
 {
 
+static constexpr size_t kLogReserveSize = 30000;  // 30 s at 1 kHz
+
 TrajectoryLogger::TrajectoryLogger(rclcpp::Node::SharedPtr node)
 : node_(std::move(node))
 {
@@ -14,19 +16,29 @@ TrajectoryLogger::TrajectoryLogger(rclcpp::Node::SharedPtr node)
            std_srvs::srv::SetBool::Response::SharedPtr res) {
       if (req->data) {
         constexpr uint8_t kDefaultMotorId = 6;  // rightjoint4
-        if (on_start_cb_) { on_start_cb_(kDefaultMotorId); }
+        std::function<void(uint8_t)> cb_start;
+        {
+          std::lock_guard<std::mutex> lock(cb_mutex_);
+          cb_start = on_start_cb_;
+        }
+        if (cb_start) { cb_start(kDefaultMotorId); }
         active_.store(true);
         tracked_motor_id_ = kDefaultMotorId;
         {
           std::lock_guard<std::mutex> lock(log_mutex_);
           log_.clear();
-          log_.reserve(30000);
+          log_.reserve(kLogReserveSize);
         }
         res->success = true;
         res->message = "Trajectory logging started for motor 6";
       } else {
         active_.store(false);
-        if (on_stop_cb_) { on_stop_cb_(); }
+        std::function<void()> cb_stop;
+        {
+          std::lock_guard<std::mutex> lock(cb_mutex_);
+          cb_stop = on_stop_cb_;
+        }
+        if (cb_stop) { cb_stop(); }
         res->success = true;
         res->message = "Trajectory logging stopped";
       }
@@ -37,7 +49,12 @@ TrajectoryLogger::TrajectoryLogger(rclcpp::Node::SharedPtr node)
     [this](const std_srvs::srv::Trigger::Request::SharedPtr /*req*/,
            std_srvs::srv::Trigger::Response::SharedPtr res) {
       active_.store(false);
-      if (on_stop_cb_) { on_stop_cb_(); }
+      std::function<void()> cb_stop;
+      {
+        std::lock_guard<std::mutex> lock(cb_mutex_);
+        cb_stop = on_stop_cb_;
+      }
+      if (cb_stop) { cb_stop(); }
       dumpToFile("/tmp/traj_log.csv");
       res->success = true;
       res->message = "Trajectory log saved to /tmp/traj_log.csv";
@@ -58,6 +75,7 @@ void TrajectoryLogger::attachCallbacks(
   std::function<void(uint8_t)> on_start,
   std::function<void()>        on_stop)
 {
+  std::lock_guard<std::mutex> lock(cb_mutex_);
   on_start_cb_ = std::move(on_start);
   on_stop_cb_  = std::move(on_stop);
 }
@@ -74,7 +92,11 @@ void TrajectoryLogger::dumpToFile(const std::string & path) const
 {
   std::lock_guard<std::mutex> lock(log_mutex_);
   std::ofstream ofs(path);
-  if (!ofs.is_open()) { return; }
+  if (!ofs.is_open()) {
+    RCLCPP_ERROR(rclcpp::get_logger("TrajectoryLogger"),
+      "Failed to open %s for writing", path.c_str());
+    return;
+  }
   ofs << "time_s,motor_id,p_raw,p_cmd\n";
   for (const auto & e : log_) {
     ofs << e.time_s << "," << static_cast<int>(e.motor_id)

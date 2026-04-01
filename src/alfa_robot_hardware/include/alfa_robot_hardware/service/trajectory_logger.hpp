@@ -30,6 +30,8 @@ public:
   ~TrajectoryLogger();
   TrajectoryLogger(const TrajectoryLogger &) = delete;
   TrajectoryLogger & operator=(const TrajectoryLogger &) = delete;
+  TrajectoryLogger(TrajectoryLogger &&) = delete;
+  TrajectoryLogger & operator=(TrajectoryLogger &&) = delete;
 
   // Inject callbacks from RmdDriver. Called once in on_activate.
   void attachCallbacks(
@@ -49,9 +51,10 @@ private:
   std::thread thread_;
 
   std::atomic<bool> active_{false};
-  uint8_t           tracked_motor_id_{0};
+  std::atomic<uint8_t> tracked_motor_id_{0};
   std::vector<Entry> log_;
   mutable std::mutex log_mutex_;
+  mutable std::mutex cb_mutex_;
 
   std::function<void(uint8_t)> on_start_cb_;
   std::function<void()>        on_stop_cb_;
