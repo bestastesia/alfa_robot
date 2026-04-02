@@ -51,8 +51,7 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "use_mock_hardware": "false",
-            "robot_controller": "all_position_controller",
-            "controllers_file": "alfa_robot_controllers.yaml",
+            "robot_controller": "torso_group_controller",
             "use_joint_gui_control": "true",
             "canopen_profile_velocity": LaunchConfiguration("canopen_profile_velocity"),
             "canopen_profile_accel": LaunchConfiguration("canopen_profile_accel"),
@@ -66,10 +65,6 @@ def generate_launch_description():
         name="homing_node",
         output="screen",
         parameters=[{
-            "controller_name": "all_position_controller",
-            # 关节顺序与 alfa_robot_controllers.yaml 中 all_position_controller 一致:
-            # turn, updown, leftarmbase, leftjoint1-4, rightarmbase, rightjoint1-4
-            "home_positions": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             "publish_count": 5,
             "poll_interval": 1.0,
         }],

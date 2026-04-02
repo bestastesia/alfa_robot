@@ -5,15 +5,14 @@ moveit_setup_assistant_config:
   srdf:
     relative_path: config/alfa_robot.srdf
   package_settings:
-    author_name: KKozia
-    author_email: ""
-    generated_timestamp: 1773166141
+    author_name: kozia
+    author_email: kkozia188@gmail.com
+    generated_timestamp: 1775141164
   control_xacro:
     command:
       - position
     state:
       - position
-      - velocity
   modified_urdf:
     xacros:
       - control_xacro
@@ -22,4 +21,3 @@ moveit_setup_assistant_config:
       - position
     state:
       - position
-      - velocity

@@ -9,70 +9,62 @@ default_acceleration_scaling_factor: 0.1
 # Joint limits can be turned off with [has_velocity_limits, has_acceleration_limits]
 joint_limits:
   leftarmbase:
-    has_position_limits: true
-    min_position: 0.0
-    max_position: 0.12
     has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   leftjoint1:
-    has_position_limits: true
-    min_position: 0.0
-    max_position: 0.3
     has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   leftjoint2:
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   leftjoint3:
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   leftjoint4:
-    has_position_limits: true
-    min_position: -3.14
-    max_position: 0.0
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   rightarmbase:
-    has_position_limits: true
-    min_position: 0.0
-    max_position: 0.12
     has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   rightjoint1:
-    has_position_limits: true
-    min_position: 0.0
-    max_position: 0.3
     has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   rightjoint2:
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   rightjoint3:
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
   rightjoint4:
-    has_position_limits: true
-    min_position: -3.14
-    max_position: 0.0
     has_velocity_limits: true
-    max_velocity: 3.14
-    has_acceleration_limits: true
-    max_acceleration: 5.0
+    max_velocity: 1000
+    has_acceleration_limits: false
+    max_acceleration: 0
+  turn:
+    has_velocity_limits: false
+    max_velocity: 0
+    has_acceleration_limits: false
+    max_acceleration: 0
+  updown:
+    has_velocity_limits: true
+    max_velocity: 1
+    has_acceleration_limits: false
+    max_acceleration: 0

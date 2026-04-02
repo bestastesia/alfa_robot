@@ -68,7 +68,7 @@ def generate_launch_description():
 
     robot_description = {"robot_description": robot_description_content}
     controllers_yaml = PathJoinSubstitution(
-        [FindPackageShare("alfa_robot_bringup"), "config", "alfa_robot_moveit_real_controllers.yaml"]
+        [FindPackageShare("alfa_robot_moveit_config"), "config", "ros2_controllers.yaml"]
     )
 
     # 加载 MoveIt 配置（与 test_path.launch.py 相同的方式）
@@ -97,6 +97,12 @@ def generate_launch_description():
         output="both",
         arguments=["joint_state_broadcaster", "-c", "/controller_manager"],
     )
+    torso_group_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        output="both",
+        arguments=["torso_group_controller", "-c", "/controller_manager"],
+    )
     left_arm_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
@@ -108,6 +114,12 @@ def generate_launch_description():
         executable="spawner",
         output="both",
         arguments=["right_arm_controller", "-c", "/controller_manager"],
+    )
+    plate_controller_spawner = Node(
+        package="controller_manager",
+        executable="spawner",
+        output="both",
+        arguments=["plate_controller", "-c", "/controller_manager"],
     )
 
     move_group_launch = IncludeLaunchDescription(
@@ -157,26 +169,25 @@ def generate_launch_description():
         condition=IfCondition(auto_run_test),
     )
 
-    # Launch ordering is intentionally time-based here. In practice the controller
-    # manager is ready a few seconds after robot_state_publisher, while chaining on
-    # spawner exit events proved unreliable with this stack.
     delayed_control_node = TimerAction(period=2.0, actions=[control_node])
     delayed_jsb = TimerAction(period=5.0, actions=[joint_state_broadcaster_spawner])
-    delayed_left_controller = TimerAction(period=8.0, actions=[left_arm_controller_spawner])
-    delayed_right_controller = TimerAction(period=11.0, actions=[right_arm_controller_spawner])
+    delayed_torso_controller = TimerAction(period=8.0, actions=[torso_group_controller_spawner])
+    delayed_left_controller = TimerAction(period=11.0, actions=[left_arm_controller_spawner])
+    delayed_right_controller = TimerAction(period=14.0, actions=[right_arm_controller_spawner])
+    delayed_plate_controller = TimerAction(period=17.0, actions=[plate_controller_spawner])
     delayed_moveit = TimerAction(
-        period=14.0,
+        period=20.0,
         actions=[static_tf_launch, move_group_launch, moveit_rviz_launch],
     )
     # trajectory_executor 先启动，等待接收轨迹
     delayed_trajectory_executor = TimerAction(
-        period=20.0,
+        period=26.0,
         actions=[trajectory_executor_node],
         condition=IfCondition(auto_run_test),
     )
     # path 规划节点稍后启动，确保 move_group 和 trajectory_executor 都已就绪
     delayed_path_node = TimerAction(
-        period=24.0,
+        period=30.0,
         actions=[path_planning_node],
         condition=IfCondition(auto_run_test),
     )
@@ -187,8 +198,10 @@ def generate_launch_description():
             robot_state_pub_node,
             delayed_control_node,
             delayed_jsb,
+            delayed_torso_controller,
             delayed_left_controller,
             delayed_right_controller,
+            delayed_plate_controller,
             delayed_moveit,
             delayed_trajectory_executor,
             delayed_path_node,

@@ -15,8 +15,6 @@ Visualization Manager:
       Value: true
     - Class: moveit_rviz_plugin/MotionPlanning
       Name: MotionPlanning
-      Planning Request:
-        Interactive Marker Size: 0.1
       Planned Path:
         Loop Animation: true
         State Display Time: 0.05 s

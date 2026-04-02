@@ -25,12 +25,12 @@ def generate_launch_description():
     declared_arguments = [
         DeclareLaunchArgument(
             "runtime_config_package",
-            default_value="alfa_robot_bringup",
+            default_value="alfa_robot_moveit_config",
             description='Package with the controller\'s configuration in "config" folder.',
         ),
         DeclareLaunchArgument(
             "controllers_file",
-            default_value="alfa_robot_controllers.yaml",
+            default_value="ros2_controllers.yaml",
             description="YAML file with the controllers configuration.",
         ),
         DeclareLaunchArgument(
@@ -60,11 +60,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "robot_controller",
-            default_value="all_position_controller",
+            default_value="torso_group_controller",
             choices=[
-                "all_position_controller",
-                "forward_position_controller",
-                "joint_trajectory_controller",
+                "torso_group_controller",
+                "left_arm_controller",
+                "right_arm_controller",
+                "plate_controller",
             ],
             description="Robot controller to start.",
         ),
