@@ -14,6 +14,7 @@ public:
     uint8_t node_id;
     double  gear_ratio{1.0};        // leftarmbase/rightarmbase = 3.0
     double  filter_cutoff_hz{0.0};  // 0 = disabled
+    double  direction{1.0};         // +1 or -1: flip motor vs controller frame
   };
 
   CanopenJoint(std::string name, Config cfg, CanopenDriver & driver);

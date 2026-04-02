@@ -14,6 +14,7 @@ public:
     uint8_t motor_id;
     double  zero_offset_rad{0.0};   // Subtracted from raw read, added to write command
     double  filter_cutoff_hz{0.0};  // 0 = disabled
+    double  direction{1.0};         // +1 or -1: flip motor vs controller frame
   };
 
   RmdJoint(std::string name, Config cfg, RmdDriver & driver);

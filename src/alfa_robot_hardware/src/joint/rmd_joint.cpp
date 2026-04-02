@@ -19,7 +19,7 @@ bool RmdJoint::activate()
   auto positions = driver_.readPositions({cfg_.motor_id});
   auto it = positions.find(cfg_.motor_id);
   if (it != positions.end()) {
-    double pos = it->second - cfg_.zero_offset_rad;
+    double pos = (it->second - cfg_.zero_offset_rad) * cfg_.direction;
     position_      = pos;
     prev_position_ = pos;
     position_cmd_  = pos;
@@ -37,7 +37,7 @@ void RmdJoint::read(double dt)
   auto it = positions.find(cfg_.motor_id);
   if (it == positions.end()) { return; }
 
-  double pos = it->second - cfg_.zero_offset_rad;
+  double pos = (it->second - cfg_.zero_offset_rad) * cfg_.direction;
   if (!std::isfinite(pos)) { pos = 0.0; }
 
   position_ = pos;
@@ -61,7 +61,7 @@ void RmdJoint::write(double dt)
 {
   if (first_read_) { return; }
 
-  double cmd = position_cmd_ + cfg_.zero_offset_rad;
+  double cmd = position_cmd_ * cfg_.direction + cfg_.zero_offset_rad;
   cmd = applyLowPassFilter(cmd, dt);
 
   driver_.writePositions({{cfg_.motor_id, cmd}});
@@ -74,9 +74,8 @@ void RmdJoint::captureCurrentPositionAsZero()
       "%s captureCurrentPositionAsZero called before first read — ignored", name_.c_str());
     return;
   }
-  // Current read gives: position_ = raw - zero_offset_rad
-  // We want new zero = raw = position_ + zero_offset_rad
-  cfg_.zero_offset_rad += position_;
+  // raw = position_ / direction + zero_offset_rad  →  new zero = raw
+  cfg_.zero_offset_rad += position_ / cfg_.direction;
   position_      = 0.0;
   prev_position_ = 0.0;
   position_cmd_  = 0.0;

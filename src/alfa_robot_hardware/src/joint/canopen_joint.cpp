@@ -20,7 +20,7 @@ bool CanopenJoint::activate()
 
   double pos_m = 0.0;
   if (driver_.readPositionSdo(cfg_.node_id, pos_m)) {
-    double pos = pos_m / cfg_.gear_ratio;
+    double pos = pos_m * cfg_.direction / cfg_.gear_ratio;
     position_      = pos;
     prev_position_ = pos;
     position_cmd_  = pos;
@@ -39,7 +39,7 @@ void CanopenJoint::read(double dt)
   double raw_m = 0.0;
   if (!driver_.getCachedPosition(cfg_.node_id, raw_m)) { return; }
 
-  double pos = raw_m / cfg_.gear_ratio;
+  double pos = raw_m * cfg_.direction / cfg_.gear_ratio;
   if (!std::isfinite(pos)) { pos = 0.0; }
 
   position_ = pos;
@@ -64,7 +64,7 @@ void CanopenJoint::write(double dt)
   if (first_read_) { return; }
   if (!driver_.isNodeEnabled(cfg_.node_id)) { return; }
 
-  double cmd_m = position_cmd_ * cfg_.gear_ratio;
+  double cmd_m = position_cmd_ * cfg_.direction * cfg_.gear_ratio;
   cmd_m = applyLowPassFilter(cmd_m, dt);
   driver_.writePositions({{cfg_.node_id, cmd_m}});
 }

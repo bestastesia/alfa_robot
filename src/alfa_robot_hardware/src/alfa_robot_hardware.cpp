@@ -173,38 +173,38 @@ void AlfaRobotHW::buildJoints()
 {
   // RMD joints — base bus
   joints_.push_back(std::make_unique<RmdJoint>("turn",
-    RmdJoint::Config{1, 0.0, 0.0}, *rmd_base_));
+    RmdJoint::Config{1, 0.0, 0.0, -1.0}, *rmd_base_));
 
   // RMD joints — left bus
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint2",
-    RmdJoint::Config{1, 0.0, 0.0}, *rmd_left_));
+    RmdJoint::Config{1, 0.0, 0.0, -1.0}, *rmd_left_));
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint3",
-    RmdJoint::Config{2, 0.0, 0.0}, *rmd_left_));
+    RmdJoint::Config{2, 0.0, 0.0, -1.0}, *rmd_left_));
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
-    RmdJoint::Config{3, 0.0, 0.0}, *rmd_left_));
+    RmdJoint::Config{3, 0.0, 0.0, -1.0}, *rmd_left_));
 
   // RMD joints — right bus
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
-    RmdJoint::Config{4, 0.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{4, 0.0, 0.0, -1.0}, *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",
-    RmdJoint::Config{5, 0.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{5, 0.0, 0.0, -1.0}, *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
-    RmdJoint::Config{6, 0.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{6, 0.0, 0.0, -1.0}, *rmd_right_));
 
   // CANopen joints
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
-    CanopenJoint::Config{1, 1.0, 0.0}, *canopen_));
+    CanopenJoint::Config{1, 1.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftarmbase",
-    CanopenJoint::Config{2, 3.0, 0.0}, *canopen_));   // gear_ratio=3.0
+    CanopenJoint::Config{2, 3.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint1",
-    CanopenJoint::Config{3, 1.0, 0.0}, *canopen_));
+    CanopenJoint::Config{3, 1.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightarmbase",
-    CanopenJoint::Config{4, 3.0, 0.0}, *canopen_));   // gear_ratio=3.0
+    CanopenJoint::Config{4, 3.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
-    CanopenJoint::Config{5, 1.0, 0.0}, *canopen_));
+    CanopenJoint::Config{5, 1.0, 0.0, -1.0}, *canopen_));
   // plate — separate CANopen bus (can4), node 1
   joints_.push_back(std::make_unique<CanopenJoint>("plate",
-    CanopenJoint::Config{1, 1.0, 0.0}, *canopen_plate_));
+    CanopenJoint::Config{1, 1.0, 0.0, -1.0}, *canopen_plate_));
 
 }
 
