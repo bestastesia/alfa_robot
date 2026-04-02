@@ -13,12 +13,17 @@
   sudo ip link set can1 up type can bitrate 1000000
   sudo ip link set can2 up type can bitrate 1000000
   sudo ip link set can3 up type can bitrate 1000000
+
+回零位行为:
+  启动后 homing_node 会自动等待控制器就绪，然后发送一次全零位指令（自动回零位）。
+  关闭时硬件插件的 on_deactivate() 会驱动所有关节回零位再断电（use_safe_shutdown=true）。
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -54,4 +59,20 @@ def generate_launch_description():
         }.items(),
     )
 
-    return LaunchDescription(declared_arguments + [alfa_robot_launch])
+    # 启动后自动回零位：等待 all_position_controller 激活后发布一次全零位指令
+    homing_node = Node(
+        package="alfa_robot_bringup",
+        executable="homing_node.py",
+        name="homing_node",
+        output="screen",
+        parameters=[{
+            "controller_name": "all_position_controller",
+            # 关节顺序与 alfa_robot_controllers.yaml 中 all_position_controller 一致:
+            # turn, updown, leftarmbase, leftjoint1-4, rightarmbase, rightjoint1-4
+            "home_positions": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "publish_count": 5,
+            "poll_interval": 1.0,
+        }],
+    )
+
+    return LaunchDescription(declared_arguments + [alfa_robot_launch, homing_node])

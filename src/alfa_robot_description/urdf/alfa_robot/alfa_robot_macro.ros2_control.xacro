@@ -52,6 +52,7 @@
           <param name="safe_position_rightjoint2">0.0</param>
           <param name="safe_position_rightjoint3">0.0</param>
           <param name="safe_position_rightjoint4">0.0</param>
+          <param name="safe_position_plate">0.0</param>
         </xacro:unless>
       </hardware>
       <!-- turn (continuous) -->

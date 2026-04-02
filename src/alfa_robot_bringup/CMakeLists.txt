@@ -19,6 +19,7 @@ install(
 install(
   PROGRAMS
     scripts/joint_states_to_controller_bridge.py
+    scripts/homing_node.py
     scripts/test_moveit_pose_goal.py
     scripts/setup_can.sh
   DESTINATION lib/${PROJECT_NAME}
