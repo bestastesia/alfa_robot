@@ -18,7 +18,7 @@ Alfa 机器人描述包：URDF/xacro 模型、网格、rviz 配置与 ros2_contr
 
 | 项目 | 说明 |
 |------|------|
-| **ROS 2** | 主要针对 **Humble**（见 `alfa_robot_description.humble.repos`） |
+| **ROS 2** | 主要针对 **Humble** |
 | **Ubuntu** | 建议 22.04（与 Humble 匹配） |
 | **构建** | CMake ≥ 3.8，ament_cmake |
 | **运行依赖** | `joint_state_publisher_gui`、`robot_state_publisher`、`rviz2`、`xacro` |

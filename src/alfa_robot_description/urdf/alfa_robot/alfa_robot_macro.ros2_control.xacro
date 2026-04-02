@@ -92,7 +92,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftarmbase (prismatic) -->
+      <!-- rightarmbase (prismatic) -->
       <joint name="${prefix}rightarmbase">
         <command_interface name="position">
           <param name="min">0</param>
@@ -105,7 +105,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint1 (prismatic) -->
+      <!-- rightjoint1 (prismatic) -->
       <joint name="${prefix}rightjoint1">
         <command_interface name="position">
           <param name="min">0</param>
@@ -118,7 +118,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint2 (continuous) -->
+      <!-- rightjoint2 (continuous) -->
       <joint name="${prefix}rightjoint2">
         <command_interface name="position">
           <param name="min">-3.14159</param>
@@ -131,7 +131,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint3 (continuous) -->
+      <!-- rightjoint3 (continuous) -->
       <joint name="${prefix}rightjoint3">
         <command_interface name="position">
           <param name="min">-3.14159</param>
@@ -144,7 +144,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint4 (continuous) -->
+      <!-- rightjoint4 (continuous) -->
       <joint name="${prefix}rightjoint4">
         <command_interface name="position">
           <param name="min">-3.14159</param>
@@ -157,7 +157,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightarmbase (prismatic) -->
+      <!-- leftarmbase (prismatic) -->
       <joint name="${prefix}leftarmbase">
         <command_interface name="position">
           <param name="min">0</param>
@@ -170,7 +170,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint1 (prismatic) -->
+      <!-- leftjoint1 (prismatic) -->
       <joint name="${prefix}leftjoint1">
         <command_interface name="position">
           <param name="min">0</param>
@@ -183,7 +183,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint2 (continuous) -->
+      <!-- leftjoint2 (continuous) -->
       <joint name="${prefix}leftjoint2">
         <command_interface name="position">
           <param name="min">-3.14159</param>
@@ -196,7 +196,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint3 (continuous) -->
+      <!-- leftjoint3 (continuous) -->
       <joint name="${prefix}leftjoint3">
         <command_interface name="position">
           <param name="min">-3.14159</param>
@@ -209,7 +209,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint4 (continuous) -->
+      <!-- leftjoint4 (revolute) -->
       <joint name="${prefix}leftjoint4">
         <command_interface name="position">
           <param name="min">-3.14159</param>

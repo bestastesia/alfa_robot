@@ -315,6 +315,52 @@
     </link>
 
 
+    <!-- camera -->
+    <link name="${prefix}camera_link">
+      <inertial>
+        <origin xyz="-0.0128838261972163 0.00026531291498777 0.00027897095170859" rpy="0 0 0"/>
+        <mass value="0.0247923828845652"/>
+        <inertia ixx="3.5668701541101E-05" ixy="-1.36439346012497E-08" ixz="-2.61698308401705E-08"
+                 iyy="2.83830455101906E-06" iyz="2.73948631199571E-08" izz="3.34987859138971E-05"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/visual/camera.STL"/>
+        </geometry>
+        <material name="white"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/collision/camera.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- lidar -->
+    <link name="${prefix}lidar_link">
+      <inertial>
+        <origin xyz="-0.00468733327842979 -6.25961285910526E-06 -0.016722032751983" rpy="0 0 0"/>
+        <mass value="0.141886849294983"/>
+        <inertia ixx="4.37633098241424E-05" ixy="-5.36171297405178E-09" ixz="7.01471703806087E-06"
+                 iyy="4.50759714359166E-05" iyz="9.27886666435768E-10" izz="6.68414722762209E-05"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/visual/lidar.STL"/>
+        </geometry>
+        <material name="arm_grey"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/collision/lidar.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
     <!-- right_ee_link (virtual end effector for MoveIt2 planning) -->
     <link name="${prefix}right_ee_link"/>
 
@@ -459,6 +505,20 @@
       <origin xyz="0.275 -0.0308 -0.02825" rpy="0 0 0"/>
       <parent link="${prefix}leftjoint4_link"/>
       <child link="${prefix}left_ee_link"/>
+    </joint>
+
+    <!-- camera -->
+    <joint name="${prefix}camera" type="fixed">
+      <origin xyz="0.51384 0 0.07785" rpy="0 0 0"/>
+      <parent link="${prefix}updown_link"/>
+      <child link="${prefix}camera_link"/>
+    </joint>
+
+    <!-- lidar -->
+    <joint name="${prefix}lidar" type="fixed">
+      <origin xyz="0.46082 0 0.13841" rpy="0 0 0"/>
+      <parent link="${prefix}updown_link"/>
+      <child link="${prefix}lidar_link"/>
     </joint>
 
     <!-- END JOINTS -->
