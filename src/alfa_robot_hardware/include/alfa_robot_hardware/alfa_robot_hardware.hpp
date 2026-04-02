@@ -47,6 +47,7 @@ private:
   // Drivers (owners)
   std::unique_ptr<RmdDriver>     rmd_left_, rmd_right_, rmd_base_;
   std::unique_ptr<CanopenDriver> canopen_;
+  std::unique_ptr<CanopenDriver> canopen_plate_;
 
   // All joints (single list — no type dispatch in AlfaRobotHW)
   std::vector<std::unique_ptr<IJoint>> joints_;
@@ -58,6 +59,7 @@ private:
   // Driver configs (parsed in on_init)
   RmdDriver::Config     rmd_left_cfg_, rmd_right_cfg_, rmd_base_cfg_;
   CanopenDriver::Config canopen_cfg_;
+  CanopenDriver::Config canopen_plate_cfg_;
 
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);

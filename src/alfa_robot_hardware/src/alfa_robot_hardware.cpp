@@ -17,16 +17,18 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   }
 
   // Defaults
-  rmd_left_cfg_  = {"can0", 1800};
-  rmd_right_cfg_ = {"can1", 1800};
-  rmd_base_cfg_  = {"can2", 1800};
-  canopen_cfg_   = {"can3", 50000, 50000};
+  rmd_left_cfg_        = {"can0", 1800};
+  rmd_right_cfg_       = {"can1", 1800};
+  rmd_base_cfg_        = {"can2", 1800};
+  canopen_cfg_         = {"can3", 50000, 50000};
+  canopen_plate_cfg_   = {"can4", 50000, 50000};
 
   for (const auto & [key, val] : info_.hardware_parameters) {
-    if      (key == "can_interface_left")    { rmd_left_cfg_.interface  = val; }
-    else if (key == "can_interface_right")   { rmd_right_cfg_.interface = val; }
-    else if (key == "can_interface_base")    { rmd_base_cfg_.interface  = val; }
-    else if (key == "can_interface_canopen") { canopen_cfg_.interface   = val; }
+    if      (key == "can_interface_left")    { rmd_left_cfg_.interface       = val; }
+    else if (key == "can_interface_right")   { rmd_right_cfg_.interface      = val; }
+    else if (key == "can_interface_base")    { rmd_base_cfg_.interface       = val; }
+    else if (key == "can_interface_canopen") { canopen_cfg_.interface        = val; }
+    else if (key == "can_interface_plate")   { canopen_plate_cfg_.interface  = val; }
     else if (key == "max_speed_dps") {
       try {
         uint16_t v = static_cast<uint16_t>(std::stoul(val));
@@ -51,6 +53,15 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
     }
   }
 
+  // Create drivers and joints here so export_state/command_interfaces() works
+  // immediately after on_init (ros2_control calls them before on_configure).
+  rmd_left_       = std::make_unique<RmdDriver>(rmd_left_cfg_);
+  rmd_right_      = std::make_unique<RmdDriver>(rmd_right_cfg_);
+  rmd_base_       = std::make_unique<RmdDriver>(rmd_base_cfg_);
+  canopen_        = std::make_unique<CanopenDriver>(canopen_cfg_);
+  canopen_plate_  = std::make_unique<CanopenDriver>(canopen_plate_cfg_);
+  buildJoints();
+
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
   return CallbackReturn::SUCCESS;
 }
@@ -58,17 +69,11 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
 hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   const rclcpp_lifecycle::State &)
 {
-  rmd_left_  = std::make_unique<RmdDriver>(rmd_left_cfg_);
-  rmd_right_ = std::make_unique<RmdDriver>(rmd_right_cfg_);
-  rmd_base_  = std::make_unique<RmdDriver>(rmd_base_cfg_);
-  canopen_   = std::make_unique<CanopenDriver>(canopen_cfg_);
-
   rmd_left_->open();    // Non-fatal if bus absent
   rmd_right_->open();
   rmd_base_->open();
   canopen_->open();
-
-  buildJoints();
+  canopen_plate_->open();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -83,6 +88,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
   rmd_base_->enableMotors({1});           // turn
   canopen_->enableNodes({1, 2, 3, 4, 5});
+  canopen_plate_->enableNodes({1});  // plate
 
   // Activate all joints (reads initial position)
   for (auto & joint : joints_) { joint->activate(); }
@@ -111,11 +117,13 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
   canopen_->disableNodes({1, 2, 3, 4, 5});
+  canopen_plate_->disableNodes({1});  // plate
 
   rmd_left_->close();
   rmd_right_->close();
   rmd_base_->close();
   canopen_->close();
+  canopen_plate_->close();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
@@ -145,7 +153,8 @@ hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
-  canopen_->readPositions();  // one SYNC per cycle, updates PDO cache
+  canopen_->readPositions();        // one SYNC per cycle, updates PDO cache
+  canopen_plate_->readPositions();  // plate bus
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
 }
@@ -193,6 +202,9 @@ void AlfaRobotHW::buildJoints()
     CanopenJoint::Config{4, 3.0, 0.0}, *canopen_));   // gear_ratio=3.0
   joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
     CanopenJoint::Config{5, 1.0, 0.0}, *canopen_));
+  // plate — separate CANopen bus (can4), node 1
+  joints_.push_back(std::make_unique<CanopenJoint>("plate",
+    CanopenJoint::Config{1, 1.0, 0.0}, *canopen_plate_));
 
 }
 
