@@ -64,7 +64,7 @@ void RmdJoint::write(double dt)
   double cmd = position_cmd_ * cfg_.direction + cfg_.zero_offset_rad;
   cmd = applyLowPassFilter(cmd, dt);
 
-  driver_.writePositions({{cfg_.motor_id, cmd}});
+  driver_.queueWritePosition(cfg_.motor_id, cmd);
 }
 
 void RmdJoint::captureCurrentPositionAsZero()
@@ -110,6 +110,7 @@ bool RmdJoint::moveToSafePosition(double target_rad, double timeout_s)
   for (int i = 0; i < kIter; ++i) {
     read(kDt);
     write(kDt);
+    driver_.flushWritePositions();  // flush queued command so motor actually moves
     if (std::abs(position_ - target_rad) < kTol) { return true; }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }

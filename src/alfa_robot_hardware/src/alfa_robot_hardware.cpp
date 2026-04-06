@@ -155,6 +155,10 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   canopen_->readPositions();        // one SYNC per cycle, updates PDO cache
   canopen_plate_->readPositions();  // plate bus
+  // Batch-read all RMD motors per bus before individual joints consume the cache
+  rmd_left_->batchRefreshPositions({1, 2, 3});
+  rmd_right_->batchRefreshPositions({4, 5, 6});
+  rmd_base_->batchRefreshPositions({1});
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
 }
@@ -164,6 +168,10 @@ hardware_interface::return_type AlfaRobotHW::write(
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.005;
   for (auto & joint : joints_) { joint->write(dt); }
+  // Flush all queued RMD position commands per bus in one burst
+  rmd_left_->flushWritePositions();
+  rmd_right_->flushWritePositions();
+  rmd_base_->flushWritePositions();
   return hardware_interface::return_type::OK;
 }
 

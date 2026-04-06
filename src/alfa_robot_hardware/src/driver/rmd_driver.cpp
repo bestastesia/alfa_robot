@@ -13,7 +13,12 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-namespace { constexpr unsigned int kCanInterFrameDelayUs = 150; }
+namespace {
+constexpr unsigned int kCanInterFrameDelayUs  = 150;   // inter-frame gap when sending
+constexpr unsigned int kBatchReadWaitUs       = 2000;  // extra wait after all queries sent
+constexpr unsigned int kDrainRetryDelayUs     = 200;   // sleep between empty drain attempts
+constexpr size_t       kDrainMaxMisses        = 8;     // consecutive empty reads before giving up
+}
 
 namespace alfa_robot_hardware
 {
@@ -72,14 +77,69 @@ void RmdDriver::disableMotors(const std::vector<uint8_t> & ids)
   usleep(10000);
 }
 
-std::map<uint8_t, double> RmdDriver::readPositions(const std::vector<uint8_t> & ids)
+void RmdDriver::flushRxBuffer()
 {
-  std::map<uint8_t, double> result;
-  if (socket_fd_ < 0) { return result; }
+  if (socket_fd_ < 0) { return; }
+  uint32_t can_id; uint8_t data[8]; uint8_t dlc;
+  while (receiveCanFrame(can_id, data, dlc)) {}  // drain until empty (non-blocking socket)
+}
+
+void RmdDriver::batchRefreshPositions(const std::vector<uint8_t> & ids)
+{
+  cache_valid_ = false;
+  position_cache_.clear();
+  if (socket_fd_ < 0) { return; }
+
+  // 1. Flush ACK residue from previous write cycle.
+  flushRxBuffer();
+
+  // 2. Send all position queries at once.
   uint8_t data[7] = {0};
   for (uint8_t id : ids) { sendMotorCommand(id, 0x92, data); }
-  drainResponses(result);
+
+  // 3. Wait for all motors to prepare their responses.
+  usleep(kBatchReadWaitUs);
+
+  // 4. Drain all responses into cache.
+  drainResponses(position_cache_, ids.size());
+
+  cache_valid_ = true;
+}
+
+std::map<uint8_t, double> RmdDriver::readPositions(const std::vector<uint8_t> & ids)
+{
+  // Fast path: return from cache populated by batchRefreshPositions this cycle.
+  if (cache_valid_) {
+    std::map<uint8_t, double> result;
+    for (uint8_t id : ids) {
+      auto it = position_cache_.find(id);
+      if (it != position_cache_.end()) { result[id] = it->second; }
+    }
+    return result;
+  }
+
+  // Fallback path (activate, moveToSafePosition, etc.): direct CAN I/O.
+  std::map<uint8_t, double> result;
+  if (socket_fd_ < 0) { return result; }
+  flushRxBuffer();
+  uint8_t zero[7] = {0};
+  for (uint8_t id : ids) { sendMotorCommand(id, 0x92, zero); }
+  usleep(kBatchReadWaitUs);
+  drainResponses(result, ids.size());
   return result;
+}
+
+void RmdDriver::queueWritePosition(uint8_t motor_id, double pos_rad)
+{
+  write_queue_[motor_id] = pos_rad;
+}
+
+void RmdDriver::flushWritePositions()
+{
+  if (!write_queue_.empty()) {
+    writePositions(write_queue_);
+    write_queue_.clear();
+  }
 }
 
 void RmdDriver::writePositions(const std::map<uint8_t, double> & cmds_rad)
@@ -150,17 +210,25 @@ void RmdDriver::sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8
   if (sendCanFrame(0x140u + motor_id, frame_data, 8)) { usleep(kCanInterFrameDelayUs); }
 }
 
-void RmdDriver::drainResponses(std::map<uint8_t, double> & out)
+void RmdDriver::drainResponses(std::map<uint8_t, double> & out, size_t expected_count)
 {
-  for (size_t i = 0; i < 10; ++i) {
+  size_t misses = 0;
+  while (true) {
     uint32_t can_id; uint8_t data[8]; uint8_t dlc;
-    if (!receiveCanFrame(can_id, data, dlc)) { break; }
+    if (!receiveCanFrame(can_id, data, dlc)) {
+      if (expected_count > 0 && out.size() >= expected_count) { break; }
+      if (++misses >= kDrainMaxMisses) { break; }
+      usleep(kDrainRetryDelayUs);
+      continue;
+    }
+    misses = 0;
     if (can_id >= 0x141u && can_id <= 0x146u && dlc >= 8) {
       double pos_rad;
       if (parseMotorAngleReply(data, pos_rad)) {
         out[static_cast<uint8_t>(can_id - 0x140u)] = pos_rad;
       }
     }
+    if (expected_count > 0 && out.size() >= expected_count) { break; }
   }
 }
 

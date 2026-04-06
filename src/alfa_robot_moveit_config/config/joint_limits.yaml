@@ -10,61 +10,61 @@ default_acceleration_scaling_factor: 0.1
 joint_limits:
   leftarmbase:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   leftjoint1:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   leftjoint2:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   leftjoint3:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   leftjoint4:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   rightarmbase:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   rightjoint1:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   rightjoint2:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   rightjoint3:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   rightjoint4:
     has_velocity_limits: true
-    max_velocity: 1000
+    max_velocity: 1000.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   turn:
     has_velocity_limits: false
-    max_velocity: 0
+    max_velocity: 0.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
   updown:
     has_velocity_limits: true
-    max_velocity: 1
+    max_velocity: 1.0
     has_acceleration_limits: false
-    max_acceleration: 0
+    max_acceleration: 0.0
