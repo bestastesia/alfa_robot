@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_bringup/launch/moveit_real_hardware_test.launch.py

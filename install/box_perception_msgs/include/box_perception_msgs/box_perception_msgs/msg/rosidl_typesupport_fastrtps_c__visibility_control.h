@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_typesupport_fastrtps_c/box_perception_msgs/msg/rosidl_typesupport_fastrtps_c__visibility_control.h

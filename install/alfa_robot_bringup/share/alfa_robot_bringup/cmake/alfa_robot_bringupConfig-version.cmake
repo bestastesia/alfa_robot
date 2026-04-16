@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/alfa_robot_bringup/ament_cmake_core/alfa_robot_bringupConfig-version.cmake

@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/livox_ros_driver2/rosidl_generator_c/livox_ros_driver2/msg/detail/custom_point__struct.h

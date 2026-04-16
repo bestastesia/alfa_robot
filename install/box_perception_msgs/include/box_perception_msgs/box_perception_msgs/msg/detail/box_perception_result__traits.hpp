@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_generator_cpp/box_perception_msgs/msg/detail/box_perception_result__traits.hpp

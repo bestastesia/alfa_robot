@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/fast_lio/msg/Pose6D.msg

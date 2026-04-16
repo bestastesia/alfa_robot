@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_generator_c/box_perception_msgs/msg/rosidl_generator_c__visibility_control.h

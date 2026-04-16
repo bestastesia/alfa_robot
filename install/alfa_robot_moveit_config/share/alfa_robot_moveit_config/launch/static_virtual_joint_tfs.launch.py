@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_moveit_config/launch/static_virtual_joint_tfs.launch.py

@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_bringup/scripts/test_moveit_pose_goal.py

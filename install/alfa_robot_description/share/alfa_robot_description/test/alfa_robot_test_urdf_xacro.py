@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_description/test/alfa_robot_test_urdf_xacro.py

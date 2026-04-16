@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/alfa_robot_hardware/ament_cmake_core/alfa_robot_hardwareConfig-version.cmake

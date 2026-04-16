@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/alfa_robot_description/ament_cmake_core/alfa_robot_descriptionConfig.cmake

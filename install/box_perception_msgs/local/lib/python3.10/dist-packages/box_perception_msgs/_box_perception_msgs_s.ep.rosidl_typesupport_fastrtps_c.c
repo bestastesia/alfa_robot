@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_generator_py/box_perception_msgs/_box_perception_msgs_s.ep.rosidl_typesupport_fastrtps_c.c

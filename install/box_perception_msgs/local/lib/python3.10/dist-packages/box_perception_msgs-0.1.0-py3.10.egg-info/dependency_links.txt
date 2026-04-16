@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/ament_cmake_python/box_perception_msgs/box_perception_msgs.egg-info/dependency_links.txt

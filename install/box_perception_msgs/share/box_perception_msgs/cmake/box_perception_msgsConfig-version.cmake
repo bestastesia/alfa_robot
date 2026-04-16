@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/ament_cmake_core/box_perception_msgsConfig-version.cmake

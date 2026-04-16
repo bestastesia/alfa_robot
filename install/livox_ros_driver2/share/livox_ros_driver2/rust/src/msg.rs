@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/livox_ros_driver2/rosidl_generator_rs/livox_ros_driver2/rust/src/msg.rs

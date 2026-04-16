@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_moveit_config/launch/moveit_rviz.launch.py

@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_bringup/launch/test_joint_trajectory_controller.launch.py

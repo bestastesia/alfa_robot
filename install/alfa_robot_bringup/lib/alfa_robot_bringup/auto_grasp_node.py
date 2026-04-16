@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_bringup/scripts/auto_grasp_node.py

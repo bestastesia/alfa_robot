@@ -1,0 +1,18 @@
+# 忽略编译日志、安装日志
+installlog
+install.log
+*.log
+
+#
+src/box_perception/
+src/fast_lio/
+
+#
+build/
+devel/
+cmake-build-debug/
+*.pyc
+*.o
+*.so
+.vscode/
+.idea/

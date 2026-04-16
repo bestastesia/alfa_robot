@@ -1,0 +1,10 @@
+std_msgs/Header header
+int32           box_id
+float32         confidence
+geometry_msgs/Point   nearest_face_center
+geometry_msgs/Vector3 nearest_face_normal
+geometry_msgs/Vector3 face_normal_0
+geometry_msgs/Vector3 face_normal_1
+int32 face_inlier_count_0
+int32 face_inlier_count_1
+sensor_msgs/RegionOfInterest bbox

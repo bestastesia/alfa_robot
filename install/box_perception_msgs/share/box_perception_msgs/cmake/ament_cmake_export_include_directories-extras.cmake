@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/ament_cmake_export_include_directories/ament_cmake_export_include_directories-extras.cmake

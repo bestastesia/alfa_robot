@@ -1,0 +1,23 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: alfa_robot_description
+    relative_path: urdf/alfa_robot.urdf.xacro
+  srdf:
+    relative_path: config/alfa_robot.srdf
+  package_settings:
+    author_name: kozia
+    author_email: kkozia188@gmail.com
+    generated_timestamp: 1776170292
+  control_xacro:
+    command:
+      - position
+    state:
+      - position
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+    state:
+      - position

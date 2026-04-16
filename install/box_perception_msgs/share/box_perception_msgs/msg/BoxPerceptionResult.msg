@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/box_perception_msgs/msg/BoxPerceptionResult.msg

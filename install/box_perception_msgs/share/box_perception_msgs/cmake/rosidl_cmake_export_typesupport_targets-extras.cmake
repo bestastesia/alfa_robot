@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_cmake/rosidl_cmake_export_typesupport_targets-extras.cmake

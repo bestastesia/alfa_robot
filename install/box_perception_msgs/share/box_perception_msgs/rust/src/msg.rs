@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/box_perception_msgs/rosidl_generator_rs/box_perception_msgs/rust/src/msg.rs

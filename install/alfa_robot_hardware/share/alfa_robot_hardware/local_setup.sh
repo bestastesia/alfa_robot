@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/build/alfa_robot_hardware/ament_cmake_environment_hooks/local_setup.sh

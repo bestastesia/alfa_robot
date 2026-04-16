@@ -1,0 +1,1 @@
+/home/ar/alfa_robot/src/alfa_robot_description/launch/view_alfa_robot.launch.py
