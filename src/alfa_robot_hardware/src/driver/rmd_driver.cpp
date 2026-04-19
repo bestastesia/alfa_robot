@@ -1,12 +1,14 @@
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
 
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fcntl.h>
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <net/if.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -78,7 +80,8 @@ std::map<uint8_t, double> RmdDriver::readPositions(const std::vector<uint8_t> & 
   if (socket_fd_ < 0) { return result; }
   uint8_t data[7] = {0};
   for (uint8_t id : ids) { sendMotorCommand(id, 0x92, data); }
-  drainResponses(result);
+  // 非阻塞 socket：用 poll 等电机回包，收齐或超时后退出。
+  drainResponsesBlocking(result, ids.size(), /*timeout_ms=*/5);
   return result;
 }
 
@@ -155,6 +158,34 @@ void RmdDriver::drainResponses(std::map<uint8_t, double> & out)
   for (size_t i = 0; i < 10; ++i) {
     uint32_t can_id; uint8_t data[8]; uint8_t dlc;
     if (!receiveCanFrame(can_id, data, dlc)) { break; }
+    if (can_id >= 0x141u && can_id <= 0x146u && dlc >= 8) {
+      double pos_rad;
+      if (parseMotorAngleReply(data, pos_rad)) {
+        out[static_cast<uint8_t>(can_id - 0x140u)] = pos_rad;
+      }
+    }
+  }
+}
+
+void RmdDriver::drainResponsesBlocking(
+  std::map<uint8_t, double> & out, size_t expected_count, int timeout_ms)
+{
+  if (socket_fd_ < 0) { return; }
+  auto deadline = std::chrono::steady_clock::now() +
+                  std::chrono::milliseconds(timeout_ms);
+  while (out.size() < expected_count) {
+    auto now = std::chrono::steady_clock::now();
+    if (now >= deadline) { break; }
+    int ms_left = static_cast<int>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count());
+    if (ms_left <= 0) { ms_left = 1; }
+
+    struct pollfd pfd{socket_fd_, POLLIN, 0};
+    int rc = ::poll(&pfd, 1, ms_left);
+    if (rc <= 0) { break; }  // timeout or error
+
+    uint32_t can_id; uint8_t data[8]; uint8_t dlc;
+    if (!receiveCanFrame(can_id, data, dlc)) { continue; }
     if (can_id >= 0x141u && can_id <= 0x146u && dlc >= 8) {
       double pos_rad;
       if (parseMotorAngleReply(data, pos_rad)) {

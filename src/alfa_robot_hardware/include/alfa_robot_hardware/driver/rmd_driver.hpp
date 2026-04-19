@@ -50,6 +50,8 @@ private:
   bool receiveCanFrame(uint32_t & can_id, uint8_t * data, uint8_t & dlc);
   void sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data);
   void drainResponses(std::map<uint8_t, double> & out);
+  void drainResponsesBlocking(
+    std::map<uint8_t, double> & out, size_t expected_count, int timeout_ms);
 };
 
 }  // namespace alfa_robot_hardware

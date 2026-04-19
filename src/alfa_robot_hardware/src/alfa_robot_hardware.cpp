@@ -62,6 +62,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   canopen_plate_  = std::make_unique<CanopenDriver>(canopen_plate_cfg_);
   buildJoints();
 
+  set_state(rclcpp_lifecycle::State(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED,
+    hardware_interface::lifecycle_state_names::UNCONFIGURED));
+
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
   return CallbackReturn::SUCCESS;
 }
@@ -74,6 +78,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   rmd_base_->open();
   canopen_->open();
   canopen_plate_->open();
+
+  set_state(rclcpp_lifecycle::State(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE,
+    hardware_interface::lifecycle_state_names::INACTIVE));
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -93,14 +101,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   // Activate all joints (reads initial position)
   for (auto & joint : joints_) { joint->activate(); }
 
-  // Capture "turn" joint current position as software zero
-  for (auto & joint : joints_) {
-    if (joint->name() == "turn") {
-      auto * rmd_joint = dynamic_cast<RmdJoint *>(joint.get());
-      if (rmd_joint) { rmd_joint->captureCurrentPositionAsZero(); }
-    }
-  }
-
+  set_state(rclcpp_lifecycle::State(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE,
+    hardware_interface::lifecycle_state_names::ACTIVE));
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware activated");
   return CallbackReturn::SUCCESS;
@@ -124,6 +127,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   rmd_base_->close();
   canopen_->close();
   canopen_plate_->close();
+
+  set_state(rclcpp_lifecycle::State(
+    lifecycle_msgs::msg::State::PRIMARY_STATE_INACTIVE,
+    hardware_interface::lifecycle_state_names::INACTIVE));
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
@@ -173,7 +180,7 @@ void AlfaRobotHW::buildJoints()
 {
   // RMD joints — base bus
   joints_.push_back(std::make_unique<RmdJoint>("turn",
-    RmdJoint::Config{1, 0.0, 0.0, -1.0, -2.353}, *rmd_base_));
+    RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394}, *rmd_base_));
 
   // RMD joints — left bus
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint2",
