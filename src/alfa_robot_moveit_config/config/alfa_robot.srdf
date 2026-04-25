@@ -9,6 +9,10 @@
     <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
     <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
     <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
+    <!-- Base group: only updown joint (shared between arms) -->
+    <group name="base_group">
+        <joint name="updown"/>
+    </group>
     <group name="torso_group">
         <joint name="turn"/>
         <joint name="updown"/>
@@ -37,6 +41,16 @@
     <group name="dual_arms">
         <group name="torso_group"/>
         <group name="left_arm"/>
+        <group name="right_arm"/>
+    </group>
+    <!-- Full arm groups with updown (using subgroups) -->
+    <!-- updown is shared, MoveIt will freeze the other arm when planning for one -->
+    <group name="left_arm_with_base">
+        <group name="base_group"/>
+        <group name="left_arm"/>
+    </group>
+    <group name="right_arm_with_base">
+        <group name="base_group"/>
         <group name="right_arm"/>
     </group>
     <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
@@ -88,6 +102,8 @@
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="vacuum_left" parent_link="leftjoint5_link" group="vacuum_left" parent_group="left_arm"/>
     <end_effector name="vacuum_right" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm"/>
+    <end_effector name="vacuum_left_with_base" parent_link="leftjoint5_link" group="vacuum_left" parent_group="left_arm_with_base"/>
+    <end_effector name="vacuum_right_with_base" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm_with_base"/>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
