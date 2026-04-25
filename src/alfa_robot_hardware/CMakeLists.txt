@@ -16,6 +16,7 @@ add_library(alfa_robot_hardware SHARED
   src/alfa_robot_hardware.cpp
   src/joint/rmd_joint.cpp
   src/joint/canopen_joint.cpp
+  src/joint/placeholder_joint.cpp
   src/driver/rmd_driver.cpp
   src/driver/canopen_driver.cpp
 )

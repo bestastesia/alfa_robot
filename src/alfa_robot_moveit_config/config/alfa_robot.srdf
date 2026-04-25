@@ -19,6 +19,7 @@
         <joint name="leftjoint2"/>
         <joint name="leftjoint3"/>
         <joint name="leftjoint4"/>
+        <joint name="leftjoint5"/>
     </group>
     <group name="right_arm">
         <joint name="rightarmbase"/>
@@ -45,6 +46,7 @@
         <joint name="leftjoint2" value="0"/>
         <joint name="leftjoint3" value="0"/>
         <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
         <joint name="rightarmbase" value="0"/>
         <joint name="rightjoint1" value="0"/>
         <joint name="rightjoint2" value="0"/>
@@ -58,7 +60,8 @@
         <joint name="leftjoint1" value="0.1635"/>
         <joint name="leftjoint2" value="0.538"/>
         <joint name="leftjoint3" value="-0.5033"/>
-        <joint name="leftjoint4" value="0.4857"/>
+        <joint name="leftjoint4" value="0.05"/>
+        <joint name="leftjoint5" value="0.4857"/>
         <joint name="rightarmbase" value="0.0318"/>
         <joint name="rightjoint1" value="0.1348"/>
         <joint name="rightjoint2" value="-0.0909"/>
@@ -73,6 +76,7 @@
         <joint name="leftjoint2" value="0"/>
         <joint name="leftjoint3" value="0"/>
         <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
         <joint name="rightarmbase" value="0"/>
         <joint name="rightjoint1" value="0"/>
         <joint name="rightjoint2" value="0"/>
@@ -82,7 +86,7 @@
         <joint name="updown" value="0.5406"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
-    <end_effector name="vacuum_left" parent_link="leftjoint4_link" group="vacuum_left" parent_group="left_arm"/>
+    <end_effector name="vacuum_left" parent_link="leftjoint5_link" group="vacuum_left" parent_group="left_arm"/>
     <end_effector name="vacuum_right" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm"/>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
@@ -156,11 +160,17 @@
     <disable_collisions link1="leftjoint3_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="leftjoint5_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint4_link" link2="lidar_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="updown_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="plate_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightjoint1_link" reason="Never"/>

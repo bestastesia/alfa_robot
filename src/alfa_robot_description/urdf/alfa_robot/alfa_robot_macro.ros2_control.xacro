@@ -47,6 +47,7 @@
           <param name="safe_position_leftjoint2">0.0</param>
           <param name="safe_position_leftjoint3">0.0</param>
           <param name="safe_position_leftjoint4">0.0</param>
+          <param name="safe_position_leftjoint5">0.0</param>
           <param name="safe_position_rightarmbase">0.0</param>
           <param name="safe_position_rightjoint1">0.0</param>
           <param name="safe_position_rightjoint2">0.0</param>
@@ -162,8 +163,8 @@
       <!-- leftarmbase (prismatic) -->
       <joint name="${prefix}leftarmbase">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.2</param>
+          <param name="min">-0.16</param>
+          <param name="max">0</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -176,7 +177,7 @@
       <joint name="${prefix}leftjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.5</param>
+          <param name="max">0.45</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -211,8 +212,21 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint4 (revolute) -->
+      <!-- leftjoint4 (prismatic) -->
       <joint name="${prefix}leftjoint4">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.22</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- leftjoint5 (continuous) -->
+      <joint name="${prefix}leftjoint5">
         <command_interface name="position">
           <param name="min">-3.14159</param>
           <param name="max">3.14159</param>

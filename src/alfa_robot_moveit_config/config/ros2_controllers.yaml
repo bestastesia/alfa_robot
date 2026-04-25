@@ -30,6 +30,7 @@ left_arm_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - leftjoint5
     command_interfaces:
       - position
     state_interfaces:
@@ -56,6 +57,7 @@ dual_arms_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - leftjoint5
       - rightarmbase
       - rightjoint1
       - rightjoint2

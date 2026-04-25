@@ -9,6 +9,7 @@
 #include "alfa_robot_hardware/joint/i_joint.hpp"
 #include "alfa_robot_hardware/joint/rmd_joint.hpp"
 #include "alfa_robot_hardware/joint/canopen_joint.hpp"
+#include "alfa_robot_hardware/joint/placeholder_joint.hpp"
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
 #include "hardware_interface/system_interface.hpp"

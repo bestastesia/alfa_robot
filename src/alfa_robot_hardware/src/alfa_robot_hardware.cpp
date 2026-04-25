@@ -88,7 +88,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
 {
   // Enable motors per bus
   // Mixed protocol on can0: Node 1,2 are ZeroErr (CANopen), Node 3 is LingGong (RMD)
-  rmd_left_->enableMotors({3});         // Only Node 3 (leftjoint4)
+  rmd_left_->enableMotors({3});         // Only Node 3 (leftjoint5)
   canopen_left_->enableNodes({1, 2});   // Node 1,2 (leftjoint2/3)
 
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
@@ -120,8 +120,8 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   }
 
   // Mixed protocol on can0
-  rmd_left_->disableMotors({3});          // Only Node 3
-  canopen_left_->disableNodes({1, 2});    // Node 1,2
+  rmd_left_->disableMotors({3});          // Only Node 3 (leftjoint5)
+  canopen_left_->disableNodes({1, 2});    // Node 1,2 (leftjoint2/3)
 
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
@@ -165,8 +165,8 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
-  // Mixed protocol on can0: Node 1,2 via CANopen, Node 3 via RMD
-  rmd_left_->readPositions({3});        // can0: only Node 3 (LingGong)
+  // Mixed protocol on can0: Node 1,2 via CANopen (leftjoint2/3), Node 3 via RMD (leftjoint5)
+  rmd_left_->readPositions({3});        // can0: only Node 3 (leftjoint5 - LingGong)
   rmd_right_->readPositions({4, 5, 6});
   rmd_base_->readPositions({1});
   canopen_->readPositions();            // can3: one SYNC per cycle, updates PDO cache
@@ -199,9 +199,12 @@ void AlfaRobotHW::buildJoints()
     CanopenJoint::Config{1, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint3",
     CanopenJoint::Config{2, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
-  // Node 3: LingGong motor (RMD protocol)
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
+  // Node 3: LingGong motor (RMD protocol) -> now assigned to leftjoint5 (rotary)
+  joints_.push_back(std::make_unique<RmdJoint>("leftjoint5",
     RmdJoint::Config{3, 0.0, 0.0, -1.0, 0.0}, *rmd_left_));
+  // leftjoint4: Placeholder for cylinder actuator (protocol TBD)
+  joints_.push_back(std::make_unique<PlaceholderJoint>("leftjoint4",
+    PlaceholderJoint::Config{0.0, 1.0}));
 
   // RMD joints - right bus (can1)
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
