@@ -50,9 +50,15 @@ public:
   // Initial SYNC + drain (call once after enableNodes to prime PDO cache).
   void primeSyncCycle();
 
-  // Returns position from PDO cache for a specific node (no SYNC triggered).
-  // Returns false if node has no valid cached data.
+  // 从 PDO 缓存中获取指定节点的位置（不触发 SYNC）。
+  // 如果节点没有有效的缓存数据则返回 false。
+  // 注意：返回的是脉冲位置（原始编码器值），不是米。
+  //       调用者需要根据电机类型转换为适当的单位。
   bool getCachedPosition(uint8_t node_id, double & position_m) const;
+
+  // 从 PDO 缓存中获取原始脉冲位置（无单位转换）。
+  // 如果节点没有有效的缓存数据则返回 false。
+  bool getCachedPositionPulses(uint8_t node_id, int32_t & position_pulses) const;
 
   bool isNodeEnabled(uint8_t node_id) const;
   const std::set<uint8_t> & enabledNodes() const { return enabled_nodes_; }

@@ -60,6 +60,8 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   rmd_base_       = std::make_unique<RmdDriver>(rmd_base_cfg_);
   canopen_        = std::make_unique<CanopenDriver>(canopen_cfg_);
   canopen_plate_  = std::make_unique<CanopenDriver>(canopen_plate_cfg_);
+  // can0 上混合协议：创建额外的 CanopenDriver 实例用于零差电机
+  canopen_left_   = std::make_unique<CanopenDriver>(CanopenDriver::Config{"can0", 50000, 50000});
   buildJoints();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
@@ -74,6 +76,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   rmd_base_->open();
   canopen_->open();
   canopen_plate_->open();
+  canopen_left_->open();  // can0 上的零差电机
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -84,7 +87,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State &)
 {
   // Enable motors per bus
-  rmd_left_->enableMotors({1, 2, 3});    // leftjoint2/3/4
+  // can0 上混合协议：Node 1,2 是零差(CANopen)，Node 3 是领控(RMD)
+  rmd_left_->enableMotors({3});         // 只使能 Node 3 (leftjoint4)
+  canopen_left_->enableNodes({1, 2});   // 使能 Node 1,2 (leftjoint2/3)
+
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
   rmd_base_->enableMotors({1});           // turn
   canopen_->enableNodes({1, 2, 3, 4, 5});
@@ -113,7 +119,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
     moveAllToSafePositions(5.0);
   }
 
-  rmd_left_->disableMotors({1, 2, 3});
+  // can0 上混合协议
+  rmd_left_->disableMotors({3});          // 只禁用 Node 3
+  canopen_left_->disableNodes({1, 2});    // 禁用 Node 1,2
+
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
   canopen_->disableNodes({1, 2, 3, 4, 5});
@@ -124,6 +133,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   rmd_base_->close();
   canopen_->close();
   canopen_plate_->close();
+  canopen_left_->close();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
@@ -153,13 +163,16 @@ hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
-  // One batched read per bus — sends all 0x92, then drains with a poll() budget.
-  // Joints subsequently read from the driver's position cache.
-  rmd_left_->readPositions({1, 2, 3});
+  // 每个总线批量读取 - 发送所有 0x92，然后使用 poll() 预算进行清空
+  // 随后各 Joint 从驱动器的位置缓存中读取
+  // can0 混合协议：Node 1,2 通过 CANopen，Node 3 通过 RMD
+  rmd_left_->readPositions({3});        // can0: 只查 Node 3 (领控)
   rmd_right_->readPositions({4, 5, 6});
   rmd_base_->readPositions({1});
-  canopen_->readPositions();        // one SYNC per cycle, updates PDO cache
-  canopen_plate_->readPositions();  // plate bus
+  canopen_->readPositions();            // can3: 每周期一个 SYNC，更新 PDO 缓存
+  canopen_plate_->readPositions();      // can4: plate 总线
+  canopen_left_->readPositions();       // can0: 零差电机 (Node 1,2)
+
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
 }
@@ -176,40 +189,42 @@ hardware_interface::return_type AlfaRobotHW::write(
 
 void AlfaRobotHW::buildJoints()
 {
-  // RMD joints — base bus
+  // RMD joints - base bus (can2)
   joints_.push_back(std::make_unique<RmdJoint>("turn",
-    RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394 }, *rmd_base_));
+    RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394}, *rmd_base_));
 
-  // RMD joints — left bus
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint2",
-    RmdJoint::Config{1, 0.0, 0.0, -1.0}, *rmd_left_));
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint3",
-    RmdJoint::Config{2, 0.0, 0.0, -1.0}, *rmd_left_));
+  // Left bus (can0) - 混合协议
+  // Node 1,2: 零差旋转电机 (eRob110H100l-BHS-18ET, 减速比100:1, 编码器分辨率524288脉冲/圈)
+  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint2",
+    CanopenJoint::Config{1, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
+  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint3",
+    CanopenJoint::Config{2, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
+  // Node 3: 领控电机 (RMD协议)
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
-    RmdJoint::Config{3, 0.0, 0.0, -1.0}, *rmd_left_));
+    RmdJoint::Config{3, 0.0, 0.0, -1.0, 0.0}, *rmd_left_));
 
-  // RMD joints — right bus (motor IDs 1,2,3 on can1, same as left on can0)
+  // RMD joints - right bus (can1)
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
-    RmdJoint::Config{4, 0.0, 0.0, -1.0}, *rmd_right_));
+    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",
-    RmdJoint::Config{5, 0.0, 0.0, -1.0}, *rmd_right_));
+    RmdJoint::Config{5, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
-    RmdJoint::Config{6, 0.0, 0.0, -1.0}, *rmd_right_));
+    RmdJoint::Config{6, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
 
-  // CANopen joints
+  // CANopen joints (can3) - 直线模组
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
-    CanopenJoint::Config{1, 1.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftarmbase",
-    CanopenJoint::Config{2, 3.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{2, 3.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint1",
-    CanopenJoint::Config{3, 1.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{3, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightarmbase",
-    CanopenJoint::Config{4, 3.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{4, 3.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
-    CanopenJoint::Config{5, 1.0, 0.0, -1.0}, *canopen_));
-  // plate — separate CANopen bus (can4), node 1
+    CanopenJoint::Config{5, 1.0, 0.0, 0.0, -1.0}, *canopen_));
+  // plate - separate CANopen bus (can4), node 1
   joints_.push_back(std::make_unique<CanopenJoint>("plate",
-    CanopenJoint::Config{1, 1.0, 0.0, -1.0}, *canopen_plate_));
+    CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_plate_));
 
 }
 
