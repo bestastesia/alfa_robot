@@ -48,7 +48,7 @@ private:
   std::unique_ptr<RmdDriver>     rmd_left_, rmd_right_, rmd_base_;
   std::unique_ptr<CanopenDriver> canopen_;
   std::unique_ptr<CanopenDriver> canopen_plate_;
-  std::unique_ptr<CanopenDriver> canopen_left_;    // can0 上的零差电机 (混合协议)
+  std::unique_ptr<CanopenDriver> canopen_left_;    // ZeroErr motors on can0 (mixed protocol)
 
   // All joints (single list — no type dispatch in AlfaRobotHW)
   std::vector<std::unique_ptr<IJoint>> joints_;

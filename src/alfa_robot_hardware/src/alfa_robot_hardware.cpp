@@ -60,7 +60,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   rmd_base_       = std::make_unique<RmdDriver>(rmd_base_cfg_);
   canopen_        = std::make_unique<CanopenDriver>(canopen_cfg_);
   canopen_plate_  = std::make_unique<CanopenDriver>(canopen_plate_cfg_);
-  // can0 上混合协议：创建额外的 CanopenDriver 实例用于零差电机
+  // Mixed protocol on can0: additional CanopenDriver for ZeroErr motors
   canopen_left_   = std::make_unique<CanopenDriver>(CanopenDriver::Config{"can0", 50000, 50000});
   buildJoints();
 
@@ -76,7 +76,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   rmd_base_->open();
   canopen_->open();
   canopen_plate_->open();
-  canopen_left_->open();  // can0 上的零差电机
+  canopen_left_->open();  // ZeroErr motors on can0
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -87,9 +87,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State &)
 {
   // Enable motors per bus
-  // can0 上混合协议：Node 1,2 是零差(CANopen)，Node 3 是领控(RMD)
-  rmd_left_->enableMotors({3});         // 只使能 Node 3 (leftjoint4)
-  canopen_left_->enableNodes({1, 2});   // 使能 Node 1,2 (leftjoint2/3)
+  // Mixed protocol on can0: Node 1,2 are ZeroErr (CANopen), Node 3 is LingGong (RMD)
+  rmd_left_->enableMotors({3});         // Only Node 3 (leftjoint4)
+  canopen_left_->enableNodes({1, 2});   // Node 1,2 (leftjoint2/3)
 
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
   rmd_base_->enableMotors({1});           // turn
@@ -119,9 +119,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
     moveAllToSafePositions(5.0);
   }
 
-  // can0 上混合协议
-  rmd_left_->disableMotors({3});          // 只禁用 Node 3
-  canopen_left_->disableNodes({1, 2});    // 禁用 Node 1,2
+  // Mixed protocol on can0
+  rmd_left_->disableMotors({3});          // Only Node 3
+  canopen_left_->disableNodes({1, 2});    // Node 1,2
 
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
@@ -163,15 +163,15 @@ hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
-  // 每个总线批量读取 - 发送所有 0x92，然后使用 poll() 预算进行清空
-  // 随后各 Joint 从驱动器的位置缓存中读取
-  // can0 混合协议：Node 1,2 通过 CANopen，Node 3 通过 RMD
-  rmd_left_->readPositions({3});        // can0: 只查 Node 3 (领控)
+  // One batched read per bus - sends all 0x92, then drains with a poll() budget.
+  // Joints subsequently read from the driver's position cache.
+  // Mixed protocol on can0: Node 1,2 via CANopen, Node 3 via RMD
+  rmd_left_->readPositions({3});        // can0: only Node 3 (LingGong)
   rmd_right_->readPositions({4, 5, 6});
   rmd_base_->readPositions({1});
-  canopen_->readPositions();            // can3: 每周期一个 SYNC，更新 PDO 缓存
-  canopen_plate_->readPositions();      // can4: plate 总线
-  canopen_left_->readPositions();       // can0: 零差电机 (Node 1,2)
+  canopen_->readPositions();            // can3: one SYNC per cycle, updates PDO cache
+  canopen_plate_->readPositions();      // can4: plate bus
+  canopen_left_->readPositions();       // can0: ZeroErr motors (Node 1,2)
 
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
@@ -193,13 +193,13 @@ void AlfaRobotHW::buildJoints()
   joints_.push_back(std::make_unique<RmdJoint>("turn",
     RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394}, *rmd_base_));
 
-  // Left bus (can0) - 混合协议
-  // Node 1,2: 零差旋转电机 (eRob110H100l-BHS-18ET, 减速比100:1, 编码器分辨率524288脉冲/圈)
+  // Left bus (can0) - mixed protocol
+  // Node 1,2: ZeroErr rotary motors (eRob110H100l-BHS-18ET, gear_ratio=100:1, encoder_resolution=524288 pulses/rev)
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint2",
     CanopenJoint::Config{1, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint3",
     CanopenJoint::Config{2, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
-  // Node 3: 领控电机 (RMD协议)
+  // Node 3: LingGong motor (RMD protocol)
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
     RmdJoint::Config{3, 0.0, 0.0, -1.0, 0.0}, *rmd_left_));
 
@@ -211,7 +211,7 @@ void AlfaRobotHW::buildJoints()
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
     RmdJoint::Config{6, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
 
-  // CANopen joints (can3) - 直线模组
+  // CANopen joints (can3) - linear actuators
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
     CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftarmbase",
