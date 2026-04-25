@@ -1,66 +1,50 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 2.8.3)
 project(trac_ik_examples)
 
-# Default to C99
-if(NOT CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 99)
+if(CMAKE_COMPILER_IS_GNUCXX OR ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
+    set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
 endif()
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
+find_package(catkin REQUIRED
+  COMPONENTS
+    trac_ik_lib
+)
 
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Werror)
-endif()
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(pkg_nlopt REQUIRED nlopt)
 
-find_package(ament_cmake REQUIRED)
-find_package(NLopt REQUIRED)
-find_package(rclcpp REQUIRED)
+find_package(Boost REQUIRED COMPONENTS date_time)
 find_package(orocos_kdl REQUIRED)
-find_package(trac_ik_lib REQUIRED)
+
+catkin_package(
+  CATKIN_DEPENDS
+    trac_ik_lib
+  DEPENDS
+    Boost
+    orocos_kdl
+    pkg_nlopt
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${Boost_INCLUDE_DIRS}
+  ${orocos_kdl_INCLUDE_DIRS}
+  ${pkg_nlopt_INCLUDE_DIRS}
+)
 
 add_executable(ik_tests src/ik_tests.cpp)
-
-# C++20 standard guarantees `std::chrono::system_clock` measures Unix Time
-# i.e. `std::chrono::{duration, time_point}` can then replace
-# `boost::posix_time::{time_duration, ptime}`
-set_target_properties(ik_tests PROPERTIES
-  CXX_STANDARD 20
-  CXX_STANDARD_REQUIRED YES
-  CXX_EXTENSIONS NO
-)
-
-target_include_directories(ik_tests PUBLIC
-  ${NLOPT_INCLUDE_DIRS}
-)
-
-# Needed since NLopt is not an ament package
 target_link_libraries(ik_tests
-  ${NLOPT_LIBRARIES}
-)
-
-ament_target_dependencies(ik_tests
-  ament_cmake
-  rclcpp
-  orocos_kdl
-  trac_ik_lib
+  ${catkin_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${orocos_kdl_LIBRARIES}
+  ${pkg_nlopt_LIBRARIES}
 )
 
 install(TARGETS ik_tests
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 install(DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}
-)
-
-if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  ament_lint_auto_find_test_dependencies()
-endif()
-
-ament_package()
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
