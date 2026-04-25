@@ -1,9 +1,163 @@
-# .gitignore
+# ROS2 / Colcon build artifacts
 build/
 install/
 log/
-.vscode/
+devel/
+cmake-build-debug/
+
+# Python
 __pycache__/
 *.pyc
-*.db
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+*.manifest
+.installed.cfg
+pip-log.txt
+pip-delete-this-directory.txt
+.Python
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.whl
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Compiled files
+*.o
+*.so
+*.so.*
+*.a
+*.la
+*.lo
+*.dll
+*.dylib
+*.lib
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+*.cmake.in
+colcon_command_prefix_*.sh
+ament_cmake_environment_hooks/
+symlink_install_manifest.txt
+install_manifest.txt
+
+# ROS specific
+*.bag
+*.bag.active
+*.bag.db3
+*.srv
+*.msg.generated
+
+# Large binary files (models, maps, point clouds, images)
+*.pcd
+*.ply
+*.stl
+*.obj
+*.dae
+*.gltf
+*.glb
+*.fbx
+*.pdf
+*.gv
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.svg
+*.db
+*.sqlite
+*.sqlite3
+
+# Log files
+*.log
+installlog
+install.log
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*~
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# External modules with their own .git (submodules)
+# Note: These should be managed via git submodules or .gitmodules
+# fast_lio/include/ikd-Tree/
+
+# Bags and recorded data
+bags/
+recorded_data/
+
+# Claude Code workspace
+.claude/
+
+# Codex marker (from temp directory)
+.codex
+
+# MATLAB files (optional, uncomment if needed)
+# *.m
+
+# rviz config (usually keep in repo, but can ignore if needed)
+# *.rviz
+
+# PCD directory (point cloud data)
+PCD/
+
+# Model weights and large data files
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+*.pkl
+*.pickle
+
+# Log data directories
+Log/

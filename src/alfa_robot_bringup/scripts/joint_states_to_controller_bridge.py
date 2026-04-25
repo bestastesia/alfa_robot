@@ -2,79 +2,88 @@
 # Copyright (c) 2025, b»robotized
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 
 """
-桥接节点：将 joint_state_publisher_gui 的滑块输出转发到 JointTrajectoryController。
-订阅 /joint_states_gui，提取关节位置，向四个 JTC 控制器各自发布 JointTrajectory。
+桥接节点：将 joint_state_publisher_gui 的滑块输出直接转发为
+forward_command_controller 的位置命令 (Float64MultiArray)。
+
+不再走 JointTrajectoryController —— 滑块是连续重复发布的，
+轨迹控制器会被持续抢占导致电机不动 / 关 GUI 后才执行最后一帧。
+直接前向位置命令时，硬件层会把每个值当作即时目标位置下发到电机。
 """
 
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from builtin_interfaces.msg import Duration
+from std_msgs.msg import Float64MultiArray
 
 
-_CONTROLLER_JOINTS = {
-    "torso_group_controller": ["turn", "updown"],
-    "left_arm_controller": ["leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4"],
-    "right_arm_controller": ["rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4"],
-    "plate_controller": ["plate"],
-}
+_DEFAULT_JOINT_ORDER = [
+    "turn",
+    "updown",
+    "leftarmbase",
+    "leftjoint1",
+    "leftjoint2",
+    "leftjoint3",
+    "leftjoint4",
+    "rightarmbase",
+    "rightjoint1",
+    "rightjoint2",
+    "rightjoint3",
+    "rightjoint4",
+]
 
 
 class JointStatesToControllerBridge(Node):
-    """将 GUI 关节状态转发到 JointTrajectoryController。"""
+    """将 GUI 关节状态转发到 forward_command_controller。"""
 
     def __init__(self):
         super().__init__("joint_states_to_controller_bridge")
 
         self.declare_parameter("joint_states_topic", "/joint_states_gui")
-        joint_states_topic = self.get_parameter("joint_states_topic").get_parameter_value().string_value
+        self.declare_parameter("controller_name", "all_position_controller")
+        self.declare_parameter("joint_names", _DEFAULT_JOINT_ORDER)
 
-        self._publishers = {}
-        for controller, joints in _CONTROLLER_JOINTS.items():
-            topic = f"/{controller}/joint_trajectory"
-            self._publishers[controller] = (
-                self.create_publisher(JointTrajectory, topic, 10),
-                joints,
-            )
+        joint_states_topic = self.get_parameter("joint_states_topic").value
+        controller_name = self.get_parameter("controller_name").value
+        self._joint_names = list(self.get_parameter("joint_names").value)
 
+        self._publisher = self.create_publisher(
+            Float64MultiArray, f"/{controller_name}/commands", 10
+        )
+
+        self._warned_missing = False
         self.subscription = self.create_subscription(
             JointState,
             joint_states_topic,
-            self._joint_states_callback,
+            self.joint_states_callback,
             10,
         )
-        self.get_logger().info(f"Bridge: {joint_states_topic} -> 4x JointTrajectory topics")
 
-    def _joint_states_callback(self, msg: JointState):
-        for controller, (pub, joints) in self._publishers.items():
-            positions = []
-            for name in joints:
-                try:
-                    idx = msg.name.index(name)
-                    positions.append(msg.position[idx])
-                except ValueError:
-                    return  # joint not yet available, skip this cycle
+        self.get_logger().info(
+            f"Bridge: {joint_states_topic} -> /{controller_name}/commands "
+            f"joints={self._joint_names}"
+        )
 
-            traj = JointTrajectory()
-            traj.joint_names = list(joints)
-            point = JointTrajectoryPoint()
-            point.positions = positions
-            point.time_from_start = Duration(sec=0, nanosec=100_000_000)  # 100ms
-            traj.points = [point]
-            pub.publish(traj)
+    def joint_states_callback(self, msg: JointState):
+        positions = {
+            name: msg.position[index]
+            for index, name in enumerate(msg.name)
+            if index < len(msg.position)
+        }
+        try:
+            ordered = [positions[name] for name in self._joint_names]
+        except KeyError:
+            if not self._warned_missing:
+                self.get_logger().warn(
+                    f"Waiting for joints {self._joint_names} in {msg.name}"
+                )
+                self._warned_missing = True
+            return
+
+        cmd = Float64MultiArray()
+        cmd.data = ordered
+        self._publisher.publish(cmd)
 
 
 def main(args=None):

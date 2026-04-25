@@ -3,10 +3,6 @@ controller_manager:
   ros__parameters:
     update_rate: 100  # Hz
 
-    torso_group_controller:
-      type: joint_trajectory_controller/JointTrajectoryController
-
-
     left_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
@@ -15,18 +11,17 @@ controller_manager:
       type: joint_trajectory_controller/JointTrajectoryController
 
 
+    dual_arms_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+
+    updown_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-torso_group_controller:
-  ros__parameters:
-    joints:
-      - turn
-      - updown
-    command_interfaces:
-      - position
-    state_interfaces:
-      - position
 left_arm_controller:
   ros__parameters:
     joints:
@@ -47,6 +42,33 @@ right_arm_controller:
       - rightjoint2
       - rightjoint3
       - rightjoint4
+      - updown
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+dual_arms_controller:
+  ros__parameters:
+    joints:
+      - updown
+      - leftarmbase
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - rightarmbase
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+updown_controller:
+  ros__parameters:
+    joints:
+      - updown
     command_interfaces:
       - position
     state_interfaces:

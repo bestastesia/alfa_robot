@@ -153,12 +153,13 @@ hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
+  // One batched read per bus — sends all 0x92, then drains with a poll() budget.
+  // Joints subsequently read from the driver's position cache.
+  rmd_left_->readPositions({1, 2, 3});
+  rmd_right_->readPositions({4, 5, 6});
+  rmd_base_->readPositions({1});
   canopen_->readPositions();        // one SYNC per cycle, updates PDO cache
   canopen_plate_->readPositions();  // plate bus
-  // Batch-read all RMD motors per bus before individual joints consume the cache
-  rmd_left_->batchRefreshPositions({1, 2, 3});
-  rmd_right_->batchRefreshPositions({4, 5, 6});
-  rmd_base_->batchRefreshPositions({1});
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
 }
@@ -168,10 +169,6 @@ hardware_interface::return_type AlfaRobotHW::write(
 {
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.005;
   for (auto & joint : joints_) { joint->write(dt); }
-  // Flush all queued RMD position commands per bus in one burst
-  rmd_left_->flushWritePositions();
-  rmd_right_->flushWritePositions();
-  rmd_base_->flushWritePositions();
   return hardware_interface::return_type::OK;
 }
 
@@ -181,7 +178,7 @@ void AlfaRobotHW::buildJoints()
 {
   // RMD joints — base bus
   joints_.push_back(std::make_unique<RmdJoint>("turn",
-    RmdJoint::Config{1, 0.0, 0.0, -1.0}, *rmd_base_));
+    RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394 }, *rmd_base_));
 
   // RMD joints — left bus
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint2",
@@ -191,7 +188,7 @@ void AlfaRobotHW::buildJoints()
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
     RmdJoint::Config{3, 0.0, 0.0, -1.0}, *rmd_left_));
 
-  // RMD joints — right bus
+  // RMD joints — right bus (motor IDs 1,2,3 on can1, same as left on can0)
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
     RmdJoint::Config{4, 0.0, 0.0, -1.0}, *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",

@@ -17,7 +17,7 @@ def generate_launch_description():
         DeclareLaunchArgument("canopen_profile_velocity", default_value="50000"),
         DeclareLaunchArgument("canopen_profile_accel", default_value="50000"),
         DeclareLaunchArgument("auto_run_test", default_value="false"),
-        DeclareLaunchArgument("group_name", default_value="left_arm"),
+        DeclareLaunchArgument("group_name", default_value="right_arm"),
         DeclareLaunchArgument("target_x", default_value="0.357"),
         DeclareLaunchArgument("target_y", default_value="-0.705"),
         DeclareLaunchArgument("target_z", default_value="0.684"),
@@ -115,13 +115,6 @@ def generate_launch_description():
         output="both",
         arguments=["right_arm_controller", "-c", "/controller_manager"],
     )
-    plate_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        output="both",
-        arguments=["plate_controller", "-c", "/controller_manager"],
-    )
-
     move_group_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -174,7 +167,6 @@ def generate_launch_description():
     delayed_torso_controller = TimerAction(period=8.0, actions=[torso_group_controller_spawner])
     delayed_left_controller = TimerAction(period=11.0, actions=[left_arm_controller_spawner])
     delayed_right_controller = TimerAction(period=14.0, actions=[right_arm_controller_spawner])
-    delayed_plate_controller = TimerAction(period=17.0, actions=[plate_controller_spawner])
     delayed_moveit = TimerAction(
         period=20.0,
         actions=[static_tf_launch, move_group_launch, moveit_rviz_launch],
@@ -201,7 +193,6 @@ def generate_launch_description():
             delayed_torso_controller,
             delayed_left_controller,
             delayed_right_controller,
-            delayed_plate_controller,
             delayed_moveit,
             delayed_trajectory_executor,
             delayed_path_node,

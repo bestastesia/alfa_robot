@@ -65,7 +65,7 @@ def generate_launch_description():
                 "torso_group_controller",
                 "left_arm_controller",
                 "right_arm_controller",
-                "plate_controller",
+                "all_position_controller",
             ],
             description="Robot controller to start.",
         ),

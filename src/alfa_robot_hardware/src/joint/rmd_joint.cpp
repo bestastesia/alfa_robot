@@ -19,7 +19,8 @@ bool RmdJoint::activate()
   auto positions = driver_.readPositions({cfg_.motor_id});
   auto it = positions.find(cfg_.motor_id);
   if (it != positions.end()) {
-    double pos = (it->second - cfg_.zero_offset_rad) * cfg_.direction;
+    double corrected_raw = it->second + cfg_.static_bias_rad;
+    double pos = (corrected_raw - cfg_.zero_offset_rad) * cfg_.direction;
     position_      = pos;
     prev_position_ = pos;
     position_cmd_  = pos;
@@ -33,11 +34,11 @@ void RmdJoint::deactivate() {}
 
 void RmdJoint::read(double dt)
 {
-  auto positions = driver_.readPositions({cfg_.motor_id});
-  auto it = positions.find(cfg_.motor_id);
-  if (it == positions.end()) { return; }
+  double raw = 0.0;
+  if (!driver_.getCachedPosition(cfg_.motor_id, raw)) { return; }
 
-  double pos = (it->second - cfg_.zero_offset_rad) * cfg_.direction;
+  double corrected_raw = raw + cfg_.static_bias_rad;
+  double pos = (corrected_raw - cfg_.zero_offset_rad) * cfg_.direction;
   if (!std::isfinite(pos)) { pos = 0.0; }
 
   position_ = pos;
@@ -61,10 +62,10 @@ void RmdJoint::write(double dt)
 {
   if (first_read_) { return; }
 
-  double cmd = position_cmd_ * cfg_.direction + cfg_.zero_offset_rad;
+  double cmd = position_cmd_ * cfg_.direction + cfg_.zero_offset_rad - cfg_.static_bias_rad;
   cmd = applyLowPassFilter(cmd, dt);
 
-  driver_.queueWritePosition(cfg_.motor_id, cmd);
+  driver_.writePositions({{cfg_.motor_id, cmd}});
 }
 
 void RmdJoint::captureCurrentPositionAsZero()
@@ -79,7 +80,7 @@ void RmdJoint::captureCurrentPositionAsZero()
   position_      = 0.0;
   prev_position_ = 0.0;
   position_cmd_  = 0.0;
-  prev_filtered_ = cfg_.zero_offset_rad;  // next write sends raw=zero_offset_rad
+  prev_filtered_ = cfg_.zero_offset_rad - cfg_.static_bias_rad;  // next write sends corrected raw
   RCLCPP_INFO(rclcpp::get_logger("RmdJoint"),
     "%s zero offset captured: %.4f rad", name_.c_str(), cfg_.zero_offset_rad);
 }
@@ -110,7 +111,6 @@ bool RmdJoint::moveToSafePosition(double target_rad, double timeout_s)
   for (int i = 0; i < kIter; ++i) {
     read(kDt);
     write(kDt);
-    driver_.flushWritePositions();  // flush queued command so motor actually moves
     if (std::abs(position_ - target_rad) < kTol) { return true; }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }

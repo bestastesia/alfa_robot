@@ -29,22 +29,16 @@ public:
   bool enableMotors(const std::vector<uint8_t> & ids);
   void disableMotors(const std::vector<uint8_t> & ids);
 
-  // Batch read for a full bus: flush ACK residue → query all ids at once →
-  // wait for responses → drain all → store in position cache.
-  // Call once per control cycle before any readPositions() on this driver.
-  void batchRefreshPositions(const std::vector<uint8_t> & ids);
-
-  // Return positions from cache (populated by batchRefreshPositions).
-  // Falls back to direct CAN I/O when cache is not valid (e.g. during activate).
+  // Send 0x92 to all ids, block (with timeout) until each replies or timeout
+  // elapses. Updates internal cache and returns motor_id -> position_rad for
+  // every id that responded. Call once per control cycle on each bus.
   std::map<uint8_t, double> readPositions(const std::vector<uint8_t> & ids);
 
-  // Queue a position command for later batch transmission.
-  void queueWritePosition(uint8_t motor_id, double pos_rad);
+  // Returns the last cached position for motor_id without triggering CAN I/O.
+  // Returns false if nothing has been cached yet for this motor.
+  bool getCachedPosition(uint8_t motor_id, double & position_rad) const;
 
-  // Transmit all queued position commands in one burst, then clear the queue.
-  void flushWritePositions();
-
-  // Send 0xA4 position commands immediately (used internally and for single-shot use).
+  // Send 0xA4 position commands.
   void writePositions(const std::map<uint8_t, double> & cmds_rad);
 
   bool isOpen() const { return socket_fd_ >= 0; }
@@ -57,24 +51,15 @@ public:
 private:
   Config config_;
   int socket_fd_{-1};
-
-  // Position cache populated by batchRefreshPositions
   std::map<uint8_t, double> position_cache_;
-  bool cache_valid_{false};
-
-  // Pending write commands queued by queueWritePosition
-  std::map<uint8_t, double> write_queue_;
 
   bool sendCanFrame(uint32_t can_id, const uint8_t * data, uint8_t dlc);
   bool receiveCanFrame(uint32_t & can_id, uint8_t * data, uint8_t & dlc);
   void sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8_t * data);
-
-  // Drain socket into out. Retries up to kMaxMisses empty reads (with sleep)
-  // and stops early once expected_count results have been collected.
-  void drainResponses(std::map<uint8_t, double> & out, size_t expected_count = 0);
-
-  // Discard all frames currently sitting in the socket buffer (clears write ACKs etc.)
-  void flushRxBuffer();
+  // Block (via poll) up to total_timeout_ms waiting for `expected` distinct
+  // motor replies. Updates `out` and `position_cache_` as frames arrive.
+  void drainResponsesBlocking(
+    std::map<uint8_t, double> & out, size_t expected, int total_timeout_ms);
 };
 
 }  // namespace alfa_robot_hardware

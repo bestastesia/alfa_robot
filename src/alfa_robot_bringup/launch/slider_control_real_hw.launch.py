@@ -1,5 +1,5 @@
 """
-实机 GUI 滑块控制 + RViz 可视化
+实机 GUI 滑块控制 + RViz 可视化（位置直驱模式）
 
 使用方式:
   ros2 launch alfa_robot_bringup slider_control_real_hw.launch.py
@@ -14,16 +14,20 @@
   sudo ip link set can2 up type can bitrate 1000000
   sudo ip link set can3 up type can bitrate 1000000
 
+控制链路:
+  joint_state_publisher_gui  →  /joint_states_gui
+    →  bridge  →  /all_position_controller/commands (Float64MultiArray)
+    →  forward_command_controller  →  HW（每个滑块值即时下发为目标位置）
+
 回零位行为:
-  启动后 homing_node 会自动等待控制器就绪，然后发送一次全零位指令（自动回零位）。
-  关闭时硬件插件的 on_deactivate() 会驱动所有关节回零位再断电（use_safe_shutdown=true）。
+  本 launch 不再启动 homing_node（它依赖 JointTrajectoryController）。
+  关闭时硬件插件的 on_deactivate() 会驱动所有关节回零位再断电。
 """
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -51,23 +55,13 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "use_mock_hardware": "false",
-            "robot_controller": "torso_group_controller",
+            "robot_controller": "all_position_controller",
+            "runtime_config_package": "alfa_robot_bringup",
+            "controllers_file": "alfa_robot_moveit_real_controllers.yaml",
             "use_joint_gui_control": "true",
             "canopen_profile_velocity": LaunchConfiguration("canopen_profile_velocity"),
             "canopen_profile_accel": LaunchConfiguration("canopen_profile_accel"),
         }.items(),
     )
 
-    # 启动后自动回零位：等待 all_position_controller 激活后发布一次全零位指令
-    homing_node = Node(
-        package="alfa_robot_bringup",
-        executable="homing_node.py",
-        name="homing_node",
-        output="screen",
-        parameters=[{
-            "publish_count": 5,
-            "poll_interval": 1.0,
-        }],
-    )
-
-    return LaunchDescription(declared_arguments + [alfa_robot_launch, homing_node])
+    return LaunchDescription(declared_arguments + [alfa_robot_launch])

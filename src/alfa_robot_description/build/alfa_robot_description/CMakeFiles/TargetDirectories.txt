@@ -1,9 +1,0 @@
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/uninstall.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/alfa_robot_description_uninstall.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/test.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/edit_cache.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/rebuild_cache.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/list_install_components.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/install.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/install/local.dir
-/home/visionaryhs/ar4.1拉取/alfa_robot/src/alfa_robot_description/build/alfa_robot_description/CMakeFiles/install/strip.dir

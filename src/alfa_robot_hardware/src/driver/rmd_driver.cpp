@@ -7,6 +7,7 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <net/if.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -14,10 +15,8 @@
 #include "rclcpp/rclcpp.hpp"
 
 namespace {
-constexpr unsigned int kCanInterFrameDelayUs  = 150;   // inter-frame gap when sending
-constexpr unsigned int kBatchReadWaitUs       = 2000;  // extra wait after all queries sent
-constexpr unsigned int kDrainRetryDelayUs     = 200;   // sleep between empty drain attempts
-constexpr size_t       kDrainMaxMisses        = 8;     // consecutive empty reads before giving up
+constexpr unsigned int kCanInterFrameDelayUs = 150;
+constexpr int          kReadTimeoutMs        = 3;   // per-bus drain budget
 }
 
 namespace alfa_robot_hardware
@@ -77,69 +76,22 @@ void RmdDriver::disableMotors(const std::vector<uint8_t> & ids)
   usleep(10000);
 }
 
-void RmdDriver::flushRxBuffer()
-{
-  if (socket_fd_ < 0) { return; }
-  uint32_t can_id; uint8_t data[8]; uint8_t dlc;
-  while (receiveCanFrame(can_id, data, dlc)) {}  // drain until empty (non-blocking socket)
-}
-
-void RmdDriver::batchRefreshPositions(const std::vector<uint8_t> & ids)
-{
-  cache_valid_ = false;
-  position_cache_.clear();
-  if (socket_fd_ < 0) { return; }
-
-  // 1. Flush ACK residue from previous write cycle.
-  flushRxBuffer();
-
-  // 2. Send all position queries at once.
-  uint8_t data[7] = {0};
-  for (uint8_t id : ids) { sendMotorCommand(id, 0x92, data); }
-
-  // 3. Wait for all motors to prepare their responses.
-  usleep(kBatchReadWaitUs);
-
-  // 4. Drain all responses into cache.
-  drainResponses(position_cache_, ids.size());
-
-  cache_valid_ = true;
-}
-
 std::map<uint8_t, double> RmdDriver::readPositions(const std::vector<uint8_t> & ids)
 {
-  // Fast path: return from cache populated by batchRefreshPositions this cycle.
-  if (cache_valid_) {
-    std::map<uint8_t, double> result;
-    for (uint8_t id : ids) {
-      auto it = position_cache_.find(id);
-      if (it != position_cache_.end()) { result[id] = it->second; }
-    }
-    return result;
-  }
-
-  // Fallback path (activate, moveToSafePosition, etc.): direct CAN I/O.
   std::map<uint8_t, double> result;
-  if (socket_fd_ < 0) { return result; }
-  flushRxBuffer();
-  uint8_t zero[7] = {0};
-  for (uint8_t id : ids) { sendMotorCommand(id, 0x92, zero); }
-  usleep(kBatchReadWaitUs);
-  drainResponses(result, ids.size());
+  if (socket_fd_ < 0 || ids.empty()) { return result; }
+  uint8_t data[7] = {0};
+  for (uint8_t id : ids) { sendMotorCommand(id, 0x92, data); }
+  drainResponsesBlocking(result, ids.size(), kReadTimeoutMs);
   return result;
 }
 
-void RmdDriver::queueWritePosition(uint8_t motor_id, double pos_rad)
+bool RmdDriver::getCachedPosition(uint8_t motor_id, double & position_rad) const
 {
-  write_queue_[motor_id] = pos_rad;
-}
-
-void RmdDriver::flushWritePositions()
-{
-  if (!write_queue_.empty()) {
-    writePositions(write_queue_);
-    write_queue_.clear();
-  }
+  auto it = position_cache_.find(motor_id);
+  if (it == position_cache_.end()) { return false; }
+  position_rad = it->second;
+  return true;
 }
 
 void RmdDriver::writePositions(const std::map<uint8_t, double> & cmds_rad)
@@ -210,25 +162,39 @@ void RmdDriver::sendMotorCommand(uint8_t motor_id, uint8_t cmd_byte, const uint8
   if (sendCanFrame(0x140u + motor_id, frame_data, 8)) { usleep(kCanInterFrameDelayUs); }
 }
 
-void RmdDriver::drainResponses(std::map<uint8_t, double> & out, size_t expected_count)
+void RmdDriver::drainResponsesBlocking(
+  std::map<uint8_t, double> & out, size_t expected, int total_timeout_ms)
 {
-  size_t misses = 0;
-  while (true) {
-    uint32_t can_id; uint8_t data[8]; uint8_t dlc;
-    if (!receiveCanFrame(can_id, data, dlc)) {
-      if (expected_count > 0 && out.size() >= expected_count) { break; }
-      if (++misses >= kDrainMaxMisses) { break; }
-      usleep(kDrainRetryDelayUs);
-      continue;
-    }
-    misses = 0;
-    if (can_id >= 0x141u && can_id <= 0x146u && dlc >= 8) {
-      double pos_rad;
-      if (parseMotorAngleReply(data, pos_rad)) {
-        out[static_cast<uint8_t>(can_id - 0x140u)] = pos_rad;
+  if (socket_fd_ < 0) { return; }
+  struct pollfd pfd;
+  pfd.fd     = socket_fd_;
+  pfd.events = POLLIN;
+
+  auto now_ms = []() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<int64_t>(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+  };
+  const int64_t deadline = now_ms() + total_timeout_ms;
+
+  while (out.size() < expected) {
+    int64_t remaining = deadline - now_ms();
+    if (remaining <= 0) { break; }
+    int rc = ::poll(&pfd, 1, static_cast<int>(remaining));
+    if (rc <= 0) { break; }  // timeout or error
+    // Drain everything currently available (non-blocking socket).
+    while (true) {
+      uint32_t can_id; uint8_t data[8]; uint8_t dlc;
+      if (!receiveCanFrame(can_id, data, dlc)) { break; }
+      if (can_id >= 0x141u && can_id <= 0x146u && dlc >= 8) {
+        double pos_rad;
+        if (parseMotorAngleReply(data, pos_rad)) {
+          uint8_t mid = static_cast<uint8_t>(can_id - 0x140u);
+          out[mid]            = pos_rad;
+          position_cache_[mid] = pos_rad;
+        }
       }
     }
-    if (expected_count > 0 && out.size() >= expected_count) { break; }
   }
 }
 

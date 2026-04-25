@@ -15,6 +15,7 @@ public:
     double  zero_offset_rad{0.0};   // Subtracted from raw read, added to write command
     double  filter_cutoff_hz{0.0};  // 0 = disabled
     double  direction{1.0};         // +1 or -1: flip motor vs controller frame
+    double  static_bias_rad{0.0};   // Permanent encoder bias: added to raw on read, subtracted on write
   };
 
   RmdJoint(std::string name, Config cfg, RmdDriver & driver);
