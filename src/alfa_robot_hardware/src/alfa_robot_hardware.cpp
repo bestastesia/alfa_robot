@@ -90,8 +90,12 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   // Enable motors per bus
   // Mixed protocol on can0: Node 1,2 are ZeroErr (custom CAN), Node 3 is LingGong (RMD)
   rmd_left_->enableMotors({3});            // Only Node 3 (leftjoint5)
-  zeroerr_left_->enableMotors({1, 2});     // Node 1,2 (leftjoint2/3)
-  zeroerr_left_->setPositionMode({1, 2});  // Set position mode for ZeroErr motors
+
+  // ZeroErr motors on can0: Full initialization sequence per datasheet
+  zeroerr_left_->enableMotors({1, 2});     // Node 1,2 (leftjoint2/3) - 01 00 00 00 00 01
+  zeroerr_left_->setPositionMode({1, 2});  // 00 4E 00 00 00 03
+  zeroerr_left_->setMotionMode({1, 2}, 1); // 00 8D 00 00 00 01 (1=absolute position)
+  zeroerr_left_->setMotionParams({1, 2});  // 00 88/89/8A - accel/decel/velocity
 
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
   rmd_base_->enableMotors({1});           // turn
