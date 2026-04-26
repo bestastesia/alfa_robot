@@ -22,6 +22,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   rmd_base_cfg_        = {"can2", 1800};
   canopen_cfg_         = {"can3", 50000, 50000};
   canopen_plate_cfg_   = {"can4", 50000, 50000};
+  zeroerr_left_cfg_    = {"can0", 200, 524288};  // ZeroErr on can0: gear_ratio=200, encoder=524288
 
   for (const auto & [key, val] : info_.hardware_parameters) {
     if      (key == "can_interface_left")    { rmd_left_cfg_.interface       = val; }
@@ -60,8 +61,8 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   rmd_base_       = std::make_unique<RmdDriver>(rmd_base_cfg_);
   canopen_        = std::make_unique<CanopenDriver>(canopen_cfg_);
   canopen_plate_  = std::make_unique<CanopenDriver>(canopen_plate_cfg_);
-  // Mixed protocol on can0: additional CanopenDriver for ZeroErr motors
-  canopen_left_   = std::make_unique<CanopenDriver>(CanopenDriver::Config{"can0", 50000, 50000});
+  // Mixed protocol on can0: ZeroErr driver for Node 1,2 (custom CAN protocol)
+  zeroerr_left_   = std::make_unique<ZeroerrDriver>(zeroerr_left_cfg_);
   buildJoints();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
@@ -76,7 +77,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   rmd_base_->open();
   canopen_->open();
   canopen_plate_->open();
-  canopen_left_->open();  // ZeroErr motors on can0
+  zeroerr_left_->open();  // ZeroErr motors on can0
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -87,9 +88,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State &)
 {
   // Enable motors per bus
-  // Mixed protocol on can0: Node 1,2 are ZeroErr (CANopen), Node 3 is LingGong (RMD)
-  rmd_left_->enableMotors({3});         // Only Node 3 (leftjoint5)
-  canopen_left_->enableNodes({1, 2});   // Node 1,2 (leftjoint2/3)
+  // Mixed protocol on can0: Node 1,2 are ZeroErr (custom CAN), Node 3 is LingGong (RMD)
+  rmd_left_->enableMotors({3});            // Only Node 3 (leftjoint5)
+  zeroerr_left_->enableMotors({1, 2});     // Node 1,2 (leftjoint2/3)
+  zeroerr_left_->setPositionMode({1, 2});  // Set position mode for ZeroErr motors
 
   rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
   rmd_base_->enableMotors({1});           // turn
@@ -121,7 +123,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
 
   // Mixed protocol on can0
   rmd_left_->disableMotors({3});          // Only Node 3 (leftjoint5)
-  canopen_left_->disableNodes({1, 2});    // Node 1,2 (leftjoint2/3)
+  zeroerr_left_->disableMotors({1, 2});   // Node 1,2 (leftjoint2/3)
 
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
@@ -133,7 +135,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   rmd_base_->close();
   canopen_->close();
   canopen_plate_->close();
-  canopen_left_->close();
+  zeroerr_left_->close();
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Hardware deactivated");
   return CallbackReturn::SUCCESS;
@@ -165,13 +167,13 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
-  // Mixed protocol on can0: Node 1,2 via CANopen (leftjoint2/3), Node 3 via RMD (leftjoint5)
+  // Mixed protocol on can0: Node 1,2 via ZeroErr (custom CAN), Node 3 via RMD (leftjoint5)
   rmd_left_->readPositions({3});        // can0: only Node 3 (leftjoint5 - LingGong)
   rmd_right_->readPositions({4, 5, 6});
   rmd_base_->readPositions({1});
   canopen_->readPositions();            // can3: one SYNC per cycle, updates PDO cache
   canopen_plate_->readPositions();      // can4: plate bus
-  canopen_left_->readPositions();       // can0: ZeroErr motors (Node 1,2)
+  zeroerr_left_->readPositions({1, 2}); // can0: ZeroErr motors (Node 1,2)
 
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;
@@ -194,11 +196,11 @@ void AlfaRobotHW::buildJoints()
     RmdJoint::Config{1, 0.0, 0.0, -1.0, 2.394}, *rmd_base_));
 
   // Left bus (can0) - mixed protocol
-  // Node 1,2: ZeroErr rotary motors (eRob110H100l-BHS-18ET, gear_ratio=100:1, encoder_resolution=524288 pulses/rev)
-  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint2",
-    CanopenJoint::Config{1, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
-  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint3",
-    CanopenJoint::Config{2, 100.0, 524288.0, 0.0, -1.0}, *canopen_left_));
+  // Node 1,2: ZeroErr rotary motors (gear_ratio=200:1, encoder_resolution=524288 pulses/rev)
+  joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint2",
+    ZeroerrJoint::Config{1, 0.0, -1.0}, *zeroerr_left_));
+  joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint3",
+    ZeroerrJoint::Config{2, 0.0, -1.0}, *zeroerr_left_));
   // Node 3: LingGong motor (RMD protocol) -> now assigned to leftjoint5 (rotary)
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint5",
     RmdJoint::Config{3, 0.0, 0.0, -1.0, 0.0}, *rmd_left_));
