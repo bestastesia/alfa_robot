@@ -206,9 +206,13 @@ bool ZeroerrDriver::check3EResponse(const uint8_t * resp_data, uint8_t resp_dlc,
       "Node %d: Empty response", node_id);
     return false;
   }
-  if (resp_data[0] != kResponseEndMarker) {
+  // ZeroErr 响应格式：不同命令的响应长度不同，但都以 0x3E 结尾
+  // - 0x86 命令响应：[3E] (1字节)
+  // - 0x83 命令响应：[00 27 3E] (3字节，最后字节是 0x3E)
+  // - 0x02 命令响应：[D3 D2 D1 D0 3E] (5字节)
+  if (resp_data[resp_dlc - 1] != kResponseEndMarker) {
     RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
-      "Node %d: Response error (expected 0x3E, got 0x%02X)", node_id, resp_data[0]);
+      "Node %d: Response error (expected 0x3E at end, got 0x%02X)", node_id, resp_data[resp_dlc - 1]);
     return false;
   }
   return true;

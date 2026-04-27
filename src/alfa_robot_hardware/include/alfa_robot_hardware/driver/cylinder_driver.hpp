@@ -42,6 +42,7 @@ public:
     std::string interface;    // CAN 接口名 (e.g., "can0")
     uint8_t node_id{3};       // 从站 Node ID (默认 3)
     double pulses_per_meter{200000.0};  // 脉冲/米
+    int32_t zero_offset{0};   // 零点偏置 (脉冲数)，默认 0
   };
 
   explicit CylinderDriver(Config cfg);
@@ -84,7 +85,7 @@ private:
   Config config_;
   int socket_fd_{-1};
   bool enabled_{false};
-  double position_cache_m_{0.0};
+  double position_cache_m_{0.0};  // 位置缓存 (米，已减去零点偏置)
 
   /// 发送 CAN 帧
   bool sendCanFrame(uint32_t can_id, const uint8_t * data, uint8_t dlc);
@@ -101,11 +102,14 @@ private:
   /// 读两个寄存器
   bool readTwoRegisters(uint8_t reg1_addr, int16_t & value1, uint8_t reg2_addr, int16_t & value2);
 
-  /// 脉冲转米
+  /// 脉冲转米 (已减去零点偏置)
   double pulsesToMeters(int32_t pulses) const;
 
-  /// 米转脉冲
+  /// 米转脉冲 (已加上零点偏置)
   int32_t metersToPulses(double meters) const;
+
+  /// 读取原始脉冲数 (未偏置)
+  bool readRawPulses(int32_t & pulses);
 };
 
 }  // namespace alfa_robot_hardware

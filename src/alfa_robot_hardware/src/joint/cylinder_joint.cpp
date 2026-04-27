@@ -31,17 +31,18 @@ bool CylinderJoint::activate()
   double initial_pos_m = 0.0;
   if (driver_.readPosition(initial_pos_m)) {
     position_state_ = initial_pos_m * config_.sign + config_.offset;
-    position_command_ = position_state_;
+    // 启动时自动归零到 0 位置
+    position_command_ = 0.0;
     last_position_ = position_state_;
 
     RCLCPP_INFO(rclcpp::get_logger("CylinderJoint"),
-      "Joint '%s' activated, initial position: %.6f m",
+      "Joint '%s' activated, initial position: %.6f m, homing to 0.0 m",
       name_.c_str(), initial_pos_m);
   } else {
     RCLCPP_WARN(rclcpp::get_logger("CylinderJoint"),
       "Joint '%s' failed to read initial position", name_.c_str());
     position_state_ = 0.0;
-    position_command_ = 0.0;
+    position_command_ = 0.0;  // 归零
   }
 
   return true;

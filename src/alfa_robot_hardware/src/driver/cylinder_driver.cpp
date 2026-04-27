@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <linux/can.h>
@@ -78,8 +79,8 @@ bool CylinderDriver::open()
   }
 
   RCLCPP_INFO(rclcpp::get_logger("CylinderDriver"),
-    "Opened %s (node_id=%d, pulses_per_meter=%.0f)",
-    config_.interface.c_str(), config_.node_id, config_.pulses_per_meter);
+    "Opened %s (node_id=%d, pulses_per_meter=%.0f, zero_offset=%d)",
+    config_.interface.c_str(), config_.node_id, config_.pulses_per_meter, config_.zero_offset);
 
   return true;
 }
@@ -119,21 +120,38 @@ bool CylinderDriver::receiveCanFrame(uint32_t & can_id, uint8_t * data, uint8_t 
   pfd.fd = socket_fd_;
   pfd.events = POLLIN;
 
-  int rc = ::poll(&pfd, 1, timeout_ms);
-  if (rc <= 0) {
-    return false;  // 超时
+  auto start_time = std::chrono::steady_clock::now();
+  auto deadline = start_time + std::chrono::milliseconds(timeout_ms);
+
+  // 循环读取，直到收到预期 ID 的帧或超时
+  // 目的：过滤 can0 总线上其他设备的帧 (ZeroErr: 0x5C1/0x5C2, RMD: 0x141-0x146)
+  while (std::chrono::steady_clock::now() < deadline) {
+    int remaining_ms = static_cast<int>(
+      std::chrono::duration_cast<std::chrono::milliseconds>(
+        deadline - std::chrono::steady_clock::now()).count());
+    if (remaining_ms <= 0) { break; }
+
+    int rc = ::poll(&pfd, 1, std::min(remaining_ms, 10));
+    if (rc <= 0) { continue; }
+
+    struct can_frame frame;
+    ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      continue;
+    }
+
+    uint32_t rx_id = frame.can_id & CAN_SFF_MASK;
+    // 只接收预期响应 ID: config_.node_id + 0x100
+    if (rx_id == static_cast<uint32_t>(config_.node_id + 0x100)) {
+      can_id = rx_id;
+      dlc = std::min(frame.can_dlc, static_cast<uint8_t>(8));
+      std::memcpy(data, frame.data, dlc);
+      return true;
+    }
+    // 忽略其他 ID 的帧 (可能是 ZeroErr 或 RMD 的响应)
   }
 
-  struct can_frame frame;
-  ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
-  if (received != static_cast<ssize_t>(sizeof(frame))) {
-    return false;
-  }
-
-  can_id = frame.can_id & CAN_SFF_MASK;
-  dlc = std::min(frame.can_dlc, static_cast<uint8_t>(8));
-  std::memcpy(data, frame.data, dlc);
-  return true;
+  return false;  // 超时未收到预期 ID 的帧
 }
 
 bool CylinderDriver::writeRegister(uint8_t reg_addr, int16_t value)
@@ -335,12 +353,11 @@ bool CylinderDriver::setVelocity(double velocity_m)
 {
   if (socket_fd_ < 0) { return false; }
 
-  // 速度单位转换：m/s -> 脉冲/s (可能需要根据实际协议调整)
-  // 假设速度寄存器单位也是脉冲
+  // 速度单位转换：m/s -> 脉冲/s
   int32_t velocity_pulses = static_cast<int32_t>(velocity_m * config_.pulses_per_meter);
 
+  // 写寄存器 0x10 (速度高 16 位) 和 0xFF (空操作)
   int16_t high16 = static_cast<int16_t>((velocity_pulses >> 16) & 0xFFFF);
-  int16_t low16 = static_cast<int16_t>(velocity_pulses & 0xFFFF);
 
   if (!writeTwoRegisters(0x10, high16, 0xFF, 0)) {
     RCLCPP_WARN(rclcpp::get_logger("CylinderDriver"),
@@ -362,12 +379,16 @@ bool CylinderDriver::getCachedPosition(double & position_m) const
 
 double CylinderDriver::pulsesToMeters(int32_t pulses) const
 {
-  return static_cast<double>(pulses) / config_.pulses_per_meter;
+  // 应用零点偏置：减去硬件零点
+  int32_t relative_pulses = pulses - config_.zero_offset;
+  return static_cast<double>(relative_pulses) / config_.pulses_per_meter;
 }
 
 int32_t CylinderDriver::metersToPulses(double meters) const
 {
-  return static_cast<int32_t>(std::round(meters * config_.pulses_per_meter));
+  // 应用零点偏置：加上硬件零点
+  int32_t target_pulses = static_cast<int32_t>(std::round(meters * config_.pulses_per_meter));
+  return target_pulses + config_.zero_offset;
 }
 
 }  // namespace alfa_robot_hardware
