@@ -57,8 +57,8 @@ void CylinderJoint::deactivate()
 void CylinderJoint::read(double dt)
 {
   double pos_m = 0.0;
-  // 直接从驱动读取实际位置（驱动内部会更新缓存）
-  if (driver_.readPosition(pos_m)) {
+  // 从驱动缓存获取位置（驱动在 AlfaRobotHW::read() 中已更新）
+  if (driver_.getCachedPosition(pos_m)) {
     position_state_ = pos_m * config_.sign + config_.offset;
 
     if (dt > 0.0) {

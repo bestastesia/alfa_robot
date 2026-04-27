@@ -179,14 +179,19 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
-  // Mixed protocol on can0: Node 1,2 via ZeroErr (custom CAN), Node 4 via RMD (leftjoint5)
-  // Note: CylinderJoint reads directly from driver in its read() method
+  // Mixed protocol on can0: Node 1,2 via ZeroErr (custom CAN), Node 3 via Cylinder (IDS830ABS), Node 4 via RMD (leftjoint5)
+  // IMPORTANT: All can0 reads must be sequential to avoid CAN bus contention
   rmd_left_->readPositions({4});         // can0: Node 4 (leftjoint5 - RMD)
+  {                                      // can0: Node 3 (leftjoint4 - Cylinder)
+    double dummy;
+    cylinder_->readPosition(dummy);
+  }
+  zeroerr_left_->readPositions({1, 2});  // can0: ZeroErr motors (Node 1,2)
+
   rmd_right_->readPositions({4, 5, 6});
   rmd_base_->readPositions({1});
   canopen_->readPositions();             // can3: one SYNC per cycle, updates PDO cache
   canopen_plate_->readPositions();       // can4: plate bus
-  zeroerr_left_->readPositions({1, 2});  // can0: ZeroErr motors (Node 1,2)
 
   for (auto & joint : joints_) { joint->read(dt); }
   return hardware_interface::return_type::OK;

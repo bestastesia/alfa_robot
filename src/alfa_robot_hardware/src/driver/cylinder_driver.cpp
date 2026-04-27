@@ -174,7 +174,7 @@ bool CylinderDriver::writeRegister(uint8_t reg_addr, int16_t value)
     return false;
   }
 
-  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 100)) {
+  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 10)) {
     RCLCPP_WARN(rclcpp::get_logger("CylinderDriver"),
       "Timeout waiting for write response (reg=0x%02X)", reg_addr);
     return false;
@@ -212,7 +212,7 @@ bool CylinderDriver::writeTwoRegisters(uint8_t reg1_addr, int16_t value1, uint8_
     return false;
   }
 
-  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 100)) {
+  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 10)) {
     RCLCPP_WARN(rclcpp::get_logger("CylinderDriver"),
       "Timeout waiting for write response");
     return false;
@@ -248,7 +248,7 @@ bool CylinderDriver::readTwoRegisters(uint8_t reg1_addr, int16_t & value1, uint8
     return false;
   }
 
-  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 100)) {
+  if (!receiveCanFrame(resp_id, rx_data, rx_dlc, 10)) {
     RCLCPP_WARN(rclcpp::get_logger("CylinderDriver"),
       "Timeout waiting for read response");
     return false;
