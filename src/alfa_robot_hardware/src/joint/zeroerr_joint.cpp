@@ -25,22 +25,15 @@ ZeroerrJoint::ZeroerrJoint(const std::string & name, Config config, ZeroerrDrive
 
 bool ZeroerrJoint::activate()
 {
-  // 读取初始位置作为偏置
-  auto positions = driver_.readPositions({config_.node_id});
-  auto it = positions.find(config_.node_id);
+  // 使用配置的零点位置（不再运行时读取）
+  initial_position_counts_ = config_.initial_counts;
+  position_state_ = 0.0;  // 状态归零
+  last_position_ = 0.0;
+  last_velocity_ = 0.0;
 
-  if (it != positions.end()) {
-    initial_position_counts_ = it->second;
-    position_state_ = 0.0;  // 初始位置归零
-    last_position_ = 0.0;
-    RCLCPP_INFO(rclcpp::get_logger("ZeroerrJoint"),
-      "Joint '%s' activated, initial position: %d counts (offset=%.4f rad)",
-      name_.c_str(), initial_position_counts_, config_.offset);
-  } else {
-    RCLCPP_WARN(rclcpp::get_logger("ZeroerrJoint"),
-      "Joint '%s' failed to read initial position, using 0", name_.c_str());
-    initial_position_counts_ = 0;
-  }
+  RCLCPP_INFO(rclcpp::get_logger("ZeroerrJoint"),
+    "Joint '%s' activated with configured zero point: %d counts (offset=%.4f rad, sign=%.1f)",
+    name_.c_str(), initial_position_counts_, config_.offset, config_.sign);
 
   position_command_ = position_state_;
   return true;
@@ -62,9 +55,11 @@ void ZeroerrJoint::read(double dt)
     // 转换为弧度并应用偏置和方向
     position_state_ = countsToRadians(relative_counts) + config_.offset;
 
-    // 计算速度
+    // 计算速度和加速度
     if (dt > 0.0) {
       velocity_state_ = (position_state_ - last_position_) / dt;
+      acceleration_state_ = (velocity_state_ - last_velocity_) / dt;
+      last_velocity_ = velocity_state_;
     }
     last_position_ = position_state_;
   }
@@ -72,12 +67,11 @@ void ZeroerrJoint::read(double dt)
 
 void ZeroerrJoint::write(double /*dt*/)
 {
-  // 将命令位置转换为脉冲
-  // 注意：需要加上初始位置偏置，因为是绝对位置控制
+  // 绝对位置模式：命令位置 = GUI 滑块值 (弧度)
+  // 需要转换为脉冲并加上初始位置偏置
   double relative_rad = (position_command_ - config_.offset) * config_.sign;
   int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
 
-  // 写入驱动
   driver_.writePositions({{config_.node_id, target_counts}});
 }
 
@@ -120,6 +114,7 @@ std::vector<hardware_interface::StateInterface> ZeroerrJoint::exportStateInterfa
   std::vector<hardware_interface::StateInterface> si;
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION, &position_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY, &velocity_state_);
+  si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_state_);
   return si;
 }
 

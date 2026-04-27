@@ -31,6 +31,7 @@ public:
     uint8_t node_id;        // CAN 节点 ID
     double offset{0.0};     // 位置偏置 (弧度)
     double sign{-1.0};      // 方向符号 (+1 或 -1)
+    int32_t initial_counts{0};  // 零点位置 (脉冲数)
   };
 
   ZeroerrJoint(const std::string & name, Config config, ZeroerrDriver & driver);
@@ -61,10 +62,12 @@ private:
   Config config_;
   ZeroerrDriver & driver_;
 
-  double position_state_{0.0};   // 当前位置 (弧度)
-  double position_command_{0.0}; // 目标位置 (弧度)
-  double velocity_state_{0.0};   // 当前速度 (弧度/秒)
-  double last_position_{0.0};    // 上一周期位置 (用于计算速度)
+  double position_state_{0.0};    // 当前位置 (弧度)
+  double position_command_{0.0};  // 目标位置 (弧度)
+  double velocity_state_{0.0};    // 当前速度 (弧度/秒)
+  double acceleration_state_{0.0}; // 当前加速度 (弧度/秒²)
+  double last_position_{0.0};     // 上一周期位置 (用于计算速度)
+  double last_velocity_{0.0};     // 上一周期速度 (用于计算加速度)
 
   int32_t initial_position_counts_{0};  // 激活时的初始位置 (脉冲)
 

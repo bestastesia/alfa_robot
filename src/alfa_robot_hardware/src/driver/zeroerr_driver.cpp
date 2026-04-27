@@ -36,9 +36,11 @@ namespace alfa_robot_hardware
 ZeroerrDriver::ZeroerrDriver(Config cfg)
 : config_(std::move(cfg))
 {
-  // 计算每弧度对应的脉冲数
-  double output_resolution = static_cast<double>(config_.encoder_resolution) * config_.gear_ratio;
+  // 零差一体化电机：编码器在减速器输出轴上，直接使用编码器分辨率
+  // 不需要再乘减速比（减速比已经体现在机械结构中）
+  double output_resolution = static_cast<double>(config_.encoder_resolution);
   counts_per_radian_ = output_resolution / (2.0 * M_PI);
+  // = 524,288 / (2π) ≈ 83,435 脉冲/rad
 }
 
 ZeroerrDriver::~ZeroerrDriver()
@@ -443,17 +445,7 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
     uint8_t resp_data[8];
     uint8_t resp_dlc = 8;
 
-    // 1. 设置运动模式为绝对位置 (00 8D 00 00 00 01)
-    uint8_t motion_mode_data[6] = {0x00, 0x8D, 0x00, 0x00, 0x00, 0x01};
-    if (!sendCommandAndWait(node_id, motion_mode_data, 6, resp_data, resp_dlc) ||
-        !check3EResponse(resp_data, resp_dlc, node_id)) {
-      RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
-        "Node %d: Failed to set motion mode", node_id);
-      continue;
-    }
-    usleep(kInterFrameDelayUs);
-
-    // 2. 设置目标绝对位置 (00 86 [D3 D2 D1 D0])
+    // 1. 设置目标绝对位置 (00 86 [D3 D2 D1 D0])
     // 大端序：高字节在前
     uint8_t pos_data[6] = {
       0x00, 0x86,
@@ -463,7 +455,6 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
       static_cast<uint8_t>(target_counts & 0xFF)
     };
 
-    resp_dlc = 8;
     if (!sendCommandAndWait(node_id, pos_data, 6, resp_data, resp_dlc) ||
         !check3EResponse(resp_data, resp_dlc, node_id)) {
       RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
@@ -472,7 +463,7 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
     }
     usleep(kInterFrameDelayUs);
 
-    // 3. 开始运动 (00 83)
+    // 2. 开始运动 (00 83)
     uint8_t start_data[2] = {0x00, 0x83};
     resp_dlc = 8;
     if (!sendCommandAndWait(node_id, start_data, 2, resp_data, resp_dlc) ||
@@ -482,8 +473,8 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
       continue;
     }
 
-    RCLCPP_INFO(rclcpp::get_logger("ZeroerrDriver"),
-      "Node %d: Moving to position %d", node_id, target_counts);
+    RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
+      "Node %d: Moving to absolute position %d", node_id, target_counts);
   }
 }
 
