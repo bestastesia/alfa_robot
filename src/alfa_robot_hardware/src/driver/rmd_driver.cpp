@@ -47,6 +47,13 @@ bool RmdDriver::open()
 
   const int sndbuf = 65536;
   setsockopt(socket_fd_, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+
+  // 内核级过滤：只接收 RMD 响应帧 (0x141-0x14F)
+  struct can_filter rfilter[1];
+  rfilter[0].can_id   = 0x140;
+  rfilter[0].can_mask = 0x7F0;
+  setsockopt(socket_fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
+
   int flags = fcntl(socket_fd_, F_GETFL, 0);
   if (flags >= 0) { fcntl(socket_fd_, F_SETFL, flags | O_NONBLOCK); }
 
