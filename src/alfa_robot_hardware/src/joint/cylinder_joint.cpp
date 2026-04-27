@@ -62,6 +62,8 @@ void CylinderJoint::read(double dt)
 
     if (dt > 0.0) {
       velocity_state_ = (position_state_ - last_position_) / dt;
+      acceleration_state_ = (velocity_state_ - last_velocity_) / dt;
+      last_velocity_ = velocity_state_;
     }
     last_position_ = position_state_;
   }
@@ -94,6 +96,7 @@ std::vector<hardware_interface::StateInterface> CylinderJoint::exportStateInterf
   std::vector<hardware_interface::StateInterface> si;
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION, &position_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY, &velocity_state_);
+  si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_state_);
   return si;
 }
 

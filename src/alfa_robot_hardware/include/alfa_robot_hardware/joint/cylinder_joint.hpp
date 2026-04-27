@@ -63,10 +63,12 @@ private:
   Config config_;
   CylinderDriver & driver_;
 
-  double position_state_{0.0};    // 当前位置 (米)
-  double position_command_{0.0};  // 目标位置 (米)
-  double velocity_state_{0.0};    // 当前速度 (米/秒)
-  double last_position_{0.0};     // 上一周期位置
+  double position_state_{0.0};     // 当前位置 (米)
+  double position_command_{0.0};   // 目标位置 (米)
+  double velocity_state_{0.0};     // 当前速度 (米/秒)
+  double acceleration_state_{0.0}; // 当前加速度 (米/秒²)
+  double last_position_{0.0};      // 上一周期位置
+  double last_velocity_{0.0};      // 上一周期速度
 
   /// 驱动使能状态
   bool driver_enabled_{false};
