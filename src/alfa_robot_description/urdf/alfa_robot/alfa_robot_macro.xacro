@@ -526,7 +526,7 @@
 
     <!-- rightjoint3 -->
     <joint name="${prefix}leftjoint3" type="continuous">
-      <origin xyz="0.01 0.0058 0.098" rpy="1.5708 -1.5708 0"/>
+      <origin xyz="0.01 0.0058 0.098" rpy="-1.5708 -1.5708 0"/>
       <parent link="${prefix}leftjoint2_link"/>
       <child link="${prefix}leftjoint3_link"/>
       <axis xyz="0 0 1"/>
@@ -544,7 +544,7 @@
 
     <!-- leftjoint5 (new joint for 6DOF) -->
     <joint name="${prefix}leftjoint5" type="continuous">
-      <origin xyz="0.01 -0.0022 0.098" rpy="1.5708 -1.5708 0"/>
+      <origin xyz="0.01 -0.0022 0.098" rpy="-1.5708 -1.5708 0"/>
       <parent link="${prefix}leftjoint4_link"/>
       <child link="${prefix}leftjoint5_link"/>
       <axis xyz="0 0 1"/>
