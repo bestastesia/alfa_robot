@@ -84,7 +84,7 @@ install_manifest.txt
 # Large binary files (models, maps, point clouds, images)
 *.pcd
 *.ply
-*.stl
+# *.stl  # 注释掉，meshes目录的STL需要跟踪
 *.obj
 *.dae
 *.gltf
@@ -103,6 +103,12 @@ install_manifest.txt
 *.db
 *.sqlite
 *.sqlite3
+
+# 但忽略其他位置的STL文件
+/*.stl
+/**/*.stl
+!/src/**/meshes/**/*.STL
+!/src/**/meshes/**/*.stl
 
 # Log files
 *.log
@@ -146,6 +152,9 @@ recorded_data/
 
 # rviz config (usually keep in repo, but can ignore if needed)
 # *.rviz
+
+# Mesh backups (keep old versions for reference)
+src/alfa_robot_description/meshes/alfa_robot_backup_v1/
 
 # PCD directory (point cloud data)
 PCD/

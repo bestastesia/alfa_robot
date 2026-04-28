@@ -33,6 +33,16 @@ joint_limits:
     max_velocity: 1000.0
     has_acceleration_limits: false
     max_acceleration: 0.0
+  leftjoint5:
+    has_velocity_limits: true
+    max_velocity: 1000.0
+    has_acceleration_limits: false
+    max_acceleration: 0.0
+  leftjoint6:
+    has_velocity_limits: true
+    max_velocity: 1000.0
+    has_acceleration_limits: false
+    max_acceleration: 0.0
   rightarmbase:
     has_velocity_limits: true
     max_velocity: 1000.0

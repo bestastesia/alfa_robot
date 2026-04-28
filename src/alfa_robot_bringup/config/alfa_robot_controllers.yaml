@@ -55,6 +55,8 @@ left_arm_position_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - leftjoint5
+      - leftjoint6
     interface_name: position
 
 right_arm_position_controller:
@@ -76,7 +78,7 @@ forward_velocity_controller:
       - right_forward
     interface_name: velocity
 
-# GUI 调试用：一个控制器覆盖全部 13 个位置关节
+# GUI 调试用：一个控制器覆盖全部 14 个位置关节
 all_position_controller:
   ros__parameters:
     joints:
@@ -88,6 +90,7 @@ all_position_controller:
       - leftjoint3
       - leftjoint4
       - leftjoint5
+      - leftjoint6
       - rightarmbase
       - rightjoint1
       - rightjoint2

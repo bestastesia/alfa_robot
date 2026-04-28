@@ -41,6 +41,8 @@ left_arm_controller:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - leftjoint5
+      - leftjoint6
     command_interfaces:
       - position
     state_interfaces:
@@ -72,6 +74,7 @@ all_position_controller:
       - leftjoint3
       - leftjoint4
       - leftjoint5
+      - leftjoint6
       - rightarmbase
       - rightjoint1
       - rightjoint2

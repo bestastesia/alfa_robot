@@ -48,6 +48,7 @@
           <param name="safe_position_leftjoint3">0.0</param>
           <param name="safe_position_leftjoint4">0.0</param>
           <param name="safe_position_leftjoint5">0.0</param>
+          <param name="safe_position_leftjoint6">0.0</param>
           <param name="safe_position_rightarmbase">0.0</param>
           <param name="safe_position_rightjoint1">0.0</param>
           <param name="safe_position_rightjoint2">0.0</param>
@@ -163,8 +164,8 @@
       <!-- leftarmbase (prismatic) -->
       <joint name="${prefix}leftarmbase">
         <command_interface name="position">
-          <param name="min">-0.16</param>
-          <param name="max">0</param>
+          <param name="min">0</param>
+          <param name="max">0.14</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -177,7 +178,7 @@
       <joint name="${prefix}leftjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.45</param>
+          <param name="max">0.42</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -212,11 +213,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint4 (prismatic) -->
+      <!-- leftjoint4 (continuous) -->
       <joint name="${prefix}leftjoint4">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.22</param>
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -230,6 +231,19 @@
         <command_interface name="position">
           <param name="min">-3.14159</param>
           <param name="max">3.14159</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- leftjoint6 (prismatic, new end effector extension) -->
+      <joint name="${prefix}leftjoint6">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.15</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
