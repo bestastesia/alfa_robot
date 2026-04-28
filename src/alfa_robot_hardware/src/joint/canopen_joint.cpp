@@ -112,6 +112,7 @@ std::vector<hardware_interface::StateInterface> CanopenJoint::exportStateInterfa
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION,     &position_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY,     &velocity_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

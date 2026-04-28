@@ -61,6 +61,22 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
       try { safe_positions_[key.substr(14)] = std::stod(val); }
       catch (...) {}
     }
+    // 位置误差监控参数
+    else if (key == "position_error_threshold_dynamic") {
+      try { position_error_threshold_dynamic_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_threshold_static") {
+      try { position_error_threshold_static_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_tolerance_time") {
+      try { position_error_tolerance_time_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_check_enabled") {
+      position_error_check_enabled_ = (val == "true");
+    }
   }
 
   // Create drivers and joints here so export_state/command_interfaces() works
@@ -76,6 +92,19 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   cylinder_       = std::make_unique<CylinderDriver>(cylinder_cfg_);
   buildJoints();
 
+  // 为所有关节设置位置误差监控参数
+  if (position_error_check_enabled_) {
+    for (auto & joint : joints_) {
+      joint->setPositionErrorParams(
+        position_error_threshold_dynamic_,
+        position_error_threshold_static_,
+        position_error_tolerance_time_);
+    }
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+      "Position error monitoring enabled: dynamic=%.3f, static=%.3f, time=%.2fs",
+      position_error_threshold_dynamic_, position_error_threshold_static_, position_error_tolerance_time_);
+  }
+
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
   return CallbackReturn::SUCCESS;
 }
@@ -90,6 +119,17 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   canopen_plate_->open();
   zeroerr_left_->open();  // ZeroErr motors on can0
   cylinder_->open();      // Cylinder on can0 (Node 3)
+
+  // 创建急停话题订阅节点（软件触发接口）
+  estop_node_ = rclcpp::Node::make_shared("emergency_stop_interface");
+  estop_sub_ = estop_node_->create_subscription<std_msgs::msg::Bool>(
+    "/emergency_stop_trigger",
+    rclcpp::QoS(10),
+    [this](const std_msgs::msg::Bool::SharedPtr msg) {
+      emergencyStopCallback(msg);
+    });
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+    "Emergency stop topic subscriber created: /emergency_stop_trigger");
 
   // 启动急停 CAN 监听
   if (openEstopSocket()) {
@@ -149,6 +189,10 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   }
   closeEstopSocket();
 
+  // 清理急停话题订阅节点
+  estop_sub_.reset();
+  estop_node_.reset();
+
   if (use_safe_shutdown_ && !safe_positions_.empty()) {
     moveAllToSafePositions(5.0);
   }
@@ -200,6 +244,11 @@ std::vector<hardware_interface::CommandInterface> AlfaRobotHW::export_command_in
 hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
+  // 处理急停话题订阅的消息
+  if (estop_node_) {
+    rclcpp::spin_some(estop_node_);
+  }
+
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
@@ -430,6 +479,19 @@ void AlfaRobotHW::emergencyStopMonitorThread()
   }
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Emergency stop monitor thread stopped");
+}
+
+void AlfaRobotHW::emergencyStopCallback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  if (msg->data) {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Emergency stop triggered via ROS topic");
+    emergencyStop();
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+      "Emergency stop cleared via ROS topic");
+    clearEmergencyStop();
+  }
 }
 
 }  // namespace alfa_robot_hardware

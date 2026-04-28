@@ -59,6 +59,9 @@ void RmdJoint::read(double dt)
     prev_filtered_ = pos;
     first_read_    = false;
   }
+
+  // 检查位置误差
+  checkPositionError(dt, position_, position_cmd_);
 }
 
 void RmdJoint::write(double dt)
@@ -102,6 +105,7 @@ std::vector<hardware_interface::StateInterface> RmdJoint::exportStateInterfaces(
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION,     &position_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY,     &velocity_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

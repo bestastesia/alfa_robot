@@ -69,6 +69,9 @@ void CylinderJoint::read(double dt)
       last_velocity_ = velocity_state_;
     }
     last_position_ = position_state_;
+
+    // 检查位置误差
+    checkPositionError(dt, position_state_, position_command_);
   }
 }
 
@@ -150,6 +153,7 @@ std::vector<hardware_interface::StateInterface> CylinderJoint::exportStateInterf
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION, &position_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY, &velocity_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_state_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

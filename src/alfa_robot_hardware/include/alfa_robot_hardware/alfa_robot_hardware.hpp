@@ -22,6 +22,7 @@
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/state.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 namespace alfa_robot_hardware
 {
@@ -77,6 +78,12 @@ private:
   std::map<std::string, double> safe_positions_;
   bool use_safe_shutdown_{false};
 
+  // Position error monitoring config
+  double position_error_threshold_dynamic_{0.1};   // 动态阈值 (rad)
+  double position_error_threshold_static_{0.02};   // 静态阈值 (rad)
+  double position_error_tolerance_time_{1.0};      // 容忍时间 (s)
+  bool position_error_check_enabled_{false};       // 是否启用
+
   // Driver configs (parsed in on_init)
   RmdDriver::Config     rmd_left_cfg_, rmd_right_cfg_, rmd_base_cfg_;
   CanopenDriver::Config canopen_cfg_;
@@ -91,6 +98,10 @@ private:
   std::atomic<bool> estop_monitor_running_{false};
   double emergency_stop_state_{0.0};  // 状态接口值：0=正常，1=急停激活
 
+  // 急停话题订阅（软件触发）
+  rclcpp::Node::SharedPtr estop_node_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_sub_;
+
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);
 
@@ -98,6 +109,9 @@ private:
   void emergencyStopMonitorThread();
   bool openEstopSocket();
   void closeEstopSocket();
+
+  // 急停话题回调
+  void emergencyStopCallback(const std_msgs::msg::Bool::SharedPtr msg);
 };
 
 }  // namespace alfa_robot_hardware
