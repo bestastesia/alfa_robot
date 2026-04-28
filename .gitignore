@@ -104,6 +104,10 @@ install_manifest.txt
 *.sqlite
 *.sqlite3
 
+# 但允许 meshes 目录下的 STL 文件（用于版本区分）
+!src/**/meshes/**/*.STL
+!src/**/meshes/**/*.stl
+
 # Log files
 *.log
 installlog
