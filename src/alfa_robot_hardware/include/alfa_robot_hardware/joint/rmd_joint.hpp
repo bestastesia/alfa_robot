@@ -1,6 +1,8 @@
 #ifndef ALFA_ROBOT_HARDWARE__JOINT__RMD_JOINT_HPP_
 #define ALFA_ROBOT_HARDWARE__JOINT__RMD_JOINT_HPP_
 
+#include <cmath>
+
 #include "alfa_robot_hardware/joint/i_joint.hpp"
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
 
@@ -16,6 +18,10 @@ public:
     double  filter_cutoff_hz{0.0};  // 0 = disabled
     double  direction{1.0};         // +1 or -1: flip motor vs controller frame
     double  static_bias_rad{0.0};   // Permanent encoder bias: added to raw on read, subtracted on write
+    // 软限位参数
+    double  min_position{-M_PI};    // 最小位置 (弧度)
+    double  max_position{M_PI};     // 最大位置 (弧度)
+    bool    enable_limits{false};   // 是否启用限位（RMD 默认不启用，因为是连续旋转关节）
   };
 
   RmdJoint(std::string name, Config cfg, RmdDriver & driver);
@@ -41,6 +47,9 @@ public:
   // Called by AlfaRobotHW::on_activate for the "turn" joint after first read.
   // Stores current position as zero offset; zeroes position and command buffers.
   void captureCurrentPositionAsZero();
+
+  /// 急停：停止电机运动
+  void emergencyStop() override;
 
 private:
   Config     cfg_;

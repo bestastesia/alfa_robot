@@ -33,6 +33,9 @@ public:
 
   bool moveToSafePosition(double target_rad, double timeout_s) override;
 
+  /// 急停：无操作（占位关节不驱动实际硬件）
+  void emergencyStop() override {}
+
 private:
   Config cfg_;
 

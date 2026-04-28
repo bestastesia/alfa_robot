@@ -21,6 +21,8 @@ ZeroerrJoint::ZeroerrJoint(const std::string & name, Config config, ZeroerrDrive
 , config_(config)
 , driver_(driver)
 {
+  // 设置限位状态
+  has_limits_ = config_.enable_limits;
 }
 
 bool ZeroerrJoint::activate()
@@ -67,12 +69,61 @@ void ZeroerrJoint::read(double dt)
 
 void ZeroerrJoint::write(double /*dt*/)
 {
+  // 应用限位
+  double limited_cmd = applyLimits(position_command_);
+
   // 绝对位置模式：命令位置 = GUI 滑块值 (弧度)
   // 需要转换为脉冲并加上初始位置偏置
-  double relative_rad = (position_command_ - config_.offset) * config_.sign;
+  double relative_rad = (limited_cmd - config_.offset) * config_.sign;
   int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
 
   driver_.writePositions({{config_.node_id, target_counts}});
+}
+
+void ZeroerrJoint::emergencyStop()
+{
+  driver_.stopMotors({config_.node_id});
+  RCLCPP_INFO(rclcpp::get_logger("ZeroerrJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
+double ZeroerrJoint::applyLimits(double cmd)
+{
+  if (!config_.enable_limits) {
+    return cmd;
+  }
+
+  double limited = cmd;
+
+  // 检查正向限位
+  if (limited > config_.max_position) {
+    limited = config_.max_position;
+    limit_state_ = LimitState::POS_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("ZeroerrJoint"),
+      "Joint '%s' command %.3f exceeds max limit %.3f, clamped",
+      name_.c_str(), cmd, config_.max_position);
+  }
+  // 检查负向限位
+  else if (limited < config_.min_position) {
+    limited = config_.min_position;
+    limit_state_ = LimitState::NEG_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("ZeroerrJoint"),
+      "Joint '%s' command %.3f exceeds min limit %.3f, clamped",
+      name_.c_str(), cmd, config_.min_position);
+  }
+  // 在限位范围内，检查是否需要清除限位状态
+  else {
+    // 如果之前在正限位，现在命令向负方向移动，清除限位状态
+    if (limit_state_ == LimitState::POS_LIMIT && cmd < position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+    // 如果之前在负限位，现在命令向正方向移动，清除限位状态
+    else if (limit_state_ == LimitState::NEG_LIMIT && cmd > position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+  }
+
+  return limited;
 }
 
 bool ZeroerrJoint::moveToSafePosition(double safe_position_rad, double timeout_s)

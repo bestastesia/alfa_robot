@@ -23,6 +23,8 @@ CylinderJoint::CylinderJoint(const std::string & name, Config config, CylinderDr
 , config_(config)
 , driver_(driver)
 {
+  // 设置限位状态
+  has_limits_ = config_.enable_limits;
 }
 
 bool CylinderJoint::activate()
@@ -72,8 +74,58 @@ void CylinderJoint::read(double dt)
 
 void CylinderJoint::write(double /*dt*/)
 {
-  double target_m = (position_command_ - config_.offset) * config_.sign;
+  // 应用限位
+  double limited_cmd = applyLimits(position_command_);
+
+  double target_m = (limited_cmd - config_.offset) * config_.sign;
   driver_.writePosition(target_m);
+}
+
+void CylinderJoint::emergencyStop()
+{
+  // 电缸急停：失能驱动
+  driver_.disable();
+  RCLCPP_INFO(rclcpp::get_logger("CylinderJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
+double CylinderJoint::applyLimits(double cmd)
+{
+  if (!config_.enable_limits) {
+    return cmd;
+  }
+
+  double limited = cmd;
+
+  // 检查正向限位
+  if (limited > config_.max_travel) {
+    limited = config_.max_travel;
+    limit_state_ = LimitState::POS_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("CylinderJoint"),
+      "Joint '%s' command %.4f exceeds max limit %.4f, clamped",
+      name_.c_str(), cmd, config_.max_travel);
+  }
+  // 检查负向限位
+  else if (limited < config_.min_travel) {
+    limited = config_.min_travel;
+    limit_state_ = LimitState::NEG_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("CylinderJoint"),
+      "Joint '%s' command %.4f exceeds min limit %.4f, clamped",
+      name_.c_str(), cmd, config_.min_travel);
+  }
+  // 在限位范围内，检查是否需要清除限位状态
+  else {
+    // 如果之前在正限位，现在命令向负方向移动，清除限位状态
+    if (limit_state_ == LimitState::POS_LIMIT && cmd < position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+    // 如果之前在负限位，现在命令向正方向移动，清除限位状态
+    else if (limit_state_ == LimitState::NEG_LIMIT && cmd > position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+  }
+
+  return limited;
 }
 
 bool CylinderJoint::moveToSafePosition(double safe_position_m, double timeout_s)

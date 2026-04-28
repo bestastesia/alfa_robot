@@ -12,7 +12,10 @@ namespace alfa_robot_hardware
 
 RmdJoint::RmdJoint(std::string name, Config cfg, RmdDriver & driver)
 : IJoint(std::move(name)), cfg_(cfg), driver_(driver)
-{}
+{
+  // 设置限位状态
+  has_limits_ = cfg_.enable_limits;
+}
 
 bool RmdJoint::activate()
 {
@@ -83,6 +86,14 @@ void RmdJoint::captureCurrentPositionAsZero()
   prev_filtered_ = cfg_.zero_offset_rad - cfg_.static_bias_rad;  // next write sends corrected raw
   RCLCPP_INFO(rclcpp::get_logger("RmdJoint"),
     "%s zero offset captured: %.4f rad", name_.c_str(), cfg_.zero_offset_rad);
+}
+
+void RmdJoint::emergencyStop()
+{
+  // RMD 急停：发送失能命令
+  driver_.disableMotors({cfg_.motor_id});
+  RCLCPP_INFO(rclcpp::get_logger("RmdJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
 }
 
 std::vector<hardware_interface::StateInterface> RmdJoint::exportStateInterfaces()

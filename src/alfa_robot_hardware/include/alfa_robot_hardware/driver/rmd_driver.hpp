@@ -29,6 +29,9 @@ public:
   bool enableMotors(const std::vector<uint8_t> & ids);
   void disableMotors(const std::vector<uint8_t> & ids);
 
+  /// 急停：停止指定电机（发送 0x80 失能命令）
+  void stopMotors(const std::vector<uint8_t> & ids);
+
   // Send 0x92 to all ids, block (with timeout) until each replies or timeout
   // elapses. Updates internal cache and returns motor_id -> position_rad for
   // every id that responded. Call once per control cycle on each bus.

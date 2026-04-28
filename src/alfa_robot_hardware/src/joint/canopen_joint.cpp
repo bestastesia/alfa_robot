@@ -139,6 +139,14 @@ bool CanopenJoint::moveToSafePosition(double target_rad, double timeout_s)
   return false;
 }
 
+void CanopenJoint::emergencyStop()
+{
+  // CANopen 急停：禁用节点
+  driver_.disableNodes({cfg_.node_id});
+  RCLCPP_INFO(rclcpp::get_logger("CanopenJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
 double CanopenJoint::applyLowPassFilter(double cmd, double dt)
 {
   if (cfg_.filter_cutoff_hz <= 0.0 || dt <= 0.0) {

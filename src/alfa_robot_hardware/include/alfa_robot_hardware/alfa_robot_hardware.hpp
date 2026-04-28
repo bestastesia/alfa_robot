@@ -1,9 +1,11 @@
 #ifndef ALFA_ROBOT_HARDWARE__ALFA_ROBOT_HARDWARE_HPP_
 #define ALFA_ROBOT_HARDWARE__ALFA_ROBOT_HARDWARE_HPP_
 
+#include <atomic>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "alfa_robot_hardware/joint/i_joint.hpp"
@@ -23,6 +25,9 @@
 
 namespace alfa_robot_hardware
 {
+
+/// 急停 CAN 帧 ID (广播地址)
+constexpr uint32_t kEmergencyStopCanId = 0x7FF;
 
 class AlfaRobotHW : public hardware_interface::SystemInterface
 {
@@ -48,6 +53,15 @@ public:
   hardware_interface::return_type write(
     const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
+  /// 急停：立即停止所有电机
+  void emergencyStop();
+
+  /// 检查是否处于急停状态
+  bool isEmergencyStopActive() const { return emergency_stop_active_.load(); }
+
+  /// 清除急停状态
+  void clearEmergencyStop();
+
 private:
   // Drivers (owners)
   std::unique_ptr<RmdDriver>     rmd_left_, rmd_right_, rmd_base_;
@@ -70,8 +84,19 @@ private:
   ZeroerrDriver::Config zeroerr_left_cfg_;
   CylinderDriver::Config cylinder_cfg_;
 
+  // Emergency stop
+  std::atomic<bool> emergency_stop_active_{false};
+  int estop_socket_fd_{-1};
+  std::thread estop_monitor_thread_;
+  std::atomic<bool> estop_monitor_running_{false};
+
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);
+
+  // 急停 CAN 监听线程
+  void emergencyStopMonitorThread();
+  bool openEstopSocket();
+  void closeEstopSocket();
 };
 
 }  // namespace alfa_robot_hardware

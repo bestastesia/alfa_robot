@@ -9,6 +9,7 @@
 #ifndef ALFA_ROBOT_HARDWARE__JOINT__ZEROERR_JOINT_HPP_
 #define ALFA_ROBOT_HARDWARE__JOINT__ZEROERR_JOINT_HPP_
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -32,6 +33,10 @@ public:
     double offset{0.0};     // 位置偏置 (弧度)
     double sign{-1.0};      // 方向符号 (+1 或 -1)
     int32_t initial_counts{0};  // 零点位置 (脉冲数)
+    // 软限位参数
+    double min_position{-M_PI};  // 最小位置 (弧度)
+    double max_position{M_PI};   // 最大位置 (弧度)
+    bool enable_limits{true};    // 是否启用限位
   };
 
   ZeroerrJoint(const std::string & name, Config config, ZeroerrDriver & driver);
@@ -40,7 +45,7 @@ public:
   /// 从 driver 读取位置并更新状态接口
   void read(double dt) override;
 
-  /// 将命令接口的位置写入 driver
+  /// 将命令接口的位置写入 driver（包含限位检查）
   void write(double dt) override;
 
   /// 激活关节 (读取初始位置)
@@ -51,6 +56,9 @@ public:
 
   /// 移动到安全位置
   bool moveToSafePosition(double safe_position_rad, double timeout_s) override;
+
+  /// 急停：停止电机运动
+  void emergencyStop() override;
 
   /// 导出状态接口
   std::vector<hardware_interface::StateInterface> exportStateInterfaces() override;
@@ -76,6 +84,9 @@ private:
 
   /// 弧度转脉冲
   int32_t radiansToCounts(double radians) const;
+
+  /// 检查并限制位置命令
+  double applyLimits(double cmd);
 };
 
 }  // namespace alfa_robot_hardware
