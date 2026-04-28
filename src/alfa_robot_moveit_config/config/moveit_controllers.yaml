@@ -7,6 +7,8 @@ moveit_simple_controller_manager:
     - torso_group_controller
     - left_arm_controller
     - right_arm_controller
+    - left_arm_with_base_controller
+    - right_arm_with_base_controller
 
   torso_group_controller:
     type: FollowJointTrajectory
@@ -25,11 +27,35 @@ moveit_simple_controller_manager:
       - leftjoint2
       - leftjoint3
       - leftjoint4
+      - leftjoint5
   right_arm_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
     default: true
     joints:
+      - rightarmbase
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+  left_arm_with_base_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - updown
+      - leftarmbase
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+  right_arm_with_base_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - updown
       - rightarmbase
       - rightjoint1
       - rightjoint2

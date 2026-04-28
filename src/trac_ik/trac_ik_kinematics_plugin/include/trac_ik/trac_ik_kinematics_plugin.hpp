@@ -32,26 +32,21 @@ OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TRAC_IK_KINEMATICS_PLUGIN_
 
 #include <moveit/kinematics_base/kinematics_base.h>
+#include <moveit/robot_model/robot_model.h>
 #include <kdl/chain.hpp>
+#include <kdl/jntarray.hpp>
+
+// Forward declaration
+namespace trac_ik_kinematics {
+  class ParamListener;
+  class Params;
+}
 
 namespace trac_ik_kinematics_plugin
 {
 
 class TRAC_IKKinematicsPlugin : public kinematics::KinematicsBase
 {
-  std::vector<std::string> joint_names_;
-  std::vector<std::string> link_names_;
-
-  uint num_joints_;
-  bool active_; // Internal variable that indicates whether solvers are configured and ready
-
-  KDL::Chain chain;
-  bool position_ik_;
-
-  KDL::JntArray joint_min, joint_max;
-
-  std::string solve_type;
-
 public:
   const std::vector<std::string>& getJointNames() const
   {
@@ -82,11 +77,11 @@ public:
    */
 
   // Returns the first IK solution that is within joint limits, this is called by get_ik() service
-  bool getPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool getPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                      const std::vector<double> &ik_seed_state,
                      std::vector<double> &solution,
-                     moveit_msgs::MoveItErrorCodes &error_code,
-                     const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const;
+                     moveit_msgs::msg::MoveItErrorCodes &error_code,
+                     const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const override;
 
   /**
    * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -96,12 +91,12 @@ public:
    * @param ik_seed_state an initial guess solution for the inverse kinematics
    * @return True if a valid solution was found, false otherwise
    */
-  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool searchPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                         const std::vector<double> &ik_seed_state,
                         double timeout,
                         std::vector<double> &solution,
-                        moveit_msgs::MoveItErrorCodes &error_code,
-                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const;
+                        moveit_msgs::msg::MoveItErrorCodes &error_code,
+                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const override;
 
   /**
    * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -112,13 +107,13 @@ public:
    * @param the distance that the redundancy can be from the current position
    * @return True if a valid solution was found, false otherwise
    */
-  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool searchPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                         const std::vector<double> &ik_seed_state,
                         double timeout,
                         const std::vector<double> &consistency_limits,
                         std::vector<double> &solution,
-                        moveit_msgs::MoveItErrorCodes &error_code,
-                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const;
+                        moveit_msgs::msg::MoveItErrorCodes &error_code,
+                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const override;
 
   /**
    * @brief Given a desired pose of the end-effector, search for the joint angles required to reach it.
@@ -128,12 +123,12 @@ public:
    * @param ik_seed_state an initial guess solution for the inverse kinematics
    * @return True if a valid solution was found, false otherwise
    */
-  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool searchPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                         const std::vector<double> &ik_seed_state,
                         double timeout,
                         std::vector<double> &solution,
                         const IKCallbackFn &solution_callback,
-                        moveit_msgs::MoveItErrorCodes &error_code,
+                        moveit_msgs::msg::MoveItErrorCodes &error_code,
                         const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const;
 
   /**
@@ -146,21 +141,21 @@ public:
    * @param consistency_limit the distance that the redundancy can be from the current position
    * @return True if a valid solution was found, false otherwise
    */
-  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool searchPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                         const std::vector<double> &ik_seed_state,
                         double timeout,
                         const std::vector<double> &consistency_limits,
                         std::vector<double> &solution,
                         const IKCallbackFn &solution_callback,
-                        moveit_msgs::MoveItErrorCodes &error_code,
-                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const;
+                        moveit_msgs::msg::MoveItErrorCodes &error_code,
+                        const kinematics::KinematicsQueryOptions &options = kinematics::KinematicsQueryOptions()) const override;
 
-  bool searchPositionIK(const geometry_msgs::Pose &ik_pose,
+  bool searchPositionIK(const geometry_msgs::msg::Pose &ik_pose,
                         const std::vector<double> &ik_seed_state,
                         double timeout,
                         std::vector<double> &solution,
                         const IKCallbackFn &solution_callback,
-                        moveit_msgs::MoveItErrorCodes &error_code,
+                        moveit_msgs::msg::MoveItErrorCodes &error_code,
                         const std::vector<double> &consistency_limits,
                         const kinematics::KinematicsQueryOptions &options) const;
 
@@ -178,18 +173,37 @@ public:
    */
   bool getPositionFK(const std::vector<std::string> &link_names,
                      const std::vector<double> &joint_angles,
-                     std::vector<geometry_msgs::Pose> &poses) const;
+                     std::vector<geometry_msgs::msg::Pose> &poses) const override;
 
 
-  bool initialize(const std::string &robot_description,
+  bool initialize(const rclcpp::Node::SharedPtr &node,
+                  const moveit::core::RobotModel& robot_model,
                   const std::string& group_name,
-                  const std::string& base_name,
-                  const std::string& tip_name,
-                  double search_discretization);
+                  const std::string& base_frame,
+                  const std::vector<std::string>& tip_frames,
+                  double search_discretization) override;
 
 private:
 
   int getKDLSegmentIndex(const std::string &name) const;
+
+  std::vector<std::string> joint_names_;
+  std::vector<std::string> link_names_;
+
+  uint num_joints_;
+  bool active_; // Internal variable that indicates whether solvers are configured and ready
+
+  KDL::Chain chain;
+  bool position_ik_;
+
+  KDL::JntArray joint_min, joint_max;
+
+  std::string solve_type;
+
+  std::shared_ptr<trac_ik_kinematics::ParamListener> param_listener_;
+  std::shared_ptr<trac_ik_kinematics::Params> params_;
+
+  std::shared_ptr<random_numbers::RandomNumberGenerator> rng_;
 
 }; // end class
 }

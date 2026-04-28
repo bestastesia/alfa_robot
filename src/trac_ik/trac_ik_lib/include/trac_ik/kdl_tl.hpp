@@ -1,40 +1,40 @@
-// Copyright (c) 2015, TRACLabs, Inc.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are met:
-//
-//    * Redistributions of source code must retain the above copyright
-//      notice, this list of conditions and the following disclaimer.
-//
-//    * Redistributions in binary form must reproduce the above copyright
-//      notice, this list of conditions and the following disclaimer in the
-//      documentation and/or other materials provided with the distribution.
-//
-//    * Neither the name of the {copyright_holder} nor the names of its
-//      contributors may be used to endorse or promote products derived from
-//      this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-// POSSIBILITY OF SUCH DAMAGE.
+/********************************************************************************
+Copyright (c) 2015, TRACLabs, Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+ are permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice,
+       this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright notice,
+       this list of conditions and the following disclaimer in the documentation
+       and/or other materials provided with the distribution.
+
+    3. Neither the name of the copyright holder nor the names of its contributors
+       may be used to endorse or promote products derived from this software
+       without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED
+OF THE POSSIBILITY OF SUCH DAMAGE.
+********************************************************************************/
 
 
-#ifndef TRAC_IK__KDL_TL_HPP_
-#define TRAC_IK__KDL_TL_HPP_
+#ifndef KDLCHAINIKSOLVERPOS_TL_HPP
+#define KDLCHAINIKSOLVERPOS_TL_HPP
 
-#include <chrono>
-#include <vector>
-
-#include "kdl/chainfksolverpos_recursive.hpp"
-#include "kdl/chainiksolvervel_pinv.hpp"
+#include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainiksolvervel_pinv.hpp>
+#include <rclcpp/clock.hpp>
 
 namespace TRAC_IK
 {
@@ -51,20 +51,15 @@ class ChainIkSolverPos_TL
   friend class TRAC_IK::TRAC_IK;
 
 public:
-  ChainIkSolverPos_TL(
-    const Chain & chain, const JntArray & q_min, const JntArray & q_max,
-    double maxtime = 0.005, double eps = 1e-3, bool random_restart = false,
-    bool try_jl_wrap = false);
+  ChainIkSolverPos_TL(const Chain& chain, const JntArray& q_min, const JntArray& q_max, double maxtime = 0.005, double eps = 1e-3, bool random_restart = false, bool try_jl_wrap = false);
 
   ~ChainIkSolverPos_TL();
 
-  int CartToJnt(
-    const KDL::JntArray & q_init, const KDL::Frame & p_in, KDL::JntArray & q_out,
-    const KDL::Twist bounds = KDL::Twist::Zero());
+  int CartToJnt(const KDL::JntArray& q_init, const KDL::Frame& p_in, KDL::JntArray& q_out, const KDL::Twist bounds = KDL::Twist::Zero());
 
   inline void setMaxtime(double t)
   {
-    maxtime = std::chrono::duration<double>(t);
+    maxtime = t;
   }
 
 private:
@@ -77,7 +72,7 @@ private:
   KDL::ChainIkSolverVel_pinv vik_solver;
   KDL::ChainFkSolverPos_recursive fksolver;
   JntArray delta_q;
-  std::chrono::duration<double> maxtime;
+  double maxtime;
 
   double eps;
 
@@ -103,9 +98,12 @@ private:
 
   inline static double fRand(double min, double max)
   {
-    double f = static_cast<double>(rand()) / RAND_MAX;  // NOLINT
+    double f = (double)rand() / RAND_MAX;
     return min + f * (max - min);
   }
+  
+  rclcpp::Clock system_clock;
+
 };
 
 /**
@@ -121,11 +119,10 @@ private:
  */
 IMETHOD Twist diffRelative(const Frame & F_a_b1, const Frame & F_a_b2, double dt = 1)
 {
-  return Twist(
-    F_a_b1.M.Inverse() * diff(F_a_b1.p, F_a_b2.p, dt),
-    F_a_b1.M.Inverse() * diff(F_a_b1.M, F_a_b2.M, dt));
+  return Twist(F_a_b1.M.Inverse() * diff(F_a_b1.p, F_a_b2.p, dt),
+               F_a_b1.M.Inverse() * diff(F_a_b1.M, F_a_b2.M, dt));
 }
 
-}  // namespace KDL
+}
 
-#endif  // TRAC_IK__KDL_TL_HPP_
+#endif

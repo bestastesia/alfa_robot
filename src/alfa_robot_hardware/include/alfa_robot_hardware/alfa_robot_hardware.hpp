@@ -9,8 +9,13 @@
 #include "alfa_robot_hardware/joint/i_joint.hpp"
 #include "alfa_robot_hardware/joint/rmd_joint.hpp"
 #include "alfa_robot_hardware/joint/canopen_joint.hpp"
+#include "alfa_robot_hardware/joint/placeholder_joint.hpp"
+#include "alfa_robot_hardware/joint/zeroerr_joint.hpp"
+#include "alfa_robot_hardware/joint/cylinder_joint.hpp"
 #include "alfa_robot_hardware/driver/rmd_driver.hpp"
 #include "alfa_robot_hardware/driver/canopen_driver.hpp"
+#include "alfa_robot_hardware/driver/zeroerr_driver.hpp"
+#include "alfa_robot_hardware/driver/cylinder_driver.hpp"
 #include "hardware_interface/system_interface.hpp"
 #include "hardware_interface/types/hardware_interface_return_values.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -48,6 +53,8 @@ private:
   std::unique_ptr<RmdDriver>     rmd_left_, rmd_right_, rmd_base_;
   std::unique_ptr<CanopenDriver> canopen_;
   std::unique_ptr<CanopenDriver> canopen_plate_;
+  std::unique_ptr<ZeroerrDriver> zeroerr_left_;    // ZeroErr motors on can0 (mixed protocol)
+  std::unique_ptr<CylinderDriver> cylinder_;       // Cylinder (leftjoint4) on can0
 
   // All joints (single list — no type dispatch in AlfaRobotHW)
   std::vector<std::unique_ptr<IJoint>> joints_;
@@ -60,6 +67,8 @@ private:
   RmdDriver::Config     rmd_left_cfg_, rmd_right_cfg_, rmd_base_cfg_;
   CanopenDriver::Config canopen_cfg_;
   CanopenDriver::Config canopen_plate_cfg_;
+  ZeroerrDriver::Config zeroerr_left_cfg_;
+  CylinderDriver::Config cylinder_cfg_;
 
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);

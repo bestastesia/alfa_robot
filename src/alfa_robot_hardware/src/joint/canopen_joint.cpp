@@ -10,22 +10,50 @@
 namespace alfa_robot_hardware
 {
 
+// Default encoder resolution for linear actuators (pulses per meter)
+static constexpr double kPulsesPerMeter = 1000000.0;
+
 CanopenJoint::CanopenJoint(std::string name, Config cfg, CanopenDriver & driver)
 : IJoint(std::move(name)), cfg_(cfg), driver_(driver)
-{}
+{
+  // Precompute conversion coefficients
+  if (cfg_.encoder_resolution > 0.0) {
+    // Rotary motor: pulses -> radians
+    // pulses / encoder_resolution = revolutions
+    // revolutions * 2π / gear_ratio = radians
+    pulses_to_rad_ = 2.0 * M_PI / (cfg_.encoder_resolution * cfg_.gear_ratio);
+    rad_to_pulses_ = 1.0 / pulses_to_rad_;
+    is_rotary_ = true;
+  } else {
+    // Linear actuator: pulses -> meters
+    // pulses / kPulsesPerMeter / gear_ratio = meters
+    pulses_to_rad_ = 1.0 / (kPulsesPerMeter * cfg_.gear_ratio);
+    rad_to_pulses_ = 1.0 / pulses_to_rad_;
+    is_rotary_ = false;
+  }
+}
 
 bool CanopenJoint::activate()
 {
   if (!driver_.isNodeEnabled(cfg_.node_id)) { return true; }
 
+  // Read initial position via SDO (returns meters for backward compatibility)
   double pos_m = 0.0;
   if (driver_.readPositionSdo(cfg_.node_id, pos_m)) {
-    double pos = pos_m * cfg_.direction / cfg_.gear_ratio;
+    // Convert meters back to pulses, then apply correct conversion to radians
+    // Note: readPositionSdo returns meters, need to convert back to pulses first
+    int32_t pulses = static_cast<int32_t>(pos_m * kPulsesPerMeter);
+    double pos = static_cast<double>(pulses) * pulses_to_rad_ * cfg_.direction;
+
     position_      = pos;
     prev_position_ = pos;
     position_cmd_  = pos;
-    prev_filtered_ = pos_m;  // pre-gear raw value for filter continuity
+    prev_filtered_ = static_cast<double>(pulses);  // Raw pulses for filter continuity
     first_read_    = false;
+
+    RCLCPP_INFO(rclcpp::get_logger("CanopenJoint"),
+      "%s activated: initial_pos=%.4f %s",
+      name_.c_str(), pos, is_rotary_ ? "rad" : "m");
   }
   return true;
 }
@@ -36,10 +64,12 @@ void CanopenJoint::read(double dt)
 {
   if (!driver_.isNodeEnabled(cfg_.node_id)) { return; }
 
-  double raw_m = 0.0;
-  if (!driver_.getCachedPosition(cfg_.node_id, raw_m)) { return; }
+  // Read raw pulses from driver cache
+  int32_t pulses = 0;
+  if (!driver_.getCachedPositionPulses(cfg_.node_id, pulses)) { return; }
 
-  double pos = raw_m * cfg_.direction / cfg_.gear_ratio;
+  // Convert to radians (rotary) or meters (linear)
+  double pos = static_cast<double>(pulses) * pulses_to_rad_ * cfg_.direction;
   if (!std::isfinite(pos)) { pos = 0.0; }
 
   position_ = pos;
@@ -54,7 +84,7 @@ void CanopenJoint::read(double dt)
 
   if (first_read_) {
     position_cmd_  = pos;
-    prev_filtered_ = raw_m;  // raw motor-side value
+    prev_filtered_ = static_cast<double>(pulses);
     first_read_    = false;
   }
 }
@@ -64,8 +94,15 @@ void CanopenJoint::write(double dt)
   if (first_read_) { return; }
   if (!driver_.isNodeEnabled(cfg_.node_id)) { return; }
 
-  double cmd_m = position_cmd_ * cfg_.direction * cfg_.gear_ratio;
-  cmd_m = applyLowPassFilter(cmd_m, dt);
+  // Convert radians to pulses
+  double cmd_pulses = position_cmd_ * cfg_.direction * rad_to_pulses_;
+
+  // Apply low-pass filter in pulse domain (maintains continuity)
+  cmd_pulses = applyLowPassFilter(cmd_pulses, dt);
+
+  // Convert back to meters (CanopenDriver::writePositions expects meters)
+  double cmd_m = cmd_pulses / kPulsesPerMeter;
+
   driver_.writePositions({{cfg_.node_id, cmd_m}});
 }
 

@@ -12,9 +12,10 @@ class CanopenJoint final : public IJoint
 public:
   struct Config {
     uint8_t node_id;
-    double  gear_ratio{1.0};        // leftarmbase/rightarmbase = 3.0
-    double  filter_cutoff_hz{0.0};  // 0 = disabled
-    double  direction{1.0};         // +1 or -1: flip motor vs controller frame
+    double  gear_ratio{1.0};           // Gear ratio (e.g., 100.0 = 100:1 reducer)
+    double  encoder_resolution{0.0};   // Encoder resolution (pulses/rev), 0 = linear mode
+    double  filter_cutoff_hz{0.0};     // 0 = disabled
+    double  direction{1.0};            // +1 or -1: flip motor vs controller frame
   };
 
   CanopenJoint(std::string name, Config cfg, CanopenDriver & driver);
@@ -34,6 +35,11 @@ public:
 private:
   Config          cfg_;
   CanopenDriver & driver_;
+
+  // Unit conversion coefficients (computed in constructor based on encoder_resolution)
+  double pulses_to_rad_{1.0};   // Pulses to radians/meters conversion factor
+  double rad_to_pulses_{1.0};   // Radians/meters to pulses conversion factor
+  bool   is_rotary_{false};     // true = rotary motor (radians), false = linear (meters)
 
   double position_{0.0};
   double velocity_{0.0};

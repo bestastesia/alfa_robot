@@ -409,4 +409,12 @@ bool CanopenDriver::getCachedPosition(uint8_t node_id, double & position_m) cons
   return true;
 }
 
+bool CanopenDriver::getCachedPositionPulses(uint8_t node_id, int32_t & position_pulses) const
+{
+  auto it = pdo_cache_.find(node_id);
+  if (it == pdo_cache_.end() || !it->second.valid) { return false; }
+  position_pulses = it->second.actual_position_pulses;
+  return true;
+}
+
 }  // namespace alfa_robot_hardware

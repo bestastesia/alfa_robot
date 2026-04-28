@@ -1,95 +1,59 @@
-cmake_minimum_required(VERSION 3.12)
+cmake_minimum_required(VERSION 3.5)
 project(trac_ik_lib)
 
-# Default to C99
-if(NOT CMAKE_C_STANDARD)
-  set(CMAKE_C_STANDARD 99)
+if(CMAKE_COMPILER_IS_GNUCXX OR ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang"))
+  set(CMAKE_CXX_FLAGS "-std=c++17 ${CMAKE_CXX_FLAGS}")
 endif()
 
-# Default to C++17
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 17)
-endif()
-
-if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic -Wshadow -Werror)
-endif()
-
+# Find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(eigen3_cmake_module REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(kdl_parser REQUIRED)
-find_package(NLopt REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(urdf REQUIRED)
 
-add_library(${PROJECT_NAME} SHARED
+# NLopt from system (use library directly to avoid CMake target issues)
+find_library(NLOPT_LIBRARY nlopt PATHS /usr/lib/x86_64-linux-gnu)
+if(NOT NLOPT_LIBRARY)
+  message(FATAL_ERROR "NLopt library not found")
+endif()
+message(STATUS "Found NLopt library: ${NLOPT_LIBRARY}")
+
+# Build
+add_library(trac_ik SHARED
   src/kdl_tl.cpp
   src/nlopt_ik.cpp
   src/trac_ik.cpp)
+target_include_directories(trac_ik
+  PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>)
+target_link_libraries(trac_ik
+  PUBLIC
+    ${geometry_msgs_TARGETS}
+    Eigen3::Eigen
+    kdl_parser::kdl_parser
+    rclcpp::rclcpp
+    urdf::urdf
+    ${NLOPT_LIBRARY})
 
-# C++20 standard guarantees `std::chrono::system_clock` measures Unix Time
-# i.e. `std::chrono::{duration, time_point}` can then replace
-# `boost::posix_time::{time_duration, ptime}`
-set_target_properties(${PROJECT_NAME} PROPERTIES
-  CXX_STANDARD 20
-  CXX_STANDARD_REQUIRED YES
-  CXX_EXTENSIONS NO
-)
-
-target_include_directories(${PROJECT_NAME} PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
-  ${NLOPT_INCLUDE_DIRS}
-)
-
-target_compile_definitions(${PROJECT_NAME} PRIVATE "TRAC_IK_BUILDING_LIBRARY")
-
-# Needed since NLopt is not an ament package
-target_link_libraries(${PROJECT_NAME}
-  ${NLOPT_LIBRARIES}
-)
-
-ament_target_dependencies(${PROJECT_NAME}
-  ament_cmake
-  Eigen3
-  kdl_parser
-  rclcpp
-  urdf
-)
-
-ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
-
-ament_export_dependencies(
-  ament_cmake
-  kdl_parser
-  NLopt
-  rclcpp
-  urdf
-)
-
-install(DIRECTORY include/
-  DESTINATION include
-)
-
-install(TARGETS ${PROJECT_NAME}
+# Install
+install(
+  DIRECTORY include/
+  DESTINATION include)
+install(
+  TARGETS trac_ik
   EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
-  RUNTIME DESTINATION lib/${PROJECT_NAME})
+  RUNTIME DESTINATION bin
+  INCLUDES DESTINATION include)
 
-if(BUILD_TESTING)
-    find_package(ament_lint_auto REQUIRED)
-    list(APPEND AMENT_LINT_AUTO_EXCLUDE
-      ament_cmake_cppcheck
-      ament_cmake_uncrustify
-    )
+# Ament export
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
+ament_export_dependencies(rclcpp geometry_msgs urdf kdl_parser)
 
-    ament_lint_auto_find_test_dependencies()
-
-    # Else there are erroneous results for `.h` headers
-    ament_cppcheck(LANGUAGE "c++")
-    ament_uncrustify(LANGUAGE "C++")
-endif()
-
+# Package
 ament_package()

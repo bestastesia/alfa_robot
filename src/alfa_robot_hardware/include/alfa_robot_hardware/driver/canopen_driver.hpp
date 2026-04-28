@@ -52,7 +52,13 @@ public:
 
   // Returns position from PDO cache for a specific node (no SYNC triggered).
   // Returns false if node has no valid cached data.
+  // NOTE: Returns position in pulses (raw encoder value), not meters.
+  //       The caller must convert to appropriate units based on motor type.
   bool getCachedPosition(uint8_t node_id, double & position_m) const;
+
+  // Returns raw position in pulses from PDO cache (no unit conversion).
+  // Returns false if node has no valid cached data.
+  bool getCachedPositionPulses(uint8_t node_id, int32_t & position_pulses) const;
 
   bool isNodeEnabled(uint8_t node_id) const;
   const std::set<uint8_t> & enabledNodes() const { return enabled_nodes_; }
