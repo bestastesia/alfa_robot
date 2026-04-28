@@ -89,6 +89,7 @@ private:
   int estop_socket_fd_{-1};
   std::thread estop_monitor_thread_;
   std::atomic<bool> estop_monitor_running_{false};
+  double emergency_stop_state_{0.0};  // 状态接口值：0=正常，1=急停激活
 
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);

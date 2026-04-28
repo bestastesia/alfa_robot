@@ -182,6 +182,8 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
     auto joint_si = joint->exportStateInterfaces();
     for (auto & iface : joint_si) { si.push_back(std::move(iface)); }
   }
+  // 导出急停状态接口
+  si.emplace_back("emergency_stop", "state", &emergency_stop_state_);
   return si;
 }
 
