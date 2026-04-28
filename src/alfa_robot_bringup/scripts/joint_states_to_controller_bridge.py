@@ -26,6 +26,7 @@ _DEFAULT_JOINT_ORDER = [
     "leftjoint2",
     "leftjoint3",
     "leftjoint4",
+    "leftjoint5",
     "rightarmbase",
     "rightjoint1",
     "rightjoint2",
