@@ -23,7 +23,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   canopen_cfg_         = {"can3", 50000, 50000};
   canopen_plate_cfg_   = {"can4", 50000, 50000};
   zeroerr_left_cfg_    = {"can0", 200, 524288};  // ZeroErr on can0: gear_ratio=200, encoder=524288
-  cylinder_cfg_        = {"can0", 3, 200000.0, -24900000};   // Cylinder on can0: Node 3, 200000 pulses/m, zero_offset=-24900000
+  cylinder_cfg_        = {"can0", 3, 2000000.0, -24995000};   // Cylinder on can0: Node 3, 10000 pulses/5mm = 2M pulses/m, zero_offset=-24900000
 
   for (const auto & [key, val] : info_.hardware_parameters) {
     if      (key == "can_interface_left")    { rmd_left_cfg_.interface       = val; }

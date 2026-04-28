@@ -519,7 +519,7 @@
       <parent link="${prefix}leftjoint3_link"/>
       <child link="${prefix}leftjoint4_link"/>
       <axis xyz="1 0 0"/>
-      <limit lower="0" upper="0.22" effort="0" velocity="0"/>
+      <limit lower="0" upper="0.15" effort="0" velocity="0"/>
     </joint>
 
     <!-- leftjoint5 (new joint for 6DOF) -->

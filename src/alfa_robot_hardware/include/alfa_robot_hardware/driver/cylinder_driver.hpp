@@ -41,7 +41,7 @@ public:
   struct Config {
     std::string interface;    // CAN 接口名 (e.g., "can0")
     uint8_t node_id{3};       // 从站 Node ID (默认 3)
-    double pulses_per_meter{200000.0};  // 脉冲/米
+    double pulses_per_meter{2000000.0};  // 脉冲/米 (10000脉冲/5mm)
     int32_t zero_offset{0};   // 零点偏置 (脉冲数)，默认 0
   };
 
