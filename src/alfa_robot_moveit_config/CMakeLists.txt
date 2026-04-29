@@ -9,6 +9,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_eigen REQUIRED)
 
 # dual_arm_planner_node: 双末端位姿规划，走 MoveGroupInterface::setPoseTarget
 # 让 bio_ik 通过 setFromIK(poses, tips) 路径统一协调双臂+updown
@@ -21,6 +22,7 @@ ament_target_dependencies(dual_arm_planner_node
   std_srvs
   tf2_ros
   tf2_geometry_msgs
+  tf2_eigen
 )
 
 install(TARGETS dual_arm_planner_node
