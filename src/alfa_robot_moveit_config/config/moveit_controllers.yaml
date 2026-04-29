@@ -28,6 +28,7 @@ moveit_simple_controller_manager:
       - leftjoint3
       - leftjoint4
       - leftjoint5
+      - leftjoint6
   right_arm_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
@@ -50,6 +51,7 @@ moveit_simple_controller_manager:
       - leftjoint3
       - leftjoint4
       - leftjoint5
+      - leftjoint6
   right_arm_with_base_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
