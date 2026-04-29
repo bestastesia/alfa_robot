@@ -64,7 +64,7 @@ moveit_simple_controller_manager:
       - rightjoint2
       - rightjoint3
       - rightjoint4
-  # BioIK dual-arm whole-body controller
+  # pick_ik dual-arm whole-body controller
   dual_arm_with_base_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory

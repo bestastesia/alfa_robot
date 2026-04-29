@@ -1,10 +1,27 @@
+"""
+MoveIt 实机执行启动文件
+
+功能：
+  1. 启动 ros2_control_node 进行硬件控制
+  2. 启动 MoveIt move_group 进行规划
+  3. 启动控制器 (joint_state_broadcaster, arm controllers)
+  4. 可选：启动 RViz 可视化
+  5. 可选：自动执行预设轨迹
+
+注意：
+  - move_group.launch.py 内部会启动 robot_state_publisher
+  - 此文件不再重复启动 robot_state_publisher，避免节点冲突
+"""
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, RegisterEventHandler, TimerAction
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit, OnProcessStart
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def generate_launch_description():
@@ -20,6 +37,7 @@ def generate_launch_description():
         DeclareLaunchArgument("planning_group", default_value="left_arm"),
         DeclareLaunchArgument("velocity_scale", default_value="0.2"),
         DeclareLaunchArgument("acceleration_scale", default_value="0.2"),
+        # 左臂目标位姿
         DeclareLaunchArgument("left_x", default_value="0.357"),
         DeclareLaunchArgument("left_y", default_value="-0.705"),
         DeclareLaunchArgument("left_z", default_value="0.684"),
@@ -27,6 +45,7 @@ def generate_launch_description():
         DeclareLaunchArgument("left_qy", default_value="0.502"),
         DeclareLaunchArgument("left_qz", default_value="-0.498"),
         DeclareLaunchArgument("left_qw", default_value="0.498"),
+        # 右臂目标位姿
         DeclareLaunchArgument("right_x", default_value="0.357"),
         DeclareLaunchArgument("right_y", default_value="0.705"),
         DeclareLaunchArgument("right_z", default_value="0.684"),
@@ -36,6 +55,7 @@ def generate_launch_description():
         DeclareLaunchArgument("right_qw", default_value="0.498"),
     ]
 
+    # LaunchConfiguration references
     description_package = LaunchConfiguration("description_package")
     description_file = LaunchConfiguration("description_file")
     prefix = LaunchConfiguration("prefix")
@@ -62,30 +82,29 @@ def generate_launch_description():
     right_qz = LaunchConfiguration("right_qz")
     right_qw = LaunchConfiguration("right_qw")
 
+    # URDF via xacro (实机模式)
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution([FindPackageShare(description_package), "urdf", description_file]),
             " ",
-            "prefix:=",
-            prefix,
+            "prefix:=", prefix,
             " ",
             "use_mock_hardware:=false ",
             "mock_sensor_commands:=false ",
-            "real_hardware_plugin:=",
-            real_hardware_plugin,
+            "real_hardware_plugin:=", real_hardware_plugin,
             " ",
-            "canopen_profile_velocity:=",
-            canopen_profile_velocity,
+            "canopen_profile_velocity:=", canopen_profile_velocity,
             " ",
-            "canopen_profile_accel:=",
-            canopen_profile_accel,
+            "canopen_profile_accel:=", canopen_profile_accel,
             " ",
         ]
     )
 
     robot_description = {"robot_description": robot_description_content}
+
+    # 实机控制器配置
     controllers_yaml = PathJoinSubstitution(
         [
             FindPackageShare("alfa_robot_bringup"),
@@ -94,53 +113,66 @@ def generate_launch_description():
         ]
     )
 
-    robot_state_pub_node = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        output="both",
-        parameters=[robot_description],
-    )
+    # ===== 节点定义 =====
 
+    # ros2_control_node - 硬件控制
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
+        name="ros2_control_node",
         output="both",
         parameters=[controllers_yaml],
         remappings=[("~/robot_description", "/robot_description")],
     )
 
+    # 控制器 spawners
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="joint_state_broadcaster_spawner",
         output="both",
         arguments=["joint_state_broadcaster", "-c", "/controller_manager"],
     )
+
     torso_group_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="torso_group_controller_spawner",
         output="both",
         arguments=["torso_group_controller", "-c", "/controller_manager"],
     )
+
     left_arm_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="left_arm_controller_spawner",
         output="both",
         arguments=["left_arm_controller", "-c", "/controller_manager"],
     )
+
     right_arm_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="right_arm_controller_spawner",
         output="both",
         arguments=["right_arm_controller", "-c", "/controller_manager"],
     )
+
+    # ===== MoveIt Launch =====
+    # 注意：move_group.launch.py 内部会启动 robot_state_publisher
+    # 我们不需要在顶层重复启动
 
     move_group_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
                 [FindPackageShare("alfa_robot_moveit_config"), "launch", "move_group.launch.py"]
             )
-        )
+        ),
+        launch_arguments={
+            "robot_description": robot_description_content,
+        }.items(),
     )
+
     moveit_rviz_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -149,6 +181,7 @@ def generate_launch_description():
         ),
         condition=IfCondition(run_rviz),
     )
+
     static_tf_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution(
@@ -157,48 +190,79 @@ def generate_launch_description():
         )
     )
 
+    # 自动执行节点
     path_execute_node = Node(
         package="alfa_robot_moveit_config",
         executable="path_node.py",
+        name="path_execute_node",
         output="screen",
         arguments=[
-            "--planning-group",
-            planning_group,
-            "--pose-left",
-            left_x,
-            left_y,
-            left_z,
-            left_qx,
-            left_qy,
-            left_qz,
-            left_qw,
-            "--pose-right",
-            right_x,
-            right_y,
-            right_z,
-            right_qx,
-            right_qy,
-            right_qz,
-            right_qw,
-            "--velocity-scale",
-            velocity_scale,
-            "--acceleration-scale",
-            acceleration_scale,
+            "--planning-group", planning_group,
+            "--pose-left", left_x, left_y, left_z, left_qx, left_qy, left_qz, left_qw,
+            "--pose-right", right_x, right_y, right_z, right_qx, right_qy, right_qz, right_qw,
+            "--velocity-scale", velocity_scale,
+            "--acceleration-scale", acceleration_scale,
         ],
         condition=IfCondition(auto_execute),
     )
 
-    delayed_control_node = TimerAction(period=2.0, actions=[control_node])
-    delayed_jsb = TimerAction(period=5.0, actions=[joint_state_broadcaster_spawner])
-    delayed_torso_controller = TimerAction(period=8.0, actions=[torso_group_controller_spawner])
-    delayed_left_controller = TimerAction(period=11.0, actions=[left_arm_controller_spawner])
-    delayed_right_controller = TimerAction(period=14.0, actions=[right_arm_controller_spawner])
-    delayed_moveit = TimerAction(
-        period=18.0,
-        actions=[static_tf_launch, move_group_launch, moveit_rviz_launch],
+    # ===== 生命周期管理 =====
+    #
+    # 启动顺序：
+    #   control_node → (3s) → joint_state_broadcaster
+    #   joint_state_broadcaster → torso_group_controller
+    #   torso_group_controller → left_arm_controller
+    #   left_arm_controller → right_arm_controller
+    #   right_arm_controller → MoveIt (move_group + static_tf + rviz)
+    #   MoveIt → path_execute_node
+
+    # 1. control_node 启动后，延迟启动 joint_state_broadcaster
+    delay_jsb = RegisterEventHandler(
+        event_handler=OnProcessStart(
+            target_action=control_node,
+            on_start=[TimerAction(period=3.0, actions=[joint_state_broadcaster_spawner])],
+        )
     )
-    delayed_path_execute = TimerAction(
-        period=26.0,
+
+    # 2. joint_state_broadcaster 完成后，启动 torso_group_controller
+    delay_torso = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[torso_group_controller_spawner],
+        )
+    )
+
+    # 3. torso_group_controller 完成后，启动 left_arm_controller
+    delay_left = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=torso_group_controller_spawner,
+            on_exit=[left_arm_controller_spawner],
+        )
+    )
+
+    # 4. left_arm_controller 完成后，启动 right_arm_controller
+    delay_right = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=left_arm_controller_spawner,
+            on_exit=[right_arm_controller_spawner],
+        )
+    )
+
+    # 5. right_arm_controller 完成后，启动 MoveIt
+    delay_moveit = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=right_arm_controller_spawner,
+            on_exit=[
+                static_tf_launch,
+                move_group_launch,
+                moveit_rviz_launch,
+            ],
+        )
+    )
+
+    # 6. MoveIt 启动后，延迟启动 path_execute_node
+    delay_path_execute = TimerAction(
+        period=8.0,  # MoveIt 启动需要时间
         actions=[path_execute_node],
         condition=IfCondition(auto_execute),
     )
@@ -206,13 +270,15 @@ def generate_launch_description():
     return LaunchDescription(
         declared_arguments
         + [
-            robot_state_pub_node,
-            delayed_control_node,
-            delayed_jsb,
-            delayed_torso_controller,
-            delayed_left_controller,
-            delayed_right_controller,
-            delayed_moveit,
-            delayed_path_execute,
+            # 核心节点
+            control_node,
+
+            # 生命周期事件处理器
+            delay_jsb,
+            delay_torso,
+            delay_left,
+            delay_right,
+            delay_moveit,
+            delay_path_execute,
         ]
     )

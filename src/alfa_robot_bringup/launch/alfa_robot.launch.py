@@ -12,10 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Alfa Robot 硬件启动文件
+
+功能：
+  1. 启动 robot_state_publisher 发布机器人状态
+  2. 启动 ros2_control_node 进行硬件控制
+  3. 启动控制器 (joint_state_broadcaster, 用户选择的控制器)
+  4. 可选：启动 RViz 可视化
+  5. 可选：启动 GUI 滑块控制
+
+生命周期管理：
+  - 使用事件处理器确保正确的启动和关闭顺序
+  - Ctrl+C 时确保所有节点正常退出
+"""
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, RegisterEventHandler, TimerAction
+from launch.actions import DeclareLaunchArgument, GroupAction, RegisterEventHandler, TimerAction, EmitEvent
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit, OnProcessStart
+from launch.events import Shutdown
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -90,6 +106,11 @@ def generate_launch_description():
             default_value="50000",
             description="CANopen motor profile acceleration in pulses/s².",
         ),
+        DeclareLaunchArgument(
+            "use_rviz",
+            default_value="true",
+            description="Launch RViz visualization.",
+        ),
     ]
 
     # LaunchConfiguration references
@@ -105,6 +126,7 @@ def generate_launch_description():
     real_hardware_plugin = LaunchConfiguration("real_hardware_plugin")
     canopen_profile_velocity = LaunchConfiguration("canopen_profile_velocity")
     canopen_profile_accel = LaunchConfiguration("canopen_profile_accel")
+    use_rviz = LaunchConfiguration("use_rviz")
 
     # URDF via xacro
     robot_description_content = Command(
@@ -128,9 +150,12 @@ def generate_launch_description():
         [FindPackageShare(description_package), "rviz", "alfa_robot.rviz"]
     )
 
+    # ===== 节点定义 =====
+
     robot_state_pub_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
+        name="robot_state_publisher",
         output="both",
         parameters=[{"robot_description": robot_description_content}],
     )
@@ -139,28 +164,34 @@ def generate_launch_description():
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
+        name="ros2_control_node",
         output="both",
         parameters=[robot_controllers],
         remappings=[("~/robot_description", "/robot_description")],
     )
 
+    # RViz 可选启动
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
         name="rviz2",
         output="log",
         arguments=["-d", rviz_config_file],
+        condition=IfCondition(use_rviz),
     )
 
+    # 控制器 spawner
     joint_state_broadcaster_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="joint_state_broadcaster_spawner",
         arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
     )
 
     robot_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
+        name="robot_controller_spawner",
         arguments=[robot_controller, "-c", "/controller_manager"],
     )
 
@@ -183,21 +214,34 @@ def generate_launch_description():
         ],
     )
 
-    # 启动顺序：robot_state_publisher → (2s) → control_node
-    #           control_node → (3s) → joint_state_broadcaster
-    #           joint_state_broadcaster exits → robot_controller
+    # ===== 生命周期管理 =====
+    #
+    # 启动顺序：
+    #   robot_state_publisher → (2s) → control_node
+    #   control_node → (3s) → joint_state_broadcaster_spawner
+    #   joint_state_broadcaster_spawner → robot_controller_spawner
+    #   robot_controller_spawner → rviz_node
+    #
+    # 关闭顺序（Ctrl+C）：
+    #   自动按依赖关系的逆序关闭
+
+    # 1. robot_state_publisher 启动后，延迟启动 control_node
     delay_control_node = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=robot_state_pub_node,
             on_start=[TimerAction(period=2.0, actions=[control_node])],
         )
     )
+
+    # 2. control_node 启动后，延迟启动 joint_state_broadcaster
     delay_jsb = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=control_node,
             on_start=[TimerAction(period=3.0, actions=[joint_state_broadcaster_spawner])],
         )
     )
+
+    # 3. joint_state_broadcaster 启动完成后，启动 robot_controller
     delay_robot_controller = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
@@ -205,14 +249,26 @@ def generate_launch_description():
         )
     )
 
+    # 4. robot_controller 启动完成后，启动 RViz
+    #    (确保所有控制器就绪后再启动可视化)
+    delay_rviz = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=robot_controller_spawner,
+            on_exit=[rviz_node],
+        )
+    )
+
     return LaunchDescription(
         declared_arguments
         + [
+            # 核心节点
             robot_state_pub_node,
-            rviz_node,
             joint_gui_control_group,
+
+            # 生命周期事件处理器
             delay_control_node,
             delay_jsb,
             delay_robot_controller,
+            delay_rviz,
         ]
     )

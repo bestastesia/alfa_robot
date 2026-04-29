@@ -27,6 +27,15 @@ namespace alfa_robot_hardware
 class AlfaRobotHW : public hardware_interface::SystemInterface
 {
 public:
+  AlfaRobotHW() = default;
+
+  // 析构函数确保资源正确释放（即使在异常情况下）
+  ~AlfaRobotHW()
+  {
+    // 确保所有 CAN 接口被关闭
+    cleanupResources();
+  }
+
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
 
@@ -72,6 +81,18 @@ private:
 
   void buildJoints();
   bool moveAllToSafePositions(double timeout_s);
+
+  // 资源清理函数（确保 CAN 接口被正确关闭）
+  void cleanupResources()
+  {
+    if (rmd_left_) rmd_left_->close();
+    if (rmd_right_) rmd_right_->close();
+    if (rmd_base_) rmd_base_->close();
+    if (canopen_) canopen_->close();
+    if (canopen_plate_) canopen_plate_->close();
+    if (zeroerr_left_) zeroerr_left_->close();
+    if (cylinder_) cylinder_->close();
+  }
 };
 
 }  // namespace alfa_robot_hardware
