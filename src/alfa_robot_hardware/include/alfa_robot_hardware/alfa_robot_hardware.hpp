@@ -33,6 +33,27 @@ constexpr uint32_t kEmergencyStopCanId = 0x7FF;
 class AlfaRobotHW : public hardware_interface::SystemInterface
 {
 public:
+  AlfaRobotHW() = default;
+
+  // 析构函数确保资源正确释放（即使在异常情况下）
+  ~AlfaRobotHW()
+  {
+    // 停止急停监听线程
+    estop_monitor_running_.store(false);
+    if (estop_monitor_thread_.joinable()) {
+      estop_monitor_thread_.join();
+    }
+    // 关闭所有 CAN 接口
+    closeEstopSocket();
+    if (rmd_left_) rmd_left_->close();
+    if (rmd_right_) rmd_right_->close();
+    if (rmd_base_) rmd_base_->close();
+    if (canopen_) canopen_->close();
+    if (canopen_plate_) canopen_plate_->close();
+    if (zeroerr_left_) zeroerr_left_->close();
+    if (cylinder_) cylinder_->close();
+  }
+
   hardware_interface::CallbackReturn on_init(
     const hardware_interface::HardwareInfo & info) override;
 

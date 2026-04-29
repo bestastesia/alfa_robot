@@ -186,6 +186,7 @@ def generate_launch_description():
     # 启动顺序：robot_state_publisher → (2s) → control_node
     #           control_node → (3s) → joint_state_broadcaster
     #           joint_state_broadcaster exits → robot_controller
+    #           robot_controller exits → rviz_node
     delay_control_node = RegisterEventHandler(
         event_handler=OnProcessStart(
             target_action=robot_state_pub_node,
@@ -204,15 +205,22 @@ def generate_launch_description():
             on_exit=[robot_controller_spawner],
         )
     )
+    # RViz 在控制器启动后再启动，确保系统就绪
+    delay_rviz = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=robot_controller_spawner,
+            on_exit=[rviz_node],
+        )
+    )
 
     return LaunchDescription(
         declared_arguments
         + [
             robot_state_pub_node,
-            rviz_node,
             joint_gui_control_group,
             delay_control_node,
             delay_jsb,
             delay_robot_controller,
+            delay_rviz,
         ]
     )
