@@ -23,6 +23,7 @@
 #include <moveit/robot_state/robot_state.h>
 
 #include <geometry_msgs/msg/pose.hpp>
+#include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
 #include <tf2_ros/buffer.h>
@@ -33,7 +34,7 @@
 static const std::string PLANNING_GROUP = "dual_arm_with_base";
 static const std::string LEFT_TIP       = "leftjoint6_link";
 static const std::string RIGHT_TIP      = "rightjoint4_link";
-static const std::string BASE_FRAME     = "base_link";
+static const std::string BASE_FRAME     = "world";
 
 class DualArmPlannerNode : public rclcpp::Node
 {
@@ -47,6 +48,15 @@ public:
 
   void init()
   {
+    // 用 TRANSIENT_LOCAL QoS 订阅 /joint_states，与 joint_state_broadcaster 匹配
+    auto qos = rclcpp::QoS(1).reliable().transient_local();
+    joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
+      "joint_states", qos,
+      [this](sensor_msgs::msg::JointState::SharedPtr msg) {
+        std::lock_guard<std::mutex> lock(js_mutex_);
+        latest_joint_state_ = msg;
+      });
+
     move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
       shared_from_this(), PLANNING_GROUP);
 
@@ -87,13 +97,32 @@ public:
                         bool execute = true)
   {
     // --- a) 构造种子状态（当前真实关节值）---
-    auto ik_state = std::make_shared<moveit::core::RobotState>(robot_model_);
-    auto current = move_group_->getCurrentState(2.0);
-    if (!current) {
-      RCLCPP_ERROR(get_logger(), "无法获取当前机器人状态");
+    // 等待自己订阅的 /joint_states（TRANSIENT_LOCAL QoS，与 joint_state_broadcaster 匹配）
+    sensor_msgs::msg::JointState::SharedPtr js;
+    for (int retry = 0; retry < 20 && !js; ++retry) {
+      {
+        std::lock_guard<std::mutex> lock(js_mutex_);
+        js = latest_joint_state_;
+      }
+      if (!js) {
+        RCLCPP_INFO_ONCE(get_logger(), "等待 /joint_states...");
+        rclcpp::sleep_for(std::chrono::milliseconds(200));
+      }
+    }
+    if (!js) {
+      RCLCPP_ERROR(get_logger(), "超时：未收到 /joint_states，请确认 MoveIt 已启动");
       return false;
     }
-    *ik_state = *current;
+
+    auto ik_state = std::make_shared<moveit::core::RobotState>(robot_model_);
+    ik_state->setToDefaultValues();
+    for (size_t i = 0; i < js->name.size(); ++i) {
+      if (robot_model_->hasJointModel(js->name[i])) {
+        ik_state->setJointPositions(js->name[i], &js->position[i]);
+      }
+    }
+    ik_state->update();
+
 
     // --- b) 双末端 IK，bio_ik 统一求解 ---
     EigenSTL::vector_Isometry3d poses(2);
@@ -101,6 +130,21 @@ public:
     tf2::fromMsg(right_pose, poses[1]);
 
     std::vector<std::string> tips = { LEFT_TIP, RIGHT_TIP };
+
+    // 打印 solver 信息帮助诊断
+    auto solver = joint_group_->getSolverInstance();
+    if (solver) {
+      RCLCPP_INFO(get_logger(), "IK solver: %s, tip frames: [%s]",
+        solver->getGroupName().c_str(),
+        [&]() {
+          std::string s;
+          for (auto & t : solver->getTipFrames()) s += t + " ";
+          return s;
+        }().c_str());
+    } else {
+      RCLCPP_ERROR(get_logger(), "dual_arm_with_base 没有 IK solver！");
+      return false;
+    }
 
     RCLCPP_INFO(get_logger(),
       "调用 bio_ik 双末端 IK:\n"
@@ -111,7 +155,8 @@ public:
 
     bool ik_ok = ik_state->setFromIK(joint_group_, poses, tips, /*timeout=*/2.0);
     if (!ik_ok) {
-      RCLCPP_ERROR(get_logger(), "bio_ik 双末端 IK 求解失败");
+      RCLCPP_ERROR(get_logger(), "bio_ik 双末端 IK 求解失败（tips: %s / %s）",
+        tips[0].c_str(), tips[1].c_str());
       return false;
     }
 
@@ -207,6 +252,9 @@ private:
   std::shared_ptr<tf2_ros::Buffer>                               tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener>                    tf_listener_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr             plan_exec_srv_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr  joint_state_sub_;
+  sensor_msgs::msg::JointState::SharedPtr                        latest_joint_state_;
+  std::mutex                                                      js_mutex_;
 };
 
 int main(int argc, char ** argv)
@@ -215,8 +263,16 @@ int main(int argc, char ** argv)
   rclcpp::NodeOptions options;
   options.automatically_declare_parameters_from_overrides(true);
   auto node = std::make_shared<DualArmPlannerNode>(options);
+
+  // MoveGroupInterface 需要 executor 在后台 spin 才能处理订阅回调
+  // （CurrentStateMonitor 依赖此机制接收 /joint_states）
+  rclcpp::executors::MultiThreadedExecutor executor;
+  executor.add_node(node);
+  std::thread spin_thread([&executor]() { executor.spin(); });
+
   node->init();
-  rclcpp::spin(node);
+
+  spin_thread.join();
   rclcpp::shutdown();
   return 0;
 }
