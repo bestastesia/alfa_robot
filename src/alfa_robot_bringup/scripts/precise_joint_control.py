@@ -56,10 +56,10 @@ JOINT_LIMITS = {
     "updown": (0.0, 1.0),
     "leftarmbase": (0.0, 0.14),
     "leftjoint1": (0.0, 0.42),
-    "leftjoint2": (-3.14159, 3.14159),
-    "leftjoint3": (-3.14159, 3.14159),
-    "leftjoint4": (0.0, 0.22),
-    "leftjoint5": (-3.14159, 3.14159),
+    "leftjoint2": (-100.0, 100.0),      # 无限位 (continuous)
+    "leftjoint3": (-3.14159, 0.3),      # -π ~ 0.3 rad
+    "leftjoint4": (0.0, 0.15),          # 0 ~ 15cm (电缸)
+    "leftjoint5": (-1.5708, 1.5708),    # -π/2 ~ π/2
     "rightarmbase": (0.0, 0.16),
     "rightjoint1": (0.0, 0.5),
     "rightjoint2": (-3.14159, 3.14159),
