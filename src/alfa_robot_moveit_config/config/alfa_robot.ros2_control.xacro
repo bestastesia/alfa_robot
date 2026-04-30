@@ -50,6 +50,18 @@
                   <param name="initial_value">${initial_positions['leftjoint4']}</param>
                 </state_interface>
             </joint>
+            <joint name="leftjoint5">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['leftjoint5']}</param>
+                </state_interface>
+            </joint>
+            <joint name="leftjoint6">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['leftjoint6']}</param>
+                </state_interface>
+            </joint>
             <joint name="rightarmbase">
                 <command_interface name="position"/>
                 <state_interface name="position">
