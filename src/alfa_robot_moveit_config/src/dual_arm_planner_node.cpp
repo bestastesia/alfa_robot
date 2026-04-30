@@ -1,35 +1,20 @@
 /**
  * dual_arm_planner_node.cpp
  *
- * 双末端位姿规划节点。
+ * 方案 B：【原生约束】—— setPoseTarget 多末端
  *
  * 核心思路：
- *   1. 手动构造 RobotState，调用 setFromIK(group, {left_pose, right_pose}, tips)
- *      → bio_ik 一次性看到两个末端目标，统一协调 updown 关节，输出完整关节角
- *   2. 把该 RobotState 通过 setJointValueTarget(robot_state) 传给规划器
- *      → 规划器只做路径规划，不再需要 IkConstraintSampler（彻底绕开多 tip 冲突）
- *
- * 对外接口：
- *   ROS 2 service  ~/plan_and_execute  (std_srvs/Trigger) — 触发 demo
- *   C++ API:
- *     plan_and_execute(left_pose, right_pose, execute)
- *     plan_and_execute_single(move_left, target_pose, execute)
+ *   使用 setPoseTarget 分别设置两个末端目标，让 MoveIt 内部处理多目标约束。
+ *   关键修复：自己订阅 joint_states 构造 RobotState，绕开 CurrentStateMonitor 时间戳问题。
  */
 
 #include <rclcpp/rclcpp.hpp>
-
 #include <moveit/move_group_interface/move_group_interface.h>
-#include <moveit/robot_model_loader/robot_model_loader.h>
 #include <moveit/robot_state/robot_state.h>
-
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
-
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2_eigen/tf2_eigen.hpp>
+#include <mutex>
 
 static const std::string PLANNING_GROUP = "dual_arm_with_base";
 static const std::string LEFT_TIP       = "leftjoint6_link";
@@ -41,15 +26,12 @@ class DualArmPlannerNode : public rclcpp::Node
 public:
   explicit DualArmPlannerNode(const rclcpp::NodeOptions & options)
   : Node("dual_arm_planner", options)
-  {
-    tf_buffer_   = std::make_shared<tf2_ros::Buffer>(get_clock());
-    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-  }
+  {}
 
   void init()
   {
-    // 用 TRANSIENT_LOCAL QoS 订阅 /joint_states，与 joint_state_broadcaster 匹配
-    auto qos = rclcpp::QoS(1).reliable().transient_local();
+    // 自己订阅 joint_states（绕开 CurrentStateMonitor 时间戳问题）
+    auto qos = rclcpp::QoS(1).reliable();
     joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "joint_states", qos,
       [this](sensor_msgs::msg::JointState::SharedPtr msg) {
@@ -60,14 +42,14 @@ public:
     move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
       shared_from_this(), PLANNING_GROUP);
 
-    move_group_->setPlanningTime(15.0);
-    move_group_->setNumPlanningAttempts(20);
+    move_group_->setPlanningTime(5.0);
+    move_group_->setNumPlanningAttempts(10);
     move_group_->setMaxVelocityScalingFactor(0.3);
     move_group_->setMaxAccelerationScalingFactor(0.2);
 
-    // 获取机器人模型和规划组，用于手动调用 setFromIK
-    robot_model_  = move_group_->getRobotModel();
-    joint_group_  = robot_model_->getJointModelGroup(PLANNING_GROUP);
+    // 获取机器人模型
+    robot_model_ = move_group_->getRobotModel();
+    joint_group_ = robot_model_->getJointModelGroup(PLANNING_GROUP);
 
     plan_exec_srv_ = create_service<std_srvs::srv::Trigger>(
       "~/plan_and_execute",
@@ -77,195 +59,174 @@ public:
         resp->message = resp->success ? "success" : "failed";
       });
 
-    RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
-    RCLCPP_INFO(get_logger(), "  Group   : %s", PLANNING_GROUP.c_str());
-    RCLCPP_INFO(get_logger(), "  Left tip: %s", LEFT_TIP.c_str());
-    RCLCPP_INFO(get_logger(), "  Right tip:%s", RIGHT_TIP.c_str());
+    RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready (方案B: 原生约束)");
+    RCLCPP_INFO(get_logger(), "  Group: %s, Left: %s, Right: %s",
+      PLANNING_GROUP.c_str(), LEFT_TIP.c_str(), RIGHT_TIP.c_str());
   }
 
   /**
-   * 核心接口：双末端位姿 → bio_ik 求关节角 → 路径规划 → （可选）执行
-   *
-   * 步骤：
-   *   a) 用当前真实关节角初始化 RobotState（作为 IK 种子）
-   *   b) setFromIK(group, {left_pose, right_pose}, {LEFT_TIP, RIGHT_TIP}, timeout)
-   *      bio_ik 统一优化 updown + 双臂关节
-   *   c) setJointValueTarget(ik_state) → plan() → execute()
+   * 获取当前 RobotState（自己构造，不依赖 CurrentStateMonitor）
    */
-  bool plan_and_execute(const geometry_msgs::msg::Pose & left_pose,
-                        const geometry_msgs::msg::Pose & right_pose,
-                        bool execute = true)
+  moveit::core::RobotStatePtr get_current_robot_state()
   {
-    // --- a) 构造种子状态（当前真实关节值）---
-    // 等待自己订阅的 /joint_states（TRANSIENT_LOCAL QoS，与 joint_state_broadcaster 匹配）
+    // 等待 joint_states
     sensor_msgs::msg::JointState::SharedPtr js;
-    for (int retry = 0; retry < 20 && !js; ++retry) {
+    for (int retry = 0; retry < 10 && !js; ++retry) {
       {
         std::lock_guard<std::mutex> lock(js_mutex_);
         js = latest_joint_state_;
       }
       if (!js) {
-        RCLCPP_INFO_ONCE(get_logger(), "等待 /joint_states...");
-        rclcpp::sleep_for(std::chrono::milliseconds(200));
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
       }
     }
+
     if (!js) {
-      RCLCPP_ERROR(get_logger(), "超时：未收到 /joint_states，请确认 MoveIt 已启动");
-      return false;
+      RCLCPP_ERROR(get_logger(), "未收到 joint_states");
+      return nullptr;
     }
 
-    auto ik_state = std::make_shared<moveit::core::RobotState>(robot_model_);
-    ik_state->setToDefaultValues();
+    // 构造 RobotState
+    auto state = std::make_shared<moveit::core::RobotState>(robot_model_);
+    state->setToDefaultValues();
+
     for (size_t i = 0; i < js->name.size(); ++i) {
       if (robot_model_->hasJointModel(js->name[i])) {
-        ik_state->setJointPositions(js->name[i], &js->position[i]);
+        state->setJointPositions(js->name[i], &js->position[i]);
       }
     }
-    ik_state->update();
+    state->update();
 
+    return state;
+  }
 
-    // --- b) 双末端 IK，bio_ik 统一求解 ---
-    EigenSTL::vector_Isometry3d poses(2);
-    tf2::fromMsg(left_pose,  poses[0]);
-    tf2::fromMsg(right_pose, poses[1]);
+  /**
+   * 从 RobotState 获取 link 的位姿
+   */
+  bool get_pose_from_state(const std::string& link_name, geometry_msgs::msg::Pose& pose)
+  {
+    auto state = get_current_robot_state();
+    if (!state) return false;
 
-    std::vector<std::string> tips = { LEFT_TIP, RIGHT_TIP };
+    auto tf = state->getGlobalLinkTransform(link_name);
+    pose.position.x = tf.translation().x();
+    pose.position.y = tf.translation().y();
+    pose.position.z = tf.translation().z();
+    Eigen::Quaterniond q(tf.rotation());
+    pose.orientation.w = q.w();
+    pose.orientation.x = q.x();
+    pose.orientation.y = q.y();
+    pose.orientation.z = q.z();
+    return true;
+  }
 
-    // 打印 solver 信息帮助诊断
-    auto solver = joint_group_->getSolverInstance();
-    if (solver) {
-      RCLCPP_INFO(get_logger(), "IK solver: %s, tip frames: [%s]",
-        solver->getGroupName().c_str(),
-        [&]() {
-          std::string s;
-          for (auto & t : solver->getTipFrames()) s += t + " ";
-          return s;
-        }().c_str());
-    } else {
-      RCLCPP_ERROR(get_logger(), "dual_arm_with_base 没有 IK solver！");
+  /**
+   * 核心接口：双末端规划
+   */
+  bool plan_and_execute(const geometry_msgs::msg::Pose& left_pose,
+                        const geometry_msgs::msg::Pose& right_pose,
+                        bool execute = true)
+  {
+    // --- Step 1: 用自己构造的 RobotState 设置起始状态 ---
+    auto current_state = get_current_robot_state();
+    if (!current_state) {
+      RCLCPP_ERROR(get_logger(), "无法获取当前状态");
       return false;
     }
+    move_group_->setStartState(*current_state);
 
-    RCLCPP_INFO(get_logger(),
-      "调用 bio_ik 双末端 IK:\n"
-      "  左臂目标: (%.3f, %.3f, %.3f)\n"
-      "  右臂目标: (%.3f, %.3f, %.3f)",
-      left_pose.position.x,  left_pose.position.y,  left_pose.position.z,
+    // --- Step 2: 设置双末端目标 ---
+    move_group_->clearPoseTargets();
+    move_group_->setPoseTarget(left_pose, LEFT_TIP);
+    move_group_->setPoseTarget(right_pose, RIGHT_TIP);
+
+    RCLCPP_INFO(get_logger(), "设置双末端目标:");
+    RCLCPP_INFO(get_logger(), "  左臂: (%.3f, %.3f, %.3f)",
+      left_pose.position.x, left_pose.position.y, left_pose.position.z);
+    RCLCPP_INFO(get_logger(), "  右臂: (%.3f, %.3f, %.3f)",
       right_pose.position.x, right_pose.position.y, right_pose.position.z);
 
-    bool ik_ok = ik_state->setFromIK(joint_group_, poses, tips, /*timeout=*/2.0);
-    if (!ik_ok) {
-      RCLCPP_ERROR(get_logger(), "bio_ik 双末端 IK 求解失败（tips: %s / %s）",
-        tips[0].c_str(), tips[1].c_str());
-      return false;
-    }
-
-    // 打印 bio_ik 求出的关节角（便于调试）
-    std::vector<double> jv;
-    ik_state->copyJointGroupPositions(joint_group_, jv);
-    auto & jnames = joint_group_->getVariableNames();
-    RCLCPP_INFO(get_logger(), "bio_ik IK 解:");
-    for (size_t i = 0; i < jnames.size(); ++i)
-      RCLCPP_INFO(get_logger(), "  %s = %.4f", jnames[i].c_str(), jv[i]);
-
-    // --- c) 用关节目标规划（绕开 IkConstraintSampler）---
-    move_group_->setJointValueTarget(*ik_state);
-
+    // --- Step 3: 规划 ---
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    auto result = move_group_->plan(plan);
-    if (result != moveit::core::MoveItErrorCode::SUCCESS) {
-      RCLCPP_ERROR(get_logger(), "路径规划失败，错误码: %d", result.val);
+    auto plan_result = move_group_->plan(plan);
+
+    if (plan_result != moveit::core::MoveItErrorCode::SUCCESS) {
+      RCLCPP_ERROR(get_logger(), "规划失败，错误码: %d", plan_result.val);
       return false;
     }
 
-    RCLCPP_INFO(get_logger(), "路径规划成功，轨迹点数: %zu",
+    RCLCPP_INFO(get_logger(), "规划成功，轨迹点数: %zu",
       plan.trajectory_.joint_trajectory.points.size());
 
     if (!execute) return true;
 
-    auto exec = move_group_->execute(plan);
-    if (exec != moveit::core::MoveItErrorCode::SUCCESS) {
-      RCLCPP_ERROR(get_logger(), "执行失败，错误码: %d", exec.val);
+    // --- Step 4: 执行 ---
+    auto exec_result = move_group_->execute(plan);
+    if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
+      RCLCPP_ERROR(get_logger(), "执行失败，错误码: %d", exec_result.val);
       return false;
     }
+
     RCLCPP_INFO(get_logger(), "执行成功");
     return true;
   }
 
   /**
-   * 单臂模式：只动一侧，另一侧固定为当前 TF 位姿。
-   * bio_ik 仍然同时看到两个约束，updown 协调不丢失。
+   * 单臂移动
    */
   bool plan_and_execute_single(bool move_left,
-                               const geometry_msgs::msg::Pose & target,
+                               const geometry_msgs::msg::Pose& target,
                                bool execute = true)
   {
     geometry_msgs::msg::Pose fixed_pose;
-    const std::string & fixed_tip = move_left ? RIGHT_TIP : LEFT_TIP;
-    if (!get_current_pose(fixed_tip, fixed_pose)) {
+    const std::string& fixed_tip = move_left ? RIGHT_TIP : LEFT_TIP;
+    if (!get_pose_from_state(fixed_tip, fixed_pose)) {
       RCLCPP_ERROR(get_logger(), "无法获取 %s 当前位姿", fixed_tip.c_str());
       return false;
     }
 
-    const auto & left_pose  = move_left ? target     : fixed_pose;
-    const auto & right_pose = move_left ? fixed_pose : target;
+    const auto& left_pose  = move_left ? target     : fixed_pose;
+    const auto& right_pose = move_left ? fixed_pose : target;
 
-    RCLCPP_INFO(get_logger(), "%s臂运动，%s臂位姿固定为当前值",
+    RCLCPP_INFO(get_logger(), "%s臂运动，%s臂固定",
       move_left ? "左" : "右", move_left ? "右" : "左");
 
     return plan_and_execute(left_pose, right_pose, execute);
   }
 
 private:
-  bool get_current_pose(const std::string & link, geometry_msgs::msg::Pose & out)
-  {
-    try {
-      auto tf = tf_buffer_->lookupTransform(
-        BASE_FRAME, link, tf2::TimePointZero, tf2::durationFromSec(2.0));
-      out.position.x    = tf.transform.translation.x;
-      out.position.y    = tf.transform.translation.y;
-      out.position.z    = tf.transform.translation.z;
-      out.orientation   = tf.transform.rotation;
-      return true;
-    } catch (const tf2::TransformException & e) {
-      RCLCPP_WARN(get_logger(), "TF %s->%s 失败: %s", BASE_FRAME.c_str(), link.c_str(), e.what());
-      return false;
-    }
-  }
-
-  // Demo：左臂在当前位姿基础上向上移动 10cm，右臂位姿保持不变
   bool demo_move()
   {
     geometry_msgs::msg::Pose left_current;
-    if (!get_current_pose(LEFT_TIP, left_current)) return false;
+    if (!get_pose_from_state(LEFT_TIP, left_current)) {
+      RCLCPP_ERROR(get_logger(), "无法获取左臂当前位姿");
+      return false;
+    }
 
     auto left_target = left_current;
     left_target.position.z += 0.10;
 
     RCLCPP_INFO(get_logger(), "Demo: 左臂上移 10cm，右臂固定");
-    return plan_and_execute_single(/*move_left=*/true, left_target, /*execute=*/true);
+    return plan_and_execute_single(true, left_target, true);
   }
 
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
-  moveit::core::RobotModelConstPtr                                robot_model_;
-  const moveit::core::JointModelGroup *                          joint_group_ = nullptr;
-  std::shared_ptr<tf2_ros::Buffer>                               tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener>                    tf_listener_;
-  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr             plan_exec_srv_;
-  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr  joint_state_sub_;
-  sensor_msgs::msg::JointState::SharedPtr                        latest_joint_state_;
-  std::mutex                                                      js_mutex_;
+  moveit::core::RobotModelConstPtr robot_model_;
+  const moveit::core::JointModelGroup* joint_group_ = nullptr;
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr plan_exec_srv_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
+  sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;
+  std::mutex js_mutex_;
 };
 
-int main(int argc, char ** argv)
+int main(int argc, char** argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::NodeOptions options;
   options.automatically_declare_parameters_from_overrides(true);
   auto node = std::make_shared<DualArmPlannerNode>(options);
 
-  // MoveGroupInterface 需要 executor 在后台 spin 才能处理订阅回调
-  // （CurrentStateMonitor 依赖此机制接收 /joint_states）
   rclcpp::executors::MultiThreadedExecutor executor;
   executor.add_node(node);
   std::thread spin_thread([&executor]() { executor.spin(); });
