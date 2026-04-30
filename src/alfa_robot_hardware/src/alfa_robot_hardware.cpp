@@ -299,14 +299,14 @@ void AlfaRobotHW::buildJoints()
 
   // leftjoint2: 无限位 (continuous，理论可无限旋转)
   joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint2",
-    ZeroerrJoint::Config{1, 0.0, -1.0, 262144,
+    ZeroerrJoint::Config{1, 0.0, 1.0, 262144,
       -100.0, 100.0, false},  // disable_limits=true，无限制
     *zeroerr_left_));
 
-  // leftjoint3: -π ~ 0.3 rad
+  // leftjoint3: -0.3 ~ π rad (方向反转后)
   joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint3",
-    ZeroerrJoint::Config{2, 0.0, -1.0, 262144,
-      -M_PI, 0.3, true},  // 限位: -π ~ 0.3 rad
+    ZeroerrJoint::Config{2, 0.0, 1.0, 262144,
+      -0.3, M_PI, true},  // 限位: -0.3 ~ π rad
     *zeroerr_left_));
 
   // Node 3: IDS830ABS Cylinder (leftjoint4 - linear actuator, 15cm travel)
@@ -318,7 +318,7 @@ void AlfaRobotHW::buildJoints()
   // Node 4: RMD motor (leftjoint5 - rotary)
   // 限位: -0.5π ~ 0.5π rad
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint5",
-    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0,
+    RmdJoint::Config{4, 0.0, 0.0, 1.0, 0.0,
       -M_PI_2, M_PI_2, true},  // 限位: -π/2 ~ π/2
     *rmd_left_));
 

@@ -76,6 +76,11 @@ def generate_launch_description():
             "Works with robot_controller:=all_position_controller (default).",
         ),
         DeclareLaunchArgument(
+            "use_rviz",
+            default_value="true",
+            description="Launch RViz.",
+        ),
+        DeclareLaunchArgument(
             "real_hardware_plugin",
             default_value="alfa_robot_hardware/AlfaRobotHW",
             description="Plugin for real hardware control (used when use_mock_hardware:=false).",
@@ -102,6 +107,7 @@ def generate_launch_description():
     mock_sensor_commands = LaunchConfiguration("mock_sensor_commands")
     robot_controller = LaunchConfiguration("robot_controller")
     use_joint_gui_control = LaunchConfiguration("use_joint_gui_control")
+    use_rviz = LaunchConfiguration("use_rviz")
     real_hardware_plugin = LaunchConfiguration("real_hardware_plugin")
     canopen_profile_velocity = LaunchConfiguration("canopen_profile_velocity")
     canopen_profile_accel = LaunchConfiguration("canopen_profile_accel")
@@ -150,6 +156,7 @@ def generate_launch_description():
         name="rviz2",
         output="log",
         arguments=["-d", rviz_config_file],
+        condition=IfCondition(use_rviz),
     )
 
     joint_state_broadcaster_spawner = Node(
