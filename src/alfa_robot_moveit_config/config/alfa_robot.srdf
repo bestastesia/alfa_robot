@@ -32,6 +32,8 @@
         <joint name="rightjoint2"/>
         <joint name="rightjoint3"/>
         <joint name="rightjoint4"/>
+        <joint name="rightjoint5"/>
+        <joint name="rightjoint6"/>
     </group>
     <group name="vacuum_left">
         <link name="left_ee_link"/>
@@ -75,6 +77,8 @@
         <joint name="rightjoint2" value="0"/>
         <joint name="rightjoint3" value="0"/>
         <joint name="rightjoint4" value="0"/>
+        <joint name="rightjoint5" value="0"/>
+        <joint name="rightjoint6" value="0"/>
         <joint name="turn" value="0"/>
         <joint name="updown" value="0"/>
     </group_state>
@@ -91,6 +95,8 @@
         <joint name="rightjoint2" value="-0.0909"/>
         <joint name="rightjoint3" value="0"/>
         <joint name="rightjoint4" value="1.6654"/>
+        <joint name="rightjoint5" value="0"/>
+        <joint name="rightjoint6" value="0"/>
         <joint name="turn" value="0"/>
         <joint name="updown" value="0.0787"/>
     </group_state>
@@ -107,17 +113,19 @@
         <joint name="rightjoint2" value="0"/>
         <joint name="rightjoint3" value="0"/>
         <joint name="rightjoint4" value="0"/>
+        <joint name="rightjoint5" value="0"/>
+        <joint name="rightjoint6" value="0"/>
         <joint name="turn" value="0"/>
         <joint name="updown" value="0.5406"/>
     </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <end_effector name="vacuum_left" parent_link="leftjoint6_link" group="vacuum_left" parent_group="left_arm"/>
-    <end_effector name="vacuum_right" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm"/>
+    <end_effector name="vacuum_right" parent_link="rightjoint6_link" group="vacuum_right" parent_group="right_arm"/>
     <end_effector name="vacuum_left_with_base" parent_link="leftjoint6_link" group="vacuum_left" parent_group="left_arm_with_base"/>
-    <end_effector name="vacuum_right_with_base" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm_with_base"/>
+    <end_effector name="vacuum_right_with_base" parent_link="rightjoint6_link" group="vacuum_right" parent_group="right_arm_with_base"/>
     <!-- End effectors for dual_arm_with_base group -->
     <end_effector name="vacuum_left_dual_base" parent_link="leftjoint6_link" group="vacuum_left" parent_group="dual_arm_with_base"/>
-    <end_effector name="vacuum_right_dual_base" parent_link="rightjoint4_link" group="vacuum_right" parent_group="dual_arm_with_base"/>
+    <end_effector name="vacuum_right_dual_base" parent_link="rightjoint6_link" group="vacuum_right" parent_group="dual_arm_with_base"/>
     <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
     <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->

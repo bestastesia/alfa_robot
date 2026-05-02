@@ -67,6 +67,8 @@ right_arm_position_controller:
       - rightjoint2
       - rightjoint3
       - rightjoint4
+      - rightjoint5
+      - rightjoint6
     interface_name: position
 
 forward_velocity_controller:
@@ -96,4 +98,6 @@ all_position_controller:
       - rightjoint2
       - rightjoint3
       - rightjoint4
+      - rightjoint5
+      - rightjoint6
     interface_name: position

@@ -80,4 +80,6 @@ all_position_controller:
       - rightjoint2
       - rightjoint3
       - rightjoint4
+      - rightjoint5
+      - rightjoint6
     interface_name: position

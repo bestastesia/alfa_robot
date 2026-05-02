@@ -94,12 +94,12 @@
       </collision>
     </link>
 
-    <!-- leftarmbase (link name differs from joint for GZ compatibility) -->
+    <!-- rightarmbase -->
     <link name="${prefix}rightarmbase_link">
       <inertial>
-        <origin xyz="0.0065184830076993 0.0166887762268038 0.0522668634862797" rpy="0 0 0"/>
-        <mass value="6.84202784607225"/>
-        <inertia ixx="0.0164013007938562" ixy="9.83820122469931E-06" ixz="0.000389797205690543" iyy="0.0925933973563738" iyz="-0.000135019154076589" izz="0.0913226513514585"/>
+        <origin xyz="0.00858986048699223 0.0287669594345854 0.0499555606572479" rpy="0 0 0"/>
+        <mass value="7.06520786853071"/>
+        <inertia ixx="0.0164730270054181" ixy="-9.84172582142273E-06" ixz="0.000387662666799276" iyy="0.0926777572076808" iyz="-0.0001209391577568" izz="0.091397951636245"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -116,12 +116,12 @@
       </collision>
     </link>
 
-    <!-- leftjoint1 (link name differs from joint for GZ compatibility) -->
+    <!-- rightjoint1 -->
     <link name="${prefix}rightjoint1_link">
       <inertial>
-        <origin xyz="0.363254870237073 -0.00430635985497407 0.00399546521565419" rpy="0 0 0"/>
-        <mass value="2.46184783942628"/>
-        <inertia ixx="0.00349086639926755" ixy="-2.69181048005308E-07" ixz="1.18635671701878E-06" iyy="0.0377537678958155" iyz="-8.95938402086781E-05" izz="0.0384323225293085"/>
+        <origin xyz="0.32398542150288 -0.0675146775051429 -0.0136862113102643" rpy="0 0 0"/>
+        <mass value="2.48077826581444"/>
+        <inertia ixx="0.0026348787049079" ixy="2.78509690352211E-07" ixz="2.27753599606112E-06" iyy="0.0378277422884527" iyz="-3.74055166687532E-05" izz="0.0384178105950815"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -138,12 +138,12 @@
       </collision>
     </link>
 
-    <!-- leftjoint2 (link name differs from joint for GZ compatibility) -->
+    <!-- rightjoint2 -->
     <link name="${prefix}rightjoint2_link">
       <inertial>
-        <origin xyz="0.150409645725255 0.00448982924374308 0.0188845887503852" rpy="0 0 0"/>
-        <mass value="2.48976780370709"/>
-        <inertia ixx="0.00317772693030281" ixy="-6.94923571222452E-05" ixz="3.53574425014485E-07" iyy="0.00869746381533899" iyz="2.83263029765993E-08" izz="0.0108712453298436"/>
+        <origin xyz="0.00998125570987396 0.0501508012211525 0.0836125943851177" rpy="0 0 0"/>
+        <mass value="0.924094586385747"/>
+        <inertia ixx="0.00138886172299487" ixy="9.60798584640597E-07" ixz="-2.47998998359295E-07" iyy="0.00126018297864274" iyz="-6.56045281312999E-07" izz="0.0014853923148985"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -160,12 +160,12 @@
       </collision>
     </link>
 
-    <!-- leftjoint3 (link name differs from joint for GZ compatibility) -->
+    <!-- rightjoint3 -->
     <link name="${prefix}rightjoint3_link">
       <inertial>
-        <origin xyz="-2.6889792636986E-05 0.00177301957246101 0.0771138491168442" rpy="0 0 0"/>
-        <mass value="2.36049013572046"/>
-        <inertia ixx="0.00371444525711301" ixy="6.97171051907141E-06" ixz="6.54275051629753E-07" iyy="0.00546440283832201" iyz="-3.57400059517791E-07" izz="0.00425607026205507"/>
+        <origin xyz="0.225299625739963 -1.60107813145238E-05 -0.0720438220450934" rpy="0 0 0"/>
+        <mass value="1.34400405454488"/>
+        <inertia ixx="0.00147896138599604" ixy="-1.09234424169219E-06" ixz="-3.74484328782169E-07" iyy="0.0027517588466101" iyz="1.75900999614053E-08" izz="0.00279083369334524"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -182,12 +182,12 @@
       </collision>
     </link>
 
-    <!-- leftjoint4 (link name differs from joint for GZ compatibility) -->
+    <!-- rightjoint4 -->
     <link name="${prefix}rightjoint4_link">
       <inertial>
-        <origin xyz="0.168114701096427 -0.011285572595106 -0.0157488023557206" rpy="0 0 0"/>
-        <mass value="1.71170101112419"/>
-        <inertia ixx="0.00484207681591099" ixy="-6.65777874958895E-05" ixz="-9.07857869658426E-06" iyy="0.00422266337154443" iyz="9.33417209316671E-07" izz="0.00348624434926117"/>
+        <origin xyz="0.0100204605383918 0.00985679814963347 0.0840089075623952" rpy="0 0 0"/>
+        <mass value="0.983457322359293"/>
+        <inertia ixx="0.00146324457982104" ixy="1.07921279553368E-06" ixz="2.05978166819893E-07" iyy="0.00136637778648993" iyz="3.51454994521712E-07" izz="0.00151815899256312"/>
       </inertial>
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -200,6 +200,50 @@
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
           <mesh filename="package://alfa_robot_description/meshes/alfa_robot/collision/rightjoint4.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- rightjoint5 (new link for 6DOF, Y-axis mirror of leftjoint5) -->
+    <link name="${prefix}rightjoint5_link">
+      <inertial>
+        <origin xyz="0.0101785346040691 -9.30231893336853E-06 0.114866949892092" rpy="0 0 0"/>
+        <mass value="1.05113789872684"/>
+        <inertia ixx="0.00202470522047338" ixy="-1.84484199834478E-08" ixz="-0.000306186752830273" iyy="0.00328579639703018" iyz="-7.17708515637608E-10" izz="0.00340020564373822"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/visual/rightjoint5.STL"/>
+        </geometry>
+        <material name="white"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/collision/rightjoint5.STL"/>
+        </geometry>
+      </collision>
+    </link>
+
+    <!-- rightjoint6 (new link for end effector extension, Y-axis mirror of leftjoint6) -->
+    <link name="${prefix}rightjoint6_link">
+      <inertial>
+        <origin xyz="0.0338349899428319 -2.18158824338843E-14 1.47522838389591E-09" rpy="0 0 0"/>
+        <mass value="0.763196071605449"/>
+        <inertia ixx="0.00324062849151741" ixy="-6.82020341217245E-19" ixz="-3.87057635370163E-16" iyy="0.0019198659327465" iyz="1.80691312979497E-18" izz="0.00150433027221572"/>
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/visual/rightjoint6.STL"/>
+        </geometry>
+        <material name="blue"/>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/alfa_robot/collision/rightjoint6.STL"/>
         </geometry>
       </collision>
     </link>
@@ -445,55 +489,73 @@
       <limit lower="0" upper="0.5" effort="1000" velocity="1000"/>
     </joint>
 
-    <!-- leftarmbase -->
+    <!-- rightarmbase -->
     <joint name="${prefix}rightarmbase" type="prismatic">
-      <origin xyz="-0.16145 -0.47517 0.146" rpy="0 0 0"/>
+      <origin xyz="-0.16145 -0.3282 0.146" rpy="0 0 0"/>
       <parent link="${prefix}updown_link"/>
       <child link="${prefix}rightarmbase_link"/>
-      <axis xyz="0 1 0"/>
-      <limit lower="0" upper="0.16" effort="1000" velocity="0.5"/>
+      <axis xyz="0 -1 0"/>
+      <limit lower="0" upper="0.14" effort="1000" velocity="0.5"/>
     </joint>
 
-    <!-- leftjoint1 -->
+    <!-- rightjoint1 -->
     <joint name="${prefix}rightjoint1" type="prismatic">
-      <origin xyz="0.08729 0.024997 0.07136" rpy="0 0 0"/>
+      <origin xyz="0.15658 0.096099 0.086" rpy="0 0 0"/>
       <parent link="${prefix}rightarmbase_link"/>
       <child link="${prefix}rightjoint1_link"/>
       <axis xyz="1 0 0"/>
-      <limit lower="0" upper="0.5" effort="1000" velocity="0.5"/>
+      <limit lower="0" upper="0.42" effort="1000" velocity="0.5"/>
     </joint>
 
-    <!-- leftjoint2 -->
+    <!-- rightjoint2 -->
     <joint name="${prefix}rightjoint2" type="continuous">
-      <origin xyz="0.67445 -0.035997 0.04964" rpy="0 1.5708 0"/>
+      <origin xyz="0.67335 -0.10135 0.04" rpy="0 1.5708 0"/>
       <parent link="${prefix}rightjoint1_link"/>
       <child link="${prefix}rightjoint2_link"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
     </joint>
 
-    <!-- leftjoint3 -->
+    <!-- rightjoint3 -->
     <joint name="${prefix}rightjoint3" type="continuous">
-      <origin xyz="0.19998 0.0021836 0.0834" rpy="0 0 0"/>
+      <origin xyz="0.01 -0.0058 0.098" rpy="1.5708 -1.5708 0"/>
       <parent link="${prefix}rightjoint2_link"/>
       <child link="${prefix}rightjoint3_link"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
     </joint>
 
-    <!-- leftjoint4 -->
+    <!-- rightjoint4 -->
     <joint name="${prefix}rightjoint4" type="continuous">
-      <origin xyz="-0.00022361 -0.054349 0.105" rpy="1.5708 -0.11346 -0.0041142"/>
+      <origin xyz="0.3418 0.01 -0.082" rpy="-1.5708 0 -1.5708"/>
       <parent link="${prefix}rightjoint3_link"/>
       <child link="${prefix}rightjoint4_link"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
     </joint>
 
-    <!-- left_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
-    <joint name="${prefix}right_ee_joint" type="fixed">
-      <origin xyz="0.275 -0.0308 -0.02825" rpy="0 0 0"/>
+    <!-- rightjoint5 (new joint for 6DOF, Y-axis mirror of leftjoint5) -->
+    <joint name="${prefix}rightjoint5" type="continuous">
+      <origin xyz="0.01 0.0022 0.098" rpy="1.5708 -1.5708 0"/>
       <parent link="${prefix}rightjoint4_link"/>
+      <child link="${prefix}rightjoint5_link"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+    </joint>
+
+    <!-- rightjoint6 (new joint for end effector extension, Y-axis mirror of leftjoint6) -->
+    <joint name="${prefix}rightjoint6" type="prismatic">
+      <origin xyz="0.13 0 0.1435" rpy="-1.5708 0 0"/>
+      <parent link="${prefix}rightjoint5_link"/>
+      <child link="${prefix}rightjoint6_link"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="0" upper="0.15" effort="0" velocity="0"/>
+    </joint>
+
+    <!-- right_ee_joint (virtual fixed joint for MoveIt2 end effector) -->
+    <joint name="${prefix}right_ee_joint" type="fixed">
+      <origin xyz="0.05 0 0" rpy="0 0 0"/>
+      <parent link="${prefix}rightjoint6_link"/>
       <child link="${prefix}right_ee_link"/>
     </joint>
 

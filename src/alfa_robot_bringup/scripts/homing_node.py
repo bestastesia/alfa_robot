@@ -37,7 +37,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 _CONTROLLER_JOINTS = {
     "torso_group_controller": ["turn", "updown"],
     "left_arm_controller": ["leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4"],
-    "right_arm_controller": ["rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4"],
+    "right_arm_controller": ["rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6"],
 }
 _DEFAULT_CONTROLLER_NAMES = list(_CONTROLLER_JOINTS.keys())
 _DEFAULT_HOME = [0.0] * sum(len(joints) for joints in _CONTROLLER_JOINTS.values())

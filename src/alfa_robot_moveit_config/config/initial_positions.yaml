@@ -13,5 +13,7 @@ initial_positions:
   rightjoint2: 0
   rightjoint3: 0
   rightjoint4: 0
+  rightjoint5: 0
+  rightjoint6: 0
   turn: 0
   updown: 0

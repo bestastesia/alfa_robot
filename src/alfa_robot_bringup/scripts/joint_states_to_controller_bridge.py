@@ -27,11 +27,14 @@ _DEFAULT_JOINT_ORDER = [
     "leftjoint3",
     "leftjoint4",
     "leftjoint5",
+    "leftjoint6",
     "rightarmbase",
     "rightjoint1",
     "rightjoint2",
     "rightjoint3",
     "rightjoint4",
+    "rightjoint5",
+    "rightjoint6",
 ]
 
 

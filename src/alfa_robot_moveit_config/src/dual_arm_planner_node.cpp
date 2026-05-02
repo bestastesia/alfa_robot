@@ -18,7 +18,7 @@
 
 static const std::string PLANNING_GROUP = "dual_arm_with_base";
 static const std::string LEFT_TIP       = "leftjoint6_link";
-static const std::string RIGHT_TIP      = "rightjoint4_link";
+static const std::string RIGHT_TIP      = "rightjoint6_link";
 static const std::string BASE_FRAME     = "world";
 
 class DualArmPlannerNode : public rclcpp::Node

@@ -92,6 +92,18 @@
                   <param name="initial_value">${initial_positions['rightjoint4']}</param>
                 </state_interface>
             </joint>
+            <joint name="rightjoint5">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['rightjoint5']}</param>
+                </state_interface>
+            </joint>
+            <joint name="rightjoint6">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['rightjoint6']}</param>
+                </state_interface>
+            </joint>
 
         </ros2_control>
     </xacro:macro>
