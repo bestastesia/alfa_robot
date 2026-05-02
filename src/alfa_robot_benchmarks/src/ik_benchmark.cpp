@@ -14,6 +14,7 @@
  *   source install/setup.bash
  *   ./install/alfa_robot_benchmarks/lib/alfa_robot_benchmarks/ik_benchmark
  *   ./install/.../ik_benchmark --samples 500 --timeout 2.0 --pos-thresh 0.005
+ *   ./install/.../ik_benchmark --free-joint6   # 允许 joint6 随机（默认固定为 0）
  */
 
 #include <chrono>
@@ -45,6 +46,7 @@ struct CliArgs {
     double pos_thresh = 0.005;  // 位置误差阈值（米），5mm
     double ori_thresh = 0.01;   // 姿态误差阈值（弧度），约 0.6°
     bool   verbose    = false;
+    bool   free_joint6 = false; // 允许 joint6 随机（默认固定为 0）
     std::string csv_path;
 };
 
@@ -59,6 +61,7 @@ static CliArgs parse_args(int argc, char** argv)
         if (s == "--ori-thresh" && i + 1 < argc) a.ori_thresh = std::stod(argv[++i]);
         if (s == "--csv"        && i + 1 < argc) a.csv_path   = argv[++i];
         if (s == "--verbose")                    a.verbose    = true;
+        if (s == "--free-joint6")                a.free_joint6 = true;
     }
     return a;
 }
@@ -165,7 +168,8 @@ static std::vector<TestCase> generate_test_cases(
     const std::string&                      left_tip,
     const std::string&                      right_tip,
     int                                     count,
-    random_numbers::RandomNumberGenerator&  rng)
+    random_numbers::RandomNumberGenerator&  rng,
+    bool                                    free_joint6)
 {
     std::vector<TestCase> cases;
     cases.reserve(count);
@@ -187,8 +191,11 @@ static std::vector<TestCase> generate_test_cases(
         state.setToRandomPositions(jmg, rng);
 
         // 将 prismatic joint6 固定为 0（吸盘伸缩不参与位姿求解）
-        for (size_t k : joint6_indices) {
-            state.setJointPositions(joint_names[k], {0.0});
+        // 除非 --free-joint6 指定允许随机
+        if (!free_joint6) {
+            for (size_t k : joint6_indices) {
+                state.setJointPositions(joint_names[k], {0.0});
+            }
         }
         state.update();
 
@@ -241,7 +248,8 @@ int main(int argc, char** argv)
         << "样本数       : " << args.samples    << "\n"
         << "超时         : " << args.timeout    << " s\n"
         << "位置阈值     : " << args.pos_thresh << " m\n"
-        << "姿态阈值     : " << args.ori_thresh << " rad\n\n";
+        << "姿态阈值     : " << args.ori_thresh << " rad\n"
+        << "joint6       : " << (args.free_joint6 ? "随机（free）" : "固定为 0") << "\n\n";
 
     // ── 1. 加载机器人模型（离线，不依赖 ROS 参数服务器）─────────────────
 
@@ -345,7 +353,7 @@ int main(int argc, char** argv)
     random_numbers::RandomNumberGenerator rng(42);  // 固定种子，保证可复现
 
     std::cout << "生成 " << args.samples << " 个测试用例（随机关节角 + FK）...\n";
-    auto cases = generate_test_cases(robot_model, jmg, left_tip, right_tip, args.samples, rng);
+    auto cases = generate_test_cases(robot_model, jmg, left_tip, right_tip, args.samples, rng, args.free_joint6);
     std::cout << "完成。\n\n";
 
     // ── 4. CSV 文件头 ──────────────────────────────────────────────────────
