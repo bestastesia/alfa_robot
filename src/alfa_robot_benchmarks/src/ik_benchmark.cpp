@@ -15,6 +15,7 @@
  *   ./install/alfa_robot_benchmarks/lib/alfa_robot_benchmarks/ik_benchmark
  *   ./install/.../ik_benchmark --samples 500 --timeout 2.0 --pos-thresh 0.005
  *   ./install/.../ik_benchmark --free-joint6   # 允许 joint6 随机（默认固定为 0）
+ *   ./install/.../ik_benchmark --jsonl result.jsonl  # 输出 JSONL 供 3D 回放
  */
 
 #include <chrono>
@@ -41,13 +42,13 @@
 // ── CLI 参数 ───────────────────────────────────────────────────────────────
 
 struct CliArgs {
-    int    samples    = 200;
-    double timeout    = 2.0;    // 每次 IK 调用的超时（秒）
-    double pos_thresh = 0.005;  // 位置误差阈值（米），5mm
-    double ori_thresh = 0.01;   // 姿态误差阈值（弧度），约 0.6°
-    bool   verbose    = false;
-    bool   free_joint6 = false; // 允许 joint6 随机（默认固定为 0）
-    std::string csv_path;
+    int    samples     = 200;
+    double timeout     = 2.0;    // 每次 IK 调用的超时（秒）
+    double pos_thresh  = 0.005;  // 位置误差阈值（米），5mm
+    double ori_thresh  = 0.01;   // 姿态误差阈值（弧度），约 0.6°
+    bool   verbose     = false;
+    bool   free_joint6 = false;  // 允许 joint6 随机（默认固定为 0）
+    std::string jsonl_path;      // JSONL 输出路径（供 3D 回放）
 };
 
 static CliArgs parse_args(int argc, char** argv)
@@ -59,8 +60,8 @@ static CliArgs parse_args(int argc, char** argv)
         if (s == "--timeout"    && i + 1 < argc) a.timeout    = std::stod(argv[++i]);
         if (s == "--pos-thresh" && i + 1 < argc) a.pos_thresh = std::stod(argv[++i]);
         if (s == "--ori-thresh" && i + 1 < argc) a.ori_thresh = std::stod(argv[++i]);
-        if (s == "--csv"        && i + 1 < argc) a.csv_path   = argv[++i];
-        if (s == "--verbose")                    a.verbose    = true;
+        if (s == "--jsonl"       && i + 1 < argc) a.jsonl_path  = argv[++i];
+        if (s == "--verbose")                    a.verbose     = true;
         if (s == "--free-joint6")                a.free_joint6 = true;
     }
     return a;
@@ -232,6 +233,32 @@ static geometry_msgs::msg::Pose to_pose_msg(const Eigen::Isometry3d& tf)
     return p;
 }
 
+// ── JSONL 输出辅助 ────────────────────────────────────────────────────────
+
+// 手动拼接 JSON 数组：[v0, v1, v2, ...]
+static std::string json_array(const std::vector<double>& v)
+{
+    std::ostringstream os;
+    os << "[";
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i > 0) os << ", ";
+        os << std::setprecision(8) << v[i];
+    }
+    os << "]";
+    return os.str();
+}
+
+// 手动拼接 JSON 数组：[x, y, z] 从 Isometry3d 的平移部分
+static std::string json_pos(const Eigen::Isometry3d& tf)
+{
+    std::ostringstream os;
+    os << std::setprecision(8)
+       << "[" << tf.translation().x()
+       << ", " << tf.translation().y()
+       << ", " << tf.translation().z() << "]";
+    return os.str();
+}
+
 // ── 主程序 ─────────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv)
@@ -356,11 +383,18 @@ int main(int argc, char** argv)
     auto cases = generate_test_cases(robot_model, jmg, left_tip, right_tip, args.samples, rng, args.free_joint6);
     std::cout << "完成。\n\n";
 
-    // ── 4. CSV 文件头 ──────────────────────────────────────────────────────
+    // ── 4. JSONL 输出文件（空文件，后续逐行追加）──────────────────────────
 
-    if (!args.csv_path.empty()) {
-        std::ofstream f(args.csv_path, std::ios::trunc);
-        f << "solver,index,status,solve_ms,pos_error_m,ori_error_rad\n";
+    if (!args.jsonl_path.empty()) {
+        std::ofstream f(args.jsonl_path, std::ios::trunc);
+        // 写入文件头行：元信息，供 Python 脚本识别
+        std::ofstream jf(args.jsonl_path, std::ios::app);
+        jf << "{\"header\":true,\"samples\":" << args.samples
+           << ",\"group\":\"" << group_name
+           << "\",\"left_tip\":\"" << left_tip
+           << "\",\"right_tip\":\"" << right_tip
+           << "\",\"joint6_free\":" << (args.free_joint6 ? "true" : "false")
+           << "}\n";
     }
 
     // ── 5. 逐求解器跑基准测试 ──────────────────────────────────────────────
@@ -426,6 +460,12 @@ int main(int argc, char** argv)
 
         moveit::core::RobotState ik_state(robot_model);
 
+        // 每个求解器打开一次 JSONL 文件，追加写入
+        std::ofstream jsonl_file;
+        if (!args.jsonl_path.empty()) {
+            jsonl_file.open(args.jsonl_path, std::ios::app);
+        }
+
         for (int i = 0; i < static_cast<int>(cases.size()); ++i) {
             const auto& tc = cases[i];
 
@@ -463,6 +503,9 @@ int main(int argc, char** argv)
             r.pos_error = 0.0;
             r.ori_error = 0.0;
 
+            // FK 验证结果（用于 JSONL 输出）
+            Eigen::Isometry3d left_actual_tf = Eigen::Isometry3d::Identity();
+
             if (!ok) {
                 r.status = Status::kFailed;
             } else {
@@ -473,21 +516,44 @@ int main(int argc, char** argv)
                 const Eigen::Isometry3d T_base_inv =
                     ik_state.getGlobalLinkTransform("base_link").inverse();
 
+                Eigen::Isometry3d left_solved  = T_base_inv * ik_state.getGlobalLinkTransform(left_tip);
+                Eigen::Isometry3d right_solved = T_base_inv * ik_state.getGlobalLinkTransform(right_tip);
+
                 double pe = std::max(
-                    pos_err(tc.left_target,  T_base_inv * ik_state.getGlobalLinkTransform(left_tip)),
-                    pos_err(tc.right_target, T_base_inv * ik_state.getGlobalLinkTransform(right_tip)));
+                    pos_err(tc.left_target,  left_solved),
+                    pos_err(tc.right_target, right_solved));
                 double oe = std::max(
-                    ori_err(tc.left_target,  T_base_inv * ik_state.getGlobalLinkTransform(left_tip)),
-                    ori_err(tc.right_target, T_base_inv * ik_state.getGlobalLinkTransform(right_tip)));
+                    ori_err(tc.left_target,  left_solved),
+                    ori_err(tc.right_target, right_solved));
 
                 r.pos_error = pe;
                 r.ori_error = oe;
                 r.status = (pe <= args.pos_thresh && oe <= args.ori_thresh)
                            ? Status::kSuccess : Status::kLargeError;
+
+                left_actual_tf = left_solved;
             }
 
             summary.add(r);
             results.push_back(r);
+
+            // ── JSONL 逐行写入 ─────────────────────────────────────────────
+            if (jsonl_file.is_open()) {
+                const char* status_str = (r.status == Status::kSuccess)    ? "success" :
+                                         (r.status == Status::kLargeError) ? "large_error" : "failed";
+
+                jsonl_file << "{"
+                    << "\"solver\":\"" << sd.display_name << "\""
+                    << ",\"index\":" << i
+                    << ",\"status\":\"" << status_str << "\""
+                    << ",\"solve_ms\":" << std::setprecision(4) << ms
+                    << ",\"pos_error\":" << std::setprecision(8) << r.pos_error
+                    << ",\"target_joints\":" << json_array(tc.true_joints)
+                    << ",\"solved_joints\":" << (ok ? json_array(solution) : "[]")
+                    << ",\"left_target_pos\":" << json_pos(tc.left_target)
+                    << ",\"left_actual_pos\":" << (ok ? json_pos(left_actual_tf) : "[0, 0, 0]")
+                    << "}\n";
+            }
 
             if (args.verbose) {
                 const char* tag = (r.status == Status::kSuccess)    ? "OK  " :
@@ -506,21 +572,6 @@ int main(int argc, char** argv)
 
         summary.print();
         all_summaries.push_back(summary);
-
-        // 写入 CSV
-        if (!args.csv_path.empty()) {
-            std::ofstream f(args.csv_path, std::ios::app);
-            for (const auto& r : results) {
-                const char* s = (r.status == Status::kSuccess)    ? "success" :
-                                (r.status == Status::kLargeError) ? "large_error" : "failed";
-                f << sd.display_name << ","
-                  << r.index << ","
-                  << s << ","
-                  << r.solve_ms << ","
-                  << r.pos_error << ","
-                  << r.ori_error << "\n";
-            }
-        }
     }
 
     // ── 6. 横向对比汇总 ────────────────────────────────────────────────────
