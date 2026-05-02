@@ -18,35 +18,10 @@ right_arm_with_base:
   kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
   kinematics_solver_search_resolution: 0.005
   kinematics_solver_timeout: 0.05
-# Pick-IK configuration with weight strategy for dual-arm coordination
-# Core idea: High cost for base (updown) movement, low cost for arm joints
-# This makes the robot prefer moving arms over adjusting base height
+# BioIK for multi-end-effector IK (dual arm coordination)
+# This is the key solver for simultaneous dual-arm motion
 dual_arm_with_base:
-  kinematics_solver: pick_ik/PickIkPlugin
+  kinematics_solver: bio_ik/BioIKKinematicsPlugin
+  kinematics_solver_search_resolution: 0.005
   kinematics_solver_timeout: 2.0
   kinematics_solver_attempts: 10
-
-  # Global mode for far-away goals (uses evolutionary algorithm)
-  mode: global
-
-  # Position/orientation accuracy thresholds
-  position_threshold: 0.001      # 1mm accuracy
-  orientation_threshold: 0.01    # ~0.6 degree accuracy
-  cost_threshold: 0.1
-
-  # Scale factors for pose cost
-  position_scale: 1.0
-  rotation_scale: 0.5
-
-  # Minimal displacement: prefer solutions close to initial seed
-  # Low value because we use custom cost function instead
-  minimal_displacement_weight: 0.001
-
-  # Multi-threaded memetic solver for better performance
-  memetic_num_threads: 4
-  memetic_population_size: 32
-  memetic_max_generations: 200
-  memetic_elite_size: 8
-
-  # Don't stop on first solution - continue optimizing for lower cost
-  stop_optimization_on_valid_solution: false
