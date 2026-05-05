@@ -13,8 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(random_numbers REQUIRED)
-find_package(pick_ik REQUIRED)
-find_package(bio_ik REQUIRED)
+# pick_ik 和 bio_ik 通过 pluginlib 动态加载，不需要直接链接
 
 add_executable(ik_benchmark src/ik_benchmark.cpp)
 
@@ -34,8 +33,6 @@ ament_target_dependencies(ik_benchmark PUBLIC
   geometry_msgs
   ament_index_cpp
   random_numbers
-  pick_ik
-  bio_ik
 )
 
 install(TARGETS ik_benchmark

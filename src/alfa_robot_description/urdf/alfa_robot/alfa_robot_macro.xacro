@@ -508,39 +508,39 @@
     </joint>
 
     <!-- rightjoint2 -->
-    <joint name="${prefix}rightjoint2" type="continuous">
+    <joint name="${prefix}rightjoint2" type="revolute">
       <origin xyz="0.67335 -0.10135 0.04" rpy="0 1.5708 0"/>
       <parent link="${prefix}rightjoint1_link"/>
       <child link="${prefix}rightjoint2_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-3.14159265" upper="3.14159265" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint3 -->
-    <joint name="${prefix}rightjoint3" type="continuous">
+    <joint name="${prefix}rightjoint3" type="revolute">
       <origin xyz="0.01 -0.0058 0.098" rpy="1.5708 -1.5708 0"/>
       <parent link="${prefix}rightjoint2_link"/>
       <child link="${prefix}rightjoint3_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-1.57079632" upper="1.57079632" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint4 -->
-    <joint name="${prefix}rightjoint4" type="continuous">
+    <joint name="${prefix}rightjoint4" type="revolute">
       <origin xyz="0.3418 0.01 -0.082" rpy="-1.5708 0 -1.5708"/>
       <parent link="${prefix}rightjoint3_link"/>
       <child link="${prefix}rightjoint4_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-3.14159265" upper="3.14159265" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint5 (new joint for 6DOF, Y-axis mirror of leftjoint5) -->
-    <joint name="${prefix}rightjoint5" type="continuous">
+    <joint name="${prefix}rightjoint5" type="revolute">
       <origin xyz="0.01 0.0022 0.098" rpy="1.5708 -1.5708 0"/>
       <parent link="${prefix}rightjoint4_link"/>
       <child link="${prefix}rightjoint5_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-1.57079632" upper="1.57079632" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint6 (new joint for end effector extension, Y-axis mirror of leftjoint6) -->
@@ -578,39 +578,39 @@
     </joint>
 
     <!-- rightjoint2 -->
-    <joint name="${prefix}leftjoint2" type="continuous">
+    <joint name="${prefix}leftjoint2" type="revolute">
       <origin xyz="0.67335 0.10135 0.04" rpy="0 1.5708 0"/>
       <parent link="${prefix}leftjoint1_link"/>
       <child link="${prefix}leftjoint2_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-3.14159265" upper="3.14159265" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint3 -->
-    <joint name="${prefix}leftjoint3" type="continuous">
+    <joint name="${prefix}leftjoint3" type="revolute">
       <origin xyz="0.01 0.0058 0.098" rpy="-1.5708 -1.5708 0"/>
       <parent link="${prefix}leftjoint2_link"/>
       <child link="${prefix}leftjoint3_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-1.57079632" upper="1.57079632" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- rightjoint4 -->
-    <joint name="${prefix}leftjoint4" type="continuous">
+    <joint name="${prefix}leftjoint4" type="revolute">
       <origin xyz="0.3418 -0.01 -0.082" rpy="1.5708 0 1.5708"/>
       <parent link="${prefix}leftjoint3_link"/>
       <child link="${prefix}leftjoint4_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-3.14159265" upper="3.14159265" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- leftjoint5 (new joint for 6DOF) -->
-    <joint name="${prefix}leftjoint5" type="continuous">
+    <joint name="${prefix}leftjoint5" type="revolute">
       <origin xyz="0.01 -0.0022 0.098" rpy="-1.5708 -1.5708 0"/>
       <parent link="${prefix}leftjoint4_link"/>
       <child link="${prefix}leftjoint5_link"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14" upper="3.14" effort="0" velocity="0"/>
+      <limit lower="-1.57079632" upper="1.57079632" effort="1000" velocity="0.5"/>
     </joint>
 
     <!-- leftjoint6 (new joint for end effector extension) -->

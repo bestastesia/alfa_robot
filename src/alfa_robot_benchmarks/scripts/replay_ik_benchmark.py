@@ -8,6 +8,8 @@ IK Benchmark 3D Replay Viewer
 用法：
   python3 replay_ik_benchmark.py result.jsonl
   python3 replay_ik_benchmark.py result.jsonl --urdf /path/to/alfa_robot.urdf
+  python3 replay_ik_benchmark.py result.jsonl --count 10          # 随机抽 10 条
+  python3 replay_ik_benchmark.py result.jsonl --count 20 --seed 42  # 可复现抽样
 
 依赖：
   pip install rerun-sdk yourdfpy
@@ -16,6 +18,7 @@ IK Benchmark 3D Replay Viewer
 import argparse
 import json
 import os
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -105,8 +108,9 @@ def apply_joints(urdf: yourdfpy.URDF, joints: list):
     """
     yourdfpy_names = [j.name for j in urdf.actuated_joints]
     # MoveIt JMG 关节顺序（与 ik_benchmark.cpp 中 copyJointGroupPositions 一致）
+    # dual_arm_with_base 组不含 turn，共 15 个关节
     moveit_names = [
-        "updown", "turn",
+        "updown",
         "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3",
         "leftjoint4", "leftjoint5", "leftjoint6",
         "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3",
@@ -230,6 +234,14 @@ def main():
         "--save", default=None,
         help="保存到 .rrd 文件而不启动查看器（例如 --save output.rrd）",
     )
+    parser.add_argument(
+        "--count", type=int, default=None,
+        help="随机抽取 N 条记录进行回放（默认全部加载）",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help="随机种子（配合 --count 使用，保证可复现）",
+    )
     args = parser.parse_args()
 
     # 查找 URDF
@@ -247,6 +259,13 @@ def main():
     if not records:
         print("错误：没有有效数据行", file=sys.stderr)
         sys.exit(1)
+
+    # 随机抽样
+    if args.count is not None and args.count < len(records):
+        rng = random.Random(args.seed)
+        records = rng.sample(records, args.count)
+        records.sort(key=lambda r: r["index"])
+        print(f"随机抽取 {args.count} 条记录（seed={args.seed}）")
 
     # 初始化 Rerun
     if args.save:

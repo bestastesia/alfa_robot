@@ -188,8 +188,32 @@ static std::vector<TestCase> generate_test_cases(
         }
     }
 
+    // 预取组内各关节的 position bounds（用于 setToRandomPositions 后强制 clamp）
+    const auto& jmodels = jmg->getActiveJointModels();
+    std::vector<double> lo_bounds, hi_bounds;
+    std::vector<bool>   bounded;
+    lo_bounds.reserve(jmodels.size());
+    hi_bounds.reserve(jmodels.size());
+    bounded.reserve(jmodels.size());
+    for (auto* jm : jmodels) {
+        const auto& b = jm->getVariableBounds()[0];
+        lo_bounds.push_back(b.min_position_);
+        hi_bounds.push_back(b.max_position_);
+        bounded.push_back(b.position_bounded_);
+    }
+
     for (int i = 0; i < count; ++i) {
         state.setToRandomPositions(jmg, rng);
+
+        // 强制 clamp 到 URDF 关节范围（修复 setToRandomPositions 未正确限制 revolute 关节的问题）
+        std::vector<double> jv_tmp;
+        state.copyJointGroupPositions(jmg, jv_tmp);
+        for (size_t k = 0; k < jv_tmp.size(); ++k) {
+            if (bounded[k]) {
+                jv_tmp[k] = std::clamp(jv_tmp[k], lo_bounds[k], hi_bounds[k]);
+            }
+        }
+        state.setJointGroupPositions(jmg, jv_tmp);
 
         // 将 prismatic joint6 固定为 0（吸盘伸缩不参与位姿求解）
         // 除非 --free-joint6 指定允许随机
@@ -315,6 +339,7 @@ int main(int argc, char** argv)
     std::string urdf_xml = read_file(urdf_path);
     std::string srdf_xml = read_file(srdf_path);
 
+
     // 解析 URDF
     auto urdf_model = urdf::parseURDF(urdf_xml);
     if (!urdf_model) {
@@ -403,6 +428,7 @@ int main(int argc, char** argv)
 
     for (const auto& sd : solver_defs) {
         if (sd.plugin_id.empty()) continue;
+
 
         // 为每个求解器创建独立实例
         auto solver = loader.createSharedInstance(sd.plugin_id);
