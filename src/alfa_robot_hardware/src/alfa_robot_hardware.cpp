@@ -279,7 +279,51 @@ hardware_interface::return_type AlfaRobotHW::write(
   }
 
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.005;
+
+  // 第一阶段：所有关节只缓存命令（非阻塞）
   for (auto & joint : joints_) { joint->write(dt); }
+
+  // 第二阶段：收集所有缓存命令，统一发送
+  // ZeroErr 命令批量收集
+  std::map<uint8_t, int32_t> zeroerr_cmds;
+  double cylinder_cmd = 0.0;
+  bool has_cylinder_cmd = false;
+
+  for (auto & joint : joints_) {
+    // ZeroErr 关节
+    auto * zj = dynamic_cast<ZeroerrJoint *>(joint.get());
+    if (zj) {
+      uint8_t node_id;
+      int32_t target_counts;
+      if (zj->getPendingCommand(node_id, target_counts)) {
+        zeroerr_cmds[node_id] = target_counts;
+      }
+      continue;
+    }
+    // Cylinder 关节
+    auto * cj = dynamic_cast<CylinderJoint *>(joint.get());
+    if (cj) {
+      double target_m;
+      if (cj->getPendingCommand(target_m)) {
+        cylinder_cmd = target_m;
+        has_cylinder_cmd = true;
+      }
+      continue;
+    }
+    // RMD 关节：write() 中已直接调用 driver_.writePositions()（即发即弃），无需额外处理
+    // CANopen 关节：同上
+  }
+
+  // 发送 ZeroErr 命令（即发即弃，避免阻塞）
+  if (!zeroerr_cmds.empty()) {
+    zeroerr_left_->writePositionsNoWait(zeroerr_cmds);
+  }
+
+  // 发送 Cylinder 命令（即发即弃）
+  if (has_cylinder_cmd) {
+    cylinder_->writePositionNoWait(cylinder_cmd);
+  }
+
   return hardware_interface::return_type::OK;
 }
 

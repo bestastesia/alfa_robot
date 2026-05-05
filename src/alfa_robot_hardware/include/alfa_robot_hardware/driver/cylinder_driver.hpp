@@ -69,6 +69,9 @@ public:
   /// 写入目标位置 (写寄存器 50+05, 单位米)
   bool writePosition(double target_m);
 
+  /// 写入目标位置（即发即弃，不等待响应）
+  bool writePositionNoWait(double target_m);
+
   /// 设置目标速度 (写寄存器 0x10, 单位 m/s)
   bool setVelocity(double velocity_m);
 

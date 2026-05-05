@@ -80,7 +80,9 @@ void ZeroerrJoint::write(double /*dt*/)
   double relative_rad = (limited_cmd - config_.offset) * config_.sign;
   int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
 
-  driver_.writePositions({{config_.node_id, target_counts}});
+  // 非阻塞：只缓存命令，由 AlfaRobotHW::write() 统一批量发送
+  pending_target_counts_ = target_counts;
+  has_pending_cmd_ = true;
 }
 
 void ZeroerrJoint::emergencyStop()
@@ -137,7 +139,12 @@ bool ZeroerrJoint::moveToSafePosition(double safe_position_rad, double timeout_s
   auto deadline = start_time + std::chrono::duration<double>(timeout_s);
 
   while (std::chrono::steady_clock::now() < deadline) {
-    write(0.01);
+    // 安全位置移动：直接调用阻塞写入，不走缓存
+    double limited_cmd = applyLimits(position_command_);
+    double relative_rad = (limited_cmd - config_.offset) * config_.sign;
+    int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
+    driver_.writePositions({{config_.node_id, target_counts}});
+
     usleep(10000);
     read(0.01);
 

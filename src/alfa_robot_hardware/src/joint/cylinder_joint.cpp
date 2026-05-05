@@ -81,7 +81,10 @@ void CylinderJoint::write(double /*dt*/)
   double limited_cmd = applyLimits(position_command_);
 
   double target_m = (limited_cmd - config_.offset) * config_.sign;
-  driver_.writePosition(target_m);
+
+  // 非阻塞：只缓存命令，由 AlfaRobotHW::write() 统一批量发送
+  pending_target_m_ = target_m;
+  has_pending_cmd_ = true;
 }
 
 void CylinderJoint::emergencyStop()
@@ -139,8 +142,12 @@ bool CylinderJoint::moveToSafePosition(double safe_position_m, double timeout_s)
 
   position_command_ = safe_position_m;
   for (int i = 0; i < kIter; ++i) {
+    // 安全位置移动：直接调用阻塞写入，不走缓存
+    double limited_cmd = applyLimits(position_command_);
+    double target_m = (limited_cmd - config_.offset) * config_.sign;
+    driver_.writePosition(target_m);
+
     read(kDt);
-    write(kDt);
     if (std::abs(position_state_ - safe_position_m) < kTol) { return true; }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }

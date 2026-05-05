@@ -66,6 +66,15 @@ public:
   /// 导出命令接口
   std::vector<hardware_interface::CommandInterface> exportCommandInterfaces() override;
 
+  /// 获取待发送的目标位置 (脉冲)，仅在有缓存命令时有效
+  bool getPendingCommand(uint8_t & node_id, int32_t & target_counts) const
+  {
+    if (!has_pending_cmd_) { return false; }
+    node_id = config_.node_id;
+    target_counts = pending_target_counts_;
+    return true;
+  }
+
 private:
   Config config_;
   ZeroerrDriver & driver_;
@@ -78,6 +87,8 @@ private:
   double last_velocity_{0.0};     // 上一周期速度 (用于计算加速度)
 
   int32_t initial_position_counts_{0};  // 激活时的初始位置 (脉冲)
+  int32_t pending_target_counts_{0};    // 缓存的目标位置 (脉冲)，由 AlfaRobotHW 批量发送
+  bool has_pending_cmd_{false};         // 是否有待发送的命令
 
   /// 脉冲转弧度
   double countsToRadians(int32_t counts) const;

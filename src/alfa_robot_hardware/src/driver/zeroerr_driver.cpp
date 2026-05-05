@@ -487,6 +487,32 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
   }
 }
 
+void ZeroerrDriver::writePositionsNoWait(const std::map<uint8_t, int32_t> & position_cmds)
+{
+  if (socket_fd_ < 0) { return; }
+
+  for (const auto & [node_id, target_counts] : position_cmds) {
+    // 1. 设置目标绝对位置 (00 86 [D3 D2 D1 D0]) — 即发即弃
+    uint8_t pos_data[6] = {
+      0x00, 0x86,
+      static_cast<uint8_t>((target_counts >> 24) & 0xFF),
+      static_cast<uint8_t>((target_counts >> 16) & 0xFF),
+      static_cast<uint8_t>((target_counts >> 8) & 0xFF),
+      static_cast<uint8_t>(target_counts & 0xFF)
+    };
+
+    sendCanFrame(0x640u + node_id, pos_data, 6);
+    usleep(kInterFrameDelayUs);
+
+    // 2. 开始运动 (00 83) — 即发即弃
+    uint8_t start_data[2] = {0x00, 0x83};
+    sendCanFrame(0x640u + node_id, start_data, 2);
+
+    RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
+      "Node %d: Fire-and-forget move to %d", node_id, target_counts);
+  }
+}
+
 void ZeroerrDriver::stopMotors(const std::vector<uint8_t> & node_ids)
 {
   if (socket_fd_ < 0) { return; }

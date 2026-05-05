@@ -354,6 +354,30 @@ bool CylinderDriver::writePosition(double target_m)
   return true;
 }
 
+bool CylinderDriver::writePositionNoWait(double target_m)
+{
+  if (socket_fd_ < 0) { return false; }
+
+  int32_t pulses = metersToPulses(target_m);
+
+  int16_t high16 = static_cast<int16_t>((pulses >> 16) & 0xFFFF);
+  int16_t low16 = static_cast<int16_t>(pulses & 0xFFFF);
+
+  // 即发即弃：只发送，不等待响应
+  uint8_t tx_data[8] = {
+    config_.node_id,
+    0x1A,
+    0x50,
+    static_cast<uint8_t>((high16 >> 8) & 0xFF),
+    static_cast<uint8_t>(high16 & 0xFF),
+    0x05,
+    static_cast<uint8_t>((low16 >> 8) & 0xFF),
+    static_cast<uint8_t>(low16 & 0xFF)
+  };
+
+  return sendCanFrame(config_.node_id, tx_data, 8);
+}
+
 bool CylinderDriver::setVelocity(double velocity_m)
 {
   if (socket_fd_ < 0) { return false; }

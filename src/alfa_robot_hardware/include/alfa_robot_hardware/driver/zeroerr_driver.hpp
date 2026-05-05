@@ -77,11 +77,15 @@ public:
   /// 从缓存获取位置 (无 CAN I/O)
   bool getCachedPosition(uint8_t node_id, int32_t & position_count) const;
 
-  /// 写入目标位置并开始运动（完整流程）
+  /// 写入目标位置并开始运动（完整流程，阻塞等待响应）
   /// 1. 设置运动模式为绝对位置
   /// 2. 设置目标位置
   /// 3. 开始运动
   void writePositions(const std::map<uint8_t, int32_t> & position_cmds);
+
+  /// 写入目标位置并开始运动（即发即弃，不等待响应）
+  /// 用于控制循环中的高频写入，避免阻塞其他关节
+  void writePositionsNoWait(const std::map<uint8_t, int32_t> & position_cmds);
 
   /// 停止运动 (发送 0x84 命令)
   void stopMotors(const std::vector<uint8_t> & node_ids);

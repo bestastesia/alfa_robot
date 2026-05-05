@@ -63,6 +63,14 @@ public:
   /// 导出命令接口
   std::vector<hardware_interface::CommandInterface> exportCommandInterfaces() override;
 
+  /// 获取待发送的目标位置 (米)，仅在有缓存命令时有效
+  bool getPendingCommand(double & target_m) const
+  {
+    if (!has_pending_cmd_) { return false; }
+    target_m = pending_target_m_;
+    return true;
+  }
+
 private:
   Config config_;
   CylinderDriver & driver_;
@@ -76,6 +84,9 @@ private:
 
   /// 驱动使能状态
   bool driver_enabled_{false};
+
+  double pending_target_m_{0.0};   // 缓存的目标位置 (米)，由 AlfaRobotHW 批量发送
+  bool has_pending_cmd_{false};    // 是否有待发送的命令
 
   /// 检查并限制位置命令
   double applyLimits(double cmd);
