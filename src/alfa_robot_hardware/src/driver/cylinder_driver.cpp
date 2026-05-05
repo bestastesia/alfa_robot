@@ -306,9 +306,32 @@ void CylinderDriver::disable()
     "Cylinder disabled (Node %d)", config_.node_id);
 }
 
+void CylinderDriver::drainStaleResponses()
+{
+  if (socket_fd_ < 0) { return; }
+
+  int drained = 0;
+  while (true) {
+    struct can_frame frame;
+    ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      break;
+    }
+    ++drained;
+  }
+
+  if (drained > 0) {
+    RCLCPP_DEBUG(rclcpp::get_logger("CylinderDriver"),
+      "Drained %d stale response frames from socket buffer", drained);
+  }
+}
+
 bool CylinderDriver::readPosition(double & position_m)
 {
   if (socket_fd_ < 0) { return false; }
+
+  // 先清空残留的 writePositionNoWait 响应帧
+  drainStaleResponses();
 
   int16_t high16, low16;
 

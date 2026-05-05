@@ -66,6 +66,9 @@ public:
   /// 读取实际位置 (读寄存器 E8+E9, 返回米)
   bool readPosition(double & position_m);
 
+  /// 清空 socket 缓冲区中的残留响应帧（writePositionNoWait 产生的）
+  void drainStaleResponses();
+
   /// 写入目标位置 (写寄存器 50+05, 单位米)
   bool writePosition(double target_m);
 

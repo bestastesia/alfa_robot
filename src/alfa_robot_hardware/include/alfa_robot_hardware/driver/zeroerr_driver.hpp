@@ -71,8 +71,11 @@ public:
   /// 设置速度参数 (发送 0x88/0x89/0x8A 命令)
   bool setMotionParams(const std::vector<uint8_t> & node_ids);
 
-  /// 读取实际位置 (发送 0x02 命令)
+  /// 读取实际位置 (发送 0x02 命令，先清空残留帧)
   std::map<uint8_t, int32_t> readPositions(const std::vector<uint8_t> & node_ids);
+
+  /// 清空 socket 缓冲区中的残留响应帧（writePositionsNoWait 产生的）
+  void drainStaleResponses();
 
   /// 从缓存获取位置 (无 CAN I/O)
   bool getCachedPosition(uint8_t node_id, int32_t & position_count) const;

@@ -412,6 +412,9 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
 
 std::map<uint8_t, int32_t> ZeroerrDriver::readPositions(const std::vector<uint8_t> & node_ids)
 {
+  // 先清空残留的 writePositionsNoWait 响应帧
+  drainStaleResponses();
+
   std::map<uint8_t, int32_t> result;
 
   if (socket_fd_ < 0 || node_ids.empty()) {
@@ -434,6 +437,27 @@ std::map<uint8_t, int32_t> ZeroerrDriver::readPositions(const std::vector<uint8_
   }
 
   return result;
+}
+
+void ZeroerrDriver::drainStaleResponses()
+{
+  if (socket_fd_ < 0) { return; }
+
+  // socket 是 O_NONBLOCK，直接循环 read 直到缓冲区清空
+  int drained = 0;
+  while (true) {
+    struct can_frame frame;
+    ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      break;  // 缓冲区已空
+    }
+    ++drained;
+  }
+
+  if (drained > 0) {
+    RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
+      "Drained %d stale response frames from socket buffer", drained);
+  }
 }
 
 bool ZeroerrDriver::getCachedPosition(uint8_t node_id, int32_t & position_count) const
