@@ -32,6 +32,9 @@ public:
 
   bool moveToSafePosition(double target_rad, double timeout_s) override;
 
+  /// 急停：停止电机运动
+  void emergencyStop() override;
+
 private:
   Config          cfg_;
   CanopenDriver & driver_;

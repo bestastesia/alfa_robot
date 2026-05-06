@@ -21,6 +21,8 @@ ZeroerrJoint::ZeroerrJoint(const std::string & name, Config config, ZeroerrDrive
 , config_(config)
 , driver_(driver)
 {
+  // 设置限位状态
+  has_limits_ = config_.enable_limits;
 }
 
 bool ZeroerrJoint::activate()
@@ -62,17 +64,71 @@ void ZeroerrJoint::read(double dt)
       last_velocity_ = velocity_state_;
     }
     last_position_ = position_state_;
+
+    // 检查位置误差
+    checkPositionError(dt, position_state_, position_command_);
   }
 }
 
 void ZeroerrJoint::write(double /*dt*/)
 {
+  // 应用限位
+  double limited_cmd = applyLimits(position_command_);
+
   // 绝对位置模式：命令位置 = GUI 滑块值 (弧度)
   // 需要转换为脉冲并加上初始位置偏置
-  double relative_rad = (position_command_ - config_.offset) * config_.sign;
+  double relative_rad = (limited_cmd - config_.offset) * config_.sign;
   int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
 
-  driver_.writePositions({{config_.node_id, target_counts}});
+  // 非阻塞：只缓存命令，由 AlfaRobotHW::write() 统一批量发送
+  pending_target_counts_ = target_counts;
+  has_pending_cmd_ = true;
+}
+
+void ZeroerrJoint::emergencyStop()
+{
+  driver_.stopMotors({config_.node_id});
+  RCLCPP_INFO(rclcpp::get_logger("ZeroerrJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
+double ZeroerrJoint::applyLimits(double cmd)
+{
+  if (!config_.enable_limits) {
+    return cmd;
+  }
+
+  double limited = cmd;
+
+  // 检查正向限位
+  if (limited > config_.max_position) {
+    limited = config_.max_position;
+    limit_state_ = LimitState::POS_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("ZeroerrJoint"),
+      "Joint '%s' command %.3f exceeds max limit %.3f, clamped",
+      name_.c_str(), cmd, config_.max_position);
+  }
+  // 检查负向限位
+  else if (limited < config_.min_position) {
+    limited = config_.min_position;
+    limit_state_ = LimitState::NEG_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("ZeroerrJoint"),
+      "Joint '%s' command %.3f exceeds min limit %.3f, clamped",
+      name_.c_str(), cmd, config_.min_position);
+  }
+  // 在限位范围内，检查是否需要清除限位状态
+  else {
+    // 如果之前在正限位，现在命令向负方向移动，清除限位状态
+    if (limit_state_ == LimitState::POS_LIMIT && cmd < position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+    // 如果之前在负限位，现在命令向正方向移动，清除限位状态
+    else if (limit_state_ == LimitState::NEG_LIMIT && cmd > position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+  }
+
+  return limited;
 }
 
 bool ZeroerrJoint::moveToSafePosition(double safe_position_rad, double timeout_s)
@@ -83,7 +139,12 @@ bool ZeroerrJoint::moveToSafePosition(double safe_position_rad, double timeout_s
   auto deadline = start_time + std::chrono::duration<double>(timeout_s);
 
   while (std::chrono::steady_clock::now() < deadline) {
-    write(0.01);
+    // 安全位置移动：直接调用阻塞写入，不走缓存
+    double limited_cmd = applyLimits(position_command_);
+    double relative_rad = (limited_cmd - config_.offset) * config_.sign;
+    int32_t target_counts = radiansToCounts(relative_rad) + initial_position_counts_;
+    driver_.writePositions({{config_.node_id, target_counts}});
+
     usleep(10000);
     read(0.01);
 
@@ -115,6 +176,7 @@ std::vector<hardware_interface::StateInterface> ZeroerrJoint::exportStateInterfa
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION, &position_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY, &velocity_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_state_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

@@ -9,6 +9,7 @@
 #include "alfa_robot_hardware/driver/zeroerr_driver.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cmath>
 #include <cstring>
@@ -365,12 +366,27 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
 {
   if (socket_fd_ < 0) { return true; }
 
-  // 加速度 10000 count/s² = 0x00002710
-  uint8_t accel_data[6] = {0x00, 0x88, 0x00, 0x00, 0x27, 0x10};
-  // 减速度 10000 count/s²
-  uint8_t decel_data[6] = {0x00, 0x89, 0x00, 0x00, 0x27, 0x10};
-  // 目标速度 10000 count/s
-  uint8_t vel_data[6] = {0x00, 0x8A, 0x00, 0x00, 0x27, 0x10};
+  // 从 Config 读取运动参数
+  uint32_t accel = config_.profile_accel;
+  uint32_t decel = config_.profile_accel;
+  uint32_t vel = config_.profile_velocity;
+
+  auto makeCmd = [](uint8_t cmd, uint32_t value) -> std::array<uint8_t, 6> {
+    return {{
+      0x00, cmd,
+      static_cast<uint8_t>((value >> 24) & 0xFF),
+      static_cast<uint8_t>((value >> 16) & 0xFF),
+      static_cast<uint8_t>((value >> 8) & 0xFF),
+      static_cast<uint8_t>(value & 0xFF)
+    }};
+  };
+
+  auto accel_data = makeCmd(0x88, accel);
+  auto decel_data = makeCmd(0x89, decel);
+  auto vel_data = makeCmd(0x8A, vel);
+
+  RCLCPP_INFO(rclcpp::get_logger("ZeroerrDriver"),
+    "Setting motion params: velocity=%u count/s, accel=%u count/s^2", vel, accel);
 
   bool all_ok = true;
   for (uint8_t node_id : node_ids) {
@@ -378,7 +394,7 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
     uint8_t resp_dlc = 8;
 
     // 设置加速度
-    if (!sendCommandAndWait(node_id, accel_data, 6, resp_data, resp_dlc) ||
+    if (!sendCommandAndWait(node_id, accel_data.data(), 6, resp_data, resp_dlc) ||
         !check3EResponse(resp_data, resp_dlc, node_id)) {
       RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
         "Node %d: Failed to set accel", node_id);
@@ -388,7 +404,7 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
 
     // 设置减速度
     resp_dlc = 8;
-    if (!sendCommandAndWait(node_id, decel_data, 6, resp_data, resp_dlc) ||
+    if (!sendCommandAndWait(node_id, decel_data.data(), 6, resp_data, resp_dlc) ||
         !check3EResponse(resp_data, resp_dlc, node_id)) {
       RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
         "Node %d: Failed to set decel", node_id);
@@ -398,7 +414,7 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
 
     // 设置目标速度
     resp_dlc = 8;
-    if (!sendCommandAndWait(node_id, vel_data, 6, resp_data, resp_dlc) ||
+    if (!sendCommandAndWait(node_id, vel_data.data(), 6, resp_data, resp_dlc) ||
         !check3EResponse(resp_data, resp_dlc, node_id)) {
       RCLCPP_WARN(rclcpp::get_logger("ZeroerrDriver"),
         "Node %d: Failed to set velocity", node_id);
@@ -412,6 +428,9 @@ bool ZeroerrDriver::setMotionParams(const std::vector<uint8_t> & node_ids)
 
 std::map<uint8_t, int32_t> ZeroerrDriver::readPositions(const std::vector<uint8_t> & node_ids)
 {
+  // 先清空残留的 writePositionsNoWait 响应帧
+  drainStaleResponses();
+
   std::map<uint8_t, int32_t> result;
 
   if (socket_fd_ < 0 || node_ids.empty()) {
@@ -434,6 +453,27 @@ std::map<uint8_t, int32_t> ZeroerrDriver::readPositions(const std::vector<uint8_
   }
 
   return result;
+}
+
+void ZeroerrDriver::drainStaleResponses()
+{
+  if (socket_fd_ < 0) { return; }
+
+  // socket 是 O_NONBLOCK，直接循环 read 直到缓冲区清空
+  int drained = 0;
+  while (true) {
+    struct can_frame frame;
+    ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      break;  // 缓冲区已空
+    }
+    ++drained;
+  }
+
+  if (drained > 0) {
+    RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
+      "Drained %d stale response frames from socket buffer", drained);
+  }
 }
 
 bool ZeroerrDriver::getCachedPosition(uint8_t node_id, int32_t & position_count) const
@@ -484,6 +524,32 @@ void ZeroerrDriver::writePositions(const std::map<uint8_t, int32_t> & position_c
 
     RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
       "Node %d: Moving to absolute position %d", node_id, target_counts);
+  }
+}
+
+void ZeroerrDriver::writePositionsNoWait(const std::map<uint8_t, int32_t> & position_cmds)
+{
+  if (socket_fd_ < 0) { return; }
+
+  for (const auto & [node_id, target_counts] : position_cmds) {
+    // 1. 设置目标绝对位置 (00 86 [D3 D2 D1 D0]) — 即发即弃
+    uint8_t pos_data[6] = {
+      0x00, 0x86,
+      static_cast<uint8_t>((target_counts >> 24) & 0xFF),
+      static_cast<uint8_t>((target_counts >> 16) & 0xFF),
+      static_cast<uint8_t>((target_counts >> 8) & 0xFF),
+      static_cast<uint8_t>(target_counts & 0xFF)
+    };
+
+    sendCanFrame(0x640u + node_id, pos_data, 6);
+    usleep(kInterFrameDelayUs);
+
+    // 2. 开始运动 (00 83) — 即发即弃
+    uint8_t start_data[2] = {0x00, 0x83};
+    sendCanFrame(0x640u + node_id, start_data, 2);
+
+    RCLCPP_DEBUG(rclcpp::get_logger("ZeroerrDriver"),
+      "Node %d: Fire-and-forget move to %d", node_id, target_counts);
   }
 }
 

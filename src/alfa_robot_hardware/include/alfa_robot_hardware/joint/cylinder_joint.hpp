@@ -33,6 +33,7 @@ public:
     double sign{1.0};       // 方向符号 (+1 或 -1)
     double min_travel{0.0}; // 最小行程 (米)
     double max_travel{0.15}; // 最大行程 (米，默认 15cm)
+    bool enable_limits{true}; // 是否启用限位
   };
 
   CylinderJoint(const std::string & name, Config config, CylinderDriver & driver);
@@ -41,7 +42,7 @@ public:
   /// 从 driver 读取位置并更新状态接口
   void read(double dt) override;
 
-  /// 将命令接口的位置写入 driver
+  /// 将命令接口的位置写入 driver（包含限位检查）
   void write(double dt) override;
 
   /// 激活关节 (读取初始位置)
@@ -53,11 +54,22 @@ public:
   /// 移动到安全位置
   bool moveToSafePosition(double safe_position_m, double timeout_s) override;
 
+  /// 急停：停止电缸运动
+  void emergencyStop() override;
+
   /// 导出状态接口
   std::vector<hardware_interface::StateInterface> exportStateInterfaces() override;
 
   /// 导出命令接口
   std::vector<hardware_interface::CommandInterface> exportCommandInterfaces() override;
+
+  /// 获取待发送的目标位置 (米)，仅在有缓存命令时有效
+  bool getPendingCommand(double & target_m) const
+  {
+    if (!has_pending_cmd_) { return false; }
+    target_m = pending_target_m_;
+    return true;
+  }
 
 private:
   Config config_;
@@ -72,6 +84,12 @@ private:
 
   /// 驱动使能状态
   bool driver_enabled_{false};
+
+  double pending_target_m_{0.0};   // 缓存的目标位置 (米)，由 AlfaRobotHW 批量发送
+  bool has_pending_cmd_{false};    // 是否有待发送的命令
+
+  /// 检查并限制位置命令
+  double applyLimits(double cmd);
 };
 
 }  // namespace alfa_robot_hardware

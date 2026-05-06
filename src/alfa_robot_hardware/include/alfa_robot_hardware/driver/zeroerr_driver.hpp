@@ -39,8 +39,8 @@ public:
     std::string interface;           // CAN 接口名 (e.g., "can0")
     uint32_t gear_ratio{200};        // 减速比 (默认 200:1)
     uint32_t encoder_resolution{524288};  // 编码器分辨率 (脉冲/圈)
-    uint32_t profile_velocity{10000};     // 目标速度 (count/s)
-    uint32_t profile_accel{10000};        // 加速度/减速度 (count/s²)
+    uint32_t profile_velocity{100000};    // 目标速度 (count/s)
+    uint32_t profile_accel{100000};       // 加速度/减速度 (count/s²)
   };
 
   explicit ZeroerrDriver(Config cfg);
@@ -71,17 +71,24 @@ public:
   /// 设置速度参数 (发送 0x88/0x89/0x8A 命令)
   bool setMotionParams(const std::vector<uint8_t> & node_ids);
 
-  /// 读取实际位置 (发送 0x02 命令)
+  /// 读取实际位置 (发送 0x02 命令，先清空残留帧)
   std::map<uint8_t, int32_t> readPositions(const std::vector<uint8_t> & node_ids);
+
+  /// 清空 socket 缓冲区中的残留响应帧（writePositionsNoWait 产生的）
+  void drainStaleResponses();
 
   /// 从缓存获取位置 (无 CAN I/O)
   bool getCachedPosition(uint8_t node_id, int32_t & position_count) const;
 
-  /// 写入目标位置并开始运动（完整流程）
+  /// 写入目标位置并开始运动（完整流程，阻塞等待响应）
   /// 1. 设置运动模式为绝对位置
   /// 2. 设置目标位置
   /// 3. 开始运动
   void writePositions(const std::map<uint8_t, int32_t> & position_cmds);
+
+  /// 写入目标位置并开始运动（即发即弃，不等待响应）
+  /// 用于控制循环中的高频写入，避免阻塞其他关节
+  void writePositionsNoWait(const std::map<uint8_t, int32_t> & position_cmds);
 
   /// 停止运动 (发送 0x84 命令)
   void stopMotors(const std::vector<uint8_t> & node_ids);

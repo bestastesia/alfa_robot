@@ -12,7 +12,10 @@ namespace alfa_robot_hardware
 
 RmdJoint::RmdJoint(std::string name, Config cfg, RmdDriver & driver)
 : IJoint(std::move(name)), cfg_(cfg), driver_(driver)
-{}
+{
+  // 设置限位状态
+  has_limits_ = cfg_.enable_limits;
+}
 
 bool RmdJoint::activate()
 {
@@ -56,13 +59,44 @@ void RmdJoint::read(double dt)
     prev_filtered_ = pos;
     first_read_    = false;
   }
+
+  // 检查位置误差
+  checkPositionError(dt, position_, position_cmd_);
 }
 
 void RmdJoint::write(double dt)
 {
   if (first_read_) { return; }
 
-  double cmd = position_cmd_ * cfg_.direction + cfg_.zero_offset_rad - cfg_.static_bias_rad;
+  // 应用限位检查
+  double limited_cmd = position_cmd_;
+  if (cfg_.enable_limits) {
+    if (limited_cmd > cfg_.max_position) {
+      limited_cmd = cfg_.max_position;
+      limit_state_ = LimitState::POS_LIMIT;
+      RCLCPP_WARN(rclcpp::get_logger("RmdJoint"),
+        "Joint '%s' command %.3f exceeds max limit %.3f, clamped",
+        name_.c_str(), position_cmd_, cfg_.max_position);
+    }
+    else if (limited_cmd < cfg_.min_position) {
+      limited_cmd = cfg_.min_position;
+      limit_state_ = LimitState::NEG_LIMIT;
+      RCLCPP_WARN(rclcpp::get_logger("RmdJoint"),
+        "Joint '%s' command %.3f exceeds min limit %.3f, clamped",
+        name_.c_str(), position_cmd_, cfg_.min_position);
+    }
+    else {
+      // 在限位范围内，检查是否需要清除限位状态
+      if (limit_state_ == LimitState::POS_LIMIT && position_cmd_ < position_) {
+        limit_state_ = LimitState::OK;
+      }
+      else if (limit_state_ == LimitState::NEG_LIMIT && position_cmd_ > position_) {
+        limit_state_ = LimitState::OK;
+      }
+    }
+  }
+
+  double cmd = limited_cmd * cfg_.direction + cfg_.zero_offset_rad - cfg_.static_bias_rad;
   cmd = applyLowPassFilter(cmd, dt);
 
   driver_.writePositions({{cfg_.motor_id, cmd}});
@@ -85,12 +119,21 @@ void RmdJoint::captureCurrentPositionAsZero()
     "%s zero offset captured: %.4f rad", name_.c_str(), cfg_.zero_offset_rad);
 }
 
+void RmdJoint::emergencyStop()
+{
+  // RMD 急停：发送失能命令
+  driver_.disableMotors({cfg_.motor_id});
+  RCLCPP_INFO(rclcpp::get_logger("RmdJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
 std::vector<hardware_interface::StateInterface> RmdJoint::exportStateInterfaces()
 {
   std::vector<hardware_interface::StateInterface> si;
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION,     &position_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY,     &velocity_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

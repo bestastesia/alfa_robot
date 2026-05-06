@@ -82,6 +82,12 @@ void RmdDriver::disableMotors(const std::vector<uint8_t> & ids)
   usleep(10000);
 }
 
+void RmdDriver::stopMotors(const std::vector<uint8_t> & ids)
+{
+  // 急停使用失能命令
+  disableMotors(ids);
+}
+
 std::map<uint8_t, double> RmdDriver::readPositions(const std::vector<uint8_t> & ids)
 {
   std::map<uint8_t, double> result;

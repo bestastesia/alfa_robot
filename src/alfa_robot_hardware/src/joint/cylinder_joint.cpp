@@ -23,6 +23,8 @@ CylinderJoint::CylinderJoint(const std::string & name, Config config, CylinderDr
 , config_(config)
 , driver_(driver)
 {
+  // 设置限位状态
+  has_limits_ = config_.enable_limits;
 }
 
 bool CylinderJoint::activate()
@@ -67,13 +69,69 @@ void CylinderJoint::read(double dt)
       last_velocity_ = velocity_state_;
     }
     last_position_ = position_state_;
+
+    // 检查位置误差
+    checkPositionError(dt, position_state_, position_command_);
   }
 }
 
 void CylinderJoint::write(double /*dt*/)
 {
-  double target_m = (position_command_ - config_.offset) * config_.sign;
-  driver_.writePosition(target_m);
+  // 应用限位
+  double limited_cmd = applyLimits(position_command_);
+
+  double target_m = (limited_cmd - config_.offset) * config_.sign;
+
+  // 非阻塞：只缓存命令，由 AlfaRobotHW::write() 统一批量发送
+  pending_target_m_ = target_m;
+  has_pending_cmd_ = true;
+}
+
+void CylinderJoint::emergencyStop()
+{
+  // 电缸急停：失能驱动
+  driver_.disable();
+  RCLCPP_INFO(rclcpp::get_logger("CylinderJoint"),
+    "Joint '%s' emergency stop triggered", name_.c_str());
+}
+
+double CylinderJoint::applyLimits(double cmd)
+{
+  if (!config_.enable_limits) {
+    return cmd;
+  }
+
+  double limited = cmd;
+
+  // 检查正向限位
+  if (limited > config_.max_travel) {
+    limited = config_.max_travel;
+    limit_state_ = LimitState::POS_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("CylinderJoint"),
+      "Joint '%s' command %.4f exceeds max limit %.4f, clamped",
+      name_.c_str(), cmd, config_.max_travel);
+  }
+  // 检查负向限位
+  else if (limited < config_.min_travel) {
+    limited = config_.min_travel;
+    limit_state_ = LimitState::NEG_LIMIT;
+    RCLCPP_WARN(rclcpp::get_logger("CylinderJoint"),
+      "Joint '%s' command %.4f exceeds min limit %.4f, clamped",
+      name_.c_str(), cmd, config_.min_travel);
+  }
+  // 在限位范围内，检查是否需要清除限位状态
+  else {
+    // 如果之前在正限位，现在命令向负方向移动，清除限位状态
+    if (limit_state_ == LimitState::POS_LIMIT && cmd < position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+    // 如果之前在负限位，现在命令向正方向移动，清除限位状态
+    else if (limit_state_ == LimitState::NEG_LIMIT && cmd > position_state_) {
+      limit_state_ = LimitState::OK;
+    }
+  }
+
+  return limited;
 }
 
 bool CylinderJoint::moveToSafePosition(double safe_position_m, double timeout_s)
@@ -84,8 +142,12 @@ bool CylinderJoint::moveToSafePosition(double safe_position_m, double timeout_s)
 
   position_command_ = safe_position_m;
   for (int i = 0; i < kIter; ++i) {
+    // 安全位置移动：直接调用阻塞写入，不走缓存
+    double limited_cmd = applyLimits(position_command_);
+    double target_m = (limited_cmd - config_.offset) * config_.sign;
+    driver_.writePosition(target_m);
+
     read(kDt);
-    write(kDt);
     if (std::abs(position_state_ - safe_position_m) < kTol) { return true; }
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
@@ -98,6 +160,7 @@ std::vector<hardware_interface::StateInterface> CylinderJoint::exportStateInterf
   si.emplace_back(name_, hardware_interface::HW_IF_POSITION, &position_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_VELOCITY, &velocity_state_);
   si.emplace_back(name_, hardware_interface::HW_IF_ACCELERATION, &acceleration_state_);
+  si.emplace_back(name_, "position_error", &position_error_);
   return si;
 }
 

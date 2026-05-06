@@ -14,6 +14,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 
 add_library(alfa_robot_hardware SHARED
   src/alfa_robot_hardware.cpp
+  src/joint/i_joint.cpp
   src/joint/rmd_joint.cpp
   src/joint/canopen_joint.cpp
   src/joint/placeholder_joint.cpp

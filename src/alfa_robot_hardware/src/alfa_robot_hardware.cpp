@@ -1,6 +1,14 @@
 #include "alfa_robot_hardware/alfa_robot_hardware.hpp"
 
 #include <cmath>
+#include <cstring>
+#include <fcntl.h>
+#include <linux/can.h>
+#include <linux/can/raw.h>
+#include <net/if.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 #include "pluginlib/class_list_macros.hpp"
@@ -23,7 +31,7 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   canopen_cfg_         = {"can3", 50000, 50000};
   canopen_plate_cfg_   = {"can4", 50000, 50000};
   zeroerr_left_cfg_    = {"can0", 200, 524288};  // ZeroErr on can0: gear_ratio=200, encoder=524288
-  cylinder_cfg_        = {"can0", 3, 2000000.0, -24995000};   // Cylinder on can0: Node 3, 10000 pulses/5mm = 2M pulses/m, zero_offset=-24900000
+  cylinder_cfg_        = {"can0", 3, 2000000.0, -24995000};   // Cylinder on can0: Node 3, 10000 pulses/5mm = 2M pulses/m, zero_offset=-24995000
 
   for (const auto & [key, val] : info_.hardware_parameters) {
     if      (key == "can_interface_left")    { rmd_left_cfg_.interface       = val; }
@@ -53,6 +61,22 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
       try { safe_positions_[key.substr(14)] = std::stod(val); }
       catch (...) {}
     }
+    // 位置误差监控参数
+    else if (key == "position_error_threshold_dynamic") {
+      try { position_error_threshold_dynamic_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_threshold_static") {
+      try { position_error_threshold_static_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_tolerance_time") {
+      try { position_error_tolerance_time_ = std::stod(val); }
+      catch (...) {}
+    }
+    else if (key == "position_error_check_enabled") {
+      position_error_check_enabled_ = (val == "true");
+    }
   }
 
   // Create drivers and joints here so export_state/command_interfaces() works
@@ -68,6 +92,19 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_init(
   cylinder_       = std::make_unique<CylinderDriver>(cylinder_cfg_);
   buildJoints();
 
+  // 为所有关节设置位置误差监控参数
+  if (position_error_check_enabled_) {
+    for (auto & joint : joints_) {
+      joint->setPositionErrorParams(
+        position_error_threshold_dynamic_,
+        position_error_threshold_static_,
+        position_error_tolerance_time_);
+    }
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+      "Position error monitoring enabled: dynamic=%.3f, static=%.3f, time=%.2fs",
+      position_error_threshold_dynamic_, position_error_threshold_static_, position_error_tolerance_time_);
+  }
+
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "on_init OK");
   return CallbackReturn::SUCCESS;
 }
@@ -82,6 +119,24 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_configure(
   canopen_plate_->open();
   zeroerr_left_->open();  // ZeroErr motors on can0
   cylinder_->open();      // Cylinder on can0 (Node 3)
+
+  // 创建急停话题订阅节点（软件触发接口）
+  estop_node_ = rclcpp::Node::make_shared("emergency_stop_interface");
+  estop_sub_ = estop_node_->create_subscription<std_msgs::msg::Bool>(
+    "/emergency_stop_trigger",
+    rclcpp::QoS(10),
+    [this](const std_msgs::msg::Bool::SharedPtr msg) {
+      emergencyStopCallback(msg);
+    });
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+    "Emergency stop topic subscriber created: /emergency_stop_trigger");
+
+  // 启动急停 CAN 监听
+  if (openEstopSocket()) {
+    estop_monitor_running_ = true;
+    estop_monitor_thread_ = std::thread(&AlfaRobotHW::emergencyStopMonitorThread, this);
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Emergency stop monitor started on can0");
+  }
 
   RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
     "on_configure OK, %zu joints", joints_.size());
@@ -127,6 +182,17 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
 hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   const rclcpp_lifecycle::State &)
 {
+  // 停止急停监听线程
+  estop_monitor_running_ = false;
+  if (estop_monitor_thread_.joinable()) {
+    estop_monitor_thread_.join();
+  }
+  closeEstopSocket();
+
+  // 清理急停话题订阅节点
+  estop_sub_.reset();
+  estop_node_.reset();
+
   if (use_safe_shutdown_ && !safe_positions_.empty()) {
     moveAllToSafePositions(5.0);
   }
@@ -160,6 +226,8 @@ std::vector<hardware_interface::StateInterface> AlfaRobotHW::export_state_interf
     auto joint_si = joint->exportStateInterfaces();
     for (auto & iface : joint_si) { si.push_back(std::move(iface)); }
   }
+  // 导出急停状态接口
+  si.emplace_back("emergency_stop", "state", &emergency_stop_state_);
   return si;
 }
 
@@ -176,6 +244,11 @@ std::vector<hardware_interface::CommandInterface> AlfaRobotHW::export_command_in
 hardware_interface::return_type AlfaRobotHW::read(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
+  // 处理急停话题订阅的消息
+  if (estop_node_) {
+    rclcpp::spin_some(estop_node_);
+  }
+
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
@@ -200,8 +273,57 @@ hardware_interface::return_type AlfaRobotHW::read(
 hardware_interface::return_type AlfaRobotHW::write(
   const rclcpp::Time &, const rclcpp::Duration & period)
 {
+  // 急停激活时不执行任何写操作
+  if (emergency_stop_active_.load()) {
+    return hardware_interface::return_type::OK;
+  }
+
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.005;
+
+  // 第一阶段：所有关节只缓存命令（非阻塞）
   for (auto & joint : joints_) { joint->write(dt); }
+
+  // 第二阶段：收集所有缓存命令，统一发送
+  // ZeroErr 命令批量收集
+  std::map<uint8_t, int32_t> zeroerr_cmds;
+  double cylinder_cmd = 0.0;
+  bool has_cylinder_cmd = false;
+
+  for (auto & joint : joints_) {
+    // ZeroErr 关节
+    auto * zj = dynamic_cast<ZeroerrJoint *>(joint.get());
+    if (zj) {
+      uint8_t node_id;
+      int32_t target_counts;
+      if (zj->getPendingCommand(node_id, target_counts)) {
+        zeroerr_cmds[node_id] = target_counts;
+      }
+      continue;
+    }
+    // Cylinder 关节
+    auto * cj = dynamic_cast<CylinderJoint *>(joint.get());
+    if (cj) {
+      double target_m;
+      if (cj->getPendingCommand(target_m)) {
+        cylinder_cmd = target_m;
+        has_cylinder_cmd = true;
+      }
+      continue;
+    }
+    // RMD 关节：write() 中已直接调用 driver_.writePositions()（即发即弃），无需额外处理
+    // CANopen 关节：同上
+  }
+
+  // 发送 ZeroErr 命令（即发即弃，避免阻塞）
+  if (!zeroerr_cmds.empty()) {
+    zeroerr_left_->writePositionsNoWait(zeroerr_cmds);
+  }
+
+  // 发送 Cylinder 命令（即发即弃）
+  if (has_cylinder_cmd) {
+    cylinder_->writePositionNoWait(cylinder_cmd);
+  }
+
   return hardware_interface::return_type::OK;
 }
 
@@ -215,27 +337,39 @@ void AlfaRobotHW::buildJoints()
 
   // Left bus (can0) - mixed protocol
   // Node 1,2: ZeroErr rotary motors (gear_ratio=200:1, encoder_resolution=524288 pulses/rev)
-  // 零点位置：通过 CAN 命令手动读取 (cansend can0 64X#00.02)
-  // Node 1 (leftjoint2): 0x00040000 = 262,144 脉冲 (机械零点)
-  // Node 2 (leftjoint3): 0x00040000 = 262,144 脉冲 (机械零点)
   joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint2",
-    ZeroerrJoint::Config{1, 0.0, -1.0, 262144}, *zeroerr_left_));
+    ZeroerrJoint::Config{1, 0.0, -1.0, 262144,
+      -M_PI, M_PI, false},  // continuous joint, no limits
+    *zeroerr_left_));
   joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint3",
-    ZeroerrJoint::Config{2, 0.0, -1.0, 262144}, *zeroerr_left_));
+    ZeroerrJoint::Config{2, 0.0, -1.0, 262144,
+      -M_PI_2, M_PI_2, true},  // revolute, -π/2 ~ π/2
+    *zeroerr_left_));
+
   // Node 3: IDS830ABS Cylinder (leftjoint4 - linear actuator, 15cm travel)
   joints_.push_back(std::make_unique<CylinderJoint>("leftjoint4",
-    CylinderJoint::Config{3, 0.0, 1.0, 0.0, 0.15}, *cylinder_));
+    CylinderJoint::Config{3, 0.0, 1.0, 0.0, 0.15, true},  // 限位: min=0, max_travel=0.15m
+    *cylinder_));
+
   // Node 4: RMD motor (leftjoint5 - rotary)
   joints_.push_back(std::make_unique<RmdJoint>("leftjoint5",
-    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0}, *rmd_left_));
+    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0,
+      -M_PI, M_PI, false},  // continuous joint, no limits
+    *rmd_left_));
 
   // RMD joints - right bus (can1)
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
-    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0,
+      -M_PI, M_PI, false},  // continuous joint, no limits
+    *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",
-    RmdJoint::Config{5, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{5, 0.0, 0.0, -1.0, 0.0,
+      -M_PI_2, M_PI_2, true},  // revolute, -π/2 ~ π/2
+    *rmd_right_));
   joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
-    RmdJoint::Config{6, 0.0, 0.0, -1.0, 0.0}, *rmd_right_));
+    RmdJoint::Config{6, 0.0, 0.0, -1.0, 0.0,
+      -M_PI, M_PI, false},  // continuous joint, no limits
+    *rmd_right_));
 
   // CANopen joints (can3) - linear actuators
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
@@ -266,6 +400,154 @@ bool AlfaRobotHW::moveAllToSafePositions(double timeout_s)
     }
   }
   return all_ok;
+}
+
+// ── Emergency Stop ───────────────────────────────────────────────────────────
+
+void AlfaRobotHW::emergencyStop()
+{
+  if (emergency_stop_active_.exchange(true)) {
+    return;  // 已经处于急停状态
+  }
+
+  RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"), "!!! EMERGENCY STOP TRIGGERED !!!");
+
+  // 停止所有关节
+  for (auto & joint : joints_) {
+    joint->emergencyStop();
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+    "All motors stopped. Emergency stop active.");
+}
+
+void AlfaRobotHW::clearEmergencyStop()
+{
+  if (!emergency_stop_active_.load()) {
+    return;  // 未处于急停状态
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Clearing emergency stop state...");
+  emergency_stop_active_ = false;
+
+  // 清除各关节的限位状态
+  for (auto & joint : joints_) {
+    joint->clearLimitState();
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Emergency stop cleared.");
+}
+
+bool AlfaRobotHW::openEstopSocket()
+{
+  // 打开 can0 用于监听急停信号
+  estop_socket_fd_ = ::socket(AF_CAN, SOCK_RAW, CAN_RAW);
+  if (estop_socket_fd_ < 0) {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Failed to create emergency stop socket: %s", std::strerror(errno));
+    return false;
+  }
+
+  struct ifreq ifr;
+  std::strncpy(ifr.ifr_name, "can0", IFNAMSIZ - 1);
+  ifr.ifr_name[IFNAMSIZ - 1] = '\0';
+
+  if (ioctl(estop_socket_fd_, SIOCGIFINDEX, &ifr) < 0) {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Failed to get can0 interface index: %s", std::strerror(errno));
+    ::close(estop_socket_fd_);
+    estop_socket_fd_ = -1;
+    return false;
+  }
+
+  struct sockaddr_can addr;
+  std::memset(&addr, 0, sizeof(addr));
+  addr.can_family = AF_CAN;
+  addr.can_ifindex = ifr.ifr_ifindex;
+
+  if (bind(estop_socket_fd_, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Failed to bind emergency stop socket: %s", std::strerror(errno));
+    ::close(estop_socket_fd_);
+    estop_socket_fd_ = -1;
+    return false;
+  }
+
+  // 设置过滤器：只接收急停帧 ID (0x7FF)
+  struct can_filter rfilter[1];
+  rfilter[0].can_id   = kEmergencyStopCanId;
+  rfilter[0].can_mask = CAN_SFF_MASK;  // 精确匹配
+  setsockopt(estop_socket_fd_, SOL_CAN_RAW, CAN_RAW_FILTER, &rfilter, sizeof(rfilter));
+
+  // 设置非阻塞
+  int flags = fcntl(estop_socket_fd_, F_GETFL, 0);
+  if (flags >= 0) {
+    fcntl(estop_socket_fd_, F_SETFL, flags | O_NONBLOCK);
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+    "Emergency stop socket opened on can0, listening for ID 0x%03X", kEmergencyStopCanId);
+  return true;
+}
+
+void AlfaRobotHW::closeEstopSocket()
+{
+  if (estop_socket_fd_ >= 0) {
+    ::close(estop_socket_fd_);
+    estop_socket_fd_ = -1;
+  }
+}
+
+void AlfaRobotHW::emergencyStopMonitorThread()
+{
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Emergency stop monitor thread started");
+
+  struct pollfd pfd;
+  pfd.fd = estop_socket_fd_;
+  pfd.events = POLLIN;
+
+  while (estop_monitor_running_.load()) {
+    int rc = ::poll(&pfd, 1, 100);  // 100ms 超时
+    if (rc <= 0) {
+      continue;  // 超时或错误，继续循环
+    }
+
+    // 读取 CAN 帧
+    struct can_frame frame;
+    ssize_t received = ::read(estop_socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      continue;
+    }
+
+    uint32_t can_id = frame.can_id & CAN_SFF_MASK;
+    if (can_id == kEmergencyStopCanId && frame.can_dlc >= 1) {
+      // 急停帧格式：Data[0] = 0x01 (激活) 或 0x00 (解除)
+      if (frame.data[0] == 0x01) {
+        RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+          "Emergency stop CAN frame received (ID=0x%03X, data=0x%02X)", can_id, frame.data[0]);
+        emergencyStop();
+      } else if (frame.data[0] == 0x00) {
+        RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+          "Emergency stop clear CAN frame received (ID=0x%03X, data=0x%02X)", can_id, frame.data[0]);
+        clearEmergencyStop();
+      }
+    }
+  }
+
+  RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"), "Emergency stop monitor thread stopped");
+}
+
+void AlfaRobotHW::emergencyStopCallback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  if (msg->data) {
+    RCLCPP_WARN(rclcpp::get_logger("AlfaRobotHW"),
+      "Emergency stop triggered via ROS topic");
+    emergencyStop();
+  } else {
+    RCLCPP_INFO(rclcpp::get_logger("AlfaRobotHW"),
+      "Emergency stop cleared via ROS topic");
+    clearEmergencyStop();
+  }
 }
 
 }  // namespace alfa_robot_hardware

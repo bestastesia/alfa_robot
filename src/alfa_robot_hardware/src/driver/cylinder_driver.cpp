@@ -306,9 +306,32 @@ void CylinderDriver::disable()
     "Cylinder disabled (Node %d)", config_.node_id);
 }
 
+void CylinderDriver::drainStaleResponses()
+{
+  if (socket_fd_ < 0) { return; }
+
+  int drained = 0;
+  while (true) {
+    struct can_frame frame;
+    ssize_t received = ::read(socket_fd_, &frame, sizeof(frame));
+    if (received != static_cast<ssize_t>(sizeof(frame))) {
+      break;
+    }
+    ++drained;
+  }
+
+  if (drained > 0) {
+    RCLCPP_DEBUG(rclcpp::get_logger("CylinderDriver"),
+      "Drained %d stale response frames from socket buffer", drained);
+  }
+}
+
 bool CylinderDriver::readPosition(double & position_m)
 {
   if (socket_fd_ < 0) { return false; }
+
+  // 先清空残留的 writePositionNoWait 响应帧
+  drainStaleResponses();
 
   int16_t high16, low16;
 
@@ -352,6 +375,30 @@ bool CylinderDriver::writePosition(double target_m)
     "Target position: %.6f m = %d pulses (0x%08X)", target_m, pulses, pulses);
 
   return true;
+}
+
+bool CylinderDriver::writePositionNoWait(double target_m)
+{
+  if (socket_fd_ < 0) { return false; }
+
+  int32_t pulses = metersToPulses(target_m);
+
+  int16_t high16 = static_cast<int16_t>((pulses >> 16) & 0xFFFF);
+  int16_t low16 = static_cast<int16_t>(pulses & 0xFFFF);
+
+  // 即发即弃：只发送，不等待响应
+  uint8_t tx_data[8] = {
+    config_.node_id,
+    0x1A,
+    0x50,
+    static_cast<uint8_t>((high16 >> 8) & 0xFF),
+    static_cast<uint8_t>(high16 & 0xFF),
+    0x05,
+    static_cast<uint8_t>((low16 >> 8) & 0xFF),
+    static_cast<uint8_t>(low16 & 0xFF)
+  };
+
+  return sendCanFrame(config_.node_id, tx_data, 8);
 }
 
 bool CylinderDriver::setVelocity(double velocity_m)
