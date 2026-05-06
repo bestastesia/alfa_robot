@@ -39,8 +39,8 @@ public:
     std::string interface;           // CAN 接口名 (e.g., "can0")
     uint32_t gear_ratio{200};        // 减速比 (默认 200:1)
     uint32_t encoder_resolution{524288};  // 编码器分辨率 (脉冲/圈)
-    uint32_t profile_velocity{10000};     // 目标速度 (count/s)
-    uint32_t profile_accel{10000};        // 加速度/减速度 (count/s²)
+    uint32_t profile_velocity{100000};    // 目标速度 (count/s)
+    uint32_t profile_accel{100000};       // 加速度/减速度 (count/s²)
   };
 
   explicit ZeroerrDriver(Config cfg);

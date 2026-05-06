@@ -356,7 +356,7 @@ void AlfaRobotHW::buildJoints()
   // Node 3: IDS830ABS Cylinder (leftjoint4 - linear actuator, 15cm travel)
   // 限位: 0 ~ 0.15 m
   joints_.push_back(std::make_unique<CylinderJoint>("leftjoint4",
-    CylinderJoint::Config{3, 0.0, 1.0, 0.0, 0.15, true},  // 限位: min_travel=0, max_travel=0.15m
+    CylinderJoint::Config{3, 0.0, 1.0, -0.001, 0.15, true},  // 限位: min=-1mm, max_travel=0.15m
     *cylinder_));
 
   // Node 4: RMD motor (leftjoint5 - rotary)
