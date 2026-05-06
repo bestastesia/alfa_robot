@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--This does not replace URDF, and is not an extension of URDF.
+    This is a format for representing semantic information about the robot structure.
+    A URDF file must exist for this robot as well, where the joints and the links that are referenced are defined
+-->
+<robot name="alfa_robot">
+    <!--GROUPS: Representation of a set of joints and links. This can be useful for specifying DOF to plan for, defining arms, end effectors, etc-->
+    <!--LINKS: When a link is specified, the parent joint of that link (if it exists) is automatically included-->
+    <!--JOINTS: When a joint is specified, the child link of that joint (which will always exist) is automatically included-->
+    <!--CHAINS: When a chain is specified, all the links along the chain (including endpoints) are included in the group. Additionally, all the joints that are parents to included links are also included. This means that joints along the chain and the parent joint of the base link are included in the group-->
+    <!--SUBGROUPS: Groups can also be formed by referencing to already defined group names-->
+    <!-- Base group: only updown joint (shared between arms) -->
+    <group name="base_group">
+        <joint name="updown"/>
+    </group>
+    <group name="torso_group">
+        <joint name="turn"/>
+        <joint name="updown"/>
+    </group>
+    <group name="left_arm">
+        <joint name="leftarmbase"/>
+        <joint name="leftjoint1"/>
+        <joint name="leftjoint2"/>
+        <joint name="leftjoint3"/>
+        <joint name="leftjoint4"/>
+        <joint name="leftjoint5"/>
+    </group>
+    <group name="right_arm">
+        <joint name="rightarmbase"/>
+        <joint name="rightjoint1"/>
+        <joint name="rightjoint2"/>
+        <joint name="rightjoint3"/>
+        <joint name="rightjoint4"/>
+    </group>
+    <group name="vacuum_left">
+        <link name="left_ee_link"/>
+    </group>
+    <group name="vacuum_right">
+        <link name="right_ee_link"/>
+    </group>
+    <group name="dual_arms">
+        <group name="torso_group"/>
+        <group name="left_arm"/>
+        <group name="right_arm"/>
+    </group>
+    <!-- Full arm groups with updown (using subgroups) -->
+    <!-- updown is shared, MoveIt will freeze the other arm when planning for one -->
+    <group name="left_arm_with_base">
+        <group name="base_group"/>
+        <group name="left_arm"/>
+    </group>
+    <group name="right_arm_with_base">
+        <group name="base_group"/>
+        <group name="right_arm"/>
+    </group>
+    <!-- Full body planning group for whole-body coordination -->
+    <group name="dual_arm_with_base">
+        <group name="left_arm"/>
+        <group name="right_arm"/>
+        <joint name="turn"/>
+        <joint name="updown"/>
+    </group>
+    <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
+    <group_state name="home" group="dual_arms">
+        <joint name="leftarmbase" value="0"/>
+        <joint name="leftjoint1" value="0"/>
+        <joint name="leftjoint2" value="0"/>
+        <joint name="leftjoint3" value="0"/>
+        <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
+        <joint name="rightarmbase" value="0"/>
+        <joint name="rightjoint1" value="0"/>
+        <joint name="rightjoint2" value="0"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="0"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0"/>
+    </group_state>
+    <group_state name="test1_all" group="dual_arms">
+        <joint name="leftarmbase" value="0.0564"/>
+        <joint name="leftjoint1" value="0.1635"/>
+        <joint name="leftjoint2" value="0.538"/>
+        <joint name="leftjoint3" value="-0.5033"/>
+        <joint name="leftjoint4" value="0.05"/>
+        <joint name="leftjoint5" value="0.4857"/>
+        <joint name="rightarmbase" value="0.0318"/>
+        <joint name="rightjoint1" value="0.1348"/>
+        <joint name="rightjoint2" value="-0.0909"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="1.6654"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0.0787"/>
+    </group_state>
+    <group_state name="test_high" group="dual_arms">
+        <joint name="leftarmbase" value="0"/>
+        <joint name="leftjoint1" value="0"/>
+        <joint name="leftjoint2" value="0"/>
+        <joint name="leftjoint3" value="0"/>
+        <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
+        <joint name="rightarmbase" value="0"/>
+        <joint name="rightjoint1" value="0"/>
+        <joint name="rightjoint2" value="0"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="0"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0.5406"/>
+    </group_state>
+    <group_state name="home" group="dual_arm_with_base">
+        <joint name="leftarmbase" value="0"/>
+        <joint name="leftjoint1" value="0"/>
+        <joint name="leftjoint2" value="0"/>
+        <joint name="leftjoint3" value="0"/>
+        <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
+        <joint name="rightarmbase" value="0"/>
+        <joint name="rightjoint1" value="0"/>
+        <joint name="rightjoint2" value="0"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="0"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0"/>
+    </group_state>
+    <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
+    <end_effector name="vacuum_left" parent_link="leftjoint5_link" group="vacuum_left" parent_group="left_arm"/>
+    <end_effector name="vacuum_right" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm"/>
+    <end_effector name="vacuum_left_with_base" parent_link="leftjoint5_link" group="vacuum_left" parent_group="left_arm_with_base"/>
+    <end_effector name="vacuum_right_with_base" parent_link="rightjoint4_link" group="vacuum_right" parent_group="right_arm_with_base"/>
+    <!-- End effectors for dual_arm_with_base group -->
+    <end_effector name="vacuum_left_dual_base" parent_link="leftjoint5_link" group="vacuum_left" parent_group="dual_arm_with_base"/>
+    <end_effector name="vacuum_right_dual_base" parent_link="rightjoint4_link" group="vacuum_right" parent_group="dual_arm_with_base"/>
+    <!--VIRTUAL JOINT: Purpose: this element defines a virtual joint between a robot link and an external frame of reference (considered fixed with respect to the robot)-->
+    <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
+    <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
+    <disable_collisions link1="base_link" link2="camera_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="leftarmbase_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="leftjoint1_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="leftjoint2_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="leftjoint3_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="base_link" link2="turn_link" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="leftarmbase_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="leftjoint1_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="leftjoint2_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="leftjoint3_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="leftjoint4_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="camera_link" link2="updown_link" reason="Adjacent"/>
+    <disable_collisions link1="leftarmbase_link" link2="leftjoint1_link" reason="Adjacent"/>
+    <disable_collisions link1="leftarmbase_link" link2="leftjoint2_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="leftjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="leftjoint4_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftarmbase_link" link2="updown_link" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint1_link" link2="leftjoint2_link" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint1_link" link2="leftjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="leftjoint4_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint1_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="leftjoint3_link" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint2_link" link2="leftjoint4_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftjoint2_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="leftjoint4_link" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint3_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint3_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="leftjoint5_link" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint4_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint4_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="lidar_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="leftjoint5_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="plate_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="lidar_link" link2="updown_link" reason="Adjacent"/>
+    <disable_collisions link1="plate_link" link2="rightarmbase_link" reason="Never"/>
+    <disable_collisions link1="plate_link" link2="rightjoint1_link" reason="Never"/>
+    <disable_collisions link1="plate_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="plate_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="plate_link" link2="updown_link" reason="Adjacent"/>
+    <disable_collisions link1="rightarmbase_link" link2="rightjoint1_link" reason="Adjacent"/>
+    <disable_collisions link1="rightarmbase_link" link2="rightjoint2_link" reason="Never"/>
+    <disable_collisions link1="rightarmbase_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="rightarmbase_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="rightarmbase_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="rightarmbase_link" link2="updown_link" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint1_link" link2="rightjoint2_link" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint1_link" link2="rightjoint3_link" reason="Never"/>
+    <disable_collisions link1="rightjoint1_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="rightjoint1_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="rightjoint1_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="rightjoint2_link" link2="rightjoint3_link" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint2_link" link2="rightjoint4_link" reason="Never"/>
+    <disable_collisions link1="rightjoint2_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="rightjoint2_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="rightjoint3_link" link2="rightjoint4_link" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint3_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="rightjoint3_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="rightjoint4_link" link2="turn_link" reason="Never"/>
+    <disable_collisions link1="rightjoint4_link" link2="updown_link" reason="Never"/>
+    <disable_collisions link1="turn_link" link2="updown_link" reason="Adjacent"/>
+</robot>

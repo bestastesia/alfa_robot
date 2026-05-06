@@ -1,0 +1,15 @@
+# Default initial positions for alfa_robot's ros2_control fake system
+
+initial_positions:
+  leftarmbase: 0
+  leftjoint1: 0
+  leftjoint2: 0
+  leftjoint3: 0
+  leftjoint4: 0
+  rightarmbase: 0
+  rightjoint1: 0
+  rightjoint2: 0
+  rightjoint3: 0
+  rightjoint4: 0
+  turn: 0
+  updown: 0

@@ -1,0 +1,17 @@
+# 零差云控电机滑块测试配置（仅 can0 Node 1,2）
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    zeroerr_slider_controller:
+      type: forward_command_controller/ForwardCommandController
+
+zeroerr_slider_controller:
+  ros__parameters:
+    joints:
+      - leftjoint2
+      - leftjoint3
+    interface_name: position
