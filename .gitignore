@@ -1,7 +1,7 @@
 # ROS2 / Colcon build artifacts
-build/
-install/
-log/
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
 devel/
 cmake-build-debug/
 
@@ -13,7 +13,7 @@ __pycache__/
 *.egg
 .eggs/
 *.manifest
-.installed.cfg
+.installed_cfg
 pip-log.txt
 pip-delete-this-directory.txt
 .Python
@@ -84,7 +84,7 @@ install_manifest.txt
 # Large binary files (models, maps, point clouds, images)
 *.pcd
 *.ply
-# *.stl  # 注释掉，meshes目录的STL需要跟踪
+# *.stl  # meshes目录的STL需要跟踪
 *.obj
 *.dae
 *.gltf
@@ -107,8 +107,8 @@ install_manifest.txt
 # 但忽略其他位置的STL文件
 /*.stl
 /**/*.stl
-!/src/**/meshes/**/*.STL
-!/src/**/meshes/**/*.stl
+!/ros2_ws/src/**/meshes/**/*.STL
+!/ros2_ws/src/**/meshes/**/*.stl
 
 # Log files
 *.log
@@ -133,10 +133,6 @@ nosetests.xml
 coverage.xml
 *.cover
 
-# External modules with their own .git (submodules)
-# Note: These should be managed via git submodules or .gitmodules
-# fast_lio/include/ikd-Tree/
-
 # Bags and recorded data
 bags/
 recorded_data/
@@ -147,14 +143,11 @@ recorded_data/
 # Codex marker (from temp directory)
 .codex
 
-# MATLAB files (optional, uncomment if needed)
-# *.m
-
 # rviz config (usually keep in repo, but can ignore if needed)
 # *.rviz
 
 # Mesh backups (keep old versions for reference)
-src/alfa_robot_description/meshes/alfa_robot_backup_v1/
+ros2_ws/src/alfa_robot_description/meshes/alfa_robot_backup_v1/
 
 # PCD directory (point cloud data)
 PCD/
@@ -179,7 +172,7 @@ tracik.csv
 tracik_result.csv
 
 # Benchmark data output
-src/alfa_robot_benchmarks/data/
+scripts/ik_benchmark/data/
 
 # MoveIt scripts (temporary)
-src/alfa_robot_moveit_config/scripts/
+ros2_ws/src/alfa_robot_moveit_config/scripts/
