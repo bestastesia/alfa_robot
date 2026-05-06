@@ -5,11 +5,17 @@ IK Benchmark 3D Replay Viewer
 基于 rerun-sdk + yourdfpy，将 ik_benchmark 生成的 .jsonl 压测结果
 在 Rerun 时间轴上进行 3D 可视化回放。
 
+可视化内容：
+  - FK 原始末端位姿（绿色=左臂，橙色=右臂，小球 + 坐标轴）
+  - 扰动后的 IK 目标位姿（青色=左臂，黄色=右臂，大球 + 坐标轴）
+  - IK 求解成功的机器人姿态（灰色实体机器人）
+  - IK 求解成功后的实际末端位姿（紫色=左臂，红色=右臂，中球 + 坐标轴）
+  - 误差线：目标 → 实际
+
 用法：
   python3 replay_ik_benchmark.py result.jsonl
-  python3 replay_ik_benchmark.py result.jsonl --urdf /path/to/alfa_robot.urdf
-  python3 replay_ik_benchmark.py result.jsonl --count 10          # 随机抽 10 条
-  python3 replay_ik_benchmark.py result.jsonl --count 20 --seed 42  # 可复现抽样
+  python3 replay_ik_benchmark.py result.jsonl --count 10
+  python3 replay_ik_benchmark.py result.jsonl --count 20 --seed 42
 
 依赖：
   pip install rerun-sdk yourdfpy
@@ -31,19 +37,12 @@ import yourdfpy
 # ── package:// URI 解析 ─────────────────────────────────────────────────────
 
 def _resolve_package_path(fname: str) -> str:
-    """
-    将 package://alfa_robot_description/meshes/xxx.STL
-    解析为 install 目录下的绝对路径。
-    yourdfpy 以关键字参数调用：filename_handler(fname=...)
-    """
     prefix = "package://"
     if not fname.startswith(prefix):
         return fname
-
-    rel = fname[len(prefix):]  # alfa_robot_description/meshes/...
+    rel = fname[len(prefix):]
     pkg_name = rel.split("/")[0]
-    rest = rel[len(pkg_name) + 1 :]
-
+    rest = rel[len(pkg_name) + 1:]
     try:
         result = subprocess.run(
             ["ros2", "pkg", "prefix", pkg_name],
@@ -56,10 +55,9 @@ def _resolve_package_path(fname: str) -> str:
     return fname
 
 
-# ── yourdfpy → Rerun 的桥接 ────────────────────────────────────────────────
+# ── yourdfpy 桥接 ────────────────────────────────────────────────────────────
 
 def load_urdf(urdf_path: str) -> yourdfpy.URDF:
-    """加载 URDF 并返回 yourdfpy 对象，自动解析 package:// URI"""
     p = Path(urdf_path)
     if not p.exists():
         print(f"错误：URDF 文件不存在: {urdf_path}", file=sys.stderr)
@@ -69,14 +67,10 @@ def load_urdf(urdf_path: str) -> yourdfpy.URDF:
 
 
 def get_link_geometries(urdf: yourdfpy.URDF):
-    """
-    遍历 yourdfpy 场景图，返回 [(node_name, transform_4x4, trimesh_mesh), ...]。
-    所有几何体已转换为三角网格，顶点已变换到 world 坐标系。
-    """
+    """遍历场景图，返回 [(node, T, verts, faces)]"""
     sg = urdf.scene.graph
     scene = urdf.scene
     result = []
-
     for node in sorted(sg.nodes):
         ret = sg.get(node)
         if ret is None:
@@ -84,67 +78,45 @@ def get_link_geometries(urdf: yourdfpy.URDF):
         T, geom_name = ret
         if geom_name is None or geom_name not in scene.geometry:
             continue
-
         geom = scene.geometry[geom_name]
         mesh = geom.to_mesh() if hasattr(geom, "to_mesh") else geom
         if not hasattr(mesh, "vertices") or len(mesh.vertices) == 0:
             continue
-
-        # 变换顶点到 world 坐标系
         verts = mesh.vertices @ T[:3, :3].T + T[:3, 3]
         faces = mesh.faces
-
         result.append((node, T.copy(), verts.copy(), faces.copy()))
-
     return result
 
 
+# MoveIt JMG 关节顺序（与 ik_benchmark.cpp copyJointGroupPositions 一致）
+# dual_arm_with_base 组不含 turn，共 15 个关节
+MOVEIT_NAMES = [
+    "updown",
+    "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
+]
+
+
 def apply_joints(urdf: yourdfpy.URDF, joints: list):
-    """
-    将关节角数组应用到 URDF 并更新 FK。
-    JSONL 中的 target_joints/solved_joints 按 MoveIt JMG 的关节顺序排列，
-    yourdfpy 的 cfg 按 actuated_joints 的顺序排列，两者不一致。
-    必须按名称映射，不能直接用索引赋值。
-    """
+    """按名称映射将关节角应用到 yourdfpy URDF"""
     yourdfpy_names = [j.name for j in urdf.actuated_joints]
-    # MoveIt JMG 关节顺序（与 ik_benchmark.cpp 中 copyJointGroupPositions 一致）
-    # dual_arm_with_base 组不含 turn，共 15 个关节
-    moveit_names = [
-        "updown",
-        "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3",
-        "leftjoint4", "leftjoint5", "leftjoint6",
-        "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3",
-        "rightjoint4", "rightjoint5", "rightjoint6",
-    ]
-
-    # 建立名称→yourdfpy索引的映射
     name_to_cfg_idx = {n: i for i, n in enumerate(yourdfpy_names)}
-
-    # 重置 cfg 为 0（不在 moveit_names 中的关节如 plate 保持 0）
     urdf.cfg[:] = 0.0
-    for mi, name in enumerate(moveit_names):
+    for mi, name in enumerate(MOVEIT_NAMES):
         if mi < len(joints) and name in name_to_cfg_idx:
             urdf.cfg[name_to_cfg_idx[name]] = float(joints[mi])
     urdf.update_cfg(urdf.cfg)
 
 
 def log_robot(urdf: yourdfpy.URDF, entity_prefix: str, color: list[int]):
-    """
-    将当前关节配置下的机器人几何体发送到 Rerun。
-    entity_prefix: "target_robot" 或 "actual_robot"
-    color: RGBA 列表 [R, G, B, A]，值域 0-255
-    """
+    """将机器人几何体发送到 Rerun"""
     link_geoms = get_link_geometries(urdf)
-
     for node, _T, verts, faces in link_geoms:
         path = f"{entity_prefix}/{node}"
-
-        # 顶点着色
         n_verts = len(verts)
-        vertex_colors = np.tile(
-            np.array(color, dtype=np.uint8), (n_verts, 1)
-        )
-
+        vertex_colors = np.tile(np.array(color, dtype=np.uint8), (n_verts, 1))
         rr.log(
             path,
             rr.Mesh3D(
@@ -155,10 +127,77 @@ def log_robot(urdf: yourdfpy.URDF, entity_prefix: str, color: list[int]):
         )
 
 
-# ── JSONL 读取 ─────────────────────────────────────────────────────────────
+# ── 位姿辅助 ────────────────────────────────────────────────────────────────
+
+def quat_to_rotmat(qx, qy, qz, qw):
+    """四元数 → 3x3 旋转矩阵"""
+    n = (qx**2 + qy**2 + qz**2 + qw**2) ** 0.5
+    qx, qy, qz, qw = qx/n, qy/n, qz/n, qw/n
+    return np.array([
+        [1 - 2*(qy*qy + qz*qz), 2*(qx*qy - qw*qz),     2*(qx*qz + qw*qy)],
+        [2*(qx*qy + qw*qz),     1 - 2*(qx*qx + qz*qz), 2*(qy*qz - qw*qx)],
+        [2*(qx*qz - qw*qy),     2*(qy*qz + qw*qx),     1 - 2*(qx*qx + qy*qy)],
+    ])
+
+
+def pose_to_transform(pose: dict) -> np.ndarray:
+    """{pos:[x,y,z], quat:[qx,qy,qz,qw]} → 4x4 齐次矩阵"""
+    px, py, pz = pose["pos"]
+    qx, qy, qz, qw = pose["quat"]
+    R = quat_to_rotmat(qx, qy, qz, qw)
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = [px, py, pz]
+    return T
+
+
+def log_end_effector(entity_prefix: str, pose: dict, color: list[int],
+                     radius: float = 0.008, axis_length: float = 0.04):
+    """记录末端位姿：小球 + 坐标轴"""
+    tf = pose_to_transform(pose)
+    px, py, pz = pose["pos"]
+    R = tf[:3, :3]
+    t = tf[:3, 3]
+
+    rr.log(
+        f"{entity_prefix}/point",
+        rr.Points3D(
+            positions=[[px, py, pz]],
+            radii=[radius],
+            colors=[color],
+        ),
+    )
+
+    # RGB 坐标轴
+    axis_colors = [[255, 0, 0], [0, 255, 0], [0, 0, 255]]
+    for axis_idx in range(3):
+        end = t + R[:, axis_idx] * axis_length
+        rr.log(
+            f"{entity_prefix}/axis_{axis_idx}",
+            rr.LineStrips3D(
+                [[t.tolist(), end.tolist()]],
+                colors=[axis_colors[axis_idx]],
+                radii=0.001,
+            ),
+        )
+
+
+def jsonl_pose_to_dict(raw) -> dict | None:
+    """兼容新旧 JSONL 格式"""
+    if raw is None:
+        return None
+    # 新格式: {pos:[x,y,z], quat:[qx,qy,qz,qw]}
+    if isinstance(raw, dict) and "pos" in raw and "quat" in raw:
+        return raw
+    # 旧格式: [x,y,z] (只有位置)
+    if isinstance(raw, list) and len(raw) == 3:
+        return {"pos": raw, "quat": [0, 0, 0, 1]}
+    return None
+
+
+# ── JSONL 读取 ───────────────────────────────────────────────────────────────
 
 def load_jsonl(path: str) -> list[dict]:
-    """读取 .jsonl 文件，跳过 header 行，返回数据行列表"""
     records = []
     with open(path) as f:
         for line in f:
@@ -173,11 +212,9 @@ def load_jsonl(path: str) -> list[dict]:
     return records
 
 
-# ── 主流程 ──────────────────────────────────────────────────────────────────
+# ── URDF 查找 ────────────────────────────────────────────────────────────────
 
 def find_urdf() -> str | None:
-    """自动查找 URDF 文件"""
-    # 1. 常见路径
     candidates = [
         "/tmp/_alfa_bench.urdf",
         "alfa_robot.urdf",
@@ -186,8 +223,6 @@ def find_urdf() -> str | None:
     for c in candidates:
         if Path(c).exists():
             return c
-    # 2. ROS2 包目录
-    import subprocess
     try:
         result = subprocess.run(
             ["ros2", "pkg", "prefix", "alfa_robot_description"],
@@ -204,7 +239,6 @@ def find_urdf() -> str | None:
                     return str(p)
     except Exception:
         pass
-    # 3. 尝试 xacro 生成
     try:
         result = subprocess.run(
             ["ros2", "pkg", "prefix", "alfa_robot_description"],
@@ -225,6 +259,8 @@ def find_urdf() -> str | None:
         pass
     return None
 
+
+# ── 主流程 ────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(description="IK Benchmark 3D 回放查看器")
@@ -276,8 +312,7 @@ def main():
         rr.init("IK_Benchmark_Viewer", spawn=True)
         print("Rerun 查看器已启动（关闭查看器窗口即可退出）")
 
-    # 加载两个独立的 URDF 实例（target / actual 各一份，避免 FK 互相干扰）
-    urdf_target = load_urdf(urdf_path)
+    # 加载两个独立的 URDF 实例（target / actual 各一份）
     urdf_actual = load_urdf(urdf_path)
 
     # 逐帧回放
@@ -285,46 +320,93 @@ def main():
         idx = rec["index"]
         rr.set_time("step", sequence=idx)
 
-        # ── 1. 目标机器人（幽灵态：半透明红色）────────────────────────────
-        apply_joints(urdf_target, rec["target_joints"])
-        log_robot(urdf_target, "target_robot", [255, 60, 60, 100])
-
-        # ── 2. 实际解算机器人（实体态：不透明灰色）────────────────────────
+        solver = rec["solver"]
         status = rec["status"]
-        if status != "failed":
+        ok = (status != "failed")
+
+        # ── 1. FK 原始末端位姿（小球：绿色=左臂，橙色=右臂）────────────────
+        left_fk  = jsonl_pose_to_dict(rec.get("left_fk_pose"))
+        right_fk = jsonl_pose_to_dict(rec.get("right_fk_pose"))
+        if left_fk:
+            log_end_effector("fk/left", left_fk, color=[0, 200, 0],
+                             radius=0.005, axis_length=0.03)
+        else:
+            rr.log("fk/left", rr.Clear(recursive=True))
+        if right_fk:
+            log_end_effector("fk/right", right_fk, color=[200, 130, 0],
+                             radius=0.005, axis_length=0.03)
+        else:
+            rr.log("fk/right", rr.Clear(recursive=True))
+
+        # ── 2. 扰动后的 IK 目标位姿（大球：青色=左臂，黄色=右臂）──────────
+        left_target  = jsonl_pose_to_dict(rec.get("left_target_pose"))
+        right_target = jsonl_pose_to_dict(rec.get("right_target_pose"))
+        if left_target:
+            log_end_effector("target/left", left_target, color=[0, 255, 255],
+                             radius=0.010, axis_length=0.04)
+        else:
+            rr.log("target/left", rr.Clear(recursive=True))
+        if right_target:
+            log_end_effector("target/right", right_target, color=[255, 255, 0],
+                             radius=0.010, axis_length=0.04)
+        else:
+            rr.log("target/right", rr.Clear(recursive=True))
+
+        # ── 3. IK 求解后的机器人姿态（灰色实体机器人）──────────────────────
+        if ok and "solved_joints" in rec and rec["solved_joints"]:
             apply_joints(urdf_actual, rec["solved_joints"])
             log_robot(urdf_actual, "actual_robot", [180, 180, 180, 255])
-        else:
-            # 失败时清除 actual_robot 实体
-            rr.log("actual_robot", rr.Clear(recursive=True))
 
-        # ── 3. 误差线（左臂目标 → 左臂实际，world 坐标系）────────────────
-        if status != "failed":
-            # left_target_pos / left_actual_pos 是 base_link 坐标系数据，
-            # 需要转回 world 坐标系才能与 3D 模型对齐
+            # IK 求解后的实际末端位姿（中球：紫色=左臂，红色=右臂）
+            left_actual  = jsonl_pose_to_dict(rec.get("left_actual_pose"))
+            right_actual = jsonl_pose_to_dict(rec.get("right_actual_pose"))
+            if left_actual:
+                log_end_effector("actual/left", left_actual, color=[180, 0, 255],
+                                 radius=0.007, axis_length=0.04)
+            else:
+                rr.log("actual/left", rr.Clear(recursive=True))
+            if right_actual:
+                log_end_effector("actual/right", right_actual, color=[255, 0, 80],
+                                 radius=0.007, axis_length=0.04)
+            else:
+                rr.log("actual/right", rr.Clear(recursive=True))
+
+            # 误差线：目标 → 实际
+            # 位姿数据在 base_link 坐标系，需要转到 world 坐标系
             T_base = urdf_actual.scene.graph.get("base_link")[0]
             base_pos = T_base[:3, 3]
             base_rot = T_base[:3, :3]
-            lt_world = (base_rot @ np.array(rec["left_target_pos"]) + base_pos).tolist()
-            la_world = (base_rot @ np.array(rec["left_actual_pos"]) + base_pos).tolist()
-            dist = np.linalg.norm(np.array(lt_world) - np.array(la_world))
-            if dist > 1e-6:
-                rr.log(
-                    "error_line/left_arm",
-                    rr.LineStrips3D(
-                        strips=[[[lt_world[0], lt_world[1], lt_world[2]],
-                                 [la_world[0], la_world[1], la_world[2]]]],
-                        colors=[255, 50, 50, 200],
-                    ),
-                )
-            else:
-                rr.log("error_line/left_arm", rr.Clear(recursive=True))
-        else:
-            rr.log("error_line/left_arm", rr.Clear(recursive=True))
 
-        # ── 4. 文本数据面板 ───────────────────────────────────────────────
+            for side, tgt_pose, act_pose in [
+                ("left", left_target, left_actual),
+                ("right", right_target, right_actual),
+            ]:
+                if tgt_pose and act_pose:
+                    t_world = (base_rot @ np.array(tgt_pose["pos"]) + base_pos).tolist()
+                    a_world = (base_rot @ np.array(act_pose["pos"]) + base_pos).tolist()
+                    dist = np.linalg.norm(np.array(t_world) - np.array(a_world))
+                    if dist > 1e-6:
+                        rr.log(
+                            f"error_line/{side}",
+                            rr.LineStrips3D(
+                                strips=[[t_world, a_world]],
+                                colors=[255, 50, 50, 200],
+                            ),
+                        )
+                    else:
+                        rr.log(f"error_line/{side}", rr.Clear(recursive=True))
+                else:
+                    rr.log(f"error_line/{side}", rr.Clear(recursive=True))
+        else:
+            rr.log("actual_robot", rr.Clear(recursive=True))
+            rr.log("actual/left", rr.Clear(recursive=True))
+            rr.log("actual/right", rr.Clear(recursive=True))
+            rr.log("error_line/left", rr.Clear(recursive=True))
+            rr.log("error_line/right", rr.Clear(recursive=True))
+
+        # ── 4. 文本数据面板 ─────────────────────────────────────────────────
         metrics = (
-            f"#{idx}  solver: {rec['solver']}\n"
+            f"#{idx}  solver: {solver}\n"
             f"status: {status}\n"
             f"solve_ms: {rec['solve_ms']:.1f}\n"
             f"pos_error: {rec['pos_error']:.6f} m"

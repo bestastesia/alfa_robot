@@ -46,6 +46,8 @@ struct CliArgs {
     double timeout     = 2.0;    // 每次 IK 调用的超时（秒）
     double pos_thresh  = 0.005;  // 位置误差阈值（米），5mm
     double ori_thresh  = 0.01;   // 姿态误差阈值（弧度），约 0.6°
+    double perturb_pos = 0.05;   // 末端位置扰动幅度（米），±5cm
+    double perturb_ori = 0.25;   // 末端姿态扰动幅度（弧度），±~14°
     bool   verbose     = false;
     bool   free_joint6 = false;  // 允许 joint6 随机（默认固定为 0）
     std::string jsonl_path;      // JSONL 输出路径（供 3D 回放）
@@ -56,11 +58,13 @@ static CliArgs parse_args(int argc, char** argv)
     CliArgs a;
     for (int i = 1; i < argc; ++i) {
         std::string s = argv[i];
-        if (s == "--samples"    && i + 1 < argc) a.samples    = std::stoi(argv[++i]);
-        if (s == "--timeout"    && i + 1 < argc) a.timeout    = std::stod(argv[++i]);
-        if (s == "--pos-thresh" && i + 1 < argc) a.pos_thresh = std::stod(argv[++i]);
-        if (s == "--ori-thresh" && i + 1 < argc) a.ori_thresh = std::stod(argv[++i]);
-        if (s == "--jsonl"       && i + 1 < argc) a.jsonl_path  = argv[++i];
+        if (s == "--samples"      && i + 1 < argc) a.samples    = std::stoi(argv[++i]);
+        if (s == "--timeout"      && i + 1 < argc) a.timeout    = std::stod(argv[++i]);
+        if (s == "--pos-thresh"   && i + 1 < argc) a.pos_thresh = std::stod(argv[++i]);
+        if (s == "--ori-thresh"   && i + 1 < argc) a.ori_thresh = std::stod(argv[++i]);
+        if (s == "--perturb-pos"  && i + 1 < argc) a.perturb_pos = std::stod(argv[++i]);
+        if (s == "--perturb-ori"  && i + 1 < argc) a.perturb_ori = std::stod(argv[++i]);
+        if (s == "--jsonl"         && i + 1 < argc) a.jsonl_path  = argv[++i];
         if (s == "--verbose")                    a.verbose     = true;
         if (s == "--free-joint6")                a.free_joint6 = true;
     }
@@ -152,16 +156,18 @@ struct Summary {
 
 struct TestCase {
     std::vector<double>  true_joints;   // 生成 target 时的真实关节值（已知解）
-    Eigen::Isometry3d    left_target;
-    Eigen::Isometry3d    right_target;
+    Eigen::Isometry3d    left_target;    // 扰动后的左末端目标位姿（IK 实际求解目标）
+    Eigen::Isometry3d    right_target;   // 扰动后的右末端目标位姿（IK 实际求解目标）
+    Eigen::Isometry3d    left_fk;        // 扰动前的 FK 原始左末端位姿
+    Eigen::Isometry3d    right_fk;       // 扰动前的 FK 原始右末端位姿
 };
 
 /**
- * 生成测试用例：随机关节角 → FK → 双末端目标位姿（base_link 坐标系）。
+ * 生成测试用例：随机关节角 → FK → 末端位姿扰动 → 双末端目标位姿（base_link 坐标系）。
  *
- * leftjoint6 / rightjoint6 是 prismatic 吸盘伸缩关节（范围 0-0.15m），
- * 不参与末端位姿的空间定位，固定为 0 以专注测试旋转关节的 IK 求解能力。
- * target 转换到 base_link 坐标系，与 IK 求解器的参考系一致。
+ * FK 计算出的末端位姿会叠加小的位置和姿态扰动，模拟实际应用中
+ * 目标位姿不一定恰好对应某一组关节角的情况。
+ * 扰动参数由 --perturb-pos 和 --perturb-ori 控制。
  */
 static std::vector<TestCase> generate_test_cases(
     const moveit::core::RobotModelConstPtr& model,
@@ -170,7 +176,9 @@ static std::vector<TestCase> generate_test_cases(
     const std::string&                      right_tip,
     int                                     count,
     random_numbers::RandomNumberGenerator&  rng,
-    bool                                    free_joint6)
+    bool                                    free_joint6,
+    double                                  perturb_pos,
+    double                                  perturb_ori)
 {
     std::vector<TestCase> cases;
     cases.reserve(count);
@@ -224,18 +232,41 @@ static std::vector<TestCase> generate_test_cases(
         }
         state.update();
 
-        // target 转换到 base_link 坐标系，与 IK 求解器的参考系一致
+        // FK 原始位姿（base_link 坐标系）
         const Eigen::Isometry3d T_base_inv =
             state.getGlobalLinkTransform("base_link").inverse();
+
+        Eigen::Isometry3d left_fk  = T_base_inv * state.getGlobalLinkTransform(left_tip);
+        Eigen::Isometry3d right_fk = T_base_inv * state.getGlobalLinkTransform(right_tip);
+
+        // 对末端位姿叠加随机扰动
+        auto perturb = [&](const Eigen::Isometry3d& fk) -> Eigen::Isometry3d {
+            Eigen::Isometry3d result = fk;
+            // 位置扰动：在 x/y/z 各方向均匀随机 ±perturb_pos
+            result.translation().x() += rng.uniformReal(-perturb_pos, perturb_pos);
+            result.translation().y() += rng.uniformReal(-perturb_pos, perturb_pos);
+            result.translation().z() += rng.uniformReal(-perturb_pos, perturb_pos);
+            // 姿态扰动：绕随机轴旋转随机角度（±perturb_ori）
+            if (perturb_ori > 0) {
+                double angle = rng.uniformReal(-perturb_ori, perturb_ori);
+                Eigen::Vector3d axis(rng.uniformReal(-1, 1),
+                                     rng.uniformReal(-1, 1),
+                                     rng.uniformReal(-1, 1));
+                if (axis.norm() < 1e-6) axis = Eigen::Vector3d::UnitZ();
+                axis.normalize();
+                Eigen::AngleAxisd rot(angle, axis);
+                result.linear() = rot.toRotationMatrix() * result.linear();
+            }
+            return result;
+        };
+
+        Eigen::Isometry3d left_target  = perturb(left_fk);
+        Eigen::Isometry3d right_target = perturb(right_fk);
 
         std::vector<double> jv;
         state.copyJointGroupPositions(jmg, jv);
 
-        cases.push_back({
-            jv,
-            T_base_inv * state.getGlobalLinkTransform(left_tip),
-            T_base_inv * state.getGlobalLinkTransform(right_tip)
-        });
+        cases.push_back({jv, left_target, right_target, left_fk, right_fk});
     }
 
     return cases;
@@ -283,6 +314,22 @@ static std::string json_pos(const Eigen::Isometry3d& tf)
     return os.str();
 }
 
+// 手动拼接 JSON 对象：{pos:[x,y,z], quat:[qx,qy,qz,qw]} 从 Isometry3d
+static std::string json_pose(const Eigen::Isometry3d& tf)
+{
+    Eigen::Quaterniond q(tf.linear());
+    std::ostringstream os;
+    os << std::setprecision(8)
+       << "{\"pos\":[" << tf.translation().x()
+       << "," << tf.translation().y()
+       << "," << tf.translation().z() << "]"
+       << ",\"quat\":[" << q.x()
+       << "," << q.y()
+       << "," << q.z()
+       << "," << q.w() << "]}";
+    return os.str();
+}
+
 // ── 主程序 ─────────────────────────────────────────────────────────────────
 
 int main(int argc, char** argv)
@@ -300,6 +347,8 @@ int main(int argc, char** argv)
         << "超时         : " << args.timeout    << " s\n"
         << "位置阈值     : " << args.pos_thresh << " m\n"
         << "姿态阈值     : " << args.ori_thresh << " rad\n"
+        << "末端位置扰动 : ±" << args.perturb_pos << " m\n"
+        << "末端姿态扰动 : ±" << args.perturb_ori << " rad\n"
         << "joint6       : " << (args.free_joint6 ? "随机（free）" : "固定为 0") << "\n\n";
 
     // ── 1. 加载机器人模型（离线，不依赖 ROS 参数服务器）─────────────────
@@ -405,7 +454,10 @@ int main(int argc, char** argv)
     random_numbers::RandomNumberGenerator rng(42);  // 固定种子，保证可复现
 
     std::cout << "生成 " << args.samples << " 个测试用例（随机关节角 + FK）...\n";
-    auto cases = generate_test_cases(robot_model, jmg, left_tip, right_tip, args.samples, rng, args.free_joint6);
+    auto cases = generate_test_cases(
+        robot_model, jmg, left_tip, right_tip,
+        args.samples, rng, args.free_joint6,
+        args.perturb_pos, args.perturb_ori);
     std::cout << "完成。\n\n";
 
     // ── 4. JSONL 输出文件（空文件，后续逐行追加）──────────────────────────
@@ -531,6 +583,7 @@ int main(int argc, char** argv)
 
             // FK 验证结果（用于 JSONL 输出）
             Eigen::Isometry3d left_actual_tf = Eigen::Isometry3d::Identity();
+            Eigen::Isometry3d right_actual_tf = Eigen::Isometry3d::Identity();
 
             if (!ok) {
                 r.status = Status::kFailed;
@@ -558,6 +611,7 @@ int main(int argc, char** argv)
                            ? Status::kSuccess : Status::kLargeError;
 
                 left_actual_tf = left_solved;
+                right_actual_tf = right_solved;
             }
 
             summary.add(r);
@@ -576,8 +630,12 @@ int main(int argc, char** argv)
                     << ",\"pos_error\":" << std::setprecision(8) << r.pos_error
                     << ",\"target_joints\":" << json_array(tc.true_joints)
                     << ",\"solved_joints\":" << (ok ? json_array(solution) : "[]")
-                    << ",\"left_target_pos\":" << json_pos(tc.left_target)
-                    << ",\"left_actual_pos\":" << (ok ? json_pos(left_actual_tf) : "[0, 0, 0]")
+                    << ",\"left_fk_pose\":" << json_pose(tc.left_fk)
+                    << ",\"right_fk_pose\":" << json_pose(tc.right_fk)
+                    << ",\"left_target_pose\":" << json_pose(tc.left_target)
+                    << ",\"right_target_pose\":" << json_pose(tc.right_target)
+                    << ",\"left_actual_pose\":" << (ok ? json_pose(left_actual_tf) : "{}")
+                    << ",\"right_actual_pose\":" << (ok ? json_pose(right_actual_tf) : "{}")
                     << "}\n";
             }
 
