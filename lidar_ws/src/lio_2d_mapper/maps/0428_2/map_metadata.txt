@@ -1,0 +1,5 @@
+width: 384
+height: 248
+resolution: 0.05
+origin_x: -8.3965
+origin_y: -9.45984

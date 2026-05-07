@@ -5,7 +5,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import mujoco
 import mujoco.viewer
 
-m = mujoco.MjModel.from_xml_path("scene.xml")
+m = mujoco.MjModel.from_xml_path("scene_robot_only.xml")
 d = mujoco.MjData(m)
 mujoco.mj_resetData(m, d)
 mujoco.mj_forward(m, d)

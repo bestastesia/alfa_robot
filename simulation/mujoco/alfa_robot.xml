@@ -130,21 +130,21 @@
                 <geom class="visual"    type="mesh" mesh="vis_rightjoint2" material="white"/>
                 <geom class="collision" type="mesh" mesh="col_rightjoint2"/>
 
-                <body name="rightjoint3_link" pos="0.01 -0.0058 0.098" euler="1.5708 -1.5708 0">
+                <body name="rightjoint3_link" pos="0.01 -0.0058 0.098" euler="1.570796 0 1.570796">
                   <inertial pos="0.225299625739963 -1.60107813145238E-05 -0.0720438220450934" mass="1.34400405454488"
                             fullinertia="0.00147896138599604 0.0027517588466101 0.00279083369334524 -1.09234424169219E-06 -3.74484328782169E-07 1.75900999614053E-08"/>
                   <joint name="rightjoint3" type="hinge" axis="0 0 1" range="-1.57079632 1.57079632" damping="3000" armature="5.0"/>
                   <geom class="visual"    type="mesh" mesh="vis_rightjoint3" material="white"/>
                   <geom class="collision" type="mesh" mesh="col_rightjoint3"/>
 
-                  <body name="rightjoint4_link" pos="0.3418 0.01 -0.082" euler="-1.5708 0 -1.5708">
+                  <body name="rightjoint4_link" pos="0.3418 0.01 -0.082" euler="2.356194 1.570791 2.356194">
                     <inertial pos="0.0100204605383918 0.00985679814963347 0.0840089075623952" mass="0.983457322359293"
                               fullinertia="0.00146324457982104 0.00136637778648993 0.00151815899256312 1.07921279553368E-06 2.05978166819893E-07 3.51454994521712E-07"/>
                     <joint name="rightjoint4" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="3000" armature="5.0"/>
                     <geom class="visual"    type="mesh" mesh="vis_rightjoint4" material="white"/>
                     <geom class="collision" type="mesh" mesh="col_rightjoint4"/>
 
-                    <body name="rightjoint5_link" pos="0.01 0.0022 0.098" euler="1.5708 -1.5708 0">
+                    <body name="rightjoint5_link" pos="0.01 0.0022 0.098" euler="1.570796 0 1.570796">
                       <inertial pos="0.0101785346040691 -9.30231893336853E-06 0.114866949892092" mass="1.05113789872684"
                                 fullinertia="0.00202470522047338 0.00328579639703018 0.00340020564373822 -1.84484199834478E-08 -0.000306186752830273 -7.17708515637608E-10"/>
                       <joint name="rightjoint5" type="hinge" axis="0 0 1" range="-1.57079632 1.57079632" damping="3000" armature="5.0"/>
@@ -197,21 +197,21 @@
                 <geom class="visual"    type="mesh" mesh="vis_leftjoint2" material="white"/>
                 <geom class="collision" type="mesh" mesh="col_leftjoint2"/>
 
-                <body name="leftjoint3_link" pos="0.01 0.0058 0.098" euler="-1.5708 -1.5708 0">
+                <body name="leftjoint3_link" pos="0.01 0.0058 0.098" euler="-1.570796 0 -1.570796">
                   <inertial pos="0.225299625739963 1.60107813145238E-05 -0.0720438220450934" mass="1.34400405454488"
                             fullinertia="0.00147896138599604 0.0027517586466101 0.00279083369334524 1.09234424169219E-06 -3.74484328782169E-07 -1.75900999614053E-08"/>
                   <joint name="leftjoint3" type="hinge" axis="0 0 1" range="-1.57079632 1.57079632" damping="3000" armature="5.0"/>
                   <geom class="visual"    type="mesh" mesh="vis_leftjoint3" material="white"/>
                   <geom class="collision" type="mesh" mesh="col_leftjoint3"/>
 
-                  <body name="leftjoint4_link" pos="0.3418 -0.01 -0.082" euler="1.5708 0 1.5708">
+                  <body name="leftjoint4_link" pos="0.3418 -0.01 -0.082" euler="-2.356194 1.570791 -2.356194">
                     <inertial pos="0.0100204605383918 -0.00985679814963347 0.0840089075623952" mass="0.983457322359293"
                               fullinertia="0.00146324457982104 0.00136637778648993 0.00151815899256312 -1.07921279553368E-06 2.05978166819893E-07 -3.51454994521712E-07"/>
                     <joint name="leftjoint4" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="3000" armature="5.0"/>
                     <geom class="visual"    type="mesh" mesh="vis_leftjoint4" material="white"/>
                     <geom class="collision" type="mesh" mesh="col_leftjoint4"/>
 
-                    <body name="leftjoint5_link" pos="0.01 -0.0022 0.098" euler="-1.5708 -1.5708 0">
+                    <body name="leftjoint5_link" pos="0.01 -0.0022 0.098" euler="-1.570796 0 -1.570796">
                       <inertial pos="0.0101785346040691 9.30231893336853E-06 0.114866949892092" mass="1.05113789872684"
                                 fullinertia="0.00202470522047338 0.00328579639703018 0.00340020564373822 1.84484199834478E-08 -0.000306186752830273 7.17708515637608E-10"/>
                       <joint name="leftjoint5" type="hinge" axis="0 0 1" range="-1.57079632 1.57079632" damping="3000" armature="5.0"/>

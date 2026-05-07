@@ -1,0 +1,47 @@
+# box_perception parameters
+box_perception_node:
+  ros__parameters:
+    # --- Topic names ---
+    cloud_topic: "/cloud_registered_body"
+    image_topic: "/camera/camera/color/image_raw"
+
+    # --- Camera intrinsics (D455 defaults) ---
+    fx: 386.8415832519531
+    fy: 386.4196472167969
+    cx: 320.8486328125
+    cy: 240.2317657470703
+    k1: -0.05452472344040871
+    k2:  0.06167476251721382
+    p1:  0.00026341964257881045
+    p2:  0.0012736229691654444
+    k3: -0.020062286406755447
+    image_width:  640
+    image_height: 480
+
+    # --- Projection offset (camera optical center x-offset in body frame, m) ---
+    cam_x_offset: 0.05
+
+    # --- YOLO segmentation ---
+    model_path: "models/box_seg.pt"
+    conf_threshold: 0.3
+
+    # --- Mask assignment ---
+    mask_erode_px: 8
+
+    # --- Face fitting ---
+    ransac_threshold: 0.015
+    min_inliers: 10
+    normal_radius: 0.05
+    normal_knn: 20
+    vertical_tol_deg: 30.0
+    max_workers: 4
+
+    # --- Time sync ---
+    sync_slop: 0.05
+    sync_queue_size: 10
+
+    # --- Point cloud accumulation ---
+    accumulate_frames: 30
+
+    # --- Debug ---
+    debug_publish: true
