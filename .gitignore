@@ -176,3 +176,11 @@ scripts/ik_benchmark/data/
 
 # MoveIt scripts (temporary)
 ros2_ws/src/alfa_robot_moveit_config/scripts/
+
+# lidar workspace (nested git repos — ignore entirely)
+lidar_ws/src/FAST_LIO_LOCALIZATION2/
+lidar_ws/src/fast_lio/
+lidar_ws/src/livox_ros_driver2/
+
+# Random temp files
+[0-9]*.[0-9]*.[0-9]*
