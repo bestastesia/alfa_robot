@@ -59,7 +59,9 @@ pluginlib_export_plugin_description_file(
 )
 
 if(BUILD_TESTING)
+  if(BUILD_TESTING)
   add_subdirectory(tests)
+endif()
 endif()
 
 install(
