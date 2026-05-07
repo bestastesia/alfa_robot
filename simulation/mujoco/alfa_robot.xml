@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mujoco model="alfa_robot">
 
-  <compiler angle="radian" meshdir="alfa_robot_arm_v2/meshes" autolimits="true"/>
+  <compiler angle="radian" meshdir="../../ros2_ws/src/alfa_robot_description/meshes/alfa_robot" autolimits="true"/>
   <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"/>
 
   <default>
