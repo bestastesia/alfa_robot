@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="logistics_scene">
+
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"
+          cone="elliptic" noslip_iterations="3"/>
+
+  <include file="alfa_robot.xml"/>
+
+  <worldbody>
+    <light name="sun" pos="5 -5 8" dir="-0.4 0.4 -1" diffuse="0.9 0.9 0.85" specular="0.3 0.3 0.3" castshadow="true"/>
+    <light name="container_light1" pos="3 0 2.3" dir="0 0 -1" diffuse="0.7 0.7 0.6" specular="0.1 0.1 0.1"/>
+    <light name="container_light2" pos="6 0 2.3" dir="0 0 -1" diffuse="0.7 0.7 0.6" specular="0.1 0.1 0.1"/>
+    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1"/>
+
+    <body name="container" pos="0 0 0">
+      <geom name="c_floor" type="box" size="3.0 1.2 0.025" pos="3.3 0 0.025" rgba="0.55 0.45 0.35 1" contype="1" conaffinity="1"/>
+      <geom name="c_wall_left" type="box" size="3.0 0.05 1.3" pos="3.3 1.25 1.3" rgba="0.6 0.55 0.45 1" contype="1" conaffinity="1"/>
+      <geom name="c_wall_right" type="box" size="3.0 0.05 1.3" pos="3.3 -1.25 1.3" rgba="0.6 0.55 0.45 1" contype="1" conaffinity="1"/>
+      <geom name="c_roof" type="box" size="3.0 1.2 0.04" pos="3.3 0 2.64" rgba="0.5 0.5 0.45 1" contype="1" conaffinity="1"/>
+      <geom name="c_wall_back" type="box" size="0.05 1.2 1.3" pos="6.35 0 1.3" rgba="0.6 0.55 0.45 1" contype="1" conaffinity="1"/>
+      <geom name="c_door_left" type="box" size="0.05 0.05 1.3" pos="0.3 1.2 1.3" rgba="0.4 0.35 0.3 1" contype="1" conaffinity="1"/>
+      <geom name="c_door_right" type="box" size="0.05 0.05 1.3" pos="0.3 -1.2 1.3" rgba="0.4 0.35 0.3 1" contype="1" conaffinity="1"/>
+      <geom name="c_door_top" type="box" size="0.05 1.2 0.05" pos="0.3 0 2.55" rgba="0.4 0.35 0.3 1" contype="1" conaffinity="1"/>
+      <geom name="c_outer_left" type="box" size="3.0 0.04 1.35" pos="3.3 1.32 1.35" rgba="0.25 0.55 0.25 1" contype="0" conaffinity="0" group="2"/>
+      <geom name="c_outer_right" type="box" size="3.0 0.04 1.35" pos="3.3 -1.32 1.35" rgba="0.25 0.55 0.25 1" contype="0" conaffinity="0" group="2"/>
+      <geom name="c_outer_roof" type="box" size="3.0 1.25 0.03" pos="3.3 0 2.70" rgba="0.25 0.55 0.25 1" contype="0" conaffinity="0" group="2"/>
+    </body>
+
+    <body name="box_r0_c0_l0" pos="1.9 -0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c0_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r0_c1_l0" pos="1.9  0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c1_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r0_c0_l1" pos="1.9 -0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c0_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r0_c1_l1" pos="1.9  0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c1_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r0_c0_l2" pos="1.9 -0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c0_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r0_c1_l2" pos="1.9  0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r0_c1_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+
+    <body name="box_r1_c0_l0" pos="3.4 -0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c0_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r1_c1_l0" pos="3.4  0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c1_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r1_c0_l1" pos="3.4 -0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c0_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r1_c1_l1" pos="3.4  0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c1_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r1_c0_l2" pos="3.4 -0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c0_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r1_c1_l2" pos="3.4  0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r1_c1_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+
+    <body name="box_r2_c0_l0" pos="4.4 -0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c0_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r2_c1_l0" pos="4.4  0.60 0.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c1_l0_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r2_c0_l1" pos="4.4 -0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c0_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r2_c1_l1" pos="4.4  0.60 0.79"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.75 0.55 0.35 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c1_l1_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r2_c0_l2" pos="4.4 -0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c0_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+    <body name="box_r2_c1_l2" pos="4.4  0.60 1.29"><freejoint/>
+      <inertial pos="0 0 0" mass="10.0" diaginertia="2.62 1.92 3.78"/>
+      <geom type="box" size="0.48 0.58 0.24" rgba="0.95 0.75 0.50 1" contype="1" conaffinity="1" friction="0.6 0.02 0.001"/>
+      <site name="box_r2_c1_l2_top" pos="0 0 0.24" size="0.01"/>
+    </body>
+
+    <body name="conveyor" pos="-0.5 3.0 0">
+      <geom name="conv_leg_fl" type="box" size="0.04 0.04 0.25" pos="-0.8  0.3 0.25" rgba="0.4 0.4 0.4 1"/>
+      <geom name="conv_leg_fr" type="box" size="0.04 0.04 0.25" pos="-0.8 -0.3 0.25" rgba="0.4 0.4 0.4 1"/>
+      <geom name="conv_leg_bl" type="box" size="0.04 0.04 0.25" pos=" 0.8  0.3 0.25" rgba="0.4 0.4 0.4 1"/>
+      <geom name="conv_leg_br" type="box" size="0.04 0.04 0.25" pos=" 0.8 -0.3 0.25" rgba="0.4 0.4 0.4 1"/>
+      <geom name="conv_surface" type="box" size="1.0 0.35 0.03" pos="0 0 0.53" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="1" friction="0.4 0.01 0.001"/>
+      <geom name="conv_rail_l" type="box" size="1.0 0.02 0.06" pos="0  0.37 0.59" rgba="0.5 0.5 0.5 1"/>
+      <geom name="conv_rail_r" type="box" size="1.0 0.02 0.06" pos="0 -0.37 0.59" rgba="0.5 0.5 0.5 1"/>
+      <site name="conveyor_target" pos="0 0 0.58" size="0.05" rgba="0 1 1 0.5"/>
+    </body>
+
+    <geom name="fence_back" type="box" size="6 0.05 0.5" pos="0 -4.5 0.5" rgba="1 0.8 0 1" contype="1" conaffinity="1"/>
+    <geom name="fence_right" type="box" size="0.05 4 0.5" pos="-4.5 0 0.5" rgba="1 0.8 0 1" contype="1" conaffinity="1"/>
+    <geom name="robot_dock_mark" type="box" size="0.5 0.5 0.002" pos="-0.5 0 0.001" rgba="1 0.9 0 0.6" contype="0" conaffinity="0" group="2"/>
+  </worldbody>
+
+</mujoco>

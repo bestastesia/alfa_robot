@@ -1,0 +1,1 @@
+controller_joint_names: ['', 'turn', 'updown', 'plate', 'leftarmbase', 'leftjoint1', 'leftjoint2', 'leftjoint3', 'leftjoint4', 'leftjoint5', 'leftjoint6', 'rightarmbase', 'rightjoint1', 'rightjoint2', 'rightjoint3', 'rightjoint4', ]
