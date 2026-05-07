@@ -95,11 +95,11 @@ class ArmFullPlanner(Node):
         # 定义关节顺序
         joint_names = ["turn", "updown"]
         if arm == "left":
-            joint_names.extend(["leftarmbase", "leftjoint1", "leftjoint2",
-                               "leftjoint3", "leftjoint4", "leftjoint5"])
+            joint_names.extend(["leftjoint1", "leftjoint2",
+                               "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6"])
         else:
-            joint_names.extend(["rightarmbase", "rightjoint1", "rightjoint2",
-                               "rightjoint3", "rightjoint4"])
+            joint_names.extend(["rightjoint1", "rightjoint2",
+                               "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6"])
 
         result = {}
         for name in joint_names:
@@ -179,16 +179,16 @@ class ArmFullPlanner(Node):
                 "group_name": "left_arm_with_base",
                 "ee_link": "left_ee_link",
                 "controller": "left_arm_with_base_controller",
-                "joints": ["updown", "leftarmbase", "leftjoint1",
-                          "leftjoint2", "leftjoint3", "leftjoint4", "leftjoint5"]
+                "joints": ["updown", "leftjoint1", "leftjoint2", "leftjoint3",
+                          "leftjoint4", "leftjoint5", "leftjoint6"]
             }
         else:
             return {
                 "group_name": "right_arm_with_base",
                 "ee_link": "right_ee_link",
                 "controller": "right_arm_with_base_controller",
-                "joints": ["updown", "rightarmbase", "rightjoint1",
-                          "rightjoint2", "rightjoint3", "rightjoint4"]
+                "joints": ["updown", "rightjoint1", "rightjoint2", "rightjoint3",
+                          "rightjoint4", "rightjoint5", "rightjoint6"]
             }
 
     def plan_to_joint_values(self, joint_values, arm="left"):

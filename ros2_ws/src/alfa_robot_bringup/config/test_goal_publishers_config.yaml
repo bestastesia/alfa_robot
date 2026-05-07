@@ -17,8 +17,8 @@
 # 整机操作时取消 alfa_robot_controllers.yaml 中的关节注释，
 # 并将下方 joints 和 positions 改为 12 关节格式
 #
-# 12关节顺序: turn, updown, leftarmbase, leftjoint1, leftjoint2, leftjoint3, leftjoint4,
-#             rightarmbase, rightjoint1, rightjoint2, rightjoint3, rightjoint4
+# 10关节顺序: turn, updown, leftjoint1, leftjoint2, leftjoint3, leftjoint4,
+#             rightjoint1, rightjoint2, rightjoint3, rightjoint4
 # 整机示例: pos1: [0.0, 0.5, 0.0, 0.25, 0.785, 0.785, 0.785, 0.0, 0.25, 0.785, 0.785, 0.785]
 #
 

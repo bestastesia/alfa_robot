@@ -41,9 +41,9 @@ BASE_FRAME = "base_link"
 # 所有属于 dual_arm_with_base 的关节（按 SRDF 顺序）
 DUAL_ARM_JOINTS = [
     "updown", "turn",
-    "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint1", "leftjoint2", "leftjoint3",
     "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4",
+    "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4",
 ]
 
 

@@ -36,7 +36,6 @@ torso_group_controller:
 left_arm_controller:
   ros__parameters:
     joints:
-      - leftarmbase
       - leftjoint1
       - leftjoint2
       - leftjoint3
@@ -52,11 +51,11 @@ left_arm_controller:
 right_arm_controller:
   ros__parameters:
     joints:
-      - rightarmbase
       - rightjoint1
       - rightjoint2
       - rightjoint3
       - rightjoint4
+      - rightjoint5
     command_interfaces:
       - position
     state_interfaces:
@@ -68,14 +67,12 @@ all_position_controller:
     joints:
       - turn
       - updown
-      - leftarmbase
       - leftjoint1
       - leftjoint2
       - leftjoint3
       - leftjoint4
       - leftjoint5
       # leftjoint6: 硬件尚未实现，实机暂不控制
-      - rightarmbase
       - rightjoint1
       - rightjoint2
       - rightjoint3

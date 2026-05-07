@@ -89,12 +89,12 @@ def get_link_geometries(urdf: yourdfpy.URDF):
 
 
 # MoveIt JMG 关节顺序（与 ik_benchmark.cpp copyJointGroupPositions 一致）
-# dual_arm_with_base 组不含 turn，共 15 个关节
+# dual_arm_with_base 组不含 turn，共 13 个关节
 MOVEIT_NAMES = [
     "updown",
-    "leftarmbase", "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint1", "leftjoint2", "leftjoint3",
     "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint1", "rightjoint2", "rightjoint3",
     "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 

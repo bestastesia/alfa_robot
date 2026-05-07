@@ -374,14 +374,10 @@ void AlfaRobotHW::buildJoints()
   // CANopen joints (can3) - linear actuators
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
     CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_));
-  joints_.push_back(std::make_unique<CanopenJoint>("leftarmbase",
-    CanopenJoint::Config{2, 3.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftjoint1",
-    CanopenJoint::Config{3, 1.0, 0.0, 0.0, -1.0}, *canopen_));
-  joints_.push_back(std::make_unique<CanopenJoint>("rightarmbase",
-    CanopenJoint::Config{4, 3.0, 0.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{2, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
-    CanopenJoint::Config{5, 1.0, 0.0, 0.0, -1.0}, *canopen_));
+    CanopenJoint::Config{3, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   // plate - separate CANopen bus (can4), node 1
   joints_.push_back(std::make_unique<CanopenJoint>("plate",
     CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_plate_));

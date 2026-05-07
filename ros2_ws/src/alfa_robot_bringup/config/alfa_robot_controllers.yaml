@@ -14,7 +14,7 @@
 
 #
 # Gazebo (GZ) / ros2_control: base, left arm, right arm, wheels (velocity).
-# Position: base (turn, updown), left_arm (leftarmbase, leftjoint1-4), right_arm (rightarmbase, rightjoint1-4).
+# Position: base (turn, updown), left_arm (leftjoint1-6), right_arm (rightjoint1-6).
 # Velocity: forward_velocity_controller (left_back, left_forward, right_back, right_forward).
 #
 
@@ -50,7 +50,6 @@ base_position_controller:
 left_arm_position_controller:
   ros__parameters:
     joints:
-      - leftarmbase
       - leftjoint1
       - leftjoint2
       - leftjoint3
@@ -62,7 +61,6 @@ left_arm_position_controller:
 right_arm_position_controller:
   ros__parameters:
     joints:
-      - rightarmbase
       - rightjoint1
       - rightjoint2
       - rightjoint3
@@ -80,20 +78,18 @@ forward_velocity_controller:
       - right_forward
     interface_name: velocity
 
-# GUI 调试用：一个控制器覆盖全部 14 个位置关节
+# GUI 调试用：一个控制器覆盖全部 12 个位置关节
 all_position_controller:
   ros__parameters:
     joints:
       - turn
       - updown
-      - leftarmbase
       - leftjoint1
       - leftjoint2
       - leftjoint3
       - leftjoint4
       - leftjoint5
       - leftjoint6
-      - rightarmbase
       - rightjoint1
       - rightjoint2
       - rightjoint3

@@ -20,12 +20,6 @@
                   <param name="initial_value">${initial_positions['updown']}</param>
                 </state_interface>
             </joint>
-            <joint name="leftarmbase">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['leftarmbase']}</param>
-                </state_interface>
-            </joint>
             <joint name="leftjoint1">
                 <command_interface name="position"/>
                 <state_interface name="position">
@@ -60,12 +54,6 @@
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['leftjoint6']}</param>
-                </state_interface>
-            </joint>
-            <joint name="rightarmbase">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['rightarmbase']}</param>
                 </state_interface>
             </joint>
             <joint name="rightjoint1">

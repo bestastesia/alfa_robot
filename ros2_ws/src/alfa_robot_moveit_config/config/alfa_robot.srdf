@@ -18,7 +18,6 @@
         <joint name="updown"/>
     </group>
     <group name="left_arm">
-        <joint name="leftarmbase"/>
         <joint name="leftjoint1"/>
         <joint name="leftjoint2"/>
         <joint name="leftjoint3"/>
@@ -27,7 +26,6 @@
         <joint name="leftjoint6"/>
     </group>
     <group name="right_arm">
-        <joint name="rightarmbase"/>
         <joint name="rightjoint1"/>
         <joint name="rightjoint2"/>
         <joint name="rightjoint3"/>
@@ -65,14 +63,12 @@
     </group>
     <!--GROUP STATES: Purpose: Define a named state for a particular group, in terms of joint values. This is useful to define states like 'folded arms'-->
     <group_state name="home" group="dual_arms">
-        <joint name="leftarmbase" value="0"/>
         <joint name="leftjoint1" value="0"/>
         <joint name="leftjoint2" value="0"/>
         <joint name="leftjoint3" value="0"/>
         <joint name="leftjoint4" value="0"/>
         <joint name="leftjoint5" value="0"/>
         <joint name="leftjoint6" value="0"/>
-        <joint name="rightarmbase" value="0"/>
         <joint name="rightjoint1" value="0"/>
         <joint name="rightjoint2" value="0"/>
         <joint name="rightjoint3" value="0"/>
@@ -83,14 +79,12 @@
         <joint name="updown" value="0"/>
     </group_state>
     <group_state name="test1_all" group="dual_arms">
-        <joint name="leftarmbase" value="0.0564"/>
         <joint name="leftjoint1" value="0.1635"/>
         <joint name="leftjoint2" value="0.538"/>
         <joint name="leftjoint3" value="-0.5033"/>
         <joint name="leftjoint4" value="0.05"/>
         <joint name="leftjoint5" value="0.4857"/>
         <joint name="leftjoint6" value="0"/>
-        <joint name="rightarmbase" value="0.0318"/>
         <joint name="rightjoint1" value="0.1348"/>
         <joint name="rightjoint2" value="-0.0909"/>
         <joint name="rightjoint3" value="0"/>
@@ -101,14 +95,12 @@
         <joint name="updown" value="0.0787"/>
     </group_state>
     <group_state name="test_high" group="dual_arms">
-        <joint name="leftarmbase" value="0"/>
         <joint name="leftjoint1" value="0"/>
         <joint name="leftjoint2" value="0"/>
         <joint name="leftjoint3" value="0"/>
         <joint name="leftjoint4" value="0"/>
         <joint name="leftjoint5" value="0"/>
         <joint name="leftjoint6" value="0"/>
-        <joint name="rightarmbase" value="0"/>
         <joint name="rightjoint1" value="0"/>
         <joint name="rightjoint2" value="0"/>
         <joint name="rightjoint3" value="0"/>
@@ -130,51 +122,33 @@
     <virtual_joint name="virtual_joint" type="fixed" parent_frame="world" child_link="base_link"/>
     <!--DISABLE COLLISIONS: By default it is assumed that any link of the robot could potentially come into collision with any other link in the robot. This tag disables collision checking between a specified pair of links. -->
     <disable_collisions link1="base_link" link2="camera_link" reason="Never"/>
-    <disable_collisions link1="base_link" link2="leftarmbase_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="leftjoint1_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="leftjoint2_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="leftjoint3_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="lidar_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="base_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="base_link" link2="turn_link" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="updown_link" reason="Never"/>
-    <disable_collisions link1="camera_link" link2="leftarmbase_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="leftjoint1_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="leftjoint2_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="leftjoint3_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="leftjoint4_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="lidar_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="camera_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="rightjoint4_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="camera_link" link2="updown_link" reason="Adjacent"/>
-    <disable_collisions link1="leftarmbase_link" link2="leftjoint1_link" reason="Adjacent"/>
-    <disable_collisions link1="leftarmbase_link" link2="leftjoint2_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="leftjoint3_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="leftjoint4_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="lidar_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="rightarmbase_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="rightjoint1_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="rightjoint2_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="rightjoint3_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="rightjoint4_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="turn_link" reason="Never"/>
-    <disable_collisions link1="leftarmbase_link" link2="updown_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint1_link" link2="leftjoint2_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint1_link" link2="leftjoint3_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="leftjoint4_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="lidar_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="leftjoint1_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="leftjoint1_link" link2="rightjoint3_link" reason="Never"/>
@@ -185,14 +159,12 @@
     <disable_collisions link1="leftjoint2_link" link2="leftjoint4_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="lidar_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="leftjoint2_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="leftjoint2_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="leftjoint4_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint3_link" link2="lidar_link" reason="Never"/>
-    <disable_collisions link1="leftjoint3_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="leftjoint3_link" link2="rightjoint3_link" reason="Never"/>
@@ -200,40 +172,29 @@
     <disable_collisions link1="leftjoint3_link" link2="updown_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="leftjoint5_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint4_link" link2="lidar_link" reason="Never"/>
-    <disable_collisions link1="leftjoint4_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint4_link" link2="updown_link" reason="Never"/>
     <disable_collisions link1="leftjoint5_link" link2="leftjoint6_link" reason="Adjacent"/>
     <disable_collisions link1="leftjoint5_link" link2="lidar_link" reason="Never"/>
-    <disable_collisions link1="leftjoint5_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint5_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint5_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint5_link" link2="updown_link" reason="Never"/>
     <disable_collisions link1="leftjoint6_link" link2="lidar_link" reason="Never"/>
-    <disable_collisions link1="leftjoint6_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="leftjoint6_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="leftjoint6_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="leftjoint6_link" link2="updown_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="plate_link" reason="Never"/>
-    <disable_collisions link1="lidar_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="rightjoint4_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="lidar_link" link2="updown_link" reason="Adjacent"/>
-    <disable_collisions link1="plate_link" link2="rightarmbase_link" reason="Never"/>
     <disable_collisions link1="plate_link" link2="rightjoint1_link" reason="Never"/>
     <disable_collisions link1="plate_link" link2="rightjoint2_link" reason="Never"/>
     <disable_collisions link1="plate_link" link2="turn_link" reason="Never"/>
     <disable_collisions link1="plate_link" link2="updown_link" reason="Adjacent"/>
-    <disable_collisions link1="rightarmbase_link" link2="rightjoint1_link" reason="Adjacent"/>
-    <disable_collisions link1="rightarmbase_link" link2="rightjoint2_link" reason="Never"/>
-    <disable_collisions link1="rightarmbase_link" link2="rightjoint3_link" reason="Never"/>
-    <disable_collisions link1="rightarmbase_link" link2="rightjoint4_link" reason="Never"/>
-    <disable_collisions link1="rightarmbase_link" link2="turn_link" reason="Never"/>
-    <disable_collisions link1="rightarmbase_link" link2="updown_link" reason="Adjacent"/>
     <disable_collisions link1="rightjoint1_link" link2="rightjoint2_link" reason="Adjacent"/>
     <disable_collisions link1="rightjoint1_link" link2="rightjoint3_link" reason="Never"/>
     <disable_collisions link1="rightjoint1_link" link2="rightjoint4_link" reason="Never"/>

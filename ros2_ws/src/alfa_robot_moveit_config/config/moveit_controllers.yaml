@@ -12,14 +12,12 @@ moveit_simple_controller_manager:
     default: true
     joints:
       - updown
-      - leftarmbase
       - leftjoint1
       - leftjoint2
       - leftjoint3
       - leftjoint4
       - leftjoint5
       - leftjoint6
-      - rightarmbase
       - rightjoint1
       - rightjoint2
       - rightjoint3

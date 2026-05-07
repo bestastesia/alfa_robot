@@ -42,14 +42,12 @@
           <!-- Safe positions (rad for revolute, m for prismatic) -->
           <param name="safe_position_turn">0.0</param>
           <param name="safe_position_updown">0.0</param>
-          <param name="safe_position_leftarmbase">0.0</param>
           <param name="safe_position_leftjoint1">0.0</param>
           <param name="safe_position_leftjoint2">0.0</param>
           <param name="safe_position_leftjoint3">0.0</param>
           <param name="safe_position_leftjoint4">0.0</param>
           <param name="safe_position_leftjoint5">0.0</param>
           <param name="safe_position_leftjoint6">0.0</param>
-          <param name="safe_position_rightarmbase">0.0</param>
           <param name="safe_position_rightjoint1">0.0</param>
           <param name="safe_position_rightjoint2">0.0</param>
           <param name="safe_position_rightjoint3">0.0</param>
@@ -90,19 +88,6 @@
         <command_interface name="position">
           <param name="min">0</param>
           <param name="max">0.5</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- rightarmbase (prismatic) -->
-      <joint name="${prefix}rightarmbase">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.14</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -181,19 +166,6 @@
         <command_interface name="position">
           <param name="min">0</param>
           <param name="max">0.15</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftarmbase (prismatic) -->
-      <joint name="${prefix}leftarmbase">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.14</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
