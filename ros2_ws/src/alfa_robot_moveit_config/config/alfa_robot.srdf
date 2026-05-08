@@ -25,10 +25,10 @@
         <joint name="rightjoint6"/>
     </group>
     <group name="vacuum_left">
-        <link name="leftjoint6"/>
+        <link name="left_ee_link"/>
     </group>
     <group name="vacuum_right">
-        <link name="rightjoint6"/>
+        <link name="right_ee_link"/>
     </group>
     <group name="dual_arms">
         <group name="torso_group"/>

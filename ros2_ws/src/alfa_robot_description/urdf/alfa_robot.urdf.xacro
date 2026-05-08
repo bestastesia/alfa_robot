@@ -926,6 +926,20 @@
       velocity="0" />
   </joint>
 
+  <link name="left_ee_link"/>
+  <joint name="left_ee_fixed" type="fixed">
+    <parent link="leftjoint6"/>
+    <child link="left_ee_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="right_ee_link"/>
+  <joint name="right_ee_fixed" type="fixed">
+    <parent link="rightjoint6"/>
+    <child link="right_ee_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"
     prefix="$(arg prefix)"
