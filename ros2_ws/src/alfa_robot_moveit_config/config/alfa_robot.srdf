@@ -86,6 +86,9 @@
     <end_effector name="vacuum_right" parent_link="rightjoint6" group="vacuum_right" parent_group="right_arm"/>
     <end_effector name="vacuum_left_with_base" parent_link="leftjoint6" group="vacuum_left" parent_group="left_arm_with_base"/>
     <end_effector name="vacuum_right_with_base" parent_link="rightjoint6" group="vacuum_right" parent_group="right_arm_with_base"/>
+    <!-- End effectors for dual_arm_with_base group -->
+    <end_effector name="vacuum_left_dual_base" parent_link="leftjoint6" group="vacuum_left" parent_group="dual_arm_with_base"/>
+    <end_effector name="vacuum_right_dual_base" parent_link="rightjoint6" group="vacuum_right" parent_group="dual_arm_with_base"/>
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
     <disable_collisions link1="base_link" link2="pitch" reason="Adjacent"/>
     <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>

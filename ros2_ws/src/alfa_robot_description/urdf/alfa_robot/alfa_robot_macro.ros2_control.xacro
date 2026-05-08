@@ -32,7 +32,6 @@
           <param name="can_interface_right">can1</param>
           <param name="can_interface_canopen">can3</param>
           <param name="can_interface_base">can2</param>
-          <param name="can_interface_plate">can4</param>
           <param name="canopen_profile_velocity">${canopen_profile_velocity}</param>
           <param name="canopen_profile_accel">${canopen_profile_accel}</param>
 
@@ -54,6 +53,7 @@
           <param name="safe_position_rightjoint4">0.0</param>
           <param name="safe_position_rightjoint5">0.0</param>
           <param name="safe_position_rightjoint6">0.0</param>
+          <param name="safe_position_pitch">0.0</param>
         </xacro:unless>
       </hardware>
       <!-- pitch (revolute) -->
@@ -69,9 +69,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- turn (continuous; no URDF limit tag) -->
+      <!-- turn (continuous) -->
       <joint name="${prefix}turn">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -83,7 +86,7 @@
       <joint name="${prefix}updown">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.99</param>
+          <param name="max">1.0</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -96,7 +99,7 @@
       <joint name="${prefix}rightjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.3</param>
+          <param name="max">0.42</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -105,11 +108,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint2 (continuous; URDF limit tag currently 0..0) -->
+      <!-- rightjoint2 (revolute) -->
       <joint name="${prefix}rightjoint2">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -118,11 +121,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint3 (continuous; URDF limit tag currently 0..0) -->
+      <!-- rightjoint3 (revolute) -->
       <joint name="${prefix}rightjoint3">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-1.57079632</param>
+          <param name="max">1.57079632</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -131,11 +134,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint4 (continuous; URDF limit tag currently 0..0) -->
+      <!-- rightjoint4 (revolute) -->
       <joint name="${prefix}rightjoint4">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -144,11 +147,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint5 (continuous; URDF limit tag currently 0..0) -->
+      <!-- rightjoint5 (revolute) -->
       <joint name="${prefix}rightjoint5">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-1.57079632</param>
+          <param name="max">1.57079632</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -174,7 +177,7 @@
       <joint name="${prefix}leftjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.3</param>
+          <param name="max">0.42</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -183,11 +186,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint2 (continuous; URDF limit tag currently 0..0) -->
+      <!-- leftjoint2 (revolute) -->
       <joint name="${prefix}leftjoint2">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -196,11 +199,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint3 (continuous; URDF limit tag currently 0..0) -->
+      <!-- leftjoint3 (revolute) -->
       <joint name="${prefix}leftjoint3">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-1.57079632</param>
+          <param name="max">1.57079632</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -209,11 +212,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint4 (continuous; URDF limit tag currently 0..0) -->
+      <!-- leftjoint4 (revolute) -->
       <joint name="${prefix}leftjoint4">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-3.14159</param>
+          <param name="max">3.14159</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -222,11 +225,11 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint5 (continuous; URDF limit tag currently 0..0) -->
+      <!-- leftjoint5 (revolute) -->
       <joint name="${prefix}leftjoint5">
         <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
+          <param name="min">-1.57079632</param>
+          <param name="max">1.57079632</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -235,7 +238,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint6 (prismatic, new end effector extension) -->
+      <!-- leftjoint6 (prismatic) -->
       <joint name="${prefix}leftjoint6">
         <command_interface name="position">
           <param name="min">0</param>

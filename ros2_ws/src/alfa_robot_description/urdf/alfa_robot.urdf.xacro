@@ -112,11 +112,7 @@
       link="pitch" />
     <axis
       xyz="0 1 0" />
-    <limit
-      lower="0"
-      upper="0.26"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="0.26" effort="10" velocity="0.87"/>
   </joint>
   <link
     name="turn">
@@ -223,11 +219,7 @@
       link="updown" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0.99"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="1.0" effort="10" velocity="1.0"/>
   </joint>
   <link
     name="leftjoint1">
@@ -281,11 +273,7 @@
       link="leftjoint1" />
     <axis
       xyz="1 0 0" />
-    <limit
-      lower="0"
-      upper="0.3"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="0.42" effort="10" velocity="1.0"/>
   </joint>
   <link
     name="leftjoint2">
@@ -329,7 +317,7 @@
   </link>
   <joint
     name="leftjoint2"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0.741 0 0.0425"
       rpy="-1.5708 1.5662 -1.5708" />
@@ -339,11 +327,7 @@
       link="leftjoint2" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="leftjoint3">
@@ -387,7 +371,7 @@
   </link>
   <joint
     name="leftjoint3"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="-0.00035108 0.075999 0.058"
       rpy="-1.5754 -1.5708 0" />
@@ -397,11 +381,7 @@
       link="leftjoint3" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-1.57079632" upper="1.57079632" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="leftjoint4">
@@ -445,7 +425,7 @@
   </link>
   <joint
     name="leftjoint4"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0.311 0 0.058"
       rpy="1.5708 0 1.5708" />
@@ -455,11 +435,7 @@
       link="leftjoint4" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="leftjoint5">
@@ -503,7 +479,7 @@
   </link>
   <joint
     name="leftjoint5"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0 -0.076 0.058"
       rpy="-1.4138 -1.5708 2.9829" />
@@ -513,11 +489,7 @@
       link="leftjoint5" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-1.57079632" upper="1.57079632" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="leftjoint6">
@@ -571,11 +543,7 @@
       link="leftjoint6" />
     <axis
       xyz="1 0 0" />
-    <limit
-      lower="0"
-      upper="0.15"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="0.15" effort="1" velocity="0.05"/>
   </joint>
   <link
     name="rightjoint1">
@@ -629,11 +597,7 @@
       link="rightjoint1" />
     <axis
       xyz="1 0 0" />
-    <limit
-      lower="0"
-      upper="0.3"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="0.42" effort="10" velocity="1.0"/>
   </joint>
   <link
     name="rightjoint2">
@@ -677,7 +641,7 @@
   </link>
   <joint
     name="rightjoint2"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0.741 0 0.0425"
       rpy="0 1.5708 0" />
@@ -687,11 +651,7 @@
       link="rightjoint2" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="rightjoint3">
@@ -735,7 +695,7 @@
   </link>
   <joint
     name="rightjoint3"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0 0.076 0.058"
       rpy="1.4947 -1.5708 -3.0674" />
@@ -745,11 +705,7 @@
       link="rightjoint3" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-1.57079632" upper="1.57079632" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="rightjoint4">
@@ -793,7 +749,7 @@
   </link>
   <joint
     name="rightjoint4"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0.311 0 0.058"
       rpy="1.5708 0 1.5708" />
@@ -803,11 +759,7 @@
       link="rightjoint4" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="rightjoint5">
@@ -851,7 +803,7 @@
   </link>
   <joint
     name="rightjoint5"
-    type="continuous">
+    type="revolute">
     <origin
       xyz="0 -0.0697 0.058"
       rpy="-2.1996 -1.5708 -2.5345" />
@@ -861,11 +813,7 @@
       link="rightjoint5" />
     <axis
       xyz="0 0 1" />
-    <limit
-      lower="0"
-      upper="0"
-      effort="0"
-      velocity="0" />
+    <limit lower="-1.57079632" upper="1.57079632" effort="10" velocity="1.2"/>
   </joint>
   <link
     name="rightjoint6">
@@ -919,11 +867,7 @@
       link="rightjoint6" />
     <axis
       xyz="1 0 0" />
-    <limit
-      lower="0"
-      upper="0.15"
-      effort="0"
-      velocity="0" />
+    <limit lower="0" upper="0.15" effort="1" velocity="0.05"/>
   </joint>
 
   <link name="left_ee_link"/>

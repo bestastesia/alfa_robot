@@ -2,13 +2,6 @@
 # max_velocity/max_acceleration 使用各关节的实际物理极限值
 # 这样 default_velocity_scaling_factor / default_acceleration_scaling_factor 才能有效控制规划速度
 joint_limits:
-  # New URDF base pitch joint
-  pitch:
-    has_velocity_limits: true
-    max_velocity: 0.5
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-
   # CANopen 关节 (leftjoint1, rightjoint1, updown)
   leftjoint1:
     has_velocity_limits: true
@@ -73,6 +66,9 @@ joint_limits:
   # v3 新增关节 (暂未实装硬件驱动，使用保守估计值)
   # leftjoint6: prismatic (末端扩展)
   leftjoint6:
+    has_position_limits: true
+    min_position: 0.0
+    max_position: 0.15
     has_velocity_limits: true
     max_velocity: 0.05
     has_acceleration_limits: true
@@ -85,6 +81,9 @@ joint_limits:
     max_acceleration: 1.5
   # rightjoint6: prismatic (末端扩展)
   rightjoint6:
+    has_position_limits: true
+    min_position: 0.0
+    max_position: 0.15
     has_velocity_limits: true
     max_velocity: 0.05
     has_acceleration_limits: true
@@ -92,6 +91,13 @@ joint_limits:
 
   # RMD 底盘关节
   turn:
+    has_velocity_limits: true
+    max_velocity: 0.87
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+
+  # v4 俯仰关节
+  pitch:
     has_velocity_limits: true
     max_velocity: 0.87
     has_acceleration_limits: true

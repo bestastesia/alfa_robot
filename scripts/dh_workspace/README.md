@@ -51,6 +51,19 @@ python3 scripts/dh_workspace/dh_teach.py   --config scripts/dh_workspace/configs
 
 如果你想尝试 Robotics Toolbox 自带后端，也可以用 `--backend pyplot` 或 `--backend swift`，但不同版本可能存在兼容问题。
 
+如果你想要类似 Swift 浏览器里的“工程示意机械臂”效果，可以使用本工具的 Swift schematic 后端。它不依赖 Robotics Toolbox 对 `DHRobot` 的 Swift 支持，而是直接用 `swift-sim + spatialgeometry` 按 DH/FK 帧绘制粗圆柱连杆、旋转轴承、T 型轴向提示和平动滑轨：
+
+```bash
+pip install swift-sim spatialgeometry-python spatialmath-python 'websockets<11'
+python3 scripts/dh_workspace/dh_teach.py \
+  --config scripts/dh_workspace/configs/alfa_5axis_spherical_wrist.yaml \
+  --backend swift-schematic \
+  --q 0 0 0 0 0 0 \
+  --block
+```
+
+注意：`--backend swift` 是 Robotics Toolbox 原生 `robot.teach(..., backend="swift")`，在部分版本会提示 `DHRobot` 不支持 Swift；`--backend swift-schematic` 是本项目实现的浏览器示意渲染后端，专门用于查看 DH 结构。旧的 `--backend swift-cylinder` 仍作为兼容别名保留。
+
 ## Run Example
 
 ```bash

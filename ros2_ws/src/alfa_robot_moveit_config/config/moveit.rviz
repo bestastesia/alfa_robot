@@ -15,6 +15,11 @@ Visualization Manager:
       Value: true
     - Class: moveit_rviz_plugin/MotionPlanning
       Name: MotionPlanning
+      Planning Request:
+        Interactive Marker Size: 0
+        Planning Group: dual_arm_with_base
+        Query Goal State: true
+        Query Start State: false
       Planned Path:
         Loop Animation: true
         State Display Time: 0.05 s
