@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot name="alfa_robot">
     <group name="base_group">
-        <joint name="pitch"/>
-        <joint name="turn"/>
         <joint name="updown"/>
     </group>
     <group name="torso_group">

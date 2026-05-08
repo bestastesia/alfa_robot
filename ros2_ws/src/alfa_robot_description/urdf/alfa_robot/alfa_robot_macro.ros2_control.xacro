@@ -69,7 +69,7 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- turn (continuous) -->
+      <!-- turn (continuous; no URDF limit tag) -->
       <joint name="${prefix}turn">
         <command_interface name="position"/>
         <state_interface name="position">
@@ -105,9 +105,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint2 (continuous) -->
+      <!-- rightjoint2 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}rightjoint2">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -115,9 +118,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint3 (continuous) -->
+      <!-- rightjoint3 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}rightjoint3">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -125,9 +131,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint4 (continuous) -->
+      <!-- rightjoint4 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}rightjoint4">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -135,9 +144,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint5 (continuous) -->
+      <!-- rightjoint5 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}rightjoint5">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -171,9 +183,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint2 (continuous) -->
+      <!-- leftjoint2 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}leftjoint2">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -181,9 +196,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint3 (continuous) -->
+      <!-- leftjoint3 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}leftjoint3">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -191,9 +209,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint4 (continuous) -->
+      <!-- leftjoint4 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}leftjoint4">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -201,9 +222,12 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- leftjoint5 (continuous) -->
+      <!-- leftjoint5 (continuous; URDF limit tag currently 0..0) -->
       <joint name="${prefix}leftjoint5">
-        <command_interface name="position"/>
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0</param>
+        </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>

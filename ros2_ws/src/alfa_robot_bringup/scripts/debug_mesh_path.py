@@ -16,8 +16,8 @@ def main():
             f.write(json.dumps(entry) + "\n")
         return
 
-    mesh_base = os.path.join(pkg, "meshes", "alfa_robot")
-    collision_file = os.path.join(mesh_base, "collision", "rightarmbase.STL")
+    mesh_base = os.path.join(pkg, "meshes", "alfa_robot_v2_arm_v4_new")
+    collision_file = os.path.join(mesh_base, "collision", "rightjoint1.STL")
     list_collision = []
     list_visual = []
     if os.path.isdir(mesh_base):
