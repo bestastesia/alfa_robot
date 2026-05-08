@@ -17,6 +17,7 @@ find_package(random_numbers REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(srdfdom REQUIRED)
 find_package(urdf REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # ── IkSolver library ───────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ ament_target_dependencies(ik_solver_lib PUBLIC
   random_numbers
   srdfdom
   urdf
+  nlohmann_json
 )
 
 # ── ik_benchmark executable ────────────────────────────────────────────────
@@ -62,6 +64,7 @@ ament_target_dependencies(ik_benchmark PUBLIC
   random_numbers
   srdfdom
   urdf
+  nlohmann_json
 )
 
 target_link_libraries(ik_benchmark PRIVATE ik_solver_lib)
@@ -86,6 +89,7 @@ ament_target_dependencies(ik_demo PUBLIC
   random_numbers
   srdfdom
   urdf
+  nlohmann_json
 )
 
 target_link_libraries(ik_demo PRIVATE ik_solver_lib)
