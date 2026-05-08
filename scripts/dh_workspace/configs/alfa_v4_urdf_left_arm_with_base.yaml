@@ -1,0 +1,70 @@
+name: ALFA V4 URDF Left Arm With Base
+convention: urdf_origin_axis
+source:
+  commit: 303f191a0dde617bcd5601cf918eb9b07861abcb
+  file: ros2_ws/src/alfa_robot_description/urdf/alfa_robot/alfa_robot_macro.xacro
+notes: |
+  Exact URDF origin/axis chain for left_arm_with_base-style simulation.
+  This is not a standard DH table; it preserves each URDF joint origin rpy/xyz and axis directly.
+  Chain: updown -> leftjoint1 -> leftjoint2 -> leftjoint3 -> leftjoint4 -> leftjoint5 -> leftjoint6 -> left_ee_joint.
+links:
+  - name: updown
+    type: prismatic
+    origin:
+      xyz: [-0.23547, 0.0, 0.57771]
+      rpy: [0.0, 0.0, 0.0]
+    axis: [0.0, 0.0, 1.0]
+    qlim: [0.0, 1.0]
+  - name: leftjoint1
+    type: prismatic
+    origin:
+      xyz: [-0.00487, 0.232101, 0.232]
+      rpy: [0.0, 0.0, 0.0]
+    axis: [1.0, 0.0, 0.0]
+    qlim: [0.0, 0.42]
+  - name: leftjoint2
+    type: revolute
+    origin:
+      xyz: [0.67335, 0.10135, 0.04]
+      rpy: [0.0, 1.5708, 0.0]
+    axis: [0.0, 0.0, 1.0]
+    qlim: [-3.14159265, 3.14159265]
+  - name: leftjoint3
+    type: revolute
+    origin:
+      xyz: [0.01, 0.0058, 0.098]
+      rpy: [-1.5708, -1.5708, 0.0]
+    axis: [0.0, 0.0, 1.0]
+    qlim: [-1.57079632, 1.57079632]
+  - name: leftjoint4
+    type: revolute
+    origin:
+      xyz: [0.3418, -0.01, -0.082]
+      rpy: [1.5708, 0.0, 1.5708]
+    axis: [0.0, 0.0, 1.0]
+    qlim: [-3.14159265, 3.14159265]
+  - name: leftjoint5
+    type: revolute
+    origin:
+      xyz: [0.01, -0.0022, 0.098]
+      rpy: [-1.5708, -1.5708, 0.0]
+    axis: [0.0, 0.0, 1.0]
+    qlim: [-1.57079632, 1.57079632]
+  - name: leftjoint6
+    type: prismatic
+    origin:
+      xyz: [0.13, 0.0, 0.1435]
+      rpy: [1.5708, 0.0, 0.0]
+    axis: [1.0, 0.0, 0.0]
+    qlim: [0.0, 0.15]
+  - name: left_ee_joint
+    type: fixed
+    origin:
+      xyz: [0.05, 0.0, 0.0]
+      rpy: [0.0, 0.0, 0.0]
+    qlim: [0.0, 0.0]
+sampling:
+  samples: 30000
+  seed: 42
+output:
+  csv: alfa_v4_urdf_left_arm_with_base_workspace.csv
