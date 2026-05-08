@@ -53,7 +53,6 @@ target_include_directories(ik_benchmark PUBLIC
 
 ament_target_dependencies(ik_benchmark PUBLIC
   moveit_core
-  moveit_ros_planning
   moveit_msgs
   pluginlib
   rclcpp
@@ -78,7 +77,6 @@ target_include_directories(ik_demo PUBLIC
 
 ament_target_dependencies(ik_demo PUBLIC
   moveit_core
-  moveit_ros_planning
   moveit_msgs
   pluginlib
   rclcpp
@@ -92,9 +90,33 @@ ament_target_dependencies(ik_demo PUBLIC
 
 target_link_libraries(ik_demo PRIVATE ik_solver_lib)
 
+# ── ik_range_grid executable ──────────────────────────────────────────────
+
+add_executable(ik_range_grid src/range_grid_main.cpp)
+
+target_include_directories(ik_range_grid PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(ik_range_grid PUBLIC
+  moveit_core
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(ik_range_grid PRIVATE ik_solver_lib)
+
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -107,7 +129,12 @@ install(DIRECTORY include/
 install(PROGRAMS
   scripts/benchmark.py
   scripts/demo.py
+  scripts/ik_range_grid.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY models/
+  DESTINATION share/${PROJECT_NAME}/models
 )
 
 ament_package()

@@ -16,11 +16,13 @@ namespace ik_benchmark {
 IkSolver::IkSolver(const std::string& group_name,
                    const std::string& solver_plugin,
                    double timeout,
-                   bool free_joint6)
+                   bool free_joint6,
+                   const IkSolverOptions& options)
     : group_name_(group_name)
     , solver_plugin_(solver_plugin)
     , default_timeout_(timeout)
     , free_joint6_(free_joint6)
+    , options_(options)
 {
     is_dual_ = (group_name == "dual_arm_with_base" || group_name == "dual_arms");
 
@@ -34,11 +36,19 @@ IkSolver::IkSolver(const std::string& group_name,
 
 void IkSolver::loadRobotModel()
 {
-    std::string desc_share   = ament_index_cpp::get_package_share_directory("alfa_robot_description");
-    std::string moveit_share = ament_index_cpp::get_package_share_directory("alfa_robot_moveit_config");
+    std::string desc_share;
+    std::string moveit_share;
+    if (options_.urdf_path.empty()) {
+        desc_share = ament_index_cpp::get_package_share_directory("alfa_robot_description");
+    }
+    if (options_.srdf_path.empty()) {
+        moveit_share = ament_index_cpp::get_package_share_directory("alfa_robot_moveit_config");
+    }
 
-    std::string urdf_path = desc_share + "/urdf/alfa_robot/alfa_robot.urdf";
-    {
+    std::string urdf_path = options_.urdf_path.empty()
+        ? desc_share + "/urdf/alfa_robot/alfa_robot.urdf"
+        : options_.urdf_path;
+    if (options_.urdf_path.empty()) {
         std::ifstream test(urdf_path);
         if (!test.good()) {
             std::string xacro_src = desc_share + "/urdf/alfa_robot.urdf.xacro";
@@ -50,7 +60,9 @@ void IkSolver::loadRobotModel()
         }
     }
 
-    std::string srdf_path = moveit_share + "/config/alfa_robot.srdf";
+    std::string srdf_path = options_.srdf_path.empty()
+        ? moveit_share + "/config/alfa_robot.srdf"
+        : options_.srdf_path;
 
     auto read_file = [](const std::string& path) -> std::string {
         std::ifstream f(path);
@@ -85,7 +97,9 @@ void IkSolver::loadRobotModel()
     variable_names_ = jmg_->getVariableNames();
 
     // 确定 base_frame: 对于含基座关节的组用 base_link，否则用第一个关节的 parent link
-    if (is_dual_ || group_name_.find("_with_base") != std::string::npos) {
+    if (!options_.base_frame.empty()) {
+        base_frame_ = options_.base_frame;
+    } else if (is_dual_ || group_name_.find("_with_base") != std::string::npos) {
         base_frame_ = "base_link";
     } else {
         // 找到组中第一个 active joint 的 parent link
@@ -98,12 +112,12 @@ void IkSolver::loadRobotModel()
     }
 
     if (is_dual_) {
-        tip_link_  = "leftjoint6";
-        tip_link2_ = "rightjoint6";
+        tip_link_  = options_.tip_link.empty() ? "leftjoint6" : options_.tip_link;
+        tip_link2_ = options_.tip_link2.empty() ? "rightjoint6" : options_.tip_link2;
     } else if (group_name_.find("left") != std::string::npos) {
-        tip_link_ = "leftjoint6";
+        tip_link_ = options_.tip_link.empty() ? "leftjoint6" : options_.tip_link;
     } else {
-        tip_link_ = "rightjoint6";
+        tip_link_ = options_.tip_link.empty() ? "rightjoint6" : options_.tip_link;
     }
 }
 

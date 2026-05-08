@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="alfa_robot">
+  <group name="base_group">
+    <joint name="updown"/>
+  </group>
+  <group name="left_arm">
+    <joint name="leftjoint1"/>
+    <joint name="leftjoint2"/>
+    <joint name="leftjoint3"/>
+    <joint name="leftjoint4"/>
+    <joint name="leftjoint5"/>
+    <joint name="leftjoint6"/>
+  </group>
+  <group name="left_arm_with_base">
+    <group name="base_group"/>
+    <group name="left_arm"/>
+  </group>
+  <group_state name="home" group="left_arm">
+    <joint name="leftjoint1" value="0"/>
+    <joint name="leftjoint2" value="0"/>
+    <joint name="leftjoint3" value="0"/>
+    <joint name="leftjoint4" value="0"/>
+    <joint name="leftjoint5" value="0"/>
+    <joint name="leftjoint6" value="0"/>
+  </group_state>
+  <group_state name="home" group="left_arm_with_base">
+    <joint name="updown" value="0"/>
+    <joint name="leftjoint1" value="0"/>
+    <joint name="leftjoint2" value="0"/>
+    <joint name="leftjoint3" value="0"/>
+    <joint name="leftjoint4" value="0"/>
+    <joint name="leftjoint5" value="0"/>
+    <joint name="leftjoint6" value="0"/>
+  </group_state>
+</robot>

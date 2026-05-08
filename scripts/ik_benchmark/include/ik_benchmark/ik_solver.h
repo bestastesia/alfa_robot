@@ -21,12 +21,21 @@ struct IkResult {
     double ori_error = 0.0;
 };
 
+struct IkSolverOptions {
+    std::string urdf_path;
+    std::string srdf_path;
+    std::string base_frame;
+    std::string tip_link;
+    std::string tip_link2;
+};
+
 class IkSolver {
 public:
     IkSolver(const std::string& group_name,
              const std::string& solver_plugin,
              double timeout = 2.0,
-             bool free_joint6 = false);
+             bool free_joint6 = false,
+             const IkSolverOptions& options = {});
 
     /// 单臂 IK
     IkResult solve(const Eigen::Isometry3d& target,
@@ -68,6 +77,7 @@ private:
     double default_timeout_;
     bool free_joint6_;
     bool is_dual_;
+    IkSolverOptions options_;
 
     moveit::core::RobotModelPtr robot_model_;
     const moveit::core::JointModelGroup* jmg_ = nullptr;
