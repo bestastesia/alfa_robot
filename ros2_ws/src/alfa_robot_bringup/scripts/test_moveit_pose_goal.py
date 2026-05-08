@@ -31,7 +31,7 @@ class MoveItPoseGoalTester(Node):
         super().__init__("moveit_pose_goal_tester")
 
         self.declare_parameter("group_name", "left_arm")
-        self.declare_parameter("ee_link", "left_ee_link")
+        self.declare_parameter("ee_link", "leftjoint6")
         self.declare_parameter("reference_frame", "base_link")
         self.declare_parameter("target_x", 0.357)
         self.declare_parameter("target_y", -0.705)

@@ -1,6 +1,7 @@
 # Default initial positions for alfa_robot's ros2_control fake system
 
 initial_positions:
+  pitch: 0
   leftjoint1: 0
   leftjoint2: 0
   leftjoint3: 0

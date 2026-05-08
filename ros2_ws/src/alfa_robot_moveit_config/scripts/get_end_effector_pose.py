@@ -138,12 +138,12 @@ class EndEffectorPoseReader(Node):
         self.get_logger().info("\n--- 方法 1: TF ---")
 
         # 尝试不同可能的末端链接名称
-        left_ee_links = ["leftjoint5_link", "leftjoint6_link", "left_ee_link"]
-        right_ee_links = ["rightjoint4_link", "right_ee_link"]
+        leftjoint6s = ["leftjoint5", "leftjoint6", "leftjoint6"]
+        rightjoint6s = ["rightjoint4", "rightjoint6"]
 
         left_pose = None
         left_link_used = None
-        for link in left_ee_links:
+        for link in leftjoint6s:
             left_pose = self.get_pose_via_tf(link)
             if left_pose:
                 left_link_used = link
@@ -151,7 +151,7 @@ class EndEffectorPoseReader(Node):
 
         right_pose = None
         right_link_used = None
-        for link in right_ee_links:
+        for link in rightjoint6s:
             right_pose = self.get_pose_via_tf(link)
             if right_pose:
                 right_link_used = link

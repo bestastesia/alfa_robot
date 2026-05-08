@@ -98,12 +98,12 @@ void IkSolver::loadRobotModel()
     }
 
     if (is_dual_) {
-        tip_link_  = "leftjoint6_link";
-        tip_link2_ = "rightjoint6_link";
+        tip_link_  = "leftjoint6";
+        tip_link2_ = "rightjoint6";
     } else if (group_name_.find("left") != std::string::npos) {
-        tip_link_ = "leftjoint6_link";
+        tip_link_ = "leftjoint6";
     } else {
-        tip_link_ = "rightjoint6_link";
+        tip_link_ = "rightjoint6";
     }
 }
 

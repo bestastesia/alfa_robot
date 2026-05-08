@@ -54,15 +54,24 @@
           <param name="safe_position_rightjoint4">0.0</param>
           <param name="safe_position_rightjoint5">0.0</param>
           <param name="safe_position_rightjoint6">0.0</param>
-          <param name="safe_position_plate">0.0</param>
         </xacro:unless>
       </hardware>
+      <!-- pitch (revolute) -->
+      <joint name="${prefix}pitch">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.26</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
       <!-- turn (continuous) -->
       <joint name="${prefix}turn">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -74,20 +83,7 @@
       <joint name="${prefix}updown">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">1.0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- plate (prismatic, new) -->
-      <joint name="${prefix}plate">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.5</param>
+          <param name="max">0.99</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -100,7 +96,7 @@
       <joint name="${prefix}rightjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.42</param>
+          <param name="max">0.3</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -111,10 +107,7 @@
 
       <!-- rightjoint2 (continuous) -->
       <joint name="${prefix}rightjoint2">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -124,10 +117,7 @@
 
       <!-- rightjoint3 (continuous) -->
       <joint name="${prefix}rightjoint3">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -137,10 +127,7 @@
 
       <!-- rightjoint4 (continuous) -->
       <joint name="${prefix}rightjoint4">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -150,10 +137,7 @@
 
       <!-- rightjoint5 (continuous) -->
       <joint name="${prefix}rightjoint5">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -178,7 +162,7 @@
       <joint name="${prefix}leftjoint1">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.42</param>
+          <param name="max">0.3</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
@@ -189,10 +173,7 @@
 
       <!-- leftjoint2 (continuous) -->
       <joint name="${prefix}leftjoint2">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -202,10 +183,7 @@
 
       <!-- leftjoint3 (continuous) -->
       <joint name="${prefix}leftjoint3">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -215,10 +193,7 @@
 
       <!-- leftjoint4 (continuous) -->
       <joint name="${prefix}leftjoint4">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>
@@ -228,10 +203,7 @@
 
       <!-- leftjoint5 (continuous) -->
       <joint name="${prefix}leftjoint5">
-        <command_interface name="position">
-          <param name="min">-3.14159</param>
-          <param name="max">3.14159</param>
-        </command_interface>
+        <command_interface name="position"/>
         <state_interface name="position">
           <param name="initial_value">0.0</param>
         </state_interface>

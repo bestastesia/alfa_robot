@@ -14,7 +14,7 @@
 
 #
 # Gazebo (GZ) / ros2_control: base, left arm, right arm, wheels (velocity).
-# Position: base (turn, updown), left_arm (leftjoint1-6), right_arm (rightjoint1-6).
+# Position: base (pitch, turn, updown), left_arm (leftjoint1-6), right_arm (rightjoint1-6).
 # Velocity: forward_velocity_controller (left_back, left_forward, right_back, right_forward).
 #
 
@@ -43,6 +43,7 @@ controller_manager:
 base_position_controller:
   ros__parameters:
     joints:
+      - pitch
       - turn
       - updown
     interface_name: position
@@ -82,6 +83,7 @@ forward_velocity_controller:
 all_position_controller:
   ros__parameters:
     joints:
+      - pitch
       - turn
       - updown
       - leftjoint1

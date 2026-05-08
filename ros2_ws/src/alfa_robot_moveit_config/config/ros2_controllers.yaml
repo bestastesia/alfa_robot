@@ -20,6 +20,8 @@ joint_state_broadcaster:
 dual_arms_controller:
   ros__parameters:
     joints:
+      - pitch
+      - turn
       - updown
       - leftjoint1
       - leftjoint2

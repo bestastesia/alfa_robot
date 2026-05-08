@@ -8,6 +8,12 @@
                 <!-- By default, set up controllers for simulation. This won't work on real hardware -->
                 <plugin>mock_components/GenericSystem</plugin>
             </hardware>
+            <joint name="pitch">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['pitch']}</param>
+                </state_interface>
+            </joint>
             <joint name="turn">
                 <command_interface name="position"/>
                 <state_interface name="position">

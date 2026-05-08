@@ -23,8 +23,8 @@
 #include <random>
 
 static const std::string PLANNING_GROUP = "dual_arm_with_base";
-static const std::string LEFT_TIP       = "leftjoint6_link";
-static const std::string RIGHT_TIP      = "rightjoint6_link";
+static const std::string LEFT_TIP       = "leftjoint6";
+static const std::string RIGHT_TIP      = "rightjoint6";
 
 class DualArmPlannerNode : public rclcpp::Node
 {

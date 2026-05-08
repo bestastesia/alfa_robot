@@ -25,6 +25,7 @@ controller_manager:
 torso_group_controller:
   ros__parameters:
     joints:
+      - pitch
       - turn
       - updown
     command_interfaces:
@@ -65,6 +66,7 @@ right_arm_controller:
 all_position_controller:
   ros__parameters:
     joints:
+      - pitch
       - turn
       - updown
       - leftjoint1

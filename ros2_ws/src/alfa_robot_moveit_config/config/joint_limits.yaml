@@ -2,6 +2,13 @@
 # max_velocity/max_acceleration 使用各关节的实际物理极限值
 # 这样 default_velocity_scaling_factor / default_acceleration_scaling_factor 才能有效控制规划速度
 joint_limits:
+  # New URDF base pitch joint
+  pitch:
+    has_velocity_limits: true
+    max_velocity: 0.5
+    has_acceleration_limits: true
+    max_acceleration: 1.0
+
   # CANopen 关节 (leftjoint1, rightjoint1, updown)
   leftjoint1:
     has_velocity_limits: true

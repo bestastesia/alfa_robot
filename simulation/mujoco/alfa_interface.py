@@ -3,22 +3,21 @@ import mujoco
 
 class AlfaRobotInterface:
     """
-    Alfa 机器人混合控制底层接口 (v3 — 双臂 7DOF 对称)
-    右臂: rightarmbase, rightjoint1-6 (7 DOF)
-    左臂: leftarmbase,  leftjoint1-6  (7 DOF)
+    Alfa 机器人混合控制底层接口 (v2_arm_v4 新 URDF)
+    基座: pitch, turn, updown
+    双臂: leftjoint1-6 / rightjoint1-6
     """
     def __init__(self, model, data):
         self.model = model
         self.data = data
 
         self.joint_names = [
-            "turn", "updown", "plate",
-            "rightarmbase", "rightjoint1", "rightjoint2", "rightjoint3",
-            "rightjoint4",  "rightjoint5", "rightjoint6",
-            "leftarmbase",  "leftjoint1",  "leftjoint2",  "leftjoint3",
-            "leftjoint4",   "leftjoint5",  "leftjoint6",
+            "pitch", "turn", "updown",
+            "leftjoint1", "leftjoint2", "leftjoint3",
+            "leftjoint4", "leftjoint5", "leftjoint6",
+            "rightjoint1", "rightjoint2", "rightjoint3",
+            "rightjoint4", "rightjoint5", "rightjoint6",
         ]
-
         self.actuator_ids = {}
         self.jnt_qpos_adrs = {}
         self.jnt_qvel_adrs = {}

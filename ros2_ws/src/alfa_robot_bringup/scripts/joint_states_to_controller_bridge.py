@@ -19,6 +19,7 @@ from std_msgs.msg import Float64MultiArray
 
 
 _DEFAULT_JOINT_ORDER = [
+    "pitch",
     "turn",
     "updown",
     "leftjoint1",

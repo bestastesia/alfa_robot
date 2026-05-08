@@ -3,8 +3,8 @@
 双末端位姿规划脚本
 
 使用 dual_arm_with_base 规划组（bio_ik 求解器），同时指定：
-  - 左臂末端 (leftjoint6_link) 目标位姿
-  - 右臂末端 (rightjoint4_link) 目标位姿
+  - 左臂末端 (leftjoint6) 目标位姿
+  - 右臂末端 (rightjoint4) 目标位姿
 
 bio_ik 会协调 updown 关节和双臂关节，找到满足两个末端约束的全身解。
 
@@ -33,14 +33,14 @@ import tf2_ros
 import time
 
 
-LEFT_TIP = "leftjoint6_link"
-RIGHT_TIP = "rightjoint4_link"
+LEFT_TIP = "leftjoint6"
+RIGHT_TIP = "rightjoint4"
 PLANNING_GROUP = "dual_arm_with_base"
 BASE_FRAME = "base_link"
 
 # 所有属于 dual_arm_with_base 的关节（按 SRDF 顺序）
 DUAL_ARM_JOINTS = [
-    "updown", "turn",
+    "pitch", "turn", "updown",
     "leftjoint1", "leftjoint2", "leftjoint3",
     "leftjoint4", "leftjoint5", "leftjoint6",
     "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4",

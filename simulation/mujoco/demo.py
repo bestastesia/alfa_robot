@@ -7,38 +7,38 @@ def main():
     env = AlfaEnv(model_path="scene.xml", sim_dt=0.002, frame_skip=10)
     env.reset()
 
-    # v2 joint mapping:
-    #   右臂: rightarmbase(横移), rightjoint1(伸缩), rightjoint2-4(旋转)
-    #   左臂: leftarmbase(横移), leftjoint1(伸缩), leftjoint2-5(旋转), leftjoint6(末端伸缩)
+    # v2_arm_v4 joint mapping:
+    #   基座: pitch, turn, updown
+    #   双臂: leftjoint1-6 / rightjoint1-6
     ctrl_cmds = {
         "base_x":        0.0,
         "base_y":        0.0,
         "base_yaw":      0.0,
+        "pitch":         0.0,
         "turn":          0.0,
         "updown":        0.3,
-        "plate":         0.0,
 
-        "rightarmbase":  0.0,
+        "leftjoint1":    0.0,
+        "leftjoint2":   -math.pi / 2.0,
+        "leftjoint3":    0.0,
+        "leftjoint4":    math.pi / 2.0,
+        "leftjoint5":    0.0,
+        "leftjoint6":    0.0,
+
         "rightjoint1":   0.0,
         "rightjoint2":   0.8,
         "rightjoint3":   0.0,
         "rightjoint4":   math.pi / 2.0,
-
-        "leftarmbase":   0.0,
-        "leftjoint1":    0.0,
-        "leftjoint2":   -math.pi/2,
-        "leftjoint3":    0.0,
-        "leftjoint4":    math.pi/2,
-        "leftjoint5":    0.0,
-        "leftjoint6":    0.0,
+        "rightjoint5":   0.0,
+        "rightjoint6":   0.0,
 
         "right_suction": 1.0,
         "left_suction":  1.0,
     }
 
-    print("\n[ 测试启动 — v2 机器人 ]")
-    print("  右臂: rightarmbase/rightjoint1-4")
-    print("  左臂: leftarmbase/leftjoint1-6 (新增 leftjoint5/6)")
+    print("\n[ 测试启动 — v2_arm_v4 新 URDF 机器人 ]")
+    print("  基座: pitch/turn/updown")
+    print("  双臂: leftjoint1-6 / rightjoint1-6")
 
     try:
         env.step(ctrl_cmds)

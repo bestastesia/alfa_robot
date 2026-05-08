@@ -122,7 +122,7 @@ class ArmFullPlanner(Node):
 
     def get_end_effector_pose(self, arm="left"):
         """获取末端执行器位姿"""
-        ee_link = "left_ee_link" if arm == "left" else "right_ee_link"
+        ee_link = "leftjoint6" if arm == "left" else "rightjoint6"
 
         try:
             transform = self.tf_buffer.lookup_transform(
@@ -148,7 +148,7 @@ class ArmFullPlanner(Node):
         # 显示左臂末端位姿
         left_pose = self.get_end_effector_pose("left")
         if left_pose:
-            self.get_logger().info("左臂末端位姿 (left_ee_link):")
+            self.get_logger().info("左臂末端位姿 (leftjoint6):")
             self.get_logger().info(f"  位置: x={left_pose.position.x:.4f}, "
                                    f"y={left_pose.position.y:.4f}, "
                                    f"z={left_pose.position.z:.4f}")
@@ -161,7 +161,7 @@ class ArmFullPlanner(Node):
         right_pose = self.get_end_effector_pose("right")
         if right_pose:
             self.get_logger().info("-" * 60)
-            self.get_logger().info("右臂末端位姿 (right_ee_link):")
+            self.get_logger().info("右臂末端位姿 (rightjoint6):")
             self.get_logger().info(f"  位置: x={right_pose.position.x:.4f}, "
                                    f"y={right_pose.position.y:.4f}, "
                                    f"z={right_pose.position.z:.4f}")
@@ -177,7 +177,7 @@ class ArmFullPlanner(Node):
         if arm == "left":
             return {
                 "group_name": "left_arm_with_base",
-                "ee_link": "left_ee_link",
+                "ee_link": "leftjoint6",
                 "controller": "left_arm_with_base_controller",
                 "joints": ["updown", "leftjoint1", "leftjoint2", "leftjoint3",
                           "leftjoint4", "leftjoint5", "leftjoint6"]
@@ -185,7 +185,7 @@ class ArmFullPlanner(Node):
         else:
             return {
                 "group_name": "right_arm_with_base",
-                "ee_link": "right_ee_link",
+                "ee_link": "rightjoint6",
                 "controller": "right_arm_with_base_controller",
                 "joints": ["updown", "rightjoint1", "rightjoint2", "rightjoint3",
                           "rightjoint4", "rightjoint5", "rightjoint6"]
