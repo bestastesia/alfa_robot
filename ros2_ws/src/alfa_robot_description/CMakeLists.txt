@@ -16,6 +16,13 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
+# install 后用 xacro 生成 URDF（供 ik_benchmark 等离线工具使用）
+find_package(xacro REQUIRED)
+xacro_add_files(
+  urdf/alfa_robot.urdf.xacro
+  INSTALL DESTINATION share/${PROJECT_NAME}/urdf
+)
+
 # 显式安装 collision 网格，确保 RViz/Gazebo 能解析 package://.../collision/*.STL
 install(
   DIRECTORY meshes/alfa_robot/collision

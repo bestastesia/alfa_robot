@@ -183,4 +183,4 @@ lidar_ws/src/fast_lio/
 lidar_ws/src/livox_ros_driver2/
 
 # Random temp files
-[0-9]*.[0-9]*.[0-9]*
+**/[0-9]*.[0-9]*.[0-9]*

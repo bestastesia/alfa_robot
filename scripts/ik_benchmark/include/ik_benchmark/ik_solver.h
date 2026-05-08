@@ -4,6 +4,7 @@
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/kinematics_base/kinematics_base.h>
 #include <pluginlib/class_loader.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <Eigen/Geometry>
 #include <string>
 #include <vector>
@@ -21,7 +22,8 @@ struct IkResult {
 
 class IkSolver {
 public:
-    /// 离线加载: 直接传入 URDF/SRDF 路径
+    /// 离线加载: 直接传入 URDF/SRDF 路径 + 求解器插件名
+    /// 使用 RobotModelLoader 自动加载 kinematics.yaml 配置
     IkSolver(const std::string& urdf_path,
              const std::string& srdf_path,
              const std::string& group_name,
@@ -46,7 +48,7 @@ public:
     /// 从 home 姿态出发的 seed (全零)
     std::vector<double> getHomeSeed() const;
 
-    /// 随机 seed (clamped to joint limits)
+    /// 随机 seed
     std::vector<double> getRandomSeed() const;
 
     /// 获取关节名列表
@@ -59,22 +61,22 @@ public:
     bool isDualArm() const { return is_dual_; }
 
 private:
-    void loadRobotModel(const std::string& urdf_path, const std::string& srdf_path);
-    void loadIkPlugin();
-
     std::string group_name_;
     std::string solver_plugin_;
     double default_timeout_;
     bool is_dual_ = false;
 
     moveit::core::RobotModelPtr robot_model_;
+    rclcpp::Node::SharedPtr node_;
     const moveit::core::JointModelGroup* jmg_ = nullptr;
-    std::shared_ptr<pluginlib::ClassLoader<kinematics::KinematicsBase>> loader_;
     kinematics::KinematicsBasePtr ik_solver_;
+    std::shared_ptr<pluginlib::ClassLoader<kinematics::KinematicsBase>> loader_;
 
     std::vector<std::string> joint_names_;
     std::string tip_link_;          // 单臂末端 or 双臂左末端
     std::string tip_link2_;         // 双臂右臂末端
+
+    void loadIkPlugin();
 };
 
 } // namespace ik_benchmark

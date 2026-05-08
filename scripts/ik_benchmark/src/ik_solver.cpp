@@ -1,12 +1,21 @@
 #include "ik_benchmark/ik_solver.h"
 #include <moveit/robot_state/robot_state.h>
+#include <moveit/robot_model_loader/robot_model_loader.h>
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <chrono>
 #include <fstream>
 #include <rclcpp/rclcpp.hpp>
-#include <srdfdom/model.h>
-#include <urdf_parser/urdf_parser.h>
+#include <pluginlib/class_loader.hpp>
 
 namespace ik_benchmark {
+
+static std::string readFile(const std::string& path)
+{
+    std::ifstream f(path);
+    if (!f.is_open()) throw std::runtime_error("Cannot open file: " + path);
+    return std::string((std::istreambuf_iterator<char>(f)),
+                        std::istreambuf_iterator<char>());
+}
 
 IkSolver::IkSolver(const std::string& urdf_path,
                    const std::string& srdf_path,
@@ -18,38 +27,28 @@ IkSolver::IkSolver(const std::string& urdf_path,
     , default_timeout_(timeout)
 {
     is_dual_ = (group_name == "dual_arm_with_base" || group_name == "dual_arms");
-    loadRobotModel(urdf_path, srdf_path);
-    loadIkPlugin();
-}
 
-void IkSolver::loadRobotModel(const std::string& urdf_path, const std::string& srdf_path)
-{
-    // 解析 URDF
-    std::ifstream urdf_file(urdf_path);
-    if (!urdf_file.is_open()) {
-        throw std::runtime_error("Cannot open URDF: " + urdf_path);
-    }
-    std::string urdf_str((std::istreambuf_iterator<char>(urdf_file)),
-                          std::istreambuf_iterator<char>());
-    auto urdf_model = urdf_parser::parseURDF(urdf_str);
-    if (!urdf_model) {
-        throw std::runtime_error("Failed to parse URDF");
-    }
+    node_ = rclcpp::Node::make_shared("ik_solver_node");
 
-    // 解析 SRDF
-    std::ifstream srdf_file(srdf_path);
-    if (!srdf_file.is_open()) {
-        throw std::runtime_error("Cannot open SRDF: " + srdf_path);
-    }
-    std::string srdf_str((std::istreambuf_iterator<char>(srdf_file)),
-                          std::istreambuf_iterator<char>());
-    srdf::Model srdf_model;
-    if (!srdf_model.initString(urdf_model, srdf_str)) {
-        throw std::runtime_error("Failed to parse SRDF");
-    }
+    std::string urdf_str = readFile(urdf_path);
+    std::string srdf_str = readFile(srdf_path);
 
-    // 构建 RobotModel
-    robot_model_ = std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
+    // 在 ROS 参数上发布 URDF/SRDF (RobotModelLoader 需要)
+    node_->declare_parameter("robot_description", urdf_str);
+    node_->declare_parameter("robot_description_semantic", srdf_str);
+
+    // 加载 RobotModel (不自动加载 IK 求解器，我们手动加载)
+    robot_model_loader::RobotModelLoader::Options options("robot_description");
+    options.urdf_string_ = urdf_str;
+    options.srdf_string_ = srdf_str;
+    options.load_kinematics_solvers_ = false;
+
+    auto model_loader = std::make_shared<robot_model_loader::RobotModelLoader>(node_, options);
+    robot_model_ = model_loader->getModel();
+
+    if (!robot_model_) {
+        throw std::runtime_error("Failed to load RobotModel");
+    }
 
     jmg_ = robot_model_->getJointModelGroup(group_name_);
     if (!jmg_) {
@@ -71,6 +70,9 @@ void IkSolver::loadRobotModel(const std::string& urdf_path, const std::string& s
     } else {
         tip_link_ = "rightjoint6_link";
     }
+
+    // 手动用 pluginlib 加载指定 IK 求解器
+    loadIkPlugin();
 }
 
 void IkSolver::loadIkPlugin()
@@ -85,12 +87,20 @@ void IkSolver::loadIkPlugin()
             solver_plugin_ + "': " + e.what());
     }
 
-    // 初始化求解器
+    // 确定 base frame: 单臂关节链从 updown_link 开始
+    std::string base_frame = "base_link";
+    if (!is_dual_) {
+        // 单臂: leftjoint1/rightjoint1 连接在 updown_link 上
+        base_frame = "updown_link";
+    }
+
+    // Humble MoveIt: initialize(node, robot_model, group, base_frame, tips, search_discretization)
     if (is_dual_) {
         std::vector<std::string> tips = {tip_link_, tip_link2_};
-        ik_solver_->initialize(robot_model_, group_name_, "base_link", tips, 0.01);
+        ik_solver_->initialize(node_, *robot_model_, group_name_, base_frame, tips, 0.01);
     } else {
-        ik_solver_->initialize(robot_model_, group_name_, "base_link", tip_link_, 0.01);
+        std::vector<std::string> tips = {tip_link_};
+        ik_solver_->initialize(node_, *robot_model_, group_name_, base_frame, tips, 0.01);
     }
 }
 
@@ -106,7 +116,6 @@ IkResult IkSolver::solve(const Eigen::Isometry3d& target,
     IkResult result;
     result.joint_names = joint_names_;
 
-    // seed
     std::vector<double> seed_vals = seed.empty()
         ? std::vector<double>(joint_names_.size(), 0.0) : seed;
 
@@ -121,14 +130,12 @@ IkResult IkSolver::solve(const Eigen::Isometry3d& target,
     pose_msg.orientation.z = q.z();
     pose_msg.orientation.w = q.w();
 
-    moveit::core::RobotState state(robot_model_);
-    state.setVariablePositions(joint_names_, seed_vals);
-
     std::vector<double> solution;
     moveit_msgs::msg::MoveItErrorCodes error_code;
+    kinematics::KinematicsQueryOptions options;
 
     auto t0 = std::chrono::high_resolution_clock::now();
-    bool ok = ik_solver_->searchPositionIK(pose_msg, state, t, solution, error_code);
+    bool ok = ik_solver_->searchPositionIK(pose_msg, seed_vals, t, solution, error_code, options);
     auto t1 = std::chrono::high_resolution_clock::now();
 
     result.solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -136,6 +143,7 @@ IkResult IkSolver::solve(const Eigen::Isometry3d& target,
     result.joint_values = solution;
 
     if (ok) {
+        moveit::core::RobotState state(robot_model_);
         state.setVariablePositions(joint_names_, solution);
         Eigen::Isometry3d actual = state.getGlobalLinkTransform(tip_link_);
         result.pos_error = (target.translation() - actual.translation()).norm();
@@ -162,7 +170,6 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
     std::vector<double> seed_vals = seed.empty()
         ? std::vector<double>(joint_names_.size(), 0.0) : seed;
 
-    // 两个目标位姿
     auto to_msg = [](const Eigen::Isometry3d& tf) -> geometry_msgs::msg::Pose {
         geometry_msgs::msg::Pose msg;
         Eigen::Quaterniond q(tf.linear());
@@ -180,14 +187,16 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
         to_msg(left_target), to_msg(right_target)
     };
 
-    moveit::core::RobotState state(robot_model_);
-    state.setVariablePositions(joint_names_, seed_vals);
-
+    std::vector<double> consistency_limits;
     std::vector<double> solution;
     moveit_msgs::msg::MoveItErrorCodes error_code;
+    kinematics::KinematicsQueryOptions options;
+    kinematics::KinematicsBase::IKCallbackFn callback;
 
     auto t0 = std::chrono::high_resolution_clock::now();
-    bool ok = ik_solver_->searchPositionIK(targets, state, t, solution, error_code);
+    bool ok = ik_solver_->searchPositionIK(targets, seed_vals, t,
+                                            consistency_limits, solution,
+                                            callback, error_code, options);
     auto t1 = std::chrono::high_resolution_clock::now();
 
     result.solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -195,6 +204,7 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
     result.joint_values = solution;
 
     if (ok) {
+        moveit::core::RobotState state(robot_model_);
         state.setVariablePositions(joint_names_, solution);
         Eigen::Isometry3d actual_left  = state.getGlobalLinkTransform(tip_link_);
         Eigen::Isometry3d actual_right = state.getGlobalLinkTransform(tip_link2_);
@@ -230,16 +240,8 @@ std::vector<double> IkSolver::getHomeSeed() const
 std::vector<double> IkSolver::getRandomSeed() const
 {
     moveit::core::RobotState state(robot_model_);
+    state.setToDefaultValues();
     state.setToRandomPositions(jmg_);
-    // clamp revolute joints to limits
-    for (auto* jm : jmg_->getActiveJointModels()) {
-        if (jm->getType() == moveit::core::JointModel::REVOLUTE) {
-            double val = state.getJointPositions(jm)[0];
-            const auto& bounds = jm->getVariableBounds()[0];
-            val = std::max(bounds.min_position_, std::min(bounds.max_position_, val));
-            state.setJointPositions(jm, &val);
-        }
-    }
     std::vector<double> vals;
     state.copyJointGroupPositions(jmg_, vals);
     return vals;
