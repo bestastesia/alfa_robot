@@ -171,8 +171,11 @@ kdl_result.csv
 tracik.csv
 tracik_result.csv
 
-# Benchmark data output
+# Benchmark data & build output
 scripts/ik_benchmark/data/
+scripts/ik_benchmark/build/
+scripts/ik_benchmark/install/
+scripts/ik_benchmark/log/
 
 # MoveIt scripts (temporary)
 ros2_ws/src/alfa_robot_moveit_config/scripts/
