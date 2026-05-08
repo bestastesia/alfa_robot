@@ -7,7 +7,6 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(moveit_core REQUIRED)
-find_package(moveit_ros_planning REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -32,7 +31,6 @@ target_include_directories(ik_solver_lib PUBLIC
 
 ament_target_dependencies(ik_solver_lib PUBLIC
   moveit_core
-  moveit_ros_planning
   moveit_msgs
   pluginlib
   rclcpp
