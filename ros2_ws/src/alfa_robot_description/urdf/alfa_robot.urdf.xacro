@@ -374,7 +374,7 @@
     type="revolute">
     <origin
       xyz="-0.00035108 0.075999 0.058"
-      rpy="-1.5754 -1.5708 0" />
+      rpy="-1.5708 -1.5708 0" />
     <parent
       link="leftjoint2" />
     <child
@@ -482,7 +482,7 @@
     type="revolute">
     <origin
       xyz="0 -0.076 0.058"
-      rpy="-1.4138 -1.5708 2.9829" />
+      rpy="-1.5708 -1.5708 0" />
     <parent
       link="leftjoint4" />
     <child
@@ -698,7 +698,7 @@
     type="revolute">
     <origin
       xyz="0 0.076 0.058"
-      rpy="1.4947 -1.5708 -3.0674" />
+      rpy="1.5708 -1.5708 0" />
     <parent
       link="rightjoint2" />
     <child
@@ -806,7 +806,7 @@
     type="revolute">
     <origin
       xyz="0 -0.0697 0.058"
-      rpy="-2.1996 -1.5708 -2.5345" />
+      rpy="1.5708 -1.5708 0" />
     <parent
       link="rightjoint4" />
     <child
