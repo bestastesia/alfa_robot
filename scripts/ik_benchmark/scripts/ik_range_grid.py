@@ -58,18 +58,33 @@ def default_srdf(version: str) -> Path:
     return path
 
 
-def default_tip_link(version: str, requested: str | None) -> str:
+def default_tip_link(version: str, requested: str | None, group: str) -> str:
     if requested:
         return requested
+    side = "right" if "right" in group else "left"
     if version in {"v2", "v3"}:
-        return "left_ee_link"
-    return "leftjoint6"
+        return f"{side}_ee_link"
+    return f"{side}joint6"
+
+
+def default_base_frame(requested: str | None, group: str) -> str:
+    if requested:
+        return requested
+    if group in {"left_arm", "right_arm"}:
+        return "updown"
+    if group in {"left_arm_with_base", "right_arm_with_base", "dual_arm_with_base"}:
+        return "turn"
+    return "base_link"
 
 
 def find_executable() -> str:
-    local_exe = project_root() / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid"
-    if local_exe.exists():
-        return str(local_exe)
+    candidates = [
+        project_root() / "ros2_ws" / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid",
+        project_root() / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid",
+    ]
+    for local_exe in candidates:
+        if local_exe.exists():
+            return str(local_exe)
 
     direct = shutil.which("ik_range_grid")
     if direct:
@@ -141,7 +156,7 @@ def main() -> None:
     parser.add_argument("--solver", default="trac_ik", help="kdl/trac_ik/pick_ik/bio_ik or full plugin")
     parser.add_argument("--urdf", type=Path, default=None)
     parser.add_argument("--srdf", type=Path, default=None)
-    parser.add_argument("--base-frame", default="base_link")
+    parser.add_argument("--base-frame", default=None)
     parser.add_argument("--tip-link", default=None)
     parser.add_argument("--x", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.3, 2.0, 0.05])
     parser.add_argument("--y", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.3, 0.8, 0.05])
@@ -161,7 +176,8 @@ def main() -> None:
 
     urdf = args.urdf if args.urdf is not None else default_urdf(args.version)
     srdf = args.srdf if args.srdf is not None else default_srdf(args.version)
-    tip_link = default_tip_link(args.version, args.tip_link)
+    base_frame = default_base_frame(args.base_frame, args.group)
+    tip_link = default_tip_link(args.version, args.tip_link, args.group)
     output = args.output or Path(f"/tmp/alfa_ik_range_{args.version}_{args.group}.csv")
     if output.exists():
         output.unlink()
@@ -172,7 +188,7 @@ def main() -> None:
         "--group", args.group,
         "--solver", SOLVER_SHORTCUTS.get(args.solver, args.solver),
         "--srdf", str(srdf),
-        "--base-frame", args.base_frame,
+        "--base-frame", base_frame,
         "--tip-link", tip_link,
         "--timeout", str(args.timeout),
         "--forward-axis", args.forward_axis,
