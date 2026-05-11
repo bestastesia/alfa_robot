@@ -42,18 +42,6 @@
           <!-- Safe positions (rad for revolute, m for prismatic) -->
           <param name="safe_position_turn">0.0</param>
           <param name="safe_position_updown">0.0</param>
-          <param name="safe_position_leftjoint1">0.0</param>
-          <param name="safe_position_leftjoint2">0.0</param>
-          <param name="safe_position_leftjoint3">0.0</param>
-          <param name="safe_position_leftjoint4">0.0</param>
-          <param name="safe_position_leftjoint5">0.0</param>
-          <param name="safe_position_leftjoint6">0.0</param>
-          <param name="safe_position_rightjoint1">0.0</param>
-          <param name="safe_position_rightjoint2">0.0</param>
-          <param name="safe_position_rightjoint3">0.0</param>
-          <param name="safe_position_rightjoint4">0.0</param>
-          <param name="safe_position_rightjoint5">0.0</param>
-          <param name="safe_position_rightjoint6">0.0</param>
         </xacro:unless>
       </hardware>
       <!-- pitch (revolute) -->
@@ -92,161 +80,34 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- rightjoint1 (prismatic) -->
-      <joint name="${prefix}rightjoint1">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.3</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
+      <!-- v5 proxy arms (position controlled) -->
+      <xacro:macro name="v5_proxy_control_joint" params="joint_name lower upper velocity">
+        <joint name="${prefix}${joint_name}">
+          <command_interface name="position">
+            <param name="min">${lower}</param>
+            <param name="max">${upper}</param>
+          </command_interface>
+          <state_interface name="position">
+            <param name="initial_value">0.0</param>
+          </state_interface>
+          <state_interface name="velocity"/>
+          <state_interface name="acceleration"/>
+        </joint>
+      </xacro:macro>
 
-      <!-- rightjoint2 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}rightjoint2">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint1" lower="-3.14159265" upper="3.14159265" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint2" lower="-1.57079632" upper="1.57079632" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint3" lower="-2.35619449" upper="2.35619449" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint5" lower="-1.57079632" upper="1.57079632" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint1" lower="-3.14159265" upper="3.14159265" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint2" lower="-1.57079632" upper="1.57079632" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint3" lower="-2.35619449" upper="2.35619449" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint5" lower="-1.57079632" upper="1.57079632" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
 
-      <!-- rightjoint3 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}rightjoint3">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- rightjoint4 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}rightjoint4">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- rightjoint5 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}rightjoint5">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- rightjoint6 (prismatic) -->
-      <joint name="${prefix}rightjoint6">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.15</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint1 (prismatic) -->
-      <joint name="${prefix}leftjoint1">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.3</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint2 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}leftjoint2">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint3 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}leftjoint3">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint4 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}leftjoint4">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint5 (continuous; URDF limit tag currently 0..0) -->
-      <joint name="${prefix}leftjoint5">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
-
-      <!-- leftjoint6 (prismatic, new end effector extension) -->
-      <joint name="${prefix}leftjoint6">
-        <command_interface name="position">
-          <param name="min">0</param>
-          <param name="max">0.15</param>
-        </command_interface>
-        <state_interface name="position">
-          <param name="initial_value">0.0</param>
-        </state_interface>
-        <state_interface name="velocity"/>
-        <state_interface name="acceleration"/>
-      </joint>
 
     </ros2_control>
 

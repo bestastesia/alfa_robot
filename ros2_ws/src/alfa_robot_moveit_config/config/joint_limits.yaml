@@ -1,101 +1,95 @@
 # Joint limits for MoveIt planning
-# max_velocity/max_acceleration 使用各关节的实际物理极限值
-# 这样 default_velocity_scaling_factor / default_acceleration_scaling_factor 才能有效控制规划速度
+# v5 proxy values are conservative placeholders until final T-motor/mechanical data is confirmed.
 joint_limits:
-  # New URDF base pitch joint
   pitch:
     has_velocity_limits: true
     max_velocity: 0.5
     has_acceleration_limits: true
     max_acceleration: 1.0
 
-  # CANopen 关节 (leftjoint1, rightjoint1, updown)
-  leftjoint1:
+  turn:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 0.87
     has_acceleration_limits: true
-    max_acceleration: 2.0
-  rightjoint1:
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 2.0
+    max_acceleration: 1.5
+
   updown:
     has_velocity_limits: true
     max_velocity: 1.0
     has_acceleration_limits: true
     max_acceleration: 2.0
 
-  # ZeroErr 关节 (leftjoint2, leftjoint3)
-  # profile_velocity=100000 count/s, counts_per_radian≈83435 → max ≈1.2 rad/s
-  leftjoint2:
-    has_velocity_limits: true
-    max_velocity: 1.2
-    has_acceleration_limits: true
-    max_acceleration: 2.0
-  leftjoint3:
+  left_v5_joint1:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
     max_acceleration: 2.0
 
-  # Cylinder 电缸 (leftjoint4) — 平移关节
-  # 实际速度约 0.05 m/s (50mm/s)
-  leftjoint4:
+  left_v5_joint2:
     has_velocity_limits: true
-    max_velocity: 0.05
+    max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 0.1
+    max_acceleration: 2.0
 
-  # RMD 关节 (leftjoint5, rightjoint2, rightjoint3, rightjoint4)
-  # max_speed=1800°/s, gear_ratio=36 → 输出轴 50°/s ≈ 0.87 rad/s
-  leftjoint5:
+  left_v5_joint3:
     has_velocity_limits: true
-    max_velocity: 0.87
+    max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 1.5
-  rightjoint2:
-    has_velocity_limits: true
-    max_velocity: 0.87
-    has_acceleration_limits: true
-    max_acceleration: 1.5
-  rightjoint3:
-    has_velocity_limits: true
-    max_velocity: 0.87
-    has_acceleration_limits: true
-    max_acceleration: 1.5
-  rightjoint4:
-    has_velocity_limits: true
-    max_velocity: 0.87
-    has_acceleration_limits: true
-    max_acceleration: 1.5
+    max_acceleration: 2.0
 
-  # v3 新增关节 (暂未实装硬件驱动，使用保守估计值)
-  # leftjoint6: prismatic (末端扩展)
-  leftjoint6:
+  left_v5_joint4:
     has_velocity_limits: true
-    max_velocity: 0.05
+    max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 0.1
-  # rightjoint5: revolute
-  rightjoint5:
-    has_velocity_limits: true
-    max_velocity: 0.87
-    has_acceleration_limits: true
-    max_acceleration: 1.5
-  # rightjoint6: prismatic (末端扩展)
-  rightjoint6:
-    has_velocity_limits: true
-    max_velocity: 0.05
-    has_acceleration_limits: true
-    max_acceleration: 0.1
+    max_acceleration: 2.0
 
-  # RMD 底盘关节
-  turn:
+  left_v5_joint5:
     has_velocity_limits: true
-    max_velocity: 0.87
+    max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 1.5
+    max_acceleration: 2.0
+
+  left_v5_joint6:
+    has_velocity_limits: true
+    max_velocity: 1.5
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint1:
+    has_velocity_limits: true
+    max_velocity: 1.2
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint2:
+    has_velocity_limits: true
+    max_velocity: 1.2
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint3:
+    has_velocity_limits: true
+    max_velocity: 1.2
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint4:
+    has_velocity_limits: true
+    max_velocity: 1.5
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint5:
+    has_velocity_limits: true
+    max_velocity: 1.5
+    has_acceleration_limits: true
+    max_acceleration: 2.0
+
+  right_v5_joint6:
+    has_velocity_limits: true
+    max_velocity: 1.5
+    has_acceleration_limits: true
+    max_acceleration: 2.0
 
 default_velocity_scaling_factor: 0.3
 default_acceleration_scaling_factor: 0.3

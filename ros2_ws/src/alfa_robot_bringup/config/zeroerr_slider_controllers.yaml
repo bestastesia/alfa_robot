@@ -1,4 +1,5 @@
-# 零差云控电机滑块测试配置（仅 can0 Node 1,2）
+# 滑块测试配置 - v5 proxy all-position controller.
+
 controller_manager:
   ros__parameters:
     update_rate: 100  # Hz
@@ -6,12 +7,25 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    zeroerr_slider_controller:
+    v5_slider_controller:
       type: forward_command_controller/ForwardCommandController
 
-zeroerr_slider_controller:
+v5_slider_controller:
   ros__parameters:
     joints:
-      - leftjoint2
-      - leftjoint3
+      - pitch
+      - turn
+      - updown
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
     interface_name: position

@@ -76,11 +76,9 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "robot_controller",
-            default_value="torso_group_controller",
+            default_value="dual_v5_arm_controller",
             choices=[
-                "torso_group_controller",
-                "left_arm_controller",
-                "right_arm_controller",
+                "dual_v5_arm_controller",
                 "all_position_controller",
             ],
             description="Robot controller to start.",

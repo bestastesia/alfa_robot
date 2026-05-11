@@ -28,6 +28,13 @@ ALFA Robot 是 ROS2 双臂工业机器人项目，当前重点是让运控、机
 3. 每轮结束留下简短交接，方便下个 AI 接上。
 4. 避免多个 AI 在不知情的情况下改同一块核心文件。
 
+## v5 机械臂开发线
+
+- 新目标：开发第五代传统六轴机械臂，结构为 `2+1+3`，第 1 轴绕 `Z` 轴，全部采用 T 型电机。
+- 当前策略：不等待机械最终 STL，先做 `v5 proxy model`，用 primitive geometry 进行 URDF/MoveIt/MuJoCo 运控先行验证。
+- 运控接口交接文档：`.ai_teamwork/V5_PROXY_INTERFACE.md`。
+- 机械工程师下一步：按接口文档优先交付运动学参数、安装基准、proxy collision 几何和 joint limits。
+
 ## 有用文档
 
 - 控制层硬编码：`docs/CONTROL_LAYER_HARDCODED_PARAMS.md`

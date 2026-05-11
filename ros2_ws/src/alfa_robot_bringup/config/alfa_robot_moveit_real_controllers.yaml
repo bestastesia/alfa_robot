@@ -1,6 +1,5 @@
 # Real hardware controllers for MoveIt execution and GUI slider control.
-# This config exposes FollowJointTrajectory action servers that MoveIt can use
-# to execute planned trajectories on the actual hardware interface.
+# v5 proxy exposes position controllers for torso and dual six-axis arms.
 
 controller_manager:
   ros__parameters:
@@ -12,13 +11,15 @@ controller_manager:
     torso_group_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    left_arm_controller:
+    left_v5_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    right_arm_controller:
+    right_v5_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    # GUI 滑块直驱：12 关节单一前向位置控制器，无插值。
+    dual_v5_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
     all_position_controller:
       type: forward_command_controller/ForwardCommandController
 
@@ -34,29 +35,54 @@ torso_group_controller:
       - position
       - velocity
 
-left_arm_controller:
+left_v5_arm_controller:
   ros__parameters:
     joints:
-      - leftjoint1
-      - leftjoint2
-      - leftjoint3
-      - leftjoint4
-      - leftjoint5
-      # leftjoint6: 硬件尚未实现，实机暂不控制
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
     command_interfaces:
       - position
     state_interfaces:
       - position
       - velocity
 
-right_arm_controller:
+right_v5_arm_controller:
   ros__parameters:
     joints:
-      - rightjoint1
-      - rightjoint2
-      - rightjoint3
-      - rightjoint4
-      - rightjoint5
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+
+dual_v5_arm_controller:
+  ros__parameters:
+    joints:
+      - pitch
+      - turn
+      - updown
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
     command_interfaces:
       - position
     state_interfaces:
@@ -69,16 +95,16 @@ all_position_controller:
       - pitch
       - turn
       - updown
-      - leftjoint1
-      - leftjoint2
-      - leftjoint3
-      - leftjoint4
-      - leftjoint5
-      # leftjoint6: 硬件尚未实现，实机暂不控制
-      - rightjoint1
-      - rightjoint2
-      - rightjoint3
-      - rightjoint4
-      - rightjoint5
-      - rightjoint6
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
     interface_name: position

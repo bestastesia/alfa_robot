@@ -25,3 +25,75 @@
 - 改了哪里：`AGENTS.md`、`CLAUDE.md`、`.ai_teamwork/`（含 `engineers/`）。
 - 验证结果：提交前核对 `git status --short --untracked-files=all`，未纳入 `lidar_ws/log/*` 未归属文件。
 - 留给下个 AI：后续开工继续先读 `AGENTS.md` 和 `.ai_teamwork/START.md`。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0003
+- 做了什么：根据用户指令安排“拆卸/移除当前 4 代机械臂配置”任务给机械工程师。
+- 改了哪里：更新 `.ai_teamwork/TASKS.md`，追加本日志。
+- 验证结果：任务已明确“不删除 STL/mesh 文件”，并提示 `alfa_robot_v2_arm_v4_new/` 已有备份线索。
+- 留给下个 AI：先做只读调查，确认哪些 URDF/Xacro/MoveIt/仿真文件引用 4 代机械臂；真正改业务代码前最好先完成 T-0002 协作机制提交。
+
+## 2026-05-12 项目经理 / Codex / 修正 T-0003 看板
+- 做了什么：修正任务看板，确认 T-0003 已出现在当前任务列表。
+- 改了哪里：`.ai_teamwork/TASKS.md`。
+- 验证结果：T-0003 状态为 TODO，负责人为机械工程师。
+- 留给下个 AI：机械工程师先只读调查 4 代机械臂引用，不要删除 STL/mesh。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0004/T-0005
+- 做了什么：把“原位置安装六轴机械臂”拆成运控先定义接口、机械后落模型两个任务。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0004 分给运控工程师，T-0005 分给机械工程师且阻塞等待 T-0004。
+- 留给下个 AI：运控工程师需要先给出安装基准、joint/link 命名、控制关节数量、ros2_control/MoveIt 约束，再交给机械工程师实施。
+
+## 2026-05-12 运控工程师 / Codex / T-0004 v5 proxy 开发路径
+- 做了什么：根据用户给出的第五代 2+1+3 传统六轴机械臂方向，梳理 proxy 模型先行的运控/机械协作路径。
+- 改了哪里：仅追加本协作日志。
+- 验证结果：未改代码；本轮输出机械工程师任务拆分、参数交付清单和推荐技术栈。
+- 留给下个 AI：后续若开始落地，应先建立 v5 参数事实源，再生成 URDF/Xacro proxy、MoveIt 配置和 MuJoCo primitive 模型。
+
+## 2026-05-12 机械工程师 / Codex / T-0003 真拆 4 代机械臂
+- 做了什么：从主 URDF 模型树真实移除左右机械臂 link/joint，MoveIt/RViz 现在只加载 `world -> base_link -> pitch -> turn -> updown`。
+- 改了哪里：`alfa_robot_description` 主 xacro/ros2_control，`alfa_robot_moveit_config` SRDF/kinematics/controller/limits，`alfa_robot_bringup` 相关控制器和启动链。
+- 验证结果：`xacro` + `check_urdf` 通过；MoveItConfigsBuilder 用系统 Python 加载通过，URDF/SRDF 无 `leftjoint/rightjoint/left_arm/right_arm` 残留。
+- 留给下个 AI：旧双臂脚本、旧宏和仿真仍保留历史引用；simulation 按用户要求未改，后续上新六轴臂时再统一替换。
+
+## 2026-05-12 运控工程师 / Codex / T-0004 文档落地
+- 做了什么：将 v5 proxy 技术路线、运控接口约束、机械工程师交付清单写入协作文档。
+- 改了哪里：新增 `.ai_teamwork/V5_PROXY_INTERFACE.md`，更新 `.ai_teamwork/TASKS.md`、`.ai_teamwork/NOW.md`。
+- 验证结果：T-0004 已标记 DONE，T-0005 从 BLOCKED 改为 TODO，并指向 v5 proxy 接口文档。
+- 留给下个 AI：机械工程师应先按 M-01/M-02 交付六轴运动链和左右臂安装基准，不要先做最终 STL。
+
+## 2026-05-12 Git 操作工程师 / Codex / 补充 AI 协作提交规则
+- 做了什么：把“AI 负责提交必须标明对应 AI 协作方”写入 Git 操作工程师长期注意事项。
+- 改了哪里：`.ai_teamwork/engineers/git_ops.md`，并追加本交接日志。
+- 验证结果：未提交；当前工作区仍有其他工程师的既有未提交改动，未触碰业务代码。
+- 留给下个 AI：提交时按实际 AI 身份添加协作 trailer，例如 Codex 使用 `Co-Authored-By: Codex <codex@openai.com>`。
+
+## 2026-05-12 机械工程师 / Codex / T-0005 v5 proxy 双六轴安装
+- 做了什么：按用户补充要求安装双六轴 v5 proxy；左右臂挂在 `updown` 两侧，挂点 `x=0, y=±0.32, z=0.18`，即与 `updown` 位于同一 YZ 平面（约定 +Y 为前方）。
+- 改了哪里：`alfa_robot.urdf.xacro` 新增 primitive 双六轴链；同步 MoveIt SRDF/kinematics/limits/controllers、ros2_control 和 bringup 控制配置。
+- 验证结果：`xacro` + `check_urdf` 通过；MoveItConfigsBuilder 可加载；URDF 树显示 `updown` 下挂 `left_v5_link0/right_v5_link0` 两条 6 轴链。
+- 留给下个 AI：当前 proxy 连杆长度和限位为保守占位；后续机械给出准确 T 型电机尺寸、连杆长度、法兰/tool0 偏置后再替换参数。
+
+## 2026-05-12 机械工程师 / Codex / T-0005 安装平面与 T 型 proxy 修正
+- 做了什么：按用户纠正将双臂安装从 ZX 平面改为 YZ 平面，挂点为 `x=0, y=±0.32, z=0.18`。
+- 改了哪里：重写 v5 proxy arm 可视结构，增加明确安装支架、6 个 T 型电机罐体/夹块和双杆连杆，不再是点安装/单盒子效果。
+- 验证结果：待本轮重新运行 `xacro`、`check_urdf` 和 MoveItConfigsBuilder。
+- 留给下个 AI：proxy 仍不是最终 CAD；若要“真像最终产品”，需要机械输出 T 型电机外径/厚度、每个关节法兰相对位姿、安装板尺寸、连杆截面和外观 STL。
+
+## 2026-05-12 机械工程师 / Codex / T-0005 T 型电机 STL 模板
+- 做了什么：按用户建议将 v5 proxy 中所有 T 型电机 visual 改为复用 `alfa_robot_v2_arm_v4_new/visual/leftjoint4.STL` 外观模板。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro` 的 `v5_t_motor_link`，visual 使用 STL mesh，collision 继续使用圆柱 primitive。
+- 验证结果：`xacro` + `check_urdf` 通过；当时生成 URDF 中共有 8 个 `leftjoint4.STL` T 电机 visual；后续已扩展为每侧 6 个、共 12 个；MoveItConfigsBuilder 可加载。
+- 留给下个 AI：当前 mesh 姿态按关节轴做了 `z/x/y` 三种 rpy 粗对齐；最终仍需机械确认每个 T 电机法兰相对 joint frame 的精确 xyz/rpy。
+
+## 2026-05-12 机械工程师 / Codex / T-0005 关节间距与圆柱连杆修正
+- 做了什么：按用户反馈修正 v5 proxy 自由度分布，J3 肘关节移到上臂末端，J4 腕部入口移到前臂末端，避免 J2/J3 看起来同轴同点。
+- 改了哪里：`alfa_robot.urdf.xacro` 中 v5 机械臂链；双杆连杆改为单圆柱连杆，6 个 T 型关节均使用 `leftjoint4.STL` visual 模板。
+- 验证结果：`xacro` + `check_urdf` 通过；生成 URDF 每侧 6 个 T 电机 mesh，共 12 个；MoveItConfigsBuilder 可加载。
+- 留给下个 AI：J2/J3 目前仍同为 X 轴但已空间分离；若最终机构 J3 轴向不同，需要按机械设计再改 axis/rpy。
+
+## 2026-05-12 机械工程师 / Codex / T-0005 正交 T 电机链与 joint1 零位
+- 做了什么：按用户反馈调整 v5 proxy：J1/J2 正交，J3 保留主动 T 并增加 fixed 被动 T 支撑，J4/J5/J6 轴向改为 Y/X/Z 三轴正交。
+- 改了哪里：`alfa_robot.urdf.xacro` 中 v5 关节轴、T 电机姿态、J1 origin rpy；J1 通过 `v5_joint1_zero_rpy=0 0 -1.5708` 把原来 `joint1=-90°` 的姿态作为新零位。
+- 验证结果：`xacro` + `check_urdf` 通过；MoveItConfigsBuilder 可加载；每侧 6 个主动 T + 1 个被动 T，共 14 个 `leftjoint4.STL` visual。
+- 留给下个 AI：当前仍是 proxy；T 电机法兰和支架偏移参考旧 URDF 量级（0.098/0.13/0.1435），最终需机械 CAD 尺寸闭环。

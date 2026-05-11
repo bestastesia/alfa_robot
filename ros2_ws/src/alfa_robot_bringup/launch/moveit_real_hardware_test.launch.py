@@ -4,7 +4,7 @@ MoveIt 实机测试启动文件
 功能：
   1. 启动 ros2_control_node 进行硬件控制
   2. 启动 MoveIt move_group 进行规划
-  3. 启动控制器 (joint_state_broadcaster, arm controllers)
+  3. 启动控制器 (joint_state_broadcaster, dual v5 arm controller)
   4. 可选：自动运行测试轨迹
 
 注意：
@@ -32,7 +32,7 @@ def generate_launch_description():
         DeclareLaunchArgument("canopen_profile_velocity", default_value="50000"),
         DeclareLaunchArgument("canopen_profile_accel", default_value="50000"),
         DeclareLaunchArgument("auto_run_test", default_value="false"),
-        DeclareLaunchArgument("group_name", default_value="right_arm"),
+        DeclareLaunchArgument("group_name", default_value="left_v5_arm"),
         # 目标位姿
         DeclareLaunchArgument("target_x", default_value="0.357"),
         DeclareLaunchArgument("target_y", default_value="-0.705"),
@@ -117,28 +117,12 @@ def generate_launch_description():
         arguments=["joint_state_broadcaster", "-c", "/controller_manager"],
     )
 
-    torso_group_controller_spawner = Node(
+    dual_v5_arm_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
-        name="torso_group_controller_spawner",
+        name="dual_v5_arm_controller_spawner",
         output="both",
-        arguments=["torso_group_controller", "-c", "/controller_manager"],
-    )
-
-    left_arm_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        name="left_arm_controller_spawner",
-        output="both",
-        arguments=["left_arm_controller", "-c", "/controller_manager"],
-    )
-
-    right_arm_controller_spawner = Node(
-        package="controller_manager",
-        executable="spawner",
-        name="right_arm_controller_spawner",
-        output="both",
-        arguments=["right_arm_controller", "-c", "/controller_manager"],
+        arguments=["dual_v5_arm_controller", "-c", "/controller_manager"],
     )
 
     # ===== MoveIt Launch =====
@@ -200,10 +184,8 @@ def generate_launch_description():
     #
     # 启动顺序：
     #   control_node → (3s) → joint_state_broadcaster
-    #   joint_state_broadcaster → torso_group_controller
-    #   torso_group_controller → left_arm_controller
-    #   left_arm_controller → right_arm_controller
-    #   right_arm_controller → MoveIt (move_group + static_tf + rviz)
+    #   joint_state_broadcaster → dual_v5_arm_controller
+    #   dual_v5_arm_controller → MoveIt (move_group + static_tf + rviz)
     #   MoveIt → trajectory_executor → path_planning_node
 
     # 1. control_node 启动后，延迟启动 joint_state_broadcaster
@@ -214,34 +196,18 @@ def generate_launch_description():
         )
     )
 
-    # 2. joint_state_broadcaster 完成后，启动 torso_group_controller
-    delay_torso = RegisterEventHandler(
+    # 2. joint_state_broadcaster 完成后，启动 dual_v5_arm_controller
+    delay_dual_v5 = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_state_broadcaster_spawner,
-            on_exit=[torso_group_controller_spawner],
+            on_exit=[dual_v5_arm_controller_spawner],
         )
     )
 
-    # 3. torso_group_controller 完成后，启动 left_arm_controller
-    delay_left = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=torso_group_controller_spawner,
-            on_exit=[left_arm_controller_spawner],
-        )
-    )
-
-    # 4. left_arm_controller 完成后，启动 right_arm_controller
-    delay_right = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=left_arm_controller_spawner,
-            on_exit=[right_arm_controller_spawner],
-        )
-    )
-
-    # 5. right_arm_controller 完成后，启动 MoveIt
+    # 3. dual_v5_arm_controller 完成后，启动 MoveIt
     delay_moveit = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=right_arm_controller_spawner,
+            target_action=dual_v5_arm_controller_spawner,
             on_exit=[
                 static_tf_launch,
                 move_group_launch,
@@ -250,7 +216,7 @@ def generate_launch_description():
         )
     )
 
-    # 6. MoveIt 启动后，延迟启动测试节点
+    # 4. MoveIt 启动后，延迟启动测试节点
     delay_trajectory_executor = TimerAction(
         period=8.0,
         actions=[trajectory_executor_node],
@@ -271,9 +237,7 @@ def generate_launch_description():
 
             # 生命周期事件处理器
             delay_jsb,
-            delay_torso,
-            delay_left,
-            delay_right,
+            delay_dual_v5,
             delay_moveit,
             delay_trajectory_executor,
             delay_path_node,
