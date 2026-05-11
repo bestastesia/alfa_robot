@@ -1,0 +1,9 @@
+@/home/li/.codex/RTK.md
+
+# AI 协作入口
+
+开始工作前先读：
+
+- `.ai_teamwork/START.md`
+
+目标：用最少上下文了解当前项目进度、其他 AI 的认知和本轮任务。
