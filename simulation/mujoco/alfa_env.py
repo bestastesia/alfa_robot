@@ -25,6 +25,7 @@ class AlfaEnv:
 
     def reset(self):
         mujoco.mj_resetData(self.model, self.data)
+        self.robot.hold_current_joint_positions()
         mujoco.mj_forward(self.model, self.data)
         return self._get_obs()
 

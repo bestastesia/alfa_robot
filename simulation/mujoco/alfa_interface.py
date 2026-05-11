@@ -45,6 +45,13 @@ class AlfaRobotInterface:
             if v_adr >= 0: self.data.qvel[v_adr] = 0.0
             if act_id >= 0: self.data.ctrl[act_id] = target
 
+    def hold_current_joint_positions(self):
+        for name in self.joint_names:
+            act_id = self.actuator_ids.get(name, -1)
+            q_adr = self.jnt_qpos_adrs.get(name, -1)
+            if act_id >= 0 and q_adr >= 0:
+                self.data.ctrl[act_id] = self.data.qpos[q_adr]
+
     def get_all_joint_positions(self) -> dict:
         obs = {}
         for jname in self.joint_names:
