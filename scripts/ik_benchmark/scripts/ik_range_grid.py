@@ -58,18 +58,21 @@ def default_srdf(version: str) -> Path:
     return path
 
 
-def default_tip_link(version: str, requested: str | None) -> str:
+def default_tip_link(version: str, requested: str | None, group: str) -> str:
     if requested:
         return requested
-    if version in {"v2", "v3"}:
-        return "left_ee_link"
-    return "leftjoint6"
+    if group.startswith("right"):
+        return "right_ee_link"
+    return "left_ee_link"
 
 
 def find_executable() -> str:
-    local_exe = project_root() / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid"
-    if local_exe.exists():
-        return str(local_exe)
+    for local_exe in (
+        project_root() / "ros2_ws" / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid",
+        project_root() / "install" / "alfa_robot_benchmarks" / "lib" / "alfa_robot_benchmarks" / "ik_range_grid",
+    ):
+        if local_exe.exists():
+            return str(local_exe)
 
     direct = shutil.which("ik_range_grid")
     if direct:
@@ -103,20 +106,24 @@ def prepend_env_path(env: dict[str, str], name: str, path: Path) -> None:
 
 def build_runtime_env() -> dict[str, str]:
     env = os.environ.copy()
+    isolated_install = project_root() / "ros2_ws" / "install"
+    ros2_ws_package_prefixes = []
+    if isolated_install.exists():
+        ros2_ws_package_prefixes = sorted(
+            child
+            for child in isolated_install.iterdir()
+            if (child / "share" / "ament_index" / "resource_index" / "packages").exists()
+        )
+
+    # prepend_env_path inserts each prefix at the front, so list lower-priority
+    # prefixes first. This keeps the current ros2_ws build ahead of stale top-level
+    # install spaces when resolving robot_description / MoveIt packages.
     prefixes = [
+        Path("/opt/ros/humble"),
         project_root() / "install",
         project_root() / "ros2_ws" / "install",
-        Path("/opt/ros/humble"),
+        *ros2_ws_package_prefixes,
     ]
-    isolated_install = project_root() / "ros2_ws" / "install"
-    if isolated_install.exists():
-        prefixes.extend(
-            sorted(
-                child
-                for child in isolated_install.iterdir()
-                if (child / "share" / "ament_index" / "resource_index" / "packages").exists()
-            )
-        )
     for prefix in prefixes:
         prepend_env_path(env, "AMENT_PREFIX_PATH", prefix)
         prepend_env_path(env, "CMAKE_PREFIX_PATH", prefix)
@@ -161,7 +168,7 @@ def main() -> None:
 
     urdf = args.urdf if args.urdf is not None else default_urdf(args.version)
     srdf = args.srdf if args.srdf is not None else default_srdf(args.version)
-    tip_link = default_tip_link(args.version, args.tip_link)
+    tip_link = default_tip_link(args.version, args.tip_link, args.group)
     output = args.output or Path(f"/tmp/alfa_ik_range_{args.version}_{args.group}.csv")
     if output.exists():
         output.unlink()

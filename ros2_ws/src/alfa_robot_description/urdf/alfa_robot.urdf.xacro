@@ -59,6 +59,30 @@
           filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/collision/base_link.STL" />
       </geometry>
     </collision>
+    <!-- v3 mobile chassis mesh: keep the v4 arm base, but restore the full moving chassis shell. -->
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://alfa_robot_description/meshes/alfa_robot/visual/base_link.STL" />
+      </geometry>
+      <material
+        name="mobile_chassis_blue">
+        <color
+          rgba="0.2 0.4 0.8 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://alfa_robot_description/meshes/alfa_robot/collision/base_link.STL" />
+      </geometry>
+    </collision>
   </link>
   <link
     name="pitch">

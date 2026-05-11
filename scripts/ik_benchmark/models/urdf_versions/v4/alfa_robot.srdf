@@ -1,35 +1,105 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot name="alfa_robot">
-  <group name="base_group">
-    <joint name="updown"/>
-  </group>
-  <group name="left_arm">
-    <joint name="leftjoint1"/>
-    <joint name="leftjoint2"/>
-    <joint name="leftjoint3"/>
-    <joint name="leftjoint4"/>
-    <joint name="leftjoint5"/>
-    <joint name="leftjoint6"/>
-  </group>
-  <group name="left_arm_with_base">
-    <group name="base_group"/>
-    <group name="left_arm"/>
-  </group>
-  <group_state name="home" group="left_arm">
-    <joint name="leftjoint1" value="0"/>
-    <joint name="leftjoint2" value="0"/>
-    <joint name="leftjoint3" value="0"/>
-    <joint name="leftjoint4" value="0"/>
-    <joint name="leftjoint5" value="0"/>
-    <joint name="leftjoint6" value="0"/>
-  </group_state>
-  <group_state name="home" group="left_arm_with_base">
-    <joint name="updown" value="0"/>
-    <joint name="leftjoint1" value="0"/>
-    <joint name="leftjoint2" value="0"/>
-    <joint name="leftjoint3" value="0"/>
-    <joint name="leftjoint4" value="0"/>
-    <joint name="leftjoint5" value="0"/>
-    <joint name="leftjoint6" value="0"/>
-  </group_state>
+    <group name="base_group">
+        <joint name="updown"/>
+    </group>
+    <group name="torso_group">
+        <joint name="pitch"/>
+        <joint name="turn"/>
+        <joint name="updown"/>
+    </group>
+    <group name="left_arm">
+        <joint name="leftjoint1"/>
+        <joint name="leftjoint2"/>
+        <joint name="leftjoint3"/>
+        <joint name="leftjoint4"/>
+        <joint name="leftjoint5"/>
+        <joint name="leftjoint6"/>
+    </group>
+    <group name="right_arm">
+        <joint name="rightjoint1"/>
+        <joint name="rightjoint2"/>
+        <joint name="rightjoint3"/>
+        <joint name="rightjoint4"/>
+        <joint name="rightjoint5"/>
+        <joint name="rightjoint6"/>
+    </group>
+    <group name="vacuum_left">
+        <link name="left_ee_link"/>
+    </group>
+    <group name="vacuum_right">
+        <link name="right_ee_link"/>
+    </group>
+    <group name="dual_arms">
+        <group name="torso_group"/>
+        <group name="left_arm"/>
+        <group name="right_arm"/>
+    </group>
+    <group name="left_arm_with_base">
+        <group name="base_group"/>
+        <group name="left_arm"/>
+    </group>
+    <group name="right_arm_with_base">
+        <group name="base_group"/>
+        <group name="right_arm"/>
+    </group>
+    <group name="dual_arm_with_base">
+        <group name="base_group"/>
+        <group name="left_arm"/>
+        <group name="right_arm"/>
+    </group>
+    <group_state name="home" group="dual_arms">
+        <joint name="pitch" value="0"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0"/>
+        <joint name="leftjoint1" value="0"/>
+        <joint name="leftjoint2" value="0"/>
+        <joint name="leftjoint3" value="0"/>
+        <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
+        <joint name="leftjoint6" value="0"/>
+        <joint name="rightjoint1" value="0"/>
+        <joint name="rightjoint2" value="0"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="0"/>
+        <joint name="rightjoint5" value="0"/>
+        <joint name="rightjoint6" value="0"/>
+    </group_state>
+    <group_state name="test_high" group="dual_arms">
+        <joint name="pitch" value="0"/>
+        <joint name="turn" value="0"/>
+        <joint name="updown" value="0.5406"/>
+        <joint name="leftjoint1" value="0"/>
+        <joint name="leftjoint2" value="0"/>
+        <joint name="leftjoint3" value="0"/>
+        <joint name="leftjoint4" value="0"/>
+        <joint name="leftjoint5" value="0"/>
+        <joint name="leftjoint6" value="0"/>
+        <joint name="rightjoint1" value="0"/>
+        <joint name="rightjoint2" value="0"/>
+        <joint name="rightjoint3" value="0"/>
+        <joint name="rightjoint4" value="0"/>
+        <joint name="rightjoint5" value="0"/>
+        <joint name="rightjoint6" value="0"/>
+    </group_state>
+    <end_effector name="vacuum_left" parent_link="leftjoint6" group="vacuum_left" parent_group="left_arm"/>
+    <end_effector name="vacuum_right" parent_link="rightjoint6" group="vacuum_right" parent_group="right_arm"/>
+    <end_effector name="vacuum_left_with_base" parent_link="leftjoint6" group="vacuum_left" parent_group="left_arm_with_base"/>
+    <end_effector name="vacuum_right_with_base" parent_link="rightjoint6" group="vacuum_right" parent_group="right_arm_with_base"/>
+    <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
+    <disable_collisions link1="base_link" link2="pitch" reason="Adjacent"/>
+    <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>
+    <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
+    <disable_collisions link1="updown" link2="leftjoint1" reason="Adjacent"/>
+    <disable_collisions link1="updown" link2="rightjoint1" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint1" link2="leftjoint2" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint2" link2="leftjoint3" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint3" link2="leftjoint4" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint4" link2="leftjoint5" reason="Adjacent"/>
+    <disable_collisions link1="leftjoint5" link2="leftjoint6" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint1" link2="rightjoint2" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint2" link2="rightjoint3" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint3" link2="rightjoint4" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint4" link2="rightjoint5" reason="Adjacent"/>
+    <disable_collisions link1="rightjoint5" link2="rightjoint6" reason="Adjacent"/>
 </robot>

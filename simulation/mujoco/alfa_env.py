@@ -1,10 +1,18 @@
+from pathlib import Path
+
 import mujoco
 import mujoco.viewer
-from alfa_interface import AlfaRobotInterface
+try:
+    from alfa_interface import AlfaRobotInterface
+except ImportError:
+    from .alfa_interface import AlfaRobotInterface
 
 class AlfaEnv:
     def __init__(self, model_path="scene.xml", sim_dt=0.002, frame_skip=10):
-        self.model = mujoco.MjModel.from_xml_path(model_path)
+        model_path = Path(model_path)
+        if not model_path.is_absolute():
+            model_path = Path(__file__).resolve().parent / model_path
+        self.model = mujoco.MjModel.from_xml_path(str(model_path))
         self.model.opt.timestep = sim_dt
         self.data = mujoco.MjData(self.model)
 
