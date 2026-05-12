@@ -11,8 +11,6 @@ moveit_simple_controller_manager:
     action_ns: follow_joint_trajectory
     default: true
     joints:
-      - pitch
-      - turn
       - updown
       - left_v5_joint1
       - left_v5_joint2

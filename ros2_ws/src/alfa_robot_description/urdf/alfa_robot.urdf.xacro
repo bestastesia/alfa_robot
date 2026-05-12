@@ -280,57 +280,57 @@
     </inertial>
   </xacro:macro>
 
-  <xacro:macro name="v5_t_motor_mesh_visual" params="xyz rpy color">
+  <xacro:macro name="v5_t_motor_mesh_visual" params="mesh xyz rpy color">
     <visual>
       <origin xyz="${xyz}" rpy="${rpy}"/>
       <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/leftjoint4.STL"/>
+        <mesh filename="${mesh}"/>
       </geometry>
       <material name="v5_t_motor_mesh_mat"><color rgba="${color}"/></material>
     </visual>
   </xacro:macro>
 
-  <xacro:macro name="v5_t_motor_link" params="name axis mass color">
+  <xacro:macro name="v5_t_motor_link" params="name axis mass color mesh mirror_y:=1">
     <link name="${name}">
       <xacro:v5_simple_inertial mass="${mass}"/>
       <xacro:if value="${axis == 'z'}">
         <!-- Visual uses leftjoint4.STL as the T-motor template; collision stays primitive for MoveIt stability. -->
-        <xacro:v5_t_motor_mesh_visual xyz="0 0 0" rpy="0 0 0" color="${color}"/>
+        <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0 0 0" rpy="0 0 0" color="${color}"/>
         <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0 0 0.05" rpy="0 0 0"/>
       </xacro:if>
       <xacro:if value="${axis == 'x'}">
-        <xacro:v5_t_motor_mesh_visual xyz="0 0 0" rpy="0 1.5708 0" color="${color}"/>
+        <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0 0 0" rpy="0 1.5708 0" color="${color}"/>
         <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0.05 0 0" rpy="0 1.5708 0"/>
       </xacro:if>
       <xacro:if value="${axis == 'y'}">
-        <xacro:v5_t_motor_mesh_visual xyz="0 0 0" rpy="1.5708 0 0" color="${color}"/>
-        <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0 0.05 0" rpy="1.5708 0 0"/>
+        <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0 0 0" rpy="${mirror_y * 1.5708} 0 0" color="${color}"/>
+        <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0 ${mirror_y * 0.05} 0" rpy="${mirror_y * 1.5708} 0 0"/>
       </xacro:if>
     </link>
   </xacro:macro>
 
-  <xacro:macro name="v5_t_motor_with_bar_link" params="name axis bar_length bar_radius mass color">
+  <xacro:macro name="v5_t_motor_with_bar_link" params="name axis bar_length bar_radius mass color mesh mirror_y:=1">
     <link name="${name}">
       <xacro:v5_simple_inertial mass="${mass}"/>
       <xacro:if value="${axis == 'x'}">
-        <xacro:v5_t_motor_mesh_visual xyz="0.06 -0.0 0" rpy="3.141592654 1.5708 0" color="${color}"/>
+        <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0.06 0 0" rpy="${(mirror_y + 1) * 1.570796327} 1.5708 ${(1 - mirror_y) * 1.570796327}" color="${color}"/>
         <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0.05 0 0" rpy="0 1.5708 0"/>
       </xacro:if>
       <xacro:if value="${axis == 'y'}">
-        <xacro:v5_t_motor_mesh_visual xyz="0 0 0" rpy="1.5708 0 0" color="${color}"/>
-        <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0 0.05 0" rpy="1.5708 0 0"/>
+        <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0 0 0" rpy="${mirror_y * 1.5708} 0 0" color="${color}"/>
+        <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0 ${mirror_y * 0.05} 0" rpy="${mirror_y * 1.5708} 0 0"/>
       </xacro:if>
       <!-- Single cylindrical arm segment starts at this joint and ends at the next joint. -->
-      <xacro:v5_visual_cylinder radius="${bar_radius}" length="${bar_length}" xyz="0 ${bar_length / 2.0} 0" rpy="1.5708 0 0" color="${color}"/>
-      <xacro:v5_collision_cylinder radius="${bar_radius}" length="${bar_length}" xyz="0 ${bar_length / 2.0} 0" rpy="1.5708 0 0"/>
+      <xacro:v5_visual_cylinder radius="${bar_radius}" length="${bar_length}" xyz="0 ${mirror_y * bar_length / 2.0} 0" rpy="${mirror_y * 1.5708} 0 0" color="${color}"/>
+      <xacro:v5_collision_cylinder radius="${bar_radius}" length="${bar_length}" xyz="0 ${mirror_y * bar_length / 2.0} 0" rpy="${mirror_y * 1.5708} 0 0"/>
     </link>
   </xacro:macro>
 
-  <xacro:macro name="v5_fixed_t_support" params="name color">
+  <xacro:macro name="v5_fixed_t_support" params="name color mesh mirror_y:=1">
     <link name="${name}">
       <xacro:v5_simple_inertial mass="1.0"/>
       <!-- Passive T-shaped motor/bracket: visual reference only, no active DOF. -->
-      <xacro:v5_t_motor_mesh_visual xyz="0 0 0" rpy="0 1.5708 0" color="${color}"/>
+      <xacro:v5_t_motor_mesh_visual mesh="${mesh}" xyz="0 0 0" rpy="0 1.5708 0" color="${color}"/>
       <xacro:v5_collision_cylinder radius="${v5_motor_radius}" length="${v5_motor_width}" xyz="0.05 0 0" rpy="0 1.5708 0"/>
     </link>
   </xacro:macro>
@@ -346,7 +346,7 @@
     </link>
   </xacro:macro>
 
-  <xacro:macro name="v5_proxy_arm" params="side mount_y color">
+  <xacro:macro name="v5_proxy_arm" params="side mount_y mirror_y color mesh">
     <xacro:v5_mount_link name="${side}_v5_link0" color="${color}"/>
     <joint name="${side}_v5_mount" type="fixed">
       <parent link="updown"/>
@@ -354,82 +354,82 @@
       <origin xyz="0 ${mount_y} ${v5_mount_z}" rpy="0 0 0"/>
     </joint>
 
-    <xacro:v5_t_motor_link name="${side}_v5_link1" axis="z" mass="2.0" color="${color}"/>
+    <xacro:v5_t_motor_link name="${side}_v5_link1" axis="z" mass="2.0" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint1" type="revolute">
       <parent link="${side}_v5_link0"/>
       <child link="${side}_v5_link1"/>
-      <origin xyz="0 0 0.16" rpy="0 0 3.141592654"/>
+      <origin xyz="0 0 0.16" rpy="0 0 ${mirror_y * 3.141592654}"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
     </joint>
 
-    <xacro:v5_t_motor_with_bar_link name="${side}_v5_link2" axis="x" bar_length="${v5_upper_arm_length}" bar_radius="0.055" mass="4.5" color="${color}"/>
+    <xacro:v5_t_motor_with_bar_link name="${side}_v5_link2" axis="x" bar_length="${v5_upper_arm_length}" bar_radius="0.055" mass="4.5" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint2" type="revolute">
       <parent link="${side}_v5_link1"/>
       <child link="${side}_v5_link2"/>
-      <origin xyz="0 -0.1 0.06" rpy="3.141592654 0 1.57079632"/>
+      <origin xyz="0 ${mirror_y * -0.1} 0.06" rpy="${mirror_y * 3.141592654} 0 ${mirror_y * 1.57079632}"/>
       <axis xyz="1 0 0"/>
       <limit lower="-1.57079632" upper="1.57079632" effort="120" velocity="1.2"/>
     </joint>
 
-    <xacro:v5_t_motor_with_bar_link name="${side}_v5_link3" axis="x" bar_length="${v5_forearm_length}" bar_radius="0.05" mass="3.6" color="${color}"/>
+    <xacro:v5_t_motor_with_bar_link name="${side}_v5_link3" axis="x" bar_length="${v5_forearm_length}" bar_radius="0.05" mass="3.6" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint3" type="revolute">
       <parent link="${side}_v5_link2"/>
       <child link="${side}_v5_link3"/>
       <!-- Elbow joint is at the end of upper arm, separated from shoulder J2. -->
-      <origin xyz="-0.14 0.7 0" rpy="0 0 0"/>
+      <origin xyz="-0.14 ${mirror_y * 0.7} 0" rpy="0 0 0"/>
       <axis xyz="1 0 0"/>
       <limit lower="-2.35619449" upper="2.35619449" effort="100" velocity="1.2"/>
     </joint>
 
-    <xacro:v5_fixed_t_support name="${side}_v5_link3_passive_t" color="${color}"/>
+    <xacro:v5_fixed_t_support name="${side}_v5_link3_passive_t" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint3_passive_t" type="fixed">
       <parent link="${side}_v5_link3"/>
       <child link="${side}_v5_link3_passive_t"/>
-      <origin xyz="0.08 ${v5_motor_gap} 0" rpy="0 0 0"/>
+      <origin xyz="0.08 ${mirror_y * v5_motor_gap} 0" rpy="0 0 0"/>
     </joint>
 
-    <xacro:v5_t_motor_link name="${side}_v5_link4" axis="y" mass="1.4" color="${color}"/>
+    <xacro:v5_t_motor_link name="${side}_v5_link4" axis="y" mass="1.4" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint4" type="revolute">
       <parent link="${side}_v5_link3"/>
       <child link="${side}_v5_link4"/>
       <!-- Wrist joint4 is at the end of forearm, separated from elbow J3. -->
-      <origin xyz="0 ${v5_forearm_length} ${v5_motor_gap}" rpy="3.141592654 0 0"/>
-      <axis xyz="0 1 0"/>
+      <origin xyz="0 ${mirror_y * v5_forearm_length} ${v5_motor_gap}" rpy="${mirror_y * 3.141592654} 0 0"/>
+      <axis xyz="0 ${mirror_y} 0"/>
       <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5"/>
     </joint>
 
-    <xacro:v5_t_motor_link name="${side}_v5_link5" axis="x" mass="1.0" color="${color}"/>
+    <xacro:v5_t_motor_link name="${side}_v5_link5" axis="x" mass="1.0" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint5" type="revolute">
       <parent link="${side}_v5_link4"/>
       <child link="${side}_v5_link5"/>
-      <origin xyz="0.0 -0.06 -0.08" rpy="0 1.57079632 0"/>
+      <origin xyz="0.0 ${mirror_y * -0.06} -0.08" rpy="0 1.57079632 0"/>
       <axis xyz="1 0 0"/>
       <limit lower="-1.57079632" upper="1.57079632" effort="60" velocity="1.5"/>
     </joint>
 
-    <xacro:v5_t_motor_link name="${side}_v5_link6" axis="z" mass="1.0" color="${color}"/>
+    <xacro:v5_t_motor_link name="${side}_v5_link6" axis="z" mass="1.0" color="${color}" mesh="${mesh}" mirror_y="${mirror_y}"/>
     <joint name="${side}_v5_joint6" type="revolute">
       <parent link="${side}_v5_link5"/>
       <child link="${side}_v5_link6"/>
-      <origin xyz="0.06 -0.08 0" rpy="1.57079632 0 0"/>
+      <origin xyz="0.06 ${mirror_y * -0.08} 0" rpy="${mirror_y * 1.57079632} 0 0"/>
       <axis xyz="0 0 1"/>
       <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
     </joint>
 
     <link name="${side}_v5_tool0">
       <xacro:v5_simple_inertial mass="0.2"/>
-      <xacro:v5_visual_box size="0.10 0.10 0.04" xyz="0 0.05 0" rpy="0 0 0" color="0.9 0.9 0.1 1"/>
+      <xacro:v5_visual_box size="0.10 0.10 0.04" xyz="0 ${mirror_y * 0.05} 0" rpy="0 0 0" color="0.9 0.9 0.1 1"/>
     </link>
     <joint name="${side}_v5_tool0_fixed" type="fixed">
       <parent link="${side}_v5_link6"/>
       <child link="${side}_v5_tool0"/>
-      <origin xyz="0 0.12 0" rpy="0 0 0"/>
+      <origin xyz="0 ${mirror_y * 0.12} 0" rpy="0 0 0"/>
     </joint>
   </xacro:macro>
 
-  <xacro:v5_proxy_arm side="left" mount_y="${v5_mount_y}" color="0.2 0.55 1.0 1"/>
-  <xacro:v5_proxy_arm side="right" mount_y="${-v5_mount_y}" color="1.0 0.55 0.2 1"/>
+  <xacro:v5_proxy_arm side="left" mount_y="${v5_mount_y}" mirror_y="1" color="0.2 0.55 1.0 1" mesh="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/leftjoint4.STL"/>
+  <xacro:v5_proxy_arm side="right" mount_y="${-v5_mount_y}" mirror_y="-1" color="1.0 0.55 0.2 1" mesh="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/rightjoint4.STL"/>
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

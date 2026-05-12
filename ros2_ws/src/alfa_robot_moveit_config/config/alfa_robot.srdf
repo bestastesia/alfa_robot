@@ -9,35 +9,25 @@
         <joint name="updown"/>
     </group>
     <group name="left_v5_arm">
-        <joint name="left_v5_joint1"/>
-        <joint name="left_v5_joint2"/>
-        <joint name="left_v5_joint3"/>
-        <joint name="left_v5_joint4"/>
-        <joint name="left_v5_joint5"/>
-        <joint name="left_v5_joint6"/>
+        <chain base_link="left_v5_link0" tip_link="left_v5_tool0"/>
     </group>
     <group name="right_v5_arm">
-        <joint name="right_v5_joint1"/>
-        <joint name="right_v5_joint2"/>
-        <joint name="right_v5_joint3"/>
-        <joint name="right_v5_joint4"/>
-        <joint name="right_v5_joint5"/>
-        <joint name="right_v5_joint6"/>
+        <chain base_link="right_v5_link0" tip_link="right_v5_tool0"/>
     </group>
     <group name="dual_v5_arm">
         <group name="left_v5_arm"/>
         <group name="right_v5_arm"/>
     </group>
     <group name="left_v5_arm_with_base">
-        <group name="torso_group"/>
+        <joint name="updown"/>
         <group name="left_v5_arm"/>
     </group>
     <group name="right_v5_arm_with_base">
-        <group name="torso_group"/>
+        <joint name="updown"/>
         <group name="right_v5_arm"/>
     </group>
     <group name="dual_v5_arm_with_base">
-        <group name="torso_group"/>
+        <joint name="updown"/>
         <group name="left_v5_arm"/>
         <group name="right_v5_arm"/>
     </group>
@@ -48,8 +38,6 @@
         <link name="right_v5_tool0"/>
     </group>
     <group_state name="home" group="dual_v5_arm_with_base">
-        <joint name="pitch" value="0"/>
-        <joint name="turn" value="0"/>
         <joint name="updown" value="0"/>
         <joint name="left_v5_joint1" value="0"/>
         <joint name="left_v5_joint2" value="0"/>
@@ -66,6 +54,10 @@
     </group_state>
     <end_effector name="left_v5_tool" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="left_v5_arm"/>
     <end_effector name="right_v5_tool" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="right_v5_arm"/>
+    <end_effector name="left_v5_tool_with_base" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="left_v5_arm_with_base"/>
+    <end_effector name="right_v5_tool_with_base" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="right_v5_arm_with_base"/>
+    <end_effector name="left_v5_tool_dual_base" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="dual_v5_arm_with_base"/>
+    <end_effector name="right_v5_tool_dual_base" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="dual_v5_arm_with_base"/>
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
     <disable_collisions link1="base_link" link2="pitch" reason="Adjacent"/>
     <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>

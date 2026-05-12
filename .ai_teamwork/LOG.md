@@ -97,3 +97,45 @@
 - 改了哪里：`alfa_robot.urdf.xacro` 中 v5 关节轴、T 电机姿态、J1 origin rpy；J1 通过 `v5_joint1_zero_rpy=0 0 -1.5708` 把原来 `joint1=-90°` 的姿态作为新零位。
 - 验证结果：`xacro` + `check_urdf` 通过；MoveItConfigsBuilder 可加载；每侧 6 个主动 T + 1 个被动 T，共 14 个 `leftjoint4.STL` visual。
 - 留给下个 AI：当前仍是 proxy；T 电机法兰和支架偏移参考旧 URDF 量级（0.098/0.13/0.1435），最终需机械 CAD 尺寸闭环。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0006/T-0007/T-0008
+- 做了什么：根据用户反馈安排 MoveIt 规划组、右手末端控制球、右手镜像三个任务。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0006 处理 `dual_arm_with_base` 关节组成；T-0007 处理右手末端交互球；T-0008 处理右手对称建模。
+- 留给下个 AI：T-0006/T-0007 可先查 MoveIt SRDF/RViz；T-0008 涉及模型改动，注意和六轴替换任务 T-0004/T-0005 的先后关系。
+
+## 2026-05-12 项目经理 / Codex / 修正完成任务归档流程
+- 做了什么：把已完成任务从当前任务列表移到已完成任务区，并补充 PM 维护规则。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：当前任务列表只保留 T-0006/T-0007/T-0008；T-0002/T-0003/T-0004/T-0005 进入已完成任务。
+- 留给下个 AI：以后 PM 标记 DONE 时，必须同步移动到“已完成任务”，不要只改状态。
+
+## 2026-05-12 机械工程师 / Codex / T-0008 右手模型镜像
+- 做了什么：按任务板将 v5 右臂相对左臂做 Y 方向镜像，左臂用户手调参数保持不变。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`，给 `v5_proxy_arm` 增加 `mirror_y`，右臂实例为 `-1`。
+- 验证结果：`xacro` 展开通过，`check_urdf` 通过；joint2~joint6 的右臂 origin 已相对左臂在 Y=0 镜像。
+- 留给下个 AI：当前仍按此前约定统一使用 `leftjoint4.STL` 做 T 电机外观；若需要真实左右外观镜像，可再切换右臂 mesh 或单独调整 mesh rpy。
+
+## 2026-05-12 MoveIt/运控工程师 / Codex / T-0006
+- 做了什么：修正 v5 双臂带底座规划组，`dual_v5_arm_with_base` 不再包含 `pitch/turn`，仅包含 `updown + 左右臂 12 关节`。
+- 改了哪里：`alfa_robot.srdf`、`ros2_controllers.yaml`、`moveit_controllers.yaml`、`dual_arm_planner_node.cpp`、`dual_arm_pose_planner.py`、`.ai_teamwork/TASKS.md`。
+- 验证结果：SRDF 展开为 13 个关节；MoveItConfigsBuilder 加载通过；`colcon build --packages-select alfa_robot_moveit_config` 通过；双臂脚本 py_compile 通过。
+- 留给下个 AI：T-0007 可继续检查右手交互球，重点看 SRDF end_effector 的 `parent_link/parent_group`、RViz planning group 选择和右手 tool frame。
+
+## 2026-05-12 MoveIt/机械工程师 / Codex / T-0007
+- 做了什么：修复 v5 右手末端交互控制球配置；左右单臂 SRDF group 改为 chain 到 `*_v5_tool0`，end_effector 的 parent_group 绑定到 `*_v5_arm_with_base`。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.srdf`、`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：MoveItConfigsBuilder 加载通过；`colcon build --packages-select alfa_robot_moveit_config` 通过；SRDF 中左右 end_effector 均存在。
+- 留给下个 AI：T-0008 继续处理右手镜像建模；若 RViz 仍不显示右手球，下一步应实机启动 RViz 检查 MotionPlanning 面板选中 group 是否为 `right_v5_arm_with_base`。
+
+## 2026-05-12 机械工程师 / Codex / T-0008 真镜像修正
+- 做了什么：修正右臂不只是 Y 坐标取反，而是按 Y=0 反射做 joint origin、rpy、axis 的真实镜像。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；右臂使用 `rightjoint4.STL`，左臂仍使用 `leftjoint4.STL`。
+- 验证结果：`xacro` 和 `check_urdf` 通过；脚本校验 joint1~joint6 的位置、姿态矩阵和轴向均满足右臂 = Y 镜像(左臂)。
+- 留给下个 AI：若用户继续手调左臂参数，右臂会通过 `mirror_y=-1` 跟随镜像；不要再只做坐标取反。
+
+## 2026-05-12 MoveIt/机械工程师 / Codex / T-0007 dual 组补充
+- 做了什么：根据用户指出的旧提交 `9ef92b8...` 可双末端规划状态，补齐 `dual_v5_arm_with_base` 的左右两个 end_effector 注册。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.srdf`、`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：SRDF 中 `parent_group=dual_v5_arm_with_base` 的 end_effector 数量为 2；MoveItConfigsBuilder 加载通过；`colcon build --packages-select alfa_robot_moveit_config` 通过。
+- 留给下个 AI：如果 RViz 仍只有一个球，优先实机检查 MotionPlanning Display 是否选中 `dual_v5_arm_with_base` 并刷新 start/goal state；SRDF 已与旧双臂模式等价迁移。
