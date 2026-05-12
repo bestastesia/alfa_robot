@@ -47,6 +47,7 @@ install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(FILES .setup_assistant DESTINATION share/${PROJECT_NAME})
 
 install(PROGRAMS
+  scripts/reachability_tester.py
   scripts/rviz_dual_goal_pose_monitor.py
   DESTINATION lib/${PROJECT_NAME}
 )

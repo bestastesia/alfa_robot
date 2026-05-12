@@ -232,3 +232,73 @@
 - 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`，删除 `package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/updown.STL` 和 collision/updown.STL 的引用。
 - 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 通过；生成 URDF 中 `updown` visual=0/collision=0，`updown` 仍为 prismatic 且左右 `*_v5_mount` parent 仍是 `updown`。
 - 留给下个 AI：机械臂安装位置不变，仍随 `updown` 升降；不要再通过删除 v5 电机或 motor1 子块解决 updown STL 问题。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0011/T-0012
+- 做了什么：把“机械臂可达范围复印到 3D 空间”拆成运控核心测试和仿真可视化两个任务。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0011 由运控工程师负责 MoveIt IK、手动记录、自动采样；T-0012 由仿真工程师负责同机器人模型坐标系下的 3D 可视化。
+- 留给下个 AI：可视化优先考虑 RViz Marker/MarkerArray，因为能和 RobotModel 共用 fixed frame，满足“点云和机器人实体相对位置”需求。
+
+## 2026-05-12 项目经理 / Codex / 修正可达范围任务编号
+- 做了什么：发现 T-0011/T-0012 已被其他已完成任务占用，重新用 T-0013/T-0014 登记可达范围测试与可视化任务。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0013 为运控核心测试任务；T-0014 为仿真三维可视化任务；当前任务列表只包含这两个新任务。
+- 留给下个 AI：不要复用已有任务编号；可达范围需求是“像复印一样把可达点映射到机器人同坐标系 3D 空间”。
+
+## 2026-05-12 项目经理 / Codex / 补充 PM 任务依赖规则
+- 做了什么：按用户要求，将“任务依赖/并行关系必须标注”写入项目经理长期注意事项。
+- 改了哪里：`.ai_teamwork/engineers/project_manager.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：以后 PM 布置任务时需要写清“依赖 T-XXXX”或“可与 T-XXXX 并行”。
+- 留给下个 AI：当前 T-0013/T-0014 不额外调整；从后续新任务开始执行该规则。
+
+## 2026-05-12 运控工程师 / Codex / T-0013 可达范围测试核心
+- 做了什么：实现机械臂可达范围测试核心节点，支持手动记录当前末端 TF 位姿和自动区域采样调用 `/compute_ik`。
+- 改了哪里：新增 `ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py`、`ros2_ws/src/alfa_robot_moveit_config/launch/reachability_tester.launch.py`，更新 `CMakeLists.txt` 安装脚本。
+- 验证结果：`/usr/bin/python3 -m py_compile` 通过；`colcon build --packages-select alfa_robot_moveit_config` 通过；无 MoveIt 服务环境下 launch 可启动并按预期报 `/compute_ik service not available`。
+- 使用示例：启动 MoveIt 后，自动采样 `ros2 launch alfa_robot_moveit_config reachability_tester.launch.py mode:=auto side:=left min_x:=0.0 max_x:=0.8 min_y:=0.0 max_y:=0.6 min_z:=0.1 max_z:=0.8 step:=0.1 output_csv:=/tmp/left_reach.csv`；手动记录 `mode:=manual side:=both output_csv:=/tmp/manual_trace.csv`。
+- 留给下个 AI：T-0014 仿真工程师可直接消费 CSV 做 RViz Marker/MarkerArray；当前脚本没有做三维可视化。
+
+## 2026-05-12 运控/仿真工程师 / Codex / 撤销可视化相关任务
+- 做了什么：按用户要求撤销本轮所有可视化相关工作，不再保留 T-0014 的 RViz 点云可视化，也撤回对实时 RViz 目标可视化脚本的后续改动。
+- 改了哪里：删除未跟踪的 `reachability_rviz_visualizer.py` / `reachability_rviz_visualizer.launch.py`；恢复 `rviz_dual_goal_pose_monitor.py` 和对应 launch 到原有目标位姿监控版本；从任务表移除 T-0014。
+- 保留内容：T-0013 可达性测试核心 `reachability_tester.py` / `reachability_tester.launch.py` 仍保留，因为它不是可视化任务，而是 CSV 采样核心。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install` 通过。
+- 留给下个 AI：如果以后重新做可视化，需要用户重新确认展示逻辑；当前不要继续实现可视化。
+
+## 2026-05-12 项目经理 / Codex / 安排 Pinocchio 模块1任务
+- 做了什么：记录 Pinocchio/Jinja2/MeshCat/NumPy/SciPy/Matplotlib/Plotly 技术栈，并下发“参数化模型生成器”模块1任务。
+- 改了哪里：`.ai_teamwork/PINOCCHIO_STACK.md`、`.ai_teamwork/TASKS.md`、机械/仿真/运控工程师长期注意事项。
+- 验证结果：T-0015 提取当前机械臂 baseline；T-0016 搭建参数化 URDF 生成 + Pinocchio 加载 + MeshCat 可视化；T-0017 依赖前两者做运动学语义校验。
+- 留给下个 AI：T-0015 与 T-0016 可并行；T-0017 依赖 T-0015/T-0016；第一阶段验收是可修改参数、生成临时 URDF、Pinocchio 加载并 MeshCat 可视化。
+
+## 2026-05-12 仿真工程师 / Codex / T-0016 Pinocchio 参数化模型生成器骨架
+- 做了什么：先于机械工程师完成模块1软件骨架，新增独立 `simulation/pinocchio_parametric/`，可从 YAML baseline stub 通过 Jinja2 生成双 v5 机械臂 URDF；支持 XML/check_urdf 检查，安装 Pinocchio 后可加载模型，安装 MeshCat 后可浏览器可视化。
+- 改了哪里：新增 `configs/v5_baseline_stub.yaml`、`templates/alfa_v5_parametric.urdf.j2`、`tools/generate_model.py`、`README.md`、`generated/.gitignore` 和自动生成的 `MECHANICAL_HANDOFF.md`。
+- 验证结果：`/usr/bin/python3 -m py_compile` 通过；`python3 simulation/pinocchio_parametric/tools/generate_model.py --check` 可生成 URDF 和机械交接，XML sanity 通过；当前环境未安装 Pinocchio，按设计跳过 Pinocchio load；ROS `check_urdf` 成功解析双臂树。
+- 留给机械工程师：请优先看 `simulation/pinocchio_parametric/MECHANICAL_HANDOFF.md`，校准 `v5_baseline_stub.yaml` 里的 mount、joint origin/rpy/axis、link mass/COM/inertia，并标明参数来自 URDF、SolidWorks、测量还是估算；工具接口名称已对齐 `left/right_v5_joint1..6` 和 `left/right_v5_tool0`。
+- 留给运控工程师：T-0017 仍需等 T-0015 校准后再确认 Pinocchio frame/joint 语义、FK/Jacobian/IK/RNEA 可用性。
+
+## 2026-05-12 Git 操作工程师 / Codex / 中文提交信息规则
+- 做了什么：根据用户要求，将“后续提交信息统一用中文”写入 Git 操作工程师长期注意事项。
+- 改了哪里：`.ai_teamwork/engineers/git_ops.md`，并追加本交接日志。
+- 验证结果：仅更新协作规则文档，未改业务代码。
+- 留给下个 AI：后续提交标题和正文都优先用中文，仍保留必要的 `Co-Authored-By` trailer。
+
+## 2026-05-12 Git 操作工程师 / Codex / 中文提交标题细则
+- 做了什么：补充提交信息规则，允许 `feat:`/`fix:` 等英文类型前缀，但冒号后的标题和正文必须用中文。
+- 改了哪里：`.ai_teamwork/engineers/git_ops.md`，并追加本交接日志。
+- 验证结果：仅更新协作规则文档，未改业务代码。
+- 留给下个 AI：提交格式示例：`fix: 修复 v5 双臂碰撞过滤`，正文继续中文，保留 `Co-Authored-By` trailer。
+
+## 2026-05-12 机械工程师 / Codex / T-0015 Pinocchio baseline 校准
+- 做了什么：基于当前 ROS2 `alfa_robot.urdf.xacro` 和 v5_1 SolidWorks 惯量参数，校准 T-0016 参数化模型 baseline；补充大臂/小臂长度、wrist/flange offset、mount、joint 拓扑、质量/COM/惯量来源。
+- 改了哪里：`simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml`、新增 `simulation/pinocchio_parametric/MECHANICAL_BASELINE.md`，并重新生成 `simulation/pinocchio_parametric/MECHANICAL_HANDOFF.md`。
+- 验证结果：`/usr/bin/python3 -m py_compile` 通过；`/usr/bin/python3 simulation/pinocchio_parametric/tools/generate_model.py --check` 通过；ROS `check_urdf simulation/pinocchio_parametric/generated/alfa_v5_parametric.urdf` 通过；当前环境未安装 Pinocchio，加载检查按工具设计跳过。
+- 留给下个 AI：T-0017 运控可基于已校准 YAML 校验 Pinocchio joint/frame/FK/Jacobian/IK 语义；注意参数化模型根是 `world`，未包含 ROS2 主底座链 `base_link->pitch->turn->updown`。
+
+## 2026-05-12 运控工程师 / Codex / T-0017 Pinocchio 运动学语义校验
+- 做了什么：完成参数化模型运动学语义校验工具，覆盖 joint/frame 命名、父子链、mount、origin/rpy、axis、limit、FK、position Jacobian 和简单 position IK smoke test。
+- 改了哪里：新增 `simulation/pinocchio_parametric/tools/validate_kinematics.py`；更新 `simulation/pinocchio_parametric/README.md`；生成报告 `simulation/pinocchio_parametric/generated/kinematic_semantics_report.md`。
+- 验证结果：`/usr/bin/python3 simulation/pinocchio_parametric/tools/validate_kinematics.py` 通过；左右臂 neutral FK 对称，position Jacobian rank=3，轻量 position IK 收敛；当前环境未安装 Pinocchio，所以 Pinocchio 原生 FK/Jacobian/IK/RNEA 路径已写好但未运行。
+- 留给机械工程师：当前运控确认 YAML baseline 与生成 URDF 的运动学语义一致；参数化模型根为 `world`，未含 `base_link->pitch->turn->updown`；后续若改臂长、offset、axis 或 tool0，先更新 `configs/v5_baseline_stub.yaml` 后重跑校验。当前模板仍只使用 `inertia_diag`，高可信动力学需把 `full_inertia` 接入模板。
+- 留给下个 AI：若需要真正 Pinocchio 数值验收，请先安装 Pinocchio 到 `/usr/bin/python3` 对应环境，再运行 `validate_kinematics.py --require-pinocchio`。

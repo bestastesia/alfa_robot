@@ -35,6 +35,10 @@
 | T-0010 | 机械工程师 | 替换为新的机械臂 URDF/模型文件 | `ros2_ws/src/alfa_robot_description/` | 已接入 `alfa_robot_arm_v5` 新 mesh/URDF 参数；保留当前 v5 proxy 备份；主 URDF 继续使用既有 `left/right_v5_*` 接口以兼容 MoveIt/ros2_control；xacro/check_urdf/description 构建通过 |
 | T-0011 | 运控工程师 | BioIK IK 解过滤碰撞状态 | `dual_arm_planner_node.cpp`、MoveIt 依赖配置 | 已给直接 `setFromIK` 路径接入 PlanningScene 碰撞有效性回调；构建通过 |
 | T-0012 | 机械工程师 | 移除 v5 机械臂安装连接件碰撞 | `ros2_ws/src/alfa_robot_description/` | 最终确认需隐藏/禁碰的是旧 `updown` STL；已移除 `updown` visual/collision、清理 motor1 内部小连接块，并保留全部 `left/right_v5_joint1..6`、`link0..tool0` 接口；xacro/check_urdf/description 构建通过 |
+| T-0013 | 运控工程师 | 设计并实现机械臂可达范围测试核心 | `reachability_tester.py`、`reachability_tester.launch.py` | 已实现手动 TF 位姿记录和自动区域 IK 采样，输出 CSV；包构建通过；无 move_group 环境下启动可正常报 `/compute_ik` 不可用 |
+| T-0016 | 仿真工程师 | 搭建 Pinocchio 参数化模型生成器骨架 | `simulation/pinocchio_parametric/` | 已完成独立工具目录、YAML baseline stub、Jinja2 URDF 模板、生成脚本、可选 Pinocchio/MeshCat 加载、机械交接文件；baseline 待 T-0015 校准 |
+| T-0015 | 机械工程师 | 提取当前机械臂参数化 baseline | `simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml`、`MECHANICAL_BASELINE.md` | 已基于当前 ROS2 v5_1 URDF/Xacro 校准 mount、joint origin/rpy/axis、link mass/COM/inertia、大臂/小臂长度和 wrist/flange offset；生成器/check_urdf 通过，T-0017 可继续语义校验 |
+| T-0017 | 运控工程师 | 校验参数化模型的运动学语义 | `simulation/pinocchio_parametric/tools/validate_kinematics.py`、`generated/kinematic_semantics_report.md` | 已完成 URDF/YAML 静态语义、轻量 FK/Jacobian/position IK 校验；当前环境未安装 Pinocchio，Pinocchio 数值校验路径已实现但未运行 |
 
 ## 待用户/PM 补充
 
