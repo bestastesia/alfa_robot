@@ -195,3 +195,40 @@
 - 改了哪里：更新 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/` 四套 mesh（visual/collision/visual_right/collision_right）和 `ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；右臂 mesh 仍由左臂 local Y 镜像生成。
 - 验证结果：`xacro`、`check_urdf`、左右镜像矩阵校验通过；`colcon build --packages-select alfa_robot_description --symlink-install` 通过；安装空间 24 个 v5_1 mesh 完整。
 - 留给下个 AI：源导出目录 `alfa_robot_arm_v5` 和 `alfa_robot_arm_v5_1` 已按用户要求清理；包内 `alfa_robot_description/meshes/alfa_robot_arm_v5` 是当前事实源。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0012
+- 做了什么：根据用户怀疑“底座/机械臂安装连接件本身已碰撞”，新增机械侧任务 T-0012。
+- 任务要求：机械工程师删除或禁用 v5 机械臂安装金属连接件的 collision，必要时也移除 visual，实现机械臂可视为直接虚空连接到底盘/升降结构。
+- 约束条件：不得改运控接口，必须保留 `left/right_v5_joint1..6`、`left/right_v5_link0..tool0`、MoveIt SRDF/controller 使用的 joint/link 名称。
+- 验证要求：`xacro`、`check_urdf` 通过，并在 MoveIt/RViz 或脚本中确认默认状态不再因安装连接件自碰撞。
+- 留给下个 AI：若只删 collision 即可解决，优先保留 visual 方便观察；若 visual 误导调试，再按用户“虚空连接”方案移除 visual。
+
+## 2026-05-12 机械工程师 / Codex / T-0012 安装连接件碰撞禁用
+- 做了什么：禁用 v5 左右机械臂首节安装连接件 `left_v5_link1` / `right_v5_link1` 的 collision，保留 visual，机械臂仍通过原 joint/link 接口“虚空连接”。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；`v5_imported_motor_link` 新增 `include_collision` 参数，实例化 `*_v5_link1` 时设为 `false`。
+- 验证结果：`xacro`、`check_urdf` 通过；生成 URDF 中 `*_v5_link0` collision=0，`*_v5_link1` visual=1/collision=0；MoveIt C++ 模型加载显示 `left/right_v5_link1` geoms=0；`colcon build --packages-select alfa_robot_description --symlink-install` 通过。
+- 留给下个 AI：若 BioIK 仍报告初始碰撞，下一步应检查 `*_v5_link2` 与 `updown/base` 或左右臂互碰，而不是安装连接件 `link1`。
+
+## 2026-05-12 机械工程师 / Codex / 安装连接件视觉隐藏
+- 做了什么：在 T-0012 基础上进一步隐藏左右 `*_v5_link1` 的 visual，使安装连接件在 RViz 中不可见，同时继续无 collision。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；`v5_imported_motor_link` 新增 `include_visual` 参数，`*_v5_link1` 设置 `include_visual=false include_collision=false`。
+- 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 通过；生成 URDF 中 `left/right_v5_link1` visual=0、collision=0。
+- 留给下个 AI：现在可见机械臂从 `*_v5_link2` 开始；接口 link/joint 名称仍完整保留。
+
+## 2026-05-12 机械工程师 / Codex / 恢复第一个电机模型
+- 做了什么：纠正上一轮误判，恢复左右 `*_v5_link1` 的 motor1 visual/collision；真正的前一级安装连接件是 `*_v5_link0`，它保持 visual=0/collision=0。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`，移除 `*_v5_link1` 实例上的 `include_visual=false include_collision=false`。
+- 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 通过；生成 URDF 中 `*_v5_link0` 不显示不碰撞，`*_v5_link1` 电机恢复 visual=1/collision=1。
+- 留给下个 AI：不要再把 `*_v5_link1` 当连接件删；它是第一个电机，前一级虚空连接是 `*_v5_link0`。
+
+## 2026-05-12 机械工程师 / Codex / 删除 motor1 内部连接子块
+- 做了什么：确认 `*_v5_link0` 在 URDF 中已无 visual/collision，用户看到的连接件实际是 `motor1.STL` 内部的独立小连通块；已从 motor1 visual/collision STL 中仅剔除该 48-triangle 小连接块，保留第一个电机主体。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/visual/motor1.STL`、`collision/motor1.STL`，并重新生成 `visual_right/motor1.STL`、`collision_right/motor1.STL`。
+- 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 通过；motor1 左右 visual/collision 均只剩 1 个连通块。
+- 留给下个 AI：第一个电机仍是 `*_v5_link1`；被删除的是 motor1 mesh 内部小连接件，不是 URDF link。
+
+## 2026-05-12 机械工程师 / Codex / 隐藏 updown STL 但保留升降
+- 做了什么：根据用户确认，真正需要隐藏/禁碰的是 `updown` link 对应的旧金属 STL，而不是 v5 电机；已移除 `updown` link 的 visual/collision 几何，保留 link、prismatic joint 和双臂挂载。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`，删除 `package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/updown.STL` 和 collision/updown.STL 的引用。
+- 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 通过；生成 URDF 中 `updown` visual=0/collision=0，`updown` 仍为 prismatic 且左右 `*_v5_mount` parent 仍是 `updown`。
+- 留给下个 AI：机械臂安装位置不变，仍随 `updown` 升降；不要再通过删除 v5 电机或 motor1 子块解决 updown STL 问题。

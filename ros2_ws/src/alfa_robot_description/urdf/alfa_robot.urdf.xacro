@@ -187,29 +187,7 @@
         iyz="1.21565800186775E-06"
         izz="0.186025474834666" />
     </inertial>
-    <visual>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/updown.STL" />
-      </geometry>
-      <material
-        name="">
-        <color
-          rgba="1 1 1 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin
-        xyz="0 0 0"
-        rpy="0 0 0" />
-      <geometry>
-        <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/collision/updown.STL" />
-      </geometry>
-    </collision>
+    <!-- updown link remains the lift/mount frame, but its metal STL is intentionally hidden and non-colliding. -->
   </link>
   <joint
     name="updown"
@@ -262,7 +240,7 @@
     </collision>
   </xacro:macro>
 
-  <xacro:macro name="v5_imported_motor_link" params="name motor color visual_dir collision_dir mirror_y:=1">
+  <xacro:macro name="v5_imported_motor_link" params="name motor color visual_dir collision_dir mirror_y:=1 include_visual:=true include_collision:=true">
     <link name="${name}">
       <xacro:if value="${motor == 'motor1'}">
         <inertial>
@@ -270,8 +248,12 @@
           <mass value="1.14347754183273"/>
           <inertia ixx="0.00234577756970447" ixy="${mirror_y * -1.39192053258421E-06}" ixz="7.06941577680902E-05" iyy="0.00245440034346279" iyz="${mirror_y * -2.78529246638655E-06}" izz="0.00212775141233719"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
       <xacro:if value="${motor == 'motor2'}">
         <inertial>
@@ -279,8 +261,12 @@
           <mass value="4.80591024170092"/>
           <inertia ixx="0.0514140216022789" ixy="${mirror_y * -1.11071009974064E-09}" ixz="7.00200352560243E-10" iyy="0.0109314943608357" iyz="${mirror_y * 0.000141378481768625}" izz="0.0507607430231609"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
       <xacro:if value="${motor == 'motor3'}">
         <inertial>
@@ -288,8 +274,12 @@
           <mass value="5.53739421393496"/>
           <inertia ixx="0.0659171393206471" ixy="${mirror_y * -1.40894015322047E-06}" ixz="-2.83298512105713E-06" iyy="0.0102087351820484" iyz="${mirror_y * -0.00128557192119225}" izz="0.0652938482117856"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
       <xacro:if value="${motor == 'motor4'}">
         <inertial>
@@ -297,8 +287,12 @@
           <mass value="1.14347527972143"/>
           <inertia ixx="0.00234577526969165" ixy="${mirror_y * 7.06887224662317E-05}" ixz="1.39432827945232E-06" iyy="0.00212775138988867" iyz="${mirror_y * 2.78555789689753E-06}" izz="0.00245439599558472"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
       <xacro:if value="${motor == 'motor5'}">
         <inertial>
@@ -306,8 +300,12 @@
           <mass value="1.14347708247491"/>
           <inertia ixx="0.00234577450108908" ixy="${mirror_y * -7.0688725031574E-05}" ixz="1.39442681307563E-06" iyy="0.00212775140409106" iyz="${mirror_y * -2.78654985483454E-06}" izz="0.00245439718636663"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
       <xacro:if value="${motor == 'motor6'}">
         <inertial>
@@ -315,8 +313,12 @@
           <mass value="8.2851"/>
           <inertia ixx="0.041557" ixy="0" ixz="0" iyy="0.063474" iyz="0" izz="0.099371"/>
         </inertial>
-        <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        <xacro:if value="${include_visual}">
+          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
+        </xacro:if>
+        <xacro:if value="${include_collision}">
+          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
+        </xacro:if>
       </xacro:if>
     </link>
   </xacro:macro>
