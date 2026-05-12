@@ -139,3 +139,33 @@
 - 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.srdf`、`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
 - 验证结果：SRDF 中 `parent_group=dual_v5_arm_with_base` 的 end_effector 数量为 2；MoveItConfigsBuilder 加载通过；`colcon build --packages-select alfa_robot_moveit_config` 通过。
 - 留给下个 AI：如果 RViz 仍只有一个球，优先实机检查 MotionPlanning Display 是否选中 `dual_v5_arm_with_base` 并刷新 start/goal state；SRDF 已与旧双臂模式等价迁移。
+
+## 2026-05-12 项目经理 / Codex / 安排 T-0009/T-0010
+- 做了什么：根据用户确认，安排“RViz 双末端目标位姿实时显示”和“替换新的机械臂 URDF/模型文件”两个任务。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0009 分给 MoveIt/可视化工程师，强调显示 RViz 交互目标位姿；T-0010 分给机械工程师，强调新 URDF 替换和备份当前 v5 proxy/STL。
+- 留给下个 AI：T-0009 不是显示当前 TF，而是显示拖拽交互球的目标；T-0010 开始前先确认新 URDF/mesh 的具体来源路径。
+
+## 2026-05-12 项目经理 / Codex / 修正 T-0009 负责人
+- 做了什么：用户指出没有 MoveIt/可视化工程师岗位，已把 T-0009 调整为运控工程师负责。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/ROLES.md`、`.ai_teamwork/engineers/motion_control.md`。
+- 验证结果：T-0009 当前负责人为运控工程师；MoveIt/RViz 调试链路纳入运控职责，末端 frame 问题由机械协助。
+- 留给下个 AI：后续不要再创建不存在的岗位；当前岗位只有 PM、运控、机械、Git、仿真、雷达 SLAM 导航、电控、感知抓取等既有角色。
+
+## 2026-05-12 运控工程师 / Codex / T-0009
+- 做了什么：新增 RViz 双末端目标位姿监听节点，实时监听 MoveIt/RViz interactive marker feedback，而不是当前 TF。
+- 改了哪里：`rviz_dual_goal_pose_monitor.py`、`rviz_dual_goal_pose_monitor.launch.py`、`CMakeLists.txt`、`package.xml`、`.gitignore`、`.ai_teamwork/TASKS.md`。
+- 验证结果：`python3 -m py_compile` 通过；`colcon build --packages-select alfa_robot_moveit_config` 通过；脚本已安装到 `lib/alfa_robot_moveit_config`。
+- 留给下个 AI：运行时先启动 MoveIt/RViz，再 `ros2 launch alfa_robot_moveit_config rviz_dual_goal_pose_monitor.launch.py`；若无输出，用 `ros2 topic list | grep feedback` 找真实 feedback topic 后通过 launch 参数覆盖。
+
+## 2026-05-12 机械工程师 / Codex / T-0010 新 v5 URDF 模型替换
+- 做了什么：接入 `alfa_robot_arm_v5` 新 SolidWorks 导出模型，主 URDF 改为使用新 `motor1~motor6` mesh 和原始关节参数；保留现有 `left/right_v5_joint1..6`、`left/right_v5_link0..tool0` 接口。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`、新增 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/`、备份 `ros2_ws/src/alfa_robot_description/urdf/alfa_robot_v5_proxy_backup.urdf.xacro`。
+- 验证结果：`xacro` 展开通过，`check_urdf` 通过；左右臂新 mesh 各 6 个 visual/collision；右臂 joint origin/rpy/axis 通过 Y 镜像矩阵校验；`colcon build --packages-select alfa_robot_description --symlink-install` 完成。
+- 留给下个 AI：新源 URDF 只有 5 个内部关节，当前用挂载处新增 joint1 + motor1~6 组成 6 轴接口；MoveIt/RViz 目标位姿任务 T-0009 由运控处理，本轮未改其脚本/launch。
+
+## 2026-05-12 机械工程师 / Codex / 左臂 mesh 镜像到右臂
+- 做了什么：以当前左臂为唯一基准，生成右臂专用 `visual_right` / `collision_right` STL，右臂不再复用同一套左臂 mesh。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；新增 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/visual_right/` 和 `collision_right/`。
+- 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 均通过；逐三角面校验右侧 STL 为左侧 STL 的 local Y 镜像，且法线/绕序已修正。
+- 留给下个 AI：如果继续微调左臂原始 mesh，需要重新生成右臂镜像 STL；仅改 URDF joint 镜像不足以保证外观完全镜像。

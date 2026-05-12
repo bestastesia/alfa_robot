@@ -23,7 +23,7 @@
 
 ## 运控工程师
 
-主要看 `ros2_ws/src/alfa_robot_hardware/` 和 `ros2_ws/src/alfa_robot_bringup/`，关注 ros2_control、controller、实机控制、安全停机、joint command/state。
+主要看 `ros2_ws/src/alfa_robot_hardware/`、`ros2_ws/src/alfa_robot_bringup/`、`ros2_ws/src/alfa_robot_moveit_config/`，关注 ros2_control、controller、实机控制、安全停机、joint command/state、MoveIt/RViz 调试链路。
 
 ## 机械工程师
 
