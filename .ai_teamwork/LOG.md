@@ -302,3 +302,87 @@
 - 验证结果：`/usr/bin/python3 simulation/pinocchio_parametric/tools/validate_kinematics.py` 通过；左右臂 neutral FK 对称，position Jacobian rank=3，轻量 position IK 收敛；当前环境未安装 Pinocchio，所以 Pinocchio 原生 FK/Jacobian/IK/RNEA 路径已写好但未运行。
 - 留给机械工程师：当前运控确认 YAML baseline 与生成 URDF 的运动学语义一致；参数化模型根为 `world`，未含 `base_link->pitch->turn->updown`；后续若改臂长、offset、axis 或 tool0，先更新 `configs/v5_baseline_stub.yaml` 后重跑校验。当前模板仍只使用 `inertia_diag`，高可信动力学需把 `full_inertia` 接入模板。
 - 留给下个 AI：若需要真正 Pinocchio 数值验收，请先安装 Pinocchio 到 `/usr/bin/python3` 对应环境，再运行 `validate_kinematics.py --require-pinocchio`。
+
+## 2026-05-12 项目经理 / Codex / 安排 Pinocchio 真实外观补强
+- 做了什么：确认 `reachability_tester.py` 是 T-0013 运控工程师完成；Pinocchio 模型外观粗糙的原因是 T-0016 只做了 primitive 骨架，模板里 `visual.use_primitives=true` 用圆柱/球占位，验收没有要求真实 mesh 外观。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：新增 T-0018/T-0019/T-0020，分别由机械、仿真、Git 处理真实 mesh 映射、MeshCat 真实外观加载、生成物提交边界。
+- 留给下个 AI：这次目标要对齐 SolidWorks/Matlab 插件式真实机械臂外观，不能继续用圆柱体凑合；T-0018/T-0019 可并行，T-0020 依赖前两者。
+
+## 2026-05-12 机械工程师 / Codex / T-0018 Pinocchio 真实外观 mesh 映射
+- 做了什么：为参数化 Pinocchio 模型补齐真实 v5 机械臂外观 mesh 映射，明确 link1..6 到 motor1..6.STL 的左右臂 visual/collision 对应关系，保留 link0/tool0 为 frame-only，并说明右臂 mesh 已预镜像、不要在模板里二次镜像。
+- 改了哪里：`simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml` 新增 `mesh_mapping`；新增 `simulation/pinocchio_parametric/MESH_MAPPING.md`；更新 `.ai_teamwork/TASKS.md` 将 T-0018 移入已完成。
+- 验证结果：`/usr/bin/python3 -m py_compile simulation/pinocchio_parametric/tools/generate_model.py` 通过；YAML mesh 映射加载和全部 STL 文件存在性检查通过；`/usr/bin/python3 simulation/pinocchio_parametric/tools/generate_model.py --check` 通过；ROS `check_urdf simulation/pinocchio_parametric/generated/alfa_v5_parametric.urdf` 通过。
+- 留给仿真工程师：T-0019 可以直接读取 `mesh_mapping` 实现 `visual.use_primitives=false`；Pinocchio 离线加载建议优先生成 repo-relative 或 `file://` mesh 路径，右侧直接使用 `visual_right/collision_right` 目录，不要再加 mirror scale。
+
+## 2026-05-12 仿真工程师 / Codex / T-0019 Pinocchio MeshCat 真实外观
+- 做了什么：完成参数化 URDF 的真实 STL 外观接入，默认从 T-0018 `mesh_mapping` 生成左右臂 `motor1..6.STL` visual/collision，并保留 primitive fallback。
+- 改了哪里：`configs/v5_baseline_stub.yaml`、`templates/alfa_v5_parametric.urdf.j2`、`tools/generate_model.py`、`README.md`、`MECHANICAL_BASELINE.md`、`.ai_teamwork/TASKS.md`。
+- 验证结果：`py_compile` 通过；`generate_model.py --check --visual-mode mesh --mesh-uri-mode package/file` 通过；`--visual-mode primitives` fallback 通过；ROS `check_urdf` 通过；`validate_kinematics.py` 通过。当前环境仍未安装 Pinocchio/MeshCat，真实浏览器渲染需在安装后运行。
+- 留给下个 AI：T-0020 已解除依赖，可清理 generated/、临时 URDF、MeshCat 缓存和提交边界；若安装 Pinocchio 后做最终验收，建议先跑 `python3 simulation/pinocchio_parametric/tools/generate_model.py --check --visualize --visual-mode mesh`。
+
+## 2026-05-13 项目经理 / Codex / Pinocchio 参数化外观返工
+- 做了什么：根据用户严厉反馈，确认 T-0018/T-0019 方向不满足验收：它们把当前真实机械臂 mesh 接进 Pinocchio，而不是生成“参数变化后仍像真实机械臂”的参数化外观。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/PINOCCHIO_STACK.md`、`.ai_teamwork/engineers/simulation.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：暂停 T-0020；新增 T-0021/T-0022/T-0023 返工链路，要求机械先定义真实参数化外观规范，仿真再实现，最后用多组比例 demo 验收。
+- 留给下个 AI：不要再用当前整机 mesh 冒充参数化模型；如果做不到，必须明确说明做不到和原因，不能凭感觉乱做。
+
+## 2026-05-13 项目经理 / Codex / 更新 UR 资产使用要求
+- 做了什么：根据用户补充，纠正“不能用 mesh”的过度理解；允许工程师研究并合理利用 `universal_robot-noetic-devel` 中 UR STL/DAE/Xacro 资产。
+- 改了哪里：`.ai_teamwork/PINOCCHIO_STACK.md`、`.ai_teamwork/TASKS.md`、机械/仿真工程师长期注意事项、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0021/T-0022/T-0023 已更新为“合理利用 UR 资产 + 保证大臂/小臂长度参数化变化”的验收口径。
+- 留给下个 AI：关键不是禁止 mesh，而是不能只加载固定完整机械臂；最重要验收是 upper_arm_length、forearm_length 改变时生成 URDF 和 MeshCat 外观确实变化。
+
+## 2026-05-13 机械工程师 / Codex / T-0021 参数化真实外观规范
+- 做了什么：评估 `universal_robot-noetic-devel/ur_description` 中 UR 系列 STL/DAE/Xacro/YAML 资产，确定采用 UR5 分件关节 mesh + 参数化大臂/小臂 primitive 的 hybrid 方案，避免固定整臂 mesh 冒充参数化外观。
+- 改了哪里：新增 `simulation/pinocchio_parametric/PARAMETRIC_APPEARANCE_SPEC.md`；在 `simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml` 新增 `parametric_appearance` 钩子；更新 `.ai_teamwork/TASKS.md`。
+- 验证结果：YAML 可加载；`parametric_appearance.fixed_assets` 指向的 UR5 `shoulder/wrist1/wrist2/wrist3` visual/collision 文件均存在；`generate_model.py --check` 和 ROS `check_urdf` 仍通过。
+- 留给仿真工程师：T-0022 请实现 `ur5_parametric_hybrid`，核心验收是 link2/link3 的 visual/collision 长度随 `dimensions.upper_arm_y`、`dimensions.forearm_y` 变化；T-0018/T-0019 的固定 `mesh_mapping` 只能作为 baseline 外观，不满足比例扫描验收。
+
+## 2026-05-13 机械工程师 / Codex / T-0021 UR5 资产内置修正
+- 做了什么：根据用户提醒，把 T-0021 规范实际依赖的最小 UR5 资产从外部 `universal_robot-noetic-devel` 复制进项目，避免后续删除外部目录后生成器失效。
+- 改了哪里：新增 `simulation/pinocchio_parametric/assets/ur5/`，包含 UR5 `shoulder/wrist1/wrist2/wrist3` 的 visual DAE、collision STL、来源 README 和 `ur_description` BSD 许可证；更新 `PARAMETRIC_APPEARANCE_SPEC.md`、`v5_baseline_stub.yaml`、`.ai_teamwork/TASKS.md`。
+- 验证结果：`parametric_appearance.asset_root` 已切到 `simulation/pinocchio_parametric/assets/ur5`；全部固定资产路径存在；生成器和 `check_urdf` 待本轮最终复跑确认。
+- 留给仿真工程师：T-0022 禁止引用 `universal_robot-noetic-devel`，只能引用 `simulation/pinocchio_parametric/assets/ur5` 或后续项目内新增资产。
+
+## 2026-05-13 仿真工程师 / Codex / T-0022 参数化 Hybrid 外观返工
+- 做了什么：按 T-0021 规范完成 `ur5_parametric_hybrid` 外观生成，关节外壳复用项目内置 `assets/ur5`，大臂/小臂 visual/collision 随 `dimensions.upper_arm_y`、`dimensions.forearm_y` 动态变化。
+- 改了哪里：`configs/v5_baseline_stub.yaml`、`templates/alfa_v5_parametric.urdf.j2`、`tools/generate_model.py`、`README.md`、`MECHANICAL_BASELINE.md`。
+- 验证结果：`py_compile` 通过；`generate_model.py --check --appearance-mode ur5_parametric_hybrid` 通过；默认生成 URDF 只引用 `simulation/pinocchio_parametric/assets/ur5` 和 primitive，不引用外部 `universal_robot-noetic-devel`。
+- 留给下个 AI：若用户删除外部 UR 文件夹，T-0022 生成器不受影响；外部目录只在历史日志/规范中作为来源说明出现，不是运行时依赖。
+
+## 2026-05-13 仿真工程师 / Codex / T-0023 参数化外观验收 demo
+- 做了什么：新增 `tools/generate_appearance_demos.py`，生成 short/baseline/long 三组 `robot_ratio_*.urdf` 和 `appearance_demo_report.md`，用于复现不同大臂/小臂长度下的外观变化。
+- 改了哪里：`simulation/pinocchio_parametric/tools/generate_appearance_demos.py`、`simulation/pinocchio_parametric/generated/appearance_demos/`、`.ai_teamwork/TASKS.md`。
+- 验证结果：三组 demo 的 `joint3/joint4` origin 与 `link2/link3` visual/collision cylinder length 同步变化；三组 `check_urdf` 通过；`validate_kinematics.py` 通过。当前环境仍未安装 Pinocchio/MeshCat，所以浏览器截图需后续安装环境后执行。
+- 留给 Git 操作工程师：T-0020 已解除阻塞；提交时保留 `assets/ur5` 最小资产和生成脚本，generated 下验收 URDF 是否提交请按用户需要决定，禁止提交整个 `universal_robot-noetic-devel`。
+
+## 2026-05-13 Git 操作工程师 / Codex / 外部 UR 目录提交边界
+- 做了什么：按用户要求确认 T-0022 运行时不依赖外部 `universal_robot-noetic-devel`，并在 `.gitignore` 忽略整个外部目录，避免误提交。
+- 改了哪里：`.gitignore` 放行 `simulation/pinocchio_parametric/assets/**/*.dae|*.stl|*.STL`，同时忽略 `universal_robot-noetic-devel/`。
+- 验证结果：`git check-ignore` 确认外部 UR 文件被忽略，项目内置 UR5 DAE/STL 未被忽略。
+- 留给下个 AI：用户删除 `/mnt/mydisk/ALFA/alfa_robot/universal_robot-noetic-devel` 后，参数化外观生成器仍应正常工作；历史文档里保留外部目录仅作为来源说明。
+
+## 2026-05-13 仿真工程师 / Codex / T 型关节外观修正
+- 做了什么：根据用户反馈，撤掉 `ur5_parametric_hybrid` 中 link2/link3 的 sphere 端盖，改为 T-motor-like 组合：主连杆 cylinder + 两端横向电机 cylinder + 竖向 hub + bracket。
+- 改了哪里：`templates/alfa_v5_parametric.urdf.j2`、`tools/generate_model.py`、`configs/v5_baseline_stub.yaml`、`PARAMETRIC_APPEARANCE_SPEC.md`、`README.md`，并重新生成三组 appearance demo。
+- 验证结果：`generate_appearance_demos.py --check` 通过；三组 `check_urdf` 通过；`validate_kinematics.py` 通过；`rg "<sphere" templates/alfa_v5_parametric.urdf.j2 generated/appearance_demos/robot_ratio_*.urdf` 和默认 hybrid URDF 均无结果。
+- 留给下个 AI：这次不再用球冒充 T 关节；如果视觉仍不满意，下一步应引入真实 T 电机 mesh 或 CAD 资产，而不是回退 sphere/capsule。
+
+## 2026-05-13 项目经理 / Codex / 撤销 Pinocchio 仿真路线
+- 做了什么：根据用户明确指令，撤销当前所有 Pinocchio 相关仿真任务和后续返工路线。
+- 改了哪里：`.ai_teamwork/TASKS.md`、`.ai_teamwork/PINOCCHIO_STACK.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：T-0015/T-0016/T-0017/T-0018/T-0019 标注为已撤销历史；T-0020/T-0021/T-0022/T-0023 从当前任务移入已撤销任务区。
+- 留给下个 AI：不要继续推进 Pinocchio 参数化仿真；相关文件暂不删除，除非用户明确要求做清理/回滚任务。
+
+## 2026-05-13 项目经理 / Codex / 清理 Pinocchio 仿真文件
+- 做了什么：按用户指令清理/回滚 Pinocchio 仿真路线相关文件。
+- 改了哪里：删除 `.ai_teamwork/PINOCCHIO_STACK.md` 和 `simulation/pinocchio_parametric/`；清理机械/仿真/运控长期注意事项里的 Pinocchio 继续推进提示；更新 `.ai_teamwork/TASKS.md`。
+- 验证结果：Pinocchio 工具目录已不存在；任务历史仍保留在 `TASKS.md` 和 `LOG.md`，方便追溯为什么撤销。
+- 留给下个 AI：不要恢复或继续推进 Pinocchio 方案；如需提交，本次提交应只包含 Pinocchio 清理和协作记录更新，不要带入 `.gitignore`、`lidar_ws/log/*` 等未归属改动。
+
+## 2026-05-13 项目经理 / Codex / Pinocchio 清理补充
+- 做了什么：将 Pinocchio 探索期临时引入的外部 `universal_robot-noetic-devel/` 加入 `.gitignore`，避免误提交大体积 vendor 快照。
+- 改了哪里：`.gitignore`、`.ai_teamwork/TASKS.md`、`.ai_teamwork/LOG.md`。
+- 验证结果：不删除用户放入的外部目录，但 Git 不再把它列为待提交文件；Pinocchio 自研工具目录仍已删除。
+- 留给下个 AI：如果用户明确要求彻底删除外部 UR 快照，再单独执行 `rm -rf universal_robot-noetic-devel/`。

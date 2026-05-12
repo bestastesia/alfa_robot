@@ -192,3 +192,6 @@ lidar_ws/src/livox_ros_driver2/
 
 # Random temp files
 **/[0-9]*.[0-9]*.[0-9]*
+
+# External vendor snapshot used only during the canceled Pinocchio exploration.
+universal_robot-noetic-devel/
