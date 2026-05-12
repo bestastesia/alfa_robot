@@ -183,3 +183,15 @@
 - 关键差异：`test_moveit_pose_goal.py` 走 `/compute_ik` 且设置 `avoid_collisions=True`；C++ 双臂节点走本地 `RobotState::setFromIK`，默认不检查 PlanningScene 碰撞。
 - 建议方向：优先不要怪 BioIK；下一步应给 C++ IK 增加 PlanningScene/碰撞 validity callback，或改为让 MoveIt 规划器处理 pose constraints，而不是先固定一个可能碰撞的 joint target。
 - 留给下个 AI：如果要修代码，重点看 `ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp:162`，以及 MoveIt2 `RobotState::setFromIK` 的 `GroupStateValidityCallbackFn` 参数。
+
+## 2026-05-12 运控工程师 / Codex / T-0011 BioIK 碰撞过滤
+- 做了什么：自建 T-0011 并修复 C++ 双臂 BioIK 路径，给 `RobotState::setFromIK` 增加 PlanningScene 碰撞有效性回调。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`、`ros2_ws/src/alfa_robot_moveit_config/CMakeLists.txt`、`ros2_ws/src/alfa_robot_moveit_config/package.xml`、`.ai_teamwork/TASKS.md`。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config` 通过。
+- 留给下个 AI：现场测试时若原目标仍失败，说明无碰撞解没在当前 timeout/seed 下被采到，可再做多 seed 重试或改成 pose constraints 规划；本轮已避免“明知碰撞还接受 IK 解”。
+
+## 2026-05-12 机械工程师 / Codex / v5_1 新机械臂替换
+- 做了什么：将 `/mnt/mydisk/ALFA/alfa_robot/alfa_robot_arm_v5_1` 的 SolidWorks 导出模型替换进 `alfa_robot_description`，并用 v5_1 的 URDF 惯量、关节 origin/rpy/axis 更新主 xacro。
+- 改了哪里：更新 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/` 四套 mesh（visual/collision/visual_right/collision_right）和 `ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；右臂 mesh 仍由左臂 local Y 镜像生成。
+- 验证结果：`xacro`、`check_urdf`、左右镜像矩阵校验通过；`colcon build --packages-select alfa_robot_description --symlink-install` 通过；安装空间 24 个 v5_1 mesh 完整。
+- 留给下个 AI：源导出目录 `alfa_robot_arm_v5` 和 `alfa_robot_arm_v5_1` 已按用户要求清理；包内 `alfa_robot_description/meshes/alfa_robot_arm_v5` 是当前事实源。

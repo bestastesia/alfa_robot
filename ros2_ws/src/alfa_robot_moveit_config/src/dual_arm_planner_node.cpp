@@ -14,6 +14,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/robot_state/robot_state.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -54,6 +55,18 @@ public:
     // 获取机器人模型
     robot_model_ = move_group_->getRobotModel();
     joint_group_ = robot_model_->getJointModelGroup(PLANNING_GROUP);
+
+    planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
+      shared_from_this(), "robot_description");
+    if (!planning_scene_monitor_->getPlanningScene()) {
+      RCLCPP_WARN(get_logger(), "PlanningSceneMonitor 初始化失败，IK 碰撞过滤不可用");
+    } else {
+      planning_scene_monitor_->startSceneMonitor();
+      planning_scene_monitor_->startWorldGeometryMonitor();
+      planning_scene_monitor_->startStateMonitor("/joint_states");
+      planning_scene_monitor_->requestPlanningSceneState();
+      RCLCPP_INFO(get_logger(), "PlanningSceneMonitor ready: IK 将拒绝碰撞状态");
+    }
 
     plan_exec_srv_ = create_service<std_srvs::srv::Trigger>(
       "~/plan_and_execute",
@@ -157,9 +170,26 @@ private:
 
     std::vector<std::string> tips = {LEFT_TIP, RIGHT_TIP};
 
-    // 关键：调用 setFromIK，timeout = 2.0 秒让 BioIK 充分进化
+    auto validity_callback =
+      [this](moveit::core::RobotState* robot_state,
+             const moveit::core::JointModelGroup* joint_group,
+             const double* joint_group_variable_values) {
+        robot_state->setJointGroupPositions(joint_group, joint_group_variable_values);
+        robot_state->update();
+
+        if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+          return robot_state->satisfiesBounds(joint_group);
+        }
+
+        planning_scene_monitor::LockedPlanningSceneRO scene(planning_scene_monitor_);
+        return robot_state->satisfiesBounds(joint_group) &&
+               !scene->isStateColliding(*robot_state, joint_group->getName());
+      };
+
+    // 关键：调用 setFromIK，timeout = 2.0 秒让 BioIK 充分进化，并拒绝碰撞 IK 解
     double ik_timeout = 2.0;
-    bool ik_success = current_state->setFromIK(joint_group_, poses, tips, ik_timeout);
+    bool ik_success = current_state->setFromIK(
+      joint_group_, poses, tips, ik_timeout, validity_callback);
 
     // ========== Step 4: 检查解算结果 ==========
     if (!ik_success) {
@@ -301,6 +331,7 @@ private:
 
   // 成员变量
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
+  planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
   moveit::core::RobotModelConstPtr robot_model_;
   const moveit::core::JointModelGroup* joint_group_ = nullptr;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr plan_exec_srv_;

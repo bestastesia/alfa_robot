@@ -33,6 +33,7 @@
 | T-0008 | 机械工程师 | 将右手模型对称到左手 | `ros2_ws/src/alfa_robot_description/` | 已完成真实 Y 镜像修正；右臂 origin/rpy/axis 按左臂镜像；xacro 和 check_urdf 通过 |
 | T-0009 | 运控工程师 | 实时显示 RViz 中双末端目标位姿 | MoveIt RViz interactive marker feedback、Pose/Marker 显示 | 新增 `rviz_dual_goal_pose_monitor.py` 和 launch；监听 RViz 交互球 feedback，发布左右目标 PoseStamped 和 MarkerArray；包构建通过 |
 | T-0010 | 机械工程师 | 替换为新的机械臂 URDF/模型文件 | `ros2_ws/src/alfa_robot_description/` | 已接入 `alfa_robot_arm_v5` 新 mesh/URDF 参数；保留当前 v5 proxy 备份；主 URDF 继续使用既有 `left/right_v5_*` 接口以兼容 MoveIt/ros2_control；xacro/check_urdf/description 构建通过 |
+| T-0011 | 运控工程师 | BioIK IK 解过滤碰撞状态 | `dual_arm_planner_node.cpp`、MoveIt 依赖配置 | 已给直接 `setFromIK` 路径接入 PlanningScene 碰撞有效性回调；构建通过 |
 
 ## 待用户/PM 补充
 

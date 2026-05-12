@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
+find_package(moveit_ros_planning REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -20,6 +21,7 @@ ament_target_dependencies(dual_arm_planner_node
   rclcpp
   rclcpp_action
   moveit_ros_planning_interface
+  moveit_ros_planning
   geometry_msgs
   sensor_msgs
   std_srvs
