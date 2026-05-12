@@ -235,7 +235,7 @@
        urdf/alfa_robot_v5_proxy_backup.urdf.xacro
        Naming is kept as left_v5_joint1..6 / right_v5_joint1..6 for MoveIt and ros2_control compatibility.
        The imported single-arm URDF contains motor1..motor6 and 5 internal joints; the mount joint is the added joint1. -->
-  <xacro:property name="v5_mount_y" value="0.32"/>
+  <xacro:property name="v5_mount_y" value="0.20"/>
   <xacro:property name="v5_mount_z" value="0.18"/>
   <xacro:property name="v5_mesh_base" value="package://alfa_robot_description/meshes/alfa_robot_arm_v5"/>
 

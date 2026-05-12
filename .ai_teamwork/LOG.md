@@ -169,3 +169,17 @@
 - 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`；新增 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5/visual_right/` 和 `collision_right/`。
 - 验证结果：`xacro`、`check_urdf`、`colcon build --packages-select alfa_robot_description --symlink-install` 均通过；逐三角面校验右侧 STL 为左侧 STL 的 local Y 镜像，且法线/绕序已修正。
 - 留给下个 AI：如果继续微调左臂原始 mesh，需要重新生成右臂镜像 STL；仅改 URDF joint 镜像不足以保证外观完全镜像。
+
+## 2026-05-12 运控工程师 / Codex / RViz plan_execute 残影排查
+- 做了什么：排查 RViz 点击 Plan & Execute 后出现运动轨迹残影的问题；当前配置中 Planned Path 开启 `Loop Animation`，会持续回放 `/display_planned_path` 轨迹，表现类似残影。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/config/moveit.rviz`，将 MotionPlanning 的 `Planned Path -> Loop Animation` 关闭。
+- 验证结果：`moveit.rviz` YAML 解析通过；`colcon build --packages-select alfa_robot_moveit_config` 通过。
+- 判断结论：从配置看不是 MoveIt 同时向同一控制器下发多个关节目标；当前 `ros2_controllers.yaml` / `moveit_controllers.yaml` 只启用 `dual_v5_arm_controller`。若现场仍有残影，优先用 `ros2 topic info /joint_states -v` 和 `ros2 topic info /display_planned_path -v` 确认是否手动启动了多个 joint state 或 move_group/RViz 发布者。
+- 留给下个 AI：不要把 Planned Path 的 RViz 轨迹回放误判成控制器重复发送；如现场确认 `/joint_states` 有多个 publisher，再检查是否同时启动了 demo、bringup、joint_state_publisher_gui 或多个 move_group。
+
+## 2026-05-12 运控工程师 / Codex / BioIK 碰撞解排查
+- 做了什么：排查“BioIK 能求出末端位姿但返回碰撞解，明明存在无碰撞解”的问题。
+- 判断结论：这不是 BioIK 单纯求解能力不足，更像当前调用链没有把碰撞有效性约束接入 IK 采样；`dual_arm_planner_node.cpp` 直接 `setFromIK(..., timeout)`，没有传 `GroupStateValidityCallbackFn`，所以 IK 成功只代表末端位姿满足，不代表状态无碰撞。
+- 关键差异：`test_moveit_pose_goal.py` 走 `/compute_ik` 且设置 `avoid_collisions=True`；C++ 双臂节点走本地 `RobotState::setFromIK`，默认不检查 PlanningScene 碰撞。
+- 建议方向：优先不要怪 BioIK；下一步应给 C++ IK 增加 PlanningScene/碰撞 validity callback，或改为让 MoveIt 规划器处理 pose constraints，而不是先固定一个可能碰撞的 joint target。
+- 留给下个 AI：如果要修代码，重点看 `ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp:162`，以及 MoveIt2 `RobotState::setFromIK` 的 `GroupStateValidityCallbackFn` 参数。
