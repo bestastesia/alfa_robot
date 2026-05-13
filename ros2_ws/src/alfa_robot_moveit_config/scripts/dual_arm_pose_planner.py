@@ -35,7 +35,7 @@ import time
 
 LEFT_TIP = "left_v5_tool0"
 RIGHT_TIP = "right_v5_tool0"
-PLANNING_GROUP = "dual_v5_arm_with_base"
+PLANNING_GROUP = "dual_arm_with_base"
 BASE_FRAME = "base_link"
 
 # 所有属于 dual_v5_arm_with_base 的关节（按 SRDF 顺序）

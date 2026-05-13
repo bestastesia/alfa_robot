@@ -1,79 +1,194 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--This does not replace URDF, and is not a complete URDF description. It is a semantic description of the robot for the MoveIt setup assistant.-->
 <robot name="alfa_robot">
-    <group name="base_group">
-        <joint name="updown"/>
+    <!--GROUPS: Representation of a set of joints and links, used for motion planning and collision checking-->
+    <group name="left_arm">
+        <chain base_link="left_v5_link0" tip_link="left_v5_tool0" />
     </group>
-    <group name="torso_group">
-        <joint name="pitch"/>
-        <joint name="turn"/>
-        <joint name="updown"/>
+    <group name="right_arm">
+        <chain base_link="right_v5_link0" tip_link="right_v5_tool0" />
     </group>
-    <group name="left_v5_arm">
-        <chain base_link="left_v5_link0" tip_link="left_v5_tool0"/>
+    <group name="base">
+        <joint name="pitch" />
+        <joint name="turn" />
+        <joint name="updown" />
     </group>
-    <group name="right_v5_arm">
-        <chain base_link="right_v5_link0" tip_link="right_v5_tool0"/>
+    <!-- Composite groups for coordinated arm+base planning -->
+    <group name="left_arm_with_base">
+        <joint name="turn" />
+        <joint name="updown" />
+        <joint name="left_v5_joint1" />
+        <joint name="left_v5_joint2" />
+        <joint name="left_v5_joint3" />
+        <joint name="left_v5_joint4" />
+        <joint name="left_v5_joint5" />
+        <joint name="left_v5_joint6" />
     </group>
-    <group name="dual_v5_arm">
-        <group name="left_v5_arm"/>
-        <group name="right_v5_arm"/>
+    <group name="right_arm_with_base">
+        <joint name="turn" />
+        <joint name="updown" />
+        <joint name="right_v5_joint1" />
+        <joint name="right_v5_joint2" />
+        <joint name="right_v5_joint3" />
+        <joint name="right_v5_joint4" />
+        <joint name="right_v5_joint5" />
+        <joint name="right_v5_joint6" />
     </group>
-    <group name="left_v5_arm_with_base">
-        <joint name="updown"/>
-        <group name="left_v5_arm"/>
+    <group name="dual_arm_with_base">
+        <joint name="turn" />
+        <joint name="updown" />
+        <joint name="left_v5_joint1" />
+        <joint name="left_v5_joint2" />
+        <joint name="left_v5_joint3" />
+        <joint name="left_v5_joint4" />
+        <joint name="left_v5_joint5" />
+        <joint name="left_v5_joint6" />
+        <joint name="right_v5_joint1" />
+        <joint name="right_v5_joint2" />
+        <joint name="right_v5_joint3" />
+        <joint name="right_v5_joint4" />
+        <joint name="right_v5_joint5" />
+        <joint name="right_v5_joint6" />
     </group>
-    <group name="right_v5_arm_with_base">
-        <joint name="updown"/>
-        <group name="right_v5_arm"/>
-    </group>
-    <group name="dual_v5_arm_with_base">
-        <joint name="updown"/>
-        <group name="left_v5_arm"/>
-        <group name="right_v5_arm"/>
-    </group>
-    <group name="left_v5_tool_group">
-        <link name="left_v5_tool0"/>
-    </group>
-    <group name="right_v5_tool_group">
-        <link name="right_v5_tool0"/>
-    </group>
-    <group_state name="home" group="dual_v5_arm_with_base">
-        <joint name="updown" value="0"/>
-        <joint name="left_v5_joint1" value="0"/>
-        <joint name="left_v5_joint2" value="0"/>
-        <joint name="left_v5_joint3" value="0"/>
-        <joint name="left_v5_joint4" value="0"/>
-        <joint name="left_v5_joint5" value="0"/>
-        <joint name="left_v5_joint6" value="0"/>
-        <joint name="right_v5_joint1" value="0"/>
-        <joint name="right_v5_joint2" value="0"/>
-        <joint name="right_v5_joint3" value="0"/>
-        <joint name="right_v5_joint4" value="0"/>
-        <joint name="right_v5_joint5" value="0"/>
-        <joint name="right_v5_joint6" value="0"/>
+    <!--GROUP STATES: Define named states for groups, used for initial poses and target poses-->
+    <group_state name="home" group="left_arm">
+        <joint name="left_v5_joint1" value="0" />
+        <joint name="left_v5_joint2" value="0" />
+        <joint name="left_v5_joint3" value="0" />
+        <joint name="left_v5_joint4" value="0" />
+        <joint name="left_v5_joint5" value="0" />
+        <joint name="left_v5_joint6" value="0" />
     </group_state>
-    <end_effector name="left_v5_tool" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="left_v5_arm"/>
-    <end_effector name="right_v5_tool" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="right_v5_arm"/>
-    <end_effector name="left_v5_tool_with_base" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="left_v5_arm_with_base"/>
-    <end_effector name="right_v5_tool_with_base" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="right_v5_arm_with_base"/>
-    <end_effector name="left_v5_tool_dual_base" parent_link="left_v5_link6" group="left_v5_tool_group" parent_group="dual_v5_arm_with_base"/>
-    <end_effector name="right_v5_tool_dual_base" parent_link="right_v5_link6" group="right_v5_tool_group" parent_group="dual_v5_arm_with_base"/>
-    <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
-    <disable_collisions link1="base_link" link2="pitch" reason="Adjacent"/>
-    <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>
-    <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="left_v5_link0" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="right_v5_link0" reason="Adjacent"/>
+    <group_state name="home" group="right_arm">
+        <joint name="right_v5_joint1" value="0" />
+        <joint name="right_v5_joint2" value="0" />
+        <joint name="right_v5_joint3" value="0" />
+        <joint name="right_v5_joint4" value="0" />
+        <joint name="right_v5_joint5" value="0" />
+        <joint name="right_v5_joint6" value="0" />
+    </group_state>
+    <!--END EFFECTOR: Link that is not part of the planning group but is the end effector-->
+    <end_effector name="left_suction" parent_link="left_v5_tool0" group="left_arm" />
+    <end_effector name="right_suction" parent_link="right_v5_tool0" group="right_arm" />
+    <!--DISABLE COLLISIONS: Link pairs that are never in collision (adjacent or explicitly disabled)-->
+    <!-- Left arm Adjacent pairs -->
     <disable_collisions link1="left_v5_link0" link2="left_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link1" link2="left_v5_link2" reason="Adjacent"/>
-    <disable_collisions link1="left_v5_link2" link2="left_v5_link3" reason="Adjacent"/>
-    <disable_collisions link1="left_v5_link3" link2="left_v5_link4" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_link2" link2="left_v5_big_arm" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_big_arm" link2="left_v5_big_arm_2" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_big_arm_2" link2="left_v5_link3" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_link3" link2="left_v5_little_arm" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_little_arm" link2="left_v5_link4" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link4" link2="left_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link5" link2="left_v5_link6" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_tool0" reason="Adjacent"/>
+    <!-- Right arm Adjacent pairs -->
     <disable_collisions link1="right_v5_link0" link2="right_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link1" link2="right_v5_link2" reason="Adjacent"/>
-    <disable_collisions link1="right_v5_link2" link2="right_v5_link3" reason="Adjacent"/>
-    <disable_collisions link1="right_v5_link3" link2="right_v5_link4" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_link2" link2="right_v5_big_arm" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_big_arm" link2="right_v5_big_arm_2" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_big_arm_2" link2="right_v5_link3" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_link3" link2="right_v5_little_arm" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_little_arm" link2="right_v5_link4" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link4" link2="right_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link5" link2="right_v5_link6" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_tool0" reason="Adjacent"/>
+
+    <!-- Disable suction cup (link6) vs its own arm links -->
+    <disable_collisions link1="left_v5_link6" link2="left_v5_link1" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_link2" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_link3" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_link4" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_big_arm" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_big_arm_2" reason="SuctionVsArm"/>
+    <disable_collisions link1="left_v5_link6" link2="left_v5_little_arm" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_link1" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_link2" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_link3" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_link4" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_big_arm" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_big_arm_2" reason="SuctionVsArm"/>
+    <disable_collisions link1="right_v5_link6" link2="right_v5_little_arm" reason="SuctionVsArm"/>
+
+    <!-- Disable left arm vs base/torso -->
+    <disable_collisions link1="base_link" link2="left_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="left_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="left_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="left_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="left_v5_little_arm" reason="ArmVsBase"/>
+
+    <!-- Disable right arm vs base/torso -->
+    <disable_collisions link1="base_link" link2="right_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="base_link" link2="right_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="pitch" link2="right_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link0" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="turn" link2="right_v5_little_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link1" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link2" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link3" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link4" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link5" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_link6" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_big_arm" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_big_arm_2" reason="ArmVsBase"/>
+    <disable_collisions link1="updown" link2="right_v5_little_arm" reason="ArmVsBase"/>
 </robot>

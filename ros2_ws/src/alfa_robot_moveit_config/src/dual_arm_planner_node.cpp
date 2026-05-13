@@ -23,7 +23,7 @@
 #include <mutex>
 #include <random>
 
-static const std::string PLANNING_GROUP = "dual_v5_arm_with_base";
+static const std::string PLANNING_GROUP = "dual_arm_with_base";
 static const std::string LEFT_TIP       = "left_v5_tool0";
 static const std::string RIGHT_TIP      = "right_v5_tool0";
 
