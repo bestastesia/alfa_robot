@@ -21,8 +21,8 @@
 | ID | 状态 | 负责人/角色 | 任务 | 范围 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | T-0027 | DONE | 仿真工程师 | 校验实时受力显示是否物理可信 | `simulation/realtime_force_mvp/`、Pinocchio RNEA + Jacobian | T-0026 重写为 Pinocchio RNEA 版；`--validate` 校验通过：零位/弯曲/载荷多组位姿力矩对比、载荷线性性、杠杆效应均正确；J2=90° 时力矩 371Nm 与 13.74kg 电机+28kg 末端载荷的杠杆匹配 |
-| T-0029 | TODO | 运控工程师 | 设计单臂 9 朝向可达性判定规则 | `scripts/ik_benchmark`、`alfa_robot_benchmarks`、MoveIt IK 配置、当前机械臂 MoveIt/IK 接口 | 依赖 T-0027 完成后启动；可与 T-0030 前期方案并行；仅针对当前机械臂，不考虑未来新比例。判定规则：空间点默认朝前，中心姿态 + yaw±15° + pitch±15° + yaw/pitch 组合共 9 个朝向全部 IK 成功，才认为该点可达；roll 不参与，因为最后一关节可处理 |
-| T-0030 | TODO | 仿真工程师 | 实现当前机械臂单臂可达空间批量仿真 | 复用 `ik_range_grid`/`alfa_robot_benchmarks` 或 MoveIt `/compute_ik`；输入 xyz 范围与间隔；输出 CSV/点云 | 依赖 T-0029 规则；可与 T-0029 前期并行调研接口。仅针对当前机械臂当前 URDF/SRDF；每个点跑 9 朝向，记录全部成功/部分失败/失败原因和耗时 |
+| T-0029 | DONE | 运控工程师 | 设计单臂 9 朝向可达性判定规则 | `scripts/nine_orient_reachability.py` | 判定规则：空间点默认朝前，center + yaw±15° + pitch±15° 共 9 个朝向全部 IK 成功才判为可达；roll 不参与（joint6 可补偿）。已实现 `nine_orient_reachability.py`，CSV 输出含每朝向 IK 结果 + 点级 SUMMARY 行（n_success/n_total/point_reachable） |
+| T-0030 | TODO | 仿真工程师 | 实现当前机械臂单臂可达空间批量仿真 | 复用 `nine_orient_reachability.py`；输入 xyz 范围与间隔；输出 CSV/点云 | 依赖 T-0029（已完成）。仅针对当前机械臂当前 URDF/SRDF；每个点跑 9 朝向，记录全部成功/部分失败/失败原因和耗时。下一步需要确定具体采样范围和步长参数 |
 | T-0031 | TODO | 仿真工程师 | 可达空间点云与机械臂同场景可视化 | RViz Marker/PointCloud2 或 Open3D/MeshCat；必须加载当前机械臂模型 | 依赖 T-0030；验收采用点云可视化，并且必须同时生成/显示当前机械臂外观，方便判断点云相对机械臂的位置；成功点和失败点颜色区分，9 朝向失败可按失败数量渐变 |
 | T-0032 | BLOCKED | 运控工程师 | 校验可达性仿真结果可信度 | 抽样点 IK 解、FK 回代、关节限制、碰撞/是否考虑碰撞的说明 | 依赖 T-0030/T-0031；抽查成功点 9 朝向 FK 误差，确认使用的 IK 求解器和规划组正确；明确当前结果是否考虑碰撞，若不考虑必须在可视化和报告中标注 |
 

@@ -1,0 +1,160 @@
+{
+  "coordinate_frame": "T_motor_joint_frame_v1_candidate",
+  "units": "m",
+  "source_file": "motor_model/T电机.stl",
+  "stl_format": "binary STL",
+  "stl_unit_assumption": "millimetres; mesh scale [0.001, 0.001, 0.001] in URDF",
+  "triangle_count": 1084,
+  "unique_vertex_count": 546,
+  "bbox_min_mm": [
+    -50.0,
+    -50.0,
+    25.0
+  ],
+  "bbox_max_mm": [
+    49.970207,
+    75.0,
+    150.0
+  ],
+  "bbox_size_mm": [
+    99.970207,
+    125.0,
+    125.0
+  ],
+  "bbox_center_mm": [
+    -0.01489649999999898,
+    12.5,
+    87.5
+  ],
+  "candidate_frame_origin_in_stl_mm": [
+    0.0,
+    0.0,
+    100.0
+  ],
+  "bbox_min_m_in_candidate_frame": [
+    -0.05,
+    -0.05,
+    -0.075
+  ],
+  "bbox_max_m_in_candidate_frame": [
+    0.049970207,
+    0.075,
+    0.05
+  ],
+  "bbox_size_m": [
+    0.099970207,
+    0.125,
+    0.125
+  ],
+  "detected_centerlines": {
+    "vertical_cylinder_axis": {
+      "point_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction_m": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "stl_line": "x=0, y=0"
+    },
+    "horizontal_cylinder_axis": {
+      "point_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "direction_m": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "stl_line": "x=0, z=100mm"
+    }
+  },
+  "candidate_A_recommended": {
+    "meaning": "把竖直圆柱中心线作为旋转轴；下端为 parent 安装端，横向 +Y 端为 child 出口",
+    "joint_origin_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "joint_axis_m": [
+      0.0,
+      0.0,
+      1.0
+    ],
+    "parent_connection_point_m": [
+      0.0,
+      0.0,
+      -0.075
+    ],
+    "parent_connection_direction_m": [
+      0.0,
+      0.0,
+      -1.0
+    ],
+    "child_connection_point_m": [
+      0.0,
+      0.075,
+      0.0
+    ],
+    "child_connection_direction_m": [
+      0.0,
+      1.0,
+      0.0
+    ]
+  },
+  "candidate_B_alternative": {
+    "meaning": "如果实际输出轴在横向圆柱，则把横向 +Y 作为旋转轴；parent/child 需按安装面重新确认",
+    "joint_origin_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "joint_axis_m": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "parent_connection_point_m": [
+      0.0,
+      -0.05,
+      0.0
+    ],
+    "parent_connection_direction_m": [
+      0.0,
+      -1.0,
+      0.0
+    ],
+    "child_connection_point_m": [
+      0.0,
+      0.0,
+      0.05
+    ],
+    "child_connection_direction_m": [
+      0.0,
+      0.0,
+      1.0
+    ]
+  },
+  "urdf_mesh_origin_when_link_frame_is_candidate_A": {
+    "xyz_m": [
+      0.0,
+      0.0,
+      -0.1
+    ],
+    "rpy_rad": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scale": [
+      0.001,
+      0.001,
+      0.001
+    ]
+  }
+}

@@ -1,0 +1,91 @@
+# T-0026 MVP force visualization semantics.
+# Mechanical joint semantics come from T-0025 when the file exists. The local
+# arm/joint list below remains as a fallback and keeps dry-run readable.
+robot:
+  xacro: ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro
+  generated_urdf: simulation/realtime_force_mvp/generated/current_alfa_robot.urdf
+  package_dirs:
+    - ros2_ws/src
+    - ros2_ws/install
+
+mechanical_semantics:
+  path: .ai_teamwork/force_analysis_semantics.yaml
+  prefer_t0025: true
+
+payload:
+  default_mass_kg: 5.0
+  gravity_mps2: [0.0, 0.0, -9.80665]
+  default_target: left
+
+arms:
+  left:
+    tip_frame: left_v5_tool0
+    suction_frame: left_v5_tool0
+    joints:
+      - updown
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+  right:
+    tip_frame: right_v5_tool0
+    suction_frame: right_v5_tool0
+    joints:
+      - updown
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
+
+contact_links:
+  left:
+    - left_v5_link1
+    - left_v5_link2
+    - left_v5_link3
+    - left_v5_link4
+    - left_v5_link5
+    - left_v5_link6
+    - left_v5_big_arm
+    - left_v5_big_arm_2
+    - left_v5_little_arm
+  right:
+    - right_v5_link1
+    - right_v5_link2
+    - right_v5_link3
+    - right_v5_link4
+    - right_v5_link5
+    - right_v5_link6
+    - right_v5_big_arm
+    - right_v5_big_arm_2
+    - right_v5_little_arm
+
+# MVP force decomposition:
+# - tau_axis_Nm: revolute axis dot ((tip - joint) cross payload_force)
+# - force_axis_N: payload force projected onto axis_world
+# - force_normal_N / force_side_N: payload force projected onto T-0025 normal/side axes
+# T-0027 still needs to replace the connection-force approximation with a formal
+# Pinocchio wrench/Jacobian validation path.
+semantics:
+  status: t0025_loaded_with_t0027_validation_pending
+  show_revolute_axis_torque: true
+  show_force_axis: true
+  show_force_normal: true
+  show_force_side: true
+  show_force_radial_magnitude: true
+
+visualization:
+  root: alfa_realtime_force_mvp
+  force_scale_m_per_n: 0.006
+  torque_scale_m_per_nm: 0.03
+  max_arrow_length_m: 0.45
+  min_arrow_length_m: 0.025
+  payload_arrow_color: 0xff3333
+  axis_torque_color_positive: 0xff9900
+  axis_torque_color_negative: 0x7f00ff
+  normal_force_color: 0x22cc66
+  side_force_color: 0x33dddd
+  axial_force_color: 0x2299ff
