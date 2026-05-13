@@ -3,7 +3,7 @@
 
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_mock_hardware" default="true"/>
-  <xacro:arg name="mock_sensor_commands" default="false"/>
+  <xacro:arg name="mock_sensor_commands" default="true"/>
   <xacro:arg name="sim_gazebo_classic" default="false"/>
   <xacro:arg name="sim_gazebo" default="false"/>
   <xacro:arg name="simulation_controllers" default=""/>
@@ -24,17 +24,17 @@
     name="base_link">
     <inertial>
       <origin
-        xyz="-0.00896922200126715 2.35194162193642E-05 0.0179811176086975"
+        xyz="-0.44193110855616 0.000259961331933109 0.176428166472852"
         rpy="0 0 0" />
       <mass
-        value="5.21106238092598" />
+        value="394.931465036981" />
       <inertia
-        ixx="0.0633320335254252"
-        ixy="-1.57025952749484E-07"
-        ixz="-3.66796372424077E-07"
-        iyy="0.119212913285128"
-        iyz="6.33714518991059E-07"
-        izz="0.181818429904202" />
+        ixx="66.5681215725466"
+        ixy="5.74775273893285E-10"
+        ixz="9.85014992290203"
+        iyy="65.6389024339403"
+        iyz="2.76043934386688E-09"
+        izz="112.938477587322" />
     </inertial>
     <visual>
       <origin
@@ -42,12 +42,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/base_link.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot/visual/base_link.STL" />
       </geometry>
       <material
-        name="">
+        name="blue">
         <color
-          rgba="1 1 1 1" />
+          rgba="0 0 1 1" />
       </material>
     </visual>
     <collision>
@@ -56,7 +56,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/collision/base_link.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot/collision/base_link.STL" />
       </geometry>
     </collision>
   </link>
@@ -104,7 +104,7 @@
     name="pitch"
     type="revolute">
     <origin
-      xyz="0.259 -0.0545 0.05"
+      xyz="-0.007937 0 0.129"
       rpy="0 0 0" />
     <parent
       link="base_link" />
@@ -122,17 +122,17 @@
     name="turn">
     <inertial>
       <origin
-        xyz="-0.0279588381716878 3.16554382575607E-05 0.819951711254512"
+        xyz="-0.0697894032768815 -0.00012433244764639 0.982155423971065"
         rpy="0 0 0" />
       <mass
-        value="15.206613319806" />
+        value="42.0737844290435" />
       <inertia
-        ixx="1.06710751132169"
-        ixy="5.33982003477265E-06"
-        ixz="0.000444527933425444"
-        iyy="1.0606566000007"
-        iyz="1.02603827456492E-05"
-        izz="0.109926667915607" />
+        ixx="10.0720353784748"
+        ixy="-1.75362629131178E-06"
+        ixz="5.29823321336754E-05"
+        iyy="10.0937833616587"
+        iyz="1.43589075450652E-06"
+        izz="0.327199381319826" />
     </inertial>
     <visual>
       <origin
@@ -140,12 +140,12 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/turn.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot/visual/turn.STL" />
       </geometry>
       <material
-        name="">
+        name="arm_grey">
         <color
-          rgba="1 1 1 1" />
+          rgba="0.5 0.5 0.5 1" />
       </material>
     </visual>
     <collision>
@@ -154,7 +154,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/collision/turn.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot/collision/turn.STL" />
       </geometry>
     </collision>
   </link>
@@ -162,7 +162,7 @@
     name="turn"
     type="continuous">
     <origin
-      xyz="-0.209 0.0545 0.09"
+      xyz="0 0 0"
       rpy="0 0 0" />
     <parent
       link="pitch" />
@@ -175,25 +175,47 @@
     name="updown">
     <inertial>
       <origin
-        xyz="0.0212260463112321 -2.11665364142077E-05 0.111174833260946"
+        xyz="-0.196828632659582 0.0148673483555221 0.0956849238503419"
         rpy="0 0 0" />
       <mass
-        value="8.56370936774335" />
+        value="26.931167747836" />
       <inertia
-        ixx="0.0416436910064672"
-        ixy="-3.48369951311999E-07"
-        ixz="1.03580898385951E-05"
-        iyy="0.151229514406379"
-        iyz="1.21565800186775E-06"
-        izz="0.186025474834666" />
+        ixx="0.231217459750122"
+        ixy="2.93337887014215E-05"
+        ixz="0.000951254936009737"
+        iyy="0.178754005132662"
+        iyz="-1.44830456938328E-05"
+        izz="0.348822965146485" />
     </inertial>
-    <!-- updown link remains the lift/mount frame, but its metal STL is intentionally hidden and non-colliding. -->
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://alfa_robot_description/meshes/alfa_robot/visual/updown.STL" />
+      </geometry>
+      <material
+        name="arm_grey">
+        <color
+          rgba="0.5 0.5 0.5 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://alfa_robot_description/meshes/alfa_robot/collision/updown.STL" />
+      </geometry>
+    </collision>
   </link>
   <joint
     name="updown"
     type="prismatic">
     <origin
-      xyz="-0.1 0 0.086"
+      xyz="-0.23547 0 0.57771"
       rpy="0 0 0" />
     <parent
       link="turn" />
@@ -323,7 +345,8 @@
     </link>
   </xacro:macro>
 
-  <xacro:macro name="v5_imported_arm" params="side mount_y mirror_y color visual_dir collision_dir">
+  <xacro:macro name="v5_imported_arm" params="side mount_y mirror_y color visual_dir collision_dir
+    j1_lo j1_hi j2_lo j2_hi j3_lo j3_hi j4_lo j4_hi j5_lo j5_hi j6_lo j6_hi">
     <link name="${side}_v5_link0">
       <xacro:v5_simple_inertial mass="0.5"/>
     </link>
@@ -339,7 +362,7 @@
       <child link="${side}_v5_link1"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
+      <limit lower="${j1_lo}" upper="${j1_hi}" effort="120" velocity="1.2"/>
     </joint>
 
     <xacro:v5_imported_motor_link name="${side}_v5_link2" motor="motor2" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
@@ -348,7 +371,7 @@
       <child link="${side}_v5_link2"/>
       <origin xyz="-0.0595 0 0.0735" rpy="${mirror_y * 1.5708} 0 ${mirror_y * 1.5708}"/>
       <axis xyz="0 0 -1"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
+      <limit lower="${j2_lo}" upper="${j2_hi}" effort="120" velocity="1.2"/>
     </joint>
 
     <xacro:v5_imported_motor_link name="${side}_v5_link3" motor="motor3" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
@@ -357,7 +380,7 @@
       <child link="${side}_v5_link3"/>
       <origin xyz="0 ${mirror_y * 0.6} -0.148" rpy="0 0 ${mirror_y * 3.1416}"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2"/>
+      <limit lower="${j3_lo}" upper="${j3_hi}" effort="100" velocity="1.2"/>
     </joint>
 
     <xacro:v5_imported_motor_link name="${side}_v5_link4" motor="motor4" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
@@ -366,7 +389,7 @@
       <child link="${side}_v5_link4"/>
       <origin xyz="0 ${mirror_y * -0.412} 0.009" rpy="${mirror_y * 1.5708} -1.5708 0"/>
       <axis xyz="-1 0 0"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5"/>
+      <limit lower="${j4_lo}" upper="${j4_hi}" effort="60" velocity="1.5"/>
     </joint>
 
     <xacro:v5_imported_motor_link name="${side}_v5_link5" motor="motor5" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
@@ -375,7 +398,7 @@
       <child link="${side}_v5_link5"/>
       <origin xyz="0.0595 ${mirror_y * -0.074} 0" rpy="${mirror_y * -1.5708} 0 ${mirror_y * 1.5708}"/>
       <axis xyz="1 0 0"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5"/>
+      <limit lower="${j5_lo}" upper="${j5_hi}" effort="60" velocity="1.5"/>
     </joint>
 
     <xacro:v5_imported_motor_link name="${side}_v5_link6" motor="motor6" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
@@ -384,7 +407,7 @@
       <child link="${side}_v5_link6"/>
       <origin xyz="-0.06 ${mirror_y * -0.074} 0" rpy="${mirror_y * 1.5708} 0 0"/>
       <axis xyz="0 0 -1"/>
-      <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
+      <limit lower="${j6_lo}" upper="${j6_hi}" effort="40" velocity="1.5"/>
     </joint>
 
     <link name="${side}_v5_tool0">
@@ -397,8 +420,22 @@
     </joint>
   </xacro:macro>
 
-  <xacro:v5_imported_arm side="left" mount_y="${v5_mount_y}" mirror_y="1" color="0.2 0.55 1.0 1" visual_dir="visual" collision_dir="collision"/>
-  <xacro:v5_imported_arm side="right" mount_y="${-v5_mount_y}" mirror_y="-1" color="1.0 0.55 0.2 1" visual_dir="visual_right" collision_dir="collision_right"/>
+  <!-- 左臂: j1 -180~0, j2 ±180, j3 ±180, j4 -90~270, j5 0~180, j6 ±180 -->
+  <xacro:v5_imported_arm side="left" mount_y="${v5_mount_y}" mirror_y="1" color="0.2 0.55 1.0 1" visual_dir="visual" collision_dir="collision"
+    j1_lo="-3.14159265" j1_hi="0"
+    j2_lo="-3.14159265" j2_hi="3.14159265"
+    j3_lo="-3.14159265" j3_hi="3.14159265"
+    j4_lo="-1.57079633" j4_hi="4.71238898"
+    j5_lo="-1.57079633" j5_hi="4.71238898"
+    j6_lo="-3.14159265" j6_hi="3.14159265"/>
+  <!-- 右臂: j1 0~180, j2 ±180, j3 ±180, j4 -270~90, j5 -180~0, j6 ±180 -->
+  <xacro:v5_imported_arm side="right" mount_y="${-v5_mount_y}" mirror_y="-1" color="1.0 0.55 0.2 1" visual_dir="visual_right" collision_dir="collision_right"
+    j1_lo="0" j1_hi="3.14159265"
+    j2_lo="-3.14159265" j2_hi="3.14159265"
+    j3_lo="-3.14159265" j3_hi="3.14159265"
+    j4_lo="-4.71238898" j4_hi="1.57079633"
+    j5_lo="-4.71238898" j5_hi="1.57079633"
+    j6_lo="-3.14159265" j6_hi="3.14159265"/>
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

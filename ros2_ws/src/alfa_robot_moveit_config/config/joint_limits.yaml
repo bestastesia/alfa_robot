@@ -1,95 +1,79 @@
 # Joint limits for MoveIt planning
-# v5 proxy values are conservative placeholders until final T-motor/mechanical data is confirmed.
+# Updated to match physical joint limits
+
 joint_limits:
   pitch:
     has_velocity_limits: true
     max_velocity: 0.5
     has_acceleration_limits: true
-    max_acceleration: 1.0
-
+    max_acceleration: 0.3
   turn:
     has_velocity_limits: true
-    max_velocity: 0.87
+    max_velocity: 0.5
     has_acceleration_limits: true
-    max_acceleration: 1.5
-
+    max_acceleration: 0.3
   updown:
     has_velocity_limits: true
-    max_velocity: 1.0
+    max_velocity: 0.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 0.3
   left_v5_joint1:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   left_v5_joint2:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   left_v5_joint3:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   left_v5_joint4:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   left_v5_joint5:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   left_v5_joint6:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint1:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint2:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint3:
     has_velocity_limits: true
     max_velocity: 1.2
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint4:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint5:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
+    max_acceleration: 1.0
   right_v5_joint6:
     has_velocity_limits: true
     max_velocity: 1.5
     has_acceleration_limits: true
-    max_acceleration: 2.0
-
-default_velocity_scaling_factor: 0.3
-default_acceleration_scaling_factor: 0.3
+    max_acceleration: 1.0

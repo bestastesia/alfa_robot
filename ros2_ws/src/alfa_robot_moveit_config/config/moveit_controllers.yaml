@@ -1,10 +1,19 @@
-# MoveIt uses this configuration for controller management
+# MoveIt controller management - 双控制器
 
 moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
 
 moveit_simple_controller_manager:
   controller_names:
+    - torso_controller
     - dual_v5_arm_controller
+
+  torso_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - pitch
+      - turn
 
   dual_v5_arm_controller:
     type: FollowJointTrajectory

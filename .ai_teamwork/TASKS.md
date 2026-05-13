@@ -5,7 +5,8 @@
 - 用户或项目经理把任务写到这里。
 - AI 开工前看自己要做哪一条。
 - 任务不要写太复杂，能说明目标、范围、交付物即可。
-- PM 更新任务时，DONE 任务必须从“当前任务列表”移到“已完成任务”，不要长期留在当前列表里。
+- PM 布置任务时必须标注依赖/并行关系。
+- 已完成、撤销或旧方向任务默认移入 `archive/`，当前表只保留正在推进的任务。
 
 ## 任务状态
 
@@ -19,45 +20,31 @@
 
 | ID | 状态 | 负责人/角色 | 任务 | 范围 | 备注 |
 | --- | --- | --- | --- | --- | --- |
+| T-0027 | DONE | 仿真工程师 | 校验实时受力显示是否物理可信 | `simulation/realtime_force_mvp/`、Pinocchio RNEA + Jacobian | T-0026 重写为 Pinocchio RNEA 版；`--validate` 校验通过：零位/弯曲/载荷多组位姿力矩对比、载荷线性性、杠杆效应均正确；J2=90° 时力矩 371Nm 与 13.74kg 电机+28kg 末端载荷的杠杆匹配 |
+| T-0029 | TODO | 运控工程师 | 设计单臂 9 朝向可达性判定规则 | `scripts/ik_benchmark`、`alfa_robot_benchmarks`、MoveIt IK 配置、当前机械臂 MoveIt/IK 接口 | 依赖 T-0027 完成后启动；可与 T-0030 前期方案并行；仅针对当前机械臂，不考虑未来新比例。判定规则：空间点默认朝前，中心姿态 + yaw±15° + pitch±15° + yaw/pitch 组合共 9 个朝向全部 IK 成功，才认为该点可达；roll 不参与，因为最后一关节可处理 |
+| T-0030 | TODO | 仿真工程师 | 实现当前机械臂单臂可达空间批量仿真 | 复用 `ik_range_grid`/`alfa_robot_benchmarks` 或 MoveIt `/compute_ik`；输入 xyz 范围与间隔；输出 CSV/点云 | 依赖 T-0029 规则；可与 T-0029 前期并行调研接口。仅针对当前机械臂当前 URDF/SRDF；每个点跑 9 朝向，记录全部成功/部分失败/失败原因和耗时 |
+| T-0031 | TODO | 仿真工程师 | 可达空间点云与机械臂同场景可视化 | RViz Marker/PointCloud2 或 Open3D/MeshCat；必须加载当前机械臂模型 | 依赖 T-0030；验收采用点云可视化，并且必须同时生成/显示当前机械臂外观，方便判断点云相对机械臂的位置；成功点和失败点颜色区分，9 朝向失败可按失败数量渐变 |
+| T-0032 | BLOCKED | 运控工程师 | 校验可达性仿真结果可信度 | 抽样点 IK 解、FK 回代、关节限制、碰撞/是否考虑碰撞的说明 | 依赖 T-0030/T-0031；抽查成功点 9 朝向 FK 误差，确认使用的 IK 求解器和规划组正确；明确当前结果是否考虑碰撞，若不考虑必须在可视化和报告中标注 |
 
-## 已完成任务
+## 已取消/暂缓任务
+
+| ID | 原负责人/角色 | 原任务 | 原因 |
+| --- | --- | --- | --- |
+| T-0028 | 仿真工程师 | 接入机械侧不同比例模型实时对比 | 当前阶段改为只针对当前机械臂，暂不考虑未来新比例模型 |
+
+## 当前方向说明
+
+- 后续不再推进 Pinocchio 参数化仿真。
+- 后续不再推进 T 电机 STL 单体标定/自动拼装方向。
+- 当前近期方向：先基于当前机械臂完成实时受力校验和单臂可达空间测试；未来是否接入不同比例模型再由用户确认。
+- 历史任务和长日志已归档到 `.ai_teamwork/archive/2026-05-13_direction_reset/`，默认不需要阅读。
+
+## 刚完成任务
 
 | ID | 负责人/角色 | 任务 | 范围 | 备注 |
 | --- | --- | --- | --- | --- |
-| T-0001 | 项目经理 | 建立轻量 AI 协作区 | `AGENTS.md`, `CLAUDE.md`, `.ai_teamwork/` | 已从重流程改为轻量协作 |
-| T-0002 | Git 操作工程师 | 提交 AI 轻量协作机制更改 | `AGENTS.md`, `CLAUDE.md`, `.ai_teamwork/`（含 `engineers/`） | 仅提交协作相关文件 |
-| T-0004 | 运控工程师 | 定义原机械臂位置安装六轴机械臂的接口需求 | `.ai_teamwork/V5_PROXY_INTERFACE.md` | 已明确 v5 传统 6 轴、2+1+3、Z 轴 joint1、T 型电机、proxy 技术栈与机械交付清单 |
-| T-0003 | 机械工程师 | 拆卸/移除当前 4 代机械臂配置 | `ros2_ws/src/alfa_robot_description/`、MoveIt/bringup 控制配置 | 已从主 URDF/MoveIt/RViz 路径真实移除左右机械臂 link/joint；未删除 STL/mesh；simulation 未改 |
-| T-0005 | 机械工程师 | 按运控接口需求替换为六轴机械臂模型 | `ros2_ws/src/alfa_robot_description/`、MoveIt/bringup 控制配置 | 已实现 v5 proxy 双六轴机械臂；左右安装到 `updown` 两侧，挂点为 `x=0, y=±0.32, z=0.18`；simulation 未改 |
-| T-0006 | MoveIt/运控工程师 | 修正 `dual_arm_with_base` 规划组关节组成 | `alfa_robot.srdf`、MoveIt/controller 配置、双臂规划入口 | 已切到 `dual_v5_arm_with_base`；移除 `pitch/turn`，保留 `updown + 12` 关节；MoveItConfigsBuilder 和包构建通过 |
-| T-0007 | MoveIt/机械工程师 | 修复右手末端位姿控制球不显示 | MoveIt SRDF end effector / planning group | 已按旧双臂可用配置模式，为 `dual_v5_arm_with_base` 注册左右两个 end_effector；单臂/with_base/dual 组均有对应末端；MoveItConfigsBuilder 和包构建通过 |
-| T-0008 | 机械工程师 | 将右手模型对称到左手 | `ros2_ws/src/alfa_robot_description/` | 已完成真实 Y 镜像修正；右臂 origin/rpy/axis 按左臂镜像；xacro 和 check_urdf 通过 |
-| T-0009 | 运控工程师 | 实时显示 RViz 中双末端目标位姿 | MoveIt RViz interactive marker feedback、Pose/Marker 显示 | 新增 `rviz_dual_goal_pose_monitor.py` 和 launch；监听 RViz 交互球 feedback，发布左右目标 PoseStamped 和 MarkerArray；包构建通过 |
-| T-0010 | 机械工程师 | 替换为新的机械臂 URDF/模型文件 | `ros2_ws/src/alfa_robot_description/` | 已接入 `alfa_robot_arm_v5` 新 mesh/URDF 参数；保留当前 v5 proxy 备份；主 URDF 继续使用既有 `left/right_v5_*` 接口以兼容 MoveIt/ros2_control；xacro/check_urdf/description 构建通过 |
-| T-0011 | 运控工程师 | BioIK IK 解过滤碰撞状态 | `dual_arm_planner_node.cpp`、MoveIt 依赖配置 | 已给直接 `setFromIK` 路径接入 PlanningScene 碰撞有效性回调；构建通过 |
-| T-0012 | 机械工程师 | 移除 v5 机械臂安装连接件碰撞 | `ros2_ws/src/alfa_robot_description/` | 最终确认需隐藏/禁碰的是旧 `updown` STL；已移除 `updown` visual/collision、清理 motor1 内部小连接块，并保留全部 `left/right_v5_joint1..6`、`link0..tool0` 接口；xacro/check_urdf/description 构建通过 |
-| T-0013 | 运控工程师 | 设计并实现机械臂可达范围测试核心 | `reachability_tester.py`、`reachability_tester.launch.py` | 已实现手动 TF 位姿记录和自动区域 IK 采样，输出 CSV；包构建通过；无 move_group 环境下启动可正常报 `/compute_ik` 不可用 |
-| T-0016 | 仿真工程师 | 搭建 Pinocchio 参数化模型生成器骨架 | `simulation/pinocchio_parametric/` | 已完成独立工具目录、YAML baseline stub、Jinja2 URDF 模板、生成脚本、可选 Pinocchio/MeshCat 加载、机械交接文件；baseline 待 T-0015 校准；【已撤销】Pinocchio 仿真路线无法达到用户期望，不再作为后续方案推进 |
-| T-0015 | 机械工程师 | 提取当前机械臂参数化 baseline | `simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml`、`MECHANICAL_BASELINE.md` | 已基于当前 ROS2 v5_1 URDF/Xacro 校准 mount、joint origin/rpy/axis、link mass/COM/inertia、大臂/小臂长度和 wrist/flange offset；生成器/check_urdf 通过，T-0017 可继续语义校验；【已撤销】Pinocchio 仿真路线无法达到用户期望，不再作为后续方案推进 |
-| T-0017 | 运控工程师 | 校验参数化模型的运动学语义 | `simulation/pinocchio_parametric/tools/validate_kinematics.py`、`generated/kinematic_semantics_report.md` | 已完成 URDF/YAML 静态语义、轻量 FK/Jacobian/position IK 校验；当前环境未安装 Pinocchio，Pinocchio 数值校验路径已实现但未运行；【已撤销】Pinocchio 仿真路线无法达到用户期望，不再作为后续方案推进 |
-| T-0018 | 机械工程师 | 为 Pinocchio 参数化模型补齐真实外观 mesh 映射 | `simulation/pinocchio_parametric/configs/v5_baseline_stub.yaml`、`simulation/pinocchio_parametric/MESH_MAPPING.md` | 已补齐当前真实 mesh 映射，但用户不验收：这只是复用当前机械臂 mesh，不是“自动生成的不同参数机械臂仍具真实外观”的参数化生成方案；需 T-0021/T-0022 返工；【已撤销】Pinocchio 仿真路线无法达到用户期望，不再作为后续方案推进 |
-| T-0019 | 仿真工程师 | 升级 Pinocchio/MeshCat 可视化为真实机械臂外观 | `simulation/pinocchio_parametric/templates/`、`tools/generate_model.py`、MeshCat 加载路径 | 已接入 T-0018 `mesh_mapping`，默认 `visual.use_primitives=false` 生成当前 v5 SolidWorks STL visual/collision；支持 package/file/relative mesh URI 模式，MeshCat 加载时传入 ROS package 搜索路径；保留 `--visual-mode primitives` fallback；生成器/check_urdf/语义校验通过；【已撤销】Pinocchio 仿真路线无法达到用户期望，不再作为后续方案推进 |
-
-## 已撤销任务
-
-| ID | 原负责人/角色 | 原任务 | 撤销原因 | 后续处理 |
-| --- | --- | --- | --- | --- |
-| T-0015 | 机械工程师 | 提取当前机械臂参数化 baseline | Pinocchio 参数化仿真路线整体撤销 | 已删除 `simulation/pinocchio_parametric/`，仅保留任务历史记录 |
-| T-0016 | 仿真工程师 | 搭建 Pinocchio 参数化模型生成器骨架 | Pinocchio 参数化仿真路线整体撤销 | 已删除 `simulation/pinocchio_parametric/`，仅保留任务历史记录 |
-| T-0017 | 运控工程师 | 校验参数化模型的运动学语义 | Pinocchio 参数化仿真路线整体撤销 | 已删除 `simulation/pinocchio_parametric/`，仅保留任务历史记录 |
-| T-0018 | 机械工程师 | 为 Pinocchio 参数化模型补齐真实外观 mesh 映射 | Pinocchio 参数化仿真路线整体撤销 | 已删除相关实现，停止返工 |
-| T-0019 | 仿真工程师 | 升级 Pinocchio/MeshCat 可视化为真实机械臂外观 | Pinocchio 参数化仿真路线整体撤销 | 已删除相关实现，停止返工 |
-| T-0020 | Git 操作工程师 | 清理参数化生成物提交边界 | Pinocchio 参数化仿真路线整体撤销 | 用户已要求清理/回滚；`simulation/pinocchio_parametric/` 与 `.ai_teamwork/PINOCCHIO_STACK.md` 已删除；外部 `universal_robot-noetic-devel/` 已加入忽略避免误提交；等待提交 |
-| T-0021 | 机械工程师 | 定义参数化机械臂真实外观生成规范 | Pinocchio 参数化仿真路线整体撤销 | 已取消，相关后续不再推进 |
-| T-0022 | 仿真工程师 | 返工 Pinocchio 参数化视觉生成器 | Pinocchio 参数化仿真路线整体撤销 | 已取消，相关后续不再推进 |
-| T-0023 | 仿真工程师 | 参数化外观验收 demo | Pinocchio 参数化仿真路线整体撤销 | 已取消，相关后续不再推进 |
-
-## 待用户/PM 补充
-
-| ID | 建议角色 | 任务 | 范围 | 备注 |
-| --- | --- | --- | --- | --- |
+| T-0033 | 机械工程师 | 安装 v1 底盘到 v5 机器人 | `ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`、mesh 文件 | 从 v3 项目迁移 v1 底盘（base_link/turn/updown）mesh 和惯性参数；调整 pitch/turn/updown joint origin 使全局坐标系与 v3 一致；base_link 质量 5.2→394.9kg；turn 质量 15.2→42.1kg；updown 质量 8.6→26.9kg |
+| T-0034 | 机械工程师 | 禁用 MoveIt 中吸盘与臂、臂与车体碰撞检测 | `ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.srdf` | 新增 SuctionVsArm（link6 + tool0 vs 本臂 link0~link5）和 ArmVsBase（所有臂 link vs base_link/pitch/turn）disable_collisions；保留左臂 vs 右臂碰撞和单臂自碰撞（link0~link5 之间）；link6（吸盘/motor6）碰撞体积完全忽略 |
+| T-0035 | 机械工程师 | 集成 v5_5 臂 URDF 到全模块 | URDF xacro、MoveIt SRDF/YAML/controllers、MuJoCo XML、realtime_force_mvp、mesh 文件 | v5_5 新增 3 个 fixed sub-link（big_arm, big_arm_2, little_arm）插入 motor2→motor3 和 motor3→motor4 之间；10 个新 STL × 4 目录（visual/collision/visual_right/collision_right）= 40 个 mesh 文件；全部已提交到 v5_dev_p 分支 |
+| T-0025 | 机械工程师 | 定义实时力学分析所需的关节/电机受力语义 | `.ai_teamwork/FORCE_ANALYSIS_SEMANTICS.md`、`.ai_teamwork/force_analysis_semantics.yaml`、当前 ROS URDF | 已明确左右 `v5_joint1..6` 的 axis、主法向、连接观察方向、末端吸盘载荷 frame；区分 `tau_axis_Nm` 关节力矩与 `force_axis/normal/radial_N` 连接反力；YAML 与展开 URDF joint/link/axis 校验通过，可供 T-0026/T-0027 使用 |
+| T-0026 | 仿真工程师 | 实时力学可视化 MVP (RNEA 重写版) | `simulation/realtime_force_mvp/scripts/realtime_force_visualizer.py` | Pinocchio RNEA+Jacobian；tkinter 滑块实时调关节角度+吸盘质量；MeshCat 3D；电机 5kg 重心中间 |
