@@ -3,7 +3,7 @@ import mujoco
 
 class AlfaRobotInterface:
     """
-    Alfa 机器人混合控制底层接口 (v2_arm_v4 新 URDF)
+    Alfa 机器人混合控制底层接口 (v4_dev MuJoCo)
     基座: pitch, turn, updown
     双臂: leftjoint1-6 / rightjoint1-6
     """
