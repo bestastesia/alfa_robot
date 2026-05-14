@@ -35,7 +35,6 @@
         <joint name="right_v5_joint6" />
     </group>
     <group name="dual_arm_with_base">
-        <joint name="turn" />
         <joint name="updown" />
         <joint name="left_v5_joint1" />
         <joint name="left_v5_joint2" />
@@ -68,8 +67,12 @@
         <joint name="right_v5_joint6" value="0" />
     </group_state>
     <!--END EFFECTOR: Link that is not part of the planning group but is the end effector-->
-    <end_effector name="left_suction" parent_link="left_v5_tool0" group="left_arm" />
-    <end_effector name="right_suction" parent_link="right_v5_tool0" group="right_arm" />
+    <end_effector name="left_suction" parent_link="left_v5_tool0" group="left_arm" parent_group="left_arm" />
+    <end_effector name="right_suction" parent_link="right_v5_tool0" group="right_arm" parent_group="right_arm" />
+    <end_effector name="left_suction_with_base" parent_link="left_v5_tool0" group="left_arm" parent_group="left_arm_with_base" />
+    <end_effector name="right_suction_with_base" parent_link="right_v5_tool0" group="right_arm" parent_group="right_arm_with_base" />
+    <end_effector name="dual_left_suction" parent_link="left_v5_tool0" group="left_arm" parent_group="dual_arm_with_base" />
+    <end_effector name="dual_right_suction" parent_link="right_v5_tool0" group="right_arm" parent_group="dual_arm_with_base" />
     <!--DISABLE COLLISIONS: Link pairs that are never in collision (adjacent or explicitly disabled)-->
     <!-- Left arm Adjacent pairs -->
     <disable_collisions link1="left_v5_link0" link2="left_v5_link1" reason="Adjacent"/>
