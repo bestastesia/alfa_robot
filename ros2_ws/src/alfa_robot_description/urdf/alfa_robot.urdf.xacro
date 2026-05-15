@@ -229,213 +229,364 @@
       effort="0"
       velocity="0" />
   </joint>
-  <!-- v5 dual six-axis arms from the imported SolidWorks URDF.
-       Source package snapshot: /mnt/mydisk/ALFA/alfa_robot/alfa_robot_arm_v5
-       Current v5 proxy before replacement is preserved at:
-       urdf/alfa_robot_v5_proxy_backup.urdf.xacro
-       Naming is kept as left_v5_joint1..6 / right_v5_joint1..6 for MoveIt and ros2_control compatibility.
-       The imported single-arm URDF contains motor1..motor6 and 5 internal joints; the mount joint is the added joint1. -->
-  <xacro:property name="v5_mount_y" value="0.20"/>
-  <xacro:property name="v5_mount_z" value="0.18"/>
-  <xacro:property name="v5_mesh_base" value="package://alfa_robot_description/meshes/alfa_robot_arm_v5"/>
+  <!-- Mesh base path for v2 arm v5 model -->
+  <xacro:property name="mesh_base" value="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5"/>
 
-  <xacro:macro name="v5_simple_inertial" params="mass">
+  <!-- ========== LEFT ARM (left_v5_joint1-6) ========== -->
+  <link name="left_v5_link0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="${mass}"/>
+      <mass value="0.5"/>
       <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/>
     </inertial>
-  </xacro:macro>
+  </link>
+  <joint name="left_v5_mount" type="fixed">
+    <parent link="updown"/>
+    <child link="left_v5_link0"/>
+    <origin xyz="0 0.20 0.18" rpy="0 0 0"/>
+  </joint>
 
-  <xacro:macro name="v5_visual_mesh" params="mesh_dir mesh origin_xyz origin_rpy color">
+  <link name="left_v5_link1">
+    <inertial>
+      <origin xyz="3.98376137018541E-05 0.0126477750253194 0.0492338003578434" rpy="0 0 0"/>
+      <mass value="1.26276969364824"/>
+      <inertia ixx="0.00263426449889698" ixy="1.39299639124709E-06" ixz="-2.78631072895881E-06"
+               iyy="0.00268939190272101" iyz="-7.0690632990526E-05" izz="0.00230762866755196"/>
+    </inertial>
     <visual>
-      <origin xyz="${origin_xyz}" rpy="${origin_rpy}"/>
-      <geometry><mesh filename="${v5_mesh_base}/${mesh_dir}/${mesh}"/></geometry>
-      <material name="v5_imported_mesh_mat"><color rgba="${color}"/></material>
-    </visual>
-  </xacro:macro>
-
-  <xacro:macro name="v5_collision_mesh" params="mesh_dir mesh origin_xyz origin_rpy">
-    <collision>
-      <origin xyz="${origin_xyz}" rpy="${origin_rpy}"/>
-      <geometry><mesh filename="${v5_mesh_base}/${mesh_dir}/${mesh}"/></geometry>
-    </collision>
-  </xacro:macro>
-
-  <xacro:macro name="v5_imported_motor_link" params="name motor color visual_dir collision_dir mirror_y:=1 include_visual:=true include_collision:=true">
-    <link name="${name}">
-      <xacro:if value="${motor == 'motor1'}">
-        <inertial>
-          <origin xyz="-0.00549007480040076 ${mirror_y * 4.41384348585649E-05} 0.0638192670583628" rpy="0 0 0"/>
-          <mass value="1.14347754183273"/>
-          <inertia ixx="0.00234577756970447" ixy="${mirror_y * -1.39192053258421E-06}" ixz="7.06941577680902E-05" iyy="0.00245440034346279" iyz="${mirror_y * -2.78529246638655E-06}" izz="0.00212775141233719"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor1.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-      <xacro:if value="${motor == 'motor2'}">
-        <inertial>
-          <origin xyz="-2.09300645109267E-05 ${mirror_y * 0.300000037733846} -0.0739999978650945" rpy="0 0 0"/>
-          <mass value="4.80591024170092"/>
-          <inertia ixx="0.0514140216022789" ixy="${mirror_y * -1.11071009974064E-09}" ixz="7.00200352560243E-10" iyy="0.0109314943608357" iyz="${mirror_y * 0.000141378481768625}" izz="0.0507607430231609"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor2.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-      <xacro:if value="${motor == 'motor3'}">
-        <inertial>
-          <origin xyz="-8.86583279652298E-06 ${mirror_y * -0.191421080971033} -0.0611928334493207" rpy="0 0 0"/>
-          <mass value="5.53739421393496"/>
-          <inertia ixx="0.0659171393206471" ixy="${mirror_y * -1.40894015322047E-06}" ixz="-2.83298512105713E-06" iyy="0.0102087351820484" iyz="${mirror_y * -0.00128557192119225}" izz="0.0652938482117856"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor3.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-      <xacro:if value="${motor == 'motor4'}">
-        <inertial>
-          <origin xyz="0.054010017525899 ${mirror_y * -0.00968074438612282} -4.38885459771443E-05" rpy="0 0 0"/>
-          <mass value="1.14347527972143"/>
-          <inertia ixx="0.00234577526969165" ixy="${mirror_y * 7.06887224662317E-05}" ixz="1.39432827945232E-06" iyy="0.00212775138988867" iyz="${mirror_y * 2.78555789689753E-06}" izz="0.00245439599558472"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor4.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-      <xacro:if value="${motor == 'motor5'}">
-        <inertial>
-          <origin xyz="-0.0545098970073398 ${mirror_y * -0.00968076621990099} 4.3968113340731E-05" rpy="0 0 0"/>
-          <mass value="1.14347708247491"/>
-          <inertia ixx="0.00234577450108908" ixy="${mirror_y * -7.0688725031574E-05}" ixz="1.39442681307563E-06" iyy="0.00212775140409106" iyz="${mirror_y * -2.78654985483454E-06}" izz="0.00245439718636663"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor5.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-      <xacro:if value="${motor == 'motor6'}">
-        <inertial>
-          <origin xyz="0 0 0.056752" rpy="0 0 0"/>
-          <mass value="8.2851"/>
-          <inertia ixx="0.041557" ixy="0" ixz="0" iyy="0.063474" iyz="0" izz="0.099371"/>
-        </inertial>
-        <xacro:if value="${include_visual}">
-          <xacro:v5_visual_mesh mesh_dir="${visual_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0" color="${color}"/>
-        </xacro:if>
-        <xacro:if value="${include_collision}">
-          <xacro:v5_collision_mesh mesh_dir="${collision_dir}" mesh="motor6.STL" origin_xyz="0 0 0" origin_rpy="0 0 0"/>
-        </xacro:if>
-      </xacro:if>
-    </link>
-  </xacro:macro>
-
-  <xacro:macro name="v5_imported_arm" params="side mount_y mirror_y color visual_dir collision_dir
-    j1_lo j1_hi j2_lo j2_hi j3_lo j3_hi j4_lo j4_hi j5_lo j5_hi j6_lo j6_hi">
-    <link name="${side}_v5_link0">
-      <xacro:v5_simple_inertial mass="0.5"/>
-    </link>
-    <joint name="${side}_v5_mount" type="fixed">
-      <parent link="updown"/>
-      <child link="${side}_v5_link0"/>
-      <origin xyz="0 ${mount_y} ${v5_mount_z}" rpy="0 0 0"/>
-    </joint>
-
-    <xacro:v5_imported_motor_link name="${side}_v5_link1" motor="motor1" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint1" type="revolute">
-      <parent link="${side}_v5_link0"/>
-      <child link="${side}_v5_link1"/>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <axis xyz="0 0 1"/>
-      <limit lower="${j1_lo}" upper="${j1_hi}" effort="120" velocity="1.2"/>
-    </joint>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint1.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint1.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="left_v5_link0"/>
+    <child link="left_v5_link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="0" effort="120" velocity="1.2"/>
+  </joint>
 
-    <xacro:v5_imported_motor_link name="${side}_v5_link2" motor="motor2" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint2" type="revolute">
-      <parent link="${side}_v5_link1"/>
-      <child link="${side}_v5_link2"/>
-      <origin xyz="-0.0595 0 0.0735" rpy="${mirror_y * 1.5708} 0 ${mirror_y * 1.5708}"/>
-      <axis xyz="0 0 -1"/>
-      <limit lower="${j2_lo}" upper="${j2_hi}" effort="120" velocity="1.2"/>
-    </joint>
+  <link name="left_v5_link2">
+    <inertial>
+      <origin xyz="-2.02060590481778E-14 -0.200000000000001 0.192749470015582" rpy="0 0 0"/>
+      <mass value="2.29867987677898"/>
+      <inertia ixx="0.0167934021362825" ixy="-1.56125112837913E-17" ixz="1.42815812294016E-17"
+               iyy="0.0137429160924878" iyz="-4.6463569488202E-18" izz="0.0130582608880253"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint2.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint2.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint2" type="revolute">
+    <origin xyz="0 0.0905 0.058" rpy="-1.5708 0 0"/>
+    <parent link="left_v5_link1"/>
+    <child link="left_v5_link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
+  </joint>
 
-    <xacro:v5_imported_motor_link name="${side}_v5_link3" motor="motor3" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint3" type="revolute">
-      <parent link="${side}_v5_link2"/>
-      <child link="${side}_v5_link3"/>
-      <origin xyz="0 ${mirror_y * 0.6} -0.148" rpy="0 0 ${mirror_y * 3.1416}"/>
-      <axis xyz="0 0 1"/>
-      <limit lower="${j3_lo}" upper="${j3_hi}" effort="100" velocity="1.2"/>
-    </joint>
+  <link name="left_v5_link3">
+    <inertial>
+      <origin xyz="8.50278292219286E-10 -0.161826821925973 -0.142215766657612" rpy="0 0 0"/>
+      <mass value="1.06877306914919"/>
+      <inertia ixx="0.00576467932665098" ixy="7.14127431234585E-11" ixz="-1.52931538107986E-11"
+               iyy="0.00323480538353984" iyz="-0.000627938051589377" izz="0.00557699385658163"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint3.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint3.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint3" type="revolute">
+    <origin xyz="0 -0.4 0.072" rpy="0 0 0"/>
+    <parent link="left_v5_link2"/>
+    <child link="left_v5_link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="6.28318530" effort="100" velocity="1.2"/>
+  </joint>
 
-    <xacro:v5_imported_motor_link name="${side}_v5_link4" motor="motor4" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint4" type="revolute">
-      <parent link="${side}_v5_link3"/>
-      <child link="${side}_v5_link4"/>
-      <origin xyz="0 ${mirror_y * -0.412} 0.009" rpy="${mirror_y * 1.5708} -1.5708 0"/>
-      <axis xyz="-1 0 0"/>
-      <limit lower="${j4_lo}" upper="${j4_hi}" effort="60" velocity="1.5"/>
-    </joint>
+  <link name="left_v5_link4">
+    <inertial>
+      <origin xyz="4.39937389380418E-05 0.00548997582265937 0.0483192602116806" rpy="0 0 0"/>
+      <mass value="1.14347572516569"/>
+      <inertia ixx="0.00245438978578032" ixy="1.39299733480971E-06" ixz="-2.7863076906024E-06"
+               iyy="0.0023457756103248" iyz="-7.06906282100456E-05" izz="0.00212775395802631"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint4.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint4.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint4" type="revolute">
+    <origin xyz="0 -0.339 -0.15" rpy="1.5708 0 0"/>
+    <parent link="left_v5_link3"/>
+    <child link="left_v5_link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57079633" upper="4.71238898" effort="60" velocity="1.5"/>
+  </joint>
 
-    <xacro:v5_imported_motor_link name="${side}_v5_link5" motor="motor5" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint5" type="revolute">
-      <parent link="${side}_v5_link4"/>
-      <child link="${side}_v5_link5"/>
-      <origin xyz="0.0595 ${mirror_y * -0.074} 0" rpy="${mirror_y * -1.5708} 0 ${mirror_y * 1.5708}"/>
-      <axis xyz="1 0 0"/>
-      <limit lower="${j5_lo}" upper="${j5_hi}" effort="60" velocity="1.5"/>
-    </joint>
+  <link name="left_v5_link5">
+    <inertial>
+      <origin xyz="-4.39220865777745E-05 -0.00549003448929664 0.0493192397165389" rpy="0 0 0"/>
+      <mass value="1.14347600233794"/>
+      <inertia ixx="0.00245439627542261" ixy="1.39396565378349E-06" ixz="2.78609959051481E-06"
+               iyy="0.00234577474624758" iyz="7.06885746164186E-05" izz="0.00212775160838843"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint5.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint5.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint5" type="revolute">
+    <origin xyz="0 0.075 0.058" rpy="-1.5708 0 0"/>
+    <parent link="left_v5_link4"/>
+    <child link="left_v5_link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57079633" upper="4.71238898" effort="60" velocity="1.5"/>
+  </joint>
 
-    <xacro:v5_imported_motor_link name="${side}_v5_link6" motor="motor6" color="${color}" visual_dir="${visual_dir}" collision_dir="${collision_dir}" mirror_y="${mirror_y}"/>
-    <joint name="${side}_v5_joint6" type="revolute">
-      <parent link="${side}_v5_link5"/>
-      <child link="${side}_v5_link6"/>
-      <origin xyz="-0.06 ${mirror_y * -0.074} 0" rpy="${mirror_y * 1.5708} 0 0"/>
-      <axis xyz="0 0 -1"/>
-      <limit lower="${j6_lo}" upper="${j6_hi}" effort="40" velocity="1.5"/>
-    </joint>
+  <link name="left_v5_link6">
+    <inertial>
+      <origin xyz="0.00023532815733418 9.11432961720343E-05 0.087447372777676" rpy="0 0 0"/>
+      <mass value="1.76089178335136"/>
+      <inertia ixx="0.00779270426493984" ixy="-7.86255995574129E-08" ixz="2.89944411407093E-07"
+               iyy="0.00558315762821446" iyz="-2.686584257496E-07" izz="0.0124506991804597"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/leftjoint6.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/leftjoint6.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_v5_joint6" type="revolute">
+    <origin xyz="0 -0.083 0.059" rpy="1.5708 0 0"/>
+    <parent link="left_v5_link5"/>
+    <child link="left_v5_link6"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
+  </joint>
 
-    <link name="${side}_v5_tool0">
-      <xacro:v5_simple_inertial mass="0.2"/>
-    </link>
-    <joint name="${side}_v5_tool0_fixed" type="fixed">
-      <parent link="${side}_v5_link6"/>
-      <child link="${side}_v5_tool0"/>
-      <origin xyz="0 0 0.08" rpy="0 0 0"/>
-    </joint>
-  </xacro:macro>
+  <!-- Left tool0 (end-effector frame) -->
+  <link name="left_v5_tool0">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+  <joint name="left_v5_tool0_fixed" type="fixed">
+    <parent link="left_v5_link6"/>
+    <child link="left_v5_tool0"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+  </joint>
 
-  <!-- 左臂: j1 -180~0, j2 ±180, j3 0~360 (避免 ±π 不可跨越点), j4 -90~270, j5 0~180, j6 ±180 -->
-  <xacro:v5_imported_arm side="left" mount_y="${v5_mount_y}" mirror_y="1" color="0.2 0.55 1.0 1" visual_dir="visual" collision_dir="collision"
-    j1_lo="-3.14159265" j1_hi="0"
-    j2_lo="-3.14159265" j2_hi="3.14159265"
-    j3_lo="0" j3_hi="6.28318530"
-    j4_lo="-1.57079633" j4_hi="4.71238898"
-    j5_lo="-1.57079633" j5_hi="4.71238898"
-    j6_lo="-3.14159265" j6_hi="3.14159265"/>
-  <!-- 右臂: j1 0~180, j2 ±180, j3 ±180, j4 -270~90, j5 -180~0, j6 ±180 -->
-  <xacro:v5_imported_arm side="right" mount_y="${-v5_mount_y}" mirror_y="-1" color="1.0 0.55 0.2 1" visual_dir="visual_right" collision_dir="collision_right"
-    j1_lo="0" j1_hi="3.14159265"
-    j2_lo="-3.14159265" j2_hi="3.14159265"
-    j3_lo="-3.14159265" j3_hi="3.14159265"
-    j4_lo="-4.71238898" j4_hi="1.57079633"
-    j5_lo="-4.71238898" j5_hi="1.57079633"
-    j6_lo="-3.14159265" j6_hi="3.14159265"/>
+  <!-- ========== RIGHT ARM (right_v5_joint1-6) ========== -->
+  <link name="right_v5_link0">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/>
+    </inertial>
+  </link>
+  <joint name="right_v5_mount" type="fixed">
+    <parent link="updown"/>
+    <child link="right_v5_link0"/>
+    <origin xyz="0 -0.20 0.18" rpy="0 0 0"/>
+  </joint>
+
+  <link name="right_v5_link1">
+    <inertial>
+      <origin xyz="-3.97824922628853E-05 -0.0126477728169272 0.0492337945969195" rpy="0 0 0"/>
+      <mass value="1.26276932681279"/>
+      <inertia ixx="0.00263426432505094" ixy="1.39344493599146E-06" ixz="2.7860813926773E-06"
+               iyy="0.00268939195647464" iyz="7.06907392424158E-05" izz="0.00230762863992581"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint1.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint1.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="right_v5_link0"/>
+    <child link="right_v5_link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0" upper="3.14159265" effort="120" velocity="1.2"/>
+  </joint>
+
+  <link name="right_v5_link2">
+    <inertial>
+      <origin xyz="-1.28785870856518E-14 -0.199999999999987 -0.192749470015577" rpy="0 0 0"/>
+      <mass value="2.29867987677898"/>
+      <inertia ixx="0.0167934021362824" ixy="0" ixz="4.13764815381938E-17"
+               iyy="0.0137429160924878" iyz="2.17169249478585E-17" izz="0.0130582608880253"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint2.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint2.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint2" type="revolute">
+    <origin xyz="0 -0.0905 0.058" rpy="-1.5708 0 0"/>
+    <parent link="right_v5_link1"/>
+    <child link="right_v5_link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
+  </joint>
+
+  <link name="right_v5_link3">
+    <inertial>
+      <origin xyz="9.5070418204557E-10 -0.16182682160044 0.142215764473744" rpy="0 0 0"/>
+      <mass value="1.06877306681804"/>
+      <inertia ixx="0.00576467931842579" ixy="7.85022139795314E-11" ixz="1.66891069507532E-11"
+               iyy="0.00323480537976427" iyz="0.000627937896943069" izz="0.00557699384106281"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint3.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint3.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint3" type="revolute">
+    <origin xyz="0 -0.4 -0.072" rpy="0 0 0"/>
+    <parent link="right_v5_link2"/>
+    <child link="right_v5_link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2"/>
+  </joint>
+
+  <link name="right_v5_link4">
+    <inertial>
+      <origin xyz="-4.39325770644761E-05 -0.00548997104397675 0.0483192533064992" rpy="0 0 0"/>
+      <mass value="1.14347535463895"/>
+      <inertia ixx="0.00245438961944399" ixy="1.39346065832636E-06" ixz="2.78607722047326E-06"
+               iyy="0.00234577565134394" iyz="7.06907346421649E-05" izz="0.00212775392531061"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint4.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint4.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint4" type="revolute">
+    <origin xyz="0 -0.339 0.15" rpy="1.5708 0 0"/>
+    <parent link="right_v5_link3"/>
+    <child link="right_v5_link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-4.71238898" upper="1.57079633" effort="60" velocity="1.5"/>
+  </joint>
+
+  <link name="right_v5_link5">
+    <inertial>
+      <origin xyz="4.4006472602609E-05 -0.00549003609387566 -0.0483192456907762" rpy="0 0 0"/>
+      <mass value="1.14347650158227"/>
+      <inertia ixx="0.00245440026104237" ixy="-1.39330363796226E-06" ixz="2.78487451720199E-06"
+               iyy="0.00234577801687435" iyz="-7.06943241540916E-05" izz="0.00212775133190187"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint5.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint5.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint5" type="revolute">
+    <origin xyz="0 -0.076 0.058" rpy="-1.5708 0 0"/>
+    <parent link="right_v5_link4"/>
+    <child link="right_v5_link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-4.71238898" upper="1.57079633" effort="60" velocity="1.5"/>
+  </joint>
+
+  <link name="right_v5_link6">
+    <inertial>
+      <origin xyz="-0.000182536205884709 -0.000174261472871362 0.0874473728067586" rpy="0 0 0"/>
+      <mass value="1.76089178109847"/>
+      <inertia ixx="0.00779269686744314" ixy="9.64917130872463E-08" ixz="-3.70697414022662E-07"
+               iyy="0.00558316502412396" iyz="1.37257666224686E-07" izz="0.0124506991775929"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/rightjoint6.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/rightjoint6.STL"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_v5_joint6" type="revolute">
+    <origin xyz="0 -0.083 -0.058" rpy="1.5708 0 0"/>
+    <parent link="right_v5_link5"/>
+    <child link="right_v5_link6"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
+  </joint>
+
+  <!-- Right tool0 (end-effector frame) -->
+  <link name="right_v5_tool0">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.2"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+  </link>
+  <joint name="right_v5_tool0_fixed" type="fixed">
+    <parent link="right_v5_link6"/>
+    <child link="right_v5_tool0"/>
+    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+  </joint>
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

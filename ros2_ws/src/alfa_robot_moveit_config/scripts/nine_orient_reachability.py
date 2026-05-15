@@ -82,14 +82,14 @@ class ArmConfig:
 # Default arm configs: use arm-only groups (no turn/updown) for fixed-mount reachability
 ARM_CONFIGS = {
     "left": ArmConfig(
-        group_name="left_arm",
-        ik_link_name="left_tool0",
+        group_name="left_v5_arm",
+        ik_link_name="left_v5_tool0",
         label="left",
         center_quat=(0.0, 0.7071, 0.0, 0.7071),  # pitch=90° forward
     ),
     "right": ArmConfig(
-        group_name="right_arm",
-        ik_link_name="right_tool0",
+        group_name="right_v5_arm",
+        ik_link_name="right_v5_tool0",
         label="right",
         center_quat=(0.0, 0.7071, 0.0, 0.7071),
     ),
@@ -186,18 +186,18 @@ class NineOrientationReachabilityTester(Node):
 
         # Spatial sampling range (robot front = +X, left = +Y, up = +Z)
         self.declare_parameter("min_x", -1.2)
-        self.declare_parameter("max_x", 0.3)
-        self.declare_parameter("min_y", 0.0)
-        self.declare_parameter("max_y", 1.6)
+        self.declare_parameter("max_x", 1.6)
+        self.declare_parameter("min_y", -0.3)
+        self.declare_parameter("max_y", 1.2)
         self.declare_parameter("min_z", 0.0)
         self.declare_parameter("max_z", 2.0)
         self.declare_parameter("step", 0.1)
 
         # Group override (arm-only groups by default)
-        self.declare_parameter("left_group", "left_arm")
-        self.declare_parameter("right_group", "right_arm")
-        self.declare_parameter("left_tip", "left_tool0")
-        self.declare_parameter("right_tip", "right_tool0")
+        self.declare_parameter("left_group", "left_v5_arm")
+        self.declare_parameter("right_group", "right_v5_arm")
+        self.declare_parameter("left_tip", "left_v5_tool0")
+        self.declare_parameter("right_tip", "right_v5_tool0")
 
         self._latest_joint_state: Optional[JointState] = None
         self._joint_state_sub = self.create_subscription(
