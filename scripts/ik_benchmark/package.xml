@@ -4,7 +4,7 @@
   <name>alfa_robot_benchmarks</name>
   <version>0.1.0</version>
   <description>ALFA Robot IK solver benchmarks and demos</description>
-  <maintainer email="todo@todo.com">li</maintainer>
+  <maintainer email="231055558@qq.com">li</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
