@@ -51,6 +51,10 @@ static nlohmann::json resultToJson(const IkResult& r)
 {
     return {
         {"success", r.success},
+        {"collision_checked", r.collision_checked},
+        {"collision_free", r.collision_free},
+        {"collision_rejection_count", r.collision_rejection_count},
+        {"collision_pairs", r.collision_pairs},
         {"solve_ms", r.solve_ms},
         {"pos_error", r.pos_error},
         {"ori_error", r.ori_error},

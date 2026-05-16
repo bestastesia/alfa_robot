@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
+#include <moveit/collision_detection/collision_common.h>
+#include <moveit/planning_scene/planning_scene.h>
 #include <moveit/robot_state/robot_state.h>
 #include <rclcpp/rclcpp.hpp>
 #include <random>
@@ -24,7 +26,10 @@ IkSolver::IkSolver(const std::string& group_name,
     , free_joint6_(free_joint6)
     , options_(options)
 {
-    is_dual_ = (group_name == "dual_arm_with_base" || group_name == "dual_arms");
+    is_dual_ = (group_name == "dual_arm_with_base" ||
+                group_name == "dual_arms" ||
+                group_name == "dual_v5_arm_with_base" ||
+                group_name == "dual_v5_arm");
 
     node_ = std::make_shared<rclcpp::Node>(
         "_ik_bench_node",
@@ -84,6 +89,7 @@ void IkSolver::loadRobotModel()
     }
 
     robot_model_ = std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
+    planning_scene_ = std::make_shared<planning_scene::PlanningScene>(robot_model_);
 
     jmg_ = robot_model_->getJointModelGroup(group_name_);
     if (!jmg_) {
@@ -215,6 +221,43 @@ std::vector<double> IkSolver::makeIkSeed(const std::vector<double>& jmg_seed) co
     return ik_seed;
 }
 
+bool IkSolver::isSolutionCollisionFree(const std::vector<double>& solution,
+                                       std::vector<std::string>* collision_pairs) const
+{
+    if (!planning_scene_) {
+        return true;
+    }
+
+    moveit::core::RobotState state(robot_model_);
+    state.setToDefaultValues();
+
+    const auto& ik_jnames = ik_solver_->getJointNames();
+    for (size_t k = 0; k < solution.size() && k < ik_jnames.size(); ++k) {
+        state.setJointPositions(ik_jnames[k], {solution[k]});
+    }
+    state.update();
+    state.updateCollisionBodyTransforms();
+
+    collision_detection::CollisionRequest req;
+    collision_detection::CollisionResult res;
+    req.group_name = group_name_;
+    req.contacts = (collision_pairs != nullptr);
+    req.max_contacts = 20;
+    req.max_contacts_per_pair = 1;
+    req.verbose = false;
+
+    planning_scene_->checkCollision(req, res, state, planning_scene_->getAllowedCollisionMatrix());
+
+    if (collision_pairs) {
+        collision_pairs->clear();
+        for (const auto& entry : res.contacts) {
+            collision_pairs->push_back(entry.first.first + " <-> " + entry.first.second);
+        }
+    }
+
+    return !res.collision;
+}
+
 IkResult IkSolver::solve(const Eigen::Isometry3d& target,
                           const std::vector<double>& seed,
                           double timeout)
@@ -243,14 +286,49 @@ IkResult IkSolver::solve(const Eigen::Isometry3d& target,
     std::vector<double> solution;
     moveit_msgs::msg::MoveItErrorCodes error_code;
     kinematics::KinematicsQueryOptions options;
+    int collision_rejections = 0;
+    std::vector<std::string> first_collision_pairs;
+    std::vector<double> first_collision_solution;
+    kinematics::KinematicsBase::IKCallbackFn callback;
+    if (options_.reject_collisions) {
+        callback = [this, &collision_rejections, &first_collision_pairs, &first_collision_solution](
+                       const geometry_msgs::msg::Pose&, const std::vector<double>& solution,
+                       moveit_msgs::msg::MoveItErrorCodes& callback_error_code) {
+            std::vector<std::string> candidate_pairs;
+            if (isSolutionCollisionFree(solution, &candidate_pairs)) {
+                callback_error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
+            } else {
+                ++collision_rejections;
+                if (first_collision_pairs.empty()) {
+                    first_collision_pairs = candidate_pairs;
+                    first_collision_solution = solution;
+                }
+                callback_error_code.val = moveit_msgs::msg::MoveItErrorCodes::GOAL_IN_COLLISION;
+            }
+        };
+    }
 
     auto t0 = std::chrono::high_resolution_clock::now();
-    bool ok = ik_solver_->searchPositionIK(pose_msg, ik_seed, t, solution, error_code, options);
+    bool ok = ik_solver_->searchPositionIK(pose_msg, ik_seed, t, solution, callback, error_code, options);
     auto t1 = std::chrono::high_resolution_clock::now();
 
     result.solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     result.success = ok;
     result.joint_values = solution;
+    result.collision_checked = true;
+    result.collision_rejection_count = collision_rejections;
+
+    if (ok) {
+        result.collision_free = isSolutionCollisionFree(solution, &result.collision_pairs);
+        if (options_.reject_collisions && !result.collision_free) {
+            result.success = false;
+            return result;
+        }
+    } else if (!first_collision_pairs.empty()) {
+        result.collision_free = false;
+        result.collision_pairs = first_collision_pairs;
+        result.joint_values = first_collision_solution;
+    }
 
     if (ok) {
         moveit::core::RobotState state(robot_model_);
@@ -301,15 +379,39 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
         return msg;
     };
 
+    // BioIK stores multi-tip goals in the plugin's internal tip order, which is
+    // reversed from the explicit {left, right} order passed to initialize() for
+    // the current dual_v5 group. Keep IkSolver's public API as left/right and
+    // compensate here so FK(actual[0]) still means left tip.
     std::vector<geometry_msgs::msg::Pose> targets = {
-        to_msg(left_target), to_msg(right_target)
+        to_msg(right_target), to_msg(left_target)
     };
 
     std::vector<double> consistency_limits;
     std::vector<double> solution;
     moveit_msgs::msg::MoveItErrorCodes error_code;
     kinematics::KinematicsQueryOptions options;
+    int collision_rejections = 0;
+    std::vector<std::string> first_collision_pairs;
+    std::vector<double> first_collision_solution;
     kinematics::KinematicsBase::IKCallbackFn callback;
+    if (options_.reject_collisions) {
+        callback = [this, &collision_rejections, &first_collision_pairs, &first_collision_solution](
+                       const geometry_msgs::msg::Pose&, const std::vector<double>& candidate_solution,
+                       moveit_msgs::msg::MoveItErrorCodes& callback_error_code) {
+            std::vector<std::string> candidate_pairs;
+            if (isSolutionCollisionFree(candidate_solution, &candidate_pairs)) {
+                callback_error_code.val = moveit_msgs::msg::MoveItErrorCodes::SUCCESS;
+            } else {
+                ++collision_rejections;
+                if (first_collision_pairs.empty()) {
+                    first_collision_pairs = candidate_pairs;
+                    first_collision_solution = candidate_solution;
+                }
+                callback_error_code.val = moveit_msgs::msg::MoveItErrorCodes::GOAL_IN_COLLISION;
+            }
+        };
+    }
 
     auto t0 = std::chrono::high_resolution_clock::now();
     bool ok = ik_solver_->searchPositionIK(targets, ik_seed, t,
@@ -320,6 +422,20 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
     result.solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     result.success = ok;
     result.joint_values = solution;
+    result.collision_checked = true;
+    result.collision_rejection_count = collision_rejections;
+
+    if (ok) {
+        result.collision_free = isSolutionCollisionFree(solution, &result.collision_pairs);
+        if (options_.reject_collisions && !result.collision_free) {
+            result.success = false;
+            return result;
+        }
+    } else if (!first_collision_pairs.empty()) {
+        result.collision_free = false;
+        result.collision_pairs = first_collision_pairs;
+        result.joint_values = first_collision_solution;
+    }
 
     if (ok) {
         moveit::core::RobotState state(robot_model_);

@@ -2,6 +2,96 @@
 
 这个包用于离线、进程内调用 MoveIt kinematics plugin，避免 `/compute_ik` ROS service 逐点调用的通信开销。
 
+## Pick-Place Baseline
+
+核心可执行：
+
+```bash
+ros2 run alfa_robot_benchmarks pick_place_baseline --help
+```
+
+这个 baseline 按 `alfa_robot_moveit_config/scripts/pick_place_demo.py` 里当前启用的 `PICK_POINTS` 顺序做确定性 IK 测试。每一轮只覆盖抓取前半段：
+
+```text
+安全位 → 接近位 → 抓取位 → 后退位
+```
+
+每一步都使用上一步成功求解得到的关节角作为下一步 seed，因此它模拟的是连续执行过程，而不是每个点都从 home 重新开始。
+
+默认配置：
+
+- group: `dual_v5_arm_with_base`
+- solver: `bio_ik/BioIKKinematicsPlugin`
+- tips: `left_v5_tool0` / `right_v5_tool0`
+- tool0 offset compensation: 默认按 URDF 中 `link6 -> tool0` 的局部 `+Z 0.1m` 固定偏移补偿后再调 C++ IK；JSONL 中 `target_pose` 仍表示期望 `tool0` 位姿，`ik_target_pose` 表示实际传给 IK 的补偿目标，`ik_result_raw` 保留补偿目标的原始 IK 误差。
+- output: `/tmp/pick_place_baseline.jsonl`
+
+示例：
+
+```bash
+ros2 run alfa_robot_benchmarks pick_place_baseline \
+  --timeout 2.0 \
+  --output /tmp/pick_place_baseline.jsonl
+```
+
+只跑第 1 轮：
+
+```bash
+ros2 run alfa_robot_benchmarks pick_place_baseline --start 0 --rounds 1
+```
+
+输出 JSONL 可以直接用现有 Rerun 回放脚本查看目标和实际末端位置：
+
+```bash
+python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl
+```
+
+默认会同时加载当前 `alfa_robot_description` 的 URDF visual mesh，并用每个 sample 的 `result.joint_values` 离线 FK 回放整机姿态。只看末端点位时可以加：
+
+```bash
+python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl --no-robot
+```
+
+如果只想生成文件、不弹 Rerun 窗口：
+
+```bash
+python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl --save /tmp/pick_place_baseline_robot.rrd
+rerun /tmp/pick_place_baseline_robot.rrd
+```
+
+默认 baseline 会把 PlanningScene 判定为碰撞的 IK 候选解拒掉。注意这只是安全过滤，不是优化器；因此 `pick_place_baseline` 默认会先用上一步成功关节姿态作为 seed，再用确定性扰动 seed 做多次重试，避免“第一个候选解碰撞就直接放弃”。可调参数包括：
+
+```bash
+ros2 run alfa_robot_benchmarks pick_place_baseline \
+  --seed-attempts 24 \
+  --seed-noise 0.8 \
+  --updown-seed-noise 0.12
+```
+
+若要复现/诊断旧行为，可以临时允许碰撞解并在 JSONL 中查看 `collision_pairs`：
+
+```bash
+ros2 run alfa_robot_benchmarks pick_place_baseline --allow-collision-solutions --output /tmp/pick_place_baseline_allow_collision.jsonl
+```
+
+## 实时碰撞状态监控
+
+`alfa_robot_description/view_alfa_robot.launch.py` 只是 description 预览：它启动 `joint_state_publisher_gui`、`robot_state_publisher` 和 RViz `RobotModel`，不会加载 MoveIt PlanningScene，因此碰撞不会自动把机器人变红。
+
+需要在另一个终端启动碰撞监控节点：
+
+```bash
+ros2 run alfa_robot_benchmarks collision_state_monitor
+```
+
+它会订阅 `/joint_states`，用当前 URDF + SRDF + MoveIt PlanningScene 检查碰撞，并发布 `/alfa_collision_markers`。RViz 配置中已加入 `CollisionStatus` MarkerArray 显示：
+
+- 绿色文字：`collision free`
+- 红色文字：`COLLISION` 和碰撞 link 对
+- 红色球：MoveIt 返回的接触点
+
+也可以手动添加 RViz Display：`Add -> By topic -> /alfa_collision_markers -> MarkerArray`。
+
 ## 新增：固定前向轴范围 IK
 
 核心可执行：

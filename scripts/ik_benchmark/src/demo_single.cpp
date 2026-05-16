@@ -104,6 +104,10 @@ int main(int argc, char** argv)
     }
 
     out["success"]    = result.success;
+    out["collision_checked"] = result.collision_checked;
+    out["collision_free"] = result.collision_free;
+    out["collision_rejection_count"] = result.collision_rejection_count;
+    out["collision_pairs"] = result.collision_pairs;
     out["solve_ms"]   = result.solve_ms;
     out["pos_error"]  = result.pos_error;
     out["ori_error"]  = result.ori_error;

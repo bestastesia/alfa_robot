@@ -10,12 +10,20 @@
 #include <string>
 #include <vector>
 
+namespace planning_scene {
+class PlanningScene;
+}
+
 namespace ik_benchmark {
 
 struct IkResult {
     bool success = false;
+    bool collision_checked = false;
+    bool collision_free = false;
+    int collision_rejection_count = 0;
     std::vector<std::string> joint_names;
     std::vector<double> joint_values;
+    std::vector<std::string> collision_pairs;
     double solve_ms  = 0.0;
     double pos_error = 0.0;
     double ori_error = 0.0;
@@ -27,6 +35,7 @@ struct IkSolverOptions {
     std::string base_frame;
     std::string tip_link;
     std::string tip_link2;
+    bool reject_collisions = true;
 };
 
 class IkSolver {
@@ -67,6 +76,8 @@ private:
     void loadIkPlugin();
     void declareSolverParams();
     void buildIkMapping();
+    bool isSolutionCollisionFree(const std::vector<double>& solution,
+                                 std::vector<std::string>* collision_pairs = nullptr) const;
 
     /// 从 JMG seed 构建 IK solver seed
     std::vector<double> makeIkSeed(const std::vector<double>& jmg_seed) const;
@@ -95,6 +106,7 @@ private:
     std::shared_ptr<pluginlib::ClassLoader<kinematics::KinematicsBase>> loader_;
     kinematics::KinematicsBasePtr ik_solver_;
     rclcpp::Node::SharedPtr node_;
+    std::shared_ptr<planning_scene::PlanningScene> planning_scene_;
 };
 
 } // namespace ik_benchmark

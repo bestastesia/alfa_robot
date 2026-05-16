@@ -9,6 +9,12 @@ Visualization Manager:
     - Class: rviz_default_plugins/Grid
       Name: Grid
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Marker Topic:
+        Value: /alfa_collision_markers
+      Name: CollisionStatus
+      Value: true
     - Alpha: 0.8
       Class: rviz_default_plugins/RobotModel
       Description Source: Topic
