@@ -22,3 +22,29 @@
 - 改了哪里：`ros2_ws/src/alfa_robot_rerun/alfa_robot_rerun/basic_robot_viewer.py`。
 - 验证结果：`py_compile` 通过；`colcon build --packages-select alfa_robot_rerun --symlink-install` 通过；用 `spawn:=false` 启动并 `ros2 topic pub --once /joint_states` 模拟一条关节状态，节点未再崩溃。
 - 留给下个 AI：继续保持最小案例定位；若增加功能，优先加末端坐标系/轨迹显示，不要急着接管 MoveIt 交互。
+
+## 2026-05-16 运控工程师 / Codex / V5 单圈关节限位调整
+- 做了什么：按用户提供的 description 可视化角度映射，将左右 v5 六轴全部调整为单圈 `revolute` 限位；未使用 `continuous`。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`、`ros2_ws/src/alfa_robot_moveit_config/config/joint_limits.yaml`、`ros2_ws/src/alfa_robot_moveit_config/config/initial_positions.yaml`，新增 `docs/V5_JOINT_LIMIT_POLICY.md`。
+- 换算规则：按旋转方向不变处理，即 `actual_angle = program_angle + offset`；因此 `left_v5_joint3/5` 写为 `180~540°` 初始 `360°`，`right_v5_joint4` 写为 `0~360°` 初始 `180°`，其余按用户映射得到对应单圈区间。
+- 验证结果：`xacro` 展开通过，`check_urdf` 通过；`colcon build --packages-select alfa_robot_description alfa_robot_moveit_config` 通过。
+- 留给机械/电控工程师：请重点确认非零程序偏移关节的驱动零点与实际零点关系：`left_v5_joint2/3/5`、`right_v5_joint1/2/4`；当前 MoveIt 和 ros2_control 初始角已按程序侧偏移写入。
+
+## 2026-05-16 运控工程师 / Codex / description 预览初始角同步
+- 做了什么：排查 `ros2 launch alfa_robot_description view_alfa_robot.launch.py` 看不到限位调整后初始姿态变化的问题。
+- 判断原因：该 launch 实时加载的 xacro 限位已经是新的，但只启动 `joint_state_publisher_gui`，不会读取 MoveIt 的 `initial_positions.yaml`；GUI 对不跨 0 的关节会默认放在区间中点，对跨 0 的关节会默认 0，因此用户期望的 remapped 初始角不会全部生效。
+- 改了哪里：`ros2_ws/src/alfa_robot_description/launch/view_alfa_robot.launch.py`，新增 `use_v5_initial_positions` 参数，默认把 v5 remap 后的初始角通过 `zeros.*` 传给 `joint_state_publisher_gui`。
+- 验证结果：`/usr/bin/python3 -m py_compile` 通过；`colcon build --packages-select alfa_robot_description` 通过；短启动 launch 成功。
+- 使用说明：重新 source `ros2_ws/install/setup.bash` 后启动即可；如需看纯 URDF 默认行为，可加 `use_v5_initial_positions:=false`。
+
+## 2026-05-16 运控工程师 / Codex / 修正 right_v5_joint1 单圈限位
+- 做了什么：根据用户在 description 预览中复核结果，修正 `right_v5_joint1` 初始化位姿和滑条范围。
+- 改了哪里：`right_v5_joint1` 从此前按偏移换算的 `[-90°, 270°] / init 90°` 改为程序侧直观 `[-180°, 180°] / init 0°`；同步 URDF、MoveIt joint_limits、initial_positions、description preview `zeros.*` 和 `docs/V5_JOINT_LIMIT_POLICY.md`。
+- 验证结果：`xacro` 展开通过，`check_urdf` 通过；`colcon build --packages-select alfa_robot_description alfa_robot_moveit_config` 通过。
+- 留给机械/电控工程师：`right_v5_joint1` 现在以程序/GUI 0 位作为初始直观姿态，不再使用 +90° 程序偏移；不要按上一版 `-90:-180` 映射自动改回。
+
+## 2026-05-16 运控工程师 / Codex / 修正 right_v5_joint4 单圈限位
+- 做了什么：根据用户指出 rightjoint4 与 rightjoint1 同类问题，将 `right_v5_joint4` 初始化位姿和滑条范围改为 description/GUI 直观语义。
+- 改了哪里：`right_v5_joint4` 从此前按偏移换算的 `[0°, 360°] / init 180°` 改为程序侧直观 `[-180°, 180°] / init 0°`；同步 URDF、MoveIt joint_limits、initial_positions、description preview `zeros.*` 和 `docs/V5_JOINT_LIMIT_POLICY.md`。
+- 验证结果：`xacro` 展开通过，`check_urdf` 通过；`colcon build --packages-select alfa_robot_description alfa_robot_moveit_config` 通过。
+- 留给机械/电控工程师：`right_v5_joint4` 现在以程序/GUI 0 位作为初始直观姿态，不再使用 +180° 程序偏移；不要按上一版 `0:-180` 映射自动改回。

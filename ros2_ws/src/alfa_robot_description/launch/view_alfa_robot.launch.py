@@ -19,7 +19,7 @@
 #
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -45,10 +45,18 @@ def generate_launch_description():
         have to be updated.",
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            "use_v5_initial_positions",
+            default_value="true",
+            description="Seed joint_state_publisher_gui with the current v5 remapped initial positions.",
+        )
+    )
 
     # Initialize Arguments
     description_package = LaunchConfiguration("description_package")
     prefix = LaunchConfiguration("prefix")
+    use_v5_initial_positions = LaunchConfiguration("use_v5_initial_positions")
 
     # Get URDF via xacro
     robot_description_content = Command(
@@ -71,11 +79,37 @@ def generate_launch_description():
         [FindPackageShare(description_package), "rviz", "alfa_robot.rviz"]
     )
 
-    joint_state_publisher_node = Node(
-        package="joint_state_publisher_gui",
-        executable="joint_state_publisher_gui",
-        parameters=[robot_description],
-    )
+    def make_joint_state_publisher(context):
+        parameters = [robot_description]
+        if use_v5_initial_positions.perform(context).lower() not in ("false", "0", "no", "off"):
+            # joint_state_publisher_gui does not read MoveIt's initial_positions.yaml.
+            # These zeros mirror alfa_robot_moveit_config/config/initial_positions.yaml
+            # so the description-only preview starts from the same remapped v5 pose.
+            parameters.append(
+                {
+                    "zeros.left_v5_joint1": 0.0,
+                    "zeros.left_v5_joint2": 1.57079633,
+                    "zeros.left_v5_joint3": 6.28318530,
+                    "zeros.left_v5_joint4": 0.0,
+                    "zeros.left_v5_joint5": 6.28318530,
+                    "zeros.left_v5_joint6": 0.0,
+                    "zeros.right_v5_joint1": 0.0,
+                    "zeros.right_v5_joint2": 1.57079633,
+                    "zeros.right_v5_joint3": 0.0,
+                    "zeros.right_v5_joint4": 0.0,
+                    "zeros.right_v5_joint5": 0.0,
+                    "zeros.right_v5_joint6": 0.0,
+                }
+            )
+        return [
+            Node(
+                package="joint_state_publisher_gui",
+                executable="joint_state_publisher_gui",
+                parameters=parameters,
+            )
+        ]
+
+    joint_state_publisher_node = OpaqueFunction(function=make_joint_state_publisher)
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",

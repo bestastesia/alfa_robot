@@ -1,18 +1,18 @@
 # Default initial positions for alfa_robot v5 proxy model
-# Left arm j1 defaults to -90°, right arm j1 to 90°
+# Default initial positions after visual-to-program joint-limit remapping
 
 initial_positions:
   pitch: 0
   turn: 0
   updown: 0
-  left_v5_joint1: -1.5708
-  left_v5_joint2: 0
-  left_v5_joint3: 0
+  left_v5_joint1: 0
+  left_v5_joint2: 1.57079633
+  left_v5_joint3: 6.28318530
   left_v5_joint4: 0
-  left_v5_joint5: 0
+  left_v5_joint5: 6.28318530
   left_v5_joint6: 0
-  right_v5_joint1: 1.5708
-  right_v5_joint2: 0
+  right_v5_joint1: 0
+  right_v5_joint2: 1.57079633
   right_v5_joint3: 0
   right_v5_joint4: 0
   right_v5_joint5: 0

@@ -66,13 +66,13 @@ PLACE_ORIENT = (-0.5, 0.5, 0.5, 0.5)
 
 # 4次抓取点: (左x,y,z), (右x,y,z)
 PICK_POINTS = [
-    ((0.7,  0.7, 1.5), (0.7, -0.7, 1.5)),
-    ((0.7,  0.5, 1.5), (0.7, -0.5, 1.5)),
-    ((0.7,  0.3, 1.5), (0.7, -0.3, 1.5)),
-    ((0.7,  0.1, 1.5), (0.7, -0.1, 1.1)),
+    # ((0.6,  0.7, 1.5), (0.6, -0.7, 1.5)),
+    ((0.6,  0.5, 1.5), (0.6, -0.5, 1.5)),
+    ((0.6,  0.3, 1.5), (0.6, -0.3, 1.5)),
+    ((0.6,  0, 1.5), (0.6, 0, 1.1)),
 ]
 
-APPROACH_OFFSET = 0.2  # 沿 x 方向前移/后退 0.2m
+APPROACH_OFFSET = 0.1  # 沿 x 方向前移/后退 0.2m
 
 
 def make_pose(x, y, z, qx, qy, qz, qw) -> Pose:
@@ -574,8 +574,8 @@ class PickPlaceDemo(Node):
         time.sleep(0.2)
 
         # 8. 放置位
-        place_l = make_pose(-0.2, 0.6, 0.5, *p)
-        place_r = make_pose(0.2, 0.6, 0.5, *p)
+        place_l = make_pose(-0.2, 0.6, 0.6, *p)
+        place_r = make_pose(0.2, 0.6, 0.6, *p)
         self.get_logger().info(f"{tag} → 放置位")
         self.wait_step("放置位")
         if not self.move_dual_arms(place_l, place_r, 1.5):
@@ -614,8 +614,8 @@ class PickPlaceDemo(Node):
         time.sleep(0.2)
 
         # 10. 放置安全位
-        psafe_l = make_pose(-0.3, 0.3, 0.5, *p)
-        psafe_r = make_pose(0.3,  0.3, 0.5, *p)
+        psafe_l = make_pose(-0.3, 0.3, 0.6, *p)
+        psafe_r = make_pose(0.3,  0.3, 0.6, *p)
         self.get_logger().info(f"{tag} → 放置安全位")
         self.wait_step("放置安全位")
         if not self.move_dual_arms(psafe_l, psafe_r, 1.5):
