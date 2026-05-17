@@ -117,3 +117,21 @@
 - 改了哪里：`scripts/ik_benchmark/src/pick_place_baseline_main.cpp` 的 `makeRoundStages()` 和 JSONL header flow。
 - 验证结果：`colcon build --packages-select alfa_robot_benchmarks` 通过；`--rounds 1` 输出第 5 阶段 `round_1/place_safe`，目标为 left `(0.6,0.2,0.6)`、right `(0.6,-0.2,0.6)`。
 - 留给下个 AI：当前新增 `place_safe` 阶段会实际参与 IK/碰撞过滤；本次验证里该阶段失败，可用 Rerun/JSONL 继续检查姿态与碰撞原因。
+
+## 2026-05-16 项目经理 / Codex / Linear 议题补充任务改为本地文档指派
+- 做了什么：用户要求不是由 PM 直接在 Linear 创建议题，而是写入本地协作文档，让运控工程师 Codex 自行阅读并补充 Linear 议题。
+- 改了哪里：`.ai_teamwork/TASKS.md` 新增 T-0037，要求运控工程师在 Linear 项目 `v5机械臂水管版运控全流程项目推进` 的 `运动学算法闭环` 里程碑下补充开始中/未开始议题。
+- Linear 处理：误创建的 `TIM-30 PM-0001 运控工程师补充运动学算法闭环议题清单` 已改为 `Canceled`，保留为误操作记录。
+- 留给运控工程师：不要重复创建已完成工作；围绕 `T-0001 baseline 标准流程` 判断是否需要新 issue，能放在 T-0001 内部步骤的不要单独拆。
+## 2026-05-16 运控工程师 / Codex / Linear 运动学算法闭环议题补充
+- 做了什么：按 T-0037 到 Linear 项目 `v5机械臂水管版运控全流程项目推进` / 里程碑 `运动学算法闭环` 补充后续未开始议题。
+- 新增 Linear：`TIM-31/T-0006` 候选解评分器与代价分解；`TIM-32/T-0007` 双臂安全距离与近碰撞惩罚；`TIM-33/T-0008` Rerun 候选/失败/代价对比可视化。
+- 关联关系：`TIM-31`、`TIM-32` blocked by `TIM-25/T-0005`；`TIM-33` blocked by `TIM-31`；并在 `TIM-25` 留评论说明边界。
+- 未新增原因：V5 限位、碰撞状态可视化、失败候选导出、BioIK 左右反绑、Rerun 最小机器人显示已有 Done issues；`place_safe` 失败归入 `TIM-25` 主线，不单独拆。
+- 追加修正：按用户反馈重写 `TIM-31/32/33` 标题和描述，改为面向人类协作的高信息密度说明，减少抽象术语。
+## 2026-05-17 运控工程师 / Codex / Linear 完成 T-0005 并拆分 T-0006 三路线
+- 做了什么：按用户确认将 Linear `TIM-25/T-0005` 标记 Done；完成评论说明单轮 baseline 已跑通，多轮失败接受为碰撞/不可达，不阻塞主线。
+- 更新 Linear：重写 `TIM-31/T-0006` 为三路线探索总任务，目标是让 baseline 从“能到”升级为“选得更好”。
+- 新增 Linear：`TIM-34/T-0006A` 规则差分式 updown 搜索；`TIM-35/T-0006B` 代价注入；`TIM-36/T-0006C` 多次求解后外部评分。
+- 关联关系：`TIM-31` blocks `TIM-34/35/36`；三条路线与 `TIM-32` 双臂安全距离、`TIM-33` Rerun 对比可视化保持相关。
+- 追加修正：按用户新定义更新 A 方案。`TIM-34/T-0006A` 不再是左右臂分开 IK，也不做差分搜索；改为“可达范围查表选最小 updown 移动 + 固定 updown 后双臂 BioIK 联合求解”。
