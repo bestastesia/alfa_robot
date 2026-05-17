@@ -29,7 +29,7 @@
 ### 基本规则
 
 - 开发分支名必须包含 Linear issue ID，例如 `TIM-25`。
-- commit message 必须包含同一个 Linear issue ID。
+- commit message 必须使用 Linear magic word + issue ID，推荐 `Refs TIM-xx:`；只写 `TIM-xx:` 不足以稳定触发 commit linking。
 - 如果后续有 PR，PR 标题也必须包含 Linear issue ID。
 - 不建议直接使用 Linear 自动生成的中文长分支名；优先使用短英文描述，避免脚本、CI、终端兼容问题。
 
@@ -45,13 +45,40 @@ commit 示例：
 Refs TIM-25: 记录 place_safe 失败候选并补充诊断
 ```
 
-不要只写 `TIM-25: ...`，Linear 可能不会稳定识别；普通提交默认用 `Refs`，只有确认合并后应关闭 issue 才用 `Fixes/Closes/Resolves`。
+不要只写 `TIM-25: ...`，Linear 可能不会稳定识别；`Refs` 是非关闭型 magic word，只建立关联，不会在 merge 后自动关闭 issue。普通提交默认用 `Refs`，只有确认合并后应关闭 issue 才用 `Fixes`/`Closes`/`Resolves`。
 
 PR 标题示例：
 
 ```text
 TIM-25 定义并跑通水管版 baseline 标准流程
 ```
+
+
+### Linear magic word 规则
+
+已验证：仅写 `TIM-34: ...` 不会稳定触发 Linear commit linking；改为 `Refs TIM-34: ...` 并重新 push 后，Linear 立即显示 GitHub commit 附件。
+
+推荐默认格式：
+
+```text
+Refs TIM-34: 提交说明
+```
+
+常用 magic word：
+
+- `Refs TIM-34`：只关联，不自动关闭，默认推荐。
+- `Fixes TIM-34` / `Closes TIM-34` / `Resolves TIM-34`：关闭型，适合任务确实完成且希望合并后自动 Done。
+
+如果提交已经 push 但忘了 magic word，需要改写提交信息并安全强推：
+
+```bash
+git commit --amend
+# 或多个提交使用 git rebase -i
+
+git push --force-with-lease origin <branch>
+```
+
+只有当前分支无人协作，或已确认可以重写历史时，才允许这样做。
 
 ### 分支命名建议
 
