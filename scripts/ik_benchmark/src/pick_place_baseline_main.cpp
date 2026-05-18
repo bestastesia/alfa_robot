@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <random>
 #include <nlohmann/json.hpp>
 #include <string>
@@ -52,6 +53,32 @@ struct DualTipMatch {
     double swapped_ori_error = 0.0;
     bool swapped_is_better = false;
 };
+
+std::string localStageName(const std::string& stage_name)
+{
+    const size_t slash = stage_name.find('/');
+    return slash == std::string::npos ? stage_name : stage_name.substr(slash + 1);
+}
+
+void addUniqueSeed(std::vector<std::vector<double>>& seeds, const std::vector<double>& seed)
+{
+    if (seed.empty()) {
+        return;
+    }
+    for (const auto& existing : seeds) {
+        if (existing.size() != seed.size()) {
+            continue;
+        }
+        double max_diff = 0.0;
+        for (size_t i = 0; i < seed.size(); ++i) {
+            max_diff = std::max(max_diff, std::abs(existing[i] - seed[i]));
+        }
+        if (max_diff < 1e-9) {
+            return;
+        }
+    }
+    seeds.push_back(seed);
+}
 
 Eigen::Isometry3d toIsometry(const PoseSpec& pose)
 {
@@ -216,6 +243,7 @@ AttemptResult solveWithSeedAttempts(IkSolver& ik,
                                     const PoseSpec& left_tool0_target,
                                     const PoseSpec& right_tool0_target,
                                     const std::vector<double>& current_seed,
+                                    const std::vector<double>& historical_seed,
                                     size_t seed_attempts,
                                     double seed_noise,
                                     double updown_seed_noise,
@@ -225,36 +253,64 @@ AttemptResult solveWithSeedAttempts(IkSolver& ik,
     selected.seed = current_seed;
 
     const size_t attempts = std::max<size_t>(1, seed_attempts);
-    for (size_t attempt = 0; attempt < attempts; ++attempt) {
-        std::vector<double> attempt_seed = attempt == 0
-            ? current_seed
-            : makePerturbedSeed(ik.variableNames(), current_seed, attempt, seed_noise, updown_seed_noise);
+    std::vector<std::vector<double>> seed_queue;
+    addUniqueSeed(seed_queue, current_seed);
+    addUniqueSeed(seed_queue, std::vector<double>(ik.variableNames().size(), 0.0));
+    addUniqueSeed(seed_queue, historical_seed);
+    for (size_t base_i = 0; base_i < seed_queue.size() && seed_queue.size() < attempts; ++base_i) {
+        const std::vector<double> base_seed = seed_queue[base_i];
+        for (size_t noise_i = 1; seed_queue.size() < attempts; ++noise_i) {
+            const double revolute_sigma = seed_noise * (1.0 + 0.25 * static_cast<double>(noise_i / 4));
+            const double prismatic_sigma = updown_seed_noise * (1.0 + 0.5 * static_cast<double>(noise_i / 4));
+            addUniqueSeed(
+                seed_queue,
+                makePerturbedSeed(ik.variableNames(), base_seed, noise_i + base_i * 1000,
+                                  revolute_sigma, prismatic_sigma));
+        }
+    }
 
-        IkResult result = ik.solveDual(left_target, right_target, attempt_seed, timeout);
-        nlohmann::json attempt_record = attemptToJson(attempt, attempt_seed, result);
-        if (!result.joint_values.empty()) {
-            const auto actual_poses = ik.fk(result.joint_values);
-            attempt_record["tip_target_match"] = dualTipMatchToJson(
-                dualTipMatch(left_tool0_target, right_tool0_target, actual_poses));
-            if (!actual_poses.empty()) {
-                attempt_record["actual_pose"] = poseToJson(actual_poses[0]);
+    for (size_t attempt = 0; attempt < seed_queue.size(); ++attempt) {
+        std::vector<double> attempt_seed = seed_queue[attempt];
+        for (size_t order_i = 0; order_i < 2; ++order_i) {
+            const bool swapped_order = order_i == 1;
+            IkResult result = swapped_order
+                ? ik.solveDual(right_target, left_target, attempt_seed, timeout)
+                : ik.solveDual(left_target, right_target, attempt_seed, timeout);
+            nlohmann::json attempt_record = attemptToJson(attempt, attempt_seed, result);
+            attempt_record["target_order"] = swapped_order ? "swapped" : "normal";
+            bool swapped_better = false;
+            if (!result.joint_values.empty()) {
+                const auto actual_poses = ik.fk(result.joint_values);
+                const DualTipMatch match = dualTipMatch(left_tool0_target, right_tool0_target, actual_poses);
+                swapped_better = match.swapped_is_better;
+                attempt_record["tip_target_match"] = dualTipMatchToJson(match);
+                if (!actual_poses.empty()) {
+                    attempt_record["actual_pose"] = poseToJson(actual_poses[0]);
+                }
+                if (actual_poses.size() > 1) {
+                    attempt_record["actual_pose2"] = poseToJson(actual_poses[1]);
+                }
+                if (result.success && swapped_better) {
+                    result.success = false;
+                    attempt_record["rejection_reason"] = "dual_tip_target_swapped";
+                }
             }
-            if (actual_poses.size() > 1) {
-                attempt_record["actual_pose2"] = poseToJson(actual_poses[1]);
+            selected.attempts.push_back(attempt_record);
+            if ((attempt == 0 && order_i == 0) || result.success || result.collision_rejection_count < selected.result.collision_rejection_count) {
+                selected.attempt_index = attempt;
+                selected.seed = attempt_seed;
+                selected.result = result;
             }
-        }
-        selected.attempts.push_back(attempt_record);
-        if (attempt == 0 || result.collision_rejection_count < selected.result.collision_rejection_count) {
-            selected.attempt_index = attempt;
-            selected.seed = attempt_seed;
-            selected.result = result;
-        }
-        if (result.success) {
-            selected.attempt_index = attempt;
-            selected.seed = attempt_seed;
-            selected.result = result;
-            selected.attempts.back()["selected"] = true;
-            return selected;
+            if (result.success && !swapped_better) {
+                selected.attempt_index = attempt;
+                selected.seed = attempt_seed;
+                selected.result = result;
+                selected.attempts.back()["selected"] = true;
+                return selected;
+            }
+            if (!swapped_better) {
+                break;
+            }
         }
     }
 
@@ -400,6 +456,7 @@ int main(int argc, char** argv)
     size_t successes = 0;
     double total_ms = 0.0;
     bool stop_after_failure = false;
+    std::map<std::string, std::vector<double>> last_successful_stage_seed;
 
     nlohmann::json header;
     header["header"] = true;
@@ -455,6 +512,9 @@ int main(int argc, char** argv)
                 stage.left,
                 stage.right,
                 seed,
+                last_successful_stage_seed.count(localStageName(stage.name))
+                    ? last_successful_stage_seed[localStageName(stage.name)]
+                    : std::vector<double>{},
                 seed_attempts,
                 seed_noise,
                 updown_seed_noise,
@@ -513,6 +573,7 @@ int main(int argc, char** argv)
                 public_result["ori_error"] = max_tool_ori_error;
                 record["result"] = public_result;
                 seed = updateSeedFromResult(ik.variableNames(), seed, result);
+                last_successful_stage_seed[localStageName(stage.name)] = result.joint_values;
                 record["next_seed_joints"] = seed;
                 std::cout << "OK    " << result.solve_ms << "ms  "
                           << "attempt=" << attempt_result.attempt_index << "  "
