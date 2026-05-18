@@ -11,6 +11,7 @@
 - `TASKS.md`：当前任务列表。
 - `LOG.md`：AI 协作日志。
 - `ROLES.md`：岗位速查。
+- `LINEAR_WORKFLOW.md`：Linear/Git 推进规范，工程师处理 Linear 任务前按需阅读。
 - `engineers/`：各岗位长期注意事项，需要承担对应角色时再读。
 
 详细项目资料仍放在 `docs/`。

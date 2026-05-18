@@ -10,6 +10,8 @@
 
 如果任务明确要求某个岗位，再按需读 `.ai_teamwork/ROLES.md` 和 `.ai_teamwork/engineers/` 下对应工程师长期注意事项。
 
+如果任务来自 Linear、需要更新 Linear、或需要提交 Git，先读 `.ai_teamwork/LINEAR_WORKFLOW.md`，不要在 issue 里长篇大论。
+
 ## 工作方式
 
 - 用户主导方向，AI 负责高效执行和补充信息。

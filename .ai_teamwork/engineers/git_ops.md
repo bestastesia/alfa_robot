@@ -22,6 +22,8 @@
 
 ## Linear issue 与 Git 分支对应规范
 
+详细规范见 `.ai_teamwork/LINEAR_WORKFLOW.md`；本文件只保留 Git 操作工程师必须记住的要点。
+
 这是重要流程：只要任务来自 Linear，Git 分支、commit、PR 都必须能反查到对应 issue。
 
 ### 基本规则
@@ -40,8 +42,10 @@ git checkout -b tim-25-baseline-flow
 commit 示例：
 
 ```text
-TIM-25: 记录 place_safe 失败候选并补充诊断
+Refs TIM-25: 记录 place_safe 失败候选并补充诊断
 ```
+
+不要只写 `TIM-25: ...`，Linear 可能不会稳定识别；普通提交默认用 `Refs`，只有确认合并后应关闭 issue 才用 `Fixes/Closes/Resolves`。
 
 PR 标题示例：
 
