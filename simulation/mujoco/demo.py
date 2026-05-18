@@ -12,10 +12,11 @@ def main():
         "left_suction": 1.0,
     }
 
-    print("\n[ 测试启动 — v4_dev MuJoCo 机器人 ]")
+    print("\n[ 测试启动 — current v5 MuJoCo 机器人 + 集装箱场景 ]")
     print(f"  初始姿态: {MOVEIT_INITIAL_POSITIONS}")
     print("  基座: pitch/turn/updown")
-    print("  双臂: leftjoint1-6 / rightjoint1-6")
+    print("  双臂: left_v5_joint1-6 / right_v5_joint1-6")
+    print("  集装箱: 内宽 2.2m, 内高 2.4m, 5 排 × 10 个货物")
 
     try:
         env.step(ctrl_cmds)
