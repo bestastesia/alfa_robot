@@ -9,6 +9,7 @@
 #include <limits>
 #include <random>
 #include <nlohmann/json.hpp>
+#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -375,6 +376,32 @@ double updownFromResult(const IkResult& result, double fallback)
     return fallback;
 }
 
+std::string localStageName(const std::string& stage_name)
+{
+    const size_t slash = stage_name.find('/');
+    return slash == std::string::npos ? stage_name : stage_name.substr(slash + 1);
+}
+
+void addUniqueSeed(std::vector<std::vector<double>>& seeds, const std::vector<double>& seed)
+{
+    if (seed.empty()) {
+        return;
+    }
+    for (const auto& existing : seeds) {
+        if (existing.size() != seed.size()) {
+            continue;
+        }
+        double max_diff = 0.0;
+        for (size_t i = 0; i < seed.size(); ++i) {
+            max_diff = std::max(max_diff, std::abs(existing[i] - seed[i]));
+        }
+        if (max_diff < 1e-9) {
+            return;
+        }
+    }
+    seeds.push_back(seed);
+}
+
 nlohmann::json attemptToJson(size_t attempt,
                              const std::vector<double>& attempt_seed,
                              const IkResult& result);
@@ -676,6 +703,8 @@ int main(int argc, char** argv)
     double total_ms = 0.0;
     double total_updown_motion = 0.0;
     bool stop_after_failure = false;
+    std::vector<double> last_successful_fallback_seed;
+    std::map<std::string, std::vector<double>> last_successful_stage_seed;
 
     nlohmann::json header;
     header["header"] = true;
@@ -926,6 +955,7 @@ int main(int argc, char** argv)
 
                 seed = updateSeedFromResult(ik.variableNames(), seed, selected_result);
                 current_h = selected_h;
+                last_successful_stage_seed[localStageName(stage.name)] = selected_full_values;
                 record["next_seed_joints"] = seed;
                 record["next_updown"] = current_h;
 
@@ -958,43 +988,90 @@ int main(int argc, char** argv)
                     std::vector<double> fallback_seed;
                     size_t fallback_selected_attempt = 0;
                     const size_t attempts = std::max<size_t>(1, fallback_seed_attempts);
-                    const std::vector<double> base_full_seed = makeFullSeedFromArmSeed(
+                    const std::vector<double> current_full_seed = makeFullSeedFromArmSeed(
                         fallback_ik.variableNames(), current_h, ik.variableNames(), seed);
+                    std::vector<std::vector<double>> seed_queue;
+                    addUniqueSeed(seed_queue, current_full_seed);
+                    addUniqueSeed(seed_queue, std::vector<double>(fallback_ik.variableNames().size(), 0.0));
+                    addUniqueSeed(seed_queue, last_successful_fallback_seed);
+                    const auto stage_seed_it = last_successful_stage_seed.find(localStageName(stage.name));
+                    if (stage_seed_it != last_successful_stage_seed.end()) {
+                        addUniqueSeed(seed_queue, stage_seed_it->second);
+                    }
 
-                    for (size_t attempt = 0; attempt < attempts; ++attempt) {
-                        std::vector<double> attempt_seed = attempt == 0
-                            ? base_full_seed
-                            : makePerturbedSeed(fallback_ik.variableNames(), base_full_seed,
-                                                attempt + 100000 + stage_index * attempts,
-                                                seed_noise, h_step);
-                        IkResult candidate = fallback_ik.solveDual(
-                            compensateTool0OffsetForIk(stage.left, tool0_offset),
-                            compensateTool0OffsetForIk(stage.right, tool0_offset),
-                            attempt_seed,
-                            fallback_timeout);
-                        nlohmann::json attempt_record = attemptToJson(attempt, attempt_seed, candidate);
-                        if (!candidate.joint_values.empty()) {
-                            const auto actual_poses = fallback_ik.fk(candidate.joint_values);
-                            attempt_record["tip_target_match"] = dualTipMatchToJson(
-                                dualTipMatch(stage.left, stage.right, actual_poses));
-                            if (!actual_poses.empty()) {
-                                attempt_record["actual_pose"] = poseToJson(actual_poses[0]);
+                    for (size_t base_i = 0; base_i < seed_queue.size() && seed_queue.size() < attempts; ++base_i) {
+                        const std::vector<double> base_seed = seed_queue[base_i];
+                        for (size_t noise_i = 1; seed_queue.size() < attempts; ++noise_i) {
+                            const double revolute_sigma = seed_noise * (1.0 + 0.25 * static_cast<double>(noise_i / 4));
+                            const double prismatic_sigma = h_step * (1.0 + 0.5 * static_cast<double>(noise_i / 4));
+                            addUniqueSeed(
+                                seed_queue,
+                                makePerturbedSeed(
+                                    fallback_ik.variableNames(),
+                                    base_seed,
+                                    100000 + stage_index * attempts + base_i * 1000 + noise_i,
+                                    revolute_sigma,
+                                    prismatic_sigma));
+                        }
+                    }
+
+                    for (size_t attempt = 0; attempt < seed_queue.size(); ++attempt) {
+                        std::vector<double> attempt_seed = seed_queue[attempt];
+                        for (size_t order_i = 0; order_i < 2; ++order_i) {
+                            const bool swapped_order = order_i == 1;
+                            IkResult candidate = swapped_order
+                                ? fallback_ik.solveDual(
+                                      compensateTool0OffsetForIk(stage.right, tool0_offset),
+                                      compensateTool0OffsetForIk(stage.left, tool0_offset),
+                                      attempt_seed,
+                                      fallback_timeout)
+                                : fallback_ik.solveDual(
+                                      compensateTool0OffsetForIk(stage.left, tool0_offset),
+                                      compensateTool0OffsetForIk(stage.right, tool0_offset),
+                                      attempt_seed,
+                                      fallback_timeout);
+                            nlohmann::json attempt_record = attemptToJson(attempt, attempt_seed, candidate);
+                            attempt_record["target_order"] = swapped_order ? "swapped" : "normal";
+                            bool swapped_better = false;
+                            if (!candidate.joint_values.empty()) {
+                                const auto actual_poses = fallback_ik.fk(candidate.joint_values);
+                                const DualTipMatch tip_match = dualTipMatch(stage.left, stage.right, actual_poses);
+                                swapped_better = tip_match.swapped_is_better;
+                                attempt_record["tip_target_match"] = dualTipMatchToJson(tip_match);
+                                if (!actual_poses.empty()) {
+                                    attempt_record["actual_pose"] = poseToJson(actual_poses[0]);
+                                }
+                                if (actual_poses.size() > 1) {
+                                    attempt_record["actual_pose2"] = poseToJson(actual_poses[1]);
+                                }
+                                if (candidate.success && swapped_better) {
+                                    candidate.success = false;
+                                    attempt_record["rejection_reason"] = "fallback_dual_tip_target_swapped";
+                                }
                             }
-                            if (actual_poses.size() > 1) {
-                                attempt_record["actual_pose2"] = poseToJson(actual_poses[1]);
+                            fallback_attempts.push_back(attempt_record);
+                            if (attempt == 0 && order_i == 0) {
+                                fallback_result = candidate;
+                                fallback_seed = attempt_seed;
+                                fallback_selected_attempt = attempt;
+                            } else if ((candidate.success && !swapped_better) || candidate.collision_rejection_count < fallback_result.collision_rejection_count) {
+                                fallback_result = candidate;
+                                fallback_seed = attempt_seed;
+                                fallback_selected_attempt = attempt;
+                            }
+                            if (candidate.success && !swapped_better) {
+                                fallback_attempts.back()["selected"] = true;
+                                break;
+                            }
+                            if (!swapped_better) {
+                                break;
                             }
                         }
-                        fallback_attempts.push_back(attempt_record);
-                        if (attempt == 0 || candidate.success || candidate.collision_rejection_count < fallback_result.collision_rejection_count) {
-                            fallback_result = candidate;
-                            fallback_seed = attempt_seed;
-                            fallback_selected_attempt = attempt;
-                        }
-                        if (candidate.success) {
-                            fallback_attempts.back()["selected"] = true;
+                        if (fallback_result.success) {
                             break;
                         }
                     }
+
 
                     record["fallback_used"] = true;
                     record["fallback_group"] = "dual_v5_arm_with_base";
@@ -1046,6 +1123,8 @@ int main(int argc, char** argv)
                             record["result"] = public_result;
                             seed = makeArmSeedFromFullResult(ik.variableNames(), fallback_result);
                             current_h = fallback_h;
+                            last_successful_fallback_seed = fallback_result.joint_values;
+                            last_successful_stage_seed[localStageName(stage.name)] = fallback_result.joint_values;
                             record["next_seed_joints"] = seed;
                             record["next_updown"] = current_h;
                             std::cout << "OK(FB) " << fallback_result.solve_ms << "ms  "
