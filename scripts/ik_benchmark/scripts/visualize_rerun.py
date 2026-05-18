@@ -186,11 +186,21 @@ def package_uri_to_path(uri: str) -> str | None:
 
 
 def find_workspace_root() -> Path:
-    current = Path(__file__).resolve()
-    for parent in current.parents:
+    candidates: list[Path] = []
+    for start in (Path(__file__).resolve(), Path.cwd().resolve()):
+        candidates.append(start)
+        candidates.extend(start.parents)
+
+    for parent in candidates:
         if (parent / "src" / "alfa_robot_description").exists():
             return parent
-    return Path.cwd() / "ros2_ws"
+        if (parent / "ros2_ws" / "src" / "alfa_robot_description").exists():
+            return parent / "ros2_ws"
+
+    fallback = Path.cwd().resolve()
+    if fallback.name == "ros2_ws":
+        return fallback
+    return fallback / "ros2_ws"
 
 
 def command_with_workspace_setup(command: list[str]) -> list[str]:

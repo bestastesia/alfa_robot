@@ -258,6 +258,41 @@ bool IkSolver::isSolutionCollisionFree(const std::vector<double>& solution,
     return !res.collision;
 }
 
+bool IkSolver::isNamedStateCollisionFree(const std::vector<std::string>& joint_names,
+                                         const std::vector<double>& joint_values,
+                                         std::vector<std::string>* collision_pairs) const
+{
+    if (!planning_scene_) {
+        return true;
+    }
+
+    moveit::core::RobotState state(robot_model_);
+    state.setToDefaultValues();
+    for (size_t k = 0; k < joint_names.size() && k < joint_values.size(); ++k) {
+        state.setJointPositions(joint_names[k], {joint_values[k]});
+    }
+    state.update();
+    state.updateCollisionBodyTransforms();
+
+    collision_detection::CollisionRequest req;
+    collision_detection::CollisionResult res;
+    req.contacts = (collision_pairs != nullptr);
+    req.max_contacts = 20;
+    req.max_contacts_per_pair = 1;
+    req.verbose = false;
+
+    planning_scene_->checkCollision(req, res, state, planning_scene_->getAllowedCollisionMatrix());
+
+    if (collision_pairs) {
+        collision_pairs->clear();
+        for (const auto& entry : res.contacts) {
+            collision_pairs->push_back(entry.first.first + " <-> " + entry.first.second);
+        }
+    }
+
+    return !res.collision;
+}
+
 IkResult IkSolver::solve(const Eigen::Isometry3d& target,
                           const std::vector<double>& seed,
                           double timeout)
@@ -381,7 +416,7 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
 
     // BioIK stores multi-tip goals in the plugin's internal tip order, which is
     // reversed from the explicit {left, right} order passed to initialize() for
-    // the current dual_v5 group. Keep IkSolver's public API as left/right and
+    // the current dual_v5 groups. Keep IkSolver's public API as left/right and
     // compensate here so FK(actual[0]) still means left tip.
     std::vector<geometry_msgs::msg::Pose> targets = {
         to_msg(right_target), to_msg(left_target)
@@ -468,6 +503,27 @@ std::vector<Eigen::Isometry3d> IkSolver::fk(const std::vector<double>& joint_val
     state.setToDefaultValues();
     for (size_t k = 0; k < joint_values.size() && k < ik_joint_names_.size(); ++k) {
         state.setJointPositions(ik_joint_names_[k], {joint_values[k]});
+    }
+    state.update();
+
+    const Eigen::Isometry3d T_base_inv =
+        state.getGlobalLinkTransform(base_frame_).inverse();
+
+    std::vector<Eigen::Isometry3d> poses;
+    poses.push_back(T_base_inv * state.getGlobalLinkTransform(tip_link_));
+    if (is_dual_) {
+        poses.push_back(T_base_inv * state.getGlobalLinkTransform(tip_link2_));
+    }
+    return poses;
+}
+
+std::vector<Eigen::Isometry3d> IkSolver::fkNamed(const std::vector<std::string>& joint_names,
+                                                 const std::vector<double>& joint_values)
+{
+    moveit::core::RobotState state(robot_model_);
+    state.setToDefaultValues();
+    for (size_t k = 0; k < joint_names.size() && k < joint_values.size(); ++k) {
+        state.setJointPositions(joint_names[k], {joint_values[k]});
     }
     state.update();
 

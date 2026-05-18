@@ -60,6 +60,15 @@ public:
     /// 正运动学 (输入维度 = ik_joint_names_.size())
     std::vector<Eigen::Isometry3d> fk(const std::vector<double>& joint_values);
 
+    /// 正运动学 (输入为完整命名关节状态，未提供的关节使用默认值)
+    std::vector<Eigen::Isometry3d> fkNamed(const std::vector<std::string>& joint_names,
+                                           const std::vector<double>& joint_values);
+
+    /// 碰撞检查 (输入为完整命名关节状态，未提供的关节使用默认值)
+    bool isNamedStateCollisionFree(const std::vector<std::string>& joint_names,
+                                   const std::vector<double>& joint_values,
+                                   std::vector<std::string>* collision_pairs = nullptr) const;
+
     bool isDualArm() const { return is_dual_; }
 
     /// 返回 IK solver 维度的 home seed
