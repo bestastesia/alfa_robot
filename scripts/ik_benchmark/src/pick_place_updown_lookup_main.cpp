@@ -329,6 +329,52 @@ std::vector<double> fullJointValuesForUpdownLookup(double updown,
     return values;
 }
 
+std::vector<double> makeFullSeedFromArmSeed(const std::vector<std::string>& full_variable_names,
+                                            double updown,
+                                            const std::vector<std::string>& arm_variable_names,
+                                            const std::vector<double>& arm_seed)
+{
+    std::vector<double> full_seed(full_variable_names.size(), 0.0);
+    for (size_t i = 0; i < full_variable_names.size(); ++i) {
+        if (full_variable_names[i] == "updown") {
+            full_seed[i] = updown;
+            continue;
+        }
+        for (size_t j = 0; j < arm_variable_names.size() && j < arm_seed.size(); ++j) {
+            if (full_variable_names[i] == arm_variable_names[j]) {
+                full_seed[i] = arm_seed[j];
+                break;
+            }
+        }
+    }
+    return full_seed;
+}
+
+std::vector<double> makeArmSeedFromFullResult(const std::vector<std::string>& arm_variable_names,
+                                              const IkResult& full_result)
+{
+    std::vector<double> arm_seed(arm_variable_names.size(), 0.0);
+    for (size_t i = 0; i < arm_variable_names.size(); ++i) {
+        for (size_t j = 0; j < full_result.joint_names.size() && j < full_result.joint_values.size(); ++j) {
+            if (arm_variable_names[i] == full_result.joint_names[j]) {
+                arm_seed[i] = full_result.joint_values[j];
+                break;
+            }
+        }
+    }
+    return arm_seed;
+}
+
+double updownFromResult(const IkResult& result, double fallback)
+{
+    for (size_t i = 0; i < result.joint_names.size() && i < result.joint_values.size(); ++i) {
+        if (result.joint_names[i] == "updown") {
+            return result.joint_values[i];
+        }
+    }
+    return fallback;
+}
+
 nlohmann::json attemptToJson(size_t attempt,
                              const std::vector<double>& attempt_seed,
                              const IkResult& result);
@@ -508,6 +554,9 @@ void printHelp()
               << "  --h-candidates <n>          Max h candidates per stage (default: 15)\n"
               << "  --solution-candidates <n>   Number of legal IK solutions to collect before selecting (default: 5)\n"
               << "  --sphere-margin <m>         Shrink reachability sphere radius (default: 0.0)\n"
+              << "  --fallback-timeout <s>      Timeout per baseline fallback IK attempt (default: max(timeout, 2.0))\n"
+              << "  --fallback-seed-attempts <n> Seed attempts for baseline fallback (default: max(seed-attempts, 12))\n"
+              << "  --no-baseline-fallback      Disable dual_v5_arm_with_base fallback when lookup fails\n"
               << "  --allow-collision-solutions Keep full-state collision solutions (diagnostic only)\n"
               << "  --output <path>             JSONL output path (default: /tmp/pick_place_updown_lookup.jsonl)\n";
 }
@@ -535,6 +584,9 @@ int main(int argc, char** argv)
     size_t h_candidate_limit = 15;
     size_t solution_candidate_limit = 5;
     double sphere_margin = 0.0;
+    bool baseline_fallback = true;
+    double fallback_timeout = -1.0;
+    size_t fallback_seed_attempts = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -553,6 +605,9 @@ int main(int argc, char** argv)
         else if (arg == "--h-candidates" && i + 1 < argc) h_candidate_limit = static_cast<size_t>(std::stoul(argv[++i]));
         else if (arg == "--solution-candidates" && i + 1 < argc) solution_candidate_limit = static_cast<size_t>(std::stoul(argv[++i]));
         else if (arg == "--sphere-margin" && i + 1 < argc) sphere_margin = std::stod(argv[++i]);
+        else if (arg == "--fallback-timeout" && i + 1 < argc) fallback_timeout = std::stod(argv[++i]);
+        else if (arg == "--fallback-seed-attempts" && i + 1 < argc) fallback_seed_attempts = static_cast<size_t>(std::stoul(argv[++i]));
+        else if (arg == "--no-baseline-fallback") baseline_fallback = false;
         else if (arg == "--allow-collision-solutions") reject_collisions = false;
         else if ((arg == "--output" || arg == "--jsonl") && i + 1 < argc) output = argv[++i];
         else if (arg == "--help" || arg == "-h") {
@@ -581,6 +636,12 @@ int main(int argc, char** argv)
     if (rounds == 0 || start + rounds > pick_points.size()) {
         rounds = pick_points.size() - start;
     }
+    if (fallback_timeout <= 0.0) {
+        fallback_timeout = std::max(timeout, 2.0);
+    }
+    if (fallback_seed_attempts == 0) {
+        fallback_seed_attempts = std::max<size_t>(seed_attempts, 12);
+    }
 
     ReachSphere left_sphere;
     ReachSphere right_sphere;
@@ -598,6 +659,8 @@ int main(int argc, char** argv)
         rclcpp::shutdown();
         return 1;
     }
+
+    IkSolver fallback_ik("dual_v5_arm_with_base", solver, fallback_timeout, false, options);
 
     std::ofstream ofs(output);
     if (!ofs.good()) {
@@ -634,6 +697,9 @@ int main(int argc, char** argv)
     header["h_candidate_limit"] = h_candidate_limit;
     header["solution_candidate_limit"] = solution_candidate_limit;
     header["sphere_margin"] = sphere_margin;
+    header["baseline_fallback"] = baseline_fallback;
+    header["fallback_timeout"] = fallback_timeout;
+    header["fallback_seed_attempts"] = fallback_seed_attempts;
     header["left_reach_sphere"] = {{"center", {left_sphere.cx, left_sphere.cy, left_sphere.cz}}, {"radius", left_sphere.radius}};
     header["right_reach_sphere"] = {{"center", {right_sphere.cx, right_sphere.cy, right_sphere.cz}}, {"radius", right_sphere.radius}};
     header["flow"] = {"safe", "approach", "grasp", "retreat", "place_safe"};
@@ -649,6 +715,8 @@ int main(int argc, char** argv)
               << "  Timeout: " << timeout << "s per IK attempt\n"
               << "  Tool0 offset compensation: " << tool0_offset << "m\n"
               << "  Full-state collision reject: " << (reject_collisions ? "yes" : "no (diagnostic)") << "\n"
+              << "  Baseline fallback: " << (baseline_fallback ? "yes" : "no") << "\n"
+              << "  Fallback timeout/attempts: " << fallback_timeout << "s / " << fallback_seed_attempts << "\n"
               << "  Seed attempts per h: " << seed_attempts << "\n"
               << "  Legal solutions to collect: " << solution_candidate_limit << "\n"
               << "  h range/step/candidates: [" << h_lower << ", " << h_upper << "] / " << h_step << " / " << h_candidate_limit << "\n"
@@ -880,15 +948,134 @@ int main(int argc, char** argv)
                     failed_result["joint_names"] = full_joint_names;
                     failed_result["joint_values"] = selected_full_values;
                 }
-                record["result"] = failed_result;
-                record["next_seed_joints"] = seed;
-                record["next_updown"] = current_h;
-                stop_after_failure = true;
-                std::cout << "FAIL";
-                if (failed_result.contains("rejection_reason")) {
-                    std::cout << "  " << failed_result["rejection_reason"].get<std::string>();
+                record["lookup_result"] = failed_result;
+                record["fallback_used"] = false;
+                record["fallback_reason"] = failed_result.value("rejection_reason", "lookup_failed");
+
+                if (baseline_fallback) {
+                    nlohmann::json fallback_attempts = nlohmann::json::array();
+                    IkResult fallback_result;
+                    std::vector<double> fallback_seed;
+                    size_t fallback_selected_attempt = 0;
+                    const size_t attempts = std::max<size_t>(1, fallback_seed_attempts);
+                    const std::vector<double> base_full_seed = makeFullSeedFromArmSeed(
+                        fallback_ik.variableNames(), current_h, ik.variableNames(), seed);
+
+                    for (size_t attempt = 0; attempt < attempts; ++attempt) {
+                        std::vector<double> attempt_seed = attempt == 0
+                            ? base_full_seed
+                            : makePerturbedSeed(fallback_ik.variableNames(), base_full_seed,
+                                                attempt + 100000 + stage_index * attempts,
+                                                seed_noise, h_step);
+                        IkResult candidate = fallback_ik.solveDual(
+                            compensateTool0OffsetForIk(stage.left, tool0_offset),
+                            compensateTool0OffsetForIk(stage.right, tool0_offset),
+                            attempt_seed,
+                            fallback_timeout);
+                        nlohmann::json attempt_record = attemptToJson(attempt, attempt_seed, candidate);
+                        if (!candidate.joint_values.empty()) {
+                            const auto actual_poses = fallback_ik.fk(candidate.joint_values);
+                            attempt_record["tip_target_match"] = dualTipMatchToJson(
+                                dualTipMatch(stage.left, stage.right, actual_poses));
+                            if (!actual_poses.empty()) {
+                                attempt_record["actual_pose"] = poseToJson(actual_poses[0]);
+                            }
+                            if (actual_poses.size() > 1) {
+                                attempt_record["actual_pose2"] = poseToJson(actual_poses[1]);
+                            }
+                        }
+                        fallback_attempts.push_back(attempt_record);
+                        if (attempt == 0 || candidate.success || candidate.collision_rejection_count < fallback_result.collision_rejection_count) {
+                            fallback_result = candidate;
+                            fallback_seed = attempt_seed;
+                            fallback_selected_attempt = attempt;
+                        }
+                        if (candidate.success) {
+                            fallback_attempts.back()["selected"] = true;
+                            break;
+                        }
+                    }
+
+                    record["fallback_used"] = true;
+                    record["fallback_group"] = "dual_v5_arm_with_base";
+                    record["fallback_attempts"] = fallback_attempts;
+                    record["fallback_selected_attempt"] = fallback_selected_attempt;
+                    record["fallback_selected_seed"] = fallback_seed;
+                    record["solver_path"] = fallback_result.success ? "baseline_fallback" : "lookup_failed_fallback_failed";
+
+                    if (fallback_result.success) {
+                        auto actual_poses = fallback_ik.fk(fallback_result.joint_values);
+                        const DualTipMatch tip_match = dualTipMatch(stage.left, stage.right, actual_poses);
+                        record["tip_target_match"] = dualTipMatchToJson(tip_match);
+                        if (tip_match.swapped_is_better) {
+                            fallback_result.success = false;
+                            failed_result = resultToJson(fallback_result);
+                            failed_result["rejection_reason"] = "fallback_dual_tip_target_swapped";
+                            failed_result["tip_target_match"] = dualTipMatchToJson(tip_match);
+                            record["result"] = failed_result;
+                            record["next_seed_joints"] = seed;
+                            record["next_updown"] = current_h;
+                            stop_after_failure = true;
+                            std::cout << "FAIL  fallback swapped-tip target binding suspected\n";
+                        } else {
+                            successes++;
+                            total_ms += fallback_result.solve_ms;
+                            const double fallback_h = updownFromResult(fallback_result, current_h);
+                            total_updown_motion += std::abs(fallback_h - current_h);
+                            record["selected_h"] = fallback_h;
+                            record["updown_delta"] = std::abs(fallback_h - current_h);
+                            record["actual_pose"] = poseToJson(actual_poses[0]);
+                            const double tool_pos_error = positionError(stage.left, actual_poses[0]);
+                            const double tool_ori_error = orientationError(stage.left, actual_poses[0]);
+                            double max_tool_pos_error = tool_pos_error;
+                            double max_tool_ori_error = tool_ori_error;
+                            record["tool_pos_error"] = tool_pos_error;
+                            record["tool_ori_error"] = tool_ori_error;
+                            if (actual_poses.size() > 1) {
+                                record["actual_pose2"] = poseToJson(actual_poses[1]);
+                                const double tool_pos_error2 = positionError(stage.right, actual_poses[1]);
+                                const double tool_ori_error2 = orientationError(stage.right, actual_poses[1]);
+                                max_tool_pos_error = std::max(max_tool_pos_error, tool_pos_error2);
+                                max_tool_ori_error = std::max(max_tool_ori_error, tool_ori_error2);
+                                record["tool_pos_error2"] = tool_pos_error2;
+                                record["tool_ori_error2"] = tool_ori_error2;
+                            }
+                            nlohmann::json public_result = resultToJson(fallback_result);
+                            public_result["pos_error"] = max_tool_pos_error;
+                            public_result["ori_error"] = max_tool_ori_error;
+                            record["result"] = public_result;
+                            seed = makeArmSeedFromFullResult(ik.variableNames(), fallback_result);
+                            current_h = fallback_h;
+                            record["next_seed_joints"] = seed;
+                            record["next_updown"] = current_h;
+                            std::cout << "OK(FB) " << fallback_result.solve_ms << "ms  "
+                                      << "h=" << fallback_h << "  "
+                                      << "attempt=" << fallback_selected_attempt << "  "
+                                      << "tool_pos_err=" << max_tool_pos_error << "  "
+                                      << "tool_ori_err=" << max_tool_ori_error << "\n";
+                        }
+                    } else {
+                        nlohmann::json fallback_failed = resultToJson(fallback_result);
+                        fallback_failed["rejection_reason"] = "fallback_failed";
+                        fallback_failed["lookup_rejection_reason"] = record["fallback_reason"];
+                        record["result"] = fallback_failed;
+                        record["next_seed_joints"] = seed;
+                        record["next_updown"] = current_h;
+                        stop_after_failure = true;
+                        std::cout << "FAIL  fallback_failed\n";
+                    }
+                } else {
+                    record["solver_path"] = "updown_lookup_failed";
+                    record["result"] = failed_result;
+                    record["next_seed_joints"] = seed;
+                    record["next_updown"] = current_h;
+                    stop_after_failure = true;
+                    std::cout << "FAIL";
+                    if (failed_result.contains("rejection_reason")) {
+                        std::cout << "  " << failed_result["rejection_reason"].get<std::string>();
+                    }
+                    std::cout << "\n";
                 }
-                std::cout << "\n";
             }
 
             ofs << record.dump() << "\n";
