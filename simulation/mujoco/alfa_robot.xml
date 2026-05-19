@@ -21,12 +21,12 @@
     <material name="arm_white" rgba="0.92 0.92 0.92 1"/>
     <mesh name="vis_base_link" file="alfa_robot/visual/base_link.STL"/>
     <mesh name="col_base_link" file="alfa_robot/collision/base_link.STL"/>
-    <mesh name="vis_pitch" file="alfa_robot_v2_arm_v4_new/visual/pitch.STL"/>
-    <mesh name="col_pitch" file="alfa_robot_v2_arm_v4_new/collision/pitch.STL"/>
-    <mesh name="vis_turn" file="alfa_robot/visual/turn.STL"/>
-    <mesh name="col_turn" file="alfa_robot/collision/turn.STL"/>
-    <mesh name="vis_updown" file="alfa_robot/visual/updown.STL"/>
-    <mesh name="col_updown" file="alfa_robot/collision/updown.STL"/>
+    <mesh name="vis_pitch" file="alfa_robot_v2_arm_v5/visual/pitch.STL"/>
+    <mesh name="col_pitch" file="alfa_robot_v2_arm_v5/collision/pitch.STL"/>
+    <mesh name="vis_turn" file="alfa_robot_v2_arm_v5/visual/turn.STL"/>
+    <mesh name="col_turn" file="alfa_robot_v2_arm_v5/collision/turn.STL"/>
+    <mesh name="vis_updown" file="alfa_robot_v2_arm_v5/visual/updown.STL"/>
+    <mesh name="col_updown" file="alfa_robot_v2_arm_v5/collision/updown.STL"/>
     <mesh name="vis_left_v5_link1" file="alfa_robot_v2_arm_v5/visual/leftjoint1.STL"/>
     <mesh name="col_left_v5_link1" file="alfa_robot_v2_arm_v5/collision/leftjoint1.STL"/>
     <mesh name="vis_left_v5_link2" file="alfa_robot_v2_arm_v5/visual/leftjoint2.STL"/>
@@ -67,17 +67,17 @@
         <inertial pos="-0.198797876667389 0.0534826037691441 0.0683908156328275" mass="5.23479125794249" fullinertia="0.0820011779740888 0.0820529172807708 0.163475256832643 1.65869977323853E-10 -1.12757025938492E-17 -2.38941055572563E-17"/>
         <geom name="visual_pitch" class="visual" type="mesh" mesh="vis_pitch" material="white"/>
         <geom name="collision_pitch" class="collision" type="mesh" mesh="col_pitch"/>
-        <body name="turn" pos="0 0 0" gravcomp="1">
+        <body name="turn" pos="-0.189 0.0545 0.12" gravcomp="1">
           <joint name="turn" type="hinge" axis="0 0 1" limited="false" damping="300" armature="2.0"/>
           <inertial pos="-0.0697894032768815 -0.00012433244764639 0.982155423971065" mass="42.0737844290435" fullinertia="10.0720353784748 10.0937833616587 0.327199381319826 -1.75362629131178E-06 5.29823321336754E-05 1.43589075450652E-06"/>
           <geom name="visual_turn" class="visual" type="mesh" mesh="vis_turn" material="grey"/>
           <geom name="collision_turn" class="collision" type="mesh" mesh="col_turn"/>
-          <body name="updown" pos="-0.23547 0 0.57771" gravcomp="1">
+          <body name="updown" pos="-0.07 0.0005 0.0645" gravcomp="1">
             <joint name="updown" type="slide" axis="0 0 1" range="0 0.99" damping="500" armature="2.0"/>
             <inertial pos="-0.196828632659582 0.0148673483555221 0.0956849238503419" mass="26.931167747836" fullinertia="0.231217459750122 0.178754005132662 0.348822965146485 2.93337887014215E-05 0.000951254936009737 -1.44830456938328E-05"/>
             <geom name="visual_updown" class="visual" type="mesh" mesh="vis_updown" material="grey"/>
             <geom name="collision_updown" class="collision" type="mesh" mesh="col_updown"/>
-            <body name="left_v5_link0" pos="0 0.20 0.18" gravcomp="1">
+            <body name="left_v5_link0" pos="0.105 0.26 0.2" gravcomp="1">
               <inertial pos="0 0 0" mass="0.5" fullinertia="0.02 0.02 0.02 0 0 0"/>
               <body name="left_v5_link1" pos="0 0 0" gravcomp="1">
                 <joint name="left_v5_joint1" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="50" armature="2.0"/>
@@ -122,7 +122,7 @@
                 </body>
               </body>
             </body>
-            <body name="right_v5_link0" pos="0 -0.20 0.18" gravcomp="1">
+            <body name="right_v5_link0" pos="0.105 -0.26 0.2" gravcomp="1">
               <inertial pos="0 0 0" mass="0.5" fullinertia="0.02 0.02 0.02 0 0 0"/>
               <body name="right_v5_link1" pos="0 0 0" gravcomp="1">
                 <joint name="right_v5_joint1" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="50" armature="2.0"/>
