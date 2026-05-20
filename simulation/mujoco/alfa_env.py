@@ -52,7 +52,7 @@ def load_moveit_initial_positions(path=None):
 
 
 class AlfaEnv:
-    def __init__(self, model_path="scene.xml", sim_dt=0.002, frame_skip=10, initial_positions_path=None):
+    def __init__(self, model_path="scene_robot_only.xml", sim_dt=0.002, frame_skip=10, initial_positions_path=None):
         model_path = Path(model_path)
         if not model_path.is_absolute():
             model_path = Path(__file__).resolve().parent / model_path
@@ -74,12 +74,14 @@ class AlfaEnv:
         target_positions = dict(self.initial_positions)
         if initial_positions:
             target_positions.update(initial_positions)
-        self.robot.apply_hybrid_target(target_positions)
+        self.robot.set_joint_state(target_positions)
         mujoco.mj_forward(self.model, self.data)
         return self._get_obs()
 
     def step(self, ctrl_cmds: dict):
-        self.robot.apply_hybrid_target(ctrl_cmds)
+        self.robot.set_actuator_targets(ctrl_cmds)
+        for _ in range(self.frame_skip):
+            mujoco.mj_step(self.model, self.data)
         return self._get_obs()
 
     def _get_obs(self):

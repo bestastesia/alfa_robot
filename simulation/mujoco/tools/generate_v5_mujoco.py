@@ -19,19 +19,38 @@ MESH_PREFIX = "package://alfa_robot_description/meshes/"
 MESH_ROOT = "../../ros2_ws/src/alfa_robot_description/meshes"
 
 JOINT_DAMPING = {
-    "pitch": 300,
-    "turn": 300,
-    "updown": 500,
+    "pitch": 3000,
+    "turn": 3000,
+    "updown": 5000,
 }
 POSITION_KP = {
-    "pitch": 12000,
-    "turn": 12000,
-    "updown": 60000,
+    "pitch": 250000,
+    "turn": 250000,
+    "updown": 500000,
 }
-DEFAULT_KP_REVOLUTE = 12000
-DEFAULT_KP_PRISMATIC = 60000
-BASE_FORCE_RANGE = "-200000 200000"
-JOINT_FORCE_RANGE = "-100000 100000"
+DEFAULT_JOINT_DAMPING = 1200
+DEFAULT_KP_REVOLUTE = 250000
+DEFAULT_KP_PRISMATIC = 500000
+BASE_FORCE_RANGE = "-10000000 10000000"
+JOINT_FORCE_RANGE = "-1000000 1000000"
+BASE_POSITION_KP = 20000000
+BASE_YAW_KP = 10000000
+BASE_DAMPING = 300000
+BASE_ARMATURE = 1000
+ROBOT_CONTACT_SOLREF = "0.004 1.6"
+ROBOT_CONTACT_SOLIMP = "0.995 0.9995 0.0001"
+CARGO_CONTACT_SOLREF = "0.006 1.4"
+CARGO_CONTACT_SOLIMP = "0.96 0.995 0.001"
+CARGO_COLLISION_TYPE = 1
+CARGO_COLLISION_AFFINITY = 3
+CARGO_FRICTION = "2.0 0.12 0.04"
+STATIC_SCENE_FRICTION = "1.8 0.08 0.02"
+INTERNAL_COLLISION_EXCLUDES = {
+    ("base_link", "turn"),
+    ("base_link", "updown"),
+    ("turn", "left_v5_link1"),
+    ("turn", "right_v5_link1"),
+}
 
 
 def render_urdf() -> ET.Element:
@@ -117,6 +136,28 @@ def collect_model(root: ET.Element):
     return links, joints, children, roots[0] if roots else "world"
 
 
+def adjacent_collision_excludes(joints: list[ET.Element]) -> list[str]:
+    excluded_pairs = {tuple(sorted(pair)) for pair in INTERNAL_COLLISION_EXCLUDES}
+    for joint in joints:
+        parent = joint.find("parent")
+        child = joint.find("child")
+        if parent is None or child is None:
+            continue
+        parent_link = parent.get("link", "")
+        child_link = child.get("link", "")
+        if not parent_link or not child_link or parent_link == "world":
+            continue
+        pair = tuple(sorted((parent_link, child_link)))
+        excluded_pairs.add(pair)
+
+    lines = ["  <contact>"]
+    for body1, body2 in sorted(excluded_pairs):
+        if body1 != body2:
+            lines.append(f'    <exclude body1="{body1}" body2="{body2}"/>')
+    lines.append("  </contact>")
+    return lines
+
+
 def joint_xml(joint: ET.Element) -> str:
     joint_type = joint.get("type", "fixed")
     if joint_type == "fixed":
@@ -125,12 +166,12 @@ def joint_xml(joint: ET.Element) -> str:
     axis = parse_vec(joint.find("axis").get("xyz") if joint.find("axis") is not None else None, "1 0 0")
     limit = joint.find("limit")
     mj_type = "hinge" if joint_type in {"revolute", "continuous"} else "slide"
-    damping = JOINT_DAMPING.get(name, 50)
+    damping = JOINT_DAMPING.get(name, DEFAULT_JOINT_DAMPING)
     if joint_type == "continuous" or limit is None:
-        return f'<joint name="{name}" type="{mj_type}" axis="{axis}" limited="false" damping="{damping}" armature="2.0"/>'
+        return f'<joint name="{name}" type="{mj_type}" axis="{axis}" limited="false" damping="{damping}" armature="8.0"/>'
     lower = limit.get("lower", "0")
     upper = limit.get("upper", "0")
-    return f'<joint name="{name}" type="{mj_type}" axis="{axis}" range="{lower} {upper}" damping="{damping}" armature="2.0"/>'
+    return f'<joint name="{name}" type="{mj_type}" axis="{axis}" range="{lower} {upper}" damping="{damping}" armature="8.0"/>'
 
 
 def geom_xml(link_name: str, kind: str, material: str | None = None) -> str:
@@ -244,9 +285,9 @@ def suction_xml(side: str, indent: str) -> list[str]:
 
 def actuator_xml(joints: list[ET.Element]) -> list[str]:
     lines = ["  <actuator>"]
-    lines.append(f'    <position name="act_base_x" joint="base_x" kp="80000" ctrlrange="-10 10" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
-    lines.append(f'    <position name="act_base_y" joint="base_y" kp="80000" ctrlrange="-10 10" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
-    lines.append(f'    <position name="act_base_yaw" joint="base_yaw" kp="80000" ctrlrange="-6.28318530718 6.28318530718" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
+    lines.append(f'    <position name="act_base_x" joint="base_x" kp="{BASE_POSITION_KP}" ctrlrange="-10 10" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
+    lines.append(f'    <position name="act_base_y" joint="base_y" kp="{BASE_POSITION_KP}" ctrlrange="-10 10" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
+    lines.append(f'    <position name="act_base_yaw" joint="base_yaw" kp="{BASE_YAW_KP}" ctrlrange="-6.28318530718 6.28318530718" ctrllimited="true" forcerange="{BASE_FORCE_RANGE}"/>')
     for joint in joints:
         name = joint.get("name")
         joint_type = joint.get("type")
@@ -301,11 +342,11 @@ def generate_robot_xml(root: ET.Element) -> str:
         '  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"/>',
         '',
         '  <default>',
-        '    <joint damping="50" armature="2.0"/>',
+        f'    <joint damping="{DEFAULT_JOINT_DAMPING}" armature="8.0"/>',
         '    <velocity ctrllimited="true" forcelimited="true"/>',
         '    <position forcelimited="true"/>',
         '    <default class="visual"><geom contype="0" conaffinity="0" group="2"/></default>',
-        '    <default class="collision"><geom contype="2" conaffinity="1" group="3" friction="1.0 0.05 0.01"/></default>',
+        f'    <default class="collision"><geom contype="1" conaffinity="3" group="3" friction="1.4 0.08 0.01" condim="4" solref="{ROBOT_CONTACT_SOLREF}" solimp="{ROBOT_CONTACT_SOLIMP}" margin="0.002"/></default>',
         '  </default>',
         '',
         '  <asset>',
@@ -322,9 +363,9 @@ def generate_robot_xml(root: ET.Element) -> str:
         '  <worldbody>',
         '    <geom name="floor" type="plane" size="5 5 0.1" material="grid_mat"/>',
         f'    <body name="base_link" pos="{base_pos}" gravcomp="1">',
-        '      <joint name="base_x" type="slide" axis="1 0 0" damping="3000" limited="false"/>',
-        '      <joint name="base_y" type="slide" axis="0 1 0" damping="3000" limited="false"/>',
-        '      <joint name="base_yaw" type="hinge" axis="0 0 1" damping="3000" limited="false"/>',
+        f'      <joint name="base_x" type="slide" axis="1 0 0" damping="{BASE_DAMPING}" armature="{BASE_ARMATURE}" limited="false"/>',
+        f'      <joint name="base_y" type="slide" axis="0 1 0" damping="{BASE_DAMPING}" armature="{BASE_ARMATURE}" limited="false"/>',
+        f'      <joint name="base_yaw" type="hinge" axis="0 0 1" damping="{BASE_DAMPING}" armature="{BASE_ARMATURE}" limited="false"/>',
         f'      {inertial_xml(links["base_link"])}',
         '      ' + geom_xml("base_link", "visual", material_for_link("base_link")),
         '      ' + geom_xml("base_link", "collision"),
@@ -334,6 +375,8 @@ def generate_robot_xml(root: ET.Element) -> str:
     lines.extend([
         '    </body>',
         '  </worldbody>',
+        '',
+        *adjacent_collision_excludes(joints),
         '',
         *actuator_xml(joints),
         '',
@@ -345,37 +388,60 @@ def generate_robot_xml(root: ET.Element) -> str:
     return "\n".join(lines)
 
 
-def box_body(name: str, pos: tuple[float, float, float], size: tuple[float, float, float], rgba: str) -> str:
+def box_body(
+    name: str,
+    pos: tuple[float, float, float],
+    size: tuple[float, float, float],
+    rgba: str,
+    *,
+    movable: bool = False,
+    density: float = 120.0,
+) -> str:
     sx, sy, sz = size
+    joint_line = "      <freejoint/>\n" if movable else ""
+    density_attr = f' density="{density:.1f}"' if movable else ""
     return (
         f'    <body name="{name}" pos="{pos[0]:.3f} {pos[1]:.3f} {pos[2]:.3f}">\n'
-        f'      <geom type="box" size="{sx:.3f} {sy:.3f} {sz:.3f}" rgba="{rgba}" contype="1" conaffinity="1" friction="0.8 0.03 0.001"/>\n'
+        f'{joint_line}'
+        f'      <geom name="{name}_geom" type="box" size="{sx:.3f} {sy:.3f} {sz:.3f}" rgba="{rgba}" contype="{CARGO_COLLISION_TYPE}" conaffinity="{CARGO_COLLISION_AFFINITY}" friction="{CARGO_FRICTION}" condim="6" solref="{CARGO_CONTACT_SOLREF}" solimp="{CARGO_CONTACT_SOLIMP}"{density_attr}/>\n'
         f'      <site name="{name}_top" pos="0 0 {sz:.3f}" size="0.012" rgba="0 1 0 0.6"/>\n'
         f'    </body>'
     )
 
 
 def generate_scene_xml() -> str:
-    # Container inner dimensions: width 2.2 m, height 2.4 m.
-    # User semantics: "5 rows" means 5 vertical Z layers. Width keeps about
-    # 10 boxes per layer, and the forward/depth direction is tightly packed.
+    # Container/cargo demo layout:
+    # - Place the container/cargo area behind the robot, about 1 m away.
+    # - Cargo floor height is 0.60 m.
+    # - Normal cartons face the robot: 40 cm wide x 40 cm high face, 20 cm depth
+    #   along robot-facing direction.
+    # - Inner width 2.2 m cannot be filled by 0.4 m modules exactly, so the last
+    #   0.2 m column is rotated: 40x20 face outward, 40x40 sideward.
     inner_width = 2.2
     inner_height = 2.4
-    inner_length = 5.2
+    inner_length = 4.0
     x0 = 1.0
     center_x = x0 + inner_length / 2.0
-    box_sx = 0.24
-    box_sy = 0.10
-    box_sz = 0.22
+    robot_side_x = x0
+    box_face = 0.40
+    box_depth = 0.20
+    box_sx = box_depth / 2.0
+    box_sy = box_face / 2.0
+    box_sz = box_face / 2.0
+    rotated_sx = box_face / 2.0
+    rotated_sy = box_depth / 2.0
     floor_top_z = 0.07
-    x_count = max(1, int(inner_length // (2.0 * box_sx)))
-    y_count = 10
+    x_count = 1
+    y_count_normal = int(inner_width // box_face)
+    leftover_width = round(inner_width - y_count_normal * box_face, 6)
+    has_rotated_column = leftover_width >= box_depth - 1e-6
     z_count = 5
-    x_pitch = (inner_length - 2.0 * box_sx) / max(x_count - 1, 1)
-    y_pitch = inner_width / y_count
-    z_pitch = (inner_height - 2.0 * box_sz) / max(z_count - 1, 1)
-    x_start = x0 + box_sx
-    y_start = -inner_width / 2.0 + y_pitch / 2.0
+    x_pitch = box_depth
+    y_pitch = box_face
+    z_pitch = box_face
+    x_start = robot_side_x + box_sx
+    y_start = -inner_width / 2.0 + box_sy
+    rotated_y = inner_width / 2.0 - rotated_sy
     z_start = floor_top_z + box_sz
     colors = ["0.55 0.40 0.25 1", "0.72 0.50 0.30 1", "0.90 0.68 0.42 1"]
     cargo_lines = []
@@ -383,11 +449,15 @@ def generate_scene_xml() -> str:
         z = z_start + z_index * z_pitch
         for x_index in range(x_count):
             x = x_start + x_index * x_pitch
-            for y_index in range(y_count):
+            for y_index in range(y_count_normal):
                 y = y_start + y_index * y_pitch
                 name = f"cargo_x{x_index:02d}_y{y_index:02d}_z{z_index:02d}"
                 color = colors[z_index % len(colors)]
-                cargo_lines.append(box_body(name, (x, y, z), (box_sx, box_sy * 0.92, box_sz), color))
+                cargo_lines.append(box_body(name, (x, y, z), (box_sx, box_sy, box_sz), color, movable=True))
+            if has_rotated_column:
+                name = f"cargo_x{x_index:02d}_yR_z{z_index:02d}"
+                color = colors[(z_index + 1) % len(colors)]
+                cargo_lines.append(box_body(name, (x, rotated_y, z), (rotated_sx, rotated_sy, box_sz), color, movable=True))
 
     lines = [
         '<?xml version="1.0" encoding="utf-8"?>',
@@ -396,27 +466,32 @@ def generate_scene_xml() -> str:
         '  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" noslip_iterations="3"/>',
         '  <include file="alfa_robot.xml"/>',
         '  <worldbody>',
-        '    <light name="container_light_front" pos="1.5 0 2.8" dir="0 0 -1" diffuse="0.8 0.8 0.7" specular="0.1 0.1 0.1"/>',
-        '    <light name="container_light_back" pos="5.0 0 2.8" dir="0 0 -1" diffuse="0.7 0.7 0.65" specular="0.1 0.1 0.1"/>',
-        '    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1"/>',
+        '    <light name="container_light_front" pos="1.2 0 3.0" dir="0 0 -1" diffuse="0.8 0.8 0.7" specular="0.1 0.1 0.1"/>',
+        '    <light name="container_light_back" pos="4.0 0 3.0" dir="0 0 -1" diffuse="0.7 0.7 0.65" specular="0.1 0.1 0.1"/>',
+        f'    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1" friction="{STATIC_SCENE_FRICTION}"/>',
         '    <body name="container" pos="0 0 0">',
-        f'      <geom name="container_floor" type="box" size="{inner_length/2:.3f} {inner_width/2:.3f} 0.035" pos="{center_x:.3f} 0 0.035" rgba="0.50 0.43 0.34 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_wall_left" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {inner_width/2+0.045:.3f} {inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_wall_right" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {-inner_width/2-0.045:.3f} {inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_roof" type="box" size="{inner_length/2:.3f} {inner_width/2+0.045:.3f} 0.035" pos="{center_x:.3f} 0 {inner_height+0.035:.3f}" rgba="0.50 0.50 0.46 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_back" type="box" size="0.045 {inner_width/2+0.045:.3f} {inner_height/2:.3f}" pos="{x0+inner_length+0.045:.3f} 0 {inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_door_left_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{x0-0.045:.3f} {inner_width/2+0.025:.3f} {inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_door_right_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{x0-0.045:.3f} {-inner_width/2-0.025:.3f} {inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_door_top" type="box" size="0.045 {inner_width/2:.3f} 0.035" pos="{x0-0.045:.3f} 0 {inner_height+0.025:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="1"/>',
-        f'      <geom name="container_outer_left" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {inner_width/2+0.095:.3f} {inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
-        f'      <geom name="container_outer_right" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {-inner_width/2-0.095:.3f} {inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
+        f'      <geom name="container_floor" type="box" size="{inner_length/2:.3f} {inner_width/2:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z-0.035:.3f}" rgba="0.50 0.43 0.34 1" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
+        f'      <geom name="container_wall_left" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {inner_width/2+0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_wall_right" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {-inner_width/2-0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_roof" type="box" size="{inner_length/2:.3f} {inner_width/2+0.045:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z+inner_height+0.035:.3f}" rgba="0.50 0.50 0.46 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_back" type="box" size="0.045 {inner_width/2+0.045:.3f} {inner_height/2:.3f}" pos="{x0+inner_length+0.045:.3f} 0 {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_left_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {inner_width/2+0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_right_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {-inner_width/2-0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_top" type="box" size="0.045 {inner_width/2:.3f} 0.035" pos="{robot_side_x-0.045:.3f} 0 {floor_top_z+inner_height+0.025:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_outer_left" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {inner_width/2+0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
+        f'      <geom name="container_outer_right" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {-inner_width/2-0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
         '    </body>',
         *cargo_lines,
-        '    <body name="conveyor" pos="-0.5 3.0 0">',
-        '      <geom name="conv_surface" type="box" size="1.0 0.35 0.03" pos="0 0 0.53" rgba="0.2 0.2 0.2 1" contype="1" conaffinity="1" friction="0.4 0.01 0.001"/>',
-        '      <site name="conveyor_target" pos="0 0 0.58" size="0.05" rgba="0 1 1 0.5"/>',
+        '    <body name="placement_platform" pos="-2.00 0 0">',
+        f'      <geom name="placement_platform_surface" type="box" size="0.45 0.75 0.035" pos="0 0 0.635" rgba="0.22 0.22 0.24 1" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
+        '      <geom name="placement_platform_front_edge" type="box" size="0.025 0.75 0.025" pos="0.45 0 0.70" rgba="0.05 0.45 0.95 1" contype="0" conaffinity="0"/>',
+        '      <geom name="placement_platform_leg1" type="box" size="0.035 0.035 0.30" pos="0.34 0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
+        '      <geom name="placement_platform_leg2" type="box" size="0.035 0.035 0.30" pos="0.34 -0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
+        '      <geom name="placement_platform_leg3" type="box" size="0.035 0.035 0.30" pos="-0.34 0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
+        '      <geom name="placement_platform_leg4" type="box" size="0.035 0.035 0.30" pos="-0.34 -0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
+        '      <site name="placement_platform_target" pos="0 0 0.70" size="0.05" rgba="0 1 1 0.6"/>',
         '    </body>',
-        '    <geom name="robot_dock_mark" type="box" size="0.5 0.5 0.002" pos="-0.5 0 0.001" rgba="1 0.9 0 0.6" contype="0" conaffinity="0" group="2"/>',
+        '    <geom name="robot_dock_mark" type="box" size="0.5 0.5 0.002" pos="0.5 0 0.001" rgba="1 0.9 0 0.6" contype="0" conaffinity="0" group="2"/>',
         '  </worldbody>',
         '</mujoco>',
         '',
@@ -434,7 +509,7 @@ def generate_robot_only_xml() -> str:
         '  <worldbody>',
         '    <light name="sun" pos="5 -5 8" dir="-0.4 0.4 -1" diffuse="0.9 0.9 0.85" specular="0.3 0.3 0.3" castshadow="true"/>',
         '    <light name="fill" pos="-3 -3 6" dir="0.3 0.3 -1" diffuse="0.4 0.4 0.5" specular="0.1 0.1 0.1"/>',
-        '    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1"/>',
+        f'    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1" friction="{STATIC_SCENE_FRICTION}"/>',
         '  </worldbody>',
         '</mujoco>',
         '',

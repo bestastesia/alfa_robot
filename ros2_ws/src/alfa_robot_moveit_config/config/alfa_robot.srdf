@@ -40,13 +40,13 @@
     <group_state name="home" group="dual_v5_arm_with_base">
         <joint name="updown" value="0"/>
         <joint name="left_v5_joint1" value="0"/>
-        <joint name="left_v5_joint2" value="0"/>
+        <joint name="left_v5_joint2" value="1.57079633"/>
         <joint name="left_v5_joint3" value="0"/>
         <joint name="left_v5_joint4" value="0"/>
         <joint name="left_v5_joint5" value="0"/>
         <joint name="left_v5_joint6" value="0"/>
         <joint name="right_v5_joint1" value="0"/>
-        <joint name="right_v5_joint2" value="0"/>
+        <joint name="right_v5_joint2" value="1.57079633"/>
         <joint name="right_v5_joint3" value="0"/>
         <joint name="right_v5_joint4" value="0"/>
         <joint name="right_v5_joint5" value="0"/>

@@ -36,7 +36,7 @@ class AlfaRobotInterface:
                 if act_name.startswith("act_"):
                     self.actuator_ids[act_name[4:]] = i
 
-    def apply_hybrid_target(self, target_dict: dict):
+    def set_joint_state(self, target_dict: dict):
         for name, target in target_dict.items():
             act_id = self.actuator_ids.get(name, -1)
             q_adr  = self.jnt_qpos_adrs.get(name, -1)
@@ -45,6 +45,15 @@ class AlfaRobotInterface:
             if q_adr >= 0: self.data.qpos[q_adr] = target
             if v_adr >= 0: self.data.qvel[v_adr] = 0.0
             if act_id >= 0: self.data.ctrl[act_id] = target
+
+    def set_actuator_targets(self, target_dict: dict):
+        for name, target in target_dict.items():
+            act_id = self.actuator_ids.get(name, -1)
+            if act_id >= 0:
+                self.data.ctrl[act_id] = target
+
+    def apply_hybrid_target(self, target_dict: dict):
+        self.set_joint_state(target_dict)
 
     def get_all_joint_positions(self) -> dict:
         obs = {}

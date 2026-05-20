@@ -89,9 +89,9 @@ def generate_launch_description():
                 {
                     "zeros.left_v5_joint1": 0.0,
                     "zeros.left_v5_joint2": 1.57079633,
-                    "zeros.left_v5_joint3": 6.28318530,
+                    "zeros.left_v5_joint3": 0.0,
                     "zeros.left_v5_joint4": 0.0,
-                    "zeros.left_v5_joint5": 6.28318530,
+                    "zeros.left_v5_joint5": 0.0,
                     "zeros.left_v5_joint6": 0.0,
                     "zeros.right_v5_joint1": 0.0,
                     "zeros.right_v5_joint2": 1.57079633,

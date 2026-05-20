@@ -10,6 +10,8 @@ This directory is the first MuJoCo side of TIM-41.
 - current arm naming: `left_v5_joint1..6`, `right_v5_joint1..6`
 - current tool frames/sites: `left_ee`, `right_ee`
 - current mesh source: `ros2_ws/src/alfa_robot_description/meshes/`
+- MuJoCo keeps the same root-frame zero yaw as ROS/MoveIt; the logistics scene is
+  placed on the robot-facing side instead of rotating `base_link`.
 
 Regenerate after description changes:
 
@@ -19,16 +21,20 @@ Regenerate after description changes:
 
 ## Current logistics scene
 
-`scene.xml` includes `alfa_robot.xml` and creates a static container/cargo scene:
+`scene.xml` includes `alfa_robot.xml` and creates a movable container/cargo scene:
 
 - container inner width: `2.2 m`
 - container inner height: `2.4 m`
-- container inner length: `5.2 m` for this first layout
-- cargo layout: `5` vertical Z layers × `10` boxes across width × forward/depth direction tightly packed
-- current generated cargo count: `500` static boxes (`10` depth × `10` width × `5` height)
+- container inner length: `4.0 m` in the robot-facing direction
+- container floor top height: `0.07 m` above the world ground plane
+- container opening faces the robot and starts about `1.0 m` in front of the robot
+- normal cargo box: `0.40 m × 0.40 m` face toward the robot, `0.20 m` depth
+- width packing: `5` normal columns plus one rotated `0.20 m` column for the remaining width
+- current generated cargo count: `30` movable boxes in the front row (`1` depth × `6` width columns × `5` height layers)
 
-The cargo bodies are named `cargo_xXX_yYY_zZZ` so a later ROS bridge can convert
-them into MoveIt planning-scene obstacles.
+The cargo bodies are named `cargo_xXX_yYY_zZZ` and `cargo_xXX_yR_zZZ` so a later
+ROS bridge can convert them into MoveIt planning-scene obstacles. Each cargo body
+has a `freejoint`, so boxes can be pushed by the robot.
 
 ## Quick checks
 
@@ -47,10 +53,19 @@ The robot still uses MuJoCo gravity (`0 0 -9.81`), but generated robot bodies se
 `gravcomp="1"` and strong position actuators so the first TIM-41 scene behaves as
 a commanded-position robot instead of collapsing under its own mesh inertia.
 
-Robot self-collision is disabled by using robot collision geoms with
-`contype="2" conaffinity="1"`; environment/cargo geoms use `contype="1"`, so
-robot-to-scene contacts are still active. This avoids current STL collision
-meshes pushing adjacent robot links apart at reset.
+Robot collision geoms are contact-enabled (`contype="1" conaffinity="3"`) with
+harder contact parameters. Adjacent links and known internal STL overlaps are
+excluded from self-collision, while non-adjacent robot/environment/cargo contacts
+remain active. Robot joints use higher-gain position actuators and damping so the
+model behaves like a stiff commanded robot without becoming a fully fixed body.
+
+The scene also includes `placement_platform` behind the robot, offset far enough
+to avoid initial collision with `base_link`, `turn`, or `pitch`. Its long side
+is along world `Y`, with a blue front edge facing the robot side.
+
+`AlfaEnv.reset()` writes initial joint state once. `AlfaEnv.step()` only updates
+position actuator targets and then advances MuJoCo physics, so commanded motion
+does not teleport `qpos` or inject artificial impulses.
 
 Interactive viewer:
 
@@ -60,6 +75,15 @@ cd simulation/mujoco
 # or
 /usr/bin/python3 demo.py
 ```
+
+`demo.py` loads `scene.xml` so the container and front cargo row are visible by
+default. `AlfaEnv()` still defaults to `scene_robot_only.xml` for lightweight
+programmatic tests unless a model path is provided explicitly.
+
+The interactive demo uses a realtime catch-up loop with `timestep=0.005`. If a
+scene is too heavy, MuJoCo physics time is still correct, but wall-clock playback
+can be slower than realtime unless the loop runs multiple physics steps per
+viewer frame.
 
 ## Scope note
 
