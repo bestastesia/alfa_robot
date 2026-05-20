@@ -51,5 +51,9 @@ install(PROGRAMS
   scripts/nine_orient_reachability.py
   scripts/x_edge_refine_reachability.py
   scripts/rviz_dual_goal_pose_monitor.py
+  scripts/set_joints.py
+  scripts/mujoco_joint_demo_commander.py
+  scripts/mujoco_sync_bridge.py
+  scripts/mujoco_planning_scene_bridge.py
   DESTINATION lib/${PROJECT_NAME}
 )

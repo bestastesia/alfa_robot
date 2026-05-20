@@ -8,163 +8,163 @@
     <light name="container_light_back" pos="4.0 0 3.0" dir="0 0 -1" diffuse="0.7 0.7 0.65" specular="0.1 0.1 0.1"/>
     <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1" friction="1.8 0.08 0.02"/>
     <body name="container" pos="0 0 0">
-      <geom name="container_floor" type="box" size="2.000 1.100 0.035" pos="3.000 0 0.035" rgba="0.50 0.43 0.34 1" contype="1" conaffinity="3" friction="1.8 0.08 0.02"/>
-      <geom name="container_wall_left" type="box" size="2.000 0.045 1.200" pos="3.000 1.145 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
-      <geom name="container_wall_right" type="box" size="2.000 0.045 1.200" pos="3.000 -1.145 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
-      <geom name="container_roof" type="box" size="2.000 1.145 0.035" pos="3.000 0 2.505" rgba="0.50 0.50 0.46 1" contype="1" conaffinity="3"/>
-      <geom name="container_back" type="box" size="0.045 1.145 1.200" pos="5.045 0 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
-      <geom name="container_open_left_post" type="box" size="0.045 0.035 1.200" pos="0.955 1.125 1.270" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
-      <geom name="container_open_right_post" type="box" size="0.045 0.035 1.200" pos="0.955 -1.125 1.270" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
-      <geom name="container_open_top" type="box" size="0.045 1.100 0.035" pos="0.955 0 2.495" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
-      <geom name="container_outer_left" type="box" size="2.000 0.025 1.235" pos="3.000 1.195 1.270" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>
-      <geom name="container_outer_right" type="box" size="2.000 0.025 1.235" pos="3.000 -1.195 1.270" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>
+      <geom name="container_floor" type="box" size="2.000 1.100 0.035" pos="2.750 0 0.035" rgba="0.50 0.43 0.34 1" contype="1" conaffinity="3" friction="1.8 0.08 0.02"/>
+      <geom name="container_wall_left" type="box" size="2.000 0.045 1.200" pos="2.750 1.145 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
+      <geom name="container_wall_right" type="box" size="2.000 0.045 1.200" pos="2.750 -1.145 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
+      <geom name="container_roof" type="box" size="2.000 1.145 0.035" pos="2.750 0 2.505" rgba="0.50 0.50 0.46 1" contype="1" conaffinity="3"/>
+      <geom name="container_back" type="box" size="0.045 1.145 1.200" pos="4.795 0 1.270" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>
+      <geom name="container_open_left_post" type="box" size="0.045 0.035 1.200" pos="0.705 1.125 1.270" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
+      <geom name="container_open_right_post" type="box" size="0.045 0.035 1.200" pos="0.705 -1.125 1.270" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
+      <geom name="container_open_top" type="box" size="0.045 1.100 0.035" pos="0.705 0 2.495" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>
+      <geom name="container_outer_left" type="box" size="2.000 0.025 1.235" pos="2.750 1.195 1.270" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>
+      <geom name="container_outer_right" type="box" size="2.000 0.025 1.235" pos="2.750 -1.195 1.270" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>
     </body>
-    <body name="cargo_x00_y00_z00" pos="1.100 -0.900 0.270">
+    <body name="cargo_x00_y00_z00" pos="0.850 -0.900 0.270">
       <freejoint/>
       <geom name="cargo_x00_y00_z00_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y00_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y01_z00" pos="1.100 -0.500 0.270">
+    <body name="cargo_x00_y01_z00" pos="0.850 -0.500 0.270">
       <freejoint/>
       <geom name="cargo_x00_y01_z00_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y01_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y02_z00" pos="1.100 -0.100 0.270">
+    <body name="cargo_x00_y02_z00" pos="0.850 -0.100 0.270">
       <freejoint/>
       <geom name="cargo_x00_y02_z00_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y02_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y03_z00" pos="1.100 0.300 0.270">
+    <body name="cargo_x00_y03_z00" pos="0.850 0.300 0.270">
       <freejoint/>
       <geom name="cargo_x00_y03_z00_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y03_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y04_z00" pos="1.100 0.700 0.270">
+    <body name="cargo_x00_y04_z00" pos="0.850 0.700 0.270">
       <freejoint/>
       <geom name="cargo_x00_y04_z00_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y04_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_yR_z00" pos="1.100 1.000 0.270">
+    <body name="cargo_x00_yR_z00" pos="0.850 1.000 0.270">
       <freejoint/>
       <geom name="cargo_x00_yR_z00_geom" type="box" size="0.200 0.100 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_yR_z00_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y00_z01" pos="1.100 -0.900 0.670">
+    <body name="cargo_x00_y00_z01" pos="0.850 -0.900 0.670">
       <freejoint/>
       <geom name="cargo_x00_y00_z01_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y00_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y01_z01" pos="1.100 -0.500 0.670">
+    <body name="cargo_x00_y01_z01" pos="0.850 -0.500 0.670">
       <freejoint/>
       <geom name="cargo_x00_y01_z01_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y01_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y02_z01" pos="1.100 -0.100 0.670">
+    <body name="cargo_x00_y02_z01" pos="0.850 -0.100 0.670">
       <freejoint/>
       <geom name="cargo_x00_y02_z01_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y02_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y03_z01" pos="1.100 0.300 0.670">
+    <body name="cargo_x00_y03_z01" pos="0.850 0.300 0.670">
       <freejoint/>
       <geom name="cargo_x00_y03_z01_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y03_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y04_z01" pos="1.100 0.700 0.670">
+    <body name="cargo_x00_y04_z01" pos="0.850 0.700 0.670">
       <freejoint/>
       <geom name="cargo_x00_y04_z01_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y04_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_yR_z01" pos="1.100 1.000 0.670">
+    <body name="cargo_x00_yR_z01" pos="0.850 1.000 0.670">
       <freejoint/>
       <geom name="cargo_x00_yR_z01_geom" type="box" size="0.200 0.100 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_yR_z01_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y00_z02" pos="1.100 -0.900 1.070">
+    <body name="cargo_x00_y00_z02" pos="0.850 -0.900 1.070">
       <freejoint/>
       <geom name="cargo_x00_y00_z02_geom" type="box" size="0.100 0.200 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y00_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y01_z02" pos="1.100 -0.500 1.070">
+    <body name="cargo_x00_y01_z02" pos="0.850 -0.500 1.070">
       <freejoint/>
       <geom name="cargo_x00_y01_z02_geom" type="box" size="0.100 0.200 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y01_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y02_z02" pos="1.100 -0.100 1.070">
+    <body name="cargo_x00_y02_z02" pos="0.850 -0.100 1.070">
       <freejoint/>
       <geom name="cargo_x00_y02_z02_geom" type="box" size="0.100 0.200 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y02_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y03_z02" pos="1.100 0.300 1.070">
+    <body name="cargo_x00_y03_z02" pos="0.850 0.300 1.070">
       <freejoint/>
       <geom name="cargo_x00_y03_z02_geom" type="box" size="0.100 0.200 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y03_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y04_z02" pos="1.100 0.700 1.070">
+    <body name="cargo_x00_y04_z02" pos="0.850 0.700 1.070">
       <freejoint/>
       <geom name="cargo_x00_y04_z02_geom" type="box" size="0.100 0.200 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y04_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_yR_z02" pos="1.100 1.000 1.070">
+    <body name="cargo_x00_yR_z02" pos="0.850 1.000 1.070">
       <freejoint/>
       <geom name="cargo_x00_yR_z02_geom" type="box" size="0.200 0.100 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_yR_z02_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y00_z03" pos="1.100 -0.900 1.470">
+    <body name="cargo_x00_y00_z03" pos="0.850 -0.900 1.470">
       <freejoint/>
       <geom name="cargo_x00_y00_z03_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y00_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y01_z03" pos="1.100 -0.500 1.470">
+    <body name="cargo_x00_y01_z03" pos="0.850 -0.500 1.470">
       <freejoint/>
       <geom name="cargo_x00_y01_z03_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y01_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y02_z03" pos="1.100 -0.100 1.470">
+    <body name="cargo_x00_y02_z03" pos="0.850 -0.100 1.470">
       <freejoint/>
       <geom name="cargo_x00_y02_z03_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y02_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y03_z03" pos="1.100 0.300 1.470">
+    <body name="cargo_x00_y03_z03" pos="0.850 0.300 1.470">
       <freejoint/>
       <geom name="cargo_x00_y03_z03_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y03_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y04_z03" pos="1.100 0.700 1.470">
+    <body name="cargo_x00_y04_z03" pos="0.850 0.700 1.470">
       <freejoint/>
       <geom name="cargo_x00_y04_z03_geom" type="box" size="0.100 0.200 0.200" rgba="0.55 0.40 0.25 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y04_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_yR_z03" pos="1.100 1.000 1.470">
+    <body name="cargo_x00_yR_z03" pos="0.850 1.000 1.470">
       <freejoint/>
       <geom name="cargo_x00_yR_z03_geom" type="box" size="0.200 0.100 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_yR_z03_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y00_z04" pos="1.100 -0.900 1.870">
+    <body name="cargo_x00_y00_z04" pos="0.850 -0.900 1.870">
       <freejoint/>
       <geom name="cargo_x00_y00_z04_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y00_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y01_z04" pos="1.100 -0.500 1.870">
+    <body name="cargo_x00_y01_z04" pos="0.850 -0.500 1.870">
       <freejoint/>
       <geom name="cargo_x00_y01_z04_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y01_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y02_z04" pos="1.100 -0.100 1.870">
+    <body name="cargo_x00_y02_z04" pos="0.850 -0.100 1.870">
       <freejoint/>
       <geom name="cargo_x00_y02_z04_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y02_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y03_z04" pos="1.100 0.300 1.870">
+    <body name="cargo_x00_y03_z04" pos="0.850 0.300 1.870">
       <freejoint/>
       <geom name="cargo_x00_y03_z04_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y03_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_y04_z04" pos="1.100 0.700 1.870">
+    <body name="cargo_x00_y04_z04" pos="0.850 0.700 1.870">
       <freejoint/>
       <geom name="cargo_x00_y04_z04_geom" type="box" size="0.100 0.200 0.200" rgba="0.72 0.50 0.30 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_y04_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>
     </body>
-    <body name="cargo_x00_yR_z04" pos="1.100 1.000 1.870">
+    <body name="cargo_x00_yR_z04" pos="0.850 1.000 1.870">
       <freejoint/>
       <geom name="cargo_x00_yR_z04_geom" type="box" size="0.200 0.100 0.200" rgba="0.90 0.68 0.42 1" contype="1" conaffinity="3" friction="2.0 0.12 0.04" condim="6" solref="0.006 1.4" solimp="0.96 0.995 0.001" density="120.0"/>
       <site name="cargo_x00_yR_z04_top" pos="0 0 0.200" size="0.012" rgba="0 1 0 0.6"/>

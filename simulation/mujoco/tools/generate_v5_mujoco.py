@@ -420,7 +420,7 @@ def generate_scene_xml() -> str:
     inner_width = 2.2
     inner_height = 2.4
     inner_length = 4.0
-    x0 = 1.0
+    x0 = 0.75
     center_x = x0 + inner_length / 2.0
     robot_side_x = x0
     box_face = 0.40
