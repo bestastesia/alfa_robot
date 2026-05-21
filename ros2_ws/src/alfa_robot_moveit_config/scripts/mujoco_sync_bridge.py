@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import math
 import re
+import struct
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +44,26 @@ class RuntimeBox:
     object_id: str
     geom_id: int
     dimensions: tuple[float, float, float]
+
+
+@dataclass(frozen=True)
+class SemanticBoxRule:
+    object_id: str
+    geom_name: str
+    dimensions: tuple[float, float, float]
+    z_offset: float = 0.0
+
+
+SEMANTIC_BOX_RULES = [
+    SemanticBoxRule("semantic_container_floor", "container_open_top", (4.0, 2.2, 0.07), z_offset=-2.46),
+    SemanticBoxRule("semantic_container_left_wall", "container_open_left_post", (4.0, 0.09, 2.4)),
+    SemanticBoxRule("semantic_container_right_wall", "container_open_right_post", (4.0, 0.09, 2.4)),
+    SemanticBoxRule("semantic_container_roof", "container_open_top", (4.0, 2.2, 0.07)),
+    SemanticBoxRule("semantic_placement_platform", "placement_platform_surface", (0.90, 1.50, 0.07)),
+]
+
+CARGO_BOX_DIMENSIONS = (0.20, 0.40, 0.40)
+CARGO_REMAINDER_DIMENSIONS = (0.40, 0.20, 0.40)
 
 
 def find_default_scene() -> Path:
@@ -136,6 +157,58 @@ def parse_bool_arg(value: str) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def quat_xyzw_rotate(q, v):
+    qx, qy, qz, qw = q
+    vx, vy, vz = v
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + qy * tz - qz * ty,
+        vy + qw * ty + qz * tx - qx * tz,
+        vz + qw * tz + qx * ty - qy * tx,
+    )
+
+
+def collision_objects_to_points(collision_objects):
+    points = []
+    samples = (-0.5, 0.0, 0.5)
+    for collision_object in collision_objects:
+        for primitive, pose in zip(collision_object.primitives, collision_object.primitive_poses):
+            if len(primitive.dimensions) < 3:
+                continue
+            sx, sy, sz = primitive.dimensions[:3]
+            quat = (pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w)
+            center = (pose.position.x, pose.position.y, pose.position.z)
+            for ix in samples:
+                for iy in samples:
+                    for iz in samples:
+                        rotated = quat_xyzw_rotate(quat, (sx * ix, sy * iy, sz * iz))
+                        points.append((center[0] + rotated[0], center[1] + rotated[1], center[2] + rotated[2]))
+    return points
+
+
+def make_point_cloud2(points, frame_id, node):
+    from sensor_msgs.msg import PointCloud2, PointField
+
+    msg = PointCloud2()
+    msg.header.stamp = node.get_clock().now().to_msg()
+    msg.header.frame_id = frame_id
+    msg.height = 1
+    msg.width = len(points)
+    msg.fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+    ]
+    msg.is_bigendian = False
+    msg.point_step = 12
+    msg.row_step = msg.point_step * msg.width
+    msg.is_dense = True
+    msg.data = b"".join(struct.pack("<fff", *point) for point in points)
+    return msg
+
+
 class MujocoJointStateViewer:
     def __init__(self, xml_path: Path, joint_state_topic: str, initial_positions_path: Path | None = None, robot_mode: str = "kinematic"):
         self.xml_path = xml_path
@@ -148,6 +221,7 @@ class MujocoJointStateViewer:
         self.qvel_adrs: dict[str, int] = {}
         self.actuator_ids: dict[str, int] = {}
         self.runtime_boxes: list[RuntimeBox] = []
+        self.geom_ids_by_name: dict[str, int] = {}
 
         for joint_name in JOINT_NAMES:
             joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
@@ -163,11 +237,12 @@ class MujocoJointStateViewer:
                     self.actuator_ids[actuator_name[4:]] = actuator_id
 
         for geom_id in range(self.model.ngeom):
+            geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) or f"geom_{geom_id}"
+            self.geom_ids_by_name[geom_name] = geom_id
             if self.model.geom_type[geom_id] != mujoco.mjtGeom.mjGEOM_BOX:
                 continue
             if int(self.model.geom_contype[geom_id]) == 0 and int(self.model.geom_conaffinity[geom_id]) == 0:
                 continue
-            geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) or f"geom_{geom_id}"
             half_size = self.model.geom_size[geom_id]
             self.runtime_boxes.append(RuntimeBox(
                 object_id=sanitize_object_id(geom_name),
@@ -223,16 +298,44 @@ class MujocoJointStateViewer:
         objects = []
         for box in self.runtime_boxes:
             pose = self.runtime_box_pose(box.geom_id)
-            collision_object = CollisionObject()
-            collision_object.header.frame_id = frame_id
-            collision_object.id = box.object_id
-            collision_object.operation = CollisionObject.ADD
-            primitive = SolidPrimitive()
-            primitive.type = SolidPrimitive.BOX
-            primitive.dimensions = list(box.dimensions)
-            collision_object.primitives.append(primitive)
-            collision_object.primitive_poses.append(pose)
-            objects.append(collision_object)
+            objects.append(make_box_collision_object(CollisionObject, SolidPrimitive, frame_id, box.object_id, box.dimensions, pose))
+        return objects
+
+    def make_semantic_collision_objects(self, frame_id, CollisionObject, SolidPrimitive):
+        objects = []
+
+        for rule in SEMANTIC_BOX_RULES:
+            geom_id = self.geom_ids_by_name.get(rule.geom_name)
+            if geom_id is None:
+                continue
+            pose = self.runtime_box_pose(geom_id)
+            if rule.z_offset:
+                pose.position.z += rule.z_offset
+            if rule.object_id.startswith("semantic_container_"):
+                pose.position.x += rule.dimensions[0] * 0.5
+            objects.append(make_box_collision_object(
+                CollisionObject,
+                SolidPrimitive,
+                frame_id,
+                rule.object_id,
+                rule.dimensions,
+                pose,
+            ))
+
+        for box in self.runtime_boxes:
+            geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, box.geom_id) or ""
+            if not geom_name.startswith("cargo_"):
+                continue
+            dimensions = CARGO_REMAINDER_DIMENSIONS if "_yR_" in geom_name else CARGO_BOX_DIMENSIONS
+            objects.append(make_box_collision_object(
+                CollisionObject,
+                SolidPrimitive,
+                frame_id,
+                sanitize_object_id(geom_name, "semantic_"),
+                dimensions,
+                self.runtime_box_pose(box.geom_id),
+            ))
+
         return objects
 
     def runtime_box_pose(self, geom_id):
@@ -251,6 +354,19 @@ class MujocoJointStateViewer:
         return pose
 
 
+def make_box_collision_object(CollisionObject, SolidPrimitive, frame_id, object_id, dimensions, pose):
+    collision_object = CollisionObject()
+    collision_object.header.frame_id = frame_id
+    collision_object.id = object_id
+    collision_object.operation = CollisionObject.ADD
+    primitive = SolidPrimitive()
+    primitive.type = SolidPrimitive.BOX
+    primitive.dimensions = list(dimensions)
+    collision_object.primitives.append(primitive)
+    collision_object.primitive_poses.append(pose)
+    return collision_object
+
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="MuJoCo viewer following ROS2 /joint_states")
     parser.add_argument("--xml", default=str(find_default_scene()), help="MuJoCo XML path")
@@ -261,9 +377,12 @@ def parse_args(argv=None):
     parser.add_argument("--physics-rate", type=float, default=200.0, help="MuJoCo physics step rate in Hz")
     parser.add_argument("--max-steps-per-frame", type=int, default=20)
     parser.add_argument("--scene-rate", type=float, default=0.0, help="Publish runtime MuJoCo boxes as MoveIt PlanningScene at this Hz; 0 disables")
+    parser.add_argument("--scene-model-mode", choices=["semantic", "raw"], default="semantic", help="semantic builds known MoveIt objects from runtime parameters; raw forwards every MuJoCo box geom")
     parser.add_argument("--frame-id", default=DEFAULT_FRAME_ID, help="Frame for published MoveIt collision objects")
     parser.add_argument("--planning-scene-topic", default="/planning_scene")
     parser.add_argument("--collision-object-topic", default="/collision_object")
+    parser.add_argument("--pointcloud-topic", default="/mujoco_scene_points")
+    parser.add_argument("--pointcloud-rate", type=float, default=0.0, help="Publish a lightweight PointCloud2 demo generated from current semantic/raw boxes; 0 disables")
     parser.add_argument("--apply-on-start", default="false", help="Call /apply_planning_scene once when service is available")
     parser.add_argument("--camera-distance", type=float, default=4.0)
     parser.add_argument("--camera-elevation", type=float, default=-18.0)
@@ -288,6 +407,7 @@ def main(argv=None) -> int:
     node.create_subscription(JointState, args.joint_states, viewer_sync.on_joint_state, 10)
     planning_scene_pub = None
     collision_object_pub = None
+    pointcloud_pub = None
     apply_scene_client = None
     apply_scene_sent = False
     if args.scene_rate > 0.0:
@@ -301,19 +421,26 @@ def main(argv=None) -> int:
     else:
         CollisionObject = None
         SolidPrimitive = None
+    if args.pointcloud_rate > 0.0:
+        from sensor_msgs.msg import PointCloud2
+
+        pointcloud_pub = node.create_publisher(PointCloud2, args.pointcloud_topic, 10)
     node.get_logger().info(
         f"MuJoCo viewer sync ready: xml={args.xml}, topic={args.joint_states}, "
         f"joints={len(viewer_sync.qpos_adrs)}, robot_mode={args.robot_mode}, "
-        f"runtime_boxes={len(viewer_sync.runtime_boxes)}, scene_rate={args.scene_rate}"
+        f"runtime_boxes={len(viewer_sync.runtime_boxes)}, scene_rate={args.scene_rate}, "
+        f"scene_model_mode={args.scene_model_mode}, pointcloud_rate={args.pointcloud_rate}"
     )
 
     viewer_period = 1.0 / max(args.rate, 1.0)
     physics_period = 1.0 / max(args.physics_rate, 1.0)
     scene_period = 1.0 / args.scene_rate if args.scene_rate > 0.0 else 0.0
+    pointcloud_period = 1.0 / args.pointcloud_rate if args.pointcloud_rate > 0.0 else 0.0
     viewer_sync.model.opt.timestep = physics_period
     next_viewer_tick = time.monotonic()
     next_physics_tick = next_viewer_tick
     next_scene_tick = next_viewer_tick
+    next_pointcloud_tick = next_viewer_tick
 
     try:
         with mujoco.viewer.launch_passive(viewer_sync.model, viewer_sync.data) as viewer:
@@ -335,7 +462,10 @@ def main(argv=None) -> int:
                     next_physics_tick = time.monotonic()
 
                 if planning_scene_pub is not None and time.monotonic() >= next_scene_tick:
-                    collision_objects = viewer_sync.make_collision_objects(args.frame_id, CollisionObject, SolidPrimitive)
+                    if args.scene_model_mode == "semantic":
+                        collision_objects = viewer_sync.make_semantic_collision_objects(args.frame_id, CollisionObject, SolidPrimitive)
+                    else:
+                        collision_objects = viewer_sync.make_collision_objects(args.frame_id, CollisionObject, SolidPrimitive)
                     scene = PlanningScene()
                     scene.is_diff = True
                     scene.world.collision_objects = collision_objects
@@ -348,6 +478,15 @@ def main(argv=None) -> int:
                         apply_scene_client.call_async(request)
                         apply_scene_sent = True
                     next_scene_tick += scene_period
+
+                if pointcloud_pub is not None and time.monotonic() >= next_pointcloud_tick:
+                    if args.scene_model_mode == "semantic":
+                        pointcloud_objects = viewer_sync.make_semantic_collision_objects(args.frame_id, CollisionObject, SolidPrimitive)
+                    else:
+                        pointcloud_objects = viewer_sync.make_collision_objects(args.frame_id, CollisionObject, SolidPrimitive)
+                    points = collision_objects_to_points(pointcloud_objects)
+                    pointcloud_pub.publish(make_point_cloud2(points, args.frame_id, node))
+                    next_pointcloud_tick += pointcloud_period
                 viewer.sync()
 
                 next_viewer_tick += viewer_period

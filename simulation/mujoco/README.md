@@ -79,13 +79,20 @@ This opens the MuJoCo viewer with the same `scene.xml`, subscribes to
 `/joint_states`, and mirrors ROS robot joint positions into MuJoCo. The default
 `robot_mode=kinematic` keeps the robot exactly aligned with RViz while MuJoCo
 still advances physics for movable cargo and contacts at `200 Hz`; the viewer
-refreshes at `30 Hz`. The same sync node publishes runtime MuJoCo box poses to
-MoveIt at `scene_rate=1 Hz`, so moved cargo poses are reflected in the PlanningScene.
+refreshes at `30 Hz`.
+
+Obstacle sync defaults to `scene_model_mode=semantic`: MuJoCo provides runtime
+poses for known scene anchors, and the MoveIt side rebuilds parameterized objects
+(container extended backward from the front frame, fixed-size cargo boxes, and a
+fixed-size floating table plane). Use `scene_model_mode:=raw` to forward every
+MuJoCo collision box geom instead. The sync node publishes `/planning_scene` and
+`/collision_object` at `scene_rate=1 Hz`, and `pointcloud_rate:=1.0` enables a
+lightweight `/mujoco_scene_points` PointCloud2 demo generated from the same
+semantic/raw objects.
 
 The standalone PlanningScene bridge reads `simulation/mujoco/scene.xml` as a
-static snapshot. The combined `mujoco_sync_view.launch.py` path instead publishes
-runtime MuJoCo collision boxes to `/planning_scene` and `/collision_object`, and
-can apply the latest diff through `/apply_planning_scene`.
+static snapshot. The combined `mujoco_sync_view.launch.py` path is the runtime
+semantic/pointcloud demo path.
 
 Quick parser-only check:
 

@@ -18,7 +18,9 @@ def generate_launch_description():
     joint_states = LaunchConfiguration("joint_states")
     initial_positions = LaunchConfiguration("initial_positions")
     robot_mode = LaunchConfiguration("robot_mode")
+    scene_model_mode = LaunchConfiguration("scene_model_mode")
     scene_rate = LaunchConfiguration("scene_rate")
+    pointcloud_rate = LaunchConfiguration("pointcloud_rate")
     viewer_rate = LaunchConfiguration("viewer_rate")
     physics_rate = LaunchConfiguration("physics_rate")
 
@@ -29,7 +31,9 @@ def generate_launch_description():
             Path(get_package_share_directory("alfa_robot_moveit_config")) / "config" / "initial_positions.yaml"
         )),
         DeclareLaunchArgument("robot_mode", default_value="kinematic"),
+        DeclareLaunchArgument("scene_model_mode", default_value="semantic"),
         DeclareLaunchArgument("scene_rate", default_value="1.0"),
+        DeclareLaunchArgument("pointcloud_rate", default_value="0.0"),
         DeclareLaunchArgument("viewer_rate", default_value="30.0"),
         DeclareLaunchArgument("physics_rate", default_value="200.0"),
         Node(
@@ -45,6 +49,8 @@ def generate_launch_description():
                 "--rate", viewer_rate,
                 "--physics-rate", physics_rate,
                 "--scene-rate", scene_rate,
+                "--scene-model-mode", scene_model_mode,
+                "--pointcloud-rate", pointcloud_rate,
                 "--frame-id", "base_link",
                 "--apply-on-start", "true",
             ],
