@@ -53,7 +53,6 @@ SEMANTIC_BOX_RULES = [
 ]
 
 CARGO_BOX_DIMENSIONS = (0.20, 0.40, 0.40)
-CARGO_REMAINDER_DIMENSIONS = (0.40, 0.20, 0.40)
 
 
 def quat_xyzw_rotate(q, v):
@@ -150,13 +149,12 @@ def semantic_scene_to_collision_objects(scene_msg, frame_id, CollisionObject, So
         ))
 
     for cargo in scene_msg.cargo:
-        dimensions = CARGO_REMAINDER_DIMENSIONS if cargo.is_remainder else CARGO_BOX_DIMENSIONS
         objects.append(make_box_collision_object(
             CollisionObject,
             SolidPrimitive,
             frame_id,
             f"semantic_{cargo.id}",
-            dimensions,
+            CARGO_BOX_DIMENSIONS,
             cargo.pose,
         ))
     return objects

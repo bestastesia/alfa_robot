@@ -29,12 +29,13 @@ Regenerate after description changes:
 - container floor top height: `0.07 m` above the world ground plane
 - container opening faces the robot and starts about `0.75 m` in front of the robot
 - normal cargo box: `0.40 m × 0.40 m` face toward the robot, `0.20 m` depth
-- width packing: `5` normal columns plus one rotated `0.20 m` column for the remaining width
-- current generated cargo count: `30` movable boxes in the front row (`1` depth × `6` width columns × `5` height layers)
+- width packing: `5` normal columns, with the leftover `0.20 m` distributed as even side/inter-box gaps
+- current generated cargo count: `25` movable boxes in the front row (`1` depth × `5` width columns × `5` height layers)
 
-The cargo bodies are named `cargo_xXX_yYY_zZZ` and `cargo_xXX_yR_zZZ` so a later
-ROS bridge can convert them into MoveIt planning-scene obstacles. Each cargo body
-has a `freejoint`, so boxes can be pushed by the robot.
+The cargo bodies are named `cargo_xXX_yYY_zZZ` so a later ROS bridge can convert
+them into MoveIt planning-scene obstacles. Each cargo body has a `freejoint`, so
+boxes can be pushed by the robot. The old side-rotated `yR` column is intentionally
+removed to reduce persistent box-box contacts and MuJoCo viewer load.
 
 ## Quick checks
 

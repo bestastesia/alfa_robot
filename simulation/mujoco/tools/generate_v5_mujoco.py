@@ -415,8 +415,8 @@ def generate_scene_xml() -> str:
     # - Cargo floor height is 0.60 m.
     # - Normal cartons face the robot: 40 cm wide x 40 cm high face, 20 cm depth
     #   along robot-facing direction.
-    # - Inner width 2.2 m cannot be filled by 0.4 m modules exactly, so the last
-    #   0.2 m column is rotated: 40x20 face outward, 40x40 sideward.
+    # - Keep only normal cartons and distribute the unused width as even gaps to
+    #   reduce persistent carton-carton contacts in MuJoCo.
     inner_width = 2.2
     inner_height = 2.4
     inner_length = 4.0
@@ -428,20 +428,16 @@ def generate_scene_xml() -> str:
     box_sx = box_depth / 2.0
     box_sy = box_face / 2.0
     box_sz = box_face / 2.0
-    rotated_sx = box_face / 2.0
-    rotated_sy = box_depth / 2.0
     floor_top_z = 0.07
     x_count = 1
     y_count_normal = int(inner_width // box_face)
-    leftover_width = round(inner_width - y_count_normal * box_face, 6)
-    has_rotated_column = leftover_width >= box_depth - 1e-6
     z_count = 5
     x_pitch = box_depth
-    y_pitch = box_face
+    y_gap = (inner_width - y_count_normal * box_face) / (y_count_normal + 1)
+    y_pitch = box_face + y_gap
     z_pitch = box_face
     x_start = robot_side_x + box_sx
-    y_start = -inner_width / 2.0 + box_sy
-    rotated_y = inner_width / 2.0 - rotated_sy
+    y_start = -inner_width / 2.0 + y_gap + box_sy
     z_start = floor_top_z + box_sz
     colors = ["0.55 0.40 0.25 1", "0.72 0.50 0.30 1", "0.90 0.68 0.42 1"]
     cargo_lines = []
@@ -454,11 +450,6 @@ def generate_scene_xml() -> str:
                 name = f"cargo_x{x_index:02d}_y{y_index:02d}_z{z_index:02d}"
                 color = colors[z_index % len(colors)]
                 cargo_lines.append(box_body(name, (x, y, z), (box_sx, box_sy, box_sz), color, movable=True))
-            if has_rotated_column:
-                name = f"cargo_x{x_index:02d}_yR_z{z_index:02d}"
-                color = colors[(z_index + 1) % len(colors)]
-                cargo_lines.append(box_body(name, (x, rotated_y, z), (rotated_sx, rotated_sy, box_sz), color, movable=True))
-
     lines = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<mujoco model="alfa_logistics_scene_v5">',
