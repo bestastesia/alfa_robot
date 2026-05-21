@@ -18,8 +18,7 @@ def generate_launch_description():
     joint_states = LaunchConfiguration("joint_states")
     initial_positions = LaunchConfiguration("initial_positions")
     robot_mode = LaunchConfiguration("robot_mode")
-    scene_model_mode = LaunchConfiguration("scene_model_mode")
-    scene_rate = LaunchConfiguration("scene_rate")
+    semantic_rate = LaunchConfiguration("semantic_rate")
     pointcloud_rate = LaunchConfiguration("pointcloud_rate")
     viewer_rate = LaunchConfiguration("viewer_rate")
     physics_rate = LaunchConfiguration("physics_rate")
@@ -31,8 +30,7 @@ def generate_launch_description():
             Path(get_package_share_directory("alfa_robot_moveit_config")) / "config" / "initial_positions.yaml"
         )),
         DeclareLaunchArgument("robot_mode", default_value="kinematic"),
-        DeclareLaunchArgument("scene_model_mode", default_value="semantic"),
-        DeclareLaunchArgument("scene_rate", default_value="1.0"),
+        DeclareLaunchArgument("semantic_rate", default_value="1.0"),
         DeclareLaunchArgument("pointcloud_rate", default_value="0.0"),
         DeclareLaunchArgument("viewer_rate", default_value="30.0"),
         DeclareLaunchArgument("physics_rate", default_value="200.0"),
@@ -48,10 +46,20 @@ def generate_launch_description():
                 "--robot-mode", robot_mode,
                 "--rate", viewer_rate,
                 "--physics-rate", physics_rate,
-                "--scene-rate", scene_rate,
-                "--scene-model-mode", scene_model_mode,
-                "--pointcloud-rate", pointcloud_rate,
+                "--semantic-rate", semantic_rate,
                 "--frame-id", "base_link",
+            ],
+        ),
+        Node(
+            package="alfa_robot_moveit_config",
+            executable="semantic_scene_to_planning_scene.py",
+            name="semantic_scene_to_planning_scene",
+            output="screen",
+            arguments=[
+                "--frame-id", "base_link",
+                "--pointcloud-topic", "/mujoco_scene_points",
+                "--pointcloud-rate", pointcloud_rate,
+                "--max-publish-rate", semantic_rate,
                 "--apply-on-start", "true",
             ],
         ),

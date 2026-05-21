@@ -2,17 +2,26 @@ cmake_minimum_required(VERSION 3.22)
 project(alfa_robot_moveit_config)
 
 find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_ros_planning REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/SemanticCargo.msg"
+  "msg/SemanticScene.msg"
+  DEPENDENCIES std_msgs geometry_msgs
+)
+ament_export_dependencies(rosidl_default_runtime)
 
 # dual_arm_planner_node: 双末端位姿规划，走 MoveGroupInterface::setPoseTarget
 # 让 bio_ik 通过 setFromIK(poses, tips) 路径统一协调双臂+updown
@@ -55,5 +64,7 @@ install(PROGRAMS
   scripts/mujoco_joint_demo_commander.py
   scripts/mujoco_sync_bridge.py
   scripts/mujoco_planning_scene_bridge.py
+  scripts/semantic_scene_to_planning_scene.py
+  scripts/semantic_scene_utils.py
   DESTINATION lib/${PROJECT_NAME}
 )

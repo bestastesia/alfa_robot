@@ -81,18 +81,17 @@ This opens the MuJoCo viewer with the same `scene.xml`, subscribes to
 still advances physics for movable cargo and contacts at `200 Hz`; the viewer
 refreshes at `30 Hz`.
 
-Obstacle sync defaults to `scene_model_mode=semantic`: MuJoCo provides runtime
-poses for known scene anchors, and the MoveIt side rebuilds parameterized objects
-(container extended backward from the front frame, fixed-size cargo boxes, and a
-fixed-size floating table plane). Use `scene_model_mode:=raw` to forward every
-MuJoCo collision box geom instead. The sync node publishes `/planning_scene` and
-`/collision_object` at `scene_rate=1 Hz`, and `pointcloud_rate:=1.0` enables a
-lightweight `/mujoco_scene_points` PointCloud2 demo generated from the same
-semantic/raw objects.
+Runtime obstacle sync now uses a compact semantic topic. `mujoco_sync_bridge.py`
+publishes `/mujoco_semantic_scene` at `semantic_rate=1 Hz`: container front pose,
+cargo poses, and table pose only. `semantic_scene_to_planning_scene.py` rebuilds
+MoveIt objects from those parameters: container extended backward from the front
+frame, fixed-size cargo boxes, and a fixed-size floating table plane.
 
-The standalone PlanningScene bridge reads `simulation/mujoco/scene.xml` as a
-static snapshot. The combined `mujoco_sync_view.launch.py` path is the runtime
-semantic/pointcloud demo path.
+The converter publishes `/planning_scene` and `/collision_object`; set
+`pointcloud_rate:=1.0` to also publish `/mujoco_scene_points` as a lightweight
+PointCloud2 demo. The older `mujoco_planning_scene_bridge.launch.py` remains a
+static XML snapshot path, and `mujoco_sync_bridge.py --scene-rate ...` remains a
+legacy raw-geom direct PlanningScene mode for comparison.
 
 Quick parser-only check:
 
