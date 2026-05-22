@@ -82,7 +82,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/visual/pitch.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/visual/pitch.STL" />
       </geometry>
       <material
         name="">
@@ -96,7 +96,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v4_new/collision/pitch.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/collision/pitch.STL" />
       </geometry>
     </collision>
   </link>
@@ -140,7 +140,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot/visual/turn.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/visual/turn.STL" />
       </geometry>
       <material
         name="arm_grey">
@@ -154,7 +154,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot/collision/turn.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/collision/turn.STL" />
       </geometry>
     </collision>
   </link>
@@ -162,7 +162,7 @@
     name="turn"
     type="continuous">
     <origin
-      xyz="0 0 0"
+      xyz="-0.189 0.0545 0.12"
       rpy="0 0 0" />
     <parent
       link="pitch" />
@@ -193,7 +193,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot/visual/updown.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/visual/updown.STL" />
       </geometry>
       <material
         name="arm_grey">
@@ -207,7 +207,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="package://alfa_robot_description/meshes/alfa_robot/collision/updown.STL" />
+          filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5/collision/updown.STL" />
       </geometry>
     </collision>
   </link>
@@ -215,7 +215,7 @@
     name="updown"
     type="prismatic">
     <origin
-      xyz="-0.23547 0 0.57771"
+      xyz="-0.07 0.0005 0.0645"
       rpy="0 0 0" />
     <parent
       link="turn" />
@@ -243,7 +243,7 @@
   <joint name="left_v5_mount" type="fixed">
     <parent link="updown"/>
     <child link="left_v5_link0"/>
-    <origin xyz="0 0.20 0.18" rpy="0 0 0"/>
+    <origin xyz="0.105 0.26 0.2" rpy="0 0 0"/>
   </joint>
 
   <link name="left_v5_link1">
@@ -421,7 +421,7 @@
   <joint name="right_v5_mount" type="fixed">
     <parent link="updown"/>
     <child link="right_v5_link0"/>
-    <origin xyz="0 -0.20 0.18" rpy="0 0 0"/>
+    <origin xyz="0.105 -0.26 0.2" rpy="0 0 0"/>
   </joint>
 
   <link name="right_v5_link1">
