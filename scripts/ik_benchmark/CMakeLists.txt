@@ -171,6 +171,31 @@ ament_target_dependencies(pick_place_updown_lookup PUBLIC
 
 target_link_libraries(pick_place_updown_lookup PRIVATE ik_solver_lib)
 
+# ── parallel_ik_benchmark executable ─────────────────────────────────────
+
+add_executable(parallel_ik_benchmark src/parallel_ik_benchmark_main.cpp)
+
+target_include_directories(parallel_ik_benchmark PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(parallel_ik_benchmark PUBLIC
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(parallel_ik_benchmark PRIVATE ik_solver_lib)
+
 # ── collision_state_monitor executable ────────────────────────────────────
 
 add_executable(collision_state_monitor src/collision_state_monitor.cpp)
@@ -194,7 +219,7 @@ ament_target_dependencies(collision_state_monitor PUBLIC
 
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup collision_state_monitor ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark collision_state_monitor ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
