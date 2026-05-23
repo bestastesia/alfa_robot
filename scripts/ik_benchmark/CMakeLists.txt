@@ -248,6 +248,31 @@ ament_target_dependencies(parallel_updown_ik_demo PUBLIC
 
 target_link_libraries(parallel_updown_ik_demo PRIVATE parallel_updown_aware_ik_solver_lib)
 
+# ── updown_solver_comparison executable ───────────────────────────────────
+
+add_executable(updown_solver_comparison src/updown_solver_comparison_benchmark.cpp)
+
+target_include_directories(updown_solver_comparison PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(updown_solver_comparison PUBLIC
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(updown_solver_comparison PRIVATE parallel_updown_aware_ik_solver_lib)
+
 # ── collision_state_monitor executable ────────────────────────────────────
 
 add_executable(collision_state_monitor src/collision_state_monitor.cpp)
@@ -271,7 +296,7 @@ ament_target_dependencies(collision_state_monitor PUBLIC
 
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark parallel_updown_ik_demo collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

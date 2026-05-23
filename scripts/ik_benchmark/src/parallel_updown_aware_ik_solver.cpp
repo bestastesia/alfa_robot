@@ -544,16 +544,67 @@ double ParallelUpdownAwareIkSolver::jointDelta(
     return count == 0 ? 0.0 : std::sqrt(sum);
 }
 
+double ParallelUpdownAwareIkSolver::jointValue(
+    const UpdownAwareIkCandidate& candidate, const std::string& name, double fallback) const
+{
+    for (size_t i = 0; i < candidate.full_joint_names.size() && i < candidate.full_joint_values.size(); ++i) {
+        if (candidate.full_joint_names[i] == name) {
+            return candidate.full_joint_values[i];
+        }
+    }
+    return fallback;
+}
+
+double ParallelUpdownAwareIkSolver::armTorqueProxy(
+    const UpdownAwareIkCandidate& candidate, const std::string& prefix) const
+{
+    const bool is_left = prefix == "left";
+    const double q2 = jointValue(candidate, prefix + "_v5_joint2");
+    const double q3 = jointValue(candidate, prefix + "_v5_joint3");
+    const double q2_zero = is_left ? config_.left_joint2_horizontal_angle : config_.right_joint2_horizontal_angle;
+    const double q3_zero = is_left ? config_.left_joint3_horizontal_angle : config_.right_joint3_horizontal_angle;
+
+    const double shoulder_angle = q2 - q2_zero;
+    const double elbow_angle = q2 + q3 - q2_zero - q3_zero;
+
+    const double link2_moment = config_.link2_mass_proxy * 0.5 * config_.link2_length * std::abs(std::cos(shoulder_angle));
+    const double link3_shoulder_moment = config_.link3_mass_proxy *
+        (config_.link2_length * std::abs(std::cos(shoulder_angle)) +
+         0.5 * config_.link3_length * std::abs(std::cos(elbow_angle)));
+    const double payload_shoulder_moment = config_.payload_mass_proxy *
+        (config_.link2_length * std::abs(std::cos(shoulder_angle)) +
+         config_.link3_length * std::abs(std::cos(elbow_angle)));
+    const double joint2_proxy = link2_moment + link3_shoulder_moment + payload_shoulder_moment;
+
+    const double link3_elbow_moment = config_.link3_mass_proxy * 0.5 * config_.link3_length * std::abs(std::cos(elbow_angle));
+    const double payload_elbow_moment = config_.payload_mass_proxy * config_.link3_length * std::abs(std::cos(elbow_angle));
+    const double joint3_proxy = link3_elbow_moment + payload_elbow_moment;
+
+    return config_.cost_joint2_torque * joint2_proxy + config_.cost_joint3_torque * joint3_proxy;
+}
+
 double ParallelUpdownAwareIkSolver::scoreCandidate(
     const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const
 {
     if (custom_cost_) {
         return custom_cost_(candidate, request);
     }
-    return config_.cost_updown_delta * candidate.updown_delta +
-           config_.cost_joint_delta * candidate.joint_delta +
-           config_.cost_solve_ms * candidate.solve_ms +
-           config_.cost_h_center_delta * std::abs(candidate.h - candidate.h_center);
+
+    double score = 0.0;
+    if (candidate.updown_delta <= config_.updown_static_epsilon) {
+        score -= config_.cost_updown_static_bonus;
+    }
+    if (candidate.updown_delta <= config_.updown_small_motion_threshold) {
+        score -= config_.cost_updown_within_0p1_bonus;
+    } else {
+        score += config_.cost_updown_over_0p1_distance *
+                 (candidate.updown_delta - config_.updown_small_motion_threshold);
+    }
+
+    score += armTorqueProxy(candidate, "left");
+    score += armTorqueProxy(candidate, "right");
+    score += config_.cost_solve_ms * candidate.solve_ms;
+    return score;
 }
 
 void ParallelUpdownAwareIkSolver::sortAndSelect(

@@ -140,14 +140,14 @@ class XEdgeRefineReachability(Node):
         self.declare_parameter("orientation_mode", "all9")  # all9 or center
         self.declare_parameter("step", 0.01)
         self.declare_parameter("x_step", 0.01)
-        self.declare_parameter("y_step", 0.05)
-        self.declare_parameter("z_step", 0.05)
+        self.declare_parameter("y_step", 0.025)
+        self.declare_parameter("z_step", 0.025)
 
         # Defaults are tight boxes around the previous x extrema edge points.
         self.declare_parameter(
             "regions",
-            "x_plus:0.70:0.80:0.00:0.40:0.80:1.30;"
-            "x_minus:-0.80:-0.90:-0.10:0.50:0.70:1.40",
+            "x_plus:0.80:0.85:0.2:0.45:0.55:0.75;"
+            "x_minus:-0.80:-0.85:0.2:0.45:0.55:0.75",
         )
         self.declare_parameter("left_group", "left_v5_arm")
         self.declare_parameter("right_group", "right_v5_arm")

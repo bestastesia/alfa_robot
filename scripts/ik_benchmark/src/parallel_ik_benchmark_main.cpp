@@ -55,9 +55,9 @@ struct Episode {
 };
 
 struct ReachSphere {
-    double cx = -0.065;
-    double cy = 0.2;
-    double cz = 1.025;
+    double cx = 0.015;
+    double cy = 0.3125;
+    double cz = 0.6625;
     double radius = 0.815;
 };
 
@@ -674,7 +674,7 @@ std::vector<Episode> makeEpisodes(const std::string& profile,
     const auto candidates = candidateEpisodes(approach_offset, place_safe_z, base_only_dataset);
     ReachSphere left_sphere;
     ReachSphere right_sphere;
-    right_sphere.cy = -0.2;
+    right_sphere.cy = -0.3125;
 
     std::vector<Episode> reachable_pool;
     std::vector<Episode> ik_failed_pool;
@@ -1178,7 +1178,7 @@ int main(int argc, char** argv)
 
             ReachSphere left_sphere;
             ReachSphere right_sphere;
-            right_sphere.cy = -0.2;
+            right_sphere.cy = -0.3125;
             RunSummary summary;
             summary.difficulty = difficulty;
             summary.workers = workers;

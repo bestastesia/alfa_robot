@@ -9,10 +9,10 @@ parallel_updown_aware_ik:
 
   h_planner:
     left_reach_sphere:
-      center: [-0.065, 0.2, 1.025]
+      center: [0.015, 0.3125, 0.6625]
       radius: 0.815
     right_reach_sphere:
-      center: [-0.065, -0.2, 1.025]
+      center: [0.015, -0.3125, 0.6625]
       radius: 0.815
     physical_limits: [0.0, 0.99]
     tool0_offset: 0.1
@@ -45,8 +45,29 @@ parallel_updown_aware_ik:
     release_updown_seed_count: 12
 
   cost_scorer:
+    # Default score is lower-is-better:
+    # - reward no updown motion
+    # - reward updown motion within 0.1m
+    # - penalize movement beyond 0.1m proportionally
+    # - penalize joint2/3 torque proxy; joint2 should usually be weighted higher
     weights:
-      updown_delta: 1.0
-      joint_delta: 0.01
-      solve_ms: 0.001
-      h_center_delta: 0.0
+      updown_static_bonus: 1.0
+      updown_within_0p1_bonus: 0.3
+      updown_over_0p1_distance: 1.0
+      joint2_torque: 1.0
+      joint3_torque: 0.5
+      solve_ms: 0.0
+    thresholds:
+      updown_static_epsilon: 0.005
+      updown_small_motion: 0.1
+    torque_proxy:
+      # Tune these after checking real horizontal posture in RViz/robot.
+      left_joint2_horizontal_angle: 0.0
+      left_joint3_horizontal_angle: 0.0
+      right_joint2_horizontal_angle: 0.0
+      right_joint3_horizontal_angle: 0.0
+      link2_length: 0.65
+      link3_length: 0.65
+      link2_mass_proxy: 1.0
+      link3_mass_proxy: 1.0
+      payload_mass_proxy: 1.0

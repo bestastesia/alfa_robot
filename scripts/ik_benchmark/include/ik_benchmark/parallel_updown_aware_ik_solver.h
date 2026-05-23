@@ -12,9 +12,9 @@
 namespace ik_benchmark {
 
 struct ReachSphereConfig {
-    double cx = -0.065;
-    double cy = 0.2;
-    double cz = 1.025;
+    double cx = 0.015;
+    double cy = 0.3125;
+    double cz = 0.6625;
     double radius = 0.815;
 };
 
@@ -32,7 +32,7 @@ struct UpdownAwareIkConfig {
     std::string right_tip = "right_v5_tool0";
 
     ReachSphereConfig left_reach_sphere;
-    ReachSphereConfig right_reach_sphere = {-0.065, -0.2, 1.025, 0.815};
+    ReachSphereConfig right_reach_sphere = {0.015, -0.3125, 0.6625, 0.815};
     double tool0_offset = 0.1;
     double sphere_margin = 0.0;
     double h_lower = 0.0;
@@ -61,10 +61,25 @@ struct UpdownAwareIkConfig {
     double fallback_timeout = 2.0;
     size_t fallback_seed_count = 12;
 
-    double cost_updown_delta = 1.0;
-    double cost_joint_delta = 0.01;
-    double cost_solve_ms = 0.001;
-    double cost_h_center_delta = 0.0;
+    double cost_updown_static_bonus = 1.0;
+    double cost_updown_within_0p1_bonus = 0.3;
+    double cost_updown_over_0p1_distance = 1.0;
+    double cost_joint2_torque = 1.0;
+    double cost_joint3_torque = 0.5;
+    double cost_solve_ms = 0.0;
+
+    double updown_static_epsilon = 0.005;
+    double updown_small_motion_threshold = 0.1;
+
+    double left_joint2_horizontal_angle = 0.0;
+    double left_joint3_horizontal_angle = 0.0;
+    double right_joint2_horizontal_angle = 0.0;
+    double right_joint3_horizontal_angle = 0.0;
+    double link2_length = 0.65;
+    double link3_length = 0.65;
+    double link2_mass_proxy = 1.0;
+    double link3_mass_proxy = 1.0;
+    double payload_mass_proxy = 1.0;
 
     IkSolverOptions solver_options;
 };
@@ -195,6 +210,8 @@ private:
     double positionError(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const;
     double orientationError(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const;
     double jointDelta(const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const;
+    double jointValue(const UpdownAwareIkCandidate& candidate, const std::string& name, double fallback = 0.0) const;
+    double armTorqueProxy(const UpdownAwareIkCandidate& candidate, const std::string& prefix) const;
     double scoreCandidate(const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const;
     void sortAndSelect(UpdownAwareIkResult& result, const UpdownAwareIkRequest& request) const;
     bool shouldUseFallback(const HeightPlan& plan, const std::vector<UpdownAwareIkCandidate>& candidates) const;
