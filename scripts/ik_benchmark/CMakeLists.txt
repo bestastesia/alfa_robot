@@ -46,6 +46,33 @@ ament_target_dependencies(ik_solver_lib PUBLIC
   nlohmann_json
 )
 
+# ── ParallelUpdownAwareIkSolver library ───────────────────────────────────
+
+add_library(parallel_updown_aware_ik_solver_lib SHARED
+  src/parallel_updown_aware_ik_solver.cpp
+)
+
+target_include_directories(parallel_updown_aware_ik_solver_lib PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(parallel_updown_aware_ik_solver_lib PUBLIC
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(parallel_updown_aware_ik_solver_lib PUBLIC ik_solver_lib)
+
 # ── ik_benchmark executable ────────────────────────────────────────────────
 
 add_executable(ik_benchmark src/benchmark_main.cpp)
@@ -196,6 +223,31 @@ ament_target_dependencies(parallel_ik_benchmark PUBLIC
 
 target_link_libraries(parallel_ik_benchmark PRIVATE ik_solver_lib)
 
+# ── parallel_updown_ik_demo executable ────────────────────────────────────
+
+add_executable(parallel_updown_ik_demo src/parallel_updown_ik_demo_main.cpp)
+
+target_include_directories(parallel_updown_ik_demo PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(parallel_updown_ik_demo PUBLIC
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(parallel_updown_ik_demo PRIVATE parallel_updown_aware_ik_solver_lib)
+
 # ── collision_state_monitor executable ────────────────────────────────────
 
 add_executable(collision_state_monitor src/collision_state_monitor.cpp)
@@ -219,7 +271,7 @@ ament_target_dependencies(collision_state_monitor PUBLIC
 
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark collision_state_monitor ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark parallel_updown_ik_demo collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -227,6 +279,10 @@ install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_plac
 
 install(DIRECTORY include/
   DESTINATION include
+)
+
+install(DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
 )
 
 install(PROGRAMS
