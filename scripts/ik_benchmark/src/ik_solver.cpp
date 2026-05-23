@@ -90,6 +90,10 @@ void IkSolver::loadRobotModel()
 
     robot_model_ = std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
     planning_scene_ = std::make_shared<planning_scene::PlanningScene>(robot_model_);
+    auto& acm = planning_scene_->getAllowedCollisionMatrixNonConst();
+    for (const auto& collision_pair : srdf_model->getDisabledCollisionPairs()) {
+        acm.setEntry(collision_pair.link1_, collision_pair.link2_, true);
+    }
 
     jmg_ = robot_model_->getJointModelGroup(group_name_);
     if (!jmg_) {
