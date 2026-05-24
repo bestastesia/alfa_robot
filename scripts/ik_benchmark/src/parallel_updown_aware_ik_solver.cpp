@@ -83,9 +83,12 @@ UpdownAwareIkResult ParallelUpdownAwareIkSolver::solve(const UpdownAwareIkReques
 
     if (!result.success && config_.fallback_enabled && shouldUseFallback(plan, candidates)) {
         result.fallback_used = true;
-        auto fallback_candidates = executeTrials(makeFallbackTrials(request, plan), request, plan, true);
-        result.candidates.insert(result.candidates.end(), fallback_candidates.begin(), fallback_candidates.end());
-        sortAndSelect(result, request);
+        const size_t fallback_rounds = std::max<size_t>(1, config_.fallback_rounds);
+        for (size_t round_index = 0; round_index < fallback_rounds && !result.success; ++round_index) {
+            auto fallback_candidates = executeTrials(makeFallbackTrials(request, plan, round_index), request, plan, true);
+            result.candidates.insert(result.candidates.end(), fallback_candidates.begin(), fallback_candidates.end());
+            sortAndSelect(result, request);
+        }
         if (!result.success && result.failure_reason.empty()) {
             result.failure_reason = "fallback_failed";
         }
@@ -263,30 +266,67 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
     return trials;
 }
 
-std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver::makeFallbackTrials(
-    const UpdownAwareIkRequest& request, const HeightPlan& plan) const
+std::vector<std::vector<double>> ParallelUpdownAwareIkSolver::makeFallbackSeedFamilies(
+    const UpdownAwareIkRequest& request, size_t round_index) const
 {
-    std::vector<TrialSpec> trials;
-    std::vector<double> base_seed = !request.current_full_joints.empty()
+    const auto& free_names = freeVariableNames();
+    std::vector<std::vector<double>> families;
+
+    std::vector<double> last_success_seed = !request.current_full_joints.empty()
         ? request.current_full_joints
         : makeFullSeedFromArmSeed(request.current_h, request.current_arm_joints);
-    if (base_seed.size() != freeVariableNames().size()) {
-        base_seed = makeFullSeedFromArmSeed(request.current_h, request.current_arm_joints);
+    if (last_success_seed.size() != free_names.size()) {
+        last_success_seed = makeFullSeedFromArmSeed(request.current_h, request.current_arm_joints);
     }
-    const size_t attempts = std::max<size_t>(1, config_.fallback_seed_count);
-    for (size_t i = 0; i < attempts; ++i) {
-        TrialSpec trial;
-        trial.free_updown = true;
-        trial.h = plan.reachable ? plan.h_center : request.current_h;
-        trial.h_range_lower = config_.h_lower;
-        trial.h_range_upper = config_.h_upper;
-        trial.seed_index = i;
-        trial.solver_path = "release_updown_fallback";
-        trial.seed = i == 0
-            ? base_seed
-            : makePerturbedSeed(freeVariableNames(), base_seed, 100000 + i,
-                                config_.seed_noise, std::max(config_.h_step, config_.h_search_margin));
-        trials.push_back(std::move(trial));
+    if (last_success_seed.size() == free_names.size()) {
+        families.push_back(last_success_seed);
+    }
+
+    std::vector<double> home_seed(free_names.size(), 0.0);
+    for (size_t i = 0; i < free_names.size(); ++i) {
+        if (free_names[i] == "updown") {
+            home_seed[i] = std::min(std::max(request.current_h, config_.h_lower), config_.h_upper);
+        }
+    }
+    families.push_back(home_seed);
+
+    const size_t random_family_count = std::max<size_t>(1, config_.fallback_random_family_count);
+    for (size_t family_index = 0; family_index < random_family_count; ++family_index) {
+        const auto& base = family_index % 2 == 0 ? last_success_seed : home_seed;
+        families.push_back(makePerturbedSeed(free_names, base,
+                                             200000 + round_index * 1009 + family_index,
+                                             config_.fallback_seed_noise,
+                                             config_.fallback_updown_noise));
+    }
+    return families;
+}
+
+std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver::makeFallbackTrials(
+    const UpdownAwareIkRequest& request, const HeightPlan& plan, size_t round_index) const
+{
+    std::vector<TrialSpec> trials;
+    const auto seed_families = makeFallbackSeedFamilies(request, round_index);
+    const size_t per_family = std::max<size_t>(1, config_.fallback_random_per_family);
+    size_t seed_index = 0;
+    for (size_t family_index = 0; family_index < seed_families.size(); ++family_index) {
+        const auto& family_seed = seed_families[family_index];
+        for (size_t attempt = 0; attempt < per_family; ++attempt) {
+            TrialSpec trial;
+            trial.free_updown = true;
+            trial.h = plan.reachable ? plan.h_center : request.current_h;
+            trial.h_range_lower = config_.h_lower;
+            trial.h_range_upper = config_.h_upper;
+            trial.h_index = round_index;
+            trial.seed_index = seed_index++;
+            trial.solver_path = "global_free_h_fallback";
+            trial.seed = attempt == 0
+                ? family_seed
+                : makePerturbedSeed(freeVariableNames(), family_seed,
+                                    300000 + round_index * 100003 + family_index * per_family + attempt,
+                                    config_.fallback_seed_noise,
+                                    config_.fallback_updown_noise);
+            trials.push_back(std::move(trial));
+        }
     }
     return trials;
 }
@@ -337,7 +377,7 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     out.h_center = plan.h_center;
     out.h_index = trial.h_index;
     out.seed_index = trial.seed_index;
-    out.solver_path = fallback ? "release_updown_fallback" : trial.solver_path;
+    out.solver_path = trial.solver_path;
     out.target_order = swapped_order ? "swapped" : "normal";
 
     const Eigen::Isometry3d left_target = trial.free_updown

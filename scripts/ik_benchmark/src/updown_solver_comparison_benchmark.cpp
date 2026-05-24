@@ -53,6 +53,37 @@ struct LeverParams {
     double link3_length = 0.65;
 };
 
+struct HeightInterval {
+    bool reachable = false;
+    double lower = 0.0;
+    double upper = 0.0;
+};
+
+struct LookupHeightPlan {
+    bool reachable = false;
+    HeightInterval left;
+    HeightInterval right;
+    HeightInterval combined;
+    std::vector<double> candidates;
+};
+
+struct LookupSolution {
+    bool success = false;
+    double h = 0.0;
+    size_t h_index = 0;
+    size_t seed_index = 0;
+    double score = std::numeric_limits<double>::infinity();
+    double solve_ms = 0.0;
+    double direct_pos_error = 0.0;
+    double direct_ori_error = 0.0;
+    bool collision_free = false;
+    std::vector<std::string> joint_names;
+    std::vector<double> joint_values;
+    std::vector<std::string> full_joint_names;
+    std::vector<double> full_joint_values;
+    std::vector<std::string> collision_pairs;
+};
+
 LeverParams leverParamsFromConfig(const UpdownAwareIkConfig& config)
 {
     return {
@@ -199,6 +230,11 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         if (key == "enabled") config.fallback_enabled = parseBool(value);
         else if (key == "release_updown_timeout") config.fallback_timeout = parseDouble(value);
         else if (key == "release_updown_seed_count") config.fallback_seed_count = static_cast<size_t>(std::stoul(value));
+        else if (key == "rounds") config.fallback_rounds = static_cast<size_t>(std::stoul(value));
+        else if (key == "random_family_count") config.fallback_random_family_count = static_cast<size_t>(std::stoul(value));
+        else if (key == "random_per_family") config.fallback_random_per_family = static_cast<size_t>(std::stoul(value));
+        else if (key == "seed_noise") config.fallback_seed_noise = parseDouble(value);
+        else if (key == "updown_noise") config.fallback_updown_noise = parseDouble(value);
         else return false;
         return true;
     }
@@ -367,6 +403,98 @@ std::vector<Stage> makeStages(size_t round, const PickPoint& point, double appro
 Eigen::Isometry3d compensateTool0(const PoseSpec& pose, double tool0_offset)
 {
     return toIsometry(pose) * Eigen::Translation3d(0.0, 0.0, -tool0_offset);
+}
+
+HeightInterval lookupIntervalForTarget(const PoseSpec& target,
+                                       const ik_benchmark::ReachSphereConfig& sphere,
+                                       double tool0_offset,
+                                       double h_lower,
+                                       double h_upper,
+                                       double margin)
+{
+    const double radius = std::max(0.0, sphere.radius - margin);
+    const double dx = target.x - sphere.cx;
+    const double dy = target.y - sphere.cy;
+    const double dxy2 = dx * dx + dy * dy;
+    const double r2 = radius * radius;
+    HeightInterval interval;
+    if (dxy2 > r2) return interval;
+    const double z_margin = std::sqrt(std::max(0.0, r2 - dxy2));
+    const double ik_target_z = target.z - tool0_offset;
+    interval.lower = std::max(h_lower, ik_target_z - sphere.cz - z_margin);
+    interval.upper = std::min(h_upper, ik_target_z - sphere.cz + z_margin);
+    interval.reachable = interval.lower <= interval.upper;
+    return interval;
+}
+
+std::vector<double> lookupHeightCandidates(const HeightInterval& interval,
+                                           double current_h,
+                                           double step,
+                                           size_t max_candidates)
+{
+    std::vector<double> candidates;
+    if (!interval.reachable || max_candidates == 0) return candidates;
+    auto add = [&](double value) {
+        if (candidates.size() >= max_candidates) return;
+        const double clamped = std::min(std::max(value, interval.lower), interval.upper);
+        for (double existing : candidates) {
+            if (std::abs(existing - clamped) < 1e-9) return;
+        }
+        candidates.push_back(clamped);
+    };
+    add(current_h);
+    if (step <= 0.0) return candidates;
+    for (size_t ring = 1; candidates.size() < max_candidates; ++ring) {
+        const double delta = step * static_cast<double>(ring);
+        bool added = false;
+        if (current_h - delta >= interval.lower - 1e-9) {
+            add(current_h - delta);
+            added = true;
+        }
+        if (current_h + delta <= interval.upper + 1e-9) {
+            add(current_h + delta);
+            added = true;
+        }
+        if (!added && current_h - delta < interval.lower && current_h + delta > interval.upper) break;
+    }
+    return candidates;
+}
+
+LookupHeightPlan lookupPlanHeights(const Stage& stage,
+                                   const UpdownAwareIkConfig& config,
+                                   double current_h,
+                                   size_t max_candidates)
+{
+    LookupHeightPlan plan;
+    plan.left = lookupIntervalForTarget(stage.left, config.left_reach_sphere, config.tool0_offset,
+                                        config.h_lower, config.h_upper, config.sphere_margin);
+    plan.right = lookupIntervalForTarget(stage.right, config.right_reach_sphere, config.tool0_offset,
+                                         config.h_lower, config.h_upper, config.sphere_margin);
+    plan.combined.lower = std::max(plan.left.lower, plan.right.lower);
+    plan.combined.upper = std::min(plan.left.upper, plan.right.upper);
+    plan.combined.reachable = plan.left.reachable && plan.right.reachable && plan.combined.lower <= plan.combined.upper;
+    plan.reachable = plan.combined.reachable;
+    const double h_center = std::min(std::max(current_h, plan.combined.lower), plan.combined.upper);
+    plan.candidates = lookupHeightCandidates(plan.combined, h_center, config.h_step, max_candidates);
+    return plan;
+}
+
+std::vector<std::string> fullJointNamesForLookup(const std::vector<std::string>& arm_joint_names)
+{
+    std::vector<std::string> names;
+    names.reserve(arm_joint_names.size() + 1);
+    names.push_back("updown");
+    names.insert(names.end(), arm_joint_names.begin(), arm_joint_names.end());
+    return names;
+}
+
+std::vector<double> fullJointValuesForLookup(double h, const std::vector<double>& arm_values)
+{
+    std::vector<double> values;
+    values.reserve(arm_values.size() + 1);
+    values.push_back(h);
+    values.insert(values.end(), arm_values.begin(), arm_values.end());
+    return values;
 }
 
 double posError(const PoseSpec& target, const Eigen::Isometry3d& actual)
@@ -579,53 +707,143 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
                               std::vector<double>& fallback_seed,
                               size_t seed_attempts,
                               size_t fallback_attempts,
-                              const LeverParams& lever_params)
+                              const LeverParams& lever_params,
+                              const UpdownAwareIkConfig& config)
 {
-    UpdownAwareIkRequest request;
-    request.left_target = toIsometry(stage.left);
-    request.right_target = toIsometry(stage.right);
-    request.current_h = current_h;
-    request.current_arm_joints = arm_seed;
-    request.current_full_joints = fallback_seed;
-    auto result = solver.solve(request);
-
-    auto selected = result.selected;
-    if (result.success) {
-        const auto best = std::min_element(
-            result.candidates.begin(), result.candidates.end(),
-            [current_h](const auto& a, const auto& b) {
-                if (a.legal != b.legal) return a.legal > b.legal;
-                if (!a.legal) return false;
-                const double a_score = std::abs(a.h - current_h) + 0.001 * a.solve_ms + 0.01 * static_cast<double>(a.seed_index);
-                const double b_score = std::abs(b.h - current_h) + 0.001 * b.solve_ms + 0.01 * static_cast<double>(b.seed_index);
-                return a_score < b_score;
-            });
-        if (best != result.candidates.end() && best->legal) {
-            selected = *best;
-        }
-    }
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto plan = lookupPlanHeights(stage, config, current_h, config.h_candidate_count);
+    const auto full_joint_names = fullJointNamesForLookup(arm_ik.variableNames());
+    const size_t target_legal_count = std::max<size_t>(1, fallback_attempts == 0 ? 5 : std::min<size_t>(5, fallback_attempts));
 
     nlohmann::json record;
     record["strategy"] = "lookup_like_fixed_h_with_fallback";
-    record["selection_policy"] = "min_updown_then_solve_ms_then_seed_attempt";
-    record["success"] = result.success;
-    record["fallback_used"] = result.fallback_used;
-    record["solver_path"] = result.success ? selected.solver_path : result.solver_path;
+    record["selection_policy"] = "legacy_lookup_collect_few_min_updown";
     record["current_h"] = current_h;
-    record["selected_h"] = result.success ? selected.h : current_h;
-    record["updown_delta"] = result.success ? std::abs(selected.h - current_h) : 0.0;
-    record["h_interval"] = {{"lower", result.h_interval_lower}, {"upper", result.h_interval_upper}, {"reachable", result.range_reachable}};
-    record["h_candidates"] = result.h_candidates;
-    record["trial_count"] = result.trial_count;
-    record["legal_count"] = result.legal_count;
-    record["timeout_like_count"] = result.timeout_like_count;
-    record["wall_ms"] = result.wall_ms;
-    record["sum_solve_ms"] = result.sum_solve_ms;
-    if (result.success) {
+    record["h_interval"] = {{"lower", plan.combined.lower}, {"upper", plan.combined.upper}, {"reachable", plan.reachable}};
+    record["h_candidates"] = plan.candidates;
+
+    std::vector<LookupSolution> legal_solutions;
+    size_t trial_count = 0;
+    size_t timeout_like_count = 0;
+    double sum_solve_ms = 0.0;
+    bool fallback_used = false;
+
+    if (plan.reachable && !plan.candidates.empty()) {
+        for (size_t h_index = 0; h_index < plan.candidates.size() && legal_solutions.size() < target_legal_count; ++h_index) {
+            const double candidate_h = plan.candidates[h_index];
+            Eigen::Isometry3d left_target = compensateTool0(stage.left, config.tool0_offset);
+            Eigen::Isometry3d right_target = compensateTool0(stage.right, config.tool0_offset);
+            left_target.translation().z() -= candidate_h;
+            right_target.translation().z() -= candidate_h;
+
+            for (size_t seed_index = 0; seed_index < std::max<size_t>(1, seed_attempts) && legal_solutions.size() < target_legal_count; ++seed_index) {
+                const auto seed = seed_index == 0
+                    ? arm_seed
+                    : perturbSeed(arm_ik.variableNames(), arm_seed,
+                                  seed_index + h_index * std::max<size_t>(1, seed_attempts),
+                                  config.seed_noise, 0.0, config.h_lower, config.h_upper);
+
+                IkResult result = arm_ik.solveDual(left_target, right_target, seed, config.timeout);
+                ++trial_count;
+                sum_solve_ms += result.solve_ms;
+                if (result.solve_ms >= config.timeout * 1000.0 * 0.9) ++timeout_like_count;
+
+                if (result.joint_values.empty()) continue;
+                const auto full_values = fullJointValuesForLookup(candidate_h, result.joint_values);
+                nlohmann::json validation;
+                const auto poses = arm_ik.fkNamed(full_joint_names, full_values);
+                if (!tipBindingOk(stage, poses, config.position_tolerance, config.orientation_tolerance, validation)) continue;
+                std::vector<std::string> collision_pairs;
+                const bool collision_free = arm_ik.isNamedStateCollisionFree(full_joint_names, full_values, &collision_pairs);
+                if (!collision_free) continue;
+
+                LookupSolution solution;
+                solution.success = true;
+                solution.h = candidate_h;
+                solution.h_index = h_index;
+                solution.seed_index = seed_index;
+                solution.solve_ms = result.solve_ms;
+                solution.direct_pos_error = validation.value("direct_pos_error", 0.0);
+                solution.direct_ori_error = validation.value("direct_ori_error", 0.0);
+                solution.collision_free = true;
+                solution.joint_names = result.joint_names;
+                solution.joint_values = result.joint_values;
+                solution.full_joint_names = full_joint_names;
+                solution.full_joint_values = full_values;
+                solution.collision_pairs = collision_pairs;
+                solution.score = std::abs(candidate_h - current_h) + 0.001 * result.solve_ms + 0.01 * static_cast<double>(seed_index);
+                legal_solutions.push_back(std::move(solution));
+            }
+        }
+    }
+
+    if (legal_solutions.empty()) {
+        fallback_used = true;
+        for (size_t seed_index = 0; seed_index < std::max<size_t>(1, fallback_attempts) && legal_solutions.empty(); ++seed_index) {
+            const auto seed = seed_index == 0
+                ? fallback_seed
+                : perturbSeed(fallback_ik.variableNames(), fallback_seed,
+                              100000 + seed_index, config.seed_noise,
+                              std::max(config.h_step, config.h_search_margin), config.h_lower, config.h_upper);
+            for (size_t order = 0; order < 2 && legal_solutions.empty(); ++order) {
+                const bool swapped_order = order == 1;
+                IkResult result = swapped_order
+                    ? fallback_ik.solveDual(compensateTool0(stage.right, config.tool0_offset), compensateTool0(stage.left, config.tool0_offset), seed, config.fallback_timeout)
+                    : fallback_ik.solveDual(compensateTool0(stage.left, config.tool0_offset), compensateTool0(stage.right, config.tool0_offset), seed, config.fallback_timeout);
+                ++trial_count;
+                sum_solve_ms += result.solve_ms;
+                if (result.solve_ms >= config.fallback_timeout * 1000.0 * 0.9) ++timeout_like_count;
+                if (result.joint_values.empty()) continue;
+                nlohmann::json validation;
+                const auto poses = fallback_ik.fk(result.joint_values);
+                if (!tipBindingOk(stage, poses, config.position_tolerance, config.orientation_tolerance, validation)) continue;
+                std::vector<std::string> collision_pairs;
+                const bool collision_free = fallback_ik.isNamedStateCollisionFree(result.joint_names, result.joint_values, &collision_pairs);
+                if (!collision_free) continue;
+                LookupSolution solution;
+                solution.success = true;
+                solution.h = extractUpdown(result.joint_names, result.joint_values, current_h);
+                solution.h_index = 0;
+                solution.seed_index = seed_index;
+                solution.solve_ms = result.solve_ms;
+                solution.direct_pos_error = validation.value("direct_pos_error", 0.0);
+                solution.direct_ori_error = validation.value("direct_ori_error", 0.0);
+                solution.collision_free = true;
+                solution.joint_names = result.joint_names;
+                solution.joint_values = result.joint_values;
+                solution.full_joint_names = result.joint_names;
+                solution.full_joint_values = result.joint_values;
+                solution.collision_pairs = collision_pairs;
+                solution.score = std::abs(solution.h - current_h) + 0.001 * result.solve_ms + 0.01 * static_cast<double>(seed_index);
+                legal_solutions.push_back(std::move(solution));
+            }
+        }
+    }
+
+    const bool success = !legal_solutions.empty();
+    LookupSolution selected;
+    if (success) {
+        selected = *std::min_element(legal_solutions.begin(), legal_solutions.end(), [](const auto& a, const auto& b) {
+            return a.score < b.score;
+        });
         arm_seed = armSeedFromFull(arm_ik.variableNames(), {true, true, selected.collision_free, 0, selected.joint_names, selected.joint_values, selected.collision_pairs, selected.solve_ms, selected.direct_pos_error, selected.direct_ori_error});
         fallback_seed = selected.full_joint_values;
+    }
+
+    const auto t1 = std::chrono::steady_clock::now();
+    record["success"] = success;
+    record["fallback_used"] = fallback_used;
+    record["solver_path"] = fallback_used ? "legacy_release_updown_fallback" : (success && std::abs(selected.h - current_h) < 1e-9 ? "fixed_current_h" : "fixed_h_candidates");
+    record["selected_h"] = success ? selected.h : current_h;
+    record["updown_delta"] = success ? std::abs(selected.h - current_h) : 0.0;
+    record["trial_count"] = trial_count;
+    record["legal_count"] = legal_solutions.size();
+    record["timeout_like_count"] = timeout_like_count;
+    record["wall_ms"] = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    record["sum_solve_ms"] = sum_solve_ms;
+    if (success) {
         record["selected_score"] = selected.score;
-        record["lookup_selection_score"] = std::abs(selected.h - current_h) + 0.001 * selected.solve_ms + 0.01 * static_cast<double>(selected.seed_index);
+        record["lookup_selection_score"] = selected.score;
         record["selected_h_index"] = selected.h_index;
         record["selected_seed_index"] = selected.seed_index;
         record["direct_pos_error"] = selected.direct_pos_error;
@@ -634,11 +852,9 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
         record["collision_pairs"] = selected.collision_pairs;
         addSelectedJointDiagnostics(record, selected.full_joint_names, selected.full_joint_values, lever_params);
     } else {
-        record["failure_reason"] = result.failure_reason;
+        record["failure_reason"] = plan.reachable ? "legacy_lookup_no_legal_solution" : "reachability_interval_empty";
     }
-    (void)fallback_ik;
-    (void)seed_attempts;
-    (void)fallback_attempts;
+    (void)solver;
     return record;
 }
 
@@ -789,6 +1005,11 @@ int main(int argc, char** argv)
     header["experiment_workers"] = experiment_config.workers;
     header["experiment_h_candidate_count"] = experiment_config.h_candidate_count;
     header["experiment_seed_count"] = experiment_config.seed_count;
+    header["experiment_fallback_rounds"] = experiment_config.fallback_rounds;
+    header["experiment_fallback_random_family_count"] = experiment_config.fallback_random_family_count;
+    header["experiment_fallback_random_per_family"] = experiment_config.fallback_random_per_family;
+    header["experiment_fallback_seed_noise"] = experiment_config.fallback_seed_noise;
+    header["experiment_fallback_updown_noise"] = experiment_config.fallback_updown_noise;
     header["experiment_joint2_torque_weight"] = experiment_config.cost_joint2_torque;
     header["experiment_joint3_torque_weight"] = experiment_config.cost_joint3_torque;
     header["fixed_group"] = experiment_config.fixed_group;
@@ -837,7 +1058,7 @@ int main(int argc, char** argv)
                                              lookup_arm_seed, lookup_full_seed,
                                              lookup_config.seed_count,
                                              lookup_config.fallback_seed_count,
-                                             lever_params));
+                                             lever_params, lookup_config));
             records.push_back(runNewSolverStage(experiment_solver, stage, exp_h, exp_arm_seed, exp_full_seed, lever_params));
 
             for (auto& record : records) {

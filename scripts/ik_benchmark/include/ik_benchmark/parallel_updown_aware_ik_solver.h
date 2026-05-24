@@ -60,6 +60,11 @@ struct UpdownAwareIkConfig {
     bool fallback_enabled = true;
     double fallback_timeout = 2.0;
     size_t fallback_seed_count = 12;
+    size_t fallback_rounds = 1;
+    size_t fallback_random_family_count = 2;
+    size_t fallback_random_per_family = 4;
+    double fallback_seed_noise = 0.6;
+    double fallback_updown_noise = 0.5;
 
     double cost_updown_static_bonus = 1.0;
     double cost_updown_within_0p1_bonus = 0.3;
@@ -187,7 +192,7 @@ private:
     HeightInterval intervalForTarget(const Eigen::Isometry3d& target, const ReachSphereConfig& sphere) const;
     std::vector<double> makeFixedHCandidates(const HeightInterval& interval, double h_center) const;
     std::vector<TrialSpec> makeNormalTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan) const;
-    std::vector<TrialSpec> makeFallbackTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan) const;
+    std::vector<TrialSpec> makeFallbackTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan, size_t round_index) const;
     std::vector<UpdownAwareIkCandidate> executeTrials(const std::vector<TrialSpec>& trials,
                                                       const UpdownAwareIkRequest& request,
                                                       const HeightPlan& plan,
@@ -206,6 +211,7 @@ private:
                                           size_t attempt_index,
                                           double revolute_noise,
                                           double prismatic_noise) const;
+    std::vector<std::vector<double>> makeFallbackSeedFamilies(const UpdownAwareIkRequest& request, size_t round_index) const;
     std::vector<double> makeFullSeedFromArmSeed(double h, const std::vector<double>& arm_seed) const;
     double extractUpdown(const std::vector<std::string>& names, const std::vector<double>& values, double fallback) const;
     std::vector<std::string> fullJointNamesForFixedGroup() const;

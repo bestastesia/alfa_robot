@@ -32,7 +32,7 @@ parallel_updown_aware_ik:
     sphere_margin: 0.0
 
   candidate_generator:
-    h_mode: fixed_discrete        # fixed_discrete | continuous_range
+    h_mode: continuous_range        # fixed_discrete | continuous_range
     h_search_margin: 0.10         # search window around minimum-motion h, not physical limit
     h_step: 0.10
     h_candidate_count: 10
@@ -55,7 +55,12 @@ parallel_updown_aware_ik:
   fallback_manager:
     enabled: true
     release_updown_timeout: 2.0
-    release_updown_seed_count: 12
+    release_updown_seed_count: 12      # kept for old lookup-like comparison
+    rounds: 3                          # stop early once one round finds legal candidates
+    random_family_count: 2             # last_success + home + this many random seed families
+    random_per_family: 4               # attempts per seed family in each fallback round
+    seed_noise: 0.6
+    updown_noise: 0.5
 
   cost_scorer:
     # Default score is lower-is-better:
