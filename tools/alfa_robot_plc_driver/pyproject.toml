@@ -1,0 +1,19 @@
+[project]
+name = "alfa-robot-plc-driver"
+version = "0.1.0"
+description = "Non-ROS PLC/Modbus test driver for ALFA Robot dual-arm axes"
+requires-python = ">=3.10"
+dependencies = [
+  "pymodbus>=3.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+alfa-plc = "alfa_robot_plc_driver.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
