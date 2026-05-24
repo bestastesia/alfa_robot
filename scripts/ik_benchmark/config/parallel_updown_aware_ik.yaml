@@ -32,7 +32,7 @@ parallel_updown_aware_ik:
     sphere_margin: 0.0
 
   candidate_generator:
-    h_mode: continuous_range        # fixed_discrete | continuous_range
+    h_mode: fixed_discrete        # fixed_discrete | continuous_range
     h_search_margin: 0.10         # search window around minimum-motion h, not physical limit
     h_step: 0.10
     h_candidate_count: 10
