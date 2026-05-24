@@ -210,3 +210,15 @@ universal_robot-noetic-devel/
 .ai_teamwork/tmp/
 .ai_teamwork/*.local.md
 .ai_teamwork/force_analysis_semantics.yaml
+
+# Local/generated experiment data
+data/backpack/
+data_backpack/
+
+# Keep generated benchmark report figures under data when explicitly produced
+!data/
+!data/ik_benchmark/
+!data/ik_benchmark/updown_solver_comparison/
+!data/ik_benchmark/updown_solver_comparison/charts/
+!data/ik_benchmark/updown_solver_comparison/charts/*.png
+!data/ik_benchmark/updown_solver_comparison/charts/*.svg

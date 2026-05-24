@@ -78,3 +78,15 @@
 - 影响范围：`ParallelUpdownAwareIkSolver`、`parallel_updown_aware_ik.yaml`、`pick_place_updown_lookup`、`parallel_ik_benchmark`。
 - 验证：`colcon build --packages-select alfa_robot_benchmarks` 通过。
 - Linear：已回复 MOTION-30 新评论；已在 MOTION-31 写入当前默认代价函数表达式。
+
+## 2026-05-24 运控 / Codex / Updown 对比实验图表
+- 做了什么：把本次 updown solver comparison 结果生成中文图表和汇总表。
+- 改了哪里：新增 `scripts/ik_benchmark/scripts/plot_updown_solver_comparison.py`；补充 comparison JSONL 后续记录 selected joints 与 joint2/3 力臂字段。
+- 验证结果：`alfa_robot_benchmarks` 构建通过；图表输出到 `data/ik_benchmark/updown_solver_comparison/charts/`。
+- 留给下个 AI：当前历史 JSONL 未含关节角，因此 joint2/3 力臂图只有说明；重新跑实验后会生成真实力臂曲线。
+
+## 2026-05-24 电控顾问 / Codex / 六个关节电机自搭机械臂方案咨询
+- 做了什么：围绕用户计划用公司闲置的 6 个相同关节电机自搭机械臂学习电气/电控，提供区别于常规 2+1+3 六轴机械臂的结构创意方向。
+- 改了哪里：仅追加本协作日志；未改代码与工程文件。
+- 验证结果：不涉及构建/测试。
+- 留给下个 AI：用户希望用低成本实物项目学习机械臂电控、伺服、线束、安全、控制，不急于全面系统学习。

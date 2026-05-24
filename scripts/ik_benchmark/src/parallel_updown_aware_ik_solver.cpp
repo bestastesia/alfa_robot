@@ -583,6 +583,27 @@ double ParallelUpdownAwareIkSolver::armTorqueProxy(
     return config_.cost_joint2_torque * joint2_proxy + config_.cost_joint3_torque * joint3_proxy;
 }
 
+double ParallelUpdownAwareIkSolver::jointLeverProxy(
+    const UpdownAwareIkCandidate& candidate, const std::string& prefix, int joint_index) const
+{
+    const bool is_left = prefix == "left";
+    const double q2 = jointValue(candidate, prefix + "_v5_joint2");
+    const double q3 = jointValue(candidate, prefix + "_v5_joint3");
+    const double q2_zero = is_left ? config_.left_joint2_horizontal_angle : config_.right_joint2_horizontal_angle;
+    const double q3_zero = is_left ? config_.left_joint3_horizontal_angle : config_.right_joint3_horizontal_angle;
+    const double shoulder_angle = q2 - q2_zero;
+    const double elbow_angle = q2 + q3 - q2_zero - q3_zero;
+
+    if (joint_index == 2) {
+        return config_.link2_length * std::abs(std::cos(shoulder_angle)) +
+               config_.link3_length * std::abs(std::cos(elbow_angle));
+    }
+    if (joint_index == 3) {
+        return config_.link3_length * std::abs(std::cos(elbow_angle));
+    }
+    return 0.0;
+}
+
 double ParallelUpdownAwareIkSolver::scoreCandidate(
     const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const
 {

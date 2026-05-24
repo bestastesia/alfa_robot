@@ -152,6 +152,7 @@ public:
 
     const std::vector<std::string>& fixedVariableNames() const;
     const std::vector<std::string>& freeVariableNames() const;
+    double jointLeverProxy(const UpdownAwareIkCandidate& candidate, const std::string& prefix, int joint_index) const;
 
 private:
     struct HeightInterval {

@@ -101,6 +101,56 @@ double extractUpdown(const std::vector<std::string>& names, const std::vector<do
     return fallback;
 }
 
+double namedJointValue(const std::vector<std::string>& names,
+                       const std::vector<double>& values,
+                       const std::string& name,
+                       double fallback = 0.0)
+{
+    for (size_t i = 0; i < names.size() && i < values.size(); ++i) {
+        if (names[i] == name) return values[i];
+    }
+    return fallback;
+}
+
+double jointLeverProxy(const std::vector<std::string>& names,
+                       const std::vector<double>& values,
+                       const std::string& prefix,
+                       int joint_index)
+{
+    const double link2_length = 0.65;
+    const double link3_length = 0.65;
+    const double q2 = namedJointValue(names, values, prefix + "_v5_joint2");
+    const double q3 = namedJointValue(names, values, prefix + "_v5_joint3");
+    const double shoulder_angle = q2;
+    const double elbow_angle = q2 + q3;
+    if (joint_index == 2) {
+        return link2_length * std::abs(std::cos(shoulder_angle)) +
+               link3_length * std::abs(std::cos(elbow_angle));
+    }
+    if (joint_index == 3) {
+        return link3_length * std::abs(std::cos(elbow_angle));
+    }
+    return 0.0;
+}
+
+void addSelectedJointDiagnostics(nlohmann::json& record,
+                                 const std::vector<std::string>& joint_names,
+                                 const std::vector<double>& joint_values)
+{
+    record["selected_joint_names"] = joint_names;
+    record["selected_joint_values"] = joint_values;
+    const double left_j2 = jointLeverProxy(joint_names, joint_values, "left", 2);
+    const double right_j2 = jointLeverProxy(joint_names, joint_values, "right", 2);
+    const double left_j3 = jointLeverProxy(joint_names, joint_values, "left", 3);
+    const double right_j3 = jointLeverProxy(joint_names, joint_values, "right", 3);
+    record["left_joint2_lever_length"] = left_j2;
+    record["right_joint2_lever_length"] = right_j2;
+    record["joint2_lever_length"] = std::max(left_j2, right_j2);
+    record["left_joint3_lever_length"] = left_j3;
+    record["right_joint3_lever_length"] = right_j3;
+    record["joint3_lever_length"] = std::max(left_j3, right_j3);
+}
+
 std::vector<double> perturbSeed(const std::vector<std::string>& names,
                                 std::vector<double> seed,
                                 size_t attempt,
@@ -224,6 +274,7 @@ nlohmann::json runUnlimitedStage(IkSolver& ik,
     for (const auto& a : record["attempts"]) record["total_solve_ms"] = record["total_solve_ms"].get<double>() + a.value("solve_ms", 0.0);
     if (success) {
         full_seed = selected_seed;
+        addSelectedJointDiagnostics(record, selected.joint_names, selected.joint_values);
     }
     return record;
 }
@@ -269,6 +320,7 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
         record["direct_ori_error"] = result.selected.direct_ori_error;
         record["collision_free"] = result.selected.collision_free;
         record["collision_pairs"] = result.selected.collision_pairs;
+        addSelectedJointDiagnostics(record, result.selected.full_joint_names, result.selected.full_joint_values);
     } else {
         record["failure_reason"] = result.failure_reason;
     }
@@ -315,6 +367,7 @@ nlohmann::json runNewSolverStage(ParallelUpdownAwareIkSolver& solver,
         record["direct_ori_error"] = result.selected.direct_ori_error;
         record["collision_free"] = result.selected.collision_free;
         record["collision_pairs"] = result.selected.collision_pairs;
+        addSelectedJointDiagnostics(record, result.selected.full_joint_names, result.selected.full_joint_values);
     } else {
         record["failure_reason"] = result.failure_reason;
     }
