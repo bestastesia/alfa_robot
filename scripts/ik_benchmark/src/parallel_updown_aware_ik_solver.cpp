@@ -335,6 +335,8 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     UpdownAwareIkCandidate out;
     out.h = trial.h;
     out.h_center = plan.h_center;
+    out.h_index = trial.h_index;
+    out.seed_index = trial.seed_index;
     out.solver_path = fallback ? "release_updown_fallback" : trial.solver_path;
     out.target_order = swapped_order ? "swapped" : "normal";
 

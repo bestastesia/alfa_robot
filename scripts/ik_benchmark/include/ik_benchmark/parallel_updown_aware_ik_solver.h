@@ -64,7 +64,7 @@ struct UpdownAwareIkConfig {
     double cost_updown_static_bonus = 1.0;
     double cost_updown_within_0p1_bonus = 0.3;
     double cost_updown_over_0p1_distance = 1.0;
-    double cost_joint2_torque = 1.0;
+    double cost_joint2_torque = 2.0;
     double cost_joint3_torque = 0.5;
     double cost_solve_ms = 0.0;
 
@@ -110,6 +110,8 @@ struct UpdownAwareIkCandidate {
     double swapped_pos_error = 0.0;
     double updown_delta = 0.0;
     double joint_delta = 0.0;
+    size_t h_index = 0;
+    size_t seed_index = 0;
 
     std::vector<std::string> joint_names;
     std::vector<double> joint_values;
