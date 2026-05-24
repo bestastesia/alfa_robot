@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 #include <unordered_map>
@@ -18,6 +19,31 @@ namespace {
 std::vector<double> zeros(size_t n)
 {
     return std::vector<double>(n, 0.0);
+}
+
+template <typename Trial>
+std::string trialKey(const std::vector<std::string>& names, const Trial& trial)
+{
+    std::ostringstream out;
+    out.precision(17);
+    out << (trial.free_updown ? "free" : "fixed") << '|'
+        << trial.h_range_lower << '|' << trial.h_range_upper << '|';
+    for (size_t i = 0; i < names.size() && i < trial.seed.size(); ++i) {
+        out << names[i] << '=' << trial.seed[i] << ';';
+    }
+    return out.str();
+}
+
+template <typename Trial>
+void pushUniqueTrial(std::vector<Trial>& trials,
+                     const std::vector<std::string>& names,
+                     Trial trial)
+{
+    const std::string key = trialKey(names, trial);
+    for (const auto& existing : trials) {
+        if (trialKey(names, existing) == key) return;
+    }
+    trials.push_back(std::move(trial));
 }
 
 } // namespace
@@ -205,41 +231,50 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
     if (config_.h_search_mode == UpdownAwareIkConfig::HSearchMode::ContinuousRange) {
         const double range_lower = std::max(config_.h_lower, plan.h_center - config_.h_search_margin);
         const double range_upper = std::min(config_.h_upper, plan.h_center + config_.h_search_margin);
-        if (request.current_h >= plan.combined.lower - 1e-9 && request.current_h <= plan.combined.upper + 1e-9) {
-            TrialSpec fixed_current;
-            fixed_current.free_updown = false;
-            fixed_current.h = request.current_h;
-            fixed_current.h_range_lower = request.current_h;
-            fixed_current.h_range_upper = request.current_h;
-            fixed_current.h_index = 0;
-            fixed_current.seed_index = 0;
-            fixed_current.solver_path = "fixed_current_h";
-            fixed_current.seed = base_seed;
-            trials.push_back(std::move(fixed_current));
+        const size_t base_seed_count = std::max<size_t>(1, config_.seed_count);
+        const size_t multiplier = std::max<size_t>(1, config_.continuous_seed_multiplier);
+        size_t seed_index = 0;
+
+        const bool has_fixed_current = request.current_h >= plan.combined.lower - 1e-9 && request.current_h <= plan.combined.upper + 1e-9;
+        if (has_fixed_current) {
+            for (size_t i = 0; i < base_seed_count; ++i) {
+                TrialSpec fixed_current;
+                fixed_current.free_updown = false;
+                fixed_current.h = request.current_h;
+                fixed_current.h_range_lower = request.current_h;
+                fixed_current.h_range_upper = request.current_h;
+                fixed_current.h_index = 0;
+                fixed_current.seed_index = seed_index++;
+                fixed_current.solver_path = "fixed_current_h";
+                fixed_current.seed = i == 0
+                    ? base_seed
+                    : makePerturbedSeed(fixed_names, base_seed, 50000 + i, config_.seed_noise, 0.0);
+                pushUniqueTrial(trials, fixed_names, std::move(fixed_current));
+            }
         }
-        for (size_t i = 0; i < std::max<size_t>(1, config_.seed_count); ++i) {
+
+        const size_t continuous_trials = base_seed_count * (has_fixed_current ? multiplier - 1 : multiplier);
+        for (size_t i = 0; i < continuous_trials; ++i) {
             TrialSpec trial;
             trial.free_updown = true;
             trial.h = plan.h_center;
             trial.h_range_lower = range_lower;
             trial.h_range_upper = range_upper;
-            trial.h_index = 0;
-            trial.seed_index = i;
+            trial.h_index = 1;
+            trial.seed_index = seed_index++;
             trial.solver_path = "continuous_h_range";
-            const double seed_h = range_lower + (range_upper - range_lower) *
-                (static_cast<double>(i + 1) / static_cast<double>(std::max<size_t>(2, config_.seed_count + 1)));
+            const double fraction = (static_cast<double>(i) + 0.5) / static_cast<double>(continuous_trials);
+            const double seed_h = range_lower + (range_upper - range_lower) * fraction;
             trial.seed = makeFullSeedFromArmSeed(seed_h, base_seed);
-            if (i > 0) {
-                trial.seed = makePerturbedSeed(freeVariableNames(), trial.seed, i, config_.seed_noise, config_.h_search_margin);
-                if (!trial.seed.empty()) {
-                    for (size_t k = 0; k < freeVariableNames().size(); ++k) {
-                        if (freeVariableNames()[k] == "updown") {
-                            trial.seed[k] = std::min(std::max(trial.seed[k], range_lower), range_upper);
-                        }
-                    }
+            trial.seed = makePerturbedSeed(freeVariableNames(), trial.seed, 60000 + i,
+                                           i == 0 ? 0.0 : config_.seed_noise,
+                                           i == 0 ? 0.0 : config_.h_search_margin);
+            for (size_t k = 0; k < freeVariableNames().size() && k < trial.seed.size(); ++k) {
+                if (freeVariableNames()[k] == "updown") {
+                    trial.seed[k] = std::min(std::max(trial.seed[k], range_lower), range_upper);
                 }
             }
-            trials.push_back(std::move(trial));
+            pushUniqueTrial(trials, freeVariableNames(), std::move(trial));
         }
         return trials;
     }
@@ -260,7 +295,7 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
                 ? base_seed
                 : makePerturbedSeed(fixed_names, base_seed, seed_index + h_index * config_.seed_count,
                                     config_.seed_noise, 0.0);
-            trials.push_back(std::move(trial));
+            pushUniqueTrial(trials, fixed_names, std::move(trial));
         }
     }
     return trials;
@@ -271,6 +306,21 @@ std::vector<std::vector<double>> ParallelUpdownAwareIkSolver::makeFallbackSeedFa
 {
     const auto& free_names = freeVariableNames();
     std::vector<std::vector<double>> families;
+    auto add_unique_family = [&](const std::vector<double>& seed) {
+        if (seed.size() != free_names.size()) return;
+        for (const auto& existing : families) {
+            if (existing.size() != seed.size()) continue;
+            bool same = true;
+            for (size_t i = 0; i < seed.size(); ++i) {
+                if (std::abs(existing[i] - seed[i]) > 1e-12) {
+                    same = false;
+                    break;
+                }
+            }
+            if (same) return;
+        }
+        families.push_back(seed);
+    };
 
     std::vector<double> last_success_seed = !request.current_full_joints.empty()
         ? request.current_full_joints
@@ -278,9 +328,7 @@ std::vector<std::vector<double>> ParallelUpdownAwareIkSolver::makeFallbackSeedFa
     if (last_success_seed.size() != free_names.size()) {
         last_success_seed = makeFullSeedFromArmSeed(request.current_h, request.current_arm_joints);
     }
-    if (last_success_seed.size() == free_names.size()) {
-        families.push_back(last_success_seed);
-    }
+    add_unique_family(last_success_seed);
 
     std::vector<double> home_seed(free_names.size(), 0.0);
     for (size_t i = 0; i < free_names.size(); ++i) {
@@ -288,15 +336,15 @@ std::vector<std::vector<double>> ParallelUpdownAwareIkSolver::makeFallbackSeedFa
             home_seed[i] = std::min(std::max(request.current_h, config_.h_lower), config_.h_upper);
         }
     }
-    families.push_back(home_seed);
+    add_unique_family(home_seed);
 
     const size_t random_family_count = std::max<size_t>(1, config_.fallback_random_family_count);
     for (size_t family_index = 0; family_index < random_family_count; ++family_index) {
         const auto& base = family_index % 2 == 0 ? last_success_seed : home_seed;
-        families.push_back(makePerturbedSeed(free_names, base,
-                                             200000 + round_index * 1009 + family_index,
-                                             config_.fallback_seed_noise,
-                                             config_.fallback_updown_noise));
+        add_unique_family(makePerturbedSeed(free_names, base,
+                                            200000 + round_index * 1009 + family_index,
+                                            config_.fallback_seed_noise,
+                                            config_.fallback_updown_noise));
     }
     return families;
 }
@@ -325,7 +373,7 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
                                     300000 + round_index * 100003 + family_index * per_family + attempt,
                                     config_.fallback_seed_noise,
                                     config_.fallback_updown_noise);
-            trials.push_back(std::move(trial));
+            pushUniqueTrial(trials, freeVariableNames(), std::move(trial));
         }
     }
     return trials;

@@ -38,6 +38,7 @@ parallel_updown_aware_ik:
     h_candidate_count: 10
     max_updown_delta: inf
     seed_count: 8
+    continuous_seed_multiplier: 10   # continuous_range seed budget multiplier; set near h_candidate_count for comparable trial count
     seed_noise: 0.35
     try_target_orders: true
 

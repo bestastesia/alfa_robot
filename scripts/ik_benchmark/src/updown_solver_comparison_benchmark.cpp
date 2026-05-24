@@ -11,6 +11,7 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <random>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -206,6 +207,7 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         else if (key == "h_candidate_count") config.h_candidate_count = static_cast<size_t>(std::stoul(value));
         else if (key == "max_updown_delta") config.max_updown_delta = parseDouble(value);
         else if (key == "seed_count") config.seed_count = static_cast<size_t>(std::stoul(value));
+        else if (key == "continuous_seed_multiplier") config.continuous_seed_multiplier = static_cast<size_t>(std::stoul(value));
         else if (key == "seed_noise") config.seed_noise = parseDouble(value);
         else if (key == "try_target_orders") config.try_target_orders = parseBool(value);
         else return false;
@@ -588,6 +590,33 @@ std::vector<double> perturbSeed(const std::vector<std::string>& names,
     return seed;
 }
 
+std::string ikAttemptKey(const std::string& solver_path,
+                         const std::string& target_order,
+                         double h_lower,
+                         double h_upper,
+                         const std::vector<std::string>& names,
+                         const std::vector<double>& seed)
+{
+    std::ostringstream out;
+    out.precision(17);
+    out << solver_path << '|' << target_order << '|' << h_lower << '|' << h_upper << '|';
+    for (size_t i = 0; i < names.size() && i < seed.size(); ++i) {
+        out << names[i] << '=' << seed[i] << ';';
+    }
+    return out.str();
+}
+
+bool markUniqueAttempt(std::set<std::string>& seen,
+                       const std::string& solver_path,
+                       const std::string& target_order,
+                       double h_lower,
+                       double h_upper,
+                       const std::vector<std::string>& names,
+                       const std::vector<double>& seed)
+{
+    return seen.insert(ikAttemptKey(solver_path, target_order, h_lower, h_upper, names, seed)).second;
+}
+
 std::vector<double> armSeedFromFull(const std::vector<std::string>& arm_names,
                                     const IkResult& result)
 {
@@ -648,11 +677,16 @@ nlohmann::json runUnlimitedStage(IkSolver& ik,
     IkResult selected;
     double selected_h = current_h;
     std::vector<double> selected_seed = full_seed;
+    std::set<std::string> seen_attempts;
 
     for (size_t attempt = 0; attempt < seed_attempts && !success; ++attempt) {
         auto seed = attempt == 0 ? full_seed : perturbSeed(ik.variableNames(), full_seed, attempt, seed_noise, h_step, h_lower, h_upper);
         for (size_t order = 0; order < 2 && !success; ++order) {
             const bool swapped_order = order == 1;
+            if (!markUniqueAttempt(seen_attempts, "unlimited_bioik", swapped_order ? "swapped" : "normal",
+                                   h_lower, h_upper, ik.variableNames(), seed)) {
+                continue;
+            }
             IkResult result = swapped_order
                 ? ik.solveDual(compensateTool0(stage.right, tool0_offset), compensateTool0(stage.left, tool0_offset), seed, timeout)
                 : ik.solveDual(compensateTool0(stage.left, tool0_offset), compensateTool0(stage.right, tool0_offset), seed, timeout);
@@ -727,6 +761,7 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
     size_t timeout_like_count = 0;
     double sum_solve_ms = 0.0;
     bool fallback_used = false;
+    std::set<std::string> seen_attempts;
 
     if (plan.reachable && !plan.candidates.empty()) {
         for (size_t h_index = 0; h_index < plan.candidates.size() && legal_solutions.size() < target_legal_count; ++h_index) {
@@ -743,6 +778,9 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
                                   seed_index + h_index * std::max<size_t>(1, seed_attempts),
                                   config.seed_noise, 0.0, config.h_lower, config.h_upper);
 
+                if (!markUniqueAttempt(seen_attempts, "legacy_fixed_h", "normal", candidate_h, candidate_h, arm_ik.variableNames(), seed)) {
+                    continue;
+                }
                 IkResult result = arm_ik.solveDual(left_target, right_target, seed, config.timeout);
                 ++trial_count;
                 sum_solve_ms += result.solve_ms;
@@ -787,6 +825,10 @@ nlohmann::json runLookupStage(IkSolver& arm_ik,
                               std::max(config.h_step, config.h_search_margin), config.h_lower, config.h_upper);
             for (size_t order = 0; order < 2 && legal_solutions.empty(); ++order) {
                 const bool swapped_order = order == 1;
+                if (!markUniqueAttempt(seen_attempts, "legacy_release_updown_fallback", swapped_order ? "swapped" : "normal",
+                                       config.h_lower, config.h_upper, fallback_ik.variableNames(), seed)) {
+                    continue;
+                }
                 IkResult result = swapped_order
                     ? fallback_ik.solveDual(compensateTool0(stage.right, config.tool0_offset), compensateTool0(stage.left, config.tool0_offset), seed, config.fallback_timeout)
                     : fallback_ik.solveDual(compensateTool0(stage.left, config.tool0_offset), compensateTool0(stage.right, config.tool0_offset), seed, config.fallback_timeout);
@@ -1005,6 +1047,7 @@ int main(int argc, char** argv)
     header["experiment_workers"] = experiment_config.workers;
     header["experiment_h_candidate_count"] = experiment_config.h_candidate_count;
     header["experiment_seed_count"] = experiment_config.seed_count;
+    header["experiment_continuous_seed_multiplier"] = experiment_config.continuous_seed_multiplier;
     header["experiment_fallback_rounds"] = experiment_config.fallback_rounds;
     header["experiment_fallback_random_family_count"] = experiment_config.fallback_random_family_count;
     header["experiment_fallback_random_per_family"] = experiment_config.fallback_random_per_family;

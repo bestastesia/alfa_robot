@@ -45,6 +45,7 @@ struct UpdownAwareIkConfig {
     double max_updown_delta = std::numeric_limits<double>::infinity();
 
     size_t seed_count = 4;
+    size_t continuous_seed_multiplier = 1;
     double seed_noise = 0.35;
     bool try_target_orders = true;
 
