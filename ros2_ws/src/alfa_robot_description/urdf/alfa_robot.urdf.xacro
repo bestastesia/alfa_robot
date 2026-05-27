@@ -229,16 +229,25 @@
       effort="0"
       velocity="0" />
   </joint>
-  <!-- Mesh base path for v2 arm v5 model -->
-  <xacro:property name="mesh_base" value="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v5"/>
+  <!-- Mesh base path for latest single-arm v5_6 model -->
+  <xacro:property name="mesh_base" value="package://alfa_robot_description/meshes/alfa_robot_arm_v5_6"/>
 
   <!-- ========== LEFT ARM (left_v5_joint1-6) ========== -->
   <link name="left_v5_link0">
     <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.5"/>
-      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/>
+      <origin xyz="0 0 0.01670398103" rpy="0 0 0"/>
+      <mass value="0.310084776766906"/>
+      <inertia ixx="0.000741163324579453" ixy="0" ixz="6.73482801154554E-20" iyy="0.000741163324579453" iyz="0" izz="0.00132016293912598"/>
     </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/base.STL"/></geometry>
+      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/base.STL"/></geometry>
+    </collision>
   </link>
   <joint name="left_v5_mount" type="fixed">
     <parent link="updown"/>
@@ -248,48 +257,46 @@
 
   <link name="left_v5_link1">
     <inertial>
-      <origin xyz="3.98376137018541E-05 0.0126477750253194 0.0492338003578434" rpy="0 0 0"/>
-      <mass value="1.26276969364824"/>
-      <inertia ixx="0.00263426449889698" ixy="1.39299639124709E-06" ixz="-2.78631072895881E-06"
-               iyy="0.00268939190272101" iyz="-7.0690632990526E-05" izz="0.00230762866755196"/>
+      <origin xyz="-0.004752553966 0.008497713108 0.05815985177" rpy="0 0 0"/>
+      <mass value="1.74726890834066"/>
+      <inertia ixx="0.00457134350611956" ixy="0.0002288805479" ixz="1.99526917072982E-05" iyy="0.00429016337003855" iyz="-3.566115088e-05" izz="0.00359307936517085"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint1.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link1.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint1.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link1.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint1" type="revolute">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0.056" rpy="0 0 0"/>
     <parent link="left_v5_link0"/>
     <child link="left_v5_link1"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2"/>
   </joint>
 
   <link name="left_v5_link2">
     <inertial>
-      <origin xyz="-2.02060590481778E-14 -0.200000000000001 0.192749470015582" rpy="0 0 0"/>
-      <mass value="2.29867987677898"/>
-      <inertia ixx="0.0167934021362825" ixy="-1.56125112837913E-17" ixz="1.42815812294016E-17"
-               iyy="0.0137429160924878" iyz="-4.6463569488202E-18" izz="0.0130582608880253"/>
+      <origin xyz="-0.1999998828 -0.0002164972132 0.04318701696" rpy="0 0 0"/>
+      <mass value="6.19241787742505"/>
+      <inertia ixx="0.017665290529847" ixy="-3.290895014e-05" ixz="-8.38471642040595E-17" iyy="0.048066506145401" iyz="0" izz="0.0543426112488358"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint2.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link2.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint2.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link2.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint2" type="revolute">
-    <origin xyz="0 0.0905 0.058" rpy="-1.5708 0 0"/>
+    <origin xyz="-0.048573 0.086838 0.058" rpy="1.060792654 1.570792654 3.141592654"/>
     <parent link="left_v5_link1"/>
     <child link="left_v5_link2"/>
     <axis xyz="0 0 1"/>
@@ -298,105 +305,100 @@
 
   <link name="left_v5_link3">
     <inertial>
-      <origin xyz="8.50278292219286E-10 -0.161826821925973 -0.142215766657612" rpy="0 0 0"/>
-      <mass value="1.06877306914919"/>
-      <inertia ixx="0.00576467932665098" ixy="7.14127431234585E-11" ixz="-1.52931538107986E-11"
-               iyy="0.00323480538353984" iyz="-0.000627938051589377" izz="0.00557699385658163"/>
+      <origin xyz="0.07409140733 -1.001705375e-09 0.07364765219" rpy="0 0 0"/>
+      <mass value="1.90258780164428"/>
+      <inertia ixx="0.00411572596862418" ixy="3.019111472e-09" ixz="-0.00120850135091154" iyy="0.00644066810590579" iyz="2.228072963e-09" izz="0.0058105765548736"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint3.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link3.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint3.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link3.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint3" type="revolute">
-    <origin xyz="0 -0.4 0.072" rpy="0 0 0"/>
+    <origin xyz="-0.4 -0.00043299 0" rpy="-3.141585307 0 3.141585307"/>
     <parent link="left_v5_link2"/>
     <child link="left_v5_link3"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="3.14159265" upper="9.42477795" effort="100" velocity="1.2"/>
   </joint>
 
   <link name="left_v5_link4">
     <inertial>
-      <origin xyz="4.39937389380418E-05 0.00548997582265937 0.0483192602116806" rpy="0 0 0"/>
-      <mass value="1.14347572516569"/>
-      <inertia ixx="0.00245438978578032" ixy="1.39299733480971E-06" ixz="-2.7863076906024E-06"
-               iyy="0.0023457756103248" iyz="-7.06906282100456E-05" izz="0.00212775395802631"/>
+      <origin xyz="-0.004752553966 0.008497713108 0.05815985177" rpy="0 0 0"/>
+      <mass value="1.74726890834066"/>
+      <inertia ixx="0.00457134350611957" ixy="0.0002288805479" ixz="1.9952691707297E-05" iyy="0.00429016337003856" iyz="-3.566115088e-05" izz="0.00359307936517084"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint4.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link4.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint4.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link4.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint4" type="revolute">
-    <origin xyz="0 -0.339 -0.15" rpy="1.5708 0 0"/>
+    <origin xyz="0.239 0 0.087" rpy="-1.5708 -0.51 -1.5708"/>
     <parent link="left_v5_link3"/>
     <child link="left_v5_link4"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5"/>
   </joint>
 
   <link name="left_v5_link5">
     <inertial>
-      <origin xyz="-4.39220865777745E-05 -0.00549003448929664 0.0493192397165389" rpy="0 0 0"/>
-      <mass value="1.14347600233794"/>
-      <inertia ixx="0.00245439627542261" ixy="1.39396565378349E-06" ixz="2.78609959051481E-06"
-               iyy="0.00234577474624758" iyz="7.06885746164186E-05" izz="0.00212775160838843"/>
+      <origin xyz="-7.311768933e-09 -0.05801136091 0.05809045206" rpy="0 0 0"/>
+      <mass value="3.08594660753734"/>
+      <inertia ixx="0.0167442929087416" ixy="-1.096269451e-08" ixz="-6.345264723373E-09" iyy="0.00720920659916117" iyz="2.738837248e-05" izz="0.0156379743997341"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint5.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link5.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint5.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link5.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint5" type="revolute">
-    <origin xyz="0 0.075 0.058" rpy="-1.5708 0 0"/>
+    <origin xyz="-0.037101 0.066329 0.058" rpy="-1.5708 0 0.51"/>
     <parent link="left_v5_link4"/>
     <child link="left_v5_link5"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="3.14159265" upper="9.42477795" effort="60" velocity="1.5"/>
   </joint>
 
   <link name="left_v5_link6">
     <inertial>
-      <origin xyz="0.00023532815733418 9.11432961720343E-05 0.087447372777676" rpy="0 0 0"/>
-      <mass value="1.76089178335136"/>
-      <inertia ixx="0.00779270426493984" ixy="-7.86255995574129E-08" ixz="2.89944411407093E-07"
-               iyy="0.00558315762821446" iyz="-2.686584257496E-07" izz="0.0124506991804597"/>
+      <origin xyz="0 0 0.1083002353" rpy="0 0 0"/>
+      <mass value="7.04165101543079"/>
+      <inertia ixx="0.0638182348016273" ixy="0.008396554097" ixz="-3.15560979408454E-14" iyy="0.0535037231599147" iyz="0" izz="0.0896908193833424"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/leftjoint6.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/link6.STL"/></geometry>
       <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/leftjoint6.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/link6.STL"/></geometry>
     </collision>
   </link>
   <joint name="left_v5_joint6" type="revolute">
-    <origin xyz="0 -0.083 0.059" rpy="1.5708 0 0"/>
+    <origin xyz="0 -0.1458 0.058" rpy="1.5708 0.51 0"/>
     <parent link="left_v5_link5"/>
     <child link="left_v5_link6"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
   </joint>
 
-  <!-- Left tool0 (end-effector frame) -->
   <link name="left_v5_tool0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -413,10 +415,19 @@
   <!-- ========== RIGHT ARM (right_v5_joint1-6) ========== -->
   <link name="right_v5_link0">
     <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.5"/>
-      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/>
+      <origin xyz="0 0 0.01670398103" rpy="0 0 0"/>
+      <mass value="0.310084776766906"/>
+      <inertia ixx="0.000741163324579453" ixy="-1.92778886435101E-35" ixz="6.73482801154554E-20" iyy="0.000741163324579453" iyz="7.56724488341848E-35" izz="0.00132016293912598"/>
     </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/visual/base.STL"/></geometry>
+      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry><mesh filename="${mesh_base}/collision/base.STL"/></geometry>
+    </collision>
   </link>
   <joint name="right_v5_mount" type="fixed">
     <parent link="updown"/>
@@ -426,23 +437,22 @@
 
   <link name="right_v5_link1">
     <inertial>
-      <origin xyz="-3.97824922628853E-05 -0.0126477728169272 0.0492337945969195" rpy="0 0 0"/>
-      <mass value="1.26276932681279"/>
-      <inertia ixx="0.00263426432505094" ixy="1.39344493599146E-06" ixz="2.7860813926773E-06"
-               iyy="0.00268939195647464" iyz="7.06907392424158E-05" izz="0.00230762863992581"/>
+      <origin xyz="-0.004752553966 -0.008497713108 0.05815985177" rpy="0 0 0"/>
+      <mass value="1.74726890834066"/>
+      <inertia ixx="0.00457134350611956" ixy="-0.00022888054787914" ixz="1.99526917072982E-05" iyy="0.00429016337003855" iyz="3.56611508828154E-05" izz="0.00359307936517085"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint1.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link1.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint1.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link1.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint1" type="revolute">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0.056" rpy="0 0 0"/>
     <parent link="right_v5_link0"/>
     <child link="right_v5_link1"/>
     <axis xyz="0 0 1"/>
@@ -451,48 +461,46 @@
 
   <link name="right_v5_link2">
     <inertial>
-      <origin xyz="-1.28785870856518E-14 -0.199999999999987 -0.192749470015577" rpy="0 0 0"/>
-      <mass value="2.29867987677898"/>
-      <inertia ixx="0.0167934021362824" ixy="0" ixz="4.13764815381938E-17"
-               iyy="0.0137429160924878" iyz="2.17169249478585E-17" izz="0.0130582608880253"/>
+      <origin xyz="-0.1999998828 0.0002164972132 0.04318701696" rpy="0 0 0"/>
+      <mass value="6.19241787742505"/>
+      <inertia ixx="0.017665290529847" ixy="3.29089501398468E-05" ixz="-8.38471642040595E-17" iyy="0.048066506145401" iyz="-1.7346585838295E-18" izz="0.0543426112488358"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint2.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link2.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint2.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link2.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint2" type="revolute">
-    <origin xyz="0 -0.0905 0.058" rpy="-1.5708 0 0"/>
+    <origin xyz="-0.048573 -0.086838 0.058" rpy="2.0808 1.5708 0"/>
     <parent link="right_v5_link1"/>
     <child link="right_v5_link2"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="-1.57079633" upper="4.71238898" effort="120" velocity="1.2"/>
   </joint>
 
   <link name="right_v5_link3">
     <inertial>
-      <origin xyz="9.5070418204557E-10 -0.16182682160044 0.142215764473744" rpy="0 0 0"/>
-      <mass value="1.06877306681804"/>
-      <inertia ixx="0.00576467931842579" ixy="7.85022139795314E-11" ixz="1.66891069507532E-11"
-               iyy="0.00323480537976427" iyz="0.000627937896943069" izz="0.00557699384106281"/>
+      <origin xyz="0.07409140733 1.001705375e-09 0.07364765219" rpy="0 0 0"/>
+      <mass value="1.90258780164428"/>
+      <inertia ixx="0.00411572596862418" ixy="-3.01911147178725E-09" ixz="-0.00120850135091154" iyy="0.00644066810590579" iyz="-2.22807296332238E-09" izz="0.0058105765548736"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint3.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link3.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint3.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link3.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint3" type="revolute">
-    <origin xyz="0 -0.4 -0.072" rpy="0 0 0"/>
+    <origin xyz="-0.4 0.00043299 0" rpy="-3.1416 0 3.1416"/>
     <parent link="right_v5_link2"/>
     <child link="right_v5_link3"/>
     <axis xyz="0 0 1"/>
@@ -501,23 +509,22 @@
 
   <link name="right_v5_link4">
     <inertial>
-      <origin xyz="-4.39325770644761E-05 -0.00548997104397675 0.0483192533064992" rpy="0 0 0"/>
-      <mass value="1.14347535463895"/>
-      <inertia ixx="0.00245438961944399" ixy="1.39346065832636E-06" ixz="2.78607722047326E-06"
-               iyy="0.00234577565134394" iyz="7.06907346421649E-05" izz="0.00212775392531061"/>
+      <origin xyz="-0.004752553966 -0.008497713108 0.05815985177" rpy="0 0 0"/>
+      <mass value="1.74726890834066"/>
+      <inertia ixx="0.00457134350611957" ixy="-0.000228880547879141" ixz="1.9952691707297E-05" iyy="0.00429016337003856" iyz="3.56611508828166E-05" izz="0.00359307936517084"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint4.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link4.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint4.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link4.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint4" type="revolute">
-    <origin xyz="0 -0.339 0.15" rpy="1.5708 0 0"/>
+    <origin xyz="0.239 0 0.087" rpy="1.5708 -0.51 1.5708"/>
     <parent link="right_v5_link3"/>
     <child link="right_v5_link4"/>
     <axis xyz="0 0 1"/>
@@ -526,23 +533,22 @@
 
   <link name="right_v5_link5">
     <inertial>
-      <origin xyz="4.4006472602609E-05 -0.00549003609387566 -0.0483192456907762" rpy="0 0 0"/>
-      <mass value="1.14347650158227"/>
-      <inertia ixx="0.00245440026104237" ixy="-1.39330363796226E-06" ixz="2.78487451720199E-06"
-               iyy="0.00234577801687435" iyz="-7.06943241540916E-05" izz="0.00212775133190187"/>
+      <origin xyz="-7.311768933e-09 0.05801136091 0.05809045206" rpy="0 0 0"/>
+      <mass value="3.08594660753734"/>
+      <inertia ixx="0.0167442929087416" ixy="1.09626945062622E-08" ixz="-6.345264723373E-09" iyy="0.00720920659916117" iyz="-2.73883724830278E-05" izz="0.0156379743997341"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint5.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link5.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint5.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link5.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint5" type="revolute">
-    <origin xyz="0 -0.076 0.058" rpy="-1.5708 0 0"/>
+    <origin xyz="-0.037101 -0.066329 0.058" rpy="1.5708 0 -0.51"/>
     <parent link="right_v5_link4"/>
     <child link="right_v5_link5"/>
     <axis xyz="0 0 1"/>
@@ -551,30 +557,28 @@
 
   <link name="right_v5_link6">
     <inertial>
-      <origin xyz="-0.000182536205884709 -0.000174261472871362 0.0874473728067586" rpy="0 0 0"/>
-      <mass value="1.76089178109847"/>
-      <inertia ixx="0.00779269686744314" ixy="9.64917130872463E-08" ixz="-3.70697414022662E-07"
-               iyy="0.00558316502412396" iyz="1.37257666224686E-07" izz="0.0124506991775929"/>
+      <origin xyz="0 0 0.1083002353" rpy="0 0 0"/>
+      <mass value="7.04165101543079"/>
+      <inertia ixx="0.0638182348016273" ixy="-0.00839655409671607" ixz="-3.15560979408454E-14" iyy="0.0535037231599147" iyz="2.07520632907488E-14" izz="0.0896908193833424"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/rightjoint6.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/visual/link6.STL"/></geometry>
       <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/rightjoint6.STL"/></geometry>
+      <geometry><mesh filename="${mesh_base}/collision/link6.STL"/></geometry>
     </collision>
   </link>
   <joint name="right_v5_joint6" type="revolute">
-    <origin xyz="0 -0.083 -0.058" rpy="1.5708 0 0"/>
+    <origin xyz="0 0.1458 0.058" rpy="-1.5708 0.51 0"/>
     <parent link="right_v5_link5"/>
     <child link="right_v5_link6"/>
     <axis xyz="0 0 1"/>
     <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5"/>
   </joint>
 
-  <!-- Right tool0 (end-effector frame) -->
   <link name="right_v5_tool0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -587,6 +591,7 @@
     <child link="right_v5_tool0"/>
     <origin xyz="0 0 0.1" rpy="0 0 0"/>
   </joint>
+
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"
