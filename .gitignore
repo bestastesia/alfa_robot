@@ -207,3 +207,6 @@ universal_robot-noetic-devel/
 .ai_teamwork/tmp/
 .ai_teamwork/*.local.md
 .ai_teamwork/force_analysis_semantics.yaml
+
+# Local AI operation scratch log; not project progress
+.ai_teamwork/OPS_LOG.local.md

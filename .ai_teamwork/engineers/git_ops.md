@@ -24,7 +24,9 @@
 
 详细规范见 `.ai_teamwork/LINEAR_WORKFLOW.md`；本文件只保留 Git 操作工程师必须记住的要点。
 
-这是重要流程：只要任务来自 Linear，Git 分支、commit、PR 都必须能反查到对应 issue。
+这是重要流程：只要任务来自 Linear 且本次提交直接对应该 issue 的验收目标、修复项或推进内容，Git 分支、commit、PR 都必须能反查到对应 issue。
+
+如果提交只是分支内常规维护、协作区整理、架构清理、通用重构，且不直接对应任何 Linear issue，不要强行添加 Linear 魔法词。
 
 ### 基本规则
 
@@ -70,10 +72,10 @@ tim-28-bioik-tip-binding
 
 ### 责任边界
 
-- 如果用户或 PM 已指定 Linear issue，必须使用该 issue ID。
+- 如果用户或 PM 已指定 Linear issue，且提交内容直接服务该 issue，必须使用该 issue ID。
 - 如果当前任务还没有 Linear issue，先提醒 PM/用户创建或确认，不要自己随便编 ID。
 - 如果一个提交同时涉及多个 issue，commit message 中列出主 issue；正文或 PR 描述里说明其他关联 issue。
-- 如果只是本地协作文档整理、没有对应 Linear issue，可继续按原有中文提交规范，但提交前应确认用户是否希望关联 Linear。
+- 如果只是本地协作文档整理、分支常规维护、架构清理或通用重构，没有直接对应 Linear issue，可继续按原有中文提交规范，不要强行挂 Linear 魔法词。
 
 ### 当前 ALFA 示例
 

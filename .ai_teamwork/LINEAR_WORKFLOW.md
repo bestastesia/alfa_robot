@@ -94,7 +94,7 @@ Blocked 不是状态摆设，必须说明：
 
 ## 8. Git 关联规则
 
-来自 Linear 的任务，commit 必须带魔法词和 issue ID。
+只有提交内容直接对应某个 Linear issue 的验收目标、修复项或推进内容时，commit 才必须带魔法词和 issue ID。
 
 默认格式：
 
@@ -117,6 +117,8 @@ TIM-xx: 中文说明
 ```
 
 这个不够稳定，Linear 可能不识别为关联。
+
+如果这次提交只是当前分支的常规维护、协作区整理、架构清理、通用重构，且不直接对应任何 Linear issue，不要强行写 `Refs/Fixes/Closes/Resolves`；使用普通中文提交标题即可，避免把无关提交挂到 issue 上。
 
 ## 9. 分支规则
 
