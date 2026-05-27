@@ -48,6 +48,8 @@ install(FILES .setup_assistant DESTINATION share/${PROJECT_NAME})
 
 install(PROGRAMS
   scripts/reachability_tester.py
+  scripts/nine_orient_reachability.py
+  scripts/x_edge_refine_reachability.py
   scripts/rviz_dual_goal_pose_monitor.py
   DESTINATION lib/${PROJECT_NAME}
 )
