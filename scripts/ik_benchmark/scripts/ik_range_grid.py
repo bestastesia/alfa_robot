@@ -63,7 +63,7 @@ def default_tip_link(version: str, requested: str | None) -> str:
         return requested
     if version in {"v2", "v3"}:
         return "left_ee_link"
-    return "leftjoint6"
+    return "left_v5_tool0"
 
 
 def find_executable() -> str:
@@ -137,18 +137,18 @@ def add_range(command: list[str], name: str, values: list[float]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fast IK range grid wrapper")
     parser.add_argument("--version", choices=["current", "v2", "v3", "v4"], default="current")
-    parser.add_argument("--group", default="left_arm_with_base")
-    parser.add_argument("--solver", default="trac_ik", help="kdl/trac_ik/pick_ik/bio_ik or full plugin")
+    parser.add_argument("--group", default="left_v5_arm")
+    parser.add_argument("--solver", default="kdl", help="kdl/trac_ik/pick_ik/bio_ik or full plugin")
     parser.add_argument("--urdf", type=Path, default=None)
     parser.add_argument("--srdf", type=Path, default=None)
-    parser.add_argument("--base-frame", default="base_link")
+    parser.add_argument("--base-frame", default="left_v5_link0")
     parser.add_argument("--tip-link", default=None)
-    parser.add_argument("--x", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.3, 2.0, 0.05])
-    parser.add_argument("--y", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.3, 0.8, 0.05])
-    parser.add_argument("--z", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[0.5, 2.5, 0.05])
+    parser.add_argument("--x", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[0.0, 1.2, 0.05])
+    parser.add_argument("--y", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.6, 0.6, 0.05])
+    parser.add_argument("--z", type=float, nargs=3, metavar=("MIN", "MAX", "STEP"), default=[-0.5, 0.8, 0.05])
     parser.add_argument("--timeout", type=float, default=0.02)
-    parser.add_argument("--forward-axis", default="y", help="local EE axis: x/y/z or -x/-y/-z")
-    parser.add_argument("--target-axis", default="y", help="base-frame target direction: x/y/z or -x/-y/-z")
+    parser.add_argument("--forward-axis", default="z", help="local EE axis: x/y/z or -x/-y/-z")
+    parser.add_argument("--target-axis", default="x", help="base-frame target direction: x/y/z or -x/-y/-z")
     parser.add_argument("--spin-samples", type=int, default=12)
     parser.add_argument("--spin-min", type=float, default=0.0)
     parser.add_argument("--spin-max", type=float, default=6.283185307179586)

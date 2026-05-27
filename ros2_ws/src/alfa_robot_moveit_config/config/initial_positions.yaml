@@ -7,9 +7,9 @@ initial_positions:
   updown: 0
   left_v5_joint1: 0
   left_v5_joint2: 1.57079633
-  left_v5_joint3: 6.28318530
+  left_v5_joint3: 0
   left_v5_joint4: 0
-  left_v5_joint5: 6.28318530
+  left_v5_joint5: 0
   left_v5_joint6: 0
   right_v5_joint1: 0
   right_v5_joint2: 1.57079633

@@ -324,7 +324,7 @@
     <parent link="left_v5_link2"/>
     <child link="left_v5_link3"/>
     <axis xyz="0 0 -1"/>
-    <limit lower="3.14159265" upper="9.42477795" effort="100" velocity="1.2"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2"/>
   </joint>
 
   <link name="left_v5_link4">
@@ -372,7 +372,7 @@
     <parent link="left_v5_link4"/>
     <child link="left_v5_link5"/>
     <axis xyz="0 0 -1"/>
-    <limit lower="3.14159265" upper="9.42477795" effort="60" velocity="1.5"/>
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5"/>
   </joint>
 
   <link name="left_v5_link6">

@@ -63,8 +63,6 @@
     <disable_collisions link1="base_link" link2="turn" reason="Never"/>
     <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="left_v5_link0" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="right_v5_link0" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link0" link2="left_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link1" link2="left_v5_link2" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link2" link2="left_v5_link3" reason="Adjacent"/>

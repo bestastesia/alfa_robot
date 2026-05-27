@@ -97,9 +97,9 @@
 
       <xacro:v5_proxy_control_joint joint_name="left_v5_joint1" lower="-3.14159265" upper="3.14159265" velocity="1.2"/>
       <xacro:v5_proxy_control_joint joint_name="left_v5_joint2" lower="-1.57079633" upper="4.71238898" velocity="1.2"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint3" lower="3.14159265" upper="9.42477795" velocity="1.2"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2"/>
       <xacro:v5_proxy_control_joint joint_name="left_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint5" lower="3.14159265" upper="9.42477795" velocity="1.5"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint5" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
       <xacro:v5_proxy_control_joint joint_name="left_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5"/>
       <xacro:v5_proxy_control_joint joint_name="right_v5_joint1" lower="-3.14159265" upper="3.14159265" velocity="1.2"/>
       <xacro:v5_proxy_control_joint joint_name="right_v5_joint2" lower="-1.57079633" upper="4.71238898" velocity="1.2"/>
