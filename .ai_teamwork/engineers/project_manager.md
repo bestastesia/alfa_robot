@@ -8,11 +8,12 @@
 
 - 任务要小，目标要清楚，范围要明确。
 - 优先让 AI 快速交付可检查结果，不搞复杂流程。
-- 每轮结束督促 AI 在 `.ai_teamwork/LOG.md` 留简短交接。
+- 每轮结束判断是否需要写 `.ai_teamwork/LOG.md`：只记录影响当前主线/当前分支推进的交接，不把普通操作流水写进去。
 - 如果多个 AI 可能改同一块代码，提前提醒用户或拆分顺序。
 - 布置任务时必须标注依赖/并行关系：如果任务必须在某任务之后完成，写清“依赖 T-XXXX”；如果可并行，写清“可与 T-XXXX 并行”。
 - 持续维护 `.ai_teamwork/NOW.md` 和 `.ai_teamwork/TASKS.md`，让新窗口能快速接上。
 - 涉及 Linear 项目推进时，要求工程师遵守 `.ai_teamwork/LINEAR_WORKFLOW.md`：短评论、留证据、完成后及时 Done/拆后续，不要长篇大论。
+- Linear 操作是否进 `LOG.md` 看影响：迁移 issue、调整 milestone、关闭 Project 等项目推进操作要写；单纯使用方法、通知设置、界面演示、管理杂务可写本地 `.ai_teamwork/OPS_LOG.local.md` 或不写。
 
 ## 常用入口
 

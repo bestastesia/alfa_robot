@@ -185,7 +185,6 @@ ros2_ws/src/alfa_robot_moveit_config/scripts/*
 !ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/nine_orient_reachability.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/x_edge_refine_reachability.py
 
 # lidar workspace (nested git repos — ignore entirely)
 lidar_ws/src/FAST_LIO_LOCALIZATION2/
@@ -198,8 +197,6 @@ lidar_ws/src/livox_ros_driver2/
 # Reachability test outputs (generated at runtime)
 ros2_ws/nine_orient_reachability*.csv
 ros2_ws/reachability_results.csv
-ros2_ws/x_edge_refine*.csv
-ros2_ws/x_edge_refine*.rrd
 ros2_ws/RenderOption_*.json
 
 # External vendor snapshot used only during the canceled Pinocchio exploration.
@@ -211,14 +208,5 @@ universal_robot-noetic-devel/
 .ai_teamwork/*.local.md
 .ai_teamwork/force_analysis_semantics.yaml
 
-# Local/generated experiment data
-data/backpack/
-data_backpack/
-
-# Keep generated benchmark report figures under data when explicitly produced
-!data/
-!data/ik_benchmark/
-!data/ik_benchmark/updown_solver_comparison/
-!data/ik_benchmark/updown_solver_comparison/charts/
-!data/ik_benchmark/updown_solver_comparison/charts/*.png
-!data/ik_benchmark/updown_solver_comparison/charts/*.svg
+# Local AI operation scratch log; not project progress
+.ai_teamwork/OPS_LOG.local.md

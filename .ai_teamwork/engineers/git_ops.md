@@ -24,12 +24,14 @@
 
 详细规范见 `.ai_teamwork/LINEAR_WORKFLOW.md`；本文件只保留 Git 操作工程师必须记住的要点。
 
-这是重要流程：只要任务来自 Linear，Git 分支、commit、PR 都必须能反查到对应 issue。
+这是重要流程：只要任务来自 Linear 且本次提交直接对应该 issue 的验收目标、修复项或推进内容，Git 分支、commit、PR 都必须能反查到对应 issue。
+
+如果提交只是分支内常规维护、协作区整理、架构清理、通用重构，且不直接对应任何 Linear issue，不要强行添加 Linear 魔法词。
 
 ### 基本规则
 
 - 开发分支名必须包含 Linear issue ID，例如 `TIM-25`。
-- commit message 必须使用 Linear magic word + issue ID，推荐 `Refs TIM-xx:`；只写 `TIM-xx:` 不足以稳定触发 commit linking。
+- commit message 必须包含同一个 Linear issue ID。
 - 如果后续有 PR，PR 标题也必须包含 Linear issue ID。
 - 不建议直接使用 Linear 自动生成的中文长分支名；优先使用短英文描述，避免脚本、CI、终端兼容问题。
 
@@ -45,40 +47,13 @@ commit 示例：
 Refs TIM-25: 记录 place_safe 失败候选并补充诊断
 ```
 
-不要只写 `TIM-25: ...`，Linear 可能不会稳定识别；`Refs` 是非关闭型 magic word，只建立关联，不会在 merge 后自动关闭 issue。普通提交默认用 `Refs`，只有确认合并后应关闭 issue 才用 `Fixes`/`Closes`/`Resolves`。
+不要只写 `TIM-25: ...`，Linear 可能不会稳定识别；普通提交默认用 `Refs`，只有确认合并后应关闭 issue 才用 `Fixes/Closes/Resolves`。
 
 PR 标题示例：
 
 ```text
 TIM-25 定义并跑通水管版 baseline 标准流程
 ```
-
-
-### Linear magic word 规则
-
-已验证：仅写 `TIM-34: ...` 不会稳定触发 Linear commit linking；改为 `Refs TIM-34: ...` 并重新 push 后，Linear 立即显示 GitHub commit 附件。
-
-推荐默认格式：
-
-```text
-Refs TIM-34: 提交说明
-```
-
-常用 magic word：
-
-- `Refs TIM-34`：只关联，不自动关闭，默认推荐。
-- `Fixes TIM-34` / `Closes TIM-34` / `Resolves TIM-34`：关闭型，适合任务确实完成且希望合并后自动 Done。
-
-如果提交已经 push 但忘了 magic word，需要改写提交信息并安全强推：
-
-```bash
-git commit --amend
-# 或多个提交使用 git rebase -i
-
-git push --force-with-lease origin <branch>
-```
-
-只有当前分支无人协作，或已确认可以重写历史时，才允许这样做。
 
 ### 分支命名建议
 
@@ -97,10 +72,10 @@ tim-28-bioik-tip-binding
 
 ### 责任边界
 
-- 如果用户或 PM 已指定 Linear issue，必须使用该 issue ID。
+- 如果用户或 PM 已指定 Linear issue，且提交内容直接服务该 issue，必须使用该 issue ID。
 - 如果当前任务还没有 Linear issue，先提醒 PM/用户创建或确认，不要自己随便编 ID。
 - 如果一个提交同时涉及多个 issue，commit message 中列出主 issue；正文或 PR 描述里说明其他关联 issue。
-- 如果只是本地协作文档整理、没有对应 Linear issue，可继续按原有中文提交规范，但提交前应确认用户是否希望关联 Linear。
+- 如果只是本地协作文档整理、分支常规维护、架构清理或通用重构，没有直接对应 Linear issue，可继续按原有中文提交规范，不要强行挂 Linear 魔法词。
 
 ### 当前 ALFA 示例
 
