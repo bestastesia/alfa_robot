@@ -22,11 +22,11 @@ parallel_updown_aware_ik:
 
   h_planner:
     left_reach_sphere:
-      center: [0.015, 0.3125, 0.6625]
-      radius: 0.815
+      center: [0.355, 0.26, 0.317]
+      radius: 0.679
     right_reach_sphere:
-      center: [0.015, -0.3125, 0.6625]
-      radius: 0.815
+      center: [0.355, -0.26, 0.317]
+      radius: 0.679
     physical_limits: [0.0, 0.99]
     tool0_offset: 0.1
     sphere_margin: 0.0

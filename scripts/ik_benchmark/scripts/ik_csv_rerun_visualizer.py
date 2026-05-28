@@ -337,16 +337,41 @@ def load_points(csv_path: Path, show_failed: bool) -> tuple[np.ndarray, np.ndarr
 
     with csv_path.open(newline="") as csv_file:
         reader = csv.DictReader(csv_file)
-        required = {"x", "y", "z", "is_success", "time_ms", "error_code"}
-        missing = required.difference(reader.fieldnames or [])
-        if missing:
-            raise ValueError(f"CSV missing columns: {sorted(missing)}")
+        fieldnames = set(reader.fieldnames or [])
+        xyz_columns = {"x", "y", "z"}
+        missing_xyz = xyz_columns.difference(fieldnames)
+        if missing_xyz:
+            raise ValueError(f"CSV missing columns: {sorted(missing_xyz)}")
+
+        if "is_success" in fieldnames:
+            csv_kind = "range_grid"
+        elif {"orient_label", "point_reachable"}.issubset(fieldnames):
+            csv_kind = "nine_orient"
+        else:
+            raise ValueError(
+                "CSV must be either ik_range_grid format with 'is_success' "
+                "or nine_orient format with 'orient_label' and 'point_reachable'"
+            )
 
         for row in reader:
+            if csv_kind == "nine_orient" and row.get("orient_label") != "SUMMARY":
+                continue
+
             point = [float(row["x"]), float(row["y"]), float(row["z"])]
-            if parse_bool(row["is_success"]):
+            if csv_kind == "range_grid":
+                is_success = parse_bool(row["is_success"])
+                time_ms = float(row.get("time_ms") or 0.0)
+            else:
+                point_reachable = row.get("point_reachable")
+                if point_reachable not in (None, ""):
+                    is_success = parse_bool(point_reachable)
+                else:
+                    is_success = row.get("n_success") not in (None, "") and row.get("n_success") == row.get("n_total")
+                time_ms = 0.0
+
+            if is_success:
                 success_points.append(point)
-                success_times.append(float(row["time_ms"]))
+                success_times.append(time_ms)
             elif show_failed:
                 failed_points.append(point)
 
@@ -383,9 +408,49 @@ def log_axes(path: str, size: float, *, static: bool = True) -> None:
     )
 
 
+POINT_COLORS = [
+    [230, 25, 75],    # red
+    [60, 180, 75],    # green
+    [0, 130, 200],    # blue
+    [245, 130, 48],   # orange
+    [145, 30, 180],   # purple
+    [70, 240, 240],   # cyan
+    [240, 50, 230],   # magenta
+    [210, 245, 60],   # lime
+]
+
+
+def color_for_index(index: int) -> list[int]:
+    return POINT_COLORS[index % len(POINT_COLORS)]
+
+
+def safe_rerun_name(path: Path) -> str:
+    return path.stem.replace("-", "_").replace(".", "_")
+
+
+def edge_filter_from_name(path: Path) -> tuple[int, str] | None:
+    parts = path.stem.split("_")
+    if len(parts) != 2:
+        return None
+    axis_name, direction = parts
+    axis_index = {"x": 0, "y": 1, "z": 2}.get(axis_name)
+    if axis_index is None or direction not in {"max", "min"}:
+        return None
+    return axis_index, direction
+
+
+def filter_edge_slice(points: np.ndarray, edge_filter: tuple[int, str] | None, tolerance: float) -> np.ndarray:
+    if edge_filter is None or len(points) == 0:
+        return points
+    axis_index, direction = edge_filter
+    values = points[:, axis_index]
+    boundary = values.max() if direction == "max" else values.min()
+    return points[np.abs(values - boundary) <= tolerance]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize IK range grid CSV with current robot model in Rerun")
-    parser.add_argument("csv", type=Path, help="IK range grid CSV path")
+    parser.add_argument("csv", type=Path, nargs="+", help="One or more IK CSV paths")
     parser.add_argument("--show-failed", action="store_true", help="Also show failed points")
     parser.add_argument("--max-points", type=int, default=None, help="Downsample each point cloud for display")
     parser.add_argument("--csv-frame", default="left_v5_link0", help="Frame of x/y/z columns in CSV")
@@ -395,13 +460,27 @@ def main() -> None:
     parser.add_argument("--raw-csv-frame", action="store_true", help="Do not transform CSV points into world")
     parser.add_argument("--connect", action="store_true", help="Connect to an existing Rerun viewer")
     parser.add_argument("--save", type=Path, default=None, help="Save recording as .rrd")
+    parser.add_argument("--edge-slice", action=argparse.BooleanOptionalAction, default=True, help="For files named x_max/x_min/y_max/y_min/z_max/z_min, show only the outermost slice")
+    parser.add_argument("--edge-slice-tolerance", type=float, default=1e-9, help="Tolerance for selecting outermost edge slice")
     args = parser.parse_args()
 
-    success_points, failed_points, success_times = load_points(args.csv, args.show_failed)
-    success_points = downsample(success_points, args.max_points)
-    failed_points = downsample(failed_points, args.max_points)
+    point_sets = []
+    for csv_path in args.csv:
+        success_points, failed_points, success_times = load_points(csv_path, args.show_failed)
+        edge_filter = edge_filter_from_name(csv_path) if args.edge_slice else None
+        success_points = filter_edge_slice(success_points, edge_filter, args.edge_slice_tolerance)
+        failed_points = filter_edge_slice(failed_points, edge_filter, args.edge_slice_tolerance)
+        point_sets.append({
+            "path": csv_path,
+            "name": safe_rerun_name(csv_path),
+            "edge_filter": edge_filter,
+            "success_points": downsample(success_points, args.max_points),
+            "failed_points": downsample(failed_points, args.max_points),
+            "success_times": success_times,
+        })
 
-    rr.init("alfa_ik_range_grid", recording_id=args.csv.stem)
+    recording_id = args.csv[0].stem if len(args.csv) == 1 else "multi_ik_range"
+    rr.init("alfa_ik_range_grid", recording_id=recording_id)
     if args.save is not None:
         rr.save(str(args.save))
     elif args.connect:
@@ -427,42 +506,62 @@ def main() -> None:
     if args.raw_csv_frame:
         csv_to_world = np.eye(4)
 
-    success_world = transform_points(success_points, csv_to_world)
-    failed_world = transform_points(failed_points, csv_to_world)
+    total_success = 0
+    total_failed = 0
+    info_lines = [
+        "IK CSV visualization",
+        f"CSV frame: {args.csv_frame}",
+        "Robot front = +X, left = +Y, up = +Z. Points are transformed into world unless --raw-csv-frame is set.",
+        "",
+    ]
 
-    print(f"CSV: {args.csv}")
+    print(f"CSV files: {len(point_sets)}")
     print(f"CSV frame: {args.csv_frame}")
-    print(f"successful points: {len(success_world)}")
-    if args.show_failed:
-        print(f"failed points: {len(failed_world)}")
-    if len(success_times) > 0:
-        print(
-            "success solve time ms: "
-            f"avg={success_times.mean():.3f}, min={success_times.min():.3f}, max={success_times.max():.3f}"
-        )
     if not args.raw_csv_frame:
         xyz = csv_to_world[:3, 3]
         print(f"{args.csv_frame} origin in world: ({xyz[0]:+.4f}, {xyz[1]:+.4f}, {xyz[2]:+.4f})")
 
-    if len(success_world) > 0:
-        rr.log(
-            "world/ik_range/success",
-            rr.Points3D(success_world, colors=[0, 220, 60], radii=0.01),
-        )
-    if args.show_failed and len(failed_world) > 0:
-        rr.log(
-            "world/ik_range/failed",
-            rr.Points3D(failed_world, colors=[220, 30, 30], radii=0.006),
-        )
+    for index, point_set in enumerate(point_sets):
+        csv_path = point_set["path"]
+        name = point_set["name"]
+        color = color_for_index(index)
+        success_world = transform_points(point_set["success_points"], csv_to_world)
+        failed_world = transform_points(point_set["failed_points"], csv_to_world)
+        total_success += len(success_world)
+        total_failed += len(failed_world)
+
+        edge_text = ""
+        edge_filter = point_set["edge_filter"]
+        if edge_filter is not None:
+            axis_name = "xyz"[edge_filter[0]]
+            edge_text = f" edge_slice={axis_name}_{edge_filter[1]}"
+        print(f"[{index + 1}] {csv_path}: success={len(success_world)} failed={len(failed_world) if args.show_failed else 0} color={color}{edge_text}")
+        info_lines.append(f"{name}: success={len(success_world)}, failed={len(failed_world) if args.show_failed else 0}, color={color}, {edge_text}, file={csv_path}")
+
+        success_times = point_set["success_times"]
+        if len(success_times) > 0:
+            print(
+                f"    success solve time ms: avg={success_times.mean():.3f}, "
+                f"min={success_times.min():.3f}, max={success_times.max():.3f}"
+            )
+
+        if len(success_world) > 0:
+            rr.log(
+                f"world/ik_range/{name}/success",
+                rr.Points3D(success_world, colors=color, radii=0.01),
+            )
+        if args.show_failed and len(failed_world) > 0:
+            rr.log(
+                f"world/ik_range/{name}/failed",
+                rr.Points3D(failed_world, colors=[120, 120, 120], radii=0.004),
+            )
 
     rr.log(
         "world/info",
         rr.TextDocument(
-            f"IK range grid CSV: {args.csv}\n"
-            f"CSV frame: {args.csv_frame}\n"
-            f"success: {len(success_world)}\n"
-            f"failed displayed: {len(failed_world)}\n"
-            "Robot front = +X, left = +Y, up = +Z. Points are transformed into world unless --raw-csv-frame is set."
+            "\n".join(info_lines)
+            + f"\n\ntotal success: {total_success}\n"
+            + f"total failed displayed: {total_failed if args.show_failed else 0}"
         ),
     )
 

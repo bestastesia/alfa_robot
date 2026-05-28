@@ -9,6 +9,8 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
+#include <memory>
 #include <nlohmann/json.hpp>
 #include <random>
 #include <set>
@@ -552,6 +554,238 @@ double jointLeverProxy(const std::vector<std::string>& names,
     return 0.0;
 }
 
+std::string hSearchModeName(UpdownAwareIkConfig::HSearchMode mode)
+{
+    return mode == UpdownAwareIkConfig::HSearchMode::ContinuousRange ? "continuous_range" : "fixed_discrete";
+}
+
+UpdownAwareIkConfig::HSearchMode parseHSearchMode(const std::string& value)
+{
+    if (value == "continuous_range" || value == "continuous") {
+        return UpdownAwareIkConfig::HSearchMode::ContinuousRange;
+    }
+    if (value == "fixed_discrete" || value == "fixed") {
+        return UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
+    }
+    throw std::runtime_error("Unsupported --h-mode: " + value);
+}
+
+struct StrategySelection {
+    bool unlimited = true;
+    bool lookup = true;
+    bool experiment = true;
+};
+
+StrategySelection parseStrategies(const std::string& raw)
+{
+    StrategySelection selection{false, false, false};
+    std::stringstream stream(raw);
+    std::string token;
+    while (std::getline(stream, token, ',')) {
+        token = trim(token);
+        if (token.empty()) continue;
+        if (token == "all") {
+            selection = {true, true, true};
+        } else if (token == "unlimited" || token == "baseline1") {
+            selection.unlimited = true;
+        } else if (token == "lookup" || token == "baseline2") {
+            selection.lookup = true;
+        } else if (token == "experiment" || token == "parallel" || token == "new") {
+            selection.experiment = true;
+        } else {
+            throw std::runtime_error("Unsupported --strategy value: " + token);
+        }
+    }
+    return selection;
+}
+
+nlohmann::json enabledStrategiesJson(const StrategySelection& selection)
+{
+    nlohmann::json strategies = nlohmann::json::array();
+    if (selection.unlimited) strategies.push_back("unlimited_bioik_until_collision_free");
+    if (selection.lookup) strategies.push_back("lookup_like_fixed_h_with_fallback");
+    if (selection.experiment) strategies.push_back("parallel_updown_aware_solver");
+    return strategies;
+}
+
+nlohmann::json costWeightsJson(const UpdownAwareIkConfig& config)
+{
+    return {
+        {"updown_static_bonus", config.cost_updown_static_bonus},
+        {"updown_within_0p1_bonus", config.cost_updown_within_0p1_bonus},
+        {"updown_over_0p1_distance", config.cost_updown_over_0p1_distance},
+        {"joint2_torque", config.cost_joint2_torque},
+        {"joint3_torque", config.cost_joint3_torque},
+        {"solve_ms", config.cost_solve_ms},
+    };
+}
+
+nlohmann::json costThresholdsJson(const UpdownAwareIkConfig& config)
+{
+    return {
+        {"updown_static_epsilon", config.updown_static_epsilon},
+        {"updown_small_motion", config.updown_small_motion_threshold},
+    };
+}
+
+struct TorqueProxyBreakdown {
+    double joint2 = 0.0;
+    double joint3 = 0.0;
+};
+
+TorqueProxyBreakdown torqueProxyBreakdown(const std::vector<std::string>& names,
+                                          const std::vector<double>& values,
+                                          const std::string& prefix,
+                                          const UpdownAwareIkConfig& config)
+{
+    const bool is_left = prefix == "left";
+    const double q2 = namedJointValue(names, values, prefix + "_v5_joint2");
+    const double q3 = namedJointValue(names, values, prefix + "_v5_joint3");
+    const double q2_zero = is_left ? config.left_joint2_horizontal_angle : config.right_joint2_horizontal_angle;
+    const double q3_zero = is_left ? config.left_joint3_horizontal_angle : config.right_joint3_horizontal_angle;
+    const double shoulder_angle = q2 - q2_zero;
+    const double elbow_angle = q2 + q3 - q2_zero - q3_zero;
+
+    const double link2_moment = config.link2_mass_proxy * 0.5 * config.link2_length * std::abs(std::cos(shoulder_angle));
+    const double link3_shoulder_moment = config.link3_mass_proxy *
+        (config.link2_length * std::abs(std::cos(shoulder_angle)) +
+         0.5 * config.link3_length * std::abs(std::cos(elbow_angle)));
+    const double payload_shoulder_moment = config.payload_mass_proxy *
+        (config.link2_length * std::abs(std::cos(shoulder_angle)) +
+         config.link3_length * std::abs(std::cos(elbow_angle)));
+    const double link3_elbow_moment = config.link3_mass_proxy * 0.5 * config.link3_length * std::abs(std::cos(elbow_angle));
+    const double payload_elbow_moment = config.payload_mass_proxy * config.link3_length * std::abs(std::cos(elbow_angle));
+
+    TorqueProxyBreakdown out;
+    out.joint2 = config.cost_joint2_torque * (link2_moment + link3_shoulder_moment + payload_shoulder_moment);
+    out.joint3 = config.cost_joint3_torque * (link3_elbow_moment + payload_elbow_moment);
+    return out;
+}
+
+
+nlohmann::json candidateCostBreakdownJson(const ik_benchmark::UpdownAwareIkCandidate& candidate,
+                                          const UpdownAwareIkConfig& config)
+{
+    const auto left = torqueProxyBreakdown(candidate.full_joint_names, candidate.full_joint_values, "left", config);
+    const auto right = torqueProxyBreakdown(candidate.full_joint_names, candidate.full_joint_values, "right", config);
+
+    nlohmann::json breakdown;
+    breakdown["updown_static_bonus"] = candidate.updown_delta <= config.updown_static_epsilon ? -config.cost_updown_static_bonus : 0.0;
+    breakdown["updown_small_motion_bonus"] = candidate.updown_delta <= config.updown_small_motion_threshold ? -config.cost_updown_within_0p1_bonus : 0.0;
+    breakdown["updown_over_small_motion_penalty"] = candidate.updown_delta > config.updown_small_motion_threshold
+        ? config.cost_updown_over_0p1_distance * (candidate.updown_delta - config.updown_small_motion_threshold)
+        : 0.0;
+    breakdown["left_joint2_torque"] = left.joint2;
+    breakdown["right_joint2_torque"] = right.joint2;
+    breakdown["left_joint3_torque"] = left.joint3;
+    breakdown["right_joint3_torque"] = right.joint3;
+    breakdown["solve_ms"] = config.cost_solve_ms * candidate.solve_ms;
+    breakdown["total"] = candidate.score;
+    return breakdown;
+}
+
+nlohmann::json serializeCandidate(const ik_benchmark::UpdownAwareIkCandidate& candidate,
+                                  size_t candidate_index,
+                                  size_t rank,
+                                  bool selected,
+                                  const LeverParams& lever_params,
+                                  const UpdownAwareIkConfig& config)
+{
+    nlohmann::json out;
+    out["candidate_index"] = candidate_index;
+    if (candidate.legal) out["rank"] = rank;
+    else out["rank"] = nullptr;
+    out["selected"] = selected;
+    out["legal"] = candidate.legal;
+    out["collision_free"] = candidate.collision_free;
+    out["swapped"] = candidate.swapped;
+    out["timeout_like"] = candidate.timeout_like;
+    out["solver_path"] = candidate.solver_path;
+    out["target_order"] = candidate.target_order;
+    out["rejection_reason"] = candidate.rejection_reason;
+    out["h"] = candidate.h;
+    out["h_center"] = candidate.h_center;
+    out["h_index"] = candidate.h_index;
+    out["seed_index"] = candidate.seed_index;
+    out["score"] = candidate.score;
+    out["solve_ms"] = candidate.solve_ms;
+    out["direct_pos_error"] = candidate.direct_pos_error;
+    out["direct_ori_error"] = candidate.direct_ori_error;
+    out["swapped_pos_error"] = candidate.swapped_pos_error;
+    out["updown_delta"] = candidate.updown_delta;
+    out["joint_delta"] = candidate.joint_delta;
+    out["joint_names"] = candidate.joint_names;
+    out["joint_values"] = candidate.joint_values;
+    out["full_joint_names"] = candidate.full_joint_names;
+    out["full_joint_values"] = candidate.full_joint_values;
+    out["collision_pairs"] = candidate.collision_pairs;
+
+    const double left_j2 = jointLeverProxy(candidate.full_joint_names, candidate.full_joint_values, "left", 2, lever_params);
+    const double right_j2 = jointLeverProxy(candidate.full_joint_names, candidate.full_joint_values, "right", 2, lever_params);
+    const double left_j3 = jointLeverProxy(candidate.full_joint_names, candidate.full_joint_values, "left", 3, lever_params);
+    const double right_j3 = jointLeverProxy(candidate.full_joint_names, candidate.full_joint_values, "right", 3, lever_params);
+    out["left_joint2_lever_length"] = left_j2;
+    out["right_joint2_lever_length"] = right_j2;
+    out["joint2_lever_length"] = std::max(left_j2, right_j2);
+    out["left_joint3_lever_length"] = left_j3;
+    out["right_joint3_lever_length"] = right_j3;
+    out["joint3_lever_length"] = std::max(left_j3, right_j3);
+    out["cost_breakdown"] = candidateCostBreakdownJson(candidate, config);
+    return out;
+}
+
+std::vector<size_t> legalRankOrder(const std::vector<ik_benchmark::UpdownAwareIkCandidate>& candidates)
+{
+    std::vector<size_t> order;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (candidates[i].legal) order.push_back(i);
+    }
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return candidates[a].score < candidates[b].score;
+    });
+    return order;
+}
+
+bool sameSelectedCandidate(const ik_benchmark::UpdownAwareIkCandidate& a,
+                           const ik_benchmark::UpdownAwareIkCandidate& b)
+{
+    return a.legal == b.legal &&
+           a.h_index == b.h_index &&
+           a.seed_index == b.seed_index &&
+           a.target_order == b.target_order &&
+           a.solver_path == b.solver_path &&
+           std::abs(a.h - b.h) < 1e-9 &&
+           std::abs(a.score - b.score) < 1e-9;
+}
+
+nlohmann::json serializeCandidates(const std::vector<ik_benchmark::UpdownAwareIkCandidate>& candidates,
+                                   const ik_benchmark::UpdownAwareIkCandidate& selected,
+                                   const LeverParams& lever_params,
+                                   const UpdownAwareIkConfig& config,
+                                   size_t& selected_rank,
+                                   size_t& selected_index)
+{
+    const auto order = legalRankOrder(candidates);
+    std::map<size_t, size_t> rank_by_index;
+    for (size_t i = 0; i < order.size(); ++i) {
+        rank_by_index[order[i]] = i + 1;
+    }
+
+    nlohmann::json out = nlohmann::json::array();
+    selected_rank = 0;
+    selected_index = candidates.size();
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        const bool selected_candidate = selected.legal && sameSelectedCandidate(candidates[i], selected);
+        const size_t rank = rank_by_index.count(i) ? rank_by_index[i] : 0;
+        if (selected_candidate) {
+            selected_rank = rank;
+            selected_index = i;
+        }
+        out.push_back(serializeCandidate(candidates[i], i, rank, selected_candidate, lever_params, config));
+    }
+    return out;
+}
+
 void addSelectedJointDiagnostics(nlohmann::json& record,
                                  const std::vector<std::string>& joint_names,
                                  const std::vector<double>& joint_values,
@@ -905,7 +1139,8 @@ nlohmann::json runNewSolverStage(ParallelUpdownAwareIkSolver& solver,
                                  double current_h,
                                  std::vector<double>& arm_seed,
                                  std::vector<double>& full_seed,
-                                 const LeverParams& lever_params)
+                                 const LeverParams& lever_params,
+                                 const UpdownAwareIkConfig& config)
 {
     UpdownAwareIkRequest request;
     request.left_target = toIsometry(stage.left);
@@ -915,7 +1150,13 @@ nlohmann::json runNewSolverStage(ParallelUpdownAwareIkSolver& solver,
     request.current_full_joints = full_seed;
     auto result = solver.solve(request);
 
+    size_t selected_rank = 0;
+    size_t selected_index = result.candidates.size();
+    nlohmann::json candidates = serializeCandidates(result.candidates, result.selected, lever_params, config,
+                                                     selected_rank, selected_index);
+
     nlohmann::json record;
+    record["schema_version"] = 2;
     record["strategy"] = "parallel_updown_aware_solver";
     record["success"] = result.success;
     record["fallback_used"] = result.fallback_used;
@@ -924,16 +1165,33 @@ nlohmann::json runNewSolverStage(ParallelUpdownAwareIkSolver& solver,
     record["selected_h"] = result.success ? result.selected.h : current_h;
     record["updown_delta"] = result.success ? std::abs(result.selected.h - current_h) : 0.0;
     record["h_interval"] = {{"lower", result.h_interval_lower}, {"upper", result.h_interval_upper}, {"reachable", result.range_reachable}};
+    record["h_interval_lower"] = result.h_interval_lower;
+    record["h_interval_upper"] = result.h_interval_upper;
+    record["h_interval_reachable"] = result.range_reachable;
     record["h_candidates"] = result.h_candidates;
+    record["h_candidate_count"] = result.h_candidates.size();
     record["trial_count"] = result.trial_count;
     record["legal_count"] = result.legal_count;
+    record["candidate_count"] = result.candidates.size();
+    record["legal_candidate_count"] = result.legal_count;
+    record["rejected_candidate_count"] = result.candidates.size() >= result.legal_count ? result.candidates.size() - result.legal_count : 0;
     record["timeout_like_count"] = result.timeout_like_count;
     record["wall_ms"] = result.wall_ms;
     record["sum_solve_ms"] = result.sum_solve_ms;
+    record["candidates"] = candidates;
     if (result.success) {
         arm_seed = result.selected.joint_values;
         full_seed = result.selected.full_joint_values;
         record["selected_score"] = result.selected.score;
+        record["selected_candidate_index"] = selected_index;
+        record["selected_rank"] = selected_rank;
+        record["selected_h_index"] = result.selected.h_index;
+        record["selected_seed_index"] = result.selected.seed_index;
+        record["selected_target_order"] = result.selected.target_order;
+        record["selected_solver_path"] = result.selected.solver_path;
+        record["selected_joint_delta"] = result.selected.joint_delta;
+        record["selected_timeout_like"] = result.selected.timeout_like;
+        record["selected_cost_breakdown"] = candidateCostBreakdownJson(result.selected, config);
         record["direct_pos_error"] = result.selected.direct_pos_error;
         record["direct_ori_error"] = result.selected.direct_ori_error;
         record["collision_free"] = result.selected.collision_free;
@@ -962,6 +1220,9 @@ int main(int argc, char** argv)
     double fallback_timeout_value = 0.0;
     bool workers_override = false;
     size_t workers_value = 0;
+    StrategySelection strategy_selection;
+    bool h_mode_override = false;
+    UpdownAwareIkConfig::HSearchMode h_mode_value = UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -985,6 +1246,16 @@ int main(int argc, char** argv)
             fallback_timeout_value = std::stod(argv[++i]);
             fallback_timeout_override = true;
         }
+        else if (arg == "--skip-baselines") {
+            strategy_selection = {false, false, true};
+        }
+        else if ((arg == "--strategy" || arg == "--strategies") && i + 1 < argc) {
+            strategy_selection = parseStrategies(argv[++i]);
+        }
+        else if (arg == "--h-mode" && i + 1 < argc) {
+            h_mode_value = parseHSearchMode(argv[++i]);
+            h_mode_override = true;
+        }
     }
 
     LoadedYamlConfig loaded_config = loadConfigFromYaml(config_path);
@@ -993,6 +1264,7 @@ int main(int argc, char** argv)
     if (timeout_override) experiment_config.timeout = timeout_value;
     if (fallback_timeout_override) experiment_config.fallback_timeout = fallback_timeout_value;
     if (workers_override) experiment_config.workers = workers_value;
+    if (h_mode_override) experiment_config.h_search_mode = h_mode_value;
     if (seed_attempts_override) comparison_config.unlimited_seed_attempts = seed_attempts_value;
     const LeverParams lever_params = leverParamsFromConfig(experiment_config);
 
@@ -1014,9 +1286,19 @@ int main(int argc, char** argv)
     options.tip_link2 = experiment_config.right_tip;
     options.reject_collisions = false;
 
-    IkSolver unlimited_ik(experiment_config.free_group, experiment_config.solver_plugin, timeout, false, options);
-    IkSolver lookup_arm_ik(experiment_config.fixed_group, experiment_config.solver_plugin, timeout, false, options);
-    IkSolver lookup_fallback_ik(experiment_config.free_group, experiment_config.solver_plugin, fallback_timeout, false, options);
+    std::unique_ptr<IkSolver> unlimited_ik;
+    std::unique_ptr<IkSolver> lookup_arm_ik;
+    std::unique_ptr<IkSolver> lookup_fallback_ik;
+    std::unique_ptr<ParallelUpdownAwareIkSolver> lookup_solver;
+    std::unique_ptr<ParallelUpdownAwareIkSolver> experiment_solver;
+
+    if (strategy_selection.unlimited) {
+        unlimited_ik = std::make_unique<IkSolver>(experiment_config.free_group, experiment_config.solver_plugin, timeout, false, options);
+    }
+    if (strategy_selection.lookup) {
+        lookup_arm_ik = std::make_unique<IkSolver>(experiment_config.fixed_group, experiment_config.solver_plugin, timeout, false, options);
+        lookup_fallback_ik = std::make_unique<IkSolver>(experiment_config.free_group, experiment_config.solver_plugin, fallback_timeout, false, options);
+    }
 
     UpdownAwareIkConfig lookup_config = experiment_config;
     lookup_config.timeout = timeout;
@@ -1028,8 +1310,12 @@ int main(int argc, char** argv)
     lookup_config.fallback_timeout = fallback_timeout;
     lookup_config.fallback_seed_count = comparison_config.lookup_fallback_seed_count;
 
-    ParallelUpdownAwareIkSolver lookup_solver(lookup_config);
-    ParallelUpdownAwareIkSolver experiment_solver(experiment_config);
+    if (strategy_selection.lookup) {
+        lookup_solver = std::make_unique<ParallelUpdownAwareIkSolver>(lookup_config);
+    }
+    if (strategy_selection.experiment) {
+        experiment_solver = std::make_unique<ParallelUpdownAwareIkSolver>(experiment_config);
+    }
 
     nlohmann::json header;
     header["type"] = "header";
@@ -1058,6 +1344,13 @@ int main(int argc, char** argv)
     header["fixed_group"] = experiment_config.fixed_group;
     header["free_group"] = experiment_config.free_group;
     header["solver_plugin"] = experiment_config.solver_plugin;
+    header["schema_version"] = 2;
+    header["record_candidates"] = strategy_selection.experiment;
+    header["candidate_record_mode"] = strategy_selection.experiment ? "all" : "none";
+    header["enabled_strategies"] = enabledStrategiesJson(strategy_selection);
+    header["experiment_h_search_mode"] = hSearchModeName(experiment_config.h_search_mode);
+    header["cost_weights"] = costWeightsJson(experiment_config);
+    header["cost_thresholds"] = costThresholdsJson(experiment_config);
     header["check_collision"] = experiment_config.check_collision;
     header["max_stages"] = max_stages;
     header["fallback_timeout"] = fallback_timeout;
@@ -1072,11 +1365,11 @@ int main(int argc, char** argv)
     std::map<std::string, size_t> success_count;
     std::map<std::string, size_t> stage_count;
 
-    std::vector<double> unlimited_seed(unlimited_ik.variableNames().size(), 0.0);
-    std::vector<double> lookup_arm_seed(lookup_arm_ik.variableNames().size(), 0.0);
-    std::vector<double> lookup_full_seed(lookup_fallback_ik.variableNames().size(), 0.0);
-    std::vector<double> exp_arm_seed(experiment_solver.fixedVariableNames().size(), 0.0);
-    std::vector<double> exp_full_seed(experiment_solver.freeVariableNames().size(), 0.0);
+    std::vector<double> unlimited_seed = unlimited_ik ? std::vector<double>(unlimited_ik->variableNames().size(), 0.0) : std::vector<double>();
+    std::vector<double> lookup_arm_seed = lookup_arm_ik ? std::vector<double>(lookup_arm_ik->variableNames().size(), 0.0) : std::vector<double>();
+    std::vector<double> lookup_full_seed = lookup_fallback_ik ? std::vector<double>(lookup_fallback_ik->variableNames().size(), 0.0) : std::vector<double>();
+    std::vector<double> exp_arm_seed = experiment_solver ? std::vector<double>(experiment_solver->fixedVariableNames().size(), 0.0) : std::vector<double>();
+    std::vector<double> exp_full_seed = experiment_solver ? std::vector<double>(experiment_solver->freeVariableNames().size(), 0.0) : std::vector<double>();
     double unlimited_h = 0.0, lookup_h = 0.0, exp_h = 0.0;
 
     size_t emitted_stages = 0;
@@ -1087,22 +1380,29 @@ int main(int argc, char** argv)
             }
             ++emitted_stages;
             std::vector<nlohmann::json> records;
-            records.push_back(runUnlimitedStage(unlimited_ik, stage, unlimited_h, unlimited_seed,
-                                                timeout, comparison_config.unlimited_seed_attempts,
-                                                comparison_config.unlimited_seed_noise,
-                                                experiment_config.h_step,
-                                                experiment_config.h_lower,
-                                                experiment_config.h_upper,
-                                                tool0_offset,
-                                                experiment_config.position_tolerance,
-                                                experiment_config.orientation_tolerance,
-                                                lever_params));
-            records.push_back(runLookupStage(lookup_arm_ik, lookup_fallback_ik, lookup_solver, stage, lookup_h,
-                                             lookup_arm_seed, lookup_full_seed,
-                                             lookup_config.seed_count,
-                                             lookup_config.fallback_seed_count,
-                                             lever_params, lookup_config));
-            records.push_back(runNewSolverStage(experiment_solver, stage, exp_h, exp_arm_seed, exp_full_seed, lever_params));
+            if (strategy_selection.unlimited) {
+                records.push_back(runUnlimitedStage(*unlimited_ik, stage, unlimited_h, unlimited_seed,
+                                                    timeout, comparison_config.unlimited_seed_attempts,
+                                                    comparison_config.unlimited_seed_noise,
+                                                    experiment_config.h_step,
+                                                    experiment_config.h_lower,
+                                                    experiment_config.h_upper,
+                                                    tool0_offset,
+                                                    experiment_config.position_tolerance,
+                                                    experiment_config.orientation_tolerance,
+                                                    lever_params));
+            }
+            if (strategy_selection.lookup) {
+                records.push_back(runLookupStage(*lookup_arm_ik, *lookup_fallback_ik, *lookup_solver, stage, lookup_h,
+                                                 lookup_arm_seed, lookup_full_seed,
+                                                 lookup_config.seed_count,
+                                                 lookup_config.fallback_seed_count,
+                                                 lever_params, lookup_config));
+            }
+            if (strategy_selection.experiment) {
+                records.push_back(runNewSolverStage(*experiment_solver, stage, exp_h, exp_arm_seed, exp_full_seed,
+                                                    lever_params, experiment_config));
+            }
 
             for (auto& record : records) {
                 const std::string strategy = record["strategy"];
