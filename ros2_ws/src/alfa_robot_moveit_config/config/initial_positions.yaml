@@ -1,17 +1,17 @@
-# Default initial positions for alfa_robot v5 proxy model
-# Default initial positions after visual-to-program joint-limit remapping
+# Default initial positions for alfa_robot v5 model.
+# Mechanical zero pose corresponds to +30 deg on both v5 joint1 axes.
 
 initial_positions:
   pitch: 0
   turn: 0
   updown: 0
-  left_v5_joint1: 0
+  left_v5_joint1: 0.52359878
   left_v5_joint2: 1.57079633
   left_v5_joint3: 0
   left_v5_joint4: 0
   left_v5_joint5: 0
   left_v5_joint6: 0
-  right_v5_joint1: 0
+  right_v5_joint1: 0.52359878
   right_v5_joint2: 1.57079633
   right_v5_joint3: 0
   right_v5_joint4: 0
