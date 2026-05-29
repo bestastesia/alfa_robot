@@ -28,23 +28,24 @@ parallel_updown_aware_ik:
       center: [0.355, -0.26, 0.317]
       radius: 0.679
     physical_limits: [0.0, 0.99]
-    tool0_offset: 0.1
+    tool0_offset: 0.0
     sphere_margin: 0.0
 
   candidate_generator:
     h_mode: fixed_discrete        # fixed_discrete | continuous_range
     h_search_margin: 0.10         # search window around minimum-motion h, not physical limit
     h_step: 0.10
-    h_candidate_count: 10
+    h_candidate_count: 8
     max_updown_delta: inf
     seed_count: 8
     continuous_seed_multiplier: 10   # continuous_range seed budget multiplier; set near h_candidate_count for comparable trial count
     seed_noise: 0.35
-    try_target_orders: true
+    try_target_orders: false
+    use_reversed_target_order: true  # 当前已验证：固定走 solveDual(right, left) 才对应 left/right tip
 
   parallel_executor:
-    workers: 4
-    timeout_per_trial: 0.5
+    workers: 8
+    timeout_per_trial: 0.01
 
   validator:
     check_tip_error: true
@@ -54,8 +55,8 @@ parallel_updown_aware_ik:
     reject_swapped_tips: true
 
   fallback_manager:
-    enabled: true
-    release_updown_timeout: 2.0
+    enabled: false
+    release_updown_timeout: 0.01
     release_updown_seed_count: 12      # kept for old lookup-like comparison
     rounds: 3                          # stop early once one round finds legal candidates
     random_family_count: 2             # last_success + home + this many random seed families

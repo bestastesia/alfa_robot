@@ -21,6 +21,12 @@ std::vector<double> zeros(size_t n)
     return std::vector<double>(n, 0.0);
 }
 
+size_t nextAttemptIndex(size_t h_index, size_t seed_index, size_t seed_count, size_t repeat_index = 0)
+{
+    const size_t safe_seed_count = std::max<size_t>(1, seed_count);
+    return seed_index + h_index * safe_seed_count + repeat_index * 1000003u;
+}
+
 template <typename Trial>
 std::string trialKey(const std::vector<std::string>& names, const Trial& trial)
 {
@@ -279,24 +285,33 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
         return trials;
     }
 
-    for (size_t h_index = 0; h_index < plan.candidates.size(); ++h_index) {
-        for (size_t seed_index = 0; seed_index < std::max<size_t>(1, config_.seed_count); ++seed_index) {
-            TrialSpec trial;
-            trial.free_updown = false;
-            trial.h = plan.candidates[h_index];
-            trial.h_range_lower = trial.h;
-            trial.h_range_upper = trial.h;
-            trial.h_index = h_index;
-            trial.seed_index = seed_index;
-            trial.solver_path = h_index == 0 && std::abs(trial.h - request.current_h) < 1e-9
-                ? "fixed_current_h"
-                : "fixed_h_candidates";
-            trial.seed = seed_index == 0
-                ? base_seed
-                : makePerturbedSeed(fixed_names, base_seed, seed_index + h_index * config_.seed_count,
-                                    config_.seed_noise, 0.0);
-            pushUniqueTrial(trials, fixed_names, std::move(trial));
+    const size_t seed_count = std::max<size_t>(1, config_.seed_count);
+    const size_t target_trial_count = std::max<size_t>(1, config_.h_candidate_count) * seed_count;
+    size_t trial_count = 0;
+    size_t repeat_index = 0;
+    while (!plan.candidates.empty() && trial_count < target_trial_count) {
+        for (size_t h_index = 0; h_index < plan.candidates.size() && trial_count < target_trial_count; ++h_index) {
+            for (size_t seed_index = 0; seed_index < seed_count && trial_count < target_trial_count; ++seed_index) {
+                TrialSpec trial;
+                trial.free_updown = false;
+                trial.h = plan.candidates[h_index];
+                trial.h_range_lower = trial.h;
+                trial.h_range_upper = trial.h;
+                trial.h_index = h_index;
+                trial.seed_index = seed_index;
+                trial.solver_path = h_index == 0 && std::abs(trial.h - request.current_h) < 1e-9
+                    ? "fixed_current_h"
+                    : "fixed_h_candidates";
+                trial.seed = seed_index == 0 && repeat_index == 0
+                    ? base_seed
+                    : makePerturbedSeed(fixed_names, base_seed, nextAttemptIndex(h_index, seed_index, seed_count, repeat_index),
+                                        config_.seed_noise, 0.0);
+                const size_t before = trials.size();
+                pushUniqueTrial(trials, fixed_names, std::move(trial));
+                if (trials.size() > before) ++trial_count;
+            }
         }
+        ++repeat_index;
     }
     return trials;
 }
@@ -399,10 +414,13 @@ std::vector<UpdownAwareIkCandidate> ParallelUpdownAwareIkSolver::executeTrials(
                 if (item >= results.size()) break;
                 const size_t trial_index = item / order_count;
                 const size_t order_index = item % order_count;
+                const bool swapped_order = config_.try_target_orders
+                    ? order_index == 1
+                    : config_.use_reversed_target_order;
                 IkSolver& solver = trials[trial_index].free_updown
                     ? *free_solvers_[worker % free_solvers_.size()]
                     : *fixed_solvers_[worker % fixed_solvers_.size()];
-                results[item] = solveTrial(solver, trials[trial_index], request, plan, order_index == 1, fallback);
+                results[item] = solveTrial(solver, trials[trial_index], request, plan, swapped_order, fallback);
             }
         });
     }

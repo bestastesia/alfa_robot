@@ -212,6 +212,7 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         else if (key == "continuous_seed_multiplier") config.continuous_seed_multiplier = static_cast<size_t>(std::stoul(value));
         else if (key == "seed_noise") config.seed_noise = parseDouble(value);
         else if (key == "try_target_orders") config.try_target_orders = parseBool(value);
+        else if (key == "use_reversed_target_order") config.use_reversed_target_order = parseBool(value);
         else return false;
         return true;
     }
@@ -1333,6 +1334,8 @@ int main(int argc, char** argv)
     header["experiment_workers"] = experiment_config.workers;
     header["experiment_h_candidate_count"] = experiment_config.h_candidate_count;
     header["experiment_seed_count"] = experiment_config.seed_count;
+    header["experiment_try_target_orders"] = experiment_config.try_target_orders;
+    header["experiment_use_reversed_target_order"] = experiment_config.use_reversed_target_order;
     header["experiment_continuous_seed_multiplier"] = experiment_config.continuous_seed_multiplier;
     header["experiment_fallback_rounds"] = experiment_config.fallback_rounds;
     header["experiment_fallback_random_family_count"] = experiment_config.fallback_random_family_count;

@@ -48,6 +48,7 @@ struct UpdownAwareIkConfig {
     size_t continuous_seed_multiplier = 1;
     double seed_noise = 0.35;
     bool try_target_orders = true;
+    bool use_reversed_target_order = true;
 
     size_t workers = 4;
     double timeout = 0.5;

@@ -239,15 +239,6 @@
       <mass value="0.310084776766906"/>
       <inertia ixx="0.000741163324579453" ixy="0" ixz="6.73482801154554E-20" iyy="0.000741163324579453" iyz="0" izz="0.00132016293912598"/>
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual_mirrored_y/base.STL"/></geometry>
-      <material name=""><color rgba="0.2 0.55 1.0 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision_mirrored_y/base.STL"/></geometry>
-    </collision>
   </link>
   <joint name="left_v5_mount" type="fixed">
     <parent link="updown"/>
@@ -272,7 +263,7 @@
     </collision>
   </link>
   <joint name="left_v5_joint1" type="revolute">
-    <origin xyz="0 0 0.056" rpy="0 0 0"/>
+    <origin xyz="0 0 0" rpy="0 0 -0.52359878"/>
     <parent link="left_v5_link0"/>
     <child link="left_v5_link1"/>
     <axis xyz="0 0 -1"/>
@@ -409,7 +400,7 @@
   <joint name="left_v5_tool0_fixed" type="fixed">
     <parent link="left_v5_link6"/>
     <child link="left_v5_tool0"/>
-    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <origin xyz="0 0 0.1" rpy="0.00000188634799516 0.00363531907027 0.523587766715"/>
   </joint>
 
   <!-- ========== RIGHT ARM (right_v5_joint1-6) ========== -->
@@ -419,15 +410,6 @@
       <mass value="0.310084776766906"/>
       <inertia ixx="0.000741163324579453" ixy="-1.92778886435101E-35" ixz="6.73482801154554E-20" iyy="0.000741163324579453" iyz="7.56724488341848E-35" izz="0.00132016293912598"/>
     </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/visual/base.STL"/></geometry>
-      <material name=""><color rgba="1.0 0.55 0.2 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry><mesh filename="${mesh_base}/collision/base.STL"/></geometry>
-    </collision>
   </link>
   <joint name="right_v5_mount" type="fixed">
     <parent link="updown"/>
@@ -452,7 +434,7 @@
     </collision>
   </link>
   <joint name="right_v5_joint1" type="revolute">
-    <origin xyz="0 0 0.056" rpy="0 0 0"/>
+    <origin xyz="0 0 0" rpy="0 0 0.52359878"/>
     <parent link="right_v5_link0"/>
     <child link="right_v5_link1"/>
     <axis xyz="0 0 1"/>
@@ -589,7 +571,7 @@
   <joint name="right_v5_tool0_fixed" type="fixed">
     <parent link="right_v5_link6"/>
     <child link="right_v5_tool0"/>
-    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <origin xyz="0 0 0.1" rpy="-0.00000188633751216 0.00363531853545 -0.523587767584"/>
   </joint>
 
 
