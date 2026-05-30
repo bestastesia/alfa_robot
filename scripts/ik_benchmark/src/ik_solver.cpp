@@ -14,6 +14,34 @@
 #include <urdf/urdf/model.h>
 
 namespace ik_benchmark {
+namespace {
+
+bool isV5ArmLink(const std::string& link)
+{
+    return link.rfind("left_v5_", 0) == 0 || link.rfind("right_v5_", 0) == 0;
+}
+
+bool isBaseStructureLink(const std::string& link)
+{
+    return link == "base_link" || link == "pitch" || link == "turn" || link == "updown";
+}
+
+bool isIgnoredArmBasePair(const std::string& link1, const std::string& link2)
+{
+    return (link1 == "updown" && (link2 == "left_v5_link1" || link2 == "right_v5_link1")) ||
+           (link2 == "updown" && (link1 == "left_v5_link1" || link1 == "right_v5_link1"));
+}
+
+bool isArmBaseCollisionPair(const std::string& link1, const std::string& link2)
+{
+    if (isIgnoredArmBasePair(link1, link2)) {
+        return false;
+    }
+    return (isV5ArmLink(link1) && isBaseStructureLink(link2)) ||
+           (isV5ArmLink(link2) && isBaseStructureLink(link1));
+}
+
+} // namespace
 
 IkSolver::IkSolver(const std::string& group_name,
                    const std::string& solver_plugin,
@@ -93,6 +121,15 @@ void IkSolver::loadRobotModel()
     auto& acm = planning_scene_->getAllowedCollisionMatrixNonConst();
     for (const auto& collision_pair : srdf_model->getDisabledCollisionPairs()) {
         acm.setEntry(collision_pair.link1_, collision_pair.link2_, true);
+    }
+    if (options_.enforce_arm_base_collisions) {
+        for (const auto& link1 : robot_model_->getLinkModelNames()) {
+            for (const auto& link2 : robot_model_->getLinkModelNames()) {
+                if (isArmBaseCollisionPair(link1, link2)) {
+                    acm.setEntry(link1, link2, false);
+                }
+            }
+        }
     }
 
     jmg_ = robot_model_->getJointModelGroup(group_name_);
@@ -394,6 +431,18 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
                               const std::vector<double>& seed,
                               double timeout)
 {
+    return solveDual(left_target, right_target, seed, timeout,
+                     -std::numeric_limits<double>::infinity(),
+                     std::numeric_limits<double>::infinity());
+}
+
+IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
+                              const Eigen::Isometry3d& right_target,
+                              const std::vector<double>& seed,
+                              double timeout,
+                              double updown_lower,
+                              double updown_upper)
+{
     if (!is_dual_) {
         throw std::runtime_error("Use solve() for single-arm groups");
     }
@@ -427,6 +476,28 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
     };
 
     std::vector<double> consistency_limits;
+    const bool restrict_updown = std::isfinite(updown_lower) && std::isfinite(updown_upper) && updown_lower <= updown_upper;
+    moveit::core::VariableBounds original_updown_bounds;
+    bool changed_updown_bounds = false;
+    if (restrict_updown) {
+        const auto& ik_jnames = ik_solver_->getJointNames();
+        for (size_t k = 0; k < ik_jnames.size() && k < ik_seed.size(); ++k) {
+            if (ik_jnames[k] == "updown") {
+                ik_seed[k] = std::min(std::max(ik_seed[k], updown_lower), updown_upper);
+                break;
+            }
+        }
+        if (auto* updown_joint = robot_model_->getJointModel("updown")) {
+            original_updown_bounds = updown_joint->getVariableBounds("updown");
+            auto restricted = original_updown_bounds;
+            restricted.min_position_ = std::max(restricted.min_position_, updown_lower);
+            restricted.max_position_ = std::min(restricted.max_position_, updown_upper);
+            if (restricted.min_position_ <= restricted.max_position_) {
+                updown_joint->setVariableBounds("updown", restricted);
+                changed_updown_bounds = true;
+            }
+        }
+    }
     std::vector<double> solution;
     moveit_msgs::msg::MoveItErrorCodes error_code;
     kinematics::KinematicsQueryOptions options;
@@ -457,6 +528,11 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
                                             consistency_limits, solution,
                                             callback, error_code, options);
     auto t1 = std::chrono::high_resolution_clock::now();
+    if (changed_updown_bounds) {
+        if (auto* updown_joint = robot_model_->getJointModel("updown")) {
+            updown_joint->setVariableBounds("updown", original_updown_bounds);
+        }
+    }
 
     result.solve_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     result.success = ok;

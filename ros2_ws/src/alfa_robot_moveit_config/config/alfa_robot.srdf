@@ -65,61 +65,19 @@
     <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link0" link2="left_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="updown" link2="left_v5_link1" reason="Adjacent"/>
+    <disable_collisions link1="updown" link2="right_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link1" link2="left_v5_link2" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link2" link2="left_v5_link3" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link3" link2="left_v5_link4" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link4" link2="left_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link5" link2="left_v5_link6" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link0" link2="right_v5_link1" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="right_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link1" link2="right_v5_link2" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link2" link2="right_v5_link3" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link3" link2="right_v5_link4" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link4" link2="right_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link5" link2="right_v5_link6" reason="Adjacent"/>
-    <!-- Arm vs Base: disable all arm links vs non-arm links -->
-    <disable_collisions link1="left_v5_link0" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link0" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link0" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link1" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link1" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link1" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link2" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link2" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link2" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link3" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link3" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link3" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link4" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link4" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link4" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link5" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link5" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link5" link2="turn" reason="Never"/>
-    <disable_collisions link1="left_v5_link6" link2="base_link" reason="Never"/>
-    <disable_collisions link1="left_v5_link6" link2="pitch" reason="Never"/>
-    <disable_collisions link1="left_v5_link6" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link0" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link0" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link0" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link1" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link1" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link1" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link2" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link2" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link2" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link3" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link3" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link3" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link4" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link4" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link4" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link5" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link5" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link5" link2="turn" reason="Never"/>
-    <disable_collisions link1="right_v5_link6" link2="base_link" reason="Never"/>
-    <disable_collisions link1="right_v5_link6" link2="pitch" reason="Never"/>
-    <disable_collisions link1="right_v5_link6" link2="turn" reason="Never"/>
+    <!-- Arm vs Base collisions are intentionally enabled globally. -->
     <!-- SuctionVsArm: disable suction (link6 + tool0) vs own arm links -->
     <disable_collisions link1="left_v5_link6" link2="left_v5_link0" reason="Never"/>
     <disable_collisions link1="left_v5_link6" link2="left_v5_link1" reason="Never"/>

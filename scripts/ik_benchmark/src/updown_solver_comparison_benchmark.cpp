@@ -227,6 +227,7 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         else if (key == "position_tolerance") config.position_tolerance = parseDouble(value);
         else if (key == "orientation_tolerance") config.orientation_tolerance = parseDouble(value);
         else if (key == "check_collision") config.check_collision = parseBool(value);
+        else if (key == "enforce_arm_base_collisions") config.enforce_arm_base_collisions = parseBool(value);
         else if (key == "reject_swapped_tips") config.reject_swapped_tips = parseBool(value);
         else return false;
         return true;
@@ -706,6 +707,8 @@ nlohmann::json serializeCandidate(const ik_benchmark::UpdownAwareIkCandidate& ca
     out["rejection_reason"] = candidate.rejection_reason;
     out["h"] = candidate.h;
     out["h_center"] = candidate.h_center;
+    out["h_range_lower"] = candidate.h_range_lower;
+    out["h_range_upper"] = candidate.h_range_upper;
     out["h_index"] = candidate.h_index;
     out["seed_index"] = candidate.seed_index;
     out["score"] = candidate.score;
@@ -1286,6 +1289,7 @@ int main(int argc, char** argv)
     options.tip_link = experiment_config.left_tip;
     options.tip_link2 = experiment_config.right_tip;
     options.reject_collisions = false;
+    options.enforce_arm_base_collisions = experiment_config.enforce_arm_base_collisions;
 
     std::unique_ptr<IkSolver> unlimited_ik;
     std::unique_ptr<IkSolver> lookup_arm_ik;
@@ -1338,6 +1342,7 @@ int main(int argc, char** argv)
     header["experiment_use_reversed_target_order"] = experiment_config.use_reversed_target_order;
     header["experiment_continuous_seed_multiplier"] = experiment_config.continuous_seed_multiplier;
     header["experiment_fallback_rounds"] = experiment_config.fallback_rounds;
+    header["experiment_fallback_seed_count"] = experiment_config.fallback_seed_count;
     header["experiment_fallback_random_family_count"] = experiment_config.fallback_random_family_count;
     header["experiment_fallback_random_per_family"] = experiment_config.fallback_random_per_family;
     header["experiment_fallback_seed_noise"] = experiment_config.fallback_seed_noise;
@@ -1355,6 +1360,7 @@ int main(int argc, char** argv)
     header["cost_weights"] = costWeightsJson(experiment_config);
     header["cost_thresholds"] = costThresholdsJson(experiment_config);
     header["check_collision"] = experiment_config.check_collision;
+    header["enforce_arm_base_collisions"] = experiment_config.enforce_arm_base_collisions;
     header["max_stages"] = max_stages;
     header["fallback_timeout"] = fallback_timeout;
     header["place_safe_z"] = comparison_config.place_safe_z;

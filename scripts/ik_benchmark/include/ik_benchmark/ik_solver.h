@@ -36,6 +36,7 @@ struct IkSolverOptions {
     std::string tip_link;
     std::string tip_link2;
     bool reject_collisions = true;
+    bool enforce_arm_base_collisions = false;
 };
 
 class IkSolver {
@@ -56,6 +57,13 @@ public:
                        const Eigen::Isometry3d& right_target,
                        const std::vector<double>& seed = {},
                        double timeout = 0.0);
+
+    IkResult solveDual(const Eigen::Isometry3d& left_target,
+                       const Eigen::Isometry3d& right_target,
+                       const std::vector<double>& seed,
+                       double timeout,
+                       double updown_lower,
+                       double updown_upper);
 
     /// 正运动学 (输入维度 = ik_joint_names_.size())
     std::vector<Eigen::Isometry3d> fk(const std::vector<double>& joint_values);

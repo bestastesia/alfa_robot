@@ -32,12 +32,12 @@ parallel_updown_aware_ik:
     sphere_margin: 0.0
 
   candidate_generator:
-    h_mode: fixed_discrete        # fixed_discrete | continuous_range
+    h_mode: continuous_range      # fixed_discrete | continuous_range
     h_search_margin: 0.10         # search window around minimum-motion h, not physical limit
     h_step: 0.10
     h_candidate_count: 8
     max_updown_delta: inf
-    seed_count: 8
+    seed_count: 32
     continuous_seed_multiplier: 10   # continuous_range seed budget multiplier; set near h_candidate_count for comparable trial count
     seed_noise: 0.35
     try_target_orders: false
@@ -45,22 +45,23 @@ parallel_updown_aware_ik:
 
   parallel_executor:
     workers: 8
-    timeout_per_trial: 0.01
+    timeout_per_trial: 0.02
 
   validator:
     check_tip_error: true
     position_tolerance: 0.02
     orientation_tolerance: 0.05
     check_collision: true
+    enforce_arm_base_collisions: true  # re-enable arm links vs base_link/pitch/turn/updown pairs disabled in SRDF
     reject_swapped_tips: true
 
   fallback_manager:
-    enabled: false
-    release_updown_timeout: 0.01
-    release_updown_seed_count: 12      # kept for old lookup-like comparison
-    rounds: 3                          # stop early once one round finds legal candidates
+    enabled: true
+    release_updown_timeout: 0.02
+    release_updown_seed_count: 256     # fixed total fallback IK trials after the main 256 candidates fail
+    rounds: 1                          # one fixed-budget fallback round after the 256 main candidates fail
     random_family_count: 2             # last_success + home + this many random seed families
-    random_per_family: 4               # attempts per seed family in each fallback round
+    random_per_family: 64              # fallback seed families are cycled until release_updown_seed_count is reached
     seed_noise: 0.6
     updown_noise: 0.5
 

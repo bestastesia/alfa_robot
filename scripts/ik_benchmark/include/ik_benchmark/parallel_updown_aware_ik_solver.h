@@ -57,6 +57,7 @@ struct UpdownAwareIkConfig {
     double position_tolerance = 0.02;
     double orientation_tolerance = 0.05;
     bool check_collision = false;
+    bool enforce_arm_base_collisions = false;
     bool reject_swapped_tips = true;
 
     bool fallback_enabled = true;
@@ -110,6 +111,8 @@ struct UpdownAwareIkCandidate {
 
     double h = 0.0;
     double h_center = 0.0;
+    double h_range_lower = 0.0;
+    double h_range_upper = 0.0;
     double score = std::numeric_limits<double>::infinity();
     double solve_ms = 0.0;
     double direct_pos_error = 0.0;
