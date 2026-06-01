@@ -173,6 +173,7 @@ class NineOrientationReachabilityTester(Node):
 
         # IK parameters (avoid_collisions=False for pure reachability testing)
         self.declare_parameter("avoid_collisions", False)
+        self.declare_parameter("classify_collisions", False)
         self.declare_parameter("ik_timeout", 0.05)
         self.declare_parameter("service_timeout", 10.0)
         self.declare_parameter("joint_states_topic", "/joint_states")
@@ -192,6 +193,9 @@ class NineOrientationReachabilityTester(Node):
         self.declare_parameter("min_z", 0.0)
         self.declare_parameter("max_z", 2.0)
         self.declare_parameter("step", 0.1)
+        self.declare_parameter("step_x", 0.0)
+        self.declare_parameter("step_y", 0.0)
+        self.declare_parameter("step_z", 0.0)
 
         # Group override (arm-only groups by default)
         self.declare_parameter("left_group", "left_v5_arm")
@@ -272,7 +276,8 @@ class NineOrientationReachabilityTester(Node):
         self.get_logger().warn("No /joint_states received; using diff RobotState without explicit seed")
         return JointState()
 
-    def _solve_ik(self, arm: ArmConfig, pose: PoseStamped, seed_state: JointState) -> tuple[bool, int, str, float]:
+    def _solve_ik(self, arm: ArmConfig, pose: PoseStamped, seed_state: JointState,
+                  avoid_collisions: bool | None = None) -> tuple[bool, int, str, float]:
         """Solve IK. Returns (success, error_code, reason, solve_time_ms)."""
         request = GetPositionIK.Request()
         request.ik_request.group_name = arm.group_name
@@ -280,7 +285,9 @@ class NineOrientationReachabilityTester(Node):
         request.ik_request.pose_stamped = pose
         request.ik_request.robot_state.joint_state = seed_state
         request.ik_request.robot_state.is_diff = True
-        request.ik_request.avoid_collisions = as_bool(self.get_parameter("avoid_collisions").value)
+        if avoid_collisions is None:
+            avoid_collisions = as_bool(self.get_parameter("avoid_collisions").value)
+        request.ik_request.avoid_collisions = avoid_collisions
 
         timeout_sec = as_float(self.get_parameter("ik_timeout").value)
         request.ik_request.timeout.sec = int(timeout_sec)
@@ -299,6 +306,26 @@ class NineOrientationReachabilityTester(Node):
         reason = "success" if success else "ik_failed"
         return success, int(response.error_code.val), reason, elapsed_ms
 
+    def _solve_ik_classified(self, arm: ArmConfig, pose: PoseStamped,
+                             seed_state: JointState) -> tuple[bool, int, str, float]:
+        """Classify IK as success, collision, or unreachable.
+
+        First solves without collision checking. If no solution exists, the pose is
+        unreachable/failed. If a no-collision solution exists, solve again with
+        collision checking; failure in the second pass is classified as collision.
+        """
+        raw_success, raw_error, raw_reason, raw_ms = self._solve_ik(
+            arm, pose, seed_state, avoid_collisions=False)
+        if not raw_success:
+            return False, raw_error, raw_reason, raw_ms
+
+        safe_success, safe_error, safe_reason, safe_ms = self._solve_ik(
+            arm, pose, seed_state, avoid_collisions=True)
+        total_ms = raw_ms + safe_ms
+        if safe_success:
+            return True, safe_error, "success", total_ms
+        return False, safe_error, "collision", total_ms
+
     def run(self) -> int:
         service_timeout = as_float(self.get_parameter("service_timeout").value)
         if not self._ik_client.wait_for_service(timeout_sec=service_timeout):
@@ -309,15 +336,19 @@ class NineOrientationReachabilityTester(Node):
         orient_set = self._build_orient_set()
         seed_state = self._seed_state()
         step = as_float(self.get_parameter("step").value)
+        step_x = as_float(self.get_parameter("step_x").value) or step
+        step_y = as_float(self.get_parameter("step_y").value) or step
+        step_z = as_float(self.get_parameter("step_z").value) or step
 
         xs = list(float_range(as_float(self.get_parameter("min_x").value),
-                              as_float(self.get_parameter("max_x").value), step))
+                              as_float(self.get_parameter("max_x").value), step_x))
         ys = list(float_range(as_float(self.get_parameter("min_y").value),
-                              as_float(self.get_parameter("max_y").value), step))
+                              as_float(self.get_parameter("max_y").value), step_y))
         zs = list(float_range(as_float(self.get_parameter("min_z").value),
-                              as_float(self.get_parameter("max_z").value), step))
+                              as_float(self.get_parameter("max_z").value), step_z))
 
         frame = str(self.get_parameter("reference_frame").value)
+        classify_collisions = as_bool(self.get_parameter("classify_collisions").value)
 
         # CSV fields
         fieldnames = [
@@ -346,8 +377,14 @@ class NineOrientationReachabilityTester(Node):
             f"Starting 9-orient reachability: {total_points} points × {len(orient_set)} orientations = {total_tests} IK calls"
         )
         self.get_logger().info(f"  arm={arm.label} group={arm.group_name} tip={arm.ik_link_name}")
-        self.get_logger().info(f"  range: x[{xs[0]:.3f}~{xs[-1]:.3f}] y[{ys[0]:.3f}~{ys[-1]:.3f}] z[{zs[0]:.3f}~{zs[-1]:.3f}] step={step}")
-        self.get_logger().info(f"  IK timeout={as_float(self.get_parameter('ik_timeout').value)}s avoid_collisions={as_bool(self.get_parameter('avoid_collisions').value)}")
+        self.get_logger().info(
+            f"  range: x[{xs[0]:.3f}~{xs[-1]:.3f}] step_x={step_x} "
+            f"y[{ys[0]:.3f}~{ys[-1]:.3f}] step_y={step_y} "
+            f"z[{zs[0]:.3f}~{zs[-1]:.3f}] step_z={step_z}")
+        self.get_logger().info(
+            f"  IK timeout={as_float(self.get_parameter('ik_timeout').value)}s "
+            f"avoid_collisions={as_bool(self.get_parameter('avoid_collisions').value)} "
+            f"classify_collisions={classify_collisions}")
 
         point_idx = 0
         reachable_count = 0
@@ -371,7 +408,11 @@ class NineOrientationReachabilityTester(Node):
                             pose.pose.orientation.z = oquat[2]
                             pose.pose.orientation.w = oquat[3]
 
-                            success, error_code, reason, time_ms = self._solve_ik(arm, pose, seed_state)
+                            if classify_collisions:
+                                success, error_code, reason, time_ms = self._solve_ik_classified(
+                                    arm, pose, seed_state)
+                            else:
+                                success, error_code, reason, time_ms = self._solve_ik(arm, pose, seed_state)
                             n_success += int(success)
 
                             writer.writerow({
