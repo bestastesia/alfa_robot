@@ -413,10 +413,12 @@ def generate_scene_xml() -> str:
     # Container/cargo demo layout:
     # - Place the container/cargo area behind the robot, about 1 m away.
     # - Cargo floor height is 0.60 m.
-    # - Normal cartons face the robot: 40 cm wide x 40 cm high face, 20 cm depth
+    # - Normal cartons face the robot: 40 cm wide x 40 cm high face, 30 cm depth
     #   along robot-facing direction.
     # - Keep only normal cartons and distribute the unused width as even gaps to
     #   reduce persistent carton-carton contacts in MuJoCo.
+    # - Spawn the demo row at the innermost end of the container, close to the
+    #   back wall, so the robot has to reach deeper into the container.
     inner_width = 2.2
     inner_height = 2.4
     inner_length = 4.0
@@ -424,11 +426,12 @@ def generate_scene_xml() -> str:
     center_x = x0 + inner_length / 2.0
     robot_side_x = x0
     box_face = 0.40
-    box_depth = 0.20
+    box_depth = 0.30
     box_sx = box_depth / 2.0
     box_sy = box_face / 2.0
     box_sz = box_face / 2.0
-    floor_top_z = 0.07
+    floor_thickness = 0.01
+    floor_top_z = 0.0
     x_count = 1
     y_count_normal = int(inner_width // box_face)
     z_count = 5
@@ -436,7 +439,7 @@ def generate_scene_xml() -> str:
     y_gap = (inner_width - y_count_normal * box_face) / (y_count_normal + 1)
     y_pitch = box_face + y_gap
     z_pitch = box_face
-    x_start = robot_side_x + box_sx
+    x_start = x0 + inner_length - box_sx
     y_start = -inner_width / 2.0 + y_gap + box_sy
     z_start = floor_top_z + box_sz
     colors = ["0.55 0.40 0.25 1", "0.72 0.50 0.30 1", "0.90 0.68 0.42 1"]
@@ -449,7 +452,7 @@ def generate_scene_xml() -> str:
                 y = y_start + y_index * y_pitch
                 name = f"cargo_x{x_index:02d}_y{y_index:02d}_z{z_index:02d}"
                 color = colors[z_index % len(colors)]
-                cargo_lines.append(box_body(name, (x, y, z), (box_sx, box_sy, box_sz), color, movable=True))
+                cargo_lines.append(box_body(name, (x, y, z), (box_sx, box_sy, box_sz), color, movable=False))
     lines = [
         '<?xml version="1.0" encoding="utf-8"?>',
         '<mujoco model="alfa_logistics_scene_v5">',
@@ -461,16 +464,16 @@ def generate_scene_xml() -> str:
         '    <light name="container_light_back" pos="4.0 0 3.0" dir="0 0 -1" diffuse="0.7 0.7 0.65" specular="0.1 0.1 0.1"/>',
         f'    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1" friction="{STATIC_SCENE_FRICTION}"/>',
         '    <body name="container" pos="0 0 0">',
-        f'      <geom name="container_floor" type="box" size="{inner_length/2:.3f} {inner_width/2:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z-0.035:.3f}" rgba="0.50 0.43 0.34 1" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
-        f'      <geom name="container_wall_left" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {inner_width/2+0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_wall_right" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {-inner_width/2-0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_roof" type="box" size="{inner_length/2:.3f} {inner_width/2+0.045:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z+inner_height+0.035:.3f}" rgba="0.50 0.50 0.46 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_back" type="box" size="0.045 {inner_width/2+0.045:.3f} {inner_height/2:.3f}" pos="{x0+inner_length+0.045:.3f} 0 {floor_top_z+inner_height/2:.3f}" rgba="0.55 0.55 0.50 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_left_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {inner_width/2+0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_right_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {-inner_width/2-0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_top" type="box" size="0.045 {inner_width/2:.3f} 0.035" pos="{robot_side_x-0.045:.3f} 0 {floor_top_z+inner_height+0.025:.3f}" rgba="0.36 0.34 0.30 1" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_outer_left" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {inner_width/2+0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
-        f'      <geom name="container_outer_right" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {-inner_width/2-0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="0.20 0.50 0.24 0.45" contype="0" conaffinity="0" group="2"/>',
+        f'      <geom name="container_floor" type="box" size="{inner_length/2:.3f} {inner_width/2:.3f} {floor_thickness/2:.3f}" pos="{center_x:.3f} 0 {floor_top_z-floor_thickness/2:.3f}" rgba="1.00 1.00 1.00 0.32" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
+        f'      <geom name="container_wall_left" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {inner_width/2+0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_wall_right" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {-inner_width/2-0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_roof" type="box" size="{inner_length/2:.3f} {inner_width/2+0.045:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z+inner_height+0.035:.3f}" rgba="1.00 1.00 1.00 0.20" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_back" type="box" size="0.045 {inner_width/2+0.045:.3f} {inner_height/2:.3f}" pos="{x0+inner_length+0.045:.3f} 0 {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_left_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {inner_width/2+0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_right_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {-inner_width/2-0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_open_top" type="box" size="0.045 {inner_width/2:.3f} 0.035" pos="{robot_side_x-0.045:.3f} 0 {floor_top_z+inner_height+0.025:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
+        f'      <geom name="container_outer_left" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {inner_width/2+0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.18" contype="0" conaffinity="0" group="2"/>',
+        f'      <geom name="container_outer_right" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {-inner_width/2-0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.18" contype="0" conaffinity="0" group="2"/>',
         '    </body>',
         *cargo_lines,
         '    <body name="placement_platform" pos="-2.00 0 0">',

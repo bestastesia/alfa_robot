@@ -32,6 +32,7 @@ INITIAL_POSITIONS_RELATIVE = Path("ros2_ws/src/alfa_robot_moveit_config/config/i
 DEFAULT_FRAME_ID = "base_link"
 DEFAULT_OBJECT_PREFIX = "mj_"
 JOINT_NAMES = [
+    "base_x", "base_y", "base_yaw",
     "pitch", "turn", "updown",
     "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
     "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
@@ -134,6 +135,37 @@ def matrix_to_quat_xyzw(matrix_values) -> tuple[float, float, float, float]:
     return (qx / norm, qy / norm, qz / norm, qw / norm)
 
 
+def quat_xyzw_conjugate(q) -> tuple[float, float, float, float]:
+    qx, qy, qz, qw = q
+    return (-qx, -qy, -qz, qw)
+
+
+def quat_xyzw_multiply(a, b) -> tuple[float, float, float, float]:
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
+    qx = aw * bx + ax * bw + ay * bz - az * by
+    qy = aw * by - ax * bz + ay * bw + az * bx
+    qz = aw * bz + ax * by - ay * bx + az * bw
+    qw = aw * bw - ax * bx - ay * by - az * bz
+    norm = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw)
+    if norm <= 0.0:
+        return (0.0, 0.0, 0.0, 1.0)
+    return (qx / norm, qy / norm, qz / norm, qw / norm)
+
+
+def quat_xyzw_rotate(q, v) -> tuple[float, float, float]:
+    qx, qy, qz, qw = q
+    vx, vy, vz = v
+    tx = 2.0 * (qy * vz - qz * vy)
+    ty = 2.0 * (qz * vx - qx * vz)
+    tz = 2.0 * (qx * vy - qy * vx)
+    return (
+        vx + qw * tx + qy * tz - qz * ty,
+        vy + qw * ty + qz * tx - qx * tz,
+        vz + qw * tz + qx * ty - qy * tx,
+    )
+
+
 def parse_bool_arg(value: str) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
@@ -151,6 +183,7 @@ class MujocoJointStateViewer:
         self.actuator_ids: dict[str, int] = {}
         self.runtime_boxes: list[RuntimeBox] = []
         self.geom_ids_by_name: dict[str, int] = {}
+        self.base_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "base_link")
 
         for joint_name in JOINT_NAMES:
             joint_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, joint_name)
@@ -226,7 +259,7 @@ class MujocoJointStateViewer:
     def make_collision_objects(self, frame_id, CollisionObject, SolidPrimitive):
         objects = []
         for box in self.runtime_boxes:
-            pose = self.runtime_box_pose(box.geom_id)
+            pose = self.runtime_box_pose(box.geom_id, frame_id)
             objects.append(make_box_collision_object(CollisionObject, SolidPrimitive, frame_id, box.object_id, box.dimensions, pose))
         return objects
 
@@ -237,10 +270,10 @@ class MujocoJointStateViewer:
 
         front_geom_id = self.geom_ids_by_name.get("container_open_top")
         if front_geom_id is not None:
-            scene.container_front_pose = self.runtime_box_pose(front_geom_id)
+            scene.container_front_pose = self.runtime_box_pose(front_geom_id, frame_id)
         table_geom_id = self.geom_ids_by_name.get("placement_platform_surface")
         if table_geom_id is not None:
-            scene.table_pose = self.runtime_box_pose(table_geom_id)
+            scene.table_pose = self.runtime_box_pose(table_geom_id, frame_id)
 
         for box in self.runtime_boxes:
             geom_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_GEOM, box.geom_id) or ""
@@ -248,24 +281,37 @@ class MujocoJointStateViewer:
                 continue
             cargo = SemanticCargo()
             cargo.id = sanitize_object_id(geom_name, "")
-            cargo.pose = self.runtime_box_pose(box.geom_id)
+            cargo.pose = self.runtime_box_pose(box.geom_id, frame_id)
             cargo.is_remainder = "_yR_" in geom_name
             scene.cargo.append(cargo)
         return scene
 
-    def runtime_box_pose(self, geom_id):
+    def runtime_box_pose(self, geom_id, frame_id=DEFAULT_FRAME_ID):
         from geometry_msgs.msg import Pose
 
         pose = Pose()
         xyz = self.data.geom_xpos[geom_id]
         qx, qy, qz, qw = matrix_to_quat_xyzw(self.data.geom_xmat[geom_id])
-        pose.position.x = float(xyz[0])
-        pose.position.y = float(xyz[1])
-        pose.position.z = float(xyz[2])
-        pose.orientation.x = qx
-        pose.orientation.y = qy
-        pose.orientation.z = qz
-        pose.orientation.w = qw
+        quat = (qx, qy, qz, qw)
+        if frame_id == "base_link" and self.base_body_id >= 0:
+            base_xyz = self.data.xpos[self.base_body_id]
+            base_quat = matrix_to_quat_xyzw(self.data.xmat[self.base_body_id])
+            inv_base_quat = quat_xyzw_conjugate(base_quat)
+            rel_xyz = quat_xyzw_rotate(inv_base_quat, (
+                float(xyz[0] - base_xyz[0]),
+                float(xyz[1] - base_xyz[1]),
+                float(xyz[2] - base_xyz[2]),
+            ))
+            quat = quat_xyzw_multiply(inv_base_quat, quat)
+        else:
+            rel_xyz = (float(xyz[0]), float(xyz[1]), float(xyz[2]))
+        pose.position.x = rel_xyz[0]
+        pose.position.y = rel_xyz[1]
+        pose.position.z = rel_xyz[2]
+        pose.orientation.x = quat[0]
+        pose.orientation.y = quat[1]
+        pose.orientation.z = quat[2]
+        pose.orientation.w = quat[3]
         return pose
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="MuJoCo viewer following ROS2 /joint_states")

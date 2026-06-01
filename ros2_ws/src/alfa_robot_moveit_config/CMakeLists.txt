@@ -62,6 +62,7 @@ install(PROGRAMS
   scripts/rviz_dual_goal_pose_monitor.py
   scripts/set_joints.py
   scripts/mujoco_joint_demo_commander.py
+  scripts/mujoco_digital_twin.py
   scripts/mujoco_sync_bridge.py
   scripts/mujoco_planning_scene_bridge.py
   scripts/semantic_scene_to_planning_scene.py

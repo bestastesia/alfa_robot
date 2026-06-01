@@ -1,0 +1,26 @@
+# Default MuJoCo seed positions for alfa_robot v5 model.
+# Keep every controllable robot joint at its numeric zero so MuJoCo opens in
+# the raw mechanical zero pose. MoveIt demo keeps using initial_positions.yaml.
+
+initial_positions:
+  # Cargo front face is at x=4.45 m in scene.xml; base_x=3.65 keeps the
+  # robot base frame 0.8 m in front of that face, inside the container.
+  base_x: 3.65
+  # Align robot center with the fourth cargo column across container width.
+  base_y: 0.43333333
+  base_yaw: 0
+  pitch: 0
+  turn: 0
+  updown: 0
+  left_v5_joint1: 0
+  left_v5_joint2: 0
+  left_v5_joint3: 0
+  left_v5_joint4: 0
+  left_v5_joint5: 0
+  left_v5_joint6: 0
+  right_v5_joint1: 0
+  right_v5_joint2: 0
+  right_v5_joint3: 0
+  right_v5_joint4: 0
+  right_v5_joint5: 0
+  right_v5_joint6: 0
