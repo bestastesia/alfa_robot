@@ -210,3 +210,6 @@ universal_robot-noetic-devel/
 
 # Local AI operation scratch log; not project progress
 .ai_teamwork/OPS_LOG.local.md
+
+# Local experiment outputs
+data/
