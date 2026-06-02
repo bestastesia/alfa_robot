@@ -35,6 +35,8 @@ struct UpdownAwareIkConfig {
     ReachSphereConfig right_reach_sphere = {0.015, -0.3125, 0.6625, 0.815};
     double tool0_offset = 0.1;
     double sphere_margin = 0.0;
+    double gripper_z_reach_lower = 0.45;
+    double gripper_z_reach_upper = 1.1;
     double h_lower = 0.0;
     double h_upper = 0.99;
 
@@ -194,7 +196,7 @@ private:
     };
 
     HeightPlan planHeight(const UpdownAwareIkRequest& request) const;
-    HeightInterval intervalForTarget(const Eigen::Isometry3d& target, const ReachSphereConfig& sphere) const;
+    HeightInterval intervalForTarget(const Eigen::Isometry3d& target) const;
     std::vector<double> makeFixedHCandidates(const HeightInterval& interval, double h_center) const;
     std::vector<TrialSpec> makeNormalTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan) const;
     std::vector<TrialSpec> makeFallbackTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan, size_t round_index) const;

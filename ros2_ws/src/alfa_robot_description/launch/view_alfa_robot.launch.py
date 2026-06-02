@@ -83,21 +83,22 @@ def generate_launch_description():
         parameters = [robot_description]
         if use_v5_initial_positions.perform(context).lower() not in ("false", "0", "no", "off"):
             # joint_state_publisher_gui does not read MoveIt's initial_positions.yaml.
-            # These zeros mirror alfa_robot_moveit_config/config/initial_positions.yaml
+            # These values mirror alfa_robot_moveit_config/config/initial_positions.yaml
             # so the description-only preview starts from the same remapped v5 pose.
             parameters.append(
                 {
+                    "zeros.updown": 0.45,
                     "zeros.left_v5_joint1": 0.0,
-                    "zeros.left_v5_joint2": 1.57079633,
-                    "zeros.left_v5_joint3": 0.0,
+                    "zeros.left_v5_joint2": 0.26179939,
+                    "zeros.left_v5_joint3": 2.35619449,
                     "zeros.left_v5_joint4": 0.0,
-                    "zeros.left_v5_joint5": 0.0,
+                    "zeros.left_v5_joint5": 1.04719755,
                     "zeros.left_v5_joint6": 0.0,
                     "zeros.right_v5_joint1": 0.0,
-                    "zeros.right_v5_joint2": 1.57079633,
-                    "zeros.right_v5_joint3": 0.0,
+                    "zeros.right_v5_joint2": 0.26179939,
+                    "zeros.right_v5_joint3": 2.35619449,
                     "zeros.right_v5_joint4": 0.0,
-                    "zeros.right_v5_joint5": 0.0,
+                    "zeros.right_v5_joint5": 1.04719755,
                     "zeros.right_v5_joint6": 0.0,
                 }
             )

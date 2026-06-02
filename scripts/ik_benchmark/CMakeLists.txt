@@ -248,6 +248,32 @@ ament_target_dependencies(box_stack_kdl_benchmark PUBLIC
 
 target_link_libraries(box_stack_kdl_benchmark PRIVATE ik_solver_lib)
 
+
+# ── box_stack_dual_ik_benchmark executable ────────────────────────────────
+
+add_executable(box_stack_dual_ik_benchmark src/box_stack_dual_ik_benchmark_main.cpp)
+
+target_include_directories(box_stack_dual_ik_benchmark PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(box_stack_dual_ik_benchmark PUBLIC
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  pluginlib
+  rclcpp
+  geometry_msgs
+  ament_index_cpp
+  random_numbers
+  srdfdom
+  urdf
+  nlohmann_json
+)
+
+target_link_libraries(box_stack_dual_ik_benchmark PRIVATE parallel_updown_aware_ik_solver_lib)
+
 # ── parallel_updown_ik_demo executable ────────────────────────────────────
 
 add_executable(parallel_updown_ik_demo src/parallel_updown_ik_demo_main.cpp)
@@ -321,7 +347,7 @@ ament_target_dependencies(collision_state_monitor PUBLIC
 
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

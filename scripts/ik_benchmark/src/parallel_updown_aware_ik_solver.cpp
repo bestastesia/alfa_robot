@@ -148,21 +148,18 @@ UpdownAwareIkResult ParallelUpdownAwareIkSolver::solve(const UpdownAwareIkReques
 }
 
 ParallelUpdownAwareIkSolver::HeightInterval ParallelUpdownAwareIkSolver::intervalForTarget(
-    const Eigen::Isometry3d& target, const ReachSphereConfig& sphere) const
+    const Eigen::Isometry3d& target) const
 {
-    const double radius = std::max(0.0, sphere.radius - config_.sphere_margin);
-    const double dx = target.translation().x() - sphere.cx;
-    const double dy = target.translation().y() - sphere.cy;
-    const double dxy2 = dx * dx + dy * dy;
-    const double r2 = radius * radius;
     HeightInterval interval;
-    if (dxy2 > r2) {
+    const double reach_lower = std::min(config_.gripper_z_reach_lower, config_.gripper_z_reach_upper);
+    const double reach_upper = std::max(config_.gripper_z_reach_lower, config_.gripper_z_reach_upper);
+    if (reach_upper < reach_lower) {
         return interval;
     }
-    const double z_margin = std::sqrt(std::max(0.0, r2 - dxy2));
-    const double ik_target_z = target.translation().z() - config_.tool0_offset;
-    interval.lower = std::max(config_.h_lower, ik_target_z - sphere.cz - z_margin);
-    interval.upper = std::min(config_.h_upper, ik_target_z - sphere.cz + z_margin);
+
+    const double target_z = target.translation().z();
+    interval.lower = std::max(config_.h_lower, target_z - reach_upper);
+    interval.upper = std::min(config_.h_upper, target_z - reach_lower);
     interval.reachable = interval.lower <= interval.upper;
     return interval;
 }
@@ -171,8 +168,8 @@ ParallelUpdownAwareIkSolver::HeightPlan ParallelUpdownAwareIkSolver::planHeight(
     const UpdownAwareIkRequest& request) const
 {
     HeightPlan plan;
-    plan.left = intervalForTarget(request.left_target, config_.left_reach_sphere);
-    plan.right = intervalForTarget(request.right_target, config_.right_reach_sphere);
+    plan.left = intervalForTarget(request.left_target);
+    plan.right = intervalForTarget(request.right_target);
     plan.combined.lower = std::max(plan.left.lower, plan.right.lower);
     plan.combined.upper = std::min(plan.left.upper, plan.right.upper);
     plan.combined.reachable = plan.left.reachable && plan.right.reachable &&
@@ -193,32 +190,58 @@ std::vector<double> ParallelUpdownAwareIkSolver::makeFixedHCandidates(
     if (!interval.reachable || config_.h_candidate_count == 0) {
         return candidates;
     }
-    auto add = [&](double value) {
+
+    auto add_unique = [&](double value) {
         if (candidates.size() >= config_.h_candidate_count) return;
-        const double clamped = std::min(std::max(value, interval.lower), interval.upper);
+        const double clamped = std::min(std::max(value, config_.h_lower), config_.h_upper);
         for (double existing : candidates) {
             if (std::abs(existing - clamped) < 1e-9) return;
         }
         candidates.push_back(clamped);
     };
-    add(h_center);
-    if (config_.h_step <= 0.0) {
+
+    add_unique(h_center);
+
+    const double margin = std::max(0.0, config_.h_search_margin);
+    if (margin <= 0.0 || config_.h_candidate_count == 1) {
         return candidates;
     }
-    for (size_t ring = 1; candidates.size() < config_.h_candidate_count; ++ring) {
-        const double delta = config_.h_step * static_cast<double>(ring);
-        bool added = false;
-        if (h_center - delta >= interval.lower - 1e-9) {
-            add(h_center - delta);
-            added = true;
+
+    double window_lower = h_center - margin;
+    double window_upper = h_center + margin;
+    if (window_lower < config_.h_lower) {
+        window_upper = std::min(config_.h_upper, window_upper + (config_.h_lower - window_lower));
+        window_lower = config_.h_lower;
+    }
+    if (window_upper > config_.h_upper) {
+        window_lower = std::max(config_.h_lower, window_lower - (window_upper - config_.h_upper));
+        window_upper = config_.h_upper;
+    }
+
+    if (window_upper <= window_lower + 1e-12) {
+        return candidates;
+    }
+
+    add_unique(window_upper);
+    add_unique(window_lower);
+
+    std::vector<double> window_samples;
+    window_samples.reserve(config_.h_candidate_count);
+    const size_t sample_count = config_.h_candidate_count;
+    for (size_t i = 0; i < sample_count; ++i) {
+        const double ratio = sample_count == 1 ? 0.0 : static_cast<double>(i) / static_cast<double>(sample_count - 1);
+        window_samples.push_back(window_lower + ratio * (window_upper - window_lower));
+    }
+    std::sort(window_samples.begin(), window_samples.end(), [h_center](double lhs, double rhs) {
+        const double lhs_distance = std::abs(lhs - h_center);
+        const double rhs_distance = std::abs(rhs - h_center);
+        if (std::abs(lhs_distance - rhs_distance) > 1e-12) {
+            return lhs_distance < rhs_distance;
         }
-        if (h_center + delta <= interval.upper + 1e-9) {
-            add(h_center + delta);
-            added = true;
-        }
-        if (!added && h_center - delta < interval.lower && h_center + delta > interval.upper) {
-            break;
-        }
+        return lhs < rhs;
+    });
+    for (double sample : window_samples) {
+        add_unique(sample);
     }
     return candidates;
 }
@@ -428,10 +451,9 @@ std::vector<UpdownAwareIkCandidate> ParallelUpdownAwareIkSolver::executeTrials(
                 const bool swapped_order = config_.try_target_orders
                     ? order_index == 1
                     : config_.use_reversed_target_order;
-                IkSolver& solver = trials[trial_index].free_updown
-                    ? *free_solvers_[worker % free_solvers_.size()]
-                    : *fixed_solvers_[worker % fixed_solvers_.size()];
-                results[item] = solveTrial(solver, trials[trial_index], request, plan, swapped_order, fallback);
+                const TrialSpec& trial = trials[trial_index];
+                IkSolver& solver = *free_solvers_[worker % free_solvers_.size()];
+                results[item] = solveTrial(solver, trial, request, plan, swapped_order, fallback);
             }
         });
     }
@@ -459,17 +481,16 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     out.solver_path = trial.solver_path;
     out.target_order = swapped_order ? "swapped" : "normal";
 
-    const Eigen::Isometry3d left_target = trial.free_updown
-        ? compensateTool0(request.left_target)
-        : fixedTarget(request.left_target, trial.h);
-    const Eigen::Isometry3d right_target = trial.free_updown
-        ? compensateTool0(request.right_target)
-        : fixedTarget(request.right_target, trial.h);
+    const Eigen::Isometry3d left_target = compensateTool0(request.left_target);
+    const Eigen::Isometry3d right_target = compensateTool0(request.right_target);
 
     const double timeout = fallback ? config_.fallback_timeout : config_.timeout;
+    const std::vector<double> solve_seed = trial.free_updown
+        ? trial.seed
+        : makeFullSeedFromArmSeed(trial.h, trial.seed);
     IkResult result = swapped_order
-        ? solver.solveDual(right_target, left_target, trial.seed, timeout, trial.h_range_lower, trial.h_range_upper)
-        : solver.solveDual(left_target, right_target, trial.seed, timeout, trial.h_range_lower, trial.h_range_upper);
+        ? solver.solveDual(right_target, left_target, solve_seed, timeout, trial.h_range_lower, trial.h_range_upper)
+        : solver.solveDual(left_target, right_target, solve_seed, timeout, trial.h_range_lower, trial.h_range_upper);
     out.solve_ms = result.solve_ms;
     out.timeout_like = result.solve_ms >= timeout * 1000.0 * 0.9;
     out.joint_names = result.joint_names;
@@ -481,19 +502,13 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     }
 
     std::vector<Eigen::Isometry3d> actual_poses;
-    if (trial.free_updown) {
-        out.full_joint_names = freeVariableNames();
-        out.full_joint_values = result.joint_values;
-        out.h = extractUpdown(out.full_joint_names, out.full_joint_values, request.current_h);
-        actual_poses = solver.fk(result.joint_values);
-        if (out.h < trial.h_range_lower - 1e-9 || out.h > trial.h_range_upper + 1e-9) {
-            out.rejection_reason = "updown_out_of_search_range";
-            return out;
-        }
-    } else {
-        out.full_joint_names = fullJointNamesForFixedGroup();
-        out.full_joint_values = fullJointValuesForFixedGroup(trial.h, result.joint_values);
-        actual_poses = solver.fkNamed(out.full_joint_names, out.full_joint_values);
+    out.full_joint_names = freeVariableNames();
+    out.full_joint_values = result.joint_values;
+    out.h = extractUpdown(out.full_joint_names, out.full_joint_values, trial.free_updown ? request.current_h : trial.h);
+    actual_poses = solver.fk(result.joint_values);
+    if (out.h < trial.h_range_lower - 1e-9 || out.h > trial.h_range_upper + 1e-9) {
+        out.rejection_reason = "updown_out_of_search_range";
+        return out;
     }
 
     if (actual_poses.size() < 2) {

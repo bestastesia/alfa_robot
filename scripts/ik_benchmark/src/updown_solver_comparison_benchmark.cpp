@@ -199,6 +199,13 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
             }
         } else if (key == "tool0_offset") config.tool0_offset = parseDouble(value);
         else if (key == "sphere_margin") config.sphere_margin = parseDouble(value);
+        else if (key == "gripper_z_reach_window") {
+            const auto window = parseDoubleList(value);
+            if (window.size() >= 2) {
+                config.gripper_z_reach_lower = window[0];
+                config.gripper_z_reach_upper = window[1];
+            }
+        }
         else return false;
         return true;
     }
