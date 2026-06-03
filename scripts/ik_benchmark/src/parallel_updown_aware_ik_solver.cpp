@@ -532,8 +532,14 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
         out.rejection_reason = "tip_order_error";
         return out;
     }
+    const double position_tolerance = request.grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction
+        ? config_.top_suction_position_tolerance
+        : config_.position_tolerance;
+    const double orientation_tolerance = request.grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction
+        ? config_.top_suction_orientation_tolerance
+        : config_.orientation_tolerance;
     if (config_.check_tip_error &&
-        (out.direct_pos_error > config_.position_tolerance || out.direct_ori_error > config_.orientation_tolerance)) {
+        (out.direct_pos_error > position_tolerance || out.direct_ori_error > orientation_tolerance)) {
         out.rejection_reason = "tip_error_too_large";
         return out;
     }

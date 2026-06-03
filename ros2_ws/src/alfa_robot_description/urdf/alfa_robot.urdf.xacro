@@ -344,7 +344,7 @@
   <joint name="left_v5_tool0_fixed" type="fixed">
     <parent link="left_v5_link6"/>
     <child link="left_v5_tool0"/>
-    <origin xyz="0 0 0.159" rpy="0 0 0"/>
+    <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>
 
   <!-- ========== RIGHT ARM v6 mapped to right_v5_* names ========== -->
@@ -556,7 +556,7 @@
   <joint name="right_v5_tool0_fixed" type="fixed">
     <parent link="right_v5_link6"/>
     <child link="right_v5_tool0"/>
-    <origin xyz="0 0 0.159" rpy="0 0 0"/>
+    <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>
 
 

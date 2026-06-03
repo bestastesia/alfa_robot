@@ -181,7 +181,9 @@ UpdownAwareIkConfig makeBioIkConfig()
     config.use_reversed_target_order = true;
     config.check_tip_error = true;
     config.position_tolerance = 0.02;
+    config.top_suction_position_tolerance = 0.04;
     config.orientation_tolerance = 0.05;
+    config.top_suction_orientation_tolerance = 5.0 * M_PI / 180.0;
     config.check_collision = true;
     config.enforce_arm_base_collisions = true;
     config.reject_swapped_tips = true;
@@ -295,11 +297,13 @@ int main(int argc, char** argv)
         {"candidate_budget", {{"h_candidates", config.h_candidate_count}, {"seed_count", config.seed_count}, {"max_trials", config.h_candidate_count * config.seed_count}}},
         {"workers", config.workers},
         {"timeout", config.timeout},
+        {"tip_error_tolerance", { {"front_position", config.position_tolerance}, {"top_suction_position", config.top_suction_position_tolerance}, {"front_orientation", config.orientation_tolerance}, {"top_suction_orientation", config.top_suction_orientation_tolerance} }},
         {"check_collision", config.check_collision}
     };
     ofs << header.dump() << "\n";
 
     size_t success_rounds = 0;
+    const double retry_h_jitter = 0.05;
     std::cout << "=== Box Stack Dual IK Benchmark ===\n"
               << "  solver_mode=" << solver_mode << " box_x=" << (0.375 + x_offset)
               << " rounds=" << pairs.size() << " output=" << output << "\n"
@@ -329,7 +333,38 @@ int main(int argc, char** argv)
         request.current_full_joints = home_full_seed;
 
         auto result = solver.solve(request);
+        const auto initial_result = result;
+        bool retry_used = false;
+        double retry_current_h = request.current_h;
+        double retry_wall_ms = 0.0;
+        double retry_sum_solve_ms = 0.0;
+        size_t retry_trial_count = 0;
+        if (!result.success) {
+            retry_used = true;
+            retry_current_h = std::min(config.h_upper, request.current_h + retry_h_jitter);
+            UpdownAwareIkRequest retry_request = request;
+            retry_request.current_h = retry_current_h;
+            auto retry_result = solver.solve(retry_request);
+            retry_wall_ms = retry_result.wall_ms;
+            retry_sum_solve_ms = retry_result.sum_solve_ms;
+            retry_trial_count = retry_result.trial_count;
+            const auto* initial_best_rejected = bestRejectedCandidate(result.candidates);
+            const auto* retry_best_rejected = bestRejectedCandidate(retry_result.candidates);
+            const double initial_error = result.success
+                ? result.selected.direct_pos_error
+                : (initial_best_rejected ? initial_best_rejected->direct_pos_error : std::numeric_limits<double>::infinity());
+            const double retry_error = retry_result.success
+                ? retry_result.selected.direct_pos_error
+                : (retry_best_rejected ? retry_best_rejected->direct_pos_error : std::numeric_limits<double>::infinity());
+            if ((retry_result.success && !result.success) ||
+                (retry_result.success == result.success && retry_error < initial_error)) {
+                result = std::move(retry_result);
+            }
+        }
         if (result.success) ++success_rounds;
+        const double task_wall_ms = initial_result.wall_ms + retry_wall_ms;
+        const double task_sum_solve_ms = initial_result.sum_solve_ms + retry_sum_solve_ms;
+        const size_t task_trial_count = initial_result.trial_count + retry_trial_count;
 
         const auto* best_rejected = bestRejectedCandidate(result.candidates);
 
@@ -358,6 +393,27 @@ int main(int argc, char** argv)
             {"place_left_joint_values", vecJson(place_arm)},
             {"place_right_joint_values", vecJson(place_arm)},
             {"success", result.success},
+            {"retry_used", retry_used},
+            {"retry_h_jitter", retry_used ? retry_h_jitter : 0.0},
+            {"retry_current_h", retry_current_h},
+            {"front_retry_used", retry_used && !pair.top_suction},
+            {"top_suction_retry_used", retry_used && pair.top_suction},
+            {"initial_success", initial_result.success},
+            {"initial_h_center", initial_result.h_center},
+            {"initial_h_candidates", initial_result.h_candidates},
+            {"initial_trial_count", initial_result.trial_count},
+            {"initial_legal_count", initial_result.legal_count},
+            {"initial_wall_ms", initial_result.wall_ms},
+            {"initial_sum_solve_ms", initial_result.sum_solve_ms},
+            {"initial_rejection_summary", rejectionSummaryJson(initial_result.candidates)},
+            {"retry_trial_count", retry_trial_count},
+            {"retry_wall_ms", retry_wall_ms},
+            {"retry_sum_solve_ms", retry_sum_solve_ms},
+            {"adopted_wall_ms", result.wall_ms},
+            {"adopted_sum_solve_ms", result.sum_solve_ms},
+            {"task_wall_ms", task_wall_ms},
+            {"task_sum_solve_ms", task_sum_solve_ms},
+            {"task_trial_count", task_trial_count},
             {"fallback_used", result.fallback_used},
             {"solver_path", result.solver_path},
             {"failure_reason", result.failure_reason},
@@ -402,7 +458,12 @@ int main(int argc, char** argv)
                   << " h=[" << std::fixed << std::setprecision(2) << result.h_interval_lower << "," << result.h_interval_upper << "]"
                   << " selected_h=" << (result.success ? result.selected.h : 0.45)
                   << " legal=" << result.legal_count << "/" << result.trial_count
-                  << " wall=" << std::setprecision(1) << result.wall_ms << "ms";
+                  << " wall=" << std::setprecision(1) << result.wall_ms << "ms"
+                  << " task_wall=" << task_wall_ms << "ms";
+        if (retry_used) {
+            std::cout << " retry_h=" << retry_current_h
+                      << " initial_legal=" << initial_result.legal_count << "/" << initial_result.trial_count;
+        }
         if (!result.success) {
             std::cout << " reason=" << result.failure_reason << " reject=" << rejectionSummaryJson(result.candidates).dump();
         }

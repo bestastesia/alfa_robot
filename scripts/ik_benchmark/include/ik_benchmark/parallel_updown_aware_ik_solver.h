@@ -59,7 +59,9 @@ struct UpdownAwareIkConfig {
 
     bool check_tip_error = true;
     double position_tolerance = 0.02;
+    double top_suction_position_tolerance = 0.04;
     double orientation_tolerance = 0.05;
+    double top_suction_orientation_tolerance = 0.0872664626;
     bool check_collision = false;
     bool enforce_arm_base_collisions = false;
     bool reject_swapped_tips = true;
