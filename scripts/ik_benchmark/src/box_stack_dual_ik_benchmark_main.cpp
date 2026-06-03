@@ -30,7 +30,10 @@ struct PickPair {
     int round = 0;
     int left_box = 0;
     int right_box = 0;
+    bool top_suction = false;
 };
+
+constexpr double kWorldToBaseZ = 0.202094;
 
 std::vector<double> degSeed(const std::vector<double>& degrees)
 {
@@ -40,25 +43,57 @@ std::vector<double> degSeed(const std::vector<double>& degrees)
     return radians;
 }
 
-Eigen::Isometry3d poseForwardX(double x, double y, double z)
+Eigen::Isometry3d makePose(double x, double y, double z, const Eigen::Quaterniond& orientation)
 {
     Eigen::Isometry3d tf = Eigen::Isometry3d::Identity();
     tf.translation() = Eigen::Vector3d(x, y, z);
-    Eigen::Quaterniond q(0.7071, 0.0, 0.7071, 0.0); // xyzw=(0,0.7071,0,0.7071), tool +Z -> world +X
+    Eigen::Quaterniond q = orientation;
     q.normalize();
     tf.linear() = q.toRotationMatrix();
     return tf;
 }
 
+Eigen::Quaterniond forwardXOrientation()
+{
+    return Eigen::Quaterniond(0.7071, 0.0, 0.7071, 0.0); // tool +Z -> world +X
+}
+
+Eigen::Quaterniond topSuctionOrientation()
+{
+    return Eigen::Quaterniond(0.0, 1.0, 0.0, 0.0); // tool +Z -> world -Z
+}
+
+Eigen::Isometry3d poseForwardX(double x, double y, double z)
+{
+    return makePose(x, y, z - kWorldToBaseZ, forwardXOrientation());
+}
+
+Eigen::Isometry3d poseTopSuction(double x, double y, double z)
+{
+    return makePose(x + 0.15, y, z + 0.2 - kWorldToBaseZ, topSuctionOrientation());
+}
+
+BoxSpec targetBox(const BoxSpec& box, bool top_suction)
+{
+    return top_suction
+        ? BoxSpec{box.id, box.x + 0.15, box.y, box.z + 0.2 - kWorldToBaseZ}
+        : BoxSpec{box.id, box.x, box.y, box.z - kWorldToBaseZ};
+}
+
+BoxSpec targetBoxWorld(const BoxSpec& box, bool top_suction)
+{
+    return top_suction ? BoxSpec{box.id, box.x + 0.15, box.y, box.z + 0.2} : box;
+}
+
 std::map<int, BoxSpec> makeBoxes(double x_offset)
 {
-    const double base_x = 0.5 + x_offset;
+    const double base_x = 0.375 + x_offset;
     const std::vector<std::vector<std::pair<int, double>>> rows_top_to_bottom = {
         {{1, 0.6}, {3, 0.2}, {2, -0.2}, {4, -0.6}},
         {{5, 0.6}, {7, 0.2}, {6, -0.2}, {8, -0.6}},
         {{9, 0.6}, {11, 0.2}, {10, -0.2}, {12, -0.6}},
         {{13, 0.6}, {15, 0.2}, {14, -0.2}, {16, -0.6}},
-        {{17, 0.6}, {19, 0.2}, {20, -0.2}, {18, -0.6}},
+        {{17, 0.6}, {19, 0.2}, {18, -0.2}, {20, -0.6}},
     };
 
     std::map<int, BoxSpec> boxes;
@@ -74,14 +109,16 @@ std::map<int, BoxSpec> makeBoxes(double x_offset)
 std::vector<PickPair> makePickPairs()
 {
     return {
-        {1, 1, 2},
-        {2, 3, 4},
-        {3, 5, 6},
-        {4, 7, 8},
-        {5, 9, 10},
-        {6, 11, 12},
-        {7, 13, 14},
-        {8, 15, 16},
+        {1, 1, 2, false},
+        {2, 3, 4, false},
+        {3, 5, 6, false},
+        {4, 7, 8, false},
+        {5, 9, 10, false},
+        {6, 11, 12, false},
+        {7, 13, 14, false},
+        {8, 15, 16, false},
+        {9, 17, 18, true},
+        {10, 19, 20, true},
     };
 }
 
@@ -127,8 +164,10 @@ UpdownAwareIkConfig makeBioIkConfig()
     config.left_tip = "left_v5_tool0";
     config.right_tip = "right_v5_tool0";
     config.tool0_offset = 0.0;
-    config.gripper_z_reach_lower = 0.45;
-    config.gripper_z_reach_upper = 1.1;
+    config.gripper_z_reach_lower = 0.45 - kWorldToBaseZ;
+    config.gripper_z_reach_upper = 1.1 - kWorldToBaseZ;
+    config.top_suction_z_reach_lower = 0.3 - kWorldToBaseZ;
+    config.top_suction_z_reach_upper = 0.55 - kWorldToBaseZ;
     config.h_lower = 0.0;
     config.h_upper = 0.99;
     config.h_search_mode = UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
@@ -181,7 +220,7 @@ void printHelp()
 {
     std::cout << "box_stack_dual_ik_benchmark\n"
               << "  --solver-mode optimized_bioik   currently supported solver mode\n"
-              << "  --x-offset <m>                  box x = 0.5 + x_offset, default 0.3\n"
+              << "  --x-offset <m>                  box x = 0.375 + x_offset, default 0.3\n"
               << "  --output <path>                 JSONL output path\n"
               << "  --timeout <sec>                 per-candidate BioIK timeout, default 0.02\n"
               << "  --workers <n>                   parallel workers, default 8\n"
@@ -240,19 +279,19 @@ int main(int argc, char** argv)
         {"type", "header"},
         {"schema", "box_stack_dual_ik_benchmark_v1"},
         {"solver_mode", solver_mode},
-        {"box_front_face_x", 0.5 + x_offset},
-        {"box_x", 0.5 + x_offset},
+        {"box_front_face_x", 0.375 + x_offset},
+        {"box_x", 0.375 + x_offset},
         {"x_offset", x_offset},
         {"box_depth_x", 0.3},
         {"box_face_size_yz", {0.4, 0.4}},
         {"grasp_point_semantics", "front-face center facing robot; box volume extends +X by 0.3m"},
         {"rounds", pairs.size()},
-        {"grasp_orientation", "tool +Z toward world +X"},
+        {"grasp_orientation", "front: tool +Z toward world +X; top_suction: tool +Z toward world -Z"},
         {"home_updown", 0.45},
         {"home_arm_degrees", {0, 15, 135, 0, 60, 0}},
         {"loaded_arm_degrees", {0, 5, 145, 0, 120, 0}},
         {"place_arm_degrees", {0, -90, -90, 0, -90, 180}},
-        {"h_planner", {{"gripper_z_reach_window", {config.gripper_z_reach_lower, config.gripper_z_reach_upper}}, {"physical_limits", {config.h_lower, config.h_upper}}}},
+        {"h_planner", {{"gripper_z_reach_window", {config.gripper_z_reach_lower, config.gripper_z_reach_upper}}, {"top_suction_z_reach_window", {config.top_suction_z_reach_lower, config.top_suction_z_reach_upper}}, {"physical_limits", {config.h_lower, config.h_upper}}}},
         {"candidate_budget", {{"h_candidates", config.h_candidate_count}, {"seed_count", config.seed_count}, {"max_trials", config.h_candidate_count * config.seed_count}}},
         {"workers", config.workers},
         {"timeout", config.timeout},
@@ -262,18 +301,29 @@ int main(int argc, char** argv)
 
     size_t success_rounds = 0;
     std::cout << "=== Box Stack Dual IK Benchmark ===\n"
-              << "  solver_mode=" << solver_mode << " box_x=" << (0.5 + x_offset)
+              << "  solver_mode=" << solver_mode << " box_x=" << (0.375 + x_offset)
               << " rounds=" << pairs.size() << " output=" << output << "\n"
               << "  home seed: updown=0.45, arms=0/15/135/0/60/0 deg\n\n";
 
     for (const auto& pair : pairs) {
-        const BoxSpec& left_box = boxes.at(pair.left_box);
-        const BoxSpec& right_box = boxes.at(pair.right_box);
+        const BoxSpec& left_box_raw = boxes.at(pair.left_box);
+        const BoxSpec& right_box_raw = boxes.at(pair.right_box);
+        const BoxSpec left_box = targetBox(left_box_raw, pair.top_suction);
+        const BoxSpec right_box = targetBox(right_box_raw, pair.top_suction);
+        const BoxSpec left_box_world = targetBoxWorld(left_box_raw, pair.top_suction);
+        const BoxSpec right_box_world = targetBoxWorld(right_box_raw, pair.top_suction);
 
         UpdownAwareIkRequest request;
-        request.left_target = poseForwardX(left_box.x, left_box.y, left_box.z);
-        request.right_target = poseForwardX(right_box.x, right_box.y, right_box.z);
+        request.left_target = pair.top_suction
+            ? poseTopSuction(left_box_raw.x, left_box_raw.y, left_box_raw.z)
+            : poseForwardX(left_box_raw.x, left_box_raw.y, left_box_raw.z);
+        request.right_target = pair.top_suction
+            ? poseTopSuction(right_box_raw.x, right_box_raw.y, right_box_raw.z)
+            : poseForwardX(right_box_raw.x, right_box_raw.y, right_box_raw.z);
         request.current_h = 0.45;
+        request.grasp_mode = pair.top_suction
+            ? UpdownAwareIkRequest::GraspMode::TopSuction
+            : UpdownAwareIkRequest::GraspMode::Front;
         request.current_arm_joints = fullValues(0.0, home_arm_seed, home_arm_seed);
         request.current_arm_joints.erase(request.current_arm_joints.begin());
         request.current_full_joints = home_full_seed;
@@ -289,9 +339,12 @@ int main(int argc, char** argv)
             {"solver_mode", solver_mode},
             {"left_box", pair.left_box},
             {"right_box", pair.right_box},
+            {"grasp_mode", pair.top_suction ? "top_suction" : "front"},
             {"left_target", poseJson(left_box)},
             {"right_target", poseJson(right_box)},
-            {"target_orientation", "tool +Z toward world +X"},
+            {"left_target_world", poseJson(left_box_world)},
+            {"right_target_world", poseJson(right_box_world)},
+            {"target_orientation", pair.top_suction ? "tool +Z toward world -Z" : "tool +Z toward world +X"},
             {"home_updown", 0.45},
             {"home_arm_joint_values", vecJson(home_arm_seed)},
             {"home_full_joint_values", vecJson(home_full_seed)},
@@ -344,6 +397,7 @@ int main(int argc, char** argv)
         ofs << record.dump() << "\n";
 
         std::cout << "round " << pair.round << " boxes " << pair.left_box << "+" << pair.right_box
+                  << " mode=" << (pair.top_suction ? "top_suction" : "front")
                   << " success=" << (result.success ? "yes" : "no")
                   << " h=[" << std::fixed << std::setprecision(2) << result.h_interval_lower << "," << result.h_interval_upper << "]"
                   << " selected_h=" << (result.success ? result.selected.h : 0.45)

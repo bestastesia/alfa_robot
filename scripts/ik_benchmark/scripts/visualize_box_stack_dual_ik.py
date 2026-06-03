@@ -44,28 +44,38 @@ def read_jsonl(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], dict[s
     return header, rounds, summary
 
 
-def all_boxes(box_x: float, z_offset: float = 0.0) -> dict[int, tuple[float, float, float]]:
+def all_boxes(box_x: float) -> dict[int, tuple[float, float, float]]:
     rows = [
         [(1, 0.6), (3, 0.2), (2, -0.2), (4, -0.6)],
         [(5, 0.6), (7, 0.2), (6, -0.2), (8, -0.6)],
         [(9, 0.6), (11, 0.2), (10, -0.2), (12, -0.6)],
         [(13, 0.6), (15, 0.2), (14, -0.2), (16, -0.6)],
-        [(17, 0.6), (19, 0.2), (20, -0.2), (18, -0.6)],
+        [(17, 0.6), (19, 0.2), (18, -0.2), (20, -0.6)],
     ]
     out: dict[int, tuple[float, float, float]] = {}
     for row_i, row in enumerate(rows):
         z = 0.2 + 0.4 * (len(rows) - 1 - row_i)
         for box_id, y in row:
-            out[box_id] = (box_x, y, z + z_offset)
+            out[box_id] = (box_x, y, z)
     return out
 
 
-def log_box_stack(box_x: float, grabbed_ids: set[int], z_offset: float = 0.0) -> None:
+def transform_point(transform: np.ndarray, point: list[float]) -> list[float]:
+    homogeneous = transform @ np.array([point[0], point[1], point[2], 1.0], dtype=float)
+    return [float(homogeneous[0]), float(homogeneous[1]), float(homogeneous[2])]
+
+
+def transform_vector(transform: np.ndarray, vector: list[float]) -> list[float]:
+    rotated = transform[:3, :3] @ np.array(vector, dtype=float)
+    return [float(rotated[0]), float(rotated[1]), float(rotated[2])]
+
+
+def log_box_stack(box_x: float, grabbed_ids: set[int]) -> None:
     centers = []
     half_sizes = []
     colors = []
     labels = []
-    for box_id, (x, y, z) in sorted(all_boxes(box_x, z_offset).items()):
+    for box_id, (x, y, z) in sorted(all_boxes(box_x).items()):
         # The benchmark target is the front-face grasp point facing the robot.
         # Box volume extends backward from that surface by 0.3 m along +X.
         centers.append([x + 0.15, y, z])
@@ -84,6 +94,28 @@ def log_point(path: str, point: list[float], color: list[int], label: str, radiu
 
 def log_arrow(path: str, origin: list[float], vector: list[float], color: list[int]) -> None:
     rr.log(path, rr.Arrows3D(origins=[origin], vectors=[vector], colors=[color], radii=[0.01]))
+
+
+def log_tool0_extension(robot: Any, positions: dict[str, float], robot_path: str) -> None:
+    transforms = robot.fk(positions)
+    specs = [
+        ("left", "left_v5_link6", "left_v5_tool0", [0, 220, 255]),
+        ("right", "right_v5_link6", "right_v5_tool0", [255, 120, 0]),
+    ]
+    for side, link6, tool0, color in specs:
+        if link6 not in transforms or tool0 not in transforms:
+            continue
+        link6_pos = transforms[link6][:3, 3].tolist()
+        tool0_pos = transforms[tool0][:3, 3].tolist()
+        vector = (transforms[tool0][:3, 3] - transforms[link6][:3, 3]).tolist()
+        rr.log(
+            f"{robot_path}/{side}_tool0_extension",
+            rr.Arrows3D(origins=[link6_pos], vectors=[vector], colors=[color], radii=[0.018]),
+        )
+        rr.log(
+            f"{robot_path}/{side}_tool0_tip_marker",
+            rr.Points3D([tool0_pos], colors=[color], radii=[0.045], labels=[f"{side}_tool0"]),
+        )
 
 
 def joint_positions(record: dict[str, Any]) -> tuple[dict[str, float] | None, str]:
@@ -152,27 +184,32 @@ def main() -> None:
     rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     robot = helpers.UrdfRobot(helpers.render_current_urdf())
     helpers.log_robot_static_model(robot, args.robot_path, log_meshes=not args.no_meshes)
+    base_to_world = robot.fk({}).get("base_link", np.eye(4))
 
     grabbed_ids = {int(r["left_box"]) for r in rounds} | {int(r["right_box"]) for r in rounds}
-    base_to_world_z = 0.09
-    log_box_stack(float(header.get("box_x", 0.5)), grabbed_ids, base_to_world_z)
+    log_box_stack(float(header.get("box_x", 0.5)), grabbed_ids)
 
     for index, record in enumerate(rounds):
         helpers.set_sample_time(index)
         positions, pose_source = joint_positions(record)
-        helpers.log_robot_state(robot, positions or home_positions(), args.robot_path)
+        current_positions = positions or home_positions()
+        helpers.log_robot_state(robot, current_positions, args.robot_path)
+        log_tool0_extension(robot, current_positions, args.robot_path)
         rr.log("info/pose_source", rr.TextLog(f"robot pose source: {pose_source}"))
 
         left = [float(v) for v in record.get("left_target", [])]
         right = [float(v) for v in record.get("right_target", [])]
+        grasp_mode = str(record.get("grasp_mode", "front"))
+        grasp_vector_base = [0.0, 0.0, -0.18] if grasp_mode == "top_suction" else [0.18, 0.0, 0.0]
+        grasp_vector = transform_vector(base_to_world, grasp_vector_base)
         if len(left) == 3:
-            left_world = [left[0], left[1], left[2] + base_to_world_z]
-            log_point("targets/left_grasp_world", left_world, [0, 220, 255], f"L{record.get('left_box')}")
-            log_arrow("targets/left_grasp_world_forward", left_world, [0.18, 0.0, 0.0], [0, 220, 255])
+            left_world = transform_point(base_to_world, left)
+            log_point("targets/left_grasp_world", left_world, [0, 220, 255], f"L{record.get('left_box')} {grasp_mode}")
+            log_arrow("targets/left_grasp_world_forward", left_world, grasp_vector, [0, 220, 255])
         if len(right) == 3:
-            right_world = [right[0], right[1], right[2] + base_to_world_z]
-            log_point("targets/right_grasp_world", right_world, [255, 120, 0], f"R{record.get('right_box')}")
-            log_arrow("targets/right_grasp_world_forward", right_world, [0.18, 0.0, 0.0], [255, 120, 0])
+            right_world = transform_point(base_to_world, right)
+            log_point("targets/right_grasp_world", right_world, [255, 120, 0], f"R{record.get('right_box')} {grasp_mode}")
+            log_arrow("targets/right_grasp_world_forward", right_world, grasp_vector, [255, 120, 0])
         log_round_text(record, summary)
 
     print(f"Loaded {len(rounds)} rounds from {args.jsonl}")

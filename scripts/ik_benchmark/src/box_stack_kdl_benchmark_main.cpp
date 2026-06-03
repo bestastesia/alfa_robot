@@ -53,7 +53,7 @@ std::vector<double> degSeed(const std::vector<double>& degrees)
 
 std::map<int, BoxSpec> makeBoxes(double x_offset)
 {
-    const double base_x = 0.5 + x_offset;
+    const double base_x = 0.375 + x_offset;
     const std::vector<std::vector<std::pair<int, double>>> rows_top_to_bottom = {
         {{1, 0.4}, {2, 0.0}, {4, -0.4}},
         {{3, 0.4}, {5, 0.0}, {6, -0.4}},
@@ -105,7 +105,7 @@ std::vector<double> fullValues(double updown, const std::vector<double>& left, c
 void printHelp()
 {
     std::cout << "box_stack_kdl_benchmark\n"
-              << "  --x-offset <m>          box x = 0.5 + x_offset, default 0.0\n"
+              << "  --x-offset <m>          box x = 0.375 + x_offset, default 0.0\n"
               << "  --grasp-updown <m>      updown for pregrasp/grasp IK, default 0.45\n"
               << "  --load-place-updown <m> updown for loaded grasp/place fixed states, default 0.45\n"
               << "  --timeout <sec>         KDL timeout, default 0.01\n"
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
     nlohmann::json header = {
         {"type", "header"},
         {"schema", "box_stack_kdl_benchmark_v1"},
-        {"box_x", 0.5 + x_offset},
+        {"box_x", 0.375 + x_offset},
         {"x_offset", x_offset},
         {"grasp_updown", grasp_updown},
         {"load_place_updown", load_place_updown},
@@ -188,7 +188,7 @@ int main(int argc, char** argv)
     double total_right_ms = 0.0;
 
     std::cout << "=== Box Stack KDL Benchmark ===\n"
-              << "  box_x=" << (0.5 + x_offset) << " grasp_updown=" << grasp_updown
+              << "  box_x=" << (0.375 + x_offset) << " grasp_updown=" << grasp_updown
               << " load/place_updown=" << load_place_updown << " timeout=" << timeout << "s\n"
               << "  output=" << output << "\n\n";
 

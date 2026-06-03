@@ -148,11 +148,14 @@ UpdownAwareIkResult ParallelUpdownAwareIkSolver::solve(const UpdownAwareIkReques
 }
 
 ParallelUpdownAwareIkSolver::HeightInterval ParallelUpdownAwareIkSolver::intervalForTarget(
-    const Eigen::Isometry3d& target) const
+    const Eigen::Isometry3d& target, UpdownAwareIkRequest::GraspMode grasp_mode) const
 {
     HeightInterval interval;
-    const double reach_lower = std::min(config_.gripper_z_reach_lower, config_.gripper_z_reach_upper);
-    const double reach_upper = std::max(config_.gripper_z_reach_lower, config_.gripper_z_reach_upper);
+    const bool top_suction = grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction;
+    const double configured_lower = top_suction ? config_.top_suction_z_reach_lower : config_.gripper_z_reach_lower;
+    const double configured_upper = top_suction ? config_.top_suction_z_reach_upper : config_.gripper_z_reach_upper;
+    const double reach_lower = std::min(configured_lower, configured_upper);
+    const double reach_upper = std::max(configured_lower, configured_upper);
     if (reach_upper < reach_lower) {
         return interval;
     }
@@ -168,8 +171,8 @@ ParallelUpdownAwareIkSolver::HeightPlan ParallelUpdownAwareIkSolver::planHeight(
     const UpdownAwareIkRequest& request) const
 {
     HeightPlan plan;
-    plan.left = intervalForTarget(request.left_target);
-    plan.right = intervalForTarget(request.right_target);
+    plan.left = intervalForTarget(request.left_target, request.grasp_mode);
+    plan.right = intervalForTarget(request.right_target, request.grasp_mode);
     plan.combined.lower = std::max(plan.left.lower, plan.right.lower);
     plan.combined.upper = std::min(plan.left.upper, plan.right.upper);
     plan.combined.reachable = plan.left.reachable && plan.right.reachable &&
@@ -193,7 +196,7 @@ std::vector<double> ParallelUpdownAwareIkSolver::makeFixedHCandidates(
 
     auto add_unique = [&](double value) {
         if (candidates.size() >= config_.h_candidate_count) return;
-        const double clamped = std::min(std::max(value, config_.h_lower), config_.h_upper);
+        const double clamped = std::min(std::max(value, interval.lower), interval.upper);
         for (double existing : candidates) {
             if (std::abs(existing - clamped) < 1e-9) return;
         }
@@ -209,13 +212,13 @@ std::vector<double> ParallelUpdownAwareIkSolver::makeFixedHCandidates(
 
     double window_lower = h_center - margin;
     double window_upper = h_center + margin;
-    if (window_lower < config_.h_lower) {
-        window_upper = std::min(config_.h_upper, window_upper + (config_.h_lower - window_lower));
-        window_lower = config_.h_lower;
+    if (window_lower < interval.lower) {
+        window_upper = std::min(interval.upper, window_upper + (interval.lower - window_lower));
+        window_lower = interval.lower;
     }
-    if (window_upper > config_.h_upper) {
-        window_lower = std::max(config_.h_lower, window_lower - (window_upper - config_.h_upper));
-        window_upper = config_.h_upper;
+    if (window_upper > interval.upper) {
+        window_lower = std::max(interval.lower, window_lower - (window_upper - interval.upper));
+        window_upper = interval.upper;
     }
 
     if (window_upper <= window_lower + 1e-12) {

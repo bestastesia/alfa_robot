@@ -37,6 +37,8 @@ struct UpdownAwareIkConfig {
     double sphere_margin = 0.0;
     double gripper_z_reach_lower = 0.45;
     double gripper_z_reach_upper = 1.1;
+    double top_suction_z_reach_lower = 0.3;
+    double top_suction_z_reach_upper = 0.55;
     double h_lower = 0.0;
     double h_upper = 0.99;
 
@@ -95,9 +97,15 @@ struct UpdownAwareIkConfig {
 };
 
 struct UpdownAwareIkRequest {
+    enum class GraspMode {
+        Front,
+        TopSuction,
+    };
+
     Eigen::Isometry3d left_target = Eigen::Isometry3d::Identity();
     Eigen::Isometry3d right_target = Eigen::Isometry3d::Identity();
     double current_h = 0.0;
+    GraspMode grasp_mode = GraspMode::Front;
     std::vector<double> current_arm_joints;
     std::vector<double> current_full_joints;
 };
@@ -196,7 +204,7 @@ private:
     };
 
     HeightPlan planHeight(const UpdownAwareIkRequest& request) const;
-    HeightInterval intervalForTarget(const Eigen::Isometry3d& target) const;
+    HeightInterval intervalForTarget(const Eigen::Isometry3d& target, UpdownAwareIkRequest::GraspMode grasp_mode) const;
     std::vector<double> makeFixedHCandidates(const HeightInterval& interval, double h_center) const;
     std::vector<TrialSpec> makeNormalTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan) const;
     std::vector<TrialSpec> makeFallbackTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan, size_t round_index) const;

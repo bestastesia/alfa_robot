@@ -17,7 +17,7 @@
   <joint name="world_to_base" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
-    <origin xyz="0 0 0.09" rpy="0 0 0"/>
+    <origin xyz="0 0 0.202094" rpy="0 0 0"/>
   </joint>
 
 <link name="base_link">
@@ -176,7 +176,7 @@
     <parent link="left_v5_link0" />
     <child link="left_v5_link1" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="120" velocity="1.2" />
+    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
   </joint>
   
 <link name="left_v5_link2">
@@ -207,7 +207,7 @@
     <parent link="left_v5_link1" />
     <child link="left_v5_link2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="120" velocity="1.2" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
   </joint>
   
 <link name="left_v5_link3">
@@ -238,7 +238,7 @@
     <parent link="left_v5_link2" />
     <child link="left_v5_link3" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="1.2" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
   </joint>
   
 <link name="left_v5_link4">
@@ -269,7 +269,7 @@
     <parent link="left_v5_link3" />
     <child link="left_v5_link4" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
   
 <link name="left_v5_link5">
@@ -300,7 +300,7 @@
     <parent link="left_v5_link4" />
     <child link="left_v5_link5" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.14" upper="3.14" effort="60" velocity="1.5" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
   </joint>
   
 <link name="left_v5_link6">
@@ -331,7 +331,7 @@
     <parent link="left_v5_link5" />
     <child link="left_v5_link6" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="40" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
   </joint>
   
   <link name="left_v5_tool0">
@@ -344,7 +344,7 @@
   <joint name="left_v5_tool0_fixed" type="fixed">
     <parent link="left_v5_link6"/>
     <child link="left_v5_tool0"/>
-    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <origin xyz="0 0 0.159" rpy="0 0 0"/>
   </joint>
 
   <!-- ========== RIGHT ARM v6 mapped to right_v5_* names ========== -->
@@ -388,7 +388,7 @@
     <parent link="right_v5_link0" />
     <child link="right_v5_link1" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="120" velocity="1.2" />
+    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
   </joint>
   
 <link name="right_v5_link2">
@@ -419,7 +419,7 @@
     <parent link="right_v5_link1" />
     <child link="right_v5_link2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="120" velocity="1.2" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
   </joint>
   
 <link name="right_v5_link3">
@@ -450,7 +450,7 @@
     <parent link="right_v5_link2" />
     <child link="right_v5_link3" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="100" velocity="1.2" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
   </joint>
   
 <link name="right_v5_link4">
@@ -481,7 +481,7 @@
     <parent link="right_v5_link3" />
     <child link="right_v5_link4" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
   
 <link name="right_v5_link5">
@@ -512,7 +512,7 @@
     <parent link="right_v5_link4" />
     <child link="right_v5_link5" />
     <axis xyz="0 0 -1" />
-    <limit lower="-3.14" upper="3.14" effort="60" velocity="1.5" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
   </joint>
   
 <link name="right_v5_link6">
@@ -543,7 +543,7 @@
     <parent link="right_v5_link5" />
     <child link="right_v5_link6" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14" upper="3.14" effort="40" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
   </joint>
   
   <link name="right_v5_tool0">
@@ -556,7 +556,7 @@
   <joint name="right_v5_tool0_fixed" type="fixed">
     <parent link="right_v5_link6"/>
     <child link="right_v5_tool0"/>
-    <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    <origin xyz="0 0 0.159" rpy="0 0 0"/>
   </joint>
 
 
