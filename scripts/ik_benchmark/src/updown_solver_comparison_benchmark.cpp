@@ -205,6 +205,12 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
                 config.gripper_z_reach_lower = window[0];
                 config.gripper_z_reach_upper = window[1];
             }
+        } else if (key == "top_suction_z_reach_window") {
+            const auto window = parseDoubleList(value);
+            if (window.size() >= 2) {
+                config.top_suction_z_reach_lower = window[0];
+                config.top_suction_z_reach_upper = window[1];
+            }
         }
         else return false;
         return true;

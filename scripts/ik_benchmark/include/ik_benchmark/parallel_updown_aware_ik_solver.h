@@ -36,9 +36,9 @@ struct UpdownAwareIkConfig {
     double tool0_offset = 0.1;
     double sphere_margin = 0.0;
     double gripper_z_reach_lower = 0.45;
-    double gripper_z_reach_upper = 1.1;
+    double gripper_z_reach_upper = 1.25;
     double top_suction_z_reach_lower = 0.3;
-    double top_suction_z_reach_upper = 0.55;
+    double top_suction_z_reach_upper = 0.45;
     double h_lower = 0.0;
     double h_upper = 0.99;
 

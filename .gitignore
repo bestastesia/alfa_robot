@@ -213,3 +213,6 @@ universal_robot-noetic-devel/
 
 # Local experiment outputs
 data/
+
+# MOTION-38 local one-off/debug scripts
+scripts/ik_benchmark/motion38/visualize_single_down_point_9_orients.py

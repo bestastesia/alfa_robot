@@ -178,6 +178,9 @@ class NineOrientationReachabilityTester(Node):
         self.declare_parameter("service_timeout", 10.0)
         self.declare_parameter("joint_states_topic", "/joint_states")
         self.declare_parameter("seed_wait_sec", 2.0)
+        # Optional: force base lift/updown value in the IK seed.
+        # Negative value means: use current /joint_states as-is.
+        self.declare_parameter("fixed_updown", -1.0)
 
         # Override center orientation (optional)
         self.declare_parameter("center_orientation_xyzw", [0.0, 0.7071, 0.0, 0.7071])
@@ -271,10 +274,35 @@ class NineOrientationReachabilityTester(Node):
         deadline = self.get_clock().now() + Duration(seconds=timeout)
         while rclpy.ok() and self._latest_joint_state is None and self.get_clock().now() < deadline:
             rclpy.spin_once(self, timeout_sec=0.05)
+
         if self._latest_joint_state is not None:
-            return self._latest_joint_state
-        self.get_logger().warn("No /joint_states received; using diff RobotState without explicit seed")
-        return JointState()
+            seed = JointState()
+            seed.header = self._latest_joint_state.header
+            seed.name = list(self._latest_joint_state.name)
+            seed.position = list(self._latest_joint_state.position)
+            seed.velocity = list(self._latest_joint_state.velocity)
+            seed.effort = list(self._latest_joint_state.effort)
+        else:
+            self.get_logger().warn("No /joint_states received; using diff RobotState without explicit seed")
+            seed = JointState()
+
+        fixed_updown = as_float(self.get_parameter("fixed_updown").value)
+        if fixed_updown >= 0.0:
+            if "updown" in seed.name:
+                index = seed.name.index("updown")
+                while len(seed.position) <= index:
+                    seed.position.append(0.0)
+                seed.position[index] = fixed_updown
+            else:
+                seed.name.append("updown")
+                seed.position.append(fixed_updown)
+            self.get_logger().info(f"Using fixed updown seed: {fixed_updown:.3f} m")
+        elif "updown" in seed.name and len(seed.position) > seed.name.index("updown"):
+            self.get_logger().info(f"Using current /joint_states updown seed: {seed.position[seed.name.index('updown')]:.3f} m")
+        else:
+            self.get_logger().info("No updown seed value available; MoveIt will use default/current state")
+
+        return seed
 
     def _solve_ik(self, arm: ArmConfig, pose: PoseStamped, seed_state: JointState,
                   avoid_collisions: bool | None = None) -> tuple[bool, int, str, float]:
@@ -384,7 +412,8 @@ class NineOrientationReachabilityTester(Node):
         self.get_logger().info(
             f"  IK timeout={as_float(self.get_parameter('ik_timeout').value)}s "
             f"avoid_collisions={as_bool(self.get_parameter('avoid_collisions').value)} "
-            f"classify_collisions={classify_collisions}")
+            f"classify_collisions={classify_collisions} "
+            f"fixed_updown={as_float(self.get_parameter('fixed_updown').value)}")
 
         point_idx = 0
         reachable_count = 0

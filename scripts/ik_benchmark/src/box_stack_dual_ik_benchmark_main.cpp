@@ -165,9 +165,9 @@ UpdownAwareIkConfig makeBioIkConfig()
     config.right_tip = "right_v5_tool0";
     config.tool0_offset = 0.0;
     config.gripper_z_reach_lower = 0.45 - kWorldToBaseZ;
-    config.gripper_z_reach_upper = 1.1 - kWorldToBaseZ;
+    config.gripper_z_reach_upper = 1.25 - kWorldToBaseZ;
     config.top_suction_z_reach_lower = 0.3 - kWorldToBaseZ;
-    config.top_suction_z_reach_upper = 0.55 - kWorldToBaseZ;
+    config.top_suction_z_reach_upper = 0.45 - kWorldToBaseZ;
     config.h_lower = 0.0;
     config.h_upper = 0.99;
     config.h_search_mode = UpdownAwareIkConfig::HSearchMode::FixedDiscrete;

@@ -1,5 +1,0 @@
-width: 381
-height: 252
-resolution: 0.05
-origin_x: -7.99976
-origin_y: -9.56688
