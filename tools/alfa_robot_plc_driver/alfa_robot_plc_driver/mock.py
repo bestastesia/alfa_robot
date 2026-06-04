@@ -1,92 +1,73 @@
+"""In-memory MB_CMD/MB_STS mock for tests and dry development."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from .codec import WordOrder, decode_lreal, decode_udint, encode_lreal, encode_udint
-from .config import DriverConfig
-from .transport import MockTransport
+from .codec import decode_dint_x100, encode_dint_x100
+from .config import PlcProtocolConfig
+from .register_map import AxisCmdOffset, AxisStsOffset, ControlWord
 
 
-@dataclass
-class MockAxisRuntime:
-    move_cmd_id: int = 0
-    return_zero_cmd_id: int = 0
+class MockPlcTransport:
+    def __init__(self, protocol: PlcProtocolConfig | None = None, active_axes: int = 6):
+        self.protocol = protocol or PlcProtocolConfig(default_active_axes=active_axes)
+        self.active_axes = active_axes
+        self.registers: dict[int, int] = {}
+        sys_values = [
+            6,
+            active_axes,
+            30,
+            self.protocol.axis_block_words,
+            self.protocol.position_scale,
+            self.protocol.speed_scale,
+            self.protocol.cmd_base,
+            self.protocol.sts_base,
+            self.protocol.sys_base,
+            0,
+        ]
+        for offset, value in enumerate(sys_values):
+            self.registers[self.protocol.sys_base + offset] = value
+        for axis in range(1, self.protocol.max_axes + 1):
+            cmd_base = self.protocol.cmd_axis_base(axis)
+            sts_base = self.protocol.sts_axis_base(axis)
+            for offset in range(self.protocol.axis_block_words):
+                self.registers.setdefault(cmd_base + offset, 0)
+                self.registers.setdefault(sts_base + offset, 0)
 
+    def read_holding_registers(self, address: int, count: int) -> list[int]:
+        return [self.registers.get(address + offset, 0) for offset in range(count)]
 
-class MockPlcRuntime:
-    def __init__(self, config: DriverConfig, transport: MockTransport):
-        self.config = config
-        self.transport = transport
-        self.axes = {axis_id: MockAxisRuntime() for axis_id in config.axes}
-        self.lreal_word_order = config.encoding.lreal_word_order or WordOrder.BIG
-        self.udint_word_order = config.encoding.udint_word_order or WordOrder.BIG
+    def write_register(self, address: int, value: int) -> None:
+        self.registers[address] = value & 0xFFFF
+        self._maybe_execute_command(address)
 
-    def initialize_ready_axes(self) -> None:
-        for axis in self.config.axes.values():
-            self._write_coil(axis, "power_status", True)
-            self._write_coil(axis, "emergency_latched", False)
-            self._write_register(axis, "active_cmd_type", 0)
-            self._write_lreal(axis, "feedback_pos_deg", 0.0)
-            self._write_lreal(axis, "target_input_deg", 999999.0)
-            for field in (
-                "move_cmd_id",
-                "move_cmd_done_id",
-                "move_cmd_error_id",
-                "return_zero_ack_id",
-                "return_zero_done_id",
-                "return_zero_error_id",
-            ):
-                self._write_udint(axis, field, 0)
+    def write_registers(self, address: int, values: list[int] | tuple[int, ...]) -> None:
+        for offset, value in enumerate(values):
+            self.registers[address + offset] = value & 0xFFFF
+        for offset in range(len(values)):
+            self._maybe_execute_command(address + offset)
 
-    def process_once(self) -> None:
-        for axis_id, axis in self.config.axes.items():
-            target_address = axis.registers.get("target_input_deg")
-            if target_address is not None:
-                target = self._read_lreal(axis, "target_input_deg")
-                if target != 999999.0:
-                    runtime = self.axes[axis_id]
-                    runtime.move_cmd_id = (runtime.move_cmd_id + 1) & 0xFFFFFFFF
-                    self._write_udint(axis, "move_cmd_id", runtime.move_cmd_id)
-                    self._write_udint(axis, "move_cmd_done_id", runtime.move_cmd_id)
-                    self._write_lreal(axis, "feedback_pos_deg", target)
-                    self._write_lreal(axis, "target_input_deg", 999999.0)
+    def _maybe_execute_command(self, address: int) -> None:
+        for axis in range(1, self.active_axes + 1):
+            cmd_base = self.protocol.cmd_axis_base(axis)
+            if address != cmd_base + AxisCmdOffset.CONTROL_WORD:
+                continue
+            control_word = self.registers.get(cmd_base + AxisCmdOffset.CONTROL_WORD, 0)
+            if control_word & ControlWord.MOVE_ABS:
+                self._execute_move_abs(axis)
 
-            cmd_address = axis.registers.get("return_zero_cmd_id")
-            if cmd_address is not None:
-                command_id = self._read_udint(axis, "return_zero_cmd_id")
-                runtime = self.axes[axis_id]
-                if command_id != 0 and command_id != runtime.return_zero_cmd_id:
-                    runtime.return_zero_cmd_id = command_id
-                    self._write_udint(axis, "return_zero_ack_id", command_id)
-                    self._write_udint(axis, "return_zero_done_id", command_id)
-                    self._write_lreal(axis, "feedback_pos_deg", 0.0)
-
-    def _write_coil(self, axis, name: str, value: bool) -> None:
-        address = axis.coils.get(name)
-        if address is not None:
-            self.transport.coils[int(address)] = bool(value)
-
-    def _write_register(self, axis, name: str, value: int) -> None:
-        address = axis.registers.get(name)
-        if address is not None:
-            self.transport.registers[int(address)] = int(value) & 0xFFFF
-
-    def _write_udint(self, axis, name: str, value: int) -> None:
-        address = axis.registers.get(name)
-        if address is not None:
-            for offset, register in enumerate(encode_udint(value, self.udint_word_order)):
-                self.transport.registers[int(address) + offset] = register
-
-    def _read_udint(self, axis, name: str) -> int:
-        address = int(axis.registers[name])
-        return decode_udint([self.transport.registers.get(address + offset, 0) for offset in range(2)], self.udint_word_order)
-
-    def _write_lreal(self, axis, name: str, value: float) -> None:
-        address = axis.registers.get(name)
-        if address is not None:
-            for offset, register in enumerate(encode_lreal(value, self.lreal_word_order)):
-                self.transport.registers[int(address) + offset] = register
-
-    def _read_lreal(self, axis, name: str) -> float:
-        address = int(axis.registers[name])
-        return decode_lreal([self.transport.registers.get(address + offset, 0) for offset in range(4)], self.lreal_word_order)
+    def _execute_move_abs(self, axis: int) -> None:
+        cmd_base = self.protocol.cmd_axis_base(axis)
+        sts_base = self.protocol.sts_axis_base(axis)
+        low = self.registers.get(cmd_base + AxisCmdOffset.TARGET_SINGLE_POS_LOW, 0)
+        high = self.registers.get(cmd_base + AxisCmdOffset.TARGET_SINGLE_POS_HIGH, 0)
+        target = decode_dint_x100(low, high)
+        feedback_low, feedback_high = encode_dint_x100(target)
+        command_id = self.registers.get(cmd_base + AxisCmdOffset.COMMAND_ID, 0)
+        self.registers[sts_base + AxisStsOffset.ACK_COMMAND_ID] = command_id
+        self.registers[sts_base + AxisStsOffset.ERROR_CODE] = 0
+        self.registers[sts_base + AxisStsOffset.FEEDBACK_POS_LOW] = feedback_low
+        self.registers[sts_base + AxisStsOffset.FEEDBACK_POS_HIGH] = feedback_high
+        self.registers[sts_base + AxisStsOffset.FEEDBACK_SINGLE_LOW] = feedback_low
+        self.registers[sts_base + AxisStsOffset.FEEDBACK_SINGLE_HIGH] = feedback_high
+        self.registers[sts_base + AxisStsOffset.LAST_TARGET_LOW] = feedback_low
+        self.registers[sts_base + AxisStsOffset.LAST_TARGET_HIGH] = feedback_high

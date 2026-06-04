@@ -1,4 +1,14 @@
-"""ALFA Robot PLC/Modbus test driver."""
+"""ALFA Robot ROS-agnostic PLC/Modbus communication core."""
 
-__all__ = ["__version__"]
-__version__ = "0.1.0"
+from .config import PlcConnectionConfig, PlcProtocolConfig
+from .driver import PlcDriver
+from .models import AxisCommandResult, AxisStatus, PlcSystemInfo
+
+__all__ = [
+    "AxisCommandResult",
+    "AxisStatus",
+    "PlcConnectionConfig",
+    "PlcDriver",
+    "PlcProtocolConfig",
+    "PlcSystemInfo",
+]

@@ -1,15 +1,22 @@
-from alfa_robot_plc_driver.codec import WordOrder, decode_lreal, decode_udint, encode_lreal, encode_udint
+from alfa_robot_plc_driver.codec import (
+    decode_dint_x100,
+    decode_word_x100,
+    encode_dint_x100,
+    encode_word_x100,
+)
 
 
-def test_lreal_round_trip_big_and_little():
-    for order in (WordOrder.BIG, WordOrder.LITTLE):
-        regs = encode_lreal(60.0, order)
-        assert len(regs) == 4
-        assert decode_lreal(regs, order) == 60.0
+def test_dint_x100_round_trip_positive_and_negative():
+    for value in [0.0, 2.0, -1.23, 180.0, -179.98]:
+        low, high = encode_dint_x100(value)
+        assert decode_dint_x100(low, high) == round(value, 2)
 
 
-def test_udint_round_trip_big_and_little():
-    for order in (WordOrder.BIG, WordOrder.LITTLE):
-        regs = encode_udint(123456789, order)
-        assert len(regs) == 2
-        assert decode_udint(regs, order) == 123456789
+def test_dint_x100_low_word_first():
+    assert encode_dint_x100(2.0) == (200, 0)
+    assert encode_dint_x100(-0.01) == (0xFFFF, 0xFFFF)
+
+
+def test_word_x100_round_trip():
+    assert encode_word_x100(5.0) == 500
+    assert decode_word_x100(3000) == 30.0

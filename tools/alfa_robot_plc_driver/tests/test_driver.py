@@ -1,50 +1,37 @@
-from pathlib import Path
+import pytest
 
-from alfa_robot_plc_driver.axis import StopPolicy
-from alfa_robot_plc_driver.config import load_config, require_complete_addresses
-from alfa_robot_plc_driver.driver import PlcDriver
-
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "plc_modbus_map.example.yaml"
+from alfa_robot_plc_driver import PlcDriver
+from alfa_robot_plc_driver.mock import MockPlcTransport
 
 
-def test_example_config_rejects_real_mode_with_placeholders():
-    config = load_config(CONFIG)
-    try:
-        require_complete_addresses(config)
-    except ValueError as exc:
-        assert "axis1.coils.enable_cmd" in str(exc)
-    else:
-        raise AssertionError("expected unresolved config to fail real PLC validation")
+def test_read_system_and_axes_from_mock():
+    driver = PlcDriver(transport=MockPlcTransport(active_axes=6))
+    system = driver.read_system()
+    assert system.active_axis_count == 6
+    axes = driver.read_axes()
+    assert [axis.axis for axis in axes] == [1, 2, 3, 4, 5, 6]
 
 
-def test_mock_single_axis_move():
-    driver = PlcDriver.for_mock(load_config(CONFIG))
-    try:
-        result = driver.axis(1).move_to_deg(30.0)
-        assert result.ok
-        status = driver.axis(1).read_status()
-        assert status.move_cmd_done_id == result.command_id
-        assert status.feedback_pos_deg == 30.0
-    finally:
-        driver.close()
+def test_move_abs_writes_command_and_mirrors_status():
+    driver = PlcDriver(transport=MockPlcTransport(active_axes=6))
+    [command] = driver.move_abs({4: 2.0}, velocity=5, acceleration=20, deceleration=20)
+    assert command.axis == 4
+    assert command.command_id == 1
+    assert command.target_deg == 2.0
+    assert command.status.control_word == 5
+    assert command.status.ack_command_id == 1
+    assert command.status.feedback_single_deg == 2.0
+    assert command.status.last_target_deg == 2.0
 
 
-def test_mock_multi_axis_move():
-    driver = PlcDriver.for_mock(load_config(CONFIG))
-    try:
-        result = driver.move_many({1: 10.0, 2: -20.0, 7: 15.0}, StopPolicy.STOP)
-        assert result.ok
-        assert result.stopped_axes == []
-        assert driver.axis(2).read_status().feedback_pos_deg == -20.0
-    finally:
-        driver.close()
+def test_move_delta_uses_feedback_single_as_base():
+    driver = PlcDriver(transport=MockPlcTransport(active_axes=6))
+    driver.move_abs({2: 1.0})
+    [command] = driver.move_delta({2: 0.25})
+    assert command.status.last_target_deg == 1.25
 
 
-def test_mock_move_to_zero_is_valid_target():
-    driver = PlcDriver.for_mock(load_config(CONFIG))
-    try:
-        result = driver.axis(1).move_to_deg(0.0)
-        assert result.ok
-        assert driver.axis(1).read_status().feedback_pos_deg == 0.0
-    finally:
-        driver.close()
+def test_reject_inactive_axis_write():
+    driver = PlcDriver(transport=MockPlcTransport(active_axes=6))
+    with pytest.raises(ValueError, match="not active"):
+        driver.move_abs({7: 1.0})

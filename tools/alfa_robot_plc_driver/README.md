@@ -1,47 +1,39 @@
-# ALFA Robot PLC Driver Test Package
+# ALFA Robot PLC Driver
 
-`alfa_robot_plc_driver` is a non-ROS Python test package for the PLC/Modbus motion-control interface. It validates the 12-axis communication model before the interface is wrapped as a ROS2 node or `ros2_control` hardware plugin.
+`alfa_robot_plc_driver` is the ROS-agnostic PLC Communication Core for the ALFA robot PLC/Modbus interface. It owns Modbus TCP communication, register encoding, PLC Axis address calculation, and safe command helpers.
 
-## Scope
+## Verified protocol
 
-- Models the dual-arm robot as 12 homogeneous PLC axes.
-- Uses `axis1..axis6 -> left_v5_joint1..left_v5_joint6` and `axis7..axis12 -> right_v5_joint1..right_v5_joint6` by default.
-- Supports mock mode while the final InoProShop Modbus map is missing.
-- Keeps all Coil/Holding Register addresses in YAML instead of scattering raw addresses through code.
+- PLC is a Modbus TCP slave on `192.168.1.88:502`.
+- Unit ID is `255`.
+- Holding registers use 0-based Modbus addresses.
+- `MB_CMD` base is `0`, `MB_STS` base is `1000`, `MB_SYS` base is `1960`.
+- Each PLC Axis uses `32 WORD`.
+- Axis1-6 are the currently connected arm.
+- Axis7-12 are reserved for a second similar arm and are refused unless PLC reports them active.
+- Positions are signed `DINT * 100`, low word first.
+- Velocity/acceleration/deceleration/emergency deceleration are `WORD * 100`.
+- MoveAbs is triggered by writing target/velocity/acc/dec/CommandID, then `ControlWord=5`.
 
-## Install for Local Testing
+## StatusWord note
+
+`StatusWord` is read and exposed as raw data, but it is not used for control decisions yet. Real tests showed `AckCommandID`, `FeedbackPos`, `FeedbackSingle`, and `LastTarget` update correctly while `StatusWord` may remain `0x0000`.
+
+If PLC documentation says Axis1 status is `0..31`, treat that as the offset inside `MB_STS`. The Modbus holding-register address for `MB_STS[0]` is still `1000` when `MB_STS AT %MW1000`.
+
+## CLI
 
 ```bash
 cd tools/alfa_robot_plc_driver
-python3 -m pip install -e '.[test]'
+python3 -m alfa_robot_plc_driver.cli status
+python3 -m alfa_robot_plc_driver.cli read-angles
+python3 -m alfa_robot_plc_driver.cli move-delta --deltas 1:0.1,2:0.1 --vel 3 --yes-write
+python3 -m alfa_robot_plc_driver.cli clear --all --yes-write
 ```
 
-## Mock Examples
+Mock mode:
 
 ```bash
 python3 -m alfa_robot_plc_driver.cli --mock status
-python3 -m alfa_robot_plc_driver.cli --mock enable --axis 1
-python3 -m alfa_robot_plc_driver.cli --mock move --axis 1 --deg 30
-python3 -m alfa_robot_plc_driver.cli --mock move-many --targets '1:10,2:20,7:-15'
-python3 -m alfa_robot_plc_driver.cli --mock emergency-stop --all
+python3 -m alfa_robot_plc_driver.cli --mock move-delta --deltas 1:0.1,2:0.1 --yes-write
 ```
-
-`move-many` is not trajectory interpolation. It quickly writes separate target positions for the selected axes and waits for each axis command ID to complete. If any selected axis fails or times out, the default stop policy sends `StopExecute` to all participating axes.
-
-## Filling the Real PLC Map
-
-When the PLC owner provides the final InoProShop Modbus mapping, fill `config/plc_modbus_map.example.yaml` or copy it to a deployment-specific file and replace:
-
-- `axes.axisN.coils.*` with actual Coil addresses.
-- `axes.axisN.registers.*.address` with actual Holding Register start addresses.
-- `encoding.lreal_word_order` and `encoding.udint_word_order` with the verified register word order.
-
-Real PLC mode rejects `null` addresses or `unknown` word order. This is intentional to avoid writing to an incorrect PLC variable.
-
-## Real PLC Example
-
-```bash
-python3 -m alfa_robot_plc_driver.cli --config config/plc_modbus_map.real.yaml status
-```
-
-Do not use real PLC mode until the Modbus map is confirmed to match the PLC program currently downloaded to the controller.

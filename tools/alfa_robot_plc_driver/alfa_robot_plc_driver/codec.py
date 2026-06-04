@@ -1,54 +1,32 @@
-from __future__ import annotations
+"""PLC WORD encoding helpers for MB_CMD/MB_STS."""
 
-import struct
-from enum import Enum
-from typing import Iterable
-
-
-class WordOrder(str, Enum):
-    BIG = "big"
-    LITTLE = "little"
+DINT_MIN = -(1 << 31)
+DINT_MAX = (1 << 31) - 1
+WORD_MAX = 0xFFFF
 
 
-def _validate_register(value: int) -> int:
-    if not 0 <= int(value) <= 0xFFFF:
-        raise ValueError(f"register out of range: {value!r}")
-    return int(value)
+def encode_dint_x100(value: float) -> tuple[int, int]:
+    raw = int(round(value * 100))
+    if raw < DINT_MIN or raw > DINT_MAX:
+        raise ValueError(f"DINT x100 value out of range: {value}")
+    if raw < 0:
+        raw = (1 << 32) + raw
+    return raw & WORD_MAX, (raw >> 16) & WORD_MAX
 
 
-def _ordered_words(data: bytes, word_order: WordOrder) -> list[int]:
-    words = [int.from_bytes(data[offset : offset + 2], "big") for offset in range(0, len(data), 2)]
-    if word_order == WordOrder.LITTLE:
-        words.reverse()
-    return words
+def decode_dint_x100(low_word: int, high_word: int) -> float:
+    raw = ((high_word & WORD_MAX) << 16) | (low_word & WORD_MAX)
+    if raw & 0x80000000:
+        raw -= 0x100000000
+    return raw / 100.0
 
 
-def _bytes_from_words(registers: Iterable[int], word_order: WordOrder) -> bytes:
-    words = [_validate_register(value) for value in registers]
-    if word_order == WordOrder.LITTLE:
-        words.reverse()
-    return b"".join(value.to_bytes(2, "big") for value in words)
+def encode_word_x100(value: float) -> int:
+    raw = int(round(value * 100))
+    if raw < 0 or raw > WORD_MAX:
+        raise ValueError(f"WORD x100 value out of range: {value}")
+    return raw
 
 
-def encode_lreal(value: float, word_order: WordOrder = WordOrder.BIG) -> list[int]:
-    return _ordered_words(struct.pack(">d", float(value)), word_order)
-
-
-def decode_lreal(registers: Iterable[int], word_order: WordOrder = WordOrder.BIG) -> float:
-    data = _bytes_from_words(registers, word_order)
-    if len(data) != 8:
-        raise ValueError(f"LREAL requires 4 registers, got {len(data) // 2}")
-    return struct.unpack(">d", data)[0]
-
-
-def encode_udint(value: int, word_order: WordOrder = WordOrder.BIG) -> list[int]:
-    if not 0 <= int(value) <= 0xFFFFFFFF:
-        raise ValueError(f"UDINT out of range: {value!r}")
-    return _ordered_words(int(value).to_bytes(4, "big"), word_order)
-
-
-def decode_udint(registers: Iterable[int], word_order: WordOrder = WordOrder.BIG) -> int:
-    data = _bytes_from_words(registers, word_order)
-    if len(data) != 4:
-        raise ValueError(f"UDINT requires 2 registers, got {len(data) // 2}")
-    return int.from_bytes(data, "big")
+def decode_word_x100(word: int) -> float:
+    return (word & WORD_MAX) / 100.0

@@ -70,3 +70,9 @@
   2. 每个分支只提交本次迁移相关文件：`ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`、`ros2_ws/src/alfa_robot_description/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro`、新增 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_arm_v5_6/`；`motion-22`/`motion-26` 还应包含同步次新机器人本体所需的 `ros2_ws/src/alfa_robot_moveit_config/CMakeLists.txt`、`config/alfa_robot.srdf`、`scripts/x_edge_refine_reachability.py`。
   3. 不要混入根目录 `alfa_robot_arm_v5_6/` 原始源目录、`data/ik_benchmark/`、`ros2_ws/*.csv|*.jsonl|*.rrd`、`CONTEXT.md`、`plc_modbus_test.py` 或无关 `.ai_teamwork` 改动。
   4. 推荐提交标题分别使用 `Refs MOTION-5/10/22/26: 安装最新 v5_6 机械臂模型`；提交前可复用本条日志中的验证命令和结果。
+
+## 2026-06-04 运控工程师 / Codex / PLC Communication Core 第一版
+- 做了什么：将 `tools/alfa_robot_plc_driver` 从旧 Coil/LREAL 假设改造为实测 MB_CMD/MB_STS 协议的非 ROS PLC Communication Core。
+- 改了哪里：重写 codec/config/register_map/transport/driver/mock/CLI/tests/README；按 12 轴模型建模，当前 ActiveAxisCount 控制实际可写轴，Axis1-6 为当前机械臂，Axis7-12 预留第二机械臂。
+- 验证结果：`python3 -m py_compile alfa_robot_plc_driver/*.py` 通过；`python3 -m pytest -q` 通过 8 项；mock CLI `status` 和 `move-delta` 通过。
+- 留给下个 AI：实机写入前先跑 `status/read-angles` 只读确认；`StatusWord` 暂只暴露原始值，不参与闭环；如 PLC 只启用 6 轴，驱动会拒绝 Axis7-12 写入。
