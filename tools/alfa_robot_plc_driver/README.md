@@ -28,7 +28,17 @@ cd tools/alfa_robot_plc_driver
 python3 -m alfa_robot_plc_driver.cli status
 python3 -m alfa_robot_plc_driver.cli read-angles
 python3 -m alfa_robot_plc_driver.cli move-delta --deltas 1:0.1,2:0.1 --vel 3 --yes-write
+python3 -m alfa_robot_plc_driver.cli smoke-12 --delta 0.1 --vel 3 --yes-write
+python3 -m alfa_robot_plc_driver.cli stream-abs --axes 1 --speed 0.5 --duration-s 2 --hz 5 --feedback-hz 2 --vel 30 --max-delta 2 --yes-write
+python3 -m alfa_robot_plc_driver.cli estop --axes 1 --yes-write
+python3 -m alfa_robot_plc_driver.cli reset-estop --axes 1 --yes-write
 python3 -m alfa_robot_plc_driver.cli clear --all --yes-write
+```
+
+If the laptop routes `192.168.1.88` through Wi-Fi, pin the PLC route to the wired port first:
+
+```bash
+tools/alfa_robot_plc_driver/scripts/plc_net_setup.sh
 ```
 
 Mock mode:
@@ -36,4 +46,14 @@ Mock mode:
 ```bash
 python3 -m alfa_robot_plc_driver.cli --mock status
 python3 -m alfa_robot_plc_driver.cli --mock move-delta --deltas 1:0.1,2:0.1 --yes-write
+python3 -m alfa_robot_plc_driver.cli --mock --mock-active-axes 12 smoke-12 --axes 12 --delta 0.1 --yes-write
+python3 -m alfa_robot_plc_driver.cli --mock --mock-active-axes 12 stream-abs --axes 1,2 --speed 0.5 --duration-s 0.2 --hz 5 --feedback-hz 5 --max-delta 1 --vel 20 --yes-write
 ```
+
+`stream-abs` is only an experiment for low-frequency absolute target streaming. It sets a high PLC profile velocity and repeatedly sends new absolute targets at `--hz`; it keeps one TCP connection open and reads feedback at `--feedback-hz` to avoid disturbing the write cadence. It is not a hard real-time servo loop.
+
+Emergency stop commands write only the per-axis control word:
+
+- `estop`: `ControlWord=257 / 0x0101 = Enable + EmergencyStop`
+- `reset-estop`: `ControlWord=1025 / 0x0401 = Enable + ResetEmergency`
+- `reset-fault`: `ControlWord=3 / 0x0003 = Enable + ResetFault`

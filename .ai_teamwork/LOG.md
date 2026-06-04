@@ -76,3 +76,9 @@
 - 改了哪里：重写 codec/config/register_map/transport/driver/mock/CLI/tests/README；按 12 轴模型建模，当前 ActiveAxisCount 控制实际可写轴，Axis1-6 为当前机械臂，Axis7-12 预留第二机械臂。
 - 验证结果：`python3 -m py_compile alfa_robot_plc_driver/*.py` 通过；`python3 -m pytest -q` 通过 8 项；mock CLI `status` 和 `move-delta` 通过。
 - 留给下个 AI：实机写入前先跑 `status/read-angles` 只读确认；`StatusWord` 暂只暴露原始值，不参与闭环；如 PLC 只启用 6 轴，驱动会拒绝 Axis7-12 写入。
+
+## 2026-06-04 PLC Driver / Codex / 12-axis smoke-test prep
+- 做了什么：确认真实 PLC `MB_SYS` 已报告 `ActiveAxisCount=12`，并读取到 Axis1-12 当前角度；新增 `smoke-12` CLI 用于读当前位置后执行小增量 12 轴联动测试。
+- 改了哪里：`tools/alfa_robot_plc_driver/alfa_robot_plc_driver/cli.py`、`tools/alfa_robot_plc_driver/scripts/plc_net_setup.sh`、`tools/alfa_robot_plc_driver/README.md`。
+- 验证结果：`tools/alfa_robot_plc_driver` 内 `pytest` 为 8 passed；mock 12 轴 `smoke-12` 通过；真实 PLC ping/read-angles 成功，Axis1-12 error_code 均为 0。
+- 留给下个 AI：真实 12 轴写运动尚未执行，需机械安全确认后运行 `smoke-12 --delta 0.1 --vel 3 --yes-write`；若连接超时先运行 `scripts/plc_net_setup.sh` 修正路由。

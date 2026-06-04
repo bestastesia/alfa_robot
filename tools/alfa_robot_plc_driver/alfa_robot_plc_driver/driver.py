@@ -130,6 +130,52 @@ class PlcDriver:
             for axis, target, command_id in prepared
         ]
 
+    def prepare_move_abs_stream(
+        self,
+        axes: Sequence[int],
+        *,
+        velocity: float = 30.0,
+        acceleration: float = 50.0,
+        deceleration: float = 50.0,
+        emergency_deceleration: float = 80.0,
+    ) -> dict[int, int]:
+        self._validate_active_axes(axes)
+        statuses = {axis: self.read_axis(axis) for axis in axes}
+        command_ids: dict[int, int] = {}
+        for axis in axes:
+            cmd_base = self.protocol.cmd_axis_base(axis)
+            command_id = self._next_command_id(statuses[axis])
+            self.transport.write_registers(
+                cmd_base + AxisCmdOffset.CONTROL_WORD,
+                [
+                    ControlWord.CLEAR,
+                    command_id,
+                    statuses[axis].raw_cmd_words[AxisCmdOffset.TARGET_SINGLE_POS_LOW],
+                    statuses[axis].raw_cmd_words[AxisCmdOffset.TARGET_SINGLE_POS_HIGH],
+                    encode_word_x100(velocity),
+                    encode_word_x100(acceleration),
+                    encode_word_x100(deceleration),
+                    statuses[axis].raw_cmd_words[AxisCmdOffset.STEP_DEG],
+                    statuses[axis].raw_cmd_words[AxisCmdOffset.RESERVED_8],
+                    encode_word_x100(emergency_deceleration),
+                ],
+            )
+            command_ids[axis] = command_id
+        return command_ids
+
+    def stream_move_abs_tick(self, targets_deg: Mapping[int, float], command_ids: Mapping[int, int]) -> None:
+        self._validate_active_axes(targets_deg.keys())
+        for axis, target in targets_deg.items():
+            cmd_base = self.protocol.cmd_axis_base(axis)
+            target_low, target_high = encode_dint_x100(target)
+            self.transport.write_registers(
+                cmd_base + AxisCmdOffset.CONTROL_WORD,
+                [ControlWord.ENABLE_MOVE_ABS, command_ids[axis], target_low, target_high],
+            )
+
+    def next_command_ids(self, command_ids: Mapping[int, int]) -> dict[int, int]:
+        return {axis: 1 if command_id >= 0xFFFF else command_id + 1 for axis, command_id in command_ids.items()}
+
     def move_delta(self, deltas_deg: Mapping[int, float], **kwargs) -> list[AxisCommandResult]:
         if not deltas_deg:
             raise ValueError("deltas_deg must not be empty")
@@ -159,6 +205,24 @@ class PlcDriver:
                 )
             return [self.read_axis(axis) for axis in axes]
         return self.clear_commands()
+
+    def write_control_word(self, axes: Sequence[int], control_word: int) -> list[AxisStatus]:
+        self._validate_active_axes(axes)
+        for axis in axes:
+            self.transport.write_register(
+                self.protocol.cmd_axis_base(axis) + AxisCmdOffset.CONTROL_WORD,
+                control_word,
+            )
+        return self.read_axes(axes)
+
+    def emergency_stop(self, axes: Sequence[int]) -> list[AxisStatus]:
+        return self.write_control_word(axes, ControlWord.ENABLE_EMERGENCY_STOP)
+
+    def reset_emergency(self, axes: Sequence[int]) -> list[AxisStatus]:
+        return self.write_control_word(axes, ControlWord.ENABLE_RESET_EMERGENCY)
+
+    def reset_fault(self, axes: Sequence[int]) -> list[AxisStatus]:
+        return self.write_control_word(axes, ControlWord.ENABLE_RESET_FAULT)
 
     def _next_command_id(self, status: AxisStatus) -> int:
         command_id = max(status.command_id, status.ack_command_id) + 1
