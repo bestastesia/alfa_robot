@@ -235,6 +235,17 @@ def main() -> int:
         argv = [arg for arg in sys.argv[1:] if arg != "--dry-run"]
         return dry_run(argv)
 
+    if "--allow-legacy" not in sys.argv:
+        print(
+            "mujoco_planning_scene_bridge.py is the legacy static XML bridge and is disabled by default. "
+            "Use mujoco_digital_twin.launch.py, which already starts semantic_scene_to_planning_scene.py. "
+            "Running both bridges creates duplicated/stale MoveIt obstacles. "
+            "Pass --allow-legacy only for old static-scene debugging.",
+            file=sys.stderr,
+        )
+        return 2
+    sys.argv = [sys.argv[0], *(arg for arg in sys.argv[1:] if arg != "--allow-legacy")]
+
     import rclpy
     from rclpy.node import Node
     from rclpy.executors import ExternalShutdownException

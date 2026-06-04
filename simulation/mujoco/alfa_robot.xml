@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mujoco model="alfa_robot_v5_current">
-  <compiler angle="radian" meshdir="../../ros2_ws/src/alfa_robot_description/meshes" autolimits="true"/>
+  <compiler angle="radian" meshdir="generated_meshes" autolimits="true"/>
   <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"/>
 
   <default>
@@ -19,97 +19,97 @@
     <material name="grey" rgba="0.45 0.45 0.45 1"/>
     <material name="white" rgba="0.9 0.9 0.9 1"/>
     <material name="arm_white" rgba="0.92 0.92 0.92 1"/>
-    <mesh name="vis_base_link" file="alfa_robot/visual/base_link.STL"/>
-    <mesh name="col_base_link" file="alfa_robot/collision/base_link.STL"/>
-    <mesh name="vis_pitch" file="alfa_robot_v2_arm_v5/visual/pitch.STL"/>
-    <mesh name="col_pitch" file="alfa_robot_v2_arm_v5/collision/pitch.STL"/>
-    <mesh name="vis_turn" file="alfa_robot_v2_arm_v5/visual/turn.STL"/>
-    <mesh name="col_turn" file="alfa_robot_v2_arm_v5/collision/turn.STL"/>
-    <mesh name="vis_updown" file="alfa_robot_v2_arm_v5/visual/updown.STL"/>
-    <mesh name="col_updown" file="alfa_robot_v2_arm_v5/collision/updown.STL"/>
-    <mesh name="vis_left_v5_link1" file="alfa_robot_arm_v5_6/visual_mirrored_y/link1.STL"/>
-    <mesh name="col_left_v5_link1" file="alfa_robot_arm_v5_6/collision_mirrored_y/link1.STL"/>
-    <mesh name="vis_left_v5_link2" file="alfa_robot_arm_v5_6/visual_mirrored_y/link2.STL"/>
-    <mesh name="col_left_v5_link2" file="alfa_robot_arm_v5_6/collision_mirrored_y/link2.STL"/>
-    <mesh name="vis_left_v5_link3" file="alfa_robot_arm_v5_6/visual_mirrored_y/link3.STL"/>
-    <mesh name="col_left_v5_link3" file="alfa_robot_arm_v5_6/collision_mirrored_y/link3.STL"/>
-    <mesh name="vis_left_v5_link4" file="alfa_robot_arm_v5_6/visual_mirrored_y/link4.STL"/>
-    <mesh name="col_left_v5_link4" file="alfa_robot_arm_v5_6/collision_mirrored_y/link4.STL"/>
-    <mesh name="vis_left_v5_link5" file="alfa_robot_arm_v5_6/visual_mirrored_y/link5.STL"/>
-    <mesh name="col_left_v5_link5" file="alfa_robot_arm_v5_6/collision_mirrored_y/link5.STL"/>
-    <mesh name="vis_left_v5_link6" file="alfa_robot_arm_v5_6/visual_mirrored_y/link6.STL"/>
-    <mesh name="col_left_v5_link6" file="alfa_robot_arm_v5_6/collision_mirrored_y/link6.STL"/>
-    <mesh name="vis_right_v5_link1" file="alfa_robot_arm_v5_6/visual/link1.STL"/>
-    <mesh name="col_right_v5_link1" file="alfa_robot_arm_v5_6/collision/link1.STL"/>
-    <mesh name="vis_right_v5_link2" file="alfa_robot_arm_v5_6/visual/link2.STL"/>
-    <mesh name="col_right_v5_link2" file="alfa_robot_arm_v5_6/collision/link2.STL"/>
-    <mesh name="vis_right_v5_link3" file="alfa_robot_arm_v5_6/visual/link3.STL"/>
-    <mesh name="col_right_v5_link3" file="alfa_robot_arm_v5_6/collision/link3.STL"/>
-    <mesh name="vis_right_v5_link4" file="alfa_robot_arm_v5_6/visual/link4.STL"/>
-    <mesh name="col_right_v5_link4" file="alfa_robot_arm_v5_6/collision/link4.STL"/>
-    <mesh name="vis_right_v5_link5" file="alfa_robot_arm_v5_6/visual/link5.STL"/>
-    <mesh name="col_right_v5_link5" file="alfa_robot_arm_v5_6/collision/link5.STL"/>
-    <mesh name="vis_right_v5_link6" file="alfa_robot_arm_v5_6/visual/link6.STL"/>
-    <mesh name="col_right_v5_link6" file="alfa_robot_arm_v5_6/collision/link6.STL"/>
+    <mesh name="vis_base_link" file="alfa_robot_v2_arm_v6/visual/base_link.stl"/>
+    <mesh name="col_base_link" file="alfa_robot_v2_arm_v6/collision/base_link.stl"/>
+    <mesh name="vis_pitch" file="alfa_robot_v2_arm_v6/visual/pitch.stl"/>
+    <mesh name="col_pitch" file="alfa_robot_v2_arm_v6/collision/pitch.stl"/>
+    <mesh name="vis_turn" file="alfa_robot_v2_arm_v6/visual/turn.stl"/>
+    <mesh name="col_turn" file="alfa_robot_v2_arm_v6/collision/turn.stl"/>
+    <mesh name="vis_updown" file="alfa_robot_v2_arm_v6/visual/updown.stl"/>
+    <mesh name="col_updown" file="alfa_robot_v2_arm_v6/collision/updown.stl"/>
+    <mesh name="vis_left_v5_link1" file="alfa_robot_v2_arm_v6/visual/leftjoint1.stl"/>
+    <mesh name="col_left_v5_link1" file="alfa_robot_v2_arm_v6/collision/leftjoint1.stl"/>
+    <mesh name="vis_left_v5_link2" file="alfa_robot_v2_arm_v6/visual/leftjoint2.stl"/>
+    <mesh name="col_left_v5_link2" file="alfa_robot_v2_arm_v6/collision/leftjoint2.stl"/>
+    <mesh name="vis_left_v5_link3" file="alfa_robot_v2_arm_v6/visual/leftjoint3.stl"/>
+    <mesh name="col_left_v5_link3" file="alfa_robot_v2_arm_v6/collision/leftjoint3.stl"/>
+    <mesh name="vis_left_v5_link4" file="alfa_robot_v2_arm_v6/visual/leftjoint4.stl"/>
+    <mesh name="col_left_v5_link4" file="alfa_robot_v2_arm_v6/collision/leftjoint4.stl"/>
+    <mesh name="vis_left_v5_link5" file="alfa_robot_v2_arm_v6/visual/leftjoint5.stl"/>
+    <mesh name="col_left_v5_link5" file="alfa_robot_v2_arm_v6/collision/leftjoint5.stl"/>
+    <mesh name="vis_left_v5_link6" file="alfa_robot_v2_arm_v6/visual/leftjoint6.stl"/>
+    <mesh name="col_left_v5_link6" file="alfa_robot_v2_arm_v6/collision/leftjoint6.stl"/>
+    <mesh name="vis_right_v5_link1" file="alfa_robot_v2_arm_v6/visual/rightjoint1.stl"/>
+    <mesh name="col_right_v5_link1" file="alfa_robot_v2_arm_v6/collision/rightjoint1.stl"/>
+    <mesh name="vis_right_v5_link2" file="alfa_robot_v2_arm_v6/visual/rightjoint2.stl"/>
+    <mesh name="col_right_v5_link2" file="alfa_robot_v2_arm_v6/collision/rightjoint2.stl"/>
+    <mesh name="vis_right_v5_link3" file="alfa_robot_v2_arm_v6/visual/rightjoint3.stl"/>
+    <mesh name="col_right_v5_link3" file="alfa_robot_v2_arm_v6/collision/rightjoint3.stl"/>
+    <mesh name="vis_right_v5_link4" file="alfa_robot_v2_arm_v6/visual/rightjoint4.stl"/>
+    <mesh name="col_right_v5_link4" file="alfa_robot_v2_arm_v6/collision/rightjoint4.stl"/>
+    <mesh name="vis_right_v5_link5" file="alfa_robot_v2_arm_v6/visual/rightjoint5.stl"/>
+    <mesh name="col_right_v5_link5" file="alfa_robot_v2_arm_v6/collision/rightjoint5.stl"/>
+    <mesh name="vis_right_v5_link6" file="alfa_robot_v2_arm_v6/visual/rightjoint6.stl"/>
+    <mesh name="col_right_v5_link6" file="alfa_robot_v2_arm_v6/collision/rightjoint6.stl"/>
   </asset>
 
   <worldbody>
     <geom name="floor" type="plane" size="5 5 0.1" material="grid_mat"/>
-    <body name="base_link" pos="0 0 0.09" gravcomp="1">
+    <body name="base_link" pos="0 0 0.202094" gravcomp="1">
       <joint name="base_x" type="slide" axis="1 0 0" damping="300000" armature="1000" limited="false"/>
       <joint name="base_y" type="slide" axis="0 1 0" damping="300000" armature="1000" limited="false"/>
       <joint name="base_yaw" type="hinge" axis="0 0 1" damping="300000" armature="1000" limited="false"/>
-      <inertial pos="-0.44193110855616 0.000259961331933109 0.176428166472852" mass="394.931465036981" fullinertia="66.5681215725466 65.6389024339403 112.938477587322 5.74775273893285E-10 9.85014992290203 2.76043934386688E-09"/>
+      <inertial pos="-0.230864859994365 -3.59465059753261E-05 0.00982453569098829" mass="452.254374649793" fullinertia="42.2528118012676 45.7334828734001 73.6321595788915 2.90433873726581E-05 5.29862244779797 -7.53976926824646E-07"/>
       <geom name="visual_base_link" class="visual" type="mesh" mesh="vis_base_link" material="base_blue"/>
       <geom name="collision_base_link" class="collision" type="mesh" mesh="col_base_link"/>
-      <body name="pitch" pos="0.3 -0.05 0.129" gravcomp="1">
+      <body name="pitch" pos="0.25918 -0.0545 0.05" gravcomp="1">
         <joint name="pitch" type="hinge" axis="0 1 0" range="0 0.26" damping="3000" armature="8.0"/>
-        <inertial pos="-0.198797876667389 0.0534826037691441 0.0683908156328275" mass="5.23479125794249" fullinertia="0.0820011779740888 0.0820529172807708 0.163475256832643 1.65869977323853E-10 -1.12757025938492E-17 -2.38941055572563E-17"/>
+        <inertial pos="-0.197037068600063 0.0545002757388739 0.0847212210627051" mass="31.6067905352622" fullinertia="0.518725062034511 0.579528262067602 1.06221345040969 2.02803901410849E-08 -0.00603915225902053 3.22538967579058E-07"/>
         <geom name="visual_pitch" class="visual" type="mesh" mesh="vis_pitch" material="white"/>
         <geom name="collision_pitch" class="collision" type="mesh" mesh="col_pitch"/>
-        <body name="turn" pos="-0.189 0.0545 0.12" gravcomp="1">
+        <body name="turn" pos="-0.18924 0.0545 0.135" gravcomp="1">
           <joint name="turn" type="hinge" axis="0 0 1" limited="false" damping="3000" armature="8.0"/>
-          <inertial pos="-0.0697894032768815 -0.00012433244764639 0.982155423971065" mass="42.0737844290435" fullinertia="10.0720353784748 10.0937833616587 0.327199381319826 -1.75362629131178E-06 5.29823321336754E-05 1.43589075450652E-06"/>
+          <inertial pos="-0.00579960525321255 -7.81089694046333E-06 1.06475532040538" mass="52.9957329420753" fullinertia="7.51064439986969 7.73162717719144 0.725095105907374 5.95969545267824E-06 0.221612834319679 -8.94723713424965E-06"/>
           <geom name="visual_turn" class="visual" type="mesh" mesh="vis_turn" material="grey"/>
           <geom name="collision_turn" class="collision" type="mesh" mesh="col_turn"/>
-          <body name="updown" pos="-0.07 0.0005 0.0645" gravcomp="1">
+          <body name="updown" pos="-0.079765 0 0.038925" gravcomp="1">
             <joint name="updown" type="slide" axis="0 0 1" range="0 0.99" damping="5000" armature="8.0"/>
-            <inertial pos="-0.196828632659582 0.0148673483555221 0.0956849238503419" mass="26.931167747836" fullinertia="0.231217459750122 0.178754005132662 0.348822965146485 2.93337887014215E-05 0.000951254936009737 -1.44830456938328E-05"/>
+            <inertial pos="0.0601856186326954 3.82033426615802E-07 0.101233179160814" mass="28.1491686567643" fullinertia="1.18481506897735 0.266184937066632 1.39675046484991 -3.87618830042902E-08 -0.00404701824967137 7.22041694632457E-11"/>
             <geom name="visual_updown" class="visual" type="mesh" mesh="vis_updown" material="grey"/>
             <geom name="collision_updown" class="collision" type="mesh" mesh="col_updown"/>
-            <body name="left_v5_link0" pos="0.105 0.26 0.2" gravcomp="1">
-              <inertial pos="0 0 0.01670398103" mass="0.310084776766906" fullinertia="0.000741163324579453 0.000741163324579453 0.00132016293912598 0 6.73482801154554E-20 0"/>
-              <body name="left_v5_link1" pos="0 0 0" quat="0.965925825719 0 0 -0.258819047228" gravcomp="1">
-                <joint name="left_v5_joint1" type="hinge" axis="0 0 -1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                <inertial pos="-0.004752553966 0.008497713108 0.05815985177" mass="1.74726890834066" fullinertia="0.00457134350611956 0.00429016337003855 0.00359307936517085 0.0002288805479 1.99526917072982E-05 -3.566115088e-05"/>
+            <body name="left_v5_link0" pos="0.095 0.26 0.2" gravcomp="1">
+              <inertial pos="0 0 0" mass="0.001" fullinertia="1e-6 1e-6 1e-6 0 0 0"/>
+              <body name="left_v5_link1" pos="0 0 0" gravcomp="1">
+                <joint name="left_v5_joint1" type="hinge" axis="0 0 1" range="-2.35619449 2.35619449" damping="1200" armature="8.0"/>
+                <inertial pos="-1.38247218028908E-05 0.00247303063767434 0.0580356311548944" mass="2.53849373841165" fullinertia="0.00565311763556806 0.00554461215364842 0.00447417135930948 2.87080767363512E-06 -1.82289816008291E-06 -7.07255020885019E-05"/>
                 <geom name="visual_left_v5_link1" class="visual" type="mesh" mesh="vis_left_v5_link1" material="arm_white"/>
                 <geom name="collision_left_v5_link1" class="collision" type="mesh" mesh="col_left_v5_link1"/>
-                <body name="left_v5_link2" pos="-0.048573 0.086838 0.058" quat="0.357707166388 -0.609953889009 0.357708480176 0.609956129248" gravcomp="1">
-                  <joint name="left_v5_joint2" type="hinge" axis="0 0 1" range="-1.57079633 4.71238898" damping="1200" armature="8.0"/>
-                  <inertial pos="-0.1999998828 -0.0002164972132 0.04318701696" mass="6.19241787742505" fullinertia="0.017665290529847 0.048066506145401 0.0543426112488358 -3.290895014e-05 -8.38471642040595E-17 0"/>
+                <body name="left_v5_link2" pos="-0.0011221 0.082492 0.058" quat="0.707105482511 -0.707108079859 0 0" gravcomp="1">
+                  <joint name="left_v5_joint2" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
+                  <inertial pos="-0.00114761095593652 -0.198242125758531 0.0685871005229603" mass="13.5734229269752" fullinertia="0.347012700484599 0.0505992561206815 0.367310633828645 -0.000320830236467938 -0.000276165756752952 -4.3642790230726E-06"/>
                   <geom name="visual_left_v5_link2" class="visual" type="mesh" mesh="vis_left_v5_link2" material="arm_white"/>
                   <geom name="collision_left_v5_link2" class="collision" type="mesh" mesh="col_left_v5_link2"/>
-                  <body name="left_v5_link3" pos="-0.4 -0.00043299 0" quat="1.34930953969e-11 -3.67329489651e-06 -0.999999999987 3.67329489651e-06" gravcomp="1">
-                    <joint name="left_v5_joint3" type="hinge" axis="0 0 -1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                    <inertial pos="0.07409140733 -1.001705375e-09 0.07364765219" mass="1.90258780164428" fullinertia="0.00411572596862418 0.00644066810590579 0.0058105765548736 3.019111472e-09 -0.00120850135091154 2.228072963e-09"/>
+                  <body name="left_v5_link3" pos="-0.00054177 -0.4 0.0079934" gravcomp="1">
+                    <joint name="left_v5_joint3" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
+                    <inertial pos="0.00103275104988376 -0.0982831580226123 -0.0759203082294151" mass="4.0139478821286" fullinertia="0.0273003816388092 0.00829509657803974 0.0271399019630991 5.84592384070607E-06 2.18344323795526E-06 -0.00042974787806313"/>
                     <geom name="visual_left_v5_link3" class="visual" type="mesh" mesh="vis_left_v5_link3" material="arm_white"/>
                     <geom name="collision_left_v5_link3" class="collision" type="mesh" mesh="col_left_v5_link3"/>
-                    <body name="left_v5_link4" pos="0.239 0 0.087" quat="0.35770670304 -0.609954352157 0.357711184015 -0.609954352157" gravcomp="1">
-                      <joint name="left_v5_joint4" type="hinge" axis="0 0 -1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                      <inertial pos="-0.004752553966 0.008497713108 0.05815985177" mass="1.74726890834066" fullinertia="0.00457134350611957 0.00429016337003856 0.00359307936517084 0.0002288805479 1.9952691707297E-05 -3.566115088e-05"/>
+                    <body name="left_v5_link4" pos="0.0010609 -0.239 -0.077993" quat="0.707105482511 0.707108079859 0 0" gravcomp="1">
+                      <joint name="left_v5_joint4" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
+                      <inertial pos="-1.38247673107106E-05 0.00247303063742163 0.0580356311553323" mass="2.53849373841178" fullinertia="0.00565311763546312 0.00554461215375412 0.00447417135930963 2.87080966274479E-06 -1.8228968633843E-06 -7.07255021219364E-05"/>
                       <geom name="visual_left_v5_link4" class="visual" type="mesh" mesh="vis_left_v5_link4" material="arm_white"/>
                       <geom name="collision_left_v5_link4" class="collision" type="mesh" mesh="col_left_v5_link4"/>
-                      <body name="left_v5_link5" pos="-0.037101 0.066329 0.058" quat="0.684240021606 -0.684242534965 -0.178364766553 0.178364111384" gravcomp="1">
-                        <joint name="left_v5_joint5" type="hinge" axis="0 0 -1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                        <inertial pos="-7.311768933e-09 -0.05801136091 0.05809045206" mass="3.08594660753734" fullinertia="0.0167442929087416 0.00720920659916117 0.0156379743997341 -1.096269451e-08 -6.345264723373E-09 2.738837248e-05"/>
+                      <body name="left_v5_link5" pos="-0.0010337 0.075993 0.058" quat="0.707105482511 -0.707108079859 0 0" gravcomp="1">
+                        <joint name="left_v5_joint5" type="hinge" axis="0 0 -1" range="-2.53072742 2.53072742" damping="1200" armature="8.0"/>
+                        <inertial pos="-0.000809179515076197 -0.0024730096812382 0.05802998452923" mass="2.53849399611644" fullinertia="0.00565287838044614 0.0055445510546746 0.00447446562052511 4.31903867495345E-07 1.88202259358897E-05 7.07009713362851E-05"/>
                         <geom name="visual_left_v5_link5" class="visual" type="mesh" mesh="vis_left_v5_link5" material="arm_white"/>
                         <geom name="collision_left_v5_link5" class="collision" type="mesh" mesh="col_left_v5_link5"/>
-                        <body name="left_v5_link6" pos="0 -0.1458 0.058" quat="0.684240021606 0.684242534965 0.178364111384 -0.178364766553" gravcomp="1">
-                          <joint name="left_v5_joint6" type="hinge" axis="0 0 -1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                          <inertial pos="0 0 0.1083002353" mass="7.04165101543079" fullinertia="0.0638182348016273 0.0535037231599147 0.0896908193833424 0.008396554097 -3.15560979408454E-14 0"/>
+                        <body name="left_v5_link6" pos="-0.00078891 -0.083 0.057995" quat="0.707089129487 0.707091726775 -0.0048089873142 0.00480900497862" gravcomp="1">
+                          <joint name="left_v5_joint6" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
+                          <inertial pos="1.80240228142559E-06 -7.73532571834643E-07 0.0904168791589374" mass="5.65613352390432" fullinertia="0.0281386175561931 0.0236927388911715 0.0322036182098302 9.64891354728908E-08 3.70686884840644E-07 -1.37246890011475E-07"/>
                           <geom name="visual_left_v5_link6" class="visual" type="mesh" mesh="vis_left_v5_link6" material="arm_white"/>
                           <geom name="collision_left_v5_link6" class="collision" type="mesh" mesh="col_left_v5_link6"/>
-                          <body name="left_v5_tool0" pos="0 0 0.1" quat="0.965925655716 -0.00046952394591 0.00175597001709 0.258813299015" gravcomp="1">
+                          <body name="left_v5_tool0" pos="0 0 0.209" gravcomp="1">
                             <inertial pos="0 0 0" mass="0.2" fullinertia="0.001 0.001 0.001 0 0 0"/>
                             <geom name="left_suction_geom" type="cylinder" size="0.045 0.012" rgba="0.05 0.05 0.05 0.85" contype="2" conaffinity="1"/>
                             <site name="left_ee" pos="0 0 0" size="0.025" rgba="0 1 0 0.8"/>
@@ -122,39 +122,39 @@
                 </body>
               </body>
             </body>
-            <body name="right_v5_link0" pos="0.105 -0.26 0.2" gravcomp="1">
-              <inertial pos="0 0 0.01670398103" mass="0.310084776766906" fullinertia="0.000741163324579453 0.000741163324579453 0.00132016293912598 -1.92778886435101E-35 6.73482801154554E-20 7.56724488341848E-35"/>
-              <body name="right_v5_link1" pos="0 0 0" quat="0.965925825719 0 0 0.258819047228" gravcomp="1">
-                <joint name="right_v5_joint1" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                <inertial pos="-0.004752553966 -0.008497713108 0.05815985177" mass="1.74726890834066" fullinertia="0.00457134350611956 0.00429016337003855 0.00359307936517085 -0.00022888054787914 1.99526917072982E-05 3.56611508828154E-05"/>
+            <body name="right_v5_link0" pos="0.095 -0.26 0.2" gravcomp="1">
+              <inertial pos="0 0 0" mass="0.001" fullinertia="1e-6 1e-6 1e-6 0 0 0"/>
+              <body name="right_v5_link1" pos="0 0 0" gravcomp="1">
+                <joint name="right_v5_joint1" type="hinge" axis="0 0 1" range="-2.35619449 2.35619449" damping="1200" armature="8.0"/>
+                <inertial pos="1.38534274962687E-05 -0.0024730282209926 0.0580356266936892" mass="2.53849337335823" fullinertia="0.00565311777320545 0.00554461229627745 0.00447417118642972 2.87119068073336E-06 1.82285047161602E-06 7.07256190270302E-05"/>
                 <geom name="visual_right_v5_link1" class="visual" type="mesh" mesh="vis_right_v5_link1" material="arm_white"/>
                 <geom name="collision_right_v5_link1" class="collision" type="mesh" mesh="col_right_v5_link1"/>
-                <body name="right_v5_link2" pos="-0.048573 -0.086838 0.058" quat="0.357707166315 0.609953888884 0.357708480249 -0.609956129374" gravcomp="1">
-                  <joint name="right_v5_joint2" type="hinge" axis="0 0 -1" range="-1.57079633 4.71238898" damping="1200" armature="8.0"/>
-                  <inertial pos="-0.1999998828 0.0002164972132 0.04318701696" mass="6.19241787742505" fullinertia="0.017665290529847 0.048066506145401 0.0543426112488358 3.29089501398468E-05 -8.38471642040595E-17 -1.7346585838295E-18"/>
+                <body name="right_v5_link2" pos="0.0011222 -0.082492 0.058" quat="0.707105482511 -0.707108079859 0 0" gravcomp="1">
+                  <joint name="right_v5_joint2" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
+                  <inertial pos="0.0011476109565427 -0.198242125759172 -0.0685871005231568" mass="13.5734229269404" fullinertia="0.347012700484608 0.0505992561206399 0.367310633828614 0.000320830236484408 -0.000276165756864178 4.36427906093052E-06"/>
                   <geom name="visual_right_v5_link2" class="visual" type="mesh" mesh="vis_right_v5_link2" material="arm_white"/>
                   <geom name="collision_right_v5_link2" class="collision" type="mesh" mesh="col_right_v5_link2"/>
-                  <body name="right_v5_link3" pos="-0.4 0.00043299 0" quat="1.34924357313e-11 3.67320510332e-06 -0.999999999987 -3.67320510332e-06" gravcomp="1">
+                  <body name="right_v5_link3" pos="0.00054177 -0.4 -0.0079934" gravcomp="1">
                     <joint name="right_v5_joint3" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                    <inertial pos="0.07409140733 1.001705375e-09 0.07364765219" mass="1.90258780164428" fullinertia="0.00411572596862418 0.00644066810590579 0.0058105765548736 -3.01911147178725E-09 -0.00120850135091154 -2.22807296332238E-09"/>
+                    <inertial pos="-0.0010327510986623 -0.0982831581407237 0.0759203078979563" mass="4.01394788611251" fullinertia="0.027300381652338 0.00829509658303117 0.0271399019706295 -5.84593389023737E-06 2.18344141162958E-06 0.000429747816643313"/>
                     <geom name="visual_right_v5_link3" class="visual" type="mesh" mesh="vis_right_v5_link3" material="arm_white"/>
                     <geom name="collision_right_v5_link3" class="collision" type="mesh" mesh="col_right_v5_link3"/>
-                    <body name="right_v5_link4" pos="0.239 0 0.087" quat="0.35770670304 0.609954352157 0.357711184015 0.609954352157" gravcomp="1">
+                    <body name="right_v5_link4" pos="-0.0010609 -0.239 0.077993" quat="0.707105482511 0.707108079859 0 0" gravcomp="1">
                       <joint name="right_v5_joint4" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                      <inertial pos="-0.004752553966 -0.008497713108 0.05815985177" mass="1.74726890834066" fullinertia="0.00457134350611957 0.00429016337003856 0.00359307936517084 -0.000228880547879141 1.9952691707297E-05 3.56611508828166E-05"/>
+                      <inertial pos="1.3853264397401E-05 -0.00247302826462092 0.0580356267949443" mass="2.53849337718254" fullinertia="0.00565311776239765 0.00554461231212413 0.00447417119141569 2.87117433381687E-06 1.82285292178537E-06 7.07256188108858E-05"/>
                       <geom name="visual_right_v5_link4" class="visual" type="mesh" mesh="vis_right_v5_link4" material="arm_white"/>
                       <geom name="collision_right_v5_link4" class="collision" type="mesh" mesh="col_right_v5_link4"/>
-                      <body name="right_v5_link5" pos="-0.037101 -0.066329 0.058" quat="0.684240021606 0.684242534965 -0.178364766553 -0.178364111384" gravcomp="1">
-                        <joint name="right_v5_joint5" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                        <inertial pos="-7.311768933e-09 0.05801136091 0.05809045206" mass="3.08594660753734" fullinertia="0.0167442929087416 0.00720920659916117 0.0156379743997341 1.09626945062622E-08 -6.345264723373E-09 -2.73883724830278E-05"/>
+                      <body name="right_v5_link5" pos="0.0010337 -0.075993 0.058" quat="0.707105482511 -0.707108079859 0 0" gravcomp="1">
+                        <joint name="right_v5_joint5" type="hinge" axis="0 0 -1" range="-2.53072742 2.53072742" damping="1200" armature="8.0"/>
+                        <inertial pos="0.000809202478930793 -0.00247300976781001 -0.058029984570603" mass="2.53849423749645" fullinertia="0.00565288243158553 0.00554455399809617 0.00447446528263878 -4.31851787937177E-07 1.88188818729269E-05 -7.07067832568832E-05"/>
                         <geom name="visual_right_v5_link5" class="visual" type="mesh" mesh="vis_right_v5_link5" material="arm_white"/>
                         <geom name="collision_right_v5_link5" class="collision" type="mesh" mesh="col_right_v5_link5"/>
-                        <body name="right_v5_link6" pos="0 0.1458 0.058" quat="0.684240021606 -0.684242534965 0.178364111384 0.178364766553" gravcomp="1">
+                        <body name="right_v5_link6" pos="0.00078891 -0.083 -0.057995" quat="0.707089129487 0.707091726775 -0.0048089873142 0.00480900497862" gravcomp="1">
                           <joint name="right_v5_joint6" type="hinge" axis="0 0 1" range="-3.14159265 3.14159265" damping="1200" armature="8.0"/>
-                          <inertial pos="0 0 0.1083002353" mass="7.04165101543079" fullinertia="0.0638182348016273 0.0535037231599147 0.0896908193833424 -0.00839655409671607 -3.15560979408454E-14 2.07520632907488E-14"/>
+                          <inertial pos="-1.80239837654916E-06 7.73495783867872E-07 0.0904168791422066" mass="5.65613352487159" fullinertia="0.0281386175594038 0.0236927388916379 0.0322036182097964 9.64884191429767E-08 -3.70687460764501E-07 1.3724241878237E-07"/>
                           <geom name="visual_right_v5_link6" class="visual" type="mesh" mesh="vis_right_v5_link6" material="arm_white"/>
                           <geom name="collision_right_v5_link6" class="collision" type="mesh" mesh="col_right_v5_link6"/>
-                          <body name="right_v5_tool0" pos="0 0 0.1" quat="0.965925655604 0.000469523882527 0.00175596975723 -0.258813299435" gravcomp="1">
+                          <body name="right_v5_tool0" pos="0 0 0.209" gravcomp="1">
                             <inertial pos="0 0 0" mass="0.2" fullinertia="0.001 0.001 0.001 0 0 0"/>
                             <geom name="right_suction_geom" type="cylinder" size="0.045 0.012" rgba="0.05 0.05 0.05 0.85" contype="2" conaffinity="1"/>
                             <site name="right_ee" pos="0 0 0" size="0.025" rgba="0 1 0 0.8"/>
@@ -206,17 +206,17 @@
     <position name="act_pitch" joint="pitch" kp="250000" ctrlrange="0 0.26" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_turn" joint="turn" kp="250000" ctrlrange="-6.28318530718 6.28318530718" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_updown" joint="updown" kp="500000" ctrlrange="0 0.99" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_left_v5_joint1" joint="left_v5_joint1" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_left_v5_joint2" joint="left_v5_joint2" kp="250000" ctrlrange="-1.57079633 4.71238898" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_left_v5_joint1" joint="left_v5_joint1" kp="250000" ctrlrange="-2.35619449 2.35619449" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_left_v5_joint2" joint="left_v5_joint2" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_left_v5_joint3" joint="left_v5_joint3" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_left_v5_joint4" joint="left_v5_joint4" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_left_v5_joint5" joint="left_v5_joint5" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_left_v5_joint5" joint="left_v5_joint5" kp="250000" ctrlrange="-2.53072742 2.53072742" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_left_v5_joint6" joint="left_v5_joint6" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_right_v5_joint1" joint="right_v5_joint1" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_right_v5_joint2" joint="right_v5_joint2" kp="250000" ctrlrange="-1.57079633 4.71238898" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_right_v5_joint1" joint="right_v5_joint1" kp="250000" ctrlrange="-2.35619449 2.35619449" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_right_v5_joint2" joint="right_v5_joint2" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_right_v5_joint3" joint="right_v5_joint3" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_right_v5_joint4" joint="right_v5_joint4" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
-    <position name="act_right_v5_joint5" joint="right_v5_joint5" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
+    <position name="act_right_v5_joint5" joint="right_v5_joint5" kp="250000" ctrlrange="-2.53072742 2.53072742" ctrllimited="true" forcerange="-1000000 1000000"/>
     <position name="act_right_v5_joint6" joint="right_v5_joint6" kp="250000" ctrlrange="-3.14159265 3.14159265" ctrllimited="true" forcerange="-1000000 1000000"/>
     <adhesion name="act_right_suction" body="right_v5_tool0" ctrlrange="0 1" gain="50000" forcerange="0 50000"/>
     <adhesion name="act_left_suction" body="left_v5_tool0" ctrlrange="0 1" gain="50000" forcerange="0 50000"/>

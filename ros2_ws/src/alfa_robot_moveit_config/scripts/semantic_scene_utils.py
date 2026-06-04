@@ -136,8 +136,18 @@ def offset_pose(source_pose, dx=0.0, dy=0.0, dz=0.0):
 def semantic_scene_to_collision_objects(scene_msg, frame_id, CollisionObject, SolidPrimitive):
     objects = []
     front = scene_msg.container_front_pose
+    table = scene_msg.table_pose
+    has_container = any(abs(value) > 1e-9 for value in (front.position.x, front.position.y, front.position.z))
+    has_table = any(abs(value) > 1e-9 for value in (table.position.x, table.position.y, table.position.z))
     for rule in SEMANTIC_BOX_RULES:
-        source_pose = front if rule.source == "container_front" else scene_msg.table_pose
+        if rule.source == "container_front":
+            if not has_container:
+                continue
+            source_pose = front
+        else:
+            if not has_table:
+                continue
+            source_pose = table
         pose = offset_pose(source_pose, *rule.offset)
         objects.append(make_box_collision_object(
             CollisionObject,

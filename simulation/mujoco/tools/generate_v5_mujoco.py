@@ -8,6 +8,8 @@ import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import trimesh
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MUJOCO_DIR = REPO_ROOT / "simulation" / "mujoco"
 URDF_XACRO = REPO_ROOT / "ros2_ws" / "src" / "alfa_robot_description" / "urdf" / "alfa_robot.urdf.xacro"
@@ -16,7 +18,11 @@ SCENE_XML = MUJOCO_DIR / "scene.xml"
 ROBOT_ONLY_XML = MUJOCO_DIR / "scene_robot_only.xml"
 
 MESH_PREFIX = "package://alfa_robot_description/meshes/"
-MESH_ROOT = "../../ros2_ws/src/alfa_robot_description/meshes"
+SOURCE_MESH_ROOT = REPO_ROOT / "ros2_ws" / "src" / "alfa_robot_description" / "meshes"
+GENERATED_MESH_DIR = MUJOCO_DIR / "generated_meshes"
+MESH_ROOT = "generated_meshes"
+MUJOCO_MAX_STL_FACES = 200000
+MUJOCO_TARGET_STL_FACES = 180000
 
 JOINT_DAMPING = {
     "pitch": 3000,
@@ -107,7 +113,7 @@ def mesh_name(link_name: str, kind: str) -> str | None:
     return f"{kind}_{link_name}"
 
 
-def link_mesh_path(link: ET.Element, kind: str) -> str | None:
+def source_mesh_relative_path(link: ET.Element, kind: str) -> str | None:
     element = link.find(kind)
     if element is None:
         return None
@@ -118,6 +124,40 @@ def link_mesh_path(link: ET.Element, kind: str) -> str | None:
     if not filename or not filename.startswith(MESH_PREFIX):
         return None
     return filename[len(MESH_PREFIX):]
+
+
+def mujoco_mesh_relative_path(link: ET.Element, link_name: str, kind: str) -> str | None:
+    relative_path = source_mesh_relative_path(link, kind)
+    if relative_path is None:
+        return None
+
+    source_path = SOURCE_MESH_ROOT / relative_path
+    if not source_path.exists():
+        return None
+
+    mesh = trimesh.load_mesh(source_path, force="mesh")
+    if mesh.is_empty:
+        return None
+
+    if kind == "visual" and len(mesh.faces) > MUJOCO_MAX_STL_FACES:
+        try:
+            mesh = mesh.simplify_quadric_decimation(face_count=MUJOCO_TARGET_STL_FACES)
+        except Exception:
+            pass
+
+    if kind == "visual" and len(mesh.faces) > MUJOCO_MAX_STL_FACES:
+        collision_relative_path = source_mesh_relative_path(link, "collision")
+        if collision_relative_path is not None:
+            collision_path = SOURCE_MESH_ROOT / collision_relative_path
+            if collision_path.exists():
+                mesh = trimesh.load_mesh(collision_path, force="mesh")
+                relative_path = collision_relative_path
+
+    output_relative_path = Path(relative_path).with_suffix(".stl")
+    output_path = GENERATED_MESH_DIR / output_relative_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    mesh.export(output_path, file_type="stl")
+    return output_relative_path.as_posix()
 
 
 def collect_model(root: ET.Element):
@@ -327,7 +367,7 @@ def generate_robot_xml(root: ET.Element) -> str:
     mesh_lines = []
     for link_name, link in links.items():
         for kind, prefix in [("visual", "vis"), ("collision", "col")]:
-            path = link_mesh_path(link, kind)
+            path = mujoco_mesh_relative_path(link, link_name, kind)
             name = mesh_name(link_name, prefix)
             if path and name:
                 mesh_lines.append(f'    <mesh name="{name}" file="{path}"/>')
@@ -410,15 +450,11 @@ def box_body(
 
 
 def generate_scene_xml() -> str:
-    # Container/cargo demo layout:
-    # - Place the container/cargo area behind the robot, about 1 m away.
-    # - Cargo floor height is 0.60 m.
+    # Fixed-platform acceptance scene:
+    # - Keep only robot, floor/lights, and cargo boxes.
+    # - Do not generate the historical container, placement platform, or dock mark.
     # - Normal cartons face the robot: 40 cm wide x 40 cm high face, 30 cm depth
     #   along robot-facing direction.
-    # - Keep only normal cartons and distribute the unused width as even gaps to
-    #   reduce persistent carton-carton contacts in MuJoCo.
-    # - Spawn the demo row at the innermost end of the container, close to the
-    #   back wall, so the robot has to reach deeper into the container.
     inner_width = 2.2
     inner_height = 2.4
     inner_length = 4.0
@@ -463,29 +499,7 @@ def generate_scene_xml() -> str:
         '    <light name="container_light_front" pos="1.2 0 3.0" dir="0 0 -1" diffuse="0.8 0.8 0.7" specular="0.1 0.1 0.1"/>',
         '    <light name="container_light_back" pos="4.0 0 3.0" dir="0 0 -1" diffuse="0.7 0.7 0.65" specular="0.1 0.1 0.1"/>',
         f'    <geom name="scene_floor" type="plane" size="15 15 0.1" material="grid_mat" pos="0 0 0" contype="1" conaffinity="1" friction="{STATIC_SCENE_FRICTION}"/>',
-        '    <body name="container" pos="0 0 0">',
-        f'      <geom name="container_floor" type="box" size="{inner_length/2:.3f} {inner_width/2:.3f} {floor_thickness/2:.3f}" pos="{center_x:.3f} 0 {floor_top_z-floor_thickness/2:.3f}" rgba="1.00 1.00 1.00 0.32" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
-        f'      <geom name="container_wall_left" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {inner_width/2+0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_wall_right" type="box" size="{inner_length/2:.3f} 0.045 {inner_height/2:.3f}" pos="{center_x:.3f} {-inner_width/2-0.045:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_roof" type="box" size="{inner_length/2:.3f} {inner_width/2+0.045:.3f} 0.035" pos="{center_x:.3f} 0 {floor_top_z+inner_height+0.035:.3f}" rgba="1.00 1.00 1.00 0.20" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_back" type="box" size="0.045 {inner_width/2+0.045:.3f} {inner_height/2:.3f}" pos="{x0+inner_length+0.045:.3f} 0 {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.25" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_left_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {inner_width/2+0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_right_post" type="box" size="0.045 0.035 {inner_height/2:.3f}" pos="{robot_side_x-0.045:.3f} {-inner_width/2-0.025:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_open_top" type="box" size="0.045 {inner_width/2:.3f} 0.035" pos="{robot_side_x-0.045:.3f} 0 {floor_top_z+inner_height+0.025:.3f}" rgba="1.00 1.00 1.00 0.45" contype="1" conaffinity="3"/>',
-        f'      <geom name="container_outer_left" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {inner_width/2+0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.18" contype="0" conaffinity="0" group="2"/>',
-        f'      <geom name="container_outer_right" type="box" size="{inner_length/2:.3f} 0.025 {inner_height/2+0.035:.3f}" pos="{center_x:.3f} {-inner_width/2-0.095:.3f} {floor_top_z+inner_height/2:.3f}" rgba="1.00 1.00 1.00 0.18" contype="0" conaffinity="0" group="2"/>',
-        '    </body>',
         *cargo_lines,
-        '    <body name="placement_platform" pos="-2.00 0 0">',
-        f'      <geom name="placement_platform_surface" type="box" size="0.45 0.75 0.035" pos="0 0 0.635" rgba="0.22 0.22 0.24 1" contype="1" conaffinity="3" friction="{STATIC_SCENE_FRICTION}"/>',
-        '      <geom name="placement_platform_front_edge" type="box" size="0.025 0.75 0.025" pos="0.45 0 0.70" rgba="0.05 0.45 0.95 1" contype="0" conaffinity="0"/>',
-        '      <geom name="placement_platform_leg1" type="box" size="0.035 0.035 0.30" pos="0.34 0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
-        '      <geom name="placement_platform_leg2" type="box" size="0.035 0.035 0.30" pos="0.34 -0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
-        '      <geom name="placement_platform_leg3" type="box" size="0.035 0.035 0.30" pos="-0.34 0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
-        '      <geom name="placement_platform_leg4" type="box" size="0.035 0.035 0.30" pos="-0.34 -0.62 0.30" rgba="0.12 0.12 0.13 1" contype="1" conaffinity="3"/>',
-        '      <site name="placement_platform_target" pos="0 0 0.70" size="0.05" rgba="0 1 1 0.6"/>',
-        '    </body>',
-        '    <geom name="robot_dock_mark" type="box" size="0.5 0.5 0.002" pos="0.5 0 0.001" rgba="1 0.9 0 0.6" contype="0" conaffinity="0" group="2"/>',
         '  </worldbody>',
         '</mujoco>',
         '',

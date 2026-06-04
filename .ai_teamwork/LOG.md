@@ -257,3 +257,21 @@
 - 改了哪里：`alfa_robot.urdf.xacro` 的左右 `left/right_v5_joint1-6` `<limit>`；`alfa_robot_macro.ros2_control.xacro` 的 mock/控制接口 command min/max；`joint_limits.yaml` 的 MoveIt position limits。
 - 验证结果：description 与 MoveIt wrapper xacro 展开通过，`check_urdf` 通过；脚本核对展开后左右 12 个关节限位均为目标弧度值。
 - 留给下个 AI：本次只改位置限位，未改 velocity/acceleration/effort；用户原文重复写了两次 joint3，按常规理解处理为 joint3 与 joint4 都是 ±180°。
+
+## 2026-06-04 运控工程师 / Codex / 补齐 Linear milestone 归属
+- 做了什么：检查李昊洋负责的 V1 Project issues，补齐明显漏挂 milestone 的 MOTION-37 全流程 demo 及其子任务。
+- 改了哪里：MOTION-37、MOTION-43 归入 `M6 连续 20 箱验收`；MOTION-38、MOTION-39、MOTION-40 归入 `M2 目标选择与可达性`；MOTION-41、MOTION-42 归入 `M6 连续 20 箱验收`。
+- 验证结果：重新拉取 V1 Project issues 后，上述关键 open/demo 任务均已有 milestone。
+- 留给下个 AI：Backlog/已取消/非 V1 项目任务未强行归属；后续新建 MOTION-37 子任务时记得同步 milestone。
+
+## 2026-06-04 运控工程师 / Codex / 修正 MOTION-37 验收 issue 拆分
+- 做了什么：用户确认明天固定平台双臂验收本质就是 MOTION-37，不应另开临时重复 issue；已取消 MOTION-43，并把验收口径并回 MOTION-37。
+- 改了哪里：MOTION-37 改为固定平台双臂验收 Demo；MOTION-39/40/41/42 改为固定平台场景、IK、MoveIt、执行/可视化子任务；新增 MOTION-44 作为独立急停/安全层子任务。
+- 验证结果：MOTION-37 及子 issue 均归入 `M6 连续 20 箱验收`，MOTION-43 已 Canceled。
+- 留给下个 AI：后续不要继续使用 MOTION-43；明天验收推进全部写 MOTION-37 及其子 issue。
+
+## 2026-06-04 仿真工程师 / Codex / 修复 MuJoCo 数字孪生重复障碍与残留容器
+- 做了什么：定位用户同时运行旧静态桥 `mujoco_planning_scene_bridge.py` 和新数字孪生 launch 时，MoveIt 会同时收到 `mj_*` 静态障碍和 `semantic_*` 语义障碍，导致两排箱子；当前固定平台 scene 已不生成 container/table，但语义转换此前会用默认零位继续生成地下容器。
+- 改了哪里：`semantic_scene_utils.py` 在 container/table pose 为零时跳过对应对象；`semantic_scene_to_planning_scene.py` 启动后清理历史 `mj_*`、container、platform 残留对象；`mujoco_planning_scene_bridge.py` 默认禁用，需 `--allow-legacy` 才能作为旧静态调试桥运行。
+- 验证结果：`alfa_robot_moveit_config` 编译通过；短启动 `mujoco_digital_twin.launch.py` 后 `/collision_object` 只有 `semantic_scene_to_planning_scene` 发布，语义样本中 `container_front_pose` 为零且不再生成 `semantic_container_*`，日志显示清理 573 个历史对象。
+- 留给下个 AI：数字孪生模式只运行 `ros2 launch alfa_robot_moveit_config mujoco_digital_twin.launch.py`；不要再并行运行 `mujoco_planning_scene_bridge.py`，否则旧版本环境仍可能重复写入 PlanningScene。
