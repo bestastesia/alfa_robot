@@ -1,0 +1,26 @@
+# Default MuJoCo seed positions for alfa_robot v5 model.
+# Robot joints are synced with the MoveIt startup pose:
+# updown=0.45 m, both arms at 0/5/145/0/120/0 deg.
+
+initial_positions:
+  # Cargo front face is at x=4.45 m in scene.xml; base_x=3.65 keeps the
+  # robot base frame 0.8 m in front of that face, inside the container.
+  base_x: 3.65
+  # Align robot center with the fourth cargo column across container width.
+  base_y: 0.43333333
+  base_yaw: 0
+  pitch: 0
+  turn: 0
+  updown: 0.45
+  left_v5_joint1: 0
+  left_v5_joint2: 0.08726646
+  left_v5_joint3: 2.53072742
+  left_v5_joint4: 0
+  left_v5_joint5: 2.09439510
+  left_v5_joint6: 0
+  right_v5_joint1: 0
+  right_v5_joint2: 0.08726646
+  right_v5_joint3: 2.53072742
+  right_v5_joint4: 0
+  right_v5_joint5: 2.09439510
+  right_v5_joint6: 0

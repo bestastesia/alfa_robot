@@ -5,6 +5,9 @@
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+ros2_tmp/build/
+ros2_tmp/install/
+ros2_tmp/log/
 devel/
 cmake-build-debug/
 
@@ -82,6 +85,8 @@ install_manifest.txt
 *.bag.active
 *.bag.db3
 *.srv
+!ros2_tmp/src/ik_benchmark/srv/*.srv
+!ros2_tmp/src/ik_benchmark/msg/*.msg
 *.msg.generated
 
 # Large binary files (models, maps, point clouds, images)

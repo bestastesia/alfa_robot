@@ -1,0 +1,47 @@
+{
+  "description": "机器人位姿配置模板 — set_joints.py 和 move_to_pose.py 共用",
+  "version": "1.0",
+  "joints": {
+    "pitch": 0.0,
+    "turn": 1.5707,
+    "updown": 0.1848,
+    "left_v5_joint1": -1.8089,
+    "left_v5_joint2": 2.2609,
+    "left_v5_joint3": -0.6103,
+    "left_v5_joint4": -1.3004,
+    "left_v5_joint5": -0.2381,
+    "left_v5_joint6": -0.0,
+    "right_v5_joint1": 1.8089,
+    "right_v5_joint2": -2.7542,
+    "right_v5_joint3": -0.6103,
+    "right_v5_joint4": 0.5733,
+    "right_v5_joint5": 0.2381,
+    "right_v5_joint6": 0.0
+  },
+  "ee_pose": {
+    "left": {
+      "x": -0.2079,
+      "y": 0.6079,
+      "z": 0.5,
+      "qx": -0.5,
+      "qy": 0.5,
+      "qz": 0.5,
+      "qw": 0.5
+    },
+    "right": {
+      "x": 0.1921,
+      "y": 0.6079,
+      "z": 0.5001,
+      "qx": -0.4999,
+      "qy": 0.5,
+      "qz": 0.5,
+      "qw": 0.5001
+    }
+  },
+
+  "meta": {
+    "exec_time": 2.0,
+    "ik_timeout": 10.0,
+    "ik_solver": "bio_ik"
+  }
+}

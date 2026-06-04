@@ -1,5 +1,3 @@
-@/home/li/.codex/RTK.md
-
 # AI 协作入口
 
 开始工作前先读：

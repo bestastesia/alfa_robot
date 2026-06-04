@@ -1,0 +1,8 @@
+std_msgs/Header header
+string task_id
+sensor_msgs/JointState joint_target
+---
+bool success
+string failure_reason
+trajectory_msgs/JointTrajectory trajectory
+string diagnostics_json

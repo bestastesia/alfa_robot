@@ -1,0 +1,35 @@
+# MoveIt controller management - 双控制器
+
+moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControllerManager
+
+moveit_simple_controller_manager:
+  controller_names:
+    - torso_controller
+    - dual_v5_arm_controller
+
+  torso_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - pitch
+      - turn
+
+  dual_v5_arm_controller:
+    type: FollowJointTrajectory
+    action_ns: follow_joint_trajectory
+    default: true
+    joints:
+      - updown
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6

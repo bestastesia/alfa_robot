@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <xacro:macro name="alfa_robot_ros2_control" params="
+               name
+               prefix
+               use_mock_hardware:=false
+               mock_sensor_commands:=false
+               sim_gazebo_classic:=false
+               sim_gazebo:=false
+               simulation_controllers
+               real_hardware_plugin:=alfa_robot_hardware/AlfaRobotHW
+               canopen_profile_velocity:=50000
+               canopen_profile_accel:=50000
+               pitch_initial:=0.0
+               turn_initial:=0.0
+               updown_initial:=0.45
+               left_v5_joint1_initial:=0.0
+               left_v5_joint2_initial:=0.08726646
+               left_v5_joint3_initial:=2.53072742
+               left_v5_joint4_initial:=0.0
+               left_v5_joint5_initial:=2.09439510
+               left_v5_joint6_initial:=0.0
+               right_v5_joint1_initial:=0.0
+               right_v5_joint2_initial:=0.08726646
+               right_v5_joint3_initial:=2.53072742
+               right_v5_joint4_initial:=0.0
+               right_v5_joint5_initial:=2.09439510
+               right_v5_joint6_initial:=0.0"
+               >
+
+    <ros2_control name="${name}" type="system">
+      <hardware>
+        <xacro:if value="${use_mock_hardware}">
+          <plugin>mock_components/GenericSystem</plugin>
+          <param name="mock_sensor_commands">${mock_sensor_commands}</param>
+        </xacro:if>
+        <xacro:if value="${sim_gazebo_classic}">
+          <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${sim_gazebo}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+        <xacro:unless value="${use_mock_hardware or sim_gazebo_classic or sim_gazebo}">
+          <plugin>${real_hardware_plugin}</plugin>
+          <param name="can_interface_left">can0</param>
+          <param name="can_interface_right">can1</param>
+          <param name="can_interface_canopen">can3</param>
+          <param name="can_interface_base">can2</param>
+          <param name="can_interface_plate">can4</param>
+          <param name="canopen_profile_velocity">${canopen_profile_velocity}</param>
+          <param name="canopen_profile_accel">${canopen_profile_accel}</param>
+
+          <!-- Safe shutdown configuration -->
+          <param name="use_safe_shutdown">true</param>
+
+          <!-- Safe positions (rad for revolute, m for prismatic) -->
+          <param name="safe_position_turn">0.0</param>
+          <param name="safe_position_updown">0.0</param>
+        </xacro:unless>
+      </hardware>
+      <!-- pitch (revolute) -->
+      <joint name="${prefix}pitch">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.26</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">${pitch_initial}</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- turn (continuous; no URDF limit tag) -->
+      <joint name="${prefix}turn">
+        <command_interface name="position"/>
+        <state_interface name="position">
+          <param name="initial_value">${turn_initial}</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- updown (prismatic) -->
+      <joint name="${prefix}updown">
+        <command_interface name="position">
+          <param name="min">0</param>
+          <param name="max">0.99</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">${updown_initial}</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="acceleration"/>
+      </joint>
+
+      <!-- v5 proxy arms (position controlled) -->
+      <xacro:macro name="v5_proxy_control_joint" params="joint_name lower upper velocity initial_value:=0.0">
+        <joint name="${prefix}${joint_name}">
+          <command_interface name="position">
+            <param name="min">${lower}</param>
+            <param name="max">${upper}</param>
+          </command_interface>
+          <state_interface name="position">
+            <param name="initial_value">${initial_value}</param>
+          </state_interface>
+          <state_interface name="velocity"/>
+          <state_interface name="acceleration"/>
+        </joint>
+      </xacro:macro>
+
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint1" lower="-2.35619449" upper="2.35619449" velocity="1.2" initial_value="${left_v5_joint1_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${left_v5_joint2_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${left_v5_joint3_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_v5_joint4_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint5" lower="-2.53072742" upper="2.53072742" velocity="1.5" initial_value="${left_v5_joint5_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="left_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_v5_joint6_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint1" lower="-2.35619449" upper="2.35619449" velocity="1.2" initial_value="${right_v5_joint1_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${right_v5_joint2_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${right_v5_joint3_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_v5_joint4_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint5" lower="-2.53072742" upper="2.53072742" velocity="1.5" initial_value="${right_v5_joint5_initial}"/>
+      <xacro:v5_proxy_control_joint joint_name="right_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_v5_joint6_initial}"/>
+
+
+    </ros2_control>
+
+    <xacro:if value="$(arg sim_gazebo_classic)">
+      <!-- Gazebo plugins -->
+      <gazebo reference="world">
+      </gazebo>
+      <gazebo>
+        <plugin filename="libgazebo_ros2_control.so" name="gazebo_ros2_control">
+          <parameters>${simulation_controllers}</parameters>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <xacro:if value="$(arg sim_gazebo)">
+      <!-- Gazebo plugins -->
+      <gazebo reference="world">
+      </gazebo>
+      <gazebo>
+        <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+          <parameters>${simulation_controllers}</parameters>
+          <controller_manager_node_name>${prefix}controller_manager</controller_manager_node_name>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+  </xacro:macro>
+</robot>

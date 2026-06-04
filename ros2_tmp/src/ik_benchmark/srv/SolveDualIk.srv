@@ -1,0 +1,20 @@
+# Fixed-platform dual-arm IK request.
+# Poses are expressed in frame_id. Default service configuration uses base_link.
+std_msgs/Header header
+geometry_msgs/Pose left_target
+geometry_msgs/Pose right_target
+string grasp_mode        # "front" or "top_suction"; empty defaults to "front"
+sensor_msgs/JointState current_joint_state
+float64 current_updown   # if < 0, service default fixed_updown is used
+---
+bool success
+string failure_reason
+string solver_path
+bool fallback_used
+float64 selected_h
+float64 score
+float64 wall_ms
+uint32 trial_count
+uint32 legal_count
+sensor_msgs/JointState joint_target
+string diagnostics_json

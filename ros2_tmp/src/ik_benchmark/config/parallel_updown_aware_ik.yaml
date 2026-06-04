@@ -1,0 +1,97 @@
+parallel_updown_aware_ik:
+  benchmark_comparison:
+    flow:
+      approach_offset: 0.1
+      place_safe_z: 0.85
+    unlimited_baseline:
+      seed_attempts: 12
+      seed_noise: 0.35
+    lookup_like:
+      workers: 1
+      h_candidate_count: 15
+      seed_count: 8
+      fallback_seed_count: 12
+
+  groups:
+    fixed_h_group: dual_v5_arm
+    free_h_group: dual_v5_arm_with_base
+    left_tip: left_v5_tool0
+    right_tip: right_v5_tool0
+    base_frame: base_link
+    solver_plugin: bio_ik/BioIKKinematicsPlugin
+
+  h_planner:
+    left_reach_sphere:
+      center: [0.355, 0.26, 0.317]
+      radius: 0.679
+    right_reach_sphere:
+      center: [0.355, -0.26, 0.317]
+      radius: 0.679
+    # Height-window planner: target grasp z must satisfy h + lower <= target_z <= h + upper.
+    gripper_z_reach_window: [0.45, 1.25]
+    top_suction_z_reach_window: [0.3, 0.45]
+    physical_limits: [0.0, 0.99]
+    tool0_offset: 0.0
+    sphere_margin: 0.0
+
+  candidate_generator:
+    h_mode: continuous_range      # fixed_discrete | continuous_range
+    h_search_margin: 0.10         # search window around minimum-motion h, not physical limit
+    h_step: 0.10
+    h_candidate_count: 8
+    max_updown_delta: inf
+    seed_count: 32
+    continuous_seed_multiplier: 10   # continuous_range seed budget multiplier; set near h_candidate_count for comparable trial count
+    seed_noise: 0.35
+    try_target_orders: false
+    use_reversed_target_order: true  # 当前已验证：固定走 solveDual(right, left) 才对应 left/right tip
+
+  parallel_executor:
+    workers: 8
+    timeout_per_trial: 0.02
+
+  validator:
+    check_tip_error: true
+    position_tolerance: 0.02
+    orientation_tolerance: 0.05
+    check_collision: true
+    enforce_arm_base_collisions: true  # re-enable arm links vs base_link/pitch/turn/updown pairs disabled in SRDF
+    reject_swapped_tips: true
+
+  fallback_manager:
+    enabled: true
+    release_updown_timeout: 0.02
+    release_updown_seed_count: 256     # fixed total fallback IK trials after the main 256 candidates fail
+    rounds: 1                          # one fixed-budget fallback round after the 256 main candidates fail
+    random_family_count: 2             # last_success + home + this many random seed families
+    random_per_family: 64              # fallback seed families are cycled until release_updown_seed_count is reached
+    seed_noise: 0.6
+    updown_noise: 0.5
+
+  cost_scorer:
+    # Default score is lower-is-better:
+    # - reward no updown motion
+    # - reward updown motion within 0.1m
+    # - penalize movement beyond 0.1m proportionally
+    # - penalize joint2/3 torque proxy; joint2 should usually be weighted higher
+    weights:
+      updown_static_bonus: 1.0
+      updown_within_0p1_bonus: 0.3
+      updown_over_0p1_distance: 2.0
+      joint2_torque: 1.0
+      joint3_torque: 0.5
+      solve_ms: 0.0
+    thresholds:
+      updown_static_epsilon: 0.005
+      updown_small_motion: 0.1
+    torque_proxy:
+      # Tune these after checking real horizontal posture in RViz/robot.
+      left_joint2_horizontal_angle: 0.0
+      left_joint3_horizontal_angle: 0.0
+      right_joint2_horizontal_angle: 0.0
+      right_joint3_horizontal_angle: 0.0
+      link2_length: 0.65
+      link3_length: 0.65
+      link2_mass_proxy: 1.0
+      link3_mass_proxy: 1.0
+      payload_mass_proxy: 1.0

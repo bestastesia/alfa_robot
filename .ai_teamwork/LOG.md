@@ -275,3 +275,65 @@
 - 改了哪里：`semantic_scene_utils.py` 在 container/table pose 为零时跳过对应对象；`semantic_scene_to_planning_scene.py` 启动后清理历史 `mj_*`、container、platform 残留对象；`mujoco_planning_scene_bridge.py` 默认禁用，需 `--allow-legacy` 才能作为旧静态调试桥运行。
 - 验证结果：`alfa_robot_moveit_config` 编译通过；短启动 `mujoco_digital_twin.launch.py` 后 `/collision_object` 只有 `semantic_scene_to_planning_scene` 发布，语义样本中 `container_front_pose` 为零且不再生成 `semantic_container_*`，日志显示清理 573 个历史对象。
 - 留给下个 AI：数字孪生模式只运行 `ros2 launch alfa_robot_moveit_config mujoco_digital_twin.launch.py`；不要再并行运行 `mujoco_planning_scene_bridge.py`，否则旧版本环境仍可能重复写入 PlanningScene。
+
+## 2026-06-04 运控工程师 / Codex / 完成固定平台双臂 IK 服务骨架
+- 做了什么：按 MOTION-40 实现固定平台验收用 IK 服务层，提供 `/alfa_dual_ik/solve`，输入左右目标 Pose 与当前关节状态，输出选中的双臂 joint target、耗时、候选统计和诊断 JSON。
+- 改了哪里：新增 `SolveDualIk.srv`、`fixed_platform_dual_ik_service.cpp`、`fixed_platform_dual_ik_service.launch.py`；更新 `CMakeLists.txt` 与 `package.xml` 以生成 ROS2 service 接口并安装 launch。
+- 验证结果：`alfa_robot_benchmarks` 用系统 Python 重新编译通过；launch 可启动服务并在 `/alfa_dual_ik/solve` 可见；低预算 smoke call 能返回结构化结果和诊断。
+- 留给下个 AI：当前服务假定目标已在 `base_link` 坐标系；MoveIt/RViz 层若发 world 坐标，需要在调用方或后续服务版本加入 TF 转换。固定验收默认 `fixed_updown=0.18`，PLC 仍走 mock。
+
+## 2026-06-04 运控工程师 / Codex / 搭建固定平台验收 ros2_tmp 最小流程
+- 做了什么：按用户要求新建 `ros2_tmp` 临时 ROS2 workspace，只保留固定平台双臂验收需要的 description、MoveIt config、bio_ik、IK/流程包；未迁移雷达、导航、感知、twist mux、硬件包和历史数据。
+- 改了哪里：`ros2_tmp/src/ik_benchmark` 新增任务发布层 `mock_box_task_publisher`、任务编排层 `fixed_platform_task_orchestrator`、任务/状态消息和 MoveIt/执行层预留 service；IK 服务输出改为 12 个双臂 joint target，full joint 解写入诊断 JSON。
+- 验证结果：干净环境下 `ros2_tmp` 四包编译通过；launch 可启动 `/alfa_dual_ik/solve`、`/alfa_task/command`、`/alfa_task/status`；手动发布 5/6 任务后编排层完成 accepted → IK → mock planner → mock executor → done，并触发发布层准备 7/8。
+- 留给下个 AI：运行说明见 `ros2_tmp/README.md`；MoveIt 层接入时把 `mock_planner:=false` 并实现 `/alfa_moveit/plan_joint_target`，执行层接入时把 `mock_executor:=false` 并实现 `/alfa_execution/execute_joint_trajectory`。
+
+## 2026-06-04 运控工程师 / Codex / 修正执行层接口为逐点 joint target
+- 做了什么：按用户确认的分工，执行层只接 joint target，不接完整 trajectory；编排层负责把 MoveIt 返回的 trajectory points 拆成逐点 joint target 发给执行层。
+- 改了哪里：`ros2_tmp/src/ik_benchmark` 新增 `ExecuteJointTarget.srv`；`fixed_platform_task_orchestrator` 改为调用 `/alfa_execution/execute_joint_target`；launch/README 同步新接口。
+- 验证结果：`alfa_robot_benchmarks` 重新编译通过；`ExecuteJointTarget` 接口可见；服务启动正常。IK 服务新增 `lock_updown:=true`，smoke 诊断显示 `h_candidates=[0.18]`，保证固定平台只输出 12 轴目标时不会暗中选其他 updown。
+- 留给下个 AI：固定 `updown=0.18` 后，部分箱子点可能 IK 失败；这是固定平台可达性问题，不是任务链路问题。若临时验收点位要可达，需要调整箱子高度/目标点或固定平台安装高度。
+
+## 2026-06-04 运控工程师 / Codex / 接入电控执行层与临时 MoveIt 障碍规划
+- 做了什么：将电控同事的 `alfa_robot_plc_bridge` 筛选迁入 `ros2_tmp`，保留执行层 `plc_bridge_node` 和急停层 `plc_safety_node`；编排层改为发布 MoveIt 返回的 `JointTrajectory` 到 `/plc_joint_trajectory`，并等待 `/plc_bridge_state` 回 normal 后再通知任务完成。
+- 改了哪里：`ros2_tmp/src/alfa_robot_plc_bridge` 新增执行/急停包；`fixed_platform_task_orchestrator` 对齐 `/plc_joint_trajectory`；新增 `temporary_moveit_joint_planner` 提供 `/alfa_moveit/plan_joint_target`，启动时从 MuJoCo `scene.xml` 解析 20 个 cargo box 写入 MoveIt PlanningScene；新增 `planning_scene_visualizer.py` 发布 `/alfa_visualization/planning_scene_markers` 并可选 Rerun。
+- 验证结果：`ros2_tmp` 五包编译通过；总 launch 可启动 `/alfa_dual_ik/solve`、`/alfa_moveit/plan_joint_target`、`/plc_joint_trajectory`、`/plc_bridge_state`、`/alfa_safety/*` 和障碍 marker；临时 MoveIt planner 日志显示已应用 20 个 MuJoCo cargo 障碍。
+- 留给下个 AI：当前临时 planner 默认开启 `temporary_planner:=true`，同事正式 MoveIt 服务接管后可设为 false；执行层默认 `plc_mock:=true`，接真实 PLC 时设为 false。障碍 x 偏移当前为 `scene_x_shift=-3.925`，用于把 MuJoCo 远处 cargo 映射到固定平台箱垛附近，联调时可按实际箱子位置微调。
+
+## 2026-06-04 运控工程师 / Codex / ros2_tmp 最新接口口径修正
+- 做了什么：前两条 ros2_tmp 日志里提到的 `mock_executor`、`/alfa_execution/execute_joint_target`、`ExecuteJointTarget.srv` 已被电控真实包替代，避免误用。
+- 当前口径：编排层发布 `trajectory_msgs/JointTrajectory` 到 `/plc_joint_trajectory`；电控 `plc_bridge_node` 负责轨迹执行和 PLC/mock PLC；急停由 `plc_safety_node` 对外提供 `/alfa_safety/*`。
+- 留给下个 AI：以本条和上一条“接入电控执行层与临时 MoveIt 障碍规划”为准。
+
+## 2026-06-04 临时固定平台验收：箱子 x 与初始臂姿态更新
+
+- ros2_tmp 任务目标箱子前表面默认改为 `x=0.76m`，任务发布层参数 `x_offset` 现在直接表示箱子前表面 x，不再使用 `0.375 + x_offset`。
+- 临时 MoveIt 障碍箱同步到 `x=0.76m`：MuJoCo cargo 解析使用 `scene_x_shift=-3.84`，fallback box stack 也使用 `front_face_x=0.76`。
+- 双臂初始/home 姿态统一为 `0°, 5°, 145°, 0°, 120°, 0°`：MoveIt initial_positions、SRDF home、description view zeros、ros2_control initial、任务编排 home seed 均已同步。
+- mock PLC 执行层新增 `mock_initial_positions_deg`，默认发布同一套 12 轴初始角度，避免 `/joint_states` 仍从 0 位开始影响 MoveIt 起点。
+- 已构建验证：`alfa_robot_description`、`alfa_robot_moveit_config`、`alfa_robot_plc_bridge`、`alfa_robot_benchmarks` 通过。
+
+## 2026-06-04 固定 h IK 线程语义修正
+
+- 原因：固定平台 `updown=0.18` 时，期望 IK 不是少量候选，而是同一个固定 h 下充分并行试 seed。
+- 修改：fixed_discrete 分支改为 `workers × seed_count` 次 trial；默认 `workers=16 seed_count=32` 即同一 h 下 512 次不同 seed，并由 16 线程并行消费。
+- 影响：`h_candidate_count` 在单一固定 h 场景下不再决定总次数；多个 h 候选时会在这些 h 间轮询，但总次数仍以 `workers × seed_count` 为准。
+- 已构建验证：`colcon build --packages-select alfa_robot_benchmarks` 通过。
+
+## 2026-06-05 运控工程师 / Codex / 固定平台临时任务切到 11/10 并增加 IK 重试
+- 做了什么：临时任务发布层改为只发布 `box_pair_11_10`，左手抓 11、右手抓 10；目标点为 world 下 L11 `(0.76, 0.2, 1.0)`、R10 `(0.76, -0.2, 1.0)`。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/mock_box_task_publisher.cpp`；`fixed_platform_task_orchestrator` 新增 `ik_max_attempts`，默认 5 次，避免 BioIK 单次随机失败直接终止任务；IK launch 默认侧吸 `position_tolerance` 从 2cm 放宽到 3cm。
+- 验证结果：`colcon build --packages-select alfa_robot_benchmarks` 通过；当前运行环境下 11/10 第一次 IK 失败、第二次 IK 成功，随后 MoveIt planner 和 PLC mock 执行链路完成，发布层收到 `task completed`。
+- 留给下个 AI：若重启系统，需要重启编排层以加载新二进制；测试命令可用 `ros2 launch alfa_robot_benchmarks fixed_platform_task_orchestrator.launch.py fixed_updown:=0.18 mock_planner:=false wait_execution_done:=true ik_max_attempts:=5`，再运行 `ros2 run alfa_robot_benchmarks mock_box_task_publisher`。
+
+## 2026-06-05 运控工程师 / Codex / 临时验收 IK 后端切为单臂 KDL
+- 做了什么：确认 BioIK 双臂 fixed h 在高位 front 目标上会失败，但单臂 KDL 对同一点可稳定求解；临时验收 IK 服务改为左右臂分别通过 MoveIt `/compute_ik` 的 KDL 求解，再合并 12 轴目标。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/fixed_platform_kdl_ik_service.py`；`fixed_platform_dual_ik_service.launch.py` 和 `fixed_platform_acceptance_flow.launch.py` 默认启动该 KDL 服务；`mock_box_task_publisher` 当前测试目标改为 `box_pair_7_6`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；直接调用 7/6 `z=1.4` 成功，KDL IK wall 约 4.9ms；完整任务发布层 7/6 → 编排层 → KDL IK → MoveIt planner → PLC mock 链路完成。
+- 留给下个 AI：当前 KDL 服务 `check_collision:=false` 运行；如果要启用碰撞，需要解决单臂 KDL 和全身碰撞的判定策略。服务接口仍是 `/alfa_dual_ik/solve`，编排层无需改。
+
+## 2026-06-05 运控工程师 / Codex / 固定平台 KDL IK 临时参数口径修正
+- 做了什么：复现用户 7/6 任务失败后确认根因不是点位不可达，而是临时 KDL 服务继承了 launch 的 `check_collision:=true` 和 `timeout:=0.01`，导致 `/compute_ik` 在 IK 阶段做碰撞拒绝/时间过短。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/fixed_platform_kdl_ik_service.py`；KDL `/compute_ik` 固定 `avoid_collisions=false`，碰撞交给 MoveIt 规划层；内部 timeout 最小钳到 0.05s。
+- 验证结果：用 `fixed_updown:=0.18 timeout:=0.01 check_collision:=true` 启动 KDL 服务时日志显示实际 `timeout=0.050s compute_ik_avoid_collisions=False`；发布 `box_pair_7_6` 后任务层收到 accepted 并返回 done。
+- 留给下个 AI：临时验收链路不要在 IK 阶段启用碰撞拒绝；如需碰撞，应在 MoveIt 规划层或合并双臂 joint target 后做全身校验。

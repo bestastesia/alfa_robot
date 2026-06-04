@@ -1,0 +1,49 @@
+# 双控制器: torso (pitch/turn) + dual_v5_arm (updown + 12臂关节)
+
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    torso_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+    dual_v5_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+joint_state_broadcaster:
+  ros__parameters:
+    publish_rate: 50.0
+
+torso_controller:
+  ros__parameters:
+    joints:
+      - pitch
+      - turn
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+
+dual_v5_arm_controller:
+  ros__parameters:
+    joints:
+      - updown
+      - left_v5_joint1
+      - left_v5_joint2
+      - left_v5_joint3
+      - left_v5_joint4
+      - left_v5_joint5
+      - left_v5_joint6
+      - right_v5_joint1
+      - right_v5_joint2
+      - right_v5_joint3
+      - right_v5_joint4
+      - right_v5_joint5
+      - right_v5_joint6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
