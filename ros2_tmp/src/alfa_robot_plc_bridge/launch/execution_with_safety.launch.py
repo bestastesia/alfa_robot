@@ -18,7 +18,9 @@ def generate_launch_description():
         DeclareLaunchArgument('plc_ip', default_value='192.168.1.88'),
         DeclareLaunchArgument('command_hz', default_value='20.0'),
         DeclareLaunchArgument('feedback_hz', default_value='20.0'),
+        DeclareLaunchArgument('publish_joint_states', default_value='false'),
         DeclareLaunchArgument('velocity_limit_deg_s', default_value='5.0'),
+        DeclareLaunchArgument('plc_execution_mode', default_value='stream'),
         DeclareLaunchArgument('service_timeout_s', default_value='3.0'),
     ]
     return LaunchDescription(declared_arguments + [
@@ -34,7 +36,9 @@ def generate_launch_description():
                     'plc_ip': LaunchConfiguration('plc_ip'),
                     'command_hz': ParameterValue(LaunchConfiguration('command_hz'), value_type=float),
                     'feedback_hz': ParameterValue(LaunchConfiguration('feedback_hz'), value_type=float),
+                    'publish_joint_states': ParameterValue(LaunchConfiguration('publish_joint_states'), value_type=bool),
                     'velocity_limit_deg_s': ParameterValue(LaunchConfiguration('velocity_limit_deg_s'), value_type=float),
+                    'plc_execution_mode': LaunchConfiguration('plc_execution_mode'),
                 },
             ],
         ),

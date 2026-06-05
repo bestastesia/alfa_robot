@@ -11,7 +11,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from moveit_msgs.msg import MoveItErrorCodes
-from moveit_msgs.srv import GetPositionIK
+from moveit_msgs.srv import GetPositionIK, GetStateValidity
 
 from alfa_robot_benchmarks.srv import SolveDualIk
 
@@ -31,9 +31,11 @@ class FixedPlatformKdlIkService(Node):
         self.use_request_seed = bool(self.declare_parameter("use_request_seed", False).value)
         self.service_name = str(self.declare_parameter("service_name", "/alfa_dual_ik/solve").value)
         self.compute_ik_service = str(self.declare_parameter("compute_ik_service", "/compute_ik").value)
+        self.state_validity_service = str(self.declare_parameter("state_validity_service", "/check_state_validity").value)
         self.home = [0.0, math.radians(5), math.radians(145), 0.0, math.radians(120), 0.0]
         self.callback_group = ReentrantCallbackGroup()
         self.ik_client = self.create_client(GetPositionIK, self.compute_ik_service, callback_group=self.callback_group)
+        self.state_validity_client = self.create_client(GetStateValidity, self.state_validity_service, callback_group=self.callback_group)
         self.service = self.create_service(SolveDualIk, self.service_name, self.handle_request, callback_group=self.callback_group)
         self.get_logger().info(
             f"Fixed platform KDL IK service ready: service={self.service_name} fixed_updown={self.fixed_updown:.3f} timeout={self.timeout:.3f}s check_collision_param={self.check_collision} compute_ik_avoid_collisions={self.compute_ik_avoid_collisions} use_request_seed={self.use_request_seed}"
@@ -88,6 +90,32 @@ class FixedPlatformKdlIkService(Node):
             return None
         return future.result()
 
+    def call_state_validity(self, joint_target: JointState):
+        if not self.check_collision:
+            return True, []
+        if not self.state_validity_client.wait_for_service(timeout_sec=2.0):
+            self.get_logger().warn(f"{self.state_validity_service} unavailable; reject KDL combined solution")
+            return False, ["state_validity_unavailable"]
+        req = GetStateValidity.Request()
+        req.robot_state.joint_state = JointState()
+        req.robot_state.joint_state.name = ["turn", *joint_target.name]
+        req.robot_state.joint_state.position = [0.0, *joint_target.position]
+        req.group_name = "dual_v5_arm_with_base"
+        future = self.state_validity_client.call_async(req)
+        deadline = time.perf_counter() + 2.0
+        while rclpy.ok() and not future.done() and time.perf_counter() < deadline:
+            time.sleep(0.002)
+        if not future.done():
+            self.get_logger().warn("state validity check timed out; reject KDL combined solution")
+            return False, ["state_validity_timeout"]
+        result = future.result()
+        if result is None:
+            return False, ["state_validity_no_response"]
+        contacts = []
+        for contact in result.contacts[:20]:
+            contacts.append(f"{contact.contact_body_1} <-> {contact.contact_body_2}")
+        return bool(result.valid), contacts
+
     @staticmethod
     def solution_map(response) -> dict[str, float]:
         if response is None:
@@ -137,11 +165,16 @@ class FixedPlatformKdlIkService(Node):
         joint_target = JointState()
         candidate_names: list[str] = []
         candidate_values: list[float] = []
+        collision_free = True
+        collision_pairs: list[str] = []
         if left_ok and right_ok:
             joint_target = self.joint_target(current_h, left_solution, right_solution)
             joint_target.header = request.header
             candidate_names = list(joint_target.name)
             candidate_values = list(joint_target.position)
+            collision_free, collision_pairs = self.call_state_validity(joint_target)
+            if not collision_free:
+                reason = "combined_state_collision"
 
         response.success = reason == ""
         response.failure_reason = reason
@@ -165,12 +198,12 @@ class FixedPlatformKdlIkService(Node):
             "direct_pos_error": 0.0 if response.success else math.inf,
             "direct_ori_error": 0.0 if response.success else math.inf,
             "swapped_pos_error": math.inf,
-            "collision_free": True,
+            "collision_free": collision_free,
             "joint_names": candidate_names,
             "joint_values": candidate_values,
             "full_joint_names": candidate_names,
             "full_joint_values": candidate_values,
-            "collision_pairs": [],
+            "collision_pairs": collision_pairs,
         }
         diagnostics = {
             "backend": "kdl_single_arm_compute_ik",
@@ -190,6 +223,9 @@ class FixedPlatformKdlIkService(Node):
             "best_direct_ori_error": 0.0 if response.success else math.inf,
             "best_error_seed_index": 0,
             "best_error_reason": "legal" if response.success else reason,
+            "combined_collision_checked": self.check_collision,
+            "combined_collision_free": collision_free,
+            "combined_collision_pairs": collision_pairs,
             "left": {"success": left_ok, "error_code": self.error_code_name(left_code), "joint_values": {k: left_solution.get(k) for k in self.arm_names("left")}},
             "right": {"success": right_ok, "error_code": self.error_code_name(right_code), "joint_values": {k: right_solution.get(k) for k in self.arm_names("right")}},
             "debug_best_candidates": [candidate],
@@ -210,10 +246,13 @@ def main() -> None:
     executor.add_node(node)
     try:
         executor.spin()
+    except KeyboardInterrupt:
+        pass
     finally:
         executor.shutdown()
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

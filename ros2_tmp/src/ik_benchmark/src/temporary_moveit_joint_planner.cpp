@@ -2,6 +2,7 @@
 
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/robot_state/robot_state.h>
 #include <nlohmann/json.hpp>
 #include <moveit_msgs/msg/collision_object.hpp>
@@ -13,13 +14,10 @@
 #include <std_msgs/msg/string.hpp>
 
 #include <algorithm>
-#include <fstream>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
-#include <sstream>
-#include <regex>
 #include <set>
 #include <string>
 #include <vector>
@@ -28,89 +26,36 @@ namespace {
 
 using PlanJointTarget = alfa_robot_benchmarks::srv::PlanJointTarget;
 
-std::vector<double> parseVector3(const std::string& text)
-{
-    std::vector<double> values;
-    std::stringstream stream(text);
-    double value = 0.0;
-    while (stream >> value) values.push_back(value);
-    while (values.size() < 3) values.push_back(0.0);
-    return values;
-}
-
-std::vector<moveit_msgs::msg::CollisionObject> loadCargoFromMujocoScene(
-    const std::string& scene_xml,
-    const std::string& frame_id,
-    size_t max_objects,
-    double x_shift,
-    double y_shift,
-    double z_shift)
-{
-    std::ifstream input(scene_xml);
-    if (!input) return {};
-    const std::string xml((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-    const std::regex body_regex(R"(<body\s+name=\"(cargo_[^\"]+)\"\s+pos=\"([^\"]+)\"[\s\S]*?<geom\s+name=\"[^\"]+\"\s+type=\"box\"\s+size=\"([^\"]+)\")");
-    std::vector<moveit_msgs::msg::CollisionObject> objects;
-    for (auto it = std::sregex_iterator(xml.begin(), xml.end(), body_regex); it != std::sregex_iterator(); ++it) {
-        const auto match = *it;
-        const auto pos = parseVector3(match[2].str());
-        const auto half = parseVector3(match[3].str());
-        moveit_msgs::msg::CollisionObject object;
-        object.header.frame_id = frame_id;
-        object.id = match[1].str();
-        object.operation = moveit_msgs::msg::CollisionObject::ADD;
-        shape_msgs::msg::SolidPrimitive primitive;
-        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
-        primitive.dimensions.resize(3);
-        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X] = 2.0 * half[0];
-        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Y] = 2.0 * half[1];
-        primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] = 2.0 * half[2];
-        geometry_msgs::msg::Pose pose;
-        pose.position.x = pos[0] + x_shift;
-        pose.position.y = pos[1] + y_shift;
-        pose.position.z = pos[2] + z_shift;
-        pose.orientation.w = 1.0;
-        object.primitives.push_back(primitive);
-        object.primitive_poses.push_back(pose);
-        objects.push_back(object);
-        if (max_objects > 0 && objects.size() >= max_objects) break;
-    }
-    return objects;
-}
-
-std::vector<moveit_msgs::msg::CollisionObject> makeFallbackBoxStack(
+std::vector<moveit_msgs::msg::CollisionObject> makeTwoColumnFourRowBoxStack(
     const std::string& frame_id,
     double front_face_x,
     double depth_x,
     double y_spacing,
     double z_spacing,
-    double x_shift,
-    double y_shift,
-    double z_shift)
+    double base_z)
 {
     const std::vector<std::vector<int>> rows_top_to_bottom = {
-        {1, 3, 2, 4},
-        {5, 7, 6, 8},
-        {9, 11, 10, 12},
-        {13, 15, 14, 16},
-        {17, 19, 18, 20},
+        {7, 6},
+        {11, 10},
+        {15, 14},
+        {19, 18},
     };
-    const std::vector<double> ys = {1.5 * y_spacing, 0.5 * y_spacing, -0.5 * y_spacing, -1.5 * y_spacing};
+    const std::vector<double> ys = {0.5 * y_spacing, -0.5 * y_spacing};
     std::vector<moveit_msgs::msg::CollisionObject> objects;
     for (size_t row = 0; row < rows_top_to_bottom.size(); ++row) {
-        const double z = 0.2 + z_spacing * static_cast<double>(rows_top_to_bottom.size() - 1 - row);
+        const double z = base_z + z_spacing * static_cast<double>(rows_top_to_bottom.size() - 1 - row);
         for (size_t col = 0; col < rows_top_to_bottom[row].size(); ++col) {
             moveit_msgs::msg::CollisionObject object;
             object.header.frame_id = frame_id;
-            object.id = "fallback_box_" + std::to_string(rows_top_to_bottom[row][col]);
+            object.id = "acceptance_box_" + std::to_string(rows_top_to_bottom[row][col]);
             object.operation = moveit_msgs::msg::CollisionObject::ADD;
             shape_msgs::msg::SolidPrimitive primitive;
             primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
             primitive.dimensions = {depth_x, 0.4, 0.4};
             geometry_msgs::msg::Pose pose;
-            pose.position.x = front_face_x + 0.5 * depth_x + x_shift;
-            pose.position.y = ys[col] + y_shift;
-            pose.position.z = z + z_shift;
+            pose.position.x = front_face_x + 0.5 * depth_x;
+            pose.position.y = ys[col];
+            pose.position.z = z;
             pose.orientation.w = 1.0;
             object.primitives.push_back(primitive);
             object.primitive_poses.push_back(pose);
@@ -133,25 +78,23 @@ public:
         group_name_ = declare_parameter<std::string>("group_name", "dual_v5_arm_with_base");
         frame_id_ = declare_parameter<std::string>("frame_id", "world");
         service_name_ = declare_parameter<std::string>("service_name", "/alfa_moveit/plan_joint_target");
-        planning_time_ = declare_parameter<double>("planning_time", 3.0);
-        planning_attempts_ = declare_parameter<int>("planning_attempts", 5);
+        planning_time_ = declare_parameter<double>("planning_time", 8.0);
+        planning_attempts_ = declare_parameter<int>("planning_attempts", 20);
         velocity_scale_ = declare_parameter<double>("velocity_scale", 0.25);
         acceleration_scale_ = declare_parameter<double>("acceleration_scale", 0.2);
+        joint_goal_tolerance_ = declare_parameter<double>("joint_goal_tolerance", 0.01);
+        validate_goal_state_collision_ = declare_parameter<bool>("validate_goal_state_collision", true);
         fixed_updown_ = declare_parameter<double>("fixed_updown", 0.18);
         updown_joint_ = declare_parameter<std::string>("updown_joint", "updown");
         updown_path_tolerance_ = declare_parameter<double>("updown_path_tolerance", 0.001);
-        final_target_tolerance_deg_ = declare_parameter<double>("final_target_tolerance_deg", 0.5);
-        scene_xml_ = declare_parameter<std::string>("mujoco_scene_xml", "/mnt/mydisk/ALFA/alfa_robot/simulation/mujoco/scene.xml");
-        max_scene_objects_ = static_cast<size_t>(std::max<int64_t>(0, declare_parameter<int64_t>("max_scene_objects", 20)));
-        x_shift_ = declare_parameter<double>("scene_x_shift", -3.84);
-        y_shift_ = declare_parameter<double>("scene_y_shift", 0.0);
-        z_shift_ = declare_parameter<double>("scene_z_shift", 0.0);
+        final_target_tolerance_deg_ = declare_parameter<double>("final_target_tolerance_deg", 1.0);
 
         move_group_ = std::make_unique<moveit::planning_interface::MoveGroupInterface>(shared_from_this(), group_name_);
         move_group_->setPlanningTime(planning_time_);
         move_group_->setNumPlanningAttempts(planning_attempts_);
         move_group_->setMaxVelocityScalingFactor(velocity_scale_);
         move_group_->setMaxAccelerationScalingFactor(acceleration_scale_);
+        move_group_->setGoalJointTolerance(joint_goal_tolerance_);
         move_group_->setStartStateToCurrentState();
         robot_model_ = move_group_->getRobotModel();
         if (!robot_model_) {
@@ -159,6 +102,16 @@ public:
         }
         if (!robot_model_->hasJointModel(updown_joint_)) {
             throw std::runtime_error("Robot model does not contain joint '" + updown_joint_ + "'");
+        }
+        planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
+            shared_from_this(), "robot_description");
+        if (planning_scene_monitor_->getPlanningScene()) {
+            planning_scene_monitor_->startSceneMonitor();
+            planning_scene_monitor_->startWorldGeometryMonitor();
+            planning_scene_monitor_->startStateMonitor("/joint_states");
+            planning_scene_monitor_->requestPlanningSceneState();
+        } else {
+            RCLCPP_WARN(get_logger(), "PlanningSceneMonitor init failed; goal collision validation unavailable");
         }
 
         joint_state_sub_ = create_subscription<sensor_msgs::msg::JointState>(
@@ -181,13 +134,9 @@ public:
 private:
     void applyObstacles()
     {
-        auto objects = loadCargoFromMujocoScene(scene_xml_, frame_id_, max_scene_objects_, x_shift_, y_shift_, z_shift_);
-        if (objects.empty()) {
-            objects = makeFallbackBoxStack(frame_id_, 0.76, 0.3, 0.4, 0.4, 0.0, 0.0, 0.0);
-            RCLCPP_WARN(get_logger(), "No MuJoCo cargo parsed from %s, using fallback box stack", scene_xml_.c_str());
-        }
+        auto objects = makeTwoColumnFourRowBoxStack(frame_id_, 0.76, 0.3, 0.4, 0.4, 0.2);
         planning_scene_interface_.applyCollisionObjects(objects);
-        RCLCPP_INFO(get_logger(), "Applied %zu temporary collision objects from MuJoCo scene reference", objects.size());
+        RCLCPP_INFO(get_logger(), "Applied %zu static 2-column x 4-row acceptance boxes: front_x=0.76 center_x=0.91", objects.size());
     }
 
     void handlePlan(const std::shared_ptr<PlanJointTarget::Request> request,
@@ -220,6 +169,13 @@ private:
         target[updown_joint_] = fixed_updown_;
         goal_state.setVariablePosition(updown_joint_, fixed_updown_);
         goal_state.update();
+        if (!isGoalStateValid(goal_state)) {
+            response->success = false;
+            response->failure_reason = "joint target is out of bounds or colliding";
+            response->diagnostics_json = "{}";
+            RCLCPP_WARN(get_logger(), "Plan rejected for task=%s: joint target invalid/colliding", request->task_id.c_str());
+            return;
+        }
         publishReceivedTargetDebug(*request, target, *start_state);
         move_group_->setStartState(*start_state);
         move_group_->setPathConstraints(makeUpdownPathConstraint());
@@ -315,6 +271,24 @@ private:
 
 
 
+
+
+    bool isGoalStateValid(const moveit::core::RobotState& state) const
+    {
+        const auto* group = robot_model_->getJointModelGroup(group_name_);
+        if (group != nullptr && !state.satisfiesBounds(group)) {
+            return false;
+        }
+        if (!validate_goal_state_collision_) {
+            return true;
+        }
+        if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+            return true;
+        }
+        planning_scene_monitor::LockedPlanningSceneRO scene(planning_scene_monitor_);
+        return !scene->isStateColliding(state);
+    }
+
     bool hasVariable(const std::string& name) const
     {
         const auto& variable_names = robot_model_->getVariableNames();
@@ -406,21 +380,19 @@ private:
     std::string group_name_;
     std::string frame_id_;
     std::string service_name_;
-    std::string scene_xml_;
-    double planning_time_ = 3.0;
-    int planning_attempts_ = 5;
+    double planning_time_ = 8.0;
+    int planning_attempts_ = 20;
     double velocity_scale_ = 0.25;
     double acceleration_scale_ = 0.2;
+    double joint_goal_tolerance_ = 0.01;
     double fixed_updown_ = 0.18;
     std::string updown_joint_ = "updown";
     double updown_path_tolerance_ = 0.001;
-    double final_target_tolerance_deg_ = 0.5;
-    size_t max_scene_objects_ = 20;
-    double x_shift_ = -3.84;
-    double y_shift_ = 0.0;
-    double z_shift_ = 0.0;
+    double final_target_tolerance_deg_ = 1.0;
+    bool validate_goal_state_collision_ = true;
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
     moveit::core::RobotModelConstPtr robot_model_;
+    planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
     moveit::planning_interface::PlanningSceneInterface planning_scene_interface_;
     mutable std::mutex joint_state_mutex_;
     sensor_msgs::msg::JointState latest_joint_state_;

@@ -37,43 +37,15 @@ geometry_msgs::msg::Pose pose(double x, double y, double z)
     return p;
 }
 
-struct Box {
-    int id = 0;
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-};
-
-std::map<int, Box> makeBoxes(double x_offset)
-{
-    const double x = x_offset;
-    const std::vector<std::vector<int>> rows_top_to_bottom = {
-        {1, 3, 2, 4},
-        {5, 7, 6, 8},
-        {9, 11, 10, 12},
-        {13, 15, 14, 16},
-        {17, 19, 18, 20},
-    };
-    const std::map<int, double> y_by_id = {
-        {1, 0.6}, {3, 0.2}, {2, -0.2}, {4, -0.6},
-        {5, 0.6}, {7, 0.2}, {6, -0.2}, {8, -0.6},
-        {9, 0.6}, {11, 0.2}, {10, -0.2}, {12, -0.6},
-        {13, 0.6}, {15, 0.2}, {14, -0.2}, {16, -0.6},
-        {17, 0.6}, {19, 0.2}, {18, -0.2}, {20, -0.6},
-    };
-
-    std::map<int, Box> boxes;
-    for (size_t row = 0; row < rows_top_to_bottom.size(); ++row) {
-        const double z = 0.2 + 0.4 * static_cast<double>(rows_top_to_bottom.size() - 1 - row);
-        for (int id : rows_top_to_bottom[row]) {
-            boxes[id] = Box{id, x, y_by_id.at(id), z};
-        }
-    }
-    return boxes;
-}
-
-TaskCommand makeCommand(const rclcpp::Time& stamp, const std::string& task_id, uint32_t sequence_index,
-                        const Box& left_box, const Box& right_box)
+TaskCommand makeCommand(const rclcpp::Time& stamp,
+                        const std::string& task_id,
+                        uint32_t sequence_index,
+                        double left_x,
+                        double left_y,
+                        double left_z,
+                        double right_x,
+                        double right_y,
+                        double right_z)
 {
     TaskCommand command;
     command.header.stamp = stamp;
@@ -81,10 +53,10 @@ TaskCommand makeCommand(const rclcpp::Time& stamp, const std::string& task_id, u
     command.task_id = task_id;
     command.sequence_index = sequence_index;
     command.grasp_mode = "front";
-    command.left_box_id = left_box.id;
-    command.right_box_id = right_box.id;
-    command.left_target = pose(left_box.x, left_box.y, left_box.z);
-    command.right_target = pose(right_box.x, right_box.y, right_box.z);
+    command.left_box_id = -1;
+    command.right_box_id = -1;
+    command.left_target = pose(left_x, left_y, left_z);
+    command.right_target = pose(right_x, right_y, right_z);
     return command;
 }
 
@@ -95,20 +67,27 @@ public:
     MockBoxTaskPublisher()
         : Node("mock_box_task_publisher")
     {
-        const double x_offset = declare_parameter<double>("x_offset", 0.76);
         task_topic_ = declare_parameter<std::string>("task_topic", "/alfa_task/command");
         status_topic_ = declare_parameter<std::string>("status_topic", "/alfa_task/status");
         publish_period_ms_ = declare_parameter<int>("publish_period_ms", 500);
 
-        const auto boxes = makeBoxes(x_offset);
-        tasks_.push_back(makeCommand(now(), "box_pair_7_6", 0, boxes.at(7), boxes.at(6)));
+        const std::string task_id = declare_parameter<std::string>("task_id", "manual_front_pair");
+        const double left_x = declare_parameter<double>("left_x", 0.70);
+        const double left_y = declare_parameter<double>("left_y", 0.20);
+        const double left_z = declare_parameter<double>("left_z", 1.40);
+        const double right_x = declare_parameter<double>("right_x", 0.70);
+        const double right_y = declare_parameter<double>("right_y", -0.20);
+        const double right_z = declare_parameter<double>("right_z", 1.40);
+        tasks_.push_back(makeCommand(now(), task_id, 0, left_x, left_y, left_z, right_x, right_y, right_z));
 
         publisher_ = create_publisher<TaskCommand>(task_topic_, rclcpp::QoS(10).reliable());
         status_sub_ = create_subscription<TaskStatus>(
             status_topic_, rclcpp::QoS(10).reliable(),
             [this](const TaskStatus::SharedPtr msg) { handleStatus(*msg); });
 
-        RCLCPP_INFO(get_logger(), "Mock task publisher ready. Press Enter to publish 7/6: left=7, right=6.");
+        RCLCPP_INFO(get_logger(),
+                    "Manual task publisher ready. Press Enter to publish %s: L=(%.3f, %.3f, %.3f) R=(%.3f, %.3f, %.3f).",
+                    task_id.c_str(), left_x, left_y, left_z, right_x, right_y, right_z);
         input_thread_ = std::thread([this]() {
             std::string line;
             std::getline(std::cin, line);
@@ -159,8 +138,10 @@ private:
         command.header.stamp = now_time;
         publisher_->publish(command);
         last_publish_time_ = now_time;
-        RCLCPP_INFO(get_logger(), "Publishing task %s: L%d R%d",
-                    command.task_id.c_str(), command.left_box_id, command.right_box_id);
+        RCLCPP_INFO(get_logger(), "Publishing task %s: L=(%.3f, %.3f, %.3f) R=(%.3f, %.3f, %.3f)",
+                    command.task_id.c_str(),
+                    command.left_target.position.x, command.left_target.position.y, command.left_target.position.z,
+                    command.right_target.position.x, command.right_target.position.y, command.right_target.position.z);
     }
 
     std::string task_topic_;

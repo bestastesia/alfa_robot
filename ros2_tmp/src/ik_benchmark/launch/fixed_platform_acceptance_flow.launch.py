@@ -24,9 +24,15 @@ def generate_launch_description():
             'frame_id': 'world',
             'mujoco_scene_xml': '/mnt/mydisk/ALFA/alfa_robot/simulation/mujoco/scene.xml',
             'max_scene_objects': 20,
-            'scene_x_shift': -3.84,
+            'scene_x_shift': -3.69,
             'scene_y_shift': 0.0,
             'scene_z_shift': 0.0,
+            'planning_time': LaunchConfiguration('planning_time'),
+            'planning_attempts': LaunchConfiguration('planning_attempts'),
+            'velocity_scale': LaunchConfiguration('moveit_velocity_scale'),
+            'acceleration_scale': LaunchConfiguration('moveit_acceleration_scale'),
+            'joint_goal_tolerance': 0.01,
+            'validate_goal_state_collision': True,
         },
     ]
 
@@ -34,6 +40,12 @@ def generate_launch_description():
         DeclareLaunchArgument('fixed_updown', default_value='0.18'),
         DeclareLaunchArgument('temporary_planner', default_value='true'),
         DeclareLaunchArgument('plc_mock', default_value='true'),
+        DeclareLaunchArgument('velocity_limit_deg_s', default_value='5.0'),
+        DeclareLaunchArgument('plc_execution_mode', default_value='stream'),
+        DeclareLaunchArgument('moveit_velocity_scale', default_value='0.25'),
+        DeclareLaunchArgument('moveit_acceleration_scale', default_value='0.2'),
+        DeclareLaunchArgument('planning_time', default_value='8.0'),
+        DeclareLaunchArgument('planning_attempts', default_value='20'),
         DeclareLaunchArgument('with_move_group', default_value='true'),
         DeclareLaunchArgument('with_visualization', default_value='true'),
         DeclareLaunchArgument('with_task_publisher', default_value='false'),
@@ -42,7 +54,12 @@ def generate_launch_description():
         DeclareLaunchArgument('seed_count', default_value='32'),
         DeclareLaunchArgument('timeout', default_value='0.01'),
         DeclareLaunchArgument('check_collision', default_value='true'),
-        DeclareLaunchArgument('x_offset', default_value='0.76'),
+        DeclareLaunchArgument('left_x', default_value='0.70'),
+        DeclareLaunchArgument('left_y', default_value='0.20'),
+        DeclareLaunchArgument('left_z', default_value='1.40'),
+        DeclareLaunchArgument('right_x', default_value='0.70'),
+        DeclareLaunchArgument('right_y', default_value='-0.20'),
+        DeclareLaunchArgument('right_z', default_value='1.40'),
         DeclareLaunchArgument('ik_max_attempts', default_value='5'),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -54,7 +71,12 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 str(Path(get_package_share_directory('alfa_robot_plc_bridge')) / 'launch' / 'execution_with_safety.launch.py')
             ),
-            launch_arguments={'mock': LaunchConfiguration('plc_mock')}.items(),
+            launch_arguments={
+                'mock': LaunchConfiguration('plc_mock'),
+                'velocity_limit_deg_s': LaunchConfiguration('velocity_limit_deg_s'),
+                'plc_execution_mode': LaunchConfiguration('plc_execution_mode'),
+                'publish_joint_states': 'false',
+            }.items(),
         ),
         Node(
             package='alfa_robot_benchmarks',
@@ -131,7 +153,12 @@ def generate_launch_description():
             emulate_tty=True,
             condition=IfCondition(LaunchConfiguration('with_task_publisher')),
             parameters=[{
-                'x_offset': LaunchConfiguration('x_offset'),
+                'left_x': LaunchConfiguration('left_x'),
+                'left_y': LaunchConfiguration('left_y'),
+                'left_z': LaunchConfiguration('left_z'),
+                'right_x': LaunchConfiguration('right_x'),
+                'right_y': LaunchConfiguration('right_y'),
+                'right_z': LaunchConfiguration('right_z'),
                 'task_topic': '/alfa_task/command',
                 'status_topic': '/alfa_task/status',
             }],

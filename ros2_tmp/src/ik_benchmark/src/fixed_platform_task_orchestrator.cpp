@@ -228,6 +228,10 @@ private:
         trajectory.header = base_command.header;
         trajectory.header.stamp = now();
         publishTrajectoryDebug(command, trajectory);
+        {
+            std::lock_guard<std::mutex> lock(plc_state_mutex_);
+            latest_plc_state_.clear();
+        }
         trajectory_pub_->publish(trajectory);
         if (wait_execution_done_ && !waitForExecutionDone(command)) {
             return;
@@ -328,24 +332,36 @@ private:
     bool waitForExecutionDone(const TaskCommand& command)
     {
         const auto start = std::chrono::steady_clock::now();
+        bool saw_executing = false;
         while (rclcpp::ok()) {
             std::string state;
             {
                 std::lock_guard<std::mutex> lock(plc_state_mutex_);
                 state = latest_plc_state_;
             }
-            if (!state.empty() && state.find("state=normal") != std::string::npos && state.find("executing=false") != std::string::npos) {
+            const bool executing = state.find("executing=true") != std::string::npos ||
+                                   state.find("state=executing") != std::string::npos;
+            const bool normal_idle = state.find("state=normal") != std::string::npos &&
+                                     state.find("executing=false") != std::string::npos;
+            const bool command_reported = state.find("last_command_count=") != std::string::npos &&
+                                          state.find("last_command_count=0") == std::string::npos;
+            if (executing) {
+                saw_executing = true;
+            }
+            if ((saw_executing || command_reported) && normal_idle) {
                 return true;
             }
             if (state.find("state=fault") != std::string::npos ||
                 state.find("state=emergency_stopped") != std::string::npos ||
-                state.find("state=plc_comm_error") != std::string::npos) {
+                state.find("state=plc_comm_error") != std::string::npos ||
+                state.find("state=soft_stopped") != std::string::npos) {
                 failTask(command, "PLC execution failed: " + state);
                 return false;
             }
             const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
             if (elapsed > execution_timeout_ms_) {
-                failTask(command, "PLC execution timeout; last state: " + state);
+                const std::string phase = saw_executing ? "finish" : "start";
+                failTask(command, "PLC execution " + phase + " timeout; last state: " + state);
                 return false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(50));

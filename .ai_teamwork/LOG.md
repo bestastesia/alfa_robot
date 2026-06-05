@@ -337,3 +337,15 @@
 - 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/fixed_platform_kdl_ik_service.py`；KDL `/compute_ik` 固定 `avoid_collisions=false`，碰撞交给 MoveIt 规划层；内部 timeout 最小钳到 0.05s。
 - 验证结果：用 `fixed_updown:=0.18 timeout:=0.01 check_collision:=true` 启动 KDL 服务时日志显示实际 `timeout=0.050s compute_ik_avoid_collisions=False`；发布 `box_pair_7_6` 后任务层收到 accepted 并返回 done。
 - 留给下个 AI：临时验收链路不要在 IK 阶段启用碰撞拒绝；如需碰撞，应在 MoveIt 规划层或合并双臂 joint target 后做全身校验。
+
+## 2026-06-05 运控工程师 / Codex / 固定平台临时验收一键栈收口
+- 做了什么：`ros2_tmp` 临时验收链路改为一键启动除任务发布外的全部线程；任务发布层单独按回车发布 `box_pair_7_6`。
+- 改了哪里：PLC bridge 默认不发布 `/joint_states`；demo 初始 `updown=0.18`；临时 planner 静态注入 2列×4行箱子，箱子前侧 `x=0.76`、中心 `x=0.91`、末端目标 `x=0.70`；KDL IK 合并左右臂后调用 `/check_state_validity` 做全身碰撞校验；编排层等待 PLC/mock 真正执行开始并结束后才回 done。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；本机完整跑通 `mock_box_task_publisher` → KDL IK → MoveIt 规划 → PLC mock 执行；`/joint_states` 确认为仅 `joint_state_broadcaster` 发布；任务约等待 20.4s mock 执行完成后返回 done。
+- 留给下个 AI：运行说明见 `ros2_tmp/docs/fixed_platform_acceptance_runbook.md`；推荐用 `ros2 launch alfa_robot_benchmarks fixed_platform_acceptance_stack.launch.py plc_mock:=true` 启动栈，再单独运行任务发布层。
+
+## 2026-06-05 运控工程师 / Codex / PLC 发送模式与验收参数化
+- 做了什么：对比 PLC CLI `move-abs` 和 ROS bridge，确认底层寄存器协议一致，主要差异是 CLI 一次性发最终绝对点，ROS 默认按 MoveIt 轨迹流式覆盖目标。
+- 改了哪里：PLC bridge 新增 `plc_execution_mode=stream|final_abs`；任务发布层改为直接给左右末端坐标，不再依赖箱号；一键栈暴露 `velocity_limit_deg_s`、`moveit_velocity_scale`、`moveit_acceleration_scale`、`planning_time`、`planning_attempts` 等关键参数。
+- 验证结果：`alfa_robot_plc_bridge`、`alfa_robot_benchmarks` 编译通过；mock 下 `stream` 模式完整任务成功并等待约 19–20s；`final_abs` 模式成功时 PLC/mock 命令数为 1，性质更接近 CLI `move-abs`。
+- 留给下个 AI：真实 PLC 若出现卡顿，先用 `plc_execution_mode:=final_abs velocity_limit_deg_s:=3.0` 区分是 PLC/机械执行问题还是 stream 轨迹覆盖问题；运行说明见 `ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。

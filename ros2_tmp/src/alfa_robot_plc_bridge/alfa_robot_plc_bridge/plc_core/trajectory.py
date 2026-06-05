@@ -27,6 +27,7 @@ class TrajectoryExecutionConfig:
     command_hz: float = 20.0
     feedback_hz: float = 2.0
     max_position_step_deg: float = 5.0
+    execution_mode: str = "stream"
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,11 @@ class PositionOverwriteTrajectoryExecutor:
         normalized = self._normalize_points(points)
         axes = tuple(sorted(normalized[0].positions_deg))
         self._validate_points(normalized, axes)
+        mode = self.config.execution_mode.strip().lower()
+        if mode == "final_abs":
+            return self._execute_final_abs(normalized, axes, feedback_callback, stop_event, cancel_checker)
+        if mode != "stream":
+            raise ValueError(f"unsupported execution_mode={self.config.execution_mode!r}; expected stream or final_abs")
 
         command_period = 1.0 / self.config.command_hz
         feedback_period = 1.0 / self.config.feedback_hz if self.config.feedback_hz > 0 else None
@@ -138,6 +144,44 @@ class PositionOverwriteTrajectoryExecutor:
             axes=axes,
             command_count=command_count,
             duration_s=duration_s,
+            final_targets_deg=final_targets,
+            final_statuses=final_statuses,
+        )
+
+    def _execute_final_abs(
+        self,
+        normalized: list[TrajectoryPoint],
+        axes: tuple[int, ...],
+        feedback_callback: FeedbackCallback | None,
+        stop_event: Event | None,
+        cancel_checker: CancelChecker | None,
+    ) -> TrajectoryExecutionReport:
+        self._raise_if_cancelled(stop_event, cancel_checker)
+        final_targets = dict(normalized[-1].positions_deg)
+        with self._operation_context():
+            if hasattr(self.driver.transport, "open"):
+                self.driver.transport.open()
+        try:
+            with self._operation_context():
+                self.driver.move_abs(
+                    final_targets,
+                    velocity=self.config.velocity_limit_deg_s,
+                    acceleration=self.config.acceleration_limit_deg_s2,
+                    deceleration=self.config.deceleration_limit_deg_s2,
+                    emergency_deceleration=self.config.emergency_deceleration_deg_s2,
+                )
+                final_statuses = tuple(self.driver.read_axes(axes))
+            if feedback_callback is not None:
+                statuses = {status.axis: status for status in final_statuses}
+                feedback_callback(0.0, 1, final_targets, statuses)
+        finally:
+            with self._operation_context():
+                if hasattr(self.driver.transport, "close"):
+                    self.driver.transport.close()
+        return TrajectoryExecutionReport(
+            axes=axes,
+            command_count=1,
+            duration_s=0.0,
             final_targets_deg=final_targets,
             final_statuses=final_statuses,
         )

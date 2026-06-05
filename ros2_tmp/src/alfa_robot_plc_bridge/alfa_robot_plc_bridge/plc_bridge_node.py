@@ -92,7 +92,8 @@ class PlcBridgeNode(Node):
             self._trajectory_config(),
             operation_lock=self._plc_lock,
         )
-        self.joint_state_pub = self.create_publisher(JointState, 'joint_states', 10)
+        self.publish_joint_states = bool(self.get_parameter('publish_joint_states').value)
+        self.joint_state_pub = self.create_publisher(JointState, 'joint_states', 10) if self.publish_joint_states else None
         self.bridge_state_pub = self.create_publisher(String, 'plc_bridge_state', 10)
         self.trajectory_sub = self.create_subscription(
             JointTrajectory,
@@ -119,7 +120,7 @@ class PlcBridgeNode(Node):
         self.feedback_timer = self.create_timer(1.0 / feedback_hz, self._publish_feedback_and_state, callback_group=self._callback_group)
         mode = 'mock virtual PLC' if bool(self.get_parameter('mock').value) else 'real PLC'
         self.get_logger().info(
-            f'PLC bridge started in {mode}: axes={self.axes}, command_hz={self.get_parameter("command_hz").value}'
+            f'PLC bridge started in {mode}: axes={self.axes}, command_hz={self.get_parameter("command_hz").value}, plc_execution_mode={self.get_parameter("plc_execution_mode").value}, publish_joint_states={self.publish_joint_states}'
         )
 
     def _declare_parameters(self) -> None:
@@ -131,6 +132,7 @@ class PlcBridgeNode(Node):
         self.declare_parameter('mock_active_axes', 12)
         self.declare_parameter('command_hz', 20.0)
         self.declare_parameter('feedback_hz', 20.0)
+        self.declare_parameter('publish_joint_states', False)
         self.declare_parameter('trajectory_feedback_hz', 2.0)
         self.declare_parameter('follow_joint_trajectory_action', '/dual_v5_arm_controller/follow_joint_trajectory')
         self.declare_parameter('ignore_unmapped_joints', True)
@@ -139,6 +141,7 @@ class PlcBridgeNode(Node):
         self.declare_parameter('deceleration_limit_deg_s2', 100.0)
         self.declare_parameter('emergency_deceleration_deg_s2', 120.0)
         self.declare_parameter('max_position_step_deg', 5.0)
+        self.declare_parameter('plc_execution_mode', 'stream')
         self.declare_parameter('reset_recover_delay_s', 0.2)
         self.declare_parameter('joint_names', DEFAULT_JOINT_NAMES)
         self.declare_parameter('axis_ids', list(range(1, 13)))
@@ -178,6 +181,7 @@ class PlcBridgeNode(Node):
             command_hz=float(self.get_parameter('command_hz').value),
             feedback_hz=float(self.get_parameter('trajectory_feedback_hz').value),
             max_position_step_deg=float(self.get_parameter('max_position_step_deg').value),
+            execution_mode=str(self.get_parameter('plc_execution_mode').value),
         )
 
     def _publish_feedback_and_state(self) -> None:
@@ -191,14 +195,15 @@ class PlcBridgeNode(Node):
             self._publish_bridge_state()
             return
 
-        msg = JointState()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        for status in statuses:
-            msg.name.append(self.axis_to_joint[status.axis])
-            msg.position.append(math.radians(self._plc_deg_to_ros_deg(status.axis, status.feedback_single_deg)))
-            msg.velocity.append(0.0)
-            msg.effort.append(0.0)
-        self.joint_state_pub.publish(msg)
+        if self.publish_joint_states and self.joint_state_pub is not None:
+            msg = JointState()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            for status in statuses:
+                msg.name.append(self.axis_to_joint[status.axis])
+                msg.position.append(math.radians(self._plc_deg_to_ros_deg(status.axis, status.feedback_single_deg)))
+                msg.velocity.append(0.0)
+                msg.effort.append(0.0)
+            self.joint_state_pub.publish(msg)
 
         fault_axes = [status for status in statuses if status.has_error]
         if fault_axes:
@@ -219,6 +224,7 @@ class PlcBridgeNode(Node):
         if not self._try_start_execution():
             self.get_logger().error('trajectory already running or blocked; ignoring new trajectory')
             return
+        self._publish_bridge_state()
         self._trajectory_thread = threading.Thread(target=self._execute_topic_trajectory, args=(points,), daemon=True)
         self._trajectory_thread.start()
 
@@ -322,6 +328,7 @@ class PlcBridgeNode(Node):
             return
         finally:
             self._finish_execution_if_not_blocked()
+            self._publish_bridge_state()
         self.get_logger().info(f'trajectory finished: commands={report.command_count}, duration={report.duration_s:.3f}s')
 
     def _run_trajectory(self, points: Iterable[TrajectoryPoint], cancel_checker=None):

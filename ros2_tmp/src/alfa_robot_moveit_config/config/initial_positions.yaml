@@ -1,10 +1,10 @@
 # Default initial positions for alfa_robot v6 mapped model.
-# Shared MoveIt startup pose: updown=0.45 m, both arms at 0/5/145/0/120/0 deg.
+# Shared MoveIt startup pose: updown=0.18 m, both arms at 0/5/145/0/120/0 deg.
 
 initial_positions:
   pitch: 0
   turn: 0
-  updown: 0.45
+  updown: 0.18
   left_v5_joint1: 0
   left_v5_joint2: 0.08726646
   left_v5_joint3: 2.53072742

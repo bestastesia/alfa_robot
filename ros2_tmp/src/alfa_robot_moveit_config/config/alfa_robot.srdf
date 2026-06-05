@@ -38,7 +38,7 @@
         <link name="right_v5_tool0"/>
     </group>
     <group_state name="home" group="dual_v5_arm_with_base">
-        <joint name="updown" value="0.45"/>
+        <joint name="updown" value="0.18"/>
         <joint name="left_v5_joint1" value="0"/>
         <joint name="left_v5_joint2" value="0.08726646"/>
         <joint name="left_v5_joint3" value="2.53072742"/>
