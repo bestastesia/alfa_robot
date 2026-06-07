@@ -12,6 +12,7 @@ def generate_launch_description():
         DeclareLaunchArgument('execution_timeout_ms', default_value='120000'),
         DeclareLaunchArgument('service_timeout_ms', default_value='30000'),
         DeclareLaunchArgument('ik_max_attempts', default_value='5'),
+        DeclareLaunchArgument('demo_mode', default_value='ik'),
         Node(
             package='alfa_robot_benchmarks',
             executable='fixed_platform_task_orchestrator',
@@ -28,6 +29,7 @@ def generate_launch_description():
                 'execution_timeout_ms': LaunchConfiguration('execution_timeout_ms'),
                 'service_timeout_ms': LaunchConfiguration('service_timeout_ms'),
                 'ik_max_attempts': LaunchConfiguration('ik_max_attempts'),
+                'demo_mode': LaunchConfiguration('demo_mode'),
             }],
         ),
     ])

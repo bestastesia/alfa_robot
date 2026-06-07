@@ -65,6 +65,32 @@ std::vector<moveit_msgs::msg::CollisionObject> makeTwoColumnFourRowBoxStack(
     return objects;
 }
 
+
+moveit_msgs::msg::CollisionObject makeCenterSeparationPlate(
+    const std::string& frame_id,
+    double x_min,
+    double x_max,
+    double y_thickness,
+    double z_min,
+    double z_max)
+{
+    moveit_msgs::msg::CollisionObject object;
+    object.header.frame_id = frame_id;
+    object.id = "acceptance_center_separation_plate";
+    object.operation = moveit_msgs::msg::CollisionObject::ADD;
+    shape_msgs::msg::SolidPrimitive primitive;
+    primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+    primitive.dimensions = {std::max(0.001, x_max - x_min), std::max(0.001, y_thickness), std::max(0.001, z_max - z_min)};
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = 0.5 * (x_min + x_max);
+    pose.position.y = 0.0;
+    pose.position.z = 0.5 * (z_min + z_max);
+    pose.orientation.w = 1.0;
+    object.primitives.push_back(primitive);
+    object.primitive_poses.push_back(pose);
+    return object;
+}
+
 } // namespace
 
 class TemporaryMoveitJointPlanner : public rclcpp::Node {
@@ -88,6 +114,12 @@ public:
         updown_joint_ = declare_parameter<std::string>("updown_joint", "updown");
         updown_path_tolerance_ = declare_parameter<double>("updown_path_tolerance", 0.001);
         final_target_tolerance_deg_ = declare_parameter<double>("final_target_tolerance_deg", 1.0);
+        enable_center_separation_plate_ = declare_parameter<bool>("enable_center_separation_plate", true);
+        center_plate_x_min_ = declare_parameter<double>("center_plate_x_min", 0.4);
+        center_plate_x_max_ = declare_parameter<double>("center_plate_x_max", 0.76);
+        center_plate_y_thickness_ = declare_parameter<double>("center_plate_y_thickness", 0.001);
+        center_plate_z_min_ = declare_parameter<double>("center_plate_z_min", 0.0);
+        center_plate_z_max_ = declare_parameter<double>("center_plate_z_max", 1.8);
 
         move_group_ = std::make_unique<moveit::planning_interface::MoveGroupInterface>(shared_from_this(), group_name_);
         move_group_->setPlanningTime(planning_time_);
@@ -135,8 +167,16 @@ private:
     void applyObstacles()
     {
         auto objects = makeTwoColumnFourRowBoxStack(frame_id_, 0.76, 0.3, 0.4, 0.4, 0.2);
+        if (enable_center_separation_plate_) {
+            objects.push_back(makeCenterSeparationPlate(
+                frame_id_, center_plate_x_min_, center_plate_x_max_, center_plate_y_thickness_,
+                center_plate_z_min_, center_plate_z_max_));
+        }
         planning_scene_interface_.applyCollisionObjects(objects);
-        RCLCPP_INFO(get_logger(), "Applied %zu static 2-column x 4-row acceptance boxes: front_x=0.76 center_x=0.91", objects.size());
+        RCLCPP_INFO(get_logger(),
+                    "Applied %zu static acceptance collision objects: boxes=8 center_plate=%s x=[%.2f, %.2f] y_thickness=%.4f z=[%.2f, %.2f]",
+                    objects.size(), enable_center_separation_plate_ ? "on" : "off",
+                    center_plate_x_min_, center_plate_x_max_, center_plate_y_thickness_, center_plate_z_min_, center_plate_z_max_);
     }
 
     void handlePlan(const std::shared_ptr<PlanJointTarget::Request> request,
@@ -385,6 +425,12 @@ private:
     double velocity_scale_ = 0.25;
     double acceleration_scale_ = 0.2;
     double joint_goal_tolerance_ = 0.01;
+    bool enable_center_separation_plate_ = true;
+    double center_plate_x_min_ = 0.4;
+    double center_plate_x_max_ = 0.76;
+    double center_plate_y_thickness_ = 0.001;
+    double center_plate_z_min_ = 0.0;
+    double center_plate_z_max_ = 1.8;
     double fixed_updown_ = 0.18;
     std::string updown_joint_ = "updown";
     double updown_path_tolerance_ = 0.001;

@@ -13,13 +13,13 @@ plc_bridge_node:
     follow_joint_trajectory_action: "/dual_v5_arm_controller/follow_joint_trajectory"
     ignore_unmapped_joints: true
     velocity_limit_deg_s: 5.0
-    acceleration_limit_deg_s2: 100.0
-    deceleration_limit_deg_s2: 100.0
-    emergency_deceleration_deg_s2: 120.0
+    acceleration_limit_deg_s2: 10.0
+    deceleration_limit_deg_s2: 10.0
+    emergency_deceleration_deg_s2: 30.0
     max_position_step_deg: 5.0
     plc_execution_mode: "stream"
     inverted_axes: [3, 5, 8]
-    mock_initial_positions_deg: [0.0, 5.0, 145.0, 0.0, 120.0, 0.0, 0.0, 5.0, 145.0, 0.0, 120.0, 0.0]
+    mock_initial_positions_deg: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     joint_names:
       - left_v5_joint1
       - left_v5_joint2

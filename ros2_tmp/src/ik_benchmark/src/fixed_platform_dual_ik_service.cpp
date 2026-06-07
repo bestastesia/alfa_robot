@@ -148,7 +148,7 @@ public:
     FixedPlatformDualIkService()
         : Node("fixed_platform_dual_ik_service"),
           fixed_updown_(declare_parameter<double>("fixed_updown", 0.18)),
-          home_arm_seed_(degSeed({0, 5, 145, 0, 120, 0})),
+          home_arm_seed_(degSeed({0, 0, 0, 0, 0, 0})),
           config_(makeConfig(*this)),
           solver_(std::make_unique<ParallelUpdownAwareIkSolver>(config_))
     {

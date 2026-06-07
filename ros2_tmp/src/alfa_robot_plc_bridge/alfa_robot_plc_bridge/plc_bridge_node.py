@@ -120,7 +120,13 @@ class PlcBridgeNode(Node):
         self.feedback_timer = self.create_timer(1.0 / feedback_hz, self._publish_feedback_and_state, callback_group=self._callback_group)
         mode = 'mock virtual PLC' if bool(self.get_parameter('mock').value) else 'real PLC'
         self.get_logger().info(
-            f'PLC bridge started in {mode}: axes={self.axes}, command_hz={self.get_parameter("command_hz").value}, plc_execution_mode={self.get_parameter("plc_execution_mode").value}, publish_joint_states={self.publish_joint_states}'
+            f'PLC bridge started in {mode}: axes={self.axes}, command_hz={self.get_parameter("command_hz").value}, '
+            f'plc_execution_mode={self.get_parameter("plc_execution_mode").value}, '
+            f'vel={self.get_parameter("velocity_limit_deg_s").value}, '
+            f'acc={self.get_parameter("acceleration_limit_deg_s2").value}, '
+            f'dec={self.get_parameter("deceleration_limit_deg_s2").value}, '
+            f'emergency_dec={self.get_parameter("emergency_deceleration_deg_s2").value}, '
+            f'publish_joint_states={self.publish_joint_states}'
         )
 
     def _declare_parameters(self) -> None:
@@ -137,9 +143,9 @@ class PlcBridgeNode(Node):
         self.declare_parameter('follow_joint_trajectory_action', '/dual_v5_arm_controller/follow_joint_trajectory')
         self.declare_parameter('ignore_unmapped_joints', True)
         self.declare_parameter('velocity_limit_deg_s', 50.0)
-        self.declare_parameter('acceleration_limit_deg_s2', 100.0)
-        self.declare_parameter('deceleration_limit_deg_s2', 100.0)
-        self.declare_parameter('emergency_deceleration_deg_s2', 120.0)
+        self.declare_parameter('acceleration_limit_deg_s2', 10.0)
+        self.declare_parameter('deceleration_limit_deg_s2', 10.0)
+        self.declare_parameter('emergency_deceleration_deg_s2', 30.0)
         self.declare_parameter('max_position_step_deg', 5.0)
         self.declare_parameter('plc_execution_mode', 'stream')
         self.declare_parameter('reset_recover_delay_s', 0.2)
@@ -147,8 +153,8 @@ class PlcBridgeNode(Node):
         self.declare_parameter('axis_ids', list(range(1, 13)))
         self.declare_parameter('inverted_axes', [3, 5, 8])
         self.declare_parameter('mock_initial_positions_deg', [
-            0.0, 5.0, 145.0, 0.0, 120.0, 0.0,
-            0.0, 5.0, 145.0, 0.0, 120.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         ])
 
     def _build_driver(self) -> PlcDriver:
@@ -224,9 +230,21 @@ class PlcBridgeNode(Node):
         if not self._try_start_execution():
             self.get_logger().error('trajectory already running or blocked; ignoring new trajectory')
             return
+        self._log_accepted_points(points, source='topic')
         self._publish_bridge_state()
         self._trajectory_thread = threading.Thread(target=self._execute_topic_trajectory, args=(points,), daemon=True)
         self._trajectory_thread.start()
+
+    def _log_accepted_points(self, points: list[TrajectoryPoint], source: str) -> None:
+        mode = str(self.get_parameter('plc_execution_mode').value)
+        first = points[0].positions_deg
+        last = points[-1].positions_deg
+        preview_axes = sorted(last)[:6]
+        preview = ', '.join(f'Axis{axis}: {first[axis]:.2f}->{last[axis]:.2f}' for axis in preview_axes)
+        self.get_logger().info(
+            f'accepted trajectory for PLC from {source}: mode={mode}, points={len(points)}, '
+            f'duration={points[-1].time_from_start_s:.3f}s, preview={preview}'
+        )
 
     def _accept_action_goal(self, goal_request: FollowJointTrajectory.Goal) -> GoalResponse:
         if self._is_motion_blocked():
@@ -256,6 +274,7 @@ class PlcBridgeNode(Node):
             return result
         try:
             points = self._convert_trajectory(goal_handle.request.trajectory)
+            self._log_accepted_points(points, source='action')
             report = self._run_trajectory(points, cancel_checker=lambda: goal_handle.is_cancel_requested)
         except TrajectoryCancelledError as exc:
             self._safe_soft_stop_after_interrupt()
@@ -329,9 +348,13 @@ class PlcBridgeNode(Node):
         finally:
             self._finish_execution_if_not_blocked()
             self._publish_bridge_state()
-        self.get_logger().info(f'trajectory finished: commands={report.command_count}, duration={report.duration_s:.3f}s')
+        self.get_logger().info(
+            f'trajectory finished: commands={report.command_count}, duration={report.duration_s:.3f}s, '
+            f'final_targets={{{", ".join(f"Axis{axis}: {value:.2f}" for axis, value in sorted(report.final_targets_deg.items())[:3])}}} ...'
+        )
 
     def _run_trajectory(self, points: Iterable[TrajectoryPoint], cancel_checker=None):
+        self.get_logger().info('starting PLC write loop')
         report = self.trajectory_executor.execute(
             points,
             stop_event=self._stop_event,

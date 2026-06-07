@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <string>
@@ -17,23 +18,48 @@ namespace {
 using TaskCommand = alfa_robot_benchmarks::msg::TaskCommand;
 using TaskStatus = alfa_robot_benchmarks::msg::TaskStatus;
 
-geometry_msgs::msg::Quaternion frontOrientation()
+geometry_msgs::msg::Quaternion multiply(const geometry_msgs::msg::Quaternion& a,
+                                       const geometry_msgs::msg::Quaternion& b)
 {
     geometry_msgs::msg::Quaternion q;
-    q.x = 0.0;
-    q.y = 0.70710678;
-    q.z = 0.0;
-    q.w = 0.70710678;
+    q.w = a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z;
+    q.x = a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y;
+    q.y = a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x;
+    q.z = a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w;
+    const double norm = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    if (norm > 1e-12) {
+        q.x /= norm;
+        q.y /= norm;
+        q.z /= norm;
+        q.w /= norm;
+    }
     return q;
 }
 
-geometry_msgs::msg::Pose pose(double x, double y, double z)
+geometry_msgs::msg::Quaternion frontOrientation(double roll_about_tool_x_deg)
+{
+    geometry_msgs::msg::Quaternion front;
+    front.x = 0.0;
+    front.y = 0.70710678;
+    front.z = 0.0;
+    front.w = 0.70710678;
+
+    const double half = 0.5 * roll_about_tool_x_deg * M_PI / 180.0;
+    geometry_msgs::msg::Quaternion roll;
+    roll.x = std::sin(half);
+    roll.y = 0.0;
+    roll.z = 0.0;
+    roll.w = std::cos(half);
+    return multiply(front, roll);
+}
+
+geometry_msgs::msg::Pose pose(double x, double y, double z, double roll_about_tool_x_deg)
 {
     geometry_msgs::msg::Pose p;
     p.position.x = x;
     p.position.y = y;
     p.position.z = z;
-    p.orientation = frontOrientation();
+    p.orientation = frontOrientation(roll_about_tool_x_deg);
     return p;
 }
 
@@ -45,7 +71,9 @@ TaskCommand makeCommand(const rclcpp::Time& stamp,
                         double left_z,
                         double right_x,
                         double right_y,
-                        double right_z)
+                        double right_z,
+                        double left_roll_deg,
+                        double right_roll_deg)
 {
     TaskCommand command;
     command.header.stamp = stamp;
@@ -55,8 +83,8 @@ TaskCommand makeCommand(const rclcpp::Time& stamp,
     command.grasp_mode = "front";
     command.left_box_id = -1;
     command.right_box_id = -1;
-    command.left_target = pose(left_x, left_y, left_z);
-    command.right_target = pose(right_x, right_y, right_z);
+    command.left_target = pose(left_x, left_y, left_z, left_roll_deg);
+    command.right_target = pose(right_x, right_y, right_z, right_roll_deg);
     return command;
 }
 
@@ -78,7 +106,10 @@ public:
         const double right_x = declare_parameter<double>("right_x", 0.70);
         const double right_y = declare_parameter<double>("right_y", -0.20);
         const double right_z = declare_parameter<double>("right_z", 1.40);
-        tasks_.push_back(makeCommand(now(), task_id, 0, left_x, left_y, left_z, right_x, right_y, right_z));
+        const double left_roll_deg = declare_parameter<double>("left_roll_deg", 0.0);
+        const double right_roll_deg = declare_parameter<double>("right_roll_deg", 0.0);
+        tasks_.push_back(makeCommand(now(), task_id, 0, left_x, left_y, left_z, right_x, right_y, right_z,
+                                     left_roll_deg, right_roll_deg));
 
         publisher_ = create_publisher<TaskCommand>(task_topic_, rclcpp::QoS(10).reliable());
         status_sub_ = create_subscription<TaskStatus>(
@@ -86,8 +117,8 @@ public:
             [this](const TaskStatus::SharedPtr msg) { handleStatus(*msg); });
 
         RCLCPP_INFO(get_logger(),
-                    "Manual task publisher ready. Press Enter to publish %s: L=(%.3f, %.3f, %.3f) R=(%.3f, %.3f, %.3f).",
-                    task_id.c_str(), left_x, left_y, left_z, right_x, right_y, right_z);
+                    "Manual task publisher ready. Press Enter to publish %s: L=(%.3f, %.3f, %.3f roll=%.1f) R=(%.3f, %.3f, %.3f roll=%.1f).",
+                    task_id.c_str(), left_x, left_y, left_z, left_roll_deg, right_x, right_y, right_z, right_roll_deg);
         input_thread_ = std::thread([this]() {
             std::string line;
             std::getline(std::cin, line);

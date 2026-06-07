@@ -100,8 +100,10 @@ install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
 install(DIRECTORY launch/ DESTINATION share/${PROJECT_NAME}/launch)
 install(PROGRAMS
+  scripts/fake_plc_cli_task_publisher.py
   scripts/fixed_platform_kdl_ik_service.py
   scripts/monitor_ik_planner_chain.py
+  scripts/plc_acceptance_supervisor.py
   scripts/planning_scene_visualizer.py
   scripts/visualize_fixed_platform_task_pose.py
   DESTINATION lib/${PROJECT_NAME}

@@ -21,6 +21,9 @@ def generate_launch_description():
         DeclareLaunchArgument('publish_joint_states', default_value='false'),
         DeclareLaunchArgument('velocity_limit_deg_s', default_value='5.0'),
         DeclareLaunchArgument('plc_execution_mode', default_value='stream'),
+        DeclareLaunchArgument('acceleration_limit_deg_s2', default_value='10.0'),
+        DeclareLaunchArgument('deceleration_limit_deg_s2', default_value='10.0'),
+        DeclareLaunchArgument('emergency_deceleration_deg_s2', default_value='30.0'),
         DeclareLaunchArgument('service_timeout_s', default_value='3.0'),
     ]
     return LaunchDescription(declared_arguments + [
@@ -39,6 +42,9 @@ def generate_launch_description():
                     'publish_joint_states': ParameterValue(LaunchConfiguration('publish_joint_states'), value_type=bool),
                     'velocity_limit_deg_s': ParameterValue(LaunchConfiguration('velocity_limit_deg_s'), value_type=float),
                     'plc_execution_mode': LaunchConfiguration('plc_execution_mode'),
+                    'acceleration_limit_deg_s2': ParameterValue(LaunchConfiguration('acceleration_limit_deg_s2'), value_type=float),
+                    'deceleration_limit_deg_s2': ParameterValue(LaunchConfiguration('deceleration_limit_deg_s2'), value_type=float),
+                    'emergency_deceleration_deg_s2': ParameterValue(LaunchConfiguration('emergency_deceleration_deg_s2'), value_type=float),
                 },
             ],
         ),

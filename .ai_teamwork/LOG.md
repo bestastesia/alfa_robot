@@ -349,3 +349,57 @@
 - 改了哪里：PLC bridge 新增 `plc_execution_mode=stream|final_abs`；任务发布层改为直接给左右末端坐标，不再依赖箱号；一键栈暴露 `velocity_limit_deg_s`、`moveit_velocity_scale`、`moveit_acceleration_scale`、`planning_time`、`planning_attempts` 等关键参数。
 - 验证结果：`alfa_robot_plc_bridge`、`alfa_robot_benchmarks` 编译通过；mock 下 `stream` 模式完整任务成功并等待约 19–20s；`final_abs` 模式成功时 PLC/mock 命令数为 1，性质更接近 CLI `move-abs`。
 - 留给下个 AI：真实 PLC 若出现卡顿，先用 `plc_execution_mode:=final_abs velocity_limit_deg_s:=3.0` 区分是 PLC/机械执行问题还是 stream 轨迹覆盖问题；运行说明见 `ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+
+## 2026-06-05 运控 / Codex / 固定平台验收 PLC 执行断点
+- 做了什么：针对“CLI move-abs 能动但 acceptance stack 不动”补充了 PLC 执行链路断点日志；编排层发 `/plc_joint_trajectory` 前会打印 topic、点数、joint 数、订阅者数，PLC bridge 收到 topic/action 轨迹后会打印执行模式、点数、时长和前 6 轴 first->last 预览，开始写 PLC 前打印 `starting PLC write loop`，结束打印命令数和 final targets。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/fixed_platform_task_orchestrator.cpp`、`ros2_tmp/src/alfa_robot_plc_bridge/alfa_robot_plc_bridge/plc_bridge_node.py`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`colcon build --packages-select alfa_robot_plc_bridge alfa_robot_benchmarks --symlink-install` 通过。
+- 留给下个 AI：如果实机仍不动，先看启动终端是否依次出现 `Publishing PLC trajectory ... subscribers>0`、`accepted trajectory for PLC from topic`、`starting PLC write loop`、`trajectory finished`；用这些日志判断问题在编排/Topic/PLC 写入/PLC 侧执行哪一段。
+
+## 2026-06-05 运控 / Codex / 固定平台验收全零初始姿态
+- 做了什么：按用户要求把 fixed-platform acceptance 的初始化姿态改为 `updown=0.18m`，双臂 12 个关节全 0°；IK 服务 home seed、编排层 fallback home、MoveIt 初始位置、SRDF home、PLC mock 初始值同步为全 0。
+- 改了哪里：`ros2_tmp/src/alfa_robot_moveit_config/config/initial_positions.yaml`、`ros2_tmp/src/alfa_robot_moveit_config/config/mujoco_initial_positions.yaml`、`ros2_tmp/src/alfa_robot_moveit_config/config/alfa_robot.srdf`、`ros2_tmp/src/ik_benchmark/src/fixed_platform_dual_ik_service.cpp`、`ros2_tmp/src/ik_benchmark/src/fixed_platform_task_orchestrator.cpp`、`ros2_tmp/src/alfa_robot_plc_bridge/config/plc_bridge.yaml`、`ros2_tmp/src/alfa_robot_plc_bridge/alfa_robot_plc_bridge/plc_bridge_node.py`。
+- 验证结果：相关包编译通过。
+- 留给下个 AI：实机 PLC 不发布 `/joint_states`，当前 MoveIt/RViz 状态仍来自 demo/ros2_control；启动后检查 `/joint_states` 初始应为 updown 0.18、双臂全 0。
+
+## 2026-06-05 运控 / Codex / PLC 验收监听与 home 保持
+- 做了什么：新增 `plc_acceptance_supervisor.py`，默认随 `fixed_platform_acceptance_stack.launch.py` 启动，集中监听 `/plc_bridge_state` 和 `/alfa_task/status`，每秒输出 PLC 状态摘要；可选 `enable_home_hold:=true` 时在 PLC 空闲状态下周期发送全零 home 轨迹用于启动后自动校准。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/plc_acceptance_supervisor.py`、`ros2_tmp/src/ik_benchmark/launch/fixed_platform_acceptance_stack.launch.py`、`ros2_tmp/src/ik_benchmark/CMakeLists.txt`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；单独运行 supervisor 可启动并正常等待 `/plc_bridge_state`。
+- 留给下个 AI：home hold 默认关闭；若开启，收到任务 `accepted/running` 后默认自动停止，避免和任务轨迹抢 `/plc_joint_trajectory`。实机联调建议先用 `home_hold_max_commands:=3` 限制校准次数。
+
+## 2026-06-05 运控 / Codex / 固定平台中线防撞隔板
+- 做了什么：在临时 MoveIt 规划层启动时默认注入一块 `y=0` 中线隔板，范围 `x=0.4~0.76`、`y` 厚度 `0.1m`、`z=0~1.8`，用于阻止左右臂规划时穿过中间区域导致互撞。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/temporary_moveit_joint_planner.cpp`、`ros2_tmp/src/ik_benchmark/launch/temporary_moveit_joint_planner.launch.py`、`ros2_tmp/src/ik_benchmark/launch/fixed_platform_acceptance_stack.launch.py`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；`fixed_platform_acceptance_stack.launch.py --show-args` 可看到 `enable_center_separation_plate` 和 `center_plate_*` 参数。
+- 留给下个 AI：如果隔板太保守导致规划失败，可先减小 `center_plate_y_thickness` 或缩短 `center_plate_x_max`；默认开启，启动日志会显示 `center_plate=on`。
+
+## 2026-06-05 运控 / Codex / 固定平台末端 roll 朝向
+- 做了什么：任务发布层保持末端朝 `+X`，并默认左手绕工具 `+X` roll `+90°`、右手 roll `-90°`，满足左手逆时针、右手顺时针的验收姿态需求。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/mock_box_task_publisher.cpp`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；发布层启动日志显示 `L ... roll=90.0`、`R ... roll=-90.0`。
+- 留给下个 AI：如现场视觉判断方向相反，可通过任务发布层参数 `left_roll_deg` / `right_roll_deg` 直接交换符号，无需改 IK/MoveIt。
+
+## 2026-06-05 运控 / Codex / 撤回末端默认 roll
+- 做了什么：用户确认新增左右末端 roll 后 KDL IK 无解，已将任务发布层默认 `left_roll_deg/right_roll_deg` 撤回为 `0/0`，保持末端朝 `+X` 且不额外 roll。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/mock_box_task_publisher.cpp`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；发布层启动日志显示 `roll=0.0`。
+- 留给下个 AI：roll 参数仍保留，可现场临时通过 `-p left_roll_deg:=... -p right_roll_deg:=...` 测试，但默认不要加，避免 KDL 无解。
+
+## 2026-06-05 运控 / Codex / 保险演示模式
+- 做了什么：新增两套保险演示入口。A：`fixed_platform_task_orchestrator` 支持 `demo_mode:=fixed_joint_target`，跳过 IK，直接把固定 12 轴 ROS/MoveIt 目标交给 MoveIt 规划再发 PLC bridge。B：新增 `fake_plc_cli_task_publisher.py`，回车后直接调用 `alfa_robot_plc_driver.cli move-abs` 写 PLC。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/src/fixed_platform_task_orchestrator.cpp`、`ros2_tmp/src/ik_benchmark/launch/fixed_platform_task_orchestrator.launch.py`、`ros2_tmp/src/ik_benchmark/launch/fixed_platform_acceptance_stack.launch.py`、`ros2_tmp/src/ik_benchmark/scripts/fake_plc_cli_task_publisher.py`、`ros2_tmp/src/ik_benchmark/CMakeLists.txt`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；launch 参数可见 `demo_mode`；CLI 伪任务入口可启动。
+- 留给下个 AI：MoveIt 固定目标使用 ROS/MoveIt 方向 `left=-28,51,-38,30,-81,83; right=28,49,-35,-28,-79,-85`；PLC CLI 直发使用电控方向 `1:-28,2:51,3:38,4:30,5:81,6:83,7:28,8:-49,9:-35,10:-28,11:-79,12:-85`。
+
+## 2026-06-05 运控 / Codex / PLC CLI 伪任务回车切换
+- 做了什么：`fake_plc_cli_task_publisher.py` 从单次执行改为循环交互，每次回车在 `HOME(12轴全0)` 与 `TARGET(演示姿态)` 之间切换；第一次回车去 TARGET，第二次回车回 HOME。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/fake_plc_cli_task_publisher.py`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：`alfa_robot_benchmarks` 编译通过；入口可启动并显示 HOME/TARGET targets 与 velocity。
+- 留给下个 AI：速度参数仍是 `-p velocity:=...`；可用 `-p home_targets:=...` 和 `-p targets:=...` 临时改两个端点。
+
+## 2026-06-05 运控 / Codex / PLC CLI 01020102 循环演示
+- 做了什么：`fake_plc_cli_task_publisher.py` 改为启动立即发 HOME，然后每次回车按 `TARGET1 -> HOME -> TARGET2 -> HOME` 循环；TARGET1 默认速度 60，TARGET2 默认速度 15，HOME 默认速度 15。
+- 改了哪里：`ros2_tmp/src/ik_benchmark/scripts/fake_plc_cli_task_publisher.py`、`ros2_tmp/docs/fixed_platform_acceptance_runbook.md`。
+- 验证结果：脚本语法检查通过，`alfa_robot_benchmarks` 编译通过；未在本机实际执行节点，避免启动即发 HOME 误动。
+- 留给下个 AI：旧参数 `velocity` 现在忽略；需要改速度用 `home_velocity`、`target1_velocity`、`target2_velocity`。

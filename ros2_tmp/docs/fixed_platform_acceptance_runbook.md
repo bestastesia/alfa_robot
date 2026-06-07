@@ -92,7 +92,7 @@ ros2 run alfa_robot_benchmarks mock_box_task_publisher
 - 左末端目标：`(0.70, 0.20, 1.40)`
 - 右末端目标：`(0.70, -0.20, 1.40)`
 - 坐标系：`world`
-- 朝向：`+X`
+- 朝向：保持 `+X`；默认不额外 roll（`left_roll_deg=0`、`right_roll_deg=0`）。
 - 机器人固定 `updown=0.18m`
 
 临时改目标坐标示例：
@@ -101,7 +101,8 @@ ros2 run alfa_robot_benchmarks mock_box_task_publisher
 ros2 run alfa_robot_benchmarks mock_box_task_publisher --ros-args \
   -p task_id:=manual_front_pair \
   -p left_x:=0.70 -p left_y:=0.20 -p left_z:=1.40 \
-  -p right_x:=0.70 -p right_y:=-0.20 -p right_z:=1.40
+  -p right_x:=0.70 -p right_y:=-0.20 -p right_z:=1.40 \
+  -p left_roll_deg:=0.0 -p right_roll_deg:=0.0
 ```
 
 ## 3. 关键可调参数
@@ -147,7 +148,61 @@ python3 -m alfa_robot_plc_driver.cli move-abs --targets 1:0,2:0,...,12:0 --vel 3
 - ROS bridge `final_abs`：只取 MoveIt 轨迹最后一个点，调用同类 `move_abs` 逻辑写 PLC；它会丢掉中间轨迹点，所以只适合诊断，不适合正式避障轨迹执行。
 
 
-## 5. 当前几何与障碍口径
+## 5. 真实 PLC 不动时的最小断点检查
+
+如果 CLI `move-abs` 能动，但本栈发任务不动，不要反复点任务，先按顺序看断点：
+
+1. 看 PLC bridge 是否真是实机模式、参数是否像 CLI：
+
+```bash
+ros2 param get /plc_bridge_node mock
+ros2 param get /plc_bridge_node plc_ip
+ros2 param get /plc_bridge_node velocity_limit_deg_s
+ros2 param get /plc_bridge_node acceleration_limit_deg_s2
+ros2 param get /plc_bridge_node deceleration_limit_deg_s2
+ros2 param get /plc_bridge_node emergency_deceleration_deg_s2
+ros2 param get /plc_bridge_node plc_execution_mode
+```
+
+期望：`mock=false`，`vel` 与启动值一致，`acc/dec/emergency_dec` 默认分别是 `10/10/30`，和 CLI 默认一致。
+
+2. 看 bridge 有没有收到编排层发来的轨迹：
+
+```bash
+ros2 topic echo /plc_bridge_state
+```
+
+同时看启动终端是否出现：
+
+```text
+accepted trajectory for PLC from topic: mode=stream, points=..., duration=..., preview=Axis1: ...
+trajectory finished: commands=..., duration=..., final_targets={Axis1: ...}
+```
+
+先看编排层是否出现：
+
+```text
+Publishing PLC trajectory task=... topic=/plc_joint_trajectory points=... joints=... subscribers=...
+Published PLC trajectory task=...
+```
+
+如果这里 `subscribers=0`，说明 PLC bridge 没订阅到 `/plc_joint_trajectory`，通常是 bridge 没启动、域不一致或没有 source 当前工作区。
+如果没有 `Publishing PLC trajectory`，问题在 IK/MoveIt 到编排层发布之前。
+如果有 `Publishing PLC trajectory` 但没有 `accepted trajectory for PLC from topic`，问题在 `/plc_joint_trajectory` topic 连接。
+如果有 `accepted trajectory for PLC` 但 `trajectory execution failed`，问题在 PLC 通讯或寄存器写入。
+如果有 `trajectory finished` 但机械不动，优先检查轴映射/轴反向/PLC 当前模式/是否被急停或未使能。
+
+3. 对照 CLI 后读 PLC 状态：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot_ec/tools/alfa_robot_plc_driver
+python3 -m alfa_robot_plc_driver.cli status --max-axes 12
+```
+
+重点看每轴 `target/vel/ack/err/status_word` 是否变化。
+
+
+## 6. 当前几何与障碍口径
 
 - 箱垛：2 列 × 4 行。
 - 两列中心对称在机器人中线两侧：`y=+0.20` 和 `y=-0.20`。
@@ -157,10 +212,10 @@ python3 -m alfa_robot_plc_driver.cli move-abs --targets 1:0,2:0,...,12:0 --vel 3
 - 末端规划点：`x=0.70m`，比箱子前侧面安全退让约 `6cm`。
 - 障碍不启动 MuJoCo，只按 MuJoCo/仿真参数静态注入 MoveIt PlanningScene。
 
-## 6. 当前初始姿态
+## 7. 当前初始姿态
 
 - `updown=0.18m`。
-- 左右臂 home：`0°, 5°, 145°, 0°, 120°, 0°`。
+- 左右臂 home：`0°, 0°, 0°, 0°, 0°, 0°`。
 - PLC bridge 不再发布 `/joint_states`；`/joint_states` 只采用 demo/ros2_control 的状态。
 
 检查 `/joint_states` 发布者：
@@ -171,7 +226,7 @@ ros2 topic info /joint_states -v
 
 期望：`Publisher count: 1`，发布者为 `joint_state_broadcaster`。
 
-## 7. 各线程数据流
+## 8. 各线程数据流
 
 ### demo / MoveIt / RViz 层
 
@@ -226,7 +281,7 @@ ros2 topic echo /alfa_safety/state
 - 监听 `/alfa_debug/orchestrator_plc_trajectory`。
 - 用于确认 IK → planner → PLC 的 joint 数据没有被改坏。
 
-## 8. 验收时重点看
+## 9. 验收时重点看
 
 终端 1 应出现类似日志：
 
@@ -235,6 +290,7 @@ Applied 8 static 2-column x 4-row acceptance boxes: front_x=0.76 center_x=0.91
 Temporary MoveIt joint planner ready: group=dual_v5_arm_with_base ... updown=0.180
 KDL IK success h=0.180 ... left=SUCCESS right=SUCCESS
 Plan success task=manual_front_pair ...
+accepted trajectory for PLC: mode=stream, points=..., duration=...
 trajectory finished: commands=... duration=...
 Task manual_front_pair: done - task completed
 ```
@@ -247,7 +303,7 @@ planner trajectory last -> PLC trajectory last: 全部 0
 planner target -> planner trajectory last: 小于 1deg
 ```
 
-## 9. 已验证结果
+## 10. 已验证结果
 
 本机在 `2026-06-05` 已完成一次端到端验证：
 
@@ -260,4 +316,144 @@ planner target -> planner trajectory last: 小于 1deg
 - `final_abs` 模式下，PLC/mock 命令数为 `1`，性质更接近 CLI `move-abs`，仅作为诊断对照，不作为正式轨迹执行方案。
 - 任务发布层收到 `task completed`。
 
-(base) li@li-Legion-R9000P-ARX8:/mnt/mydisk/ALFA/alfa_robot_ec/tools/alfa_robot_plc_driver$ python3 -m alfa_robot_plc_driver.cli move-abs --targets 1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0,12:0 --vel 3 --yes-write
+
+## 11. PLC 监听与 home 保持
+
+一键栈默认启动 `plc_acceptance_supervisor.py`，它会订阅 `/plc_bridge_state` 和 `/alfa_task/status`，每秒汇总 PLC 状态，不需要盯多个终端。
+
+关键日志：
+
+```text
+PLC monitor: mode=real state=normal executing=false last_commands=... home_commands=...
+PLC state changed: mode=real state=executing executing=true ...
+home hold command published #...
+home hold stopped because task started: ...
+```
+
+默认只监听，不主动发 home。若需要启动后持续把机械臂校准到当前 home：
+
+```bash
+ros2 launch alfa_robot_benchmarks fixed_platform_acceptance_stack.launch.py \
+  plc_mock:=false \
+  velocity_limit_deg_s:=3.0 \
+  plc_execution_mode:=final_abs \
+  enable_home_hold:=true \
+  home_hold_period_s:=1.0
+```
+
+安全规则：
+
+- home hold 只在 PLC `state=normal` 且 `executing=false` 时发。
+- 收到任务 `accepted/running` 后默认自动停止 home hold，避免和任务轨迹抢 `/plc_joint_trajectory`。
+- `home_hold_max_commands:=N` 可限制最多发 N 次；默认 `0` 表示不限制，直到任务开始。
+- 当前 home 是 `updown=0.18m`，双臂 12 轴全 `0°`。
+
+只想单独开监听：
+
+```bash
+ros2 run alfa_robot_benchmarks plc_acceptance_supervisor.py
+```
+
+只想单独开监听 + home 校准：
+
+```bash
+ros2 run alfa_robot_benchmarks plc_acceptance_supervisor.py --ros-args \
+  -p enable_home_hold:=true \
+  -p home_period_s:=1.0 \
+  -p max_home_commands:=5
+```
+
+
+中间隔板可调参数示例：
+
+```bash
+ros2 launch alfa_robot_benchmarks fixed_platform_acceptance_stack.launch.py \
+  enable_center_separation_plate:=true \
+  center_plate_x_min:=0.4 \
+  center_plate_x_max:=0.76 \
+  center_plate_y_thickness:=0.001
+```
+
+## 12. 保险演示模式
+
+### A. MoveIt 规划固定 12 轴目标
+
+一键栈保持启动，但让编排层跳过 IK，直接把固定 joint target 交给 MoveIt 规划，再发给 PLC bridge：
+
+```bash
+ros2 launch alfa_robot_benchmarks fixed_platform_acceptance_stack.launch.py \
+  plc_mock:=false \
+  velocity_limit_deg_s:=5.0 \
+  plc_execution_mode:=stream \
+  demo_mode:=fixed_joint_target \
+  enable_center_separation_plate:=true
+```
+
+固定目标是 ROS/MoveIt 方向：
+
+```text
+left:  -28, 51, -38, 30, -81, 83 deg
+right:  28, 49, -35, -28, -79, -85 deg
+```
+
+然后仍然用任务发布层回车触发：
+
+```bash
+ros2 run alfa_robot_benchmarks mock_box_task_publisher
+```
+
+### B. 直接 PLC CLI 伪任务
+
+完全绕过 IK/MoveIt/ROS 执行层，回车后直接调用 PLC CLI。现在每按一次回车会在 `HOME(全 0)` 和 `TARGET(演示姿态)` 之间切换，第一次回车去 TARGET，第二次回车回 HOME：
+
+```bash
+ros2 run alfa_robot_benchmarks fake_plc_cli_task_publisher.py --ros-args \
+  -p velocity:=5.0
+```
+
+实际 TARGET 命令等价于：
+
+```bash
+python3 -m alfa_robot_plc_driver.cli move-abs \
+  --targets 1:-28,2:51,3:38,4:30,5:81,6:83,7:28,8:-49,9:-35,10:-28,11:-79,12:-85 \
+  --vel 3 --yes-write
+```
+
+注意：PLC CLI 目标使用 PLC/电控方向；MoveIt 固定目标使用 ROS/MoveIt 方向，所以第 3、5、8 轴符号不同。
+
+### C. PLC CLI 01020102 循环演示
+
+`fake_plc_cli_task_publisher.py` 当前会在启动时先发一次 HOME，然后每次回车按以下顺序循环：
+
+```text
+TARGET1 -> HOME -> TARGET2 -> HOME -> TARGET1 -> HOME -> TARGET2 -> HOME ...
+```
+
+默认速度：
+
+```text
+HOME:    15
+TARGET1: 60
+TARGET2: 15
+```
+
+运行：
+
+```bash
+ros2 run alfa_robot_benchmarks fake_plc_cli_task_publisher.py
+```
+
+临时改速度：
+
+```bash
+ros2 run alfa_robot_benchmarks fake_plc_cli_task_publisher.py --ros-args \
+  -p target1_velocity:=60.0 \
+  -p target2_velocity:=15.0 \
+  -p home_velocity:=15.0
+```
+
+TARGET2 默认值：
+
+```text
+1:16,2:15,3:-119,4:-160,5:46,6:-104,7:33,8:-7,9:111,10:56,11:46,12:40
+```

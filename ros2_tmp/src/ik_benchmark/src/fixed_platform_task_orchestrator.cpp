@@ -36,11 +36,28 @@ sensor_msgs::msg::JointState homeJointState(double updown)
         "left_v5_joint1", "left_v5_joint2", "left_v5_joint3", "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
         "right_v5_joint1", "right_v5_joint2", "right_v5_joint3", "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
     };
-    const double d = M_PI / 180.0;
     state.position = {
         0.0, updown,
-        0.0, 5.0 * d, 145.0 * d, 0.0, 120.0 * d, 0.0,
-        0.0, 5.0 * d, 145.0 * d, 0.0, 120.0 * d, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+    };
+    return state;
+}
+
+
+sensor_msgs::msg::JointState fixedDemoJointTarget(double updown)
+{
+    sensor_msgs::msg::JointState state;
+    state.name = {
+        "updown",
+        "left_v5_joint1", "left_v5_joint2", "left_v5_joint3", "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
+        "right_v5_joint1", "right_v5_joint2", "right_v5_joint3", "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    };
+    const double d = M_PI / 180.0;
+    state.position = {
+        updown,
+        -28.0 * d, 51.0 * d, -38.0 * d, 30.0 * d, -81.0 * d, 83.0 * d,
+        28.0 * d, 49.0 * d, -35.0 * d, -28.0 * d, -79.0 * d, -85.0 * d,
     };
     return state;
 }
@@ -109,6 +126,7 @@ public:
         execution_timeout_ms_ = declare_parameter<int>("execution_timeout_ms", 120000);
         service_timeout_ms_ = declare_parameter<int>("service_timeout_ms", 30000);
         ik_max_attempts_ = static_cast<int>(std::max<int64_t>(1, declare_parameter<int64_t>("ik_max_attempts", 5)));
+        demo_mode_ = declare_parameter<std::string>("demo_mode", "ik");
 
         latest_joint_state_ = homeJointState(fixed_updown_);
 
@@ -184,37 +202,46 @@ private:
         }
         forceUpdown(ik_request->current_joint_state, fixed_updown_);
 
-        publishStatus(command, "running", "calling IK");
-        SolveDualIk::Response::SharedPtr ik_response;
-        std::string last_ik_reason;
-        for (int attempt = 1; attempt <= ik_max_attempts_; ++attempt) {
-            ik_response = callService<SolveDualIk>(ik_client_, ik_request, ik_service_name_);
-            if (ik_response && ik_response->success) {
-                if (attempt > 1) {
-                    RCLCPP_INFO(get_logger(), "IK succeeded on attempt %d/%d for task %s", attempt, ik_max_attempts_, command.task_id.c_str());
+        sensor_msgs::msg::JointState selected_joint_target;
+        if (demo_mode_ == "fixed_joint_target") {
+            selected_joint_target = fixedDemoJointTarget(fixed_updown_);
+            selected_joint_target.header = base_command.header;
+            RCLCPP_WARN(get_logger(), "Demo mode fixed_joint_target: skipping IK and using hardcoded 12-axis target for task=%s",
+                        command.task_id.c_str());
+            publishFixedTargetDebug(command, selected_joint_target);
+        } else {
+            publishStatus(command, "running", "calling IK");
+            SolveDualIk::Response::SharedPtr ik_response;
+            std::string last_ik_reason;
+            for (int attempt = 1; attempt <= ik_max_attempts_; ++attempt) {
+                ik_response = callService<SolveDualIk>(ik_client_, ik_request, ik_service_name_);
+                if (ik_response && ik_response->success) {
+                    if (attempt > 1) {
+                        RCLCPP_INFO(get_logger(), "IK succeeded on attempt %d/%d for task %s", attempt, ik_max_attempts_, command.task_id.c_str());
+                    }
+                    break;
                 }
-                break;
+                last_ik_reason = ik_response ? ik_response->failure_reason : "IK service unavailable/timeout";
+                RCLCPP_WARN(get_logger(), "IK attempt %d/%d failed for task %s: %s",
+                            attempt, ik_max_attempts_, command.task_id.c_str(), last_ik_reason.c_str());
             }
-            last_ik_reason = ik_response ? ik_response->failure_reason : "IK service unavailable/timeout";
-            RCLCPP_WARN(get_logger(), "IK attempt %d/%d failed for task %s: %s",
-                        attempt, ik_max_attempts_, command.task_id.c_str(), last_ik_reason.c_str());
+            if (!ik_response || !ik_response->success) {
+                failTask(command, "IK failed after " + std::to_string(ik_max_attempts_) + " attempts: " + last_ik_reason);
+                return;
+            }
+            selected_joint_target = ik_response->joint_target;
+            publishIkDebug(command, *ik_response);
         }
-        if (!ik_response || !ik_response->success) {
-            failTask(command, "IK failed after " + std::to_string(ik_max_attempts_) + " attempts: " + last_ik_reason);
-            return;
-        }
-
-        publishIkDebug(command, *ik_response);
 
         publishStatus(command, "running", "calling MoveIt planner");
         trajectory_msgs::msg::JointTrajectory trajectory;
         if (mock_planner_) {
-            trajectory = makeMockTrajectory(ik_response->joint_target);
+            trajectory = makeMockTrajectory(selected_joint_target);
         } else {
             auto plan_request = std::make_shared<PlanJointTarget::Request>();
             plan_request->header = base_command.header;
             plan_request->task_id = command.task_id;
-            plan_request->joint_target = ik_response->joint_target;
+            plan_request->joint_target = selected_joint_target;
             auto plan_response = callService<PlanJointTarget>(planner_client_, plan_request, planner_service_name_);
             if (!plan_response || !plan_response->success) {
                 const std::string reason = plan_response ? plan_response->failure_reason : "planner service unavailable/timeout";
@@ -228,18 +255,23 @@ private:
         trajectory.header = base_command.header;
         trajectory.header.stamp = now();
         publishTrajectoryDebug(command, trajectory);
+        RCLCPP_INFO(get_logger(),
+                    "Publishing PLC trajectory task=%s topic=%s points=%zu joints=%zu subscribers=%zu",
+                    command.task_id.c_str(), trajectory_topic_.c_str(), trajectory.points.size(),
+                    trajectory.joint_names.size(), trajectory_pub_->get_subscription_count());
         {
             std::lock_guard<std::mutex> lock(plc_state_mutex_);
             latest_plc_state_.clear();
         }
         trajectory_pub_->publish(trajectory);
+        RCLCPP_INFO(get_logger(), "Published PLC trajectory task=%s", command.task_id.c_str());
         if (wait_execution_done_ && !waitForExecutionDone(command)) {
             return;
         }
 
         {
             std::lock_guard<std::mutex> lock(joint_mutex_);
-            latest_joint_state_ = ik_response->joint_target;
+            latest_joint_state_ = selected_joint_target;
             forceUpdown(latest_joint_state_, fixed_updown_);
         }
         last_done_task_id_ = command.task_id;
@@ -249,6 +281,24 @@ private:
     }
 
 
+
+
+    void publishFixedTargetDebug(const TaskCommand& command, const sensor_msgs::msg::JointState& joint_target)
+    {
+        nlohmann::json data;
+        data["source"] = "fixed_platform_task_orchestrator";
+        data["type"] = "fixed_joint_target_to_planner";
+        data["task_id"] = command.task_id;
+        data["success"] = true;
+        data["failure_reason"] = "";
+        data["selected_h"] = fixed_updown_;
+        data["score"] = 0.0;
+        data["wall_ms"] = 0.0;
+        data["joint_target"] = jointStateToJson(joint_target);
+        std_msgs::msg::String msg;
+        msg.data = data.dump();
+        ik_debug_pub_->publish(msg);
+    }
 
     void publishIkDebug(const TaskCommand& command, const SolveDualIk::Response& ik_response)
     {
@@ -382,6 +432,7 @@ private:
     int execution_timeout_ms_ = 120000;
     int service_timeout_ms_ = 30000;
     int ik_max_attempts_ = 5;
+    std::string demo_mode_ = "ik";
 
     bool busy_ = false;
     std::string current_task_id_;
