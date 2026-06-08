@@ -14,18 +14,18 @@
                canopen_profile_accel:=50000
                pitch_initial:=0.0
                turn_initial:=0.0
-               updown_initial:=0.45
+               updown_initial:=0.0
                left_v5_joint1_initial:=0.0
-               left_v5_joint2_initial:=0.26179939
-               left_v5_joint3_initial:=2.35619449
+               left_v5_joint2_initial:=0.0
+               left_v5_joint3_initial:=0.0
                left_v5_joint4_initial:=0.0
-               left_v5_joint5_initial:=1.04719755
+               left_v5_joint5_initial:=0.0
                left_v5_joint6_initial:=0.0
                right_v5_joint1_initial:=0.0
-               right_v5_joint2_initial:=0.26179939
-               right_v5_joint3_initial:=2.35619449
+               right_v5_joint2_initial:=0.0
+               right_v5_joint3_initial:=0.0
                right_v5_joint4_initial:=0.0
-               right_v5_joint5_initial:=1.04719755
+               right_v5_joint5_initial:=0.0
                right_v5_joint6_initial:=0.0"
                >
 

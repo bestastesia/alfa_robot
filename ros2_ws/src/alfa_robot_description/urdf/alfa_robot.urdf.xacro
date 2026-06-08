@@ -564,7 +564,7 @@
   </link>
   
 <joint name="right_v5_joint5" type="revolute">
-    <origin xyz="0.00078891 -0.083 -0.057995" rpy="1.5708 -0.013602 0" />
+    <origin xyz="0.00078891 0.083 -0.057995" rpy="1.5708 -0.013602 0" />
     <parent link="right_v5_link4_axis" />
     <child link="right_v5_link5" />
     <axis xyz="0 0 -1" />
