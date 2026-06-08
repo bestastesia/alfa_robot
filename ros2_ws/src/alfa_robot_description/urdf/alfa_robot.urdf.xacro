@@ -324,11 +324,11 @@
   </link>
   
 <joint name="left_v5_joint5" type="revolute">
-    <origin xyz="-0.00078891 -0.083 0.057995" rpy="1.5708 -0.013602 0" />
+    <origin xyz="-0.00078891 -0.083 0.057995" rpy="-1.57106636 -1.55719433 -3.14132260" />
     <parent link="left_v5_link4_axis" />
     <child link="left_v5_link5" />
     <axis xyz="0 0 -1" />
-    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
   
 <link name="left_v5_link6">
@@ -505,7 +505,7 @@
   </link>
   
 <joint name="right_v5_joint4_connector_fixed" type="fixed">
-    <origin xyz="-0.0010609 -0.239 0.077993" rpy="1.5708 0 0" />
+    <origin xyz="-0.00226694 -0.23900051 0.07798831" rpy="1.5708 0 0" />
     <parent link="right_v5_link3" />
     <child link="right_v5_link4" />
   </joint>
@@ -533,7 +533,7 @@
     </collision>
   </link>
   <joint name="right_v5_joint4" type="revolute">
-    <origin xyz="0.0010337 -0.075993 0.058" rpy="-1.5708 0 0" />
+    <origin xyz="-0.00103370 -0.07599300 0.05800000" rpy="1.5708 0 0" />
     <parent link="right_v5_link4" />
     <child link="right_v5_link4_axis" />
     <axis xyz="0 0 1" />
@@ -564,11 +564,11 @@
   </link>
   
 <joint name="right_v5_joint5" type="revolute">
-    <origin xyz="0.00078891 0.083 -0.057995" rpy="1.5708 -0.013602 0" />
+    <origin xyz="-0.00078891 0.08300000 0.05799500" rpy="1.57106636 -1.55719433 3.14132260" />
     <parent link="right_v5_link4_axis" />
     <child link="right_v5_link5" />
     <axis xyz="0 0 -1" />
-    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
   
 <link name="right_v5_link6">
@@ -595,7 +595,7 @@
   </link>
   
 <joint name="right_v5_joint6" type="revolute">
-    <origin xyz="0.00078891 -0.083 -0.057995" rpy="1.5708 -0.013602 0" />
+    <origin xyz="-0.00078891 0.08300000 0.05799500" rpy="-1.5708 -0.013602 0" />
     <parent link="right_v5_link5" />
     <child link="right_v5_link6" />
     <axis xyz="0 0 1" />
