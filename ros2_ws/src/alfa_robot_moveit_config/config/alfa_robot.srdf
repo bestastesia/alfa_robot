@@ -69,13 +69,15 @@
     <disable_collisions link1="left_v5_link1" link2="left_v5_link2" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link2" link2="left_v5_link3" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link3" link2="left_v5_link4" reason="Adjacent"/>
-    <disable_collisions link1="left_v5_link4" link2="left_v5_link5" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_link4" link2="left_v5_link4_axis" reason="Adjacent"/>
+    <disable_collisions link1="left_v5_link4_axis" link2="left_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="left_v5_link5" link2="left_v5_link6" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link0" link2="right_v5_link1" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link1" link2="right_v5_link2" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link2" link2="right_v5_link3" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link3" link2="right_v5_link4" reason="Adjacent"/>
-    <disable_collisions link1="right_v5_link4" link2="right_v5_link5" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_link4" link2="right_v5_link4_axis" reason="Adjacent"/>
+    <disable_collisions link1="right_v5_link4_axis" link2="right_v5_link5" reason="Adjacent"/>
     <disable_collisions link1="right_v5_link5" link2="right_v5_link6" reason="Adjacent"/>
     <!-- Arm vs Base collisions are intentionally enabled globally. -->
     <!-- Suction/link6 vs own arm collisions are intentionally enabled. -->
