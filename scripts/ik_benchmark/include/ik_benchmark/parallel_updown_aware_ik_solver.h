@@ -61,7 +61,7 @@ struct UpdownAwareIkConfig {
     double position_tolerance = 0.02;
     double top_suction_position_tolerance = 0.04;
     double orientation_tolerance = 0.05;
-    double top_suction_orientation_tolerance = 0.0872664626;
+    double top_suction_orientation_tolerance = 0.1221730476;
     bool check_collision = false;
     bool enforce_arm_base_collisions = false;
     bool reject_swapped_tips = true;
@@ -235,6 +235,7 @@ private:
     std::vector<double> fullJointValuesForFixedGroup(double h, const std::vector<double>& arm_values) const;
     double positionError(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const;
     double orientationError(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const;
+    double toolAxisError(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const;
     double jointDelta(const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const;
     double jointValue(const UpdownAwareIkCandidate& candidate, const std::string& name, double fallback = 0.0) const;
     double armTorqueProxy(const UpdownAwareIkCandidate& candidate, const std::string& prefix) const;

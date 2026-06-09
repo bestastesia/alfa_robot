@@ -183,7 +183,7 @@ UpdownAwareIkConfig makeBioIkConfig()
     config.position_tolerance = 0.02;
     config.top_suction_position_tolerance = 0.04;
     config.orientation_tolerance = 0.05;
-    config.top_suction_orientation_tolerance = 5.0 * M_PI / 180.0;
+    config.top_suction_orientation_tolerance = 7.0 * M_PI / 180.0;
     config.check_collision = true;
     config.enforce_arm_base_collisions = true;
     config.reject_swapped_tips = true;

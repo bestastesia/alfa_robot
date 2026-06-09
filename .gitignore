@@ -182,6 +182,7 @@ scripts/ik_benchmark/log/
 
 # MoveIt scripts (temporary)
 ros2_ws/src/alfa_robot_moveit_config/scripts/*
+!ros2_ws/src/alfa_robot_moveit_config/scripts/visualize_moveit_box_stack_flow.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/nine_orient_reachability.py

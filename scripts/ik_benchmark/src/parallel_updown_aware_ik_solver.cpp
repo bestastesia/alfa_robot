@@ -525,8 +525,12 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     const double swapped_left = positionError(request.left_target, actual_poses[1]);
     const double swapped_right = positionError(request.right_target, actual_poses[0]);
     out.swapped_pos_error = std::max(swapped_left, swapped_right);
-    out.direct_ori_error = std::max(orientationError(request.left_target, actual_poses[0]),
-                                    orientationError(request.right_target, actual_poses[1]));
+    const bool top_suction = request.grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction;
+    out.direct_ori_error = top_suction
+        ? std::max(toolAxisError(request.left_target, actual_poses[0]),
+                   toolAxisError(request.right_target, actual_poses[1]))
+        : std::max(orientationError(request.left_target, actual_poses[0]),
+                   orientationError(request.right_target, actual_poses[1]));
     out.swapped = out.swapped_pos_error + 1e-4 < out.direct_pos_error;
     if (config_.reject_swapped_tips && out.swapped) {
         out.rejection_reason = "tip_order_error";
@@ -661,6 +665,15 @@ double ParallelUpdownAwareIkSolver::orientationError(
 {
     Eigen::AngleAxisd aa(target.linear().transpose() * actual.linear());
     return aa.angle();
+}
+
+double ParallelUpdownAwareIkSolver::toolAxisError(
+    const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual) const
+{
+    const Eigen::Vector3d target_axis = target.linear().col(2).normalized();
+    const Eigen::Vector3d actual_axis = actual.linear().col(2).normalized();
+    const double dot = std::clamp(target_axis.dot(actual_axis), -1.0, 1.0);
+    return std::acos(dot);
 }
 
 double ParallelUpdownAwareIkSolver::jointDelta(

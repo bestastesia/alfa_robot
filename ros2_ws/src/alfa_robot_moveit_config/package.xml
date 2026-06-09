@@ -22,9 +22,16 @@
   <!-- Build deps for dual_arm_planner_node (C++) -->
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>moveit_core</depend>
   <depend>moveit_ros_planning_interface</depend>
   <depend>moveit_ros_planning</depend>
   <depend>moveit_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>random_numbers</depend>
+  <depend>srdfdom</depend>
+  <depend>urdf</depend>
+  <depend>nlohmann_json</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>shape_msgs</depend>
@@ -39,6 +46,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>moveit_kinematics</exec_depend>
+  <exec_depend>bio_ik</exec_depend>
   <exec_depend>pick_ik</exec_depend>
   <exec_depend>moveit_planners</exec_depend>
   <exec_depend>moveit_simple_controller_manager</exec_depend>
