@@ -345,9 +345,39 @@ ament_target_dependencies(collision_state_monitor PUBLIC
   urdf
 )
 
+
+# ── analytic_v5_ik_benchmark executable ───────────────────────────────────
+
+add_library(analytic_v5_ik_solver_lib SHARED
+  src/analytic_v5_ik_solver.cpp
+)
+
+target_include_directories(analytic_v5_ik_solver_lib PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(analytic_v5_ik_solver_lib PUBLIC
+  Eigen3
+)
+
+add_executable(analytic_v5_ik_benchmark src/analytic_v5_ik_benchmark_main.cpp)
+
+target_include_directories(analytic_v5_ik_benchmark PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(analytic_v5_ik_benchmark PUBLIC
+  Eigen3
+  nlohmann_json
+)
+
+target_link_libraries(analytic_v5_ik_benchmark PRIVATE analytic_v5_ik_solver_lib)
+
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor analytic_v5_ik_benchmark ik_solver_lib parallel_updown_aware_ik_solver_lib analytic_v5_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
