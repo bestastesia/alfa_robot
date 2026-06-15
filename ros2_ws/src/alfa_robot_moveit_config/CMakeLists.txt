@@ -63,20 +63,12 @@ target_link_libraries(alfa_robot_motion_core
 
 add_library(alfa_robot_motion_scene_adapter
   src/box_stack_flow_orchestrator.cpp
-  src/extract_benchmark_runner.cpp
-  src/extract_benchmark_csv_writer.cpp
-  src/extract_benchmark_summary.cpp
-  src/extract_candidate_scorer.cpp
-  src/extract_candidate_solver.cpp
   src/extract_demo_orchestrator.cpp
-  src/extract_motion_planner.cpp
-  src/extract_rollout_planner.cpp
-  src/ik_candidate_selector.cpp
-  src/loaded_pose_planner.cpp
-  src/loaded_pose_selector.cpp
+  src/extract_planning_pipeline.cpp
+  src/loaded_pose_planning.cpp
   src/motion_flow_recorder.cpp
   src/motion_scene_adapter.cpp
-  src/optimized_dual_ik_solver.cpp
+  src/optimized_ik_pipeline.cpp
   ${IK_BENCHMARK_ROOT}/src/ik_solver.cpp
   ${IK_BENCHMARK_ROOT}/src/parallel_updown_aware_ik_solver.cpp
 )

@@ -1,6 +1,6 @@
 # 双臂抓取运控流程封装说明
 
-本文档用于给其它仓库、其它部门 AI 或工程师对接当前双臂抓取流程。当前代码仍在 `alfa_robot_moveit_config` 包内，但已经把原来集中在 `dual_arm_planner_node.cpp` 的长流程拆成一组普通 C++ 模块，便于后续迁移到独立运控包或 IK 服务包。
+本文档用于给其它仓库、其它部门 AI 或工程师对接当前双臂抓取流程。当前代码仍在 `alfa_robot_moveit_config` 包内，但已经把原来集中在 `dual_arm_planner_node.cpp` 的长流程拆成一组按职责划分的 C++ 模块，便于后续迁移到独立运控包或 IK 服务包。
 
 ## 1. 当前流程总览
 
@@ -17,7 +17,7 @@
   -> 记录：JSONL / CSV / Rerun 回放
 ```
 
-核心原则：IK、抽离、负重规划都保留阶段记录和失败原因；重构只移动代码位置，不改变算法语义。
+核心原则：IK、抽离、负重规划都保留阶段记录和失败原因；重构只移动代码位置，不改变算法语义。代码文件按职责聚合，不再按每个小类单独切文件，避免后续对接时“到处找算法碎片”。
 
 ## 2. 代码入口与责任划分
 
@@ -27,21 +27,12 @@
 | `motion_core/pose_math` | 角度解析、抓取姿态、Pose/Eigen 转换、误差计算、JSON 辅助 | `include/alfa_robot_moveit_config/motion_core/pose_math.hpp` / `src/motion_core/pose_math.cpp` |
 | `motion_core/scene_geometry` | 集装箱板、动态箱墙、末端附着箱、AABB 与邻箱脱离判断 | `include/alfa_robot_moveit_config/motion_core/scene_geometry.hpp` / `src/motion_core/scene_geometry.cpp` |
 | `MotionSceneAdapter` | 将场景几何转换为 MoveIt collision/attached objects，并管理 ADD/REMOVE 与当前场景状态 | `include/alfa_robot_moveit_config/motion_scene_adapter.hpp` / `src/motion_scene_adapter.cpp` |
-| `OptimizedDualIkSolver` | 将 MoveIt `RobotState`/左右末端 Pose 翻译成 fixed h × multi seed × cost scorer 请求，写回 selected joint state，输出 IK 审计 JSON | `include/alfa_robot_moveit_config/optimized_dual_ik_solver.hpp` / `src/optimized_dual_ik_solver.cpp` |
-| `IkCandidateSelector` | 对 legal IK 候选按 score 排序后的相似姿态去重和候选数量截断 | `include/alfa_robot_moveit_config/ik_candidate_selector.hpp` / `src/ik_candidate_selector.cpp` |
-| `ExtractMotionPlanner` | 抽离动作模板、pitch 调整层、retreat/lift 候选目标盒心生成 | `include/alfa_robot_moveit_config/extract_motion_planner.hpp` / `src/extract_motion_planner.cpp` |
-| `ExtractCandidateSolver` | 抽离阶段单臂 KDL / 独立 KDL 候选求解、tip 误差和基础姿态硬约束 | `include/alfa_robot_moveit_config/extract_candidate_solver.hpp` / `src/extract_candidate_solver.cpp` |
-| `ExtractCandidateScorer` | 抽离候选的 lift/pitch/连续性/关节变化/tip 变化代价打分 | `include/alfa_robot_moveit_config/extract_candidate_scorer.hpp` / `src/extract_candidate_scorer.cpp` |
-| `ExtractRolloutPlanner` | 单臂/双臂抽离 rollout 状态机、成功/失败早停、异步组合、逐步记录字段生成 | `include/alfa_robot_moveit_config/extract_rollout_planner.hpp` / `src/extract_rollout_planner.cpp` |
-| `LoadedPoseSelector` | 从抽离后的关节状态选择最近的负重姿态族，并生成负重目标 joint state | `include/alfa_robot_moveit_config/loaded_pose_selector.hpp` / `src/loaded_pose_selector.cpp` |
-| `LoadedPosePlanner` | 抽离后到负重姿态的 MoveIt 规划、批量排序/limit/首成功即停、临时附着箱状态和负重规划记录 | `include/alfa_robot_moveit_config/loaded_pose_planner.hpp` / `src/loaded_pose_planner.cpp` |
-| `ExtractBenchmarkRunner` | IK 合法候选筛选/去重、抽离 rollout 调度、抽离 worker、负重规划批处理、CSV/summary 写入 | `include/alfa_robot_moveit_config/extract_benchmark_runner.hpp` / `src/extract_benchmark_runner.cpp` |
-| `ExtractBenchmarkCsvWriter` | 抽离 benchmark CSV 表头和逐候选 timing 输出 | `include/alfa_robot_moveit_config/extract_benchmark_csv_writer.hpp` / `src/extract_benchmark_csv_writer.cpp` |
-| `ExtractBenchmarkSummary` | 抽离/负重 timing 聚合、均值和首个负重成功候选统计 | `include/alfa_robot_moveit_config/extract_benchmark_summary.hpp` / `src/extract_benchmark_summary.cpp` |
+| `optimized_ik_pipeline` | 抓取 IK 选优整体算法：`OptimizedDualIkSolver` 负责 fixed h × multi seed × cost scorer 求解，`IkCandidateSelector` 负责 legal candidate 排序、相似姿态去重和 TopN 截断 | `include/alfa_robot_moveit_config/optimized_ik_pipeline.hpp` / `src/optimized_ik_pipeline.cpp` |
+| `extract_planning_pipeline` | 抽箱子整体算法：抽离动作模板、单步 KDL IK、抽离候选评分、单臂/双臂 rollout、候选调度、CSV/summary 统计都在这里 | `include/alfa_robot_moveit_config/extract_planning_pipeline.hpp` / `src/extract_planning_pipeline.cpp` |
+| `loaded_pose_planning` | 负重姿态阶段整体算法：从抽离末态选择最近负重姿态族，并调用 MoveIt 批量规划到负重 joint state | `include/alfa_robot_moveit_config/loaded_pose_planning.hpp` / `src/loaded_pose_planning.cpp` |
 | `MotionFlowRecorder` | JSONL 文件、stage 序号、轨迹/summary 记录写入 | `include/alfa_robot_moveit_config/motion_flow_recorder.hpp` / `src/motion_flow_recorder.cpp` |
 | `BoxStackFlowOrchestrator` | 传统 box-stack flow 的按轮任务顺序、预抓取/抓取/负重/回预抓取流程编排 | `include/alfa_robot_moveit_config/box_stack_flow_orchestrator.hpp` / `src/box_stack_flow_orchestrator.cpp` |
 | `ExtractDemoOrchestrator` | 抽离 demo 的单 pair / 多 pair 遍历、失败传播和 summary 记录 | `include/alfa_robot_moveit_config/extract_demo_orchestrator.hpp` / `src/extract_demo_orchestrator.cpp` |
-| `extract_planner_types` | 抽离候选、双臂抽离候选、单臂抽离路径、抽离耗时结果等共享数据结构 | `include/alfa_robot_moveit_config/extract_planner_types.hpp` |
 | `DualArmPlannerNode` | ROS 参数、MoveIt 后端、场景碰撞判定、service callback 装配 | `src/dual_arm_planner_node.cpp` |
 | 启动配置 | 暴露算法超参数和实验参数 | `launch/dual_arm_planner.launch.py` |
 | 回放工具 | 将 JSONL 转为 Rerun 场景 | `scripts/visualize_moveit_box_stack_flow.py` |
@@ -121,14 +112,14 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_scene_adapter` 包含 MoveIt 场景适配、IK Adapter、抽离 rollout、负重规划、benchmark runner 等模块。它依赖 MoveIt、KDL 和 benchmark IK solver。
+`alfa_robot_motion_scene_adapter` 包含 MoveIt 场景适配、IK 选优、抽离规划、负重规划、benchmark runner 等模块。它依赖 MoveIt、KDL 和 benchmark IK solver。
 
 迁移到新运控包时建议顺序：
 
 1. 先迁移 `motion_core/*`，保持纯数据和几何不变。
-2. 再迁移 `OptimizedDualIkSolver` / `IkCandidateSelector`，作为独立 IK 服务的核心算法 seam。
-3. 再迁移 `ExtractMotionPlanner`、`ExtractCandidateSolver`、`ExtractCandidateScorer`、`ExtractRolloutPlanner`，作为抽离规划模块。
-4. 最后迁移 `LoadedPoseSelector` / `LoadedPosePlanner` 和 `MotionSceneAdapter`，接入新 MoveIt/PlanningScene 后端。
+2. 再迁移 `optimized_ik_pipeline`，作为独立 IK 服务的核心算法。
+3. 再迁移 `extract_planning_pipeline`，作为抽箱子动作生成、单步 IK、评分和 rollout 的完整模块。
+4. 最后迁移 `loaded_pose_planning` 和 `MotionSceneAdapter`，接入新 MoveIt/PlanningScene 后端。
 5. `DualArmPlannerNode` 不建议整文件复制；它只应作为 ROS 参数和 service/action 包装参考。
 
 ## 5. 关键启动参数

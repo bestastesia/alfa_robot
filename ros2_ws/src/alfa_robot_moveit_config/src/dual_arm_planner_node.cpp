@@ -10,24 +10,15 @@
 
 #include "ik_benchmark/parallel_updown_aware_ik_solver.h"
 #include "alfa_robot_moveit_config/box_stack_flow_orchestrator.hpp"
-#include "alfa_robot_moveit_config/extract_benchmark_runner.hpp"
-#include "alfa_robot_moveit_config/extract_benchmark_csv_writer.hpp"
-#include "alfa_robot_moveit_config/extract_benchmark_summary.hpp"
-#include "alfa_robot_moveit_config/extract_candidate_scorer.hpp"
-#include "alfa_robot_moveit_config/extract_candidate_solver.hpp"
+#include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 #include "alfa_robot_moveit_config/extract_demo_orchestrator.hpp"
-#include "alfa_robot_moveit_config/extract_motion_planner.hpp"
-#include "alfa_robot_moveit_config/extract_planner_types.hpp"
-#include "alfa_robot_moveit_config/extract_rollout_planner.hpp"
-#include "alfa_robot_moveit_config/ik_candidate_selector.hpp"
-#include "alfa_robot_moveit_config/loaded_pose_planner.hpp"
-#include "alfa_robot_moveit_config/loaded_pose_selector.hpp"
+#include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
+#include "alfa_robot_moveit_config/loaded_pose_planning.hpp"
 #include "alfa_robot_moveit_config/motion_flow_recorder.hpp"
 #include "alfa_robot_moveit_config/motion_scene_adapter.hpp"
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
 #include "alfa_robot_moveit_config/motion_core/scene_geometry.hpp"
 #include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
-#include "alfa_robot_moveit_config/optimized_dual_ik_solver.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
