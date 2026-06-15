@@ -52,6 +52,11 @@ void pushUniqueTrial(std::vector<Trial>& trials,
     trials.push_back(std::move(trial));
 }
 
+double angularDistance(double a, double b)
+{
+    return std::abs(std::atan2(std::sin(a - b), std::cos(a - b)));
+}
+
 } // namespace
 
 ParallelUpdownAwareIkSolver::ParallelUpdownAwareIkSolver(UpdownAwareIkConfig config,
@@ -61,25 +66,34 @@ ParallelUpdownAwareIkSolver::ParallelUpdownAwareIkSolver(UpdownAwareIkConfig con
     if (config_.workers == 0) {
         config_.workers = 1;
     }
-    if (config_.solver_options.base_frame.empty()) {
-        config_.solver_options.base_frame = config_.base_frame;
+    IkSolverOptions fixed_options = config_.solver_options;
+    IkSolverOptions free_options = config_.solver_options;
+    fixed_options.base_frame = "updown";
+    free_options.base_frame = config_.base_frame;
+    if (fixed_options.tip_link.empty()) {
+        fixed_options.tip_link = config_.left_tip;
     }
-    if (config_.solver_options.tip_link.empty()) {
-        config_.solver_options.tip_link = config_.left_tip;
+    if (fixed_options.tip_link2.empty()) {
+        fixed_options.tip_link2 = config_.right_tip;
     }
-    if (config_.solver_options.tip_link2.empty()) {
-        config_.solver_options.tip_link2 = config_.right_tip;
+    if (free_options.tip_link.empty()) {
+        free_options.tip_link = config_.left_tip;
     }
-    config_.solver_options.reject_collisions = false;
-    config_.solver_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
+    if (free_options.tip_link2.empty()) {
+        free_options.tip_link2 = config_.right_tip;
+    }
+    fixed_options.reject_collisions = false;
+    fixed_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
+    free_options.reject_collisions = false;
+    free_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
 
     fixed_solvers_.reserve(config_.workers);
     free_solvers_.reserve(config_.workers);
     for (size_t i = 0; i < config_.workers; ++i) {
         fixed_solvers_.push_back(std::make_unique<IkSolver>(
-            config_.fixed_group, config_.solver_plugin, config_.timeout, false, config_.solver_options));
+            config_.fixed_group, config_.solver_plugin, config_.timeout, false, fixed_options));
         free_solvers_.push_back(std::make_unique<IkSolver>(
-            config_.free_group, config_.solver_plugin, config_.fallback_timeout, false, config_.solver_options));
+            config_.free_group, config_.solver_plugin, config_.fallback_timeout, false, free_options));
     }
 }
 
@@ -455,7 +469,9 @@ std::vector<UpdownAwareIkCandidate> ParallelUpdownAwareIkSolver::executeTrials(
                     ? order_index == 1
                     : config_.use_reversed_target_order;
                 const TrialSpec& trial = trials[trial_index];
-                IkSolver& solver = *free_solvers_[worker % free_solvers_.size()];
+                IkSolver& solver = trial.free_updown
+                    ? *free_solvers_[worker % free_solvers_.size()]
+                    : *fixed_solvers_[worker % fixed_solvers_.size()];
                 results[item] = solveTrial(solver, trial, request, plan, swapped_order, fallback);
             }
         });
@@ -484,16 +500,18 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     out.solver_path = trial.solver_path;
     out.target_order = swapped_order ? "swapped" : "normal";
 
-    const Eigen::Isometry3d left_target = compensateTool0(request.left_target);
-    const Eigen::Isometry3d right_target = compensateTool0(request.right_target);
+    const Eigen::Isometry3d left_target = trial.free_updown
+        ? compensateTool0(request.left_target)
+        : fixedTarget(request.left_target, trial.h);
+    const Eigen::Isometry3d right_target = trial.free_updown
+        ? compensateTool0(request.right_target)
+        : fixedTarget(request.right_target, trial.h);
 
     const double timeout = fallback ? config_.fallback_timeout : config_.timeout;
-    const std::vector<double> solve_seed = trial.free_updown
-        ? trial.seed
-        : makeFullSeedFromArmSeed(trial.h, trial.seed);
+    const std::vector<double> solve_seed = trial.seed;
     IkResult result = swapped_order
-        ? solver.solveDual(right_target, left_target, solve_seed, timeout, trial.h_range_lower, trial.h_range_upper)
-        : solver.solveDual(left_target, right_target, solve_seed, timeout, trial.h_range_lower, trial.h_range_upper);
+        ? solver.solveDual(right_target, left_target, solve_seed, timeout)
+        : solver.solveDual(left_target, right_target, solve_seed, timeout);
     out.solve_ms = result.solve_ms;
     out.timeout_like = result.solve_ms >= timeout * 1000.0 * 0.9;
     out.joint_names = result.joint_names;
@@ -505,10 +523,22 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     }
 
     std::vector<Eigen::Isometry3d> actual_poses;
-    out.full_joint_names = freeVariableNames();
-    out.full_joint_values = result.joint_values;
-    out.h = extractUpdown(out.full_joint_names, out.full_joint_values, trial.free_updown ? request.current_h : trial.h);
+    if (trial.free_updown) {
+        out.full_joint_names = freeVariableNames();
+        out.full_joint_values = result.joint_values;
+        out.h = extractUpdown(out.full_joint_names, out.full_joint_values, request.current_h);
+    } else {
+        out.full_joint_names = fullJointNamesForFixedGroup();
+        out.full_joint_values = fullJointValuesForFixedGroup(trial.h, result.joint_values);
+        out.h = trial.h;
+    }
     actual_poses = solver.fk(result.joint_values);
+    if (!trial.free_updown) {
+        const Eigen::Isometry3d updown_in_base = updownTransformInBase(trial.h);
+        for (auto& actual_pose : actual_poses) {
+            actual_pose = updown_in_base * actual_pose;
+        }
+    }
     if (out.h < trial.h_range_lower - 1e-9 || out.h > trial.h_range_upper + 1e-9) {
         out.rejection_reason = "updown_out_of_search_range";
         return out;
@@ -572,11 +602,15 @@ Eigen::Isometry3d ParallelUpdownAwareIkSolver::compensateTool0(const Eigen::Isom
     return target * Eigen::Translation3d(0.0, 0.0, -config_.tool0_offset);
 }
 
-Eigen::Isometry3d ParallelUpdownAwareIkSolver::fixedTarget(const Eigen::Isometry3d& target, double h) const
+Eigen::Isometry3d ParallelUpdownAwareIkSolver::updownTransformInBase(double h) const
 {
-    Eigen::Isometry3d fixed = compensateTool0(target);
-    fixed.translation().z() -= h;
-    return fixed;
+    return free_solvers_.front()->linkTransformNamed("updown", {"updown"}, {h});
+}
+
+Eigen::Isometry3d ParallelUpdownAwareIkSolver::fixedTarget(
+    const Eigen::Isometry3d& target, double h) const
+{
+    return updownTransformInBase(h).inverse() * compensateTool0(target);
 }
 
 std::vector<double> ParallelUpdownAwareIkSolver::makePerturbedSeed(
@@ -741,6 +775,53 @@ double ParallelUpdownAwareIkSolver::armTorqueProxy(
     return config_.cost_joint2_torque * joint2_proxy + config_.cost_joint3_torque * joint3_proxy;
 }
 
+double ParallelUpdownAwareIkSolver::loadedPoseDistance(
+    const UpdownAwareIkCandidate& candidate,
+    const std::string& prefix,
+    const std::vector<double>& pose) const
+{
+    if (pose.size() < 6) {
+        return 0.0;
+    }
+    double squared_sum = 0.0;
+    for (size_t i = 0; i < 6; ++i) {
+        const std::string joint_name = prefix + "_v5_joint" + std::to_string(i + 1);
+        const double diff = angularDistance(jointValue(candidate, joint_name), pose[i]);
+        squared_sum += diff * diff;
+    }
+    return std::sqrt(squared_sum);
+}
+
+double ParallelUpdownAwareIkSolver::loadedPoseFamilyMinDistance(
+    const UpdownAwareIkCandidate& candidate,
+    const std::string& prefix,
+    const std::vector<std::vector<double>>& family) const
+{
+    if (family.empty()) {
+        return 0.0;
+    }
+    double best = std::numeric_limits<double>::infinity();
+    for (const auto& pose : family) {
+        if (pose.size() < 6) {
+            continue;
+        }
+        best = std::min(best, loadedPoseDistance(candidate, prefix, pose));
+    }
+    return std::isfinite(best) ? best : 0.0;
+}
+
+double ParallelUpdownAwareIkSolver::loadedPosePreferredDistance(
+    const UpdownAwareIkCandidate& candidate,
+    const std::string& prefix,
+    const std::vector<std::vector<double>>& family,
+    size_t preferred_index) const
+{
+    if (preferred_index >= family.size() || family[preferred_index].size() < 6) {
+        return 0.0;
+    }
+    return loadedPoseDistance(candidate, prefix, family[preferred_index]);
+}
+
 double ParallelUpdownAwareIkSolver::jointLeverProxy(
     const UpdownAwareIkCandidate& candidate, const std::string& prefix, int joint_index) const
 {
@@ -782,6 +863,18 @@ double ParallelUpdownAwareIkSolver::scoreCandidate(
 
     score += armTorqueProxy(candidate, "left");
     score += armTorqueProxy(candidate, "right");
+    if (config_.cost_loaded_family_distance != 0.0) {
+        score += config_.cost_loaded_family_distance *
+                 (loadedPoseFamilyMinDistance(candidate, "left", config_.left_loaded_pose_family) +
+                  loadedPoseFamilyMinDistance(candidate, "right", config_.right_loaded_pose_family));
+    }
+    if (config_.cost_loaded_preferred_distance != 0.0) {
+        score += config_.cost_loaded_preferred_distance *
+                 (loadedPosePreferredDistance(candidate, "left", config_.left_loaded_pose_family,
+                                              config_.left_preferred_loaded_pose_index) +
+                  loadedPosePreferredDistance(candidate, "right", config_.right_loaded_pose_family,
+                                              config_.right_preferred_loaded_pose_index));
+    }
     score += config_.cost_solve_ms * candidate.solve_ms;
     return score;
 }

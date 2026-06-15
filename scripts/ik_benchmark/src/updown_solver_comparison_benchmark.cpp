@@ -143,6 +143,25 @@ std::vector<double> parseDoubleList(std::string value)
     return result;
 }
 
+std::vector<std::vector<double>> parsePoseFamilyDeg(std::string value)
+{
+    value = stripInlineComment(value);
+    std::vector<std::vector<double>> family;
+    std::stringstream stream(value);
+    std::string segment;
+    while (std::getline(stream, segment, ';')) {
+        auto pose_deg = parseDoubleList(segment);
+        if (pose_deg.size() != 6) {
+            continue;
+        }
+        for (double& joint : pose_deg) {
+            joint *= M_PI / 180.0;
+        }
+        family.push_back(std::move(pose_deg));
+    }
+    return family;
+}
+
 void setReachSphere(ik_benchmark::ReachSphereConfig& sphere, const std::vector<double>& values)
 {
     if (values.size() >= 3) {
@@ -263,6 +282,8 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         else if (key == "updown_over_0p1_distance") config.cost_updown_over_0p1_distance = parseDouble(value);
         else if (key == "joint2_torque") config.cost_joint2_torque = parseDouble(value);
         else if (key == "joint3_torque") config.cost_joint3_torque = parseDouble(value);
+        else if (key == "loaded_family_distance") config.cost_loaded_family_distance = parseDouble(value);
+        else if (key == "loaded_preferred_distance") config.cost_loaded_preferred_distance = parseDouble(value);
         else if (key == "solve_ms") config.cost_solve_ms = parseDouble(value);
         else return false;
         return true;
@@ -283,6 +304,18 @@ bool applyYamlValue(UpdownAwareIkConfig& config,
         else if (key == "link2_mass_proxy") config.link2_mass_proxy = parseDouble(value);
         else if (key == "link3_mass_proxy") config.link3_mass_proxy = parseDouble(value);
         else if (key == "payload_mass_proxy") config.payload_mass_proxy = parseDouble(value);
+        else return false;
+        return true;
+    }
+    if (in({"cost_scorer", "loaded_pose_prior"})) {
+        if (key == "left_candidates_deg") config.left_loaded_pose_family = parsePoseFamilyDeg(value);
+        else if (key == "right_candidates_deg") config.right_loaded_pose_family = parsePoseFamilyDeg(value);
+        else if (key == "preferred_index") {
+            config.left_preferred_loaded_pose_index = static_cast<size_t>(std::stoul(value));
+            config.right_preferred_loaded_pose_index = static_cast<size_t>(std::stoul(value));
+        }
+        else if (key == "left_preferred_index") config.left_preferred_loaded_pose_index = static_cast<size_t>(std::stoul(value));
+        else if (key == "right_preferred_index") config.right_preferred_loaded_pose_index = static_cast<size_t>(std::stoul(value));
         else return false;
         return true;
     }
@@ -546,6 +579,50 @@ double namedJointValue(const std::vector<std::string>& names,
     return fallback;
 }
 
+double angularDistance(double a, double b)
+{
+    return std::abs(std::atan2(std::sin(a - b), std::cos(a - b)));
+}
+
+double loadedPoseDistance(const std::vector<std::string>& names,
+                          const std::vector<double>& values,
+                          const std::string& prefix,
+                          const std::vector<double>& pose)
+{
+    if (pose.size() < 6) return 0.0;
+    double squared_sum = 0.0;
+    for (size_t i = 0; i < 6; ++i) {
+        const double joint = namedJointValue(names, values, prefix + "_v5_joint" + std::to_string(i + 1));
+        const double diff = angularDistance(joint, pose[i]);
+        squared_sum += diff * diff;
+    }
+    return std::sqrt(squared_sum);
+}
+
+double loadedPoseFamilyMinDistance(const std::vector<std::string>& names,
+                                   const std::vector<double>& values,
+                                   const std::string& prefix,
+                                   const std::vector<std::vector<double>>& family)
+{
+    if (family.empty()) return 0.0;
+    double best = std::numeric_limits<double>::infinity();
+    for (const auto& pose : family) {
+        if (pose.size() < 6) continue;
+        best = std::min(best, loadedPoseDistance(names, values, prefix, pose));
+    }
+    return std::isfinite(best) ? best : 0.0;
+}
+
+double loadedPosePreferredDistance(const std::vector<std::string>& names,
+                                   const std::vector<double>& values,
+                                   const std::string& prefix,
+                                   const std::vector<std::vector<double>>& family,
+                                   size_t preferred_index)
+{
+    if (preferred_index >= family.size() || family[preferred_index].size() < 6) return 0.0;
+    return loadedPoseDistance(names, values, prefix, family[preferred_index]);
+}
+
 double jointLeverProxy(const std::vector<std::string>& names,
                        const std::vector<double>& values,
                        const std::string& prefix,
@@ -631,6 +708,8 @@ nlohmann::json costWeightsJson(const UpdownAwareIkConfig& config)
         {"updown_over_0p1_distance", config.cost_updown_over_0p1_distance},
         {"joint2_torque", config.cost_joint2_torque},
         {"joint3_torque", config.cost_joint3_torque},
+        {"loaded_family_distance", config.cost_loaded_family_distance},
+        {"loaded_preferred_distance", config.cost_loaded_preferred_distance},
         {"solve_ms", config.cost_solve_ms},
     };
 }
@@ -694,6 +773,20 @@ nlohmann::json candidateCostBreakdownJson(const ik_benchmark::UpdownAwareIkCandi
     breakdown["right_joint2_torque"] = right.joint2;
     breakdown["left_joint3_torque"] = left.joint3;
     breakdown["right_joint3_torque"] = right.joint3;
+    const double left_family_distance = loadedPoseFamilyMinDistance(
+        candidate.full_joint_names, candidate.full_joint_values, "left", config.left_loaded_pose_family);
+    const double right_family_distance = loadedPoseFamilyMinDistance(
+        candidate.full_joint_names, candidate.full_joint_values, "right", config.right_loaded_pose_family);
+    const double left_preferred_distance = loadedPosePreferredDistance(
+        candidate.full_joint_names, candidate.full_joint_values, "left", config.left_loaded_pose_family,
+        config.left_preferred_loaded_pose_index);
+    const double right_preferred_distance = loadedPosePreferredDistance(
+        candidate.full_joint_names, candidate.full_joint_values, "right", config.right_loaded_pose_family,
+        config.right_preferred_loaded_pose_index);
+    breakdown["left_loaded_family_distance"] = config.cost_loaded_family_distance * left_family_distance;
+    breakdown["right_loaded_family_distance"] = config.cost_loaded_family_distance * right_family_distance;
+    breakdown["left_loaded_preferred_distance"] = config.cost_loaded_preferred_distance * left_preferred_distance;
+    breakdown["right_loaded_preferred_distance"] = config.cost_loaded_preferred_distance * right_preferred_distance;
     breakdown["solve_ms"] = config.cost_solve_ms * candidate.solve_ms;
     breakdown["total"] = candidate.score;
     return breakdown;

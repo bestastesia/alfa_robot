@@ -24,6 +24,9 @@ find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(kdl_parser REQUIRED)
+find_package(orocos_kdl_vendor REQUIRED)
+find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SemanticCargo.msg"
@@ -36,16 +39,92 @@ ament_export_dependencies(rosidl_default_runtime)
 # 让 bio_ik 通过 setFromIK(poses, tips) 路径统一协调双臂+updown
 set(IK_BENCHMARK_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/ik_benchmark)
 
-add_executable(dual_arm_planner_node
-  src/dual_arm_planner_node.cpp
+add_library(alfa_robot_motion_core
+  src/motion_core/pose_math.cpp
+  src/motion_core/scene_geometry.cpp
+  src/motion_core/task_geometry.cpp
+)
+
+target_compile_features(alfa_robot_motion_core PUBLIC cxx_std_17)
+
+target_include_directories(alfa_robot_motion_core PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+ament_target_dependencies(alfa_robot_motion_core
+  geometry_msgs
+  nlohmann_json
+)
+
+target_link_libraries(alfa_robot_motion_core
+  Eigen3::Eigen
+)
+
+add_library(alfa_robot_motion_scene_adapter
+  src/box_stack_flow_orchestrator.cpp
+  src/extract_benchmark_runner.cpp
+  src/extract_benchmark_csv_writer.cpp
+  src/extract_benchmark_summary.cpp
+  src/extract_candidate_scorer.cpp
+  src/extract_candidate_solver.cpp
+  src/extract_demo_orchestrator.cpp
+  src/extract_motion_planner.cpp
+  src/extract_rollout_planner.cpp
+  src/ik_candidate_selector.cpp
+  src/loaded_pose_planner.cpp
+  src/loaded_pose_selector.cpp
+  src/motion_flow_recorder.cpp
+  src/motion_scene_adapter.cpp
+  src/optimized_dual_ik_solver.cpp
   ${IK_BENCHMARK_ROOT}/src/ik_solver.cpp
   ${IK_BENCHMARK_ROOT}/src/parallel_updown_aware_ik_solver.cpp
+)
+
+target_compile_features(alfa_robot_motion_scene_adapter PUBLIC cxx_std_17)
+
+target_include_directories(alfa_robot_motion_scene_adapter PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<BUILD_INTERFACE:${IK_BENCHMARK_ROOT}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+target_link_libraries(alfa_robot_motion_scene_adapter
+  alfa_robot_motion_core
+)
+
+ament_target_dependencies(alfa_robot_motion_scene_adapter
+  ament_index_cpp
+  geometry_msgs
+  kdl_parser
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  moveit_msgs
+  nlohmann_json
+  orocos_kdl_vendor
+  pluginlib
+  random_numbers
+  rclcpp
+  shape_msgs
+  srdfdom
+  urdf
+)
+
+add_executable(dual_arm_planner_node
+  src/dual_arm_planner_node.cpp
 )
 
 target_compile_features(dual_arm_planner_node PUBLIC cxx_std_17)
 
 target_include_directories(dual_arm_planner_node PRIVATE
+  include
   ${IK_BENCHMARK_ROOT}/include
+)
+
+target_link_libraries(dual_arm_planner_node
+  alfa_robot_motion_core
+  alfa_robot_motion_scene_adapter
 )
 
 ament_target_dependencies(dual_arm_planner_node
@@ -68,10 +147,43 @@ ament_target_dependencies(dual_arm_planner_node
   tf2_ros
   tf2_geometry_msgs
   tf2_eigen
+  kdl_parser
+  orocos_kdl_vendor
 )
 
-install(TARGETS dual_arm_planner_node
+install(TARGETS
+  alfa_robot_motion_core
+  alfa_robot_motion_scene_adapter
+  dual_arm_planner_node
+  EXPORT export_alfa_robot_motion_core
   DESTINATION lib/${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY ${IK_BENCHMARK_ROOT}/include/ DESTINATION include)
+
+ament_export_targets(export_alfa_robot_motion_core HAS_LIBRARY_TARGET)
+ament_export_include_directories(include)
+ament_export_dependencies(
+  Eigen3
+  ament_index_cpp
+  geometry_msgs
+  kdl_parser
+  moveit_core
+  moveit_msgs
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  nlohmann_json
+  orocos_kdl_vendor
+  pluginlib
+  random_numbers
+  rclcpp
+  shape_msgs
+  srdfdom
+  urdf
 )
 
 ament_package()

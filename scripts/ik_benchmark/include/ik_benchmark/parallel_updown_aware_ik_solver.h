@@ -80,7 +80,14 @@ struct UpdownAwareIkConfig {
     double cost_updown_over_0p1_distance = 1.0;
     double cost_joint2_torque = 2.0;
     double cost_joint3_torque = 0.5;
+    double cost_loaded_family_distance = 0.0;
+    double cost_loaded_preferred_distance = 0.0;
     double cost_solve_ms = 0.0;
+
+    std::vector<std::vector<double>> left_loaded_pose_family;
+    std::vector<std::vector<double>> right_loaded_pose_family;
+    size_t left_preferred_loaded_pose_index = 0;
+    size_t right_preferred_loaded_pose_index = 0;
 
     double updown_static_epsilon = 0.005;
     double updown_small_motion_threshold = 0.1;
@@ -222,6 +229,7 @@ private:
                                       bool fallback) const;
 
     Eigen::Isometry3d compensateTool0(const Eigen::Isometry3d& target) const;
+    Eigen::Isometry3d updownTransformInBase(double h) const;
     Eigen::Isometry3d fixedTarget(const Eigen::Isometry3d& target, double h) const;
     std::vector<double> makePerturbedSeed(const std::vector<std::string>& variable_names,
                                           const std::vector<double>& base_seed,
@@ -239,6 +247,16 @@ private:
     double jointDelta(const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const;
     double jointValue(const UpdownAwareIkCandidate& candidate, const std::string& name, double fallback = 0.0) const;
     double armTorqueProxy(const UpdownAwareIkCandidate& candidate, const std::string& prefix) const;
+    double loadedPoseDistance(const UpdownAwareIkCandidate& candidate,
+                              const std::string& prefix,
+                              const std::vector<double>& pose) const;
+    double loadedPoseFamilyMinDistance(const UpdownAwareIkCandidate& candidate,
+                                       const std::string& prefix,
+                                       const std::vector<std::vector<double>>& family) const;
+    double loadedPosePreferredDistance(const UpdownAwareIkCandidate& candidate,
+                                       const std::string& prefix,
+                                       const std::vector<std::vector<double>>& family,
+                                       size_t preferred_index) const;
     double scoreCandidate(const UpdownAwareIkCandidate& candidate, const UpdownAwareIkRequest& request) const;
     void sortAndSelect(UpdownAwareIkResult& result, const UpdownAwareIkRequest& request) const;
     bool shouldUseFallback(const HeightPlan& plan, const std::vector<UpdownAwareIkCandidate>& candidates) const;

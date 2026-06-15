@@ -1,0 +1,166 @@
+#include "alfa_robot_moveit_config/optimized_dual_ik_solver.hpp"
+
+#include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
+
+#include <algorithm>
+#include <map>
+#include <sstream>
+#include <utility>
+
+namespace alfa_robot::motion
+{
+
+OptimizedDualIkSolver::OptimizedDualIkSolver(OptimizedDualIkSolverConfig config)
+: config_(std::move(config))
+{}
+
+bool OptimizedDualIkSolver::ready() const
+{
+  return config_.solver && config_.robot_model;
+}
+
+OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
+  const OptimizedDualIkSolveRequest& request,
+  const std::string& stage_kind) const
+{
+  OptimizedDualIkSolveResult output;
+  if (!ready()) {
+    output.failure_reason = "optimized IK solver is not initialized";
+    return output;
+  }
+  if (!request.seed_state) {
+    output.failure_reason = "seed_state is null";
+    return output;
+  }
+
+  ik_benchmark::UpdownAwareIkRequest ik_request;
+  ik_request.left_target = pose_to_eigen(request.left_pose);
+  ik_request.right_target = pose_to_eigen(request.right_pose);
+  ik_request.current_h = currentUpdown(*request.seed_state);
+  ik_request.grasp_mode = request.top_suction
+    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+  ik_request.current_arm_joints = stateValues(*request.seed_state, config_.solver->fixedVariableNames());
+  ik_request.current_full_joints = stateValues(*request.seed_state, config_.solver->freeVariableNames());
+
+  output.ik_result = config_.solver->solve(ik_request);
+  if (!output.ik_result.success) {
+    std::ostringstream oss;
+    oss << "optimized IK failed reason=" << output.ik_result.failure_reason
+        << " trials=" << output.ik_result.trial_count
+        << " legal=" << output.ik_result.legal_count
+        << " wall_ms=" << output.ik_result.wall_ms;
+    output.failure_reason = oss.str();
+    return output;
+  }
+
+  output.goal_state = std::make_shared<moveit::core::RobotState>(*request.seed_state);
+  for (size_t i = 0; i < output.ik_result.selected.full_joint_names.size() &&
+                     i < output.ik_result.selected.full_joint_values.size(); ++i) {
+    const auto& name = output.ik_result.selected.full_joint_names[i];
+    if (isRobotVariable(name)) {
+      output.goal_state->setVariablePosition(name, output.ik_result.selected.full_joint_values[i]);
+    }
+  }
+  if (config_.enforce_bounds_group) {
+    output.goal_state->enforceBounds(config_.enforce_bounds_group);
+  } else {
+    output.goal_state->enforceBounds();
+  }
+  output.goal_state->update();
+
+  const std::string grasp_mode = request.top_suction ? "top_suction" : "front";
+  output.extra = {
+    {"stage_kind", stage_kind},
+    {"grasp_mode", grasp_mode},
+    {"left_target", pose_json(request.left_pose)},
+    {"right_target", pose_json(request.right_pose)},
+    {"ik", resultJson(output.ik_result, grasp_mode)}
+  };
+  output.success = true;
+  return output;
+}
+
+std::vector<double> OptimizedDualIkSolver::stateValues(
+  const moveit::core::RobotState& state,
+  const std::vector<std::string>& names) const
+{
+  std::vector<double> values;
+  values.reserve(names.size());
+  for (const auto& name : names) {
+    values.push_back(isRobotVariable(name) ? state.getVariablePosition(name) : 0.0);
+  }
+  return values;
+}
+
+double OptimizedDualIkSolver::currentUpdown(const moveit::core::RobotState& state) const
+{
+  return isRobotVariable("updown") ? state.getVariablePosition("updown") : config_.fallback_updown;
+}
+
+nlohmann::json OptimizedDualIkSolver::candidateRejectionCountsJson(
+  const ik_benchmark::UpdownAwareIkResult& result) const
+{
+  std::map<std::string, size_t> counts;
+  for (const auto& candidate : result.candidates) {
+    if (candidate.legal) {
+      counts["legal"]++;
+    } else if (!candidate.rejection_reason.empty()) {
+      counts[candidate.rejection_reason]++;
+    } else {
+      counts["unknown"]++;
+    }
+  }
+  nlohmann::json out = nlohmann::json::object();
+  for (const auto& [reason, count] : counts) {
+    out[reason] = count;
+  }
+  return out;
+}
+
+nlohmann::json OptimizedDualIkSolver::resultJson(
+  const ik_benchmark::UpdownAwareIkResult& result,
+  const std::string&) const
+{
+  return {
+    {"strategy", "fixed_discrete_h_multi_seed_cost_scorer"},
+    {"success", result.success},
+    {"fallback_used", result.fallback_used},
+    {"failure_reason", result.failure_reason},
+    {"trial_count", result.trial_count},
+    {"legal_count", result.legal_count},
+    {"timeout_like_count", result.timeout_like_count},
+    {"wall_ms", result.wall_ms},
+    {"sum_solve_ms", result.sum_solve_ms},
+    {"h_interval", {{"lower", result.h_interval_lower}, {"upper", result.h_interval_upper}, {"center", result.h_center}}},
+    {"h_candidates", vector_json(result.h_candidates)},
+    {"candidate_rejection_counts", candidateRejectionCountsJson(result)},
+    {"selected", {
+      {"h", result.selected.h},
+      {"h_index", result.selected.h_index},
+      {"seed_index", result.selected.seed_index},
+      {"score", result.selected.score},
+      {"solver_path", result.selected.solver_path},
+      {"target_order", result.selected.target_order},
+      {"direct_pos_error", result.selected.direct_pos_error},
+      {"direct_ori_error", result.selected.direct_ori_error},
+      {"updown_delta", result.selected.updown_delta},
+      {"joint_delta", result.selected.joint_delta},
+      {"collision_free", result.selected.collision_free},
+      {"collision_pairs", result.selected.collision_pairs},
+      {"joint_names", result.selected.full_joint_names},
+      {"joint_values", result.selected.full_joint_values}
+    }}
+  };
+}
+
+bool OptimizedDualIkSolver::isRobotVariable(const std::string& name) const
+{
+  if (!config_.robot_model) {
+    return false;
+  }
+  const auto& variable_names = config_.robot_model->getVariableNames();
+  return std::find(variable_names.begin(), variable_names.end(), name) != variable_names.end();
+}
+
+}  // namespace alfa_robot::motion

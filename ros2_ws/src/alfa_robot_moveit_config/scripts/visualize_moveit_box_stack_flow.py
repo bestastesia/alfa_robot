@@ -150,6 +150,7 @@ def log_container_obstacle(config: dict[str, Any] | None) -> None:
 
 def log_static_box_obstacles(config: dict[str, Any] | None) -> None:
     if not config or not config.get("enabled", False):
+        rr.log("scene/static_box_obstacles", rr.Boxes3D(centers=[], half_sizes=[]))
         return
     boxes = config.get("boxes", [])
     centers = []
@@ -165,12 +166,10 @@ def log_static_box_obstacles(config: dict[str, Any] | None) -> None:
         half_sizes.append([float(value) * 0.5 for value in size])
         colors.append([170, 80, 255, 130])
         labels.append(str(box.get("id", "static_box_obstacle")))
-    if centers:
-        rr.log(
-            "scene/static_box_obstacles",
-            rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels),
-            static=True,
-        )
+    rr.log(
+        "scene/static_box_obstacles",
+        rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels),
+    )
 
 
 def transform_point(transform: np.ndarray, point: list[float]) -> list[float]:
@@ -279,6 +278,7 @@ def log_attached_boxes(
     joints: dict[str, float],
     attached_boxes: list[dict[str, Any]],
     path: str = "scene/attached_boxes",
+    success: bool = False,
 ) -> None:
     if not attached_boxes:
         rr.log(path, rr.Clear(recursive=True))
@@ -301,7 +301,7 @@ def log_attached_boxes(
         centers.append(world_center)
         half_sizes.append([float(value) * 0.5 for value in size])
         quaternions.append(robot_module_matrix_to_quaternion(link_tf[:3, :3]))
-        colors.append([255, 80, 40, 120])
+        colors.append([40, 220, 90, 150] if success else [255, 80, 40, 120])
         labels.append(str(box.get("id", "carried_box")))
     if centers:
         rr.log(
@@ -394,7 +394,6 @@ def main() -> None:
     log_box_stack(float(header.get("box_front_x", 0.625)))
     if not args.no_container:
         log_container_obstacle(header.get("container_obstacle"))
-    log_static_box_obstacles(header.get("static_box_obstacles"))
 
     velocity_scale = float(header.get("velocity_scale", args.reference_velocity_scale))
     repeat_factor = 1
@@ -417,10 +416,15 @@ def main() -> None:
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
+            log_static_box_obstacles(stage.get("static_box_obstacles", header.get("static_box_obstacles")))
             point = points[point_index]
             joints = joint_dict_from_point(stage, point)
             helpers.log_robot_state(robot, joints, args.robot_path)
-            log_attached_boxes(robot, joints, stage.get("attached_boxes", []))
+            stage_success = bool(
+                stage.get("extra", {}).get("valid", False)
+                and stage.get("extra", {}).get("stage_kind") == "post_extract_loaded_plan"
+            )
+            log_attached_boxes(robot, joints, stage.get("attached_boxes", []), success=stage_success)
             log_stage_text(stage, point_index, len(points))
             sample += 1
 

@@ -72,6 +72,11 @@ public:
     std::vector<Eigen::Isometry3d> fkNamed(const std::vector<std::string>& joint_names,
                                            const std::vector<double>& joint_values);
 
+    /// 返回指定 link 相对当前 solver base frame 的位姿。
+    Eigen::Isometry3d linkTransformNamed(const std::string& link_name,
+                                         const std::vector<std::string>& joint_names,
+                                         const std::vector<double>& joint_values) const;
+
     /// 碰撞检查 (输入为完整命名关节状态，未提供的关节使用默认值)
     bool isNamedStateCollisionFree(const std::vector<std::string>& joint_names,
                                    const std::vector<double>& joint_values,

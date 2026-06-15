@@ -265,7 +265,7 @@
   </link>
   
 <joint name="left_v5_joint4" type="revolute">
-    <origin xyz="0.0010609 -0.239 -0.077993" rpy="1.5708 0 0" />
+    <origin xyz="0.0010609 -0.339 -0.077993" rpy="1.5708 0 0" />
     <parent link="left_v5_link3" />
     <child link="left_v5_link4" />
     <axis xyz="0 0 1" />
@@ -477,7 +477,7 @@
   </link>
   
 <joint name="right_v5_joint4" type="revolute">
-    <origin xyz="-0.0010609 -0.239 0.077993" rpy="1.5708 0 0" />
+    <origin xyz="-0.0010609 -0.339 0.077993" rpy="1.5708 0 0" />
     <parent link="right_v5_link3" />
     <child link="right_v5_link4" />
     <axis xyz="0 0 1" />

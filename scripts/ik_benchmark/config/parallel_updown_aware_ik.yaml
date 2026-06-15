@@ -80,6 +80,8 @@ parallel_updown_aware_ik:
       updown_over_0p1_distance: 2.0
       joint2_torque: 1.0
       joint3_torque: 0.5
+      loaded_family_distance: 0.2
+      loaded_preferred_distance: 0.1
       solve_ms: 0.0
     thresholds:
       updown_static_epsilon: 0.005
@@ -95,3 +97,9 @@ parallel_updown_aware_ik:
       link2_mass_proxy: 1.0
       link3_mass_proxy: 1.0
       payload_mass_proxy: 1.0
+    loaded_pose_prior:
+      # Semicolon-separated 6-DOF arm poses in degrees. Index 1 is the preferred loaded pose.
+      # ±180° joint4 duplicate poses are intentionally excluded.
+      left_candidates_deg: [-0.0, 59.04, -135.16, 0.0, -76.13, 0.0]; [0.0, -75.0, 135.0, 0.0, 60.0, 0.0]; [33.87, 75.82, -135.08, 0.0, -59.25, -33.87]
+      right_candidates_deg: [0.0, 58.88, -134.84, 0.0, -75.96, 0.0]; [0.0, -75.0, 135.0, 0.0, 60.0, 0.0]; [-30.93, 74.17, -134.92, 0.0, -60.74, 30.93]
+      preferred_index: 1
