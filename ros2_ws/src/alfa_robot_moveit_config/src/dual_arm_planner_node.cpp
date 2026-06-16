@@ -21,9 +21,11 @@
 #include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
 
 #include <rclcpp/rclcpp.hpp>
+#include <geometric_shapes/shapes.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
 #include <moveit/robot_state/robot_state.h>
+#include <moveit/collision_detection/collision_common.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -38,6 +40,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -122,6 +125,50 @@ using alfa_robot::motion::pose_to_eigen;
 using alfa_robot::motion::shortest_angular_distance;
 using alfa_robot::motion::top_suction_orientation;
 using alfa_robot::motion::vector_json;
+
+std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box)
+{
+  std::vector<std::string> links{box.link_name};
+  if (box.link_name.rfind("left_", 0) == 0) {
+    links.push_back("left_v5_link6");
+    links.push_back("left_v5_link5");
+  } else if (box.link_name.rfind("right_", 0) == 0) {
+    links.push_back("right_v5_link6");
+    links.push_back("right_v5_link5");
+  }
+  return links;
+}
+
+void attach_boxes_to_robot_state(
+  moveit::core::RobotState& state,
+  const std::vector<AttachedBoxSpec>& boxes,
+  double collision_padding)
+{
+  for (const auto& box : boxes) {
+    const double size_x = std::max(0.001, box.size[0] + 2.0 * collision_padding);
+    const double size_y = std::max(0.001, box.size[1] + 2.0 * collision_padding);
+    const double size_z = std::max(0.001, box.size[2] + 2.0 * collision_padding);
+    std::vector<shapes::ShapeConstPtr> shapes;
+    shapes.push_back(std::make_shared<shapes::Box>(size_x, size_y, size_z));
+
+    EigenSTL::vector_Isometry3d shape_poses;
+    Eigen::Isometry3d shape_pose = Eigen::Isometry3d::Identity();
+    shape_pose.translation() = Eigen::Vector3d(
+      box.center_in_link[0],
+      box.center_in_link[1],
+      box.center_in_link[2]);
+    shape_poses.push_back(shape_pose);
+
+    state.attachBody(
+      box.id,
+      Eigen::Isometry3d::Identity(),
+      shapes,
+      shape_poses,
+      touch_links_for_attached_box(box),
+      box.link_name);
+  }
+  state.update(true);
+}
 
 }  // namespace
 
@@ -212,6 +259,7 @@ public:
     carried_box_depth_ = get_or_declare_parameter<double>("carried_box_depth", 0.3);
     carried_box_width_ = get_or_declare_parameter<double>("carried_box_width", 0.4);
     carried_box_height_ = get_or_declare_parameter<double>("carried_box_height", 0.4);
+    attached_box_collision_padding_ = get_or_declare_parameter<double>("attached_box_collision_padding", -0.002);
     enable_static_box_obstacles_ = get_or_declare_parameter<bool>("enable_static_box_obstacles", true);
     static_box_obstacle_inset_ = get_or_declare_parameter<double>("static_box_obstacle_inset", 0.002);
 
@@ -274,6 +322,14 @@ public:
     extract_loaded_stop_on_first_success_ =
       get_or_declare_parameter<bool>("extract_loaded_stop_on_first_success", false);
     extract_loaded_target_updown_ = get_or_declare_parameter<double>("extract_loaded_target_updown", 0.3);
+    extract_loaded_lateral_shift_enabled_ =
+      get_or_declare_parameter<bool>("extract_loaded_lateral_shift_enabled", false);
+    extract_loaded_lateral_shift_distance_ =
+      get_or_declare_parameter<double>("extract_loaded_lateral_shift_distance", 0.4);
+    extract_loaded_lateral_shift_step_ =
+      get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.04);
+    enforce_loaded_plan_aabb_clearance_ =
+      get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
     extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", false);
     extract_independent_kdl_max_iterations_ =
       std::max(1, get_or_declare_parameter<int>("extract_independent_kdl_max_iterations", 120));
@@ -516,6 +572,50 @@ private:
     return !scene->isStateColliding(state, joint_group_->getName());
   }
 
+  bool is_state_valid_with_attached_boxes(
+    const moveit::core::RobotState& state,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    bool check_collision,
+    std::string* reason = nullptr) const
+  {
+    if (!state.satisfiesBounds(joint_group_)) {
+      if (reason) *reason = "robot state out of bounds";
+      return false;
+    }
+    if (!check_collision) return true;
+    if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) return true;
+
+    moveit::core::RobotState collision_state(state);
+    if (enable_attached_box_collision_ && !attached_boxes.empty()) {
+      std::vector<AttachedBoxSpec> missing_boxes;
+      missing_boxes.reserve(attached_boxes.size());
+      for (const auto& box : attached_boxes) {
+        if (!collision_state.hasAttachedBody(box.id)) {
+          missing_boxes.push_back(box);
+        }
+      }
+      attach_boxes_to_robot_state(collision_state, missing_boxes, attached_box_collision_padding_);
+    }
+    collision_state.update(true);
+
+    planning_scene_monitor::LockedPlanningSceneRO scene(planning_scene_monitor_);
+    collision_detection::CollisionRequest request;
+    collision_detection::CollisionResult result;
+    request.contacts = true;
+    request.max_contacts = 10;
+    scene->checkCollision(request, result, collision_state);
+    if (!result.collision) return true;
+
+    if (reason) {
+      *reason = "robot/carried box state colliding";
+      if (!result.contacts.empty()) {
+        const auto& pair = result.contacts.begin()->first;
+        *reason += ": " + pair.first + " <-> " + pair.second;
+      }
+    }
+    return false;
+  }
+
   ContainerGeometryConfig container_geometry_config() const
   {
     return {
@@ -682,6 +782,10 @@ private:
     config.selector = loaded_pose_selector_.get();
     config.scene_adapter = scene_adapter_.get();
     config.target_joint_names = arm_joint_target_names();
+    config.attached_box_collision_padding = attached_box_collision_padding_;
+    config.lateral_shift_enabled = extract_loaded_lateral_shift_enabled_;
+    config.lateral_shift_distance = extract_loaded_lateral_shift_distance_;
+    config.lateral_shift_step = extract_loaded_lateral_shift_step_;
     config.clearance_callback = [this](
       const moveit::planning_interface::MoveGroupInterface::Plan& plan,
       const moveit::core::RobotState& start_state,
@@ -1073,8 +1177,8 @@ private:
     bool* detached,
     std::string* reason) const
   {
-    if (!is_state_valid(state, true)) {
-      if (reason) *reason = "robot state colliding or out of bounds";
+    if (!is_state_valid_with_attached_boxes(state, {left_carried_box}, true, reason)) {
+      if (reason && reason->empty()) *reason = "robot/carried box state colliding or out of bounds";
       return false;
     }
 
@@ -1098,8 +1202,8 @@ private:
     bool* detached,
     std::string* reason) const
   {
-    if (!is_state_valid(state, true)) {
-      if (reason) *reason = "robot state colliding or out of bounds";
+    if (!is_state_valid_with_attached_boxes(state, {carried_box}, true, reason)) {
+      if (reason && reason->empty()) *reason = "robot/carried box state colliding or out of bounds";
       return false;
     }
 
@@ -1126,8 +1230,8 @@ private:
     bool* right_detached,
     std::string* reason) const
   {
-    if (!is_state_valid(state, true)) {
-      if (reason) *reason = "robot state colliding or out of bounds";
+    if (!is_state_valid_with_attached_boxes(state, {left_box, right_box}, true, reason)) {
+      if (reason && reason->empty()) *reason = "robot/carried box state colliding or out of bounds";
       return false;
     }
 
@@ -1158,6 +1262,63 @@ private:
   {
     if (!enable_attached_box_collision_ || active_attached_boxes().empty()) return true;
 
+    std::string moveit_scene_reason;
+    if (!planned_trajectory_clear_in_moveit_scene(plan, start_state, &moveit_scene_reason)) {
+      if (reason) *reason = moveit_scene_reason;
+      return false;
+    }
+
+    if (!enforce_loaded_plan_aabb_clearance_) {
+      std::string aabb_reason;
+      if (!planned_trajectory_clear_by_aabb(plan, start_state, &aabb_reason)) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Loaded plan passed MoveIt collision check but failed conservative AABB post-check: %s",
+          aabb_reason.c_str());
+      }
+      return true;
+    }
+
+    return planned_trajectory_clear_by_aabb(plan, start_state, reason);
+  }
+
+  bool planned_trajectory_clear_in_moveit_scene(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    std::string* reason) const
+  {
+    const auto& trajectory = plan.trajectory_.joint_trajectory;
+    for (size_t point_index = 0; point_index < trajectory.points.size(); ++point_index) {
+      moveit::core::RobotState state(start_state);
+      const auto& point = trajectory.points[point_index];
+      for (size_t i = 0; i < trajectory.joint_names.size() && i < point.positions.size(); ++i) {
+        if (is_robot_variable(trajectory.joint_names[i])) {
+          state.setVariablePosition(trajectory.joint_names[i], point.positions[i]);
+        }
+      }
+      state.update(true);
+      std::string point_reason;
+      if (!is_state_valid_with_attached_boxes(state, active_attached_boxes(), true, &point_reason)) {
+        if (reason) {
+          *reason = "trajectory point " + std::to_string(point_index) +
+                    ": MoveIt scene collision check failed";
+          if (!point_reason.empty()) {
+            *reason += " (" + point_reason + ")";
+          }
+        }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool planned_trajectory_clear_by_aabb(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    std::string* reason) const
+  {
+    if (!enable_attached_box_collision_ || active_attached_boxes().empty()) return true;
+
     const auto& trajectory = plan.trajectory_.joint_trajectory;
     for (size_t point_index = 0; point_index < trajectory.points.size(); ++point_index) {
       moveit::core::RobotState state(start_state);
@@ -1171,7 +1332,8 @@ private:
       std::string point_reason;
       if (!carried_boxes_clear_static_obstacles(state, &point_reason)) {
         if (reason) {
-          *reason = "trajectory point " + std::to_string(point_index) + ": " + point_reason;
+          *reason = "trajectory point " + std::to_string(point_index) +
+                    ": conservative AABB post-check failed (" + point_reason + ")";
         }
         return false;
       }
@@ -1670,8 +1832,16 @@ private:
     const std::vector<std::string>& target_names,
     const nlohmann::json& extra = nlohmann::json::object())
   {
-    move_group_->setStartState(start_state);
-    move_group_->setJointValueTarget(goal_state);
+    moveit::core::RobotState planning_start_state(start_state);
+    moveit::core::RobotState planning_goal_state(goal_state);
+    const auto carried_boxes = active_attached_boxes();
+    if (enable_attached_box_collision_ && !carried_boxes.empty()) {
+      attach_boxes_to_robot_state(planning_start_state, carried_boxes, attached_box_collision_padding_);
+      attach_boxes_to_robot_state(planning_goal_state, carried_boxes, attached_box_collision_padding_);
+    }
+
+    move_group_->setStartState(planning_start_state);
+    move_group_->setJointValueTarget(planning_goal_state);
 
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     const auto plan_result = move_group_->plan(plan);
@@ -1684,11 +1854,11 @@ private:
                 trajectory.points.size(), execute_ ? "true" : "false");
 
     std::string carried_collision_reason;
-    if (!planned_carried_boxes_clear_static_obstacles(plan, start_state, &carried_collision_reason)) {
+    if (!planned_carried_boxes_clear_static_obstacles(plan, planning_start_state, &carried_collision_reason)) {
       return fail(stage_name + ": carried box collides with static box obstacle (" + carried_collision_reason + ")");
     }
 
-    record_stage(stage_name, plan, start_state, goal_state, target_names, extra);
+    record_stage(stage_name, plan, planning_start_state, planning_goal_state, target_names, extra);
 
     if (execute_) {
       const auto exec_result = move_group_->execute(plan);
@@ -2162,6 +2332,8 @@ private:
   double carried_box_depth_ = 0.3;
   double carried_box_width_ = 0.4;
   double carried_box_height_ = 0.4;
+  double attached_box_collision_padding_ = -0.002;
+  bool enforce_loaded_plan_aabb_clearance_ = false;
   bool enable_static_box_obstacles_ = true;
   double static_box_obstacle_inset_ = 0.002;
   int extract_demo_left_box_id_ = 2;
@@ -2207,6 +2379,9 @@ private:
   bool extract_loaded_sort_by_pose_distance_ = false;
   bool extract_loaded_stop_on_first_success_ = false;
   double extract_loaded_target_updown_ = 0.3;
+  bool extract_loaded_lateral_shift_enabled_ = false;
+  double extract_loaded_lateral_shift_distance_ = 0.4;
+  double extract_loaded_lateral_shift_step_ = 0.04;
   bool extract_use_independent_kdl_ = false;
   int extract_independent_kdl_max_iterations_ = 120;
   double extract_independent_kdl_eps_ = 1e-5;

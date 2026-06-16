@@ -614,3 +614,38 @@
 - 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/CMakeLists.txt`；复现实验数据保存在 `data/ik_benchmark/refactor_replay_review/`。
 - 验证结果：干净 ROS 环境下 `alfa_robot_moveit_config` 编译通过；launch 烟测达到 `DualArmPlannerNode ready`；小规模 L2/R4 复现成功并生成 JSONL/CSV；原四组复现前三组进入抽离+负重并成功，L17/R19 仍按当前侧吸高度窗预期失败在 `h_interval_unreachable`，已生成 `refactor_replay_original_pairs.rrd`。
 - 留给下个 AI：如果其它包要复用 IK/抽离/负重规划模块，优先链接 `alfa_robot_motion_scene_adapter`；复现实验请使用独立 `ROS_DOMAIN_ID` 或先清理旧 launch，避免 service 请求打到残留节点。
+
+## 2026-06-16 运控 / Codex / 抽离阶段补充吸附箱自碰撞校验
+- 做了什么：修复抽离阶段只检查裸机器人、未把吸附箱并入 RobotState 碰撞检测的问题；抽离单臂/双臂校验现在会将 carried box attach 到状态后再用 MoveIt collision checker 判断箱子与机器人自身、另一臂和场景是否碰撞。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；原四组回归中 L2/R4、L7/R9、L12/R14 均完成抽离并带箱规划到负重，L17/R19 仍按当前侧吸高度窗失败在 `h_interval_unreachable`。
+- 留给下个 AI：抽离阶段的合法性现在包含“吸附箱 vs 机器人自身/场景”真实碰撞；若后续看到负重规划起点碰撞，优先检查动态箱墙/箱体尺寸或 touch link 设置，而不是再怀疑抽离漏掉 carried box。
+
+## 2026-06-16 运控 / Codex / L2-R3 中间箱抽离后侧向让位验证
+- 做了什么：在抽离后、负重规划前增加可选“中心列箱体向对应手臂侧向让位”阶段；目标最多侧移 0.4m，但允许部分成功，避免已走通的让位因为后续一步碰撞而被整体丢弃。
+- 改了哪里：`loaded_pose_planning.*` 增加侧移规划；`extract_planning_pipeline.*` 记录侧移耗时/距离；`dual_arm_planner.launch.py` 和节点参数增加 `extract_loaded_lateral_shift_*`。
+- 验证结果：L2/R3 快速测试成功，侧移后负重规划 `1/5` 成功；成功样本侧移约 0.12m。带 rollout 记录测试也成功，侧移约 0.08m，生成回放 `data/ik_benchmark/lateral_shift_after_extract/L2_R3_partial_rerun/L2_R3_partial_rerun.rrd`。
+- 留给下个 AI：这个阶段默认关闭，需显式传 `extract_loaded_lateral_shift_enabled:=true`；目前证明“尽可能侧移”比“必须走满 40cm”更稳，后续可以继续优化侧移步长/规划超时。
+
+## 2026-06-16 运控 / Codex / L7-R4、L8-R9、L12-R13 侧移方案回归
+- 做了什么：按 `L7/R4;L8/R9;L12/R13` 跑同一套“抽离后尽可能侧移再负重规划”流程，并生成 Rerun。
+- 结果：L7/R4 抽离成功且负重规划 `1/1` 成功，不需要侧移；L8/R9 抽离阶段 `0/64`，主要失败为左臂 carried box 与 `turn` 自碰；L12/R13 抽离阶段 `0/64`，主要失败为右臂未能与邻箱侧面脱离或与 `turn` 自碰。
+- 数据：`data/ik_benchmark/lateral_shift_after_extract/L7R4_L8R9_L12R13_rerun/`，回放文件 `pairs.rrd`。
+- 结论：侧移方案只解决“抽离已成功但负重规划卡住”的问题；L8/R9、L12/R13 当前瓶颈仍在抽离阶段本身，需要继续优化抽离动作/抓取 IK 起点。
+
+## 2026-06-16 运控 / Codex / 货墙远 10cm 后三组抽离侧移回归
+- 做了什么：将 `box_front_x` 从 0.825 调整到 0.925，重跑 `L7/R4;L8/R9;L12/R13`，其它算法参数不变。
+- 结果：三组整体成功。L7/R4 抽离和负重规划成功且无需侧移；L8/R9 抽离成功 54/64，侧移 0.4m 后负重规划成功；L12/R13 抽离成功 64/64，侧移 0.4m 后负重规划成功。
+- 数据：`data/ik_benchmark/lateral_shift_after_extract/L7R4_L8R9_L12R13_far10cm/`，回放文件 `pairs.rrd`。
+- 结论：前一轮失败核心不是侧移策略本身，而是车/货墙距离不足导致抽离阶段过早贴近中心柱/箱墙；远 10cm 后抽离空间显著改善。
+
+## 2026-06-16 运控 / Codex / 七组远距抽离成功样本筛选
+- 做了什么：按 `L2/R3;L7/R4;L8/R9;L12/R13;L17/R14;L18/R19;L22/R23` 在 `box_front_x=0.925` 下快速筛选，并只保留成功 candidate 的 Rerun。
+- 结果：成功组为 L7/R4、L8/R9、L12/R13；L2/R3 抽离有解但负重规划失败；L17/R14、L18/R19、L22/R23 在当前侧吸高度窗下 `h_interval_unreachable`。
+- 数据：`data/ik_benchmark/lateral_shift_after_extract/seven_pairs_far10cm_success_only/summary.json`；精简回放 `success_candidates_only.rrd`。
+
+## 2026-06-16 运控 / Codex / 负重规划碰撞校验口径修正
+- 做了什么：排查“MoveIt 已规划但后验又说碰撞”的问题，确认原硬失败来自自定义 AABB 后验检查，与 MoveIt/FCL 规划场景不是同一套碰撞模型。
+- 改了哪里：`dual_arm_planner_node.cpp` 的负重轨迹后验校验改为优先使用 MoveIt PlanningScene 同源碰撞检查；保守 AABB 检查默认只告警，不再作为硬失败。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；L2/R3 复跑 `extract_success=28/64`、`loaded_success=1/2`，数据在 `data/ik_benchmark/lateral_shift_after_extract/L2_R3_moveit_clearance_check/`。
+- 留给下个 AI：如果后续看到 `Computed path is not valid`，这是 MoveIt 自己在规划管线里拒绝碰撞路径；如果只看到 AABB 告警，则说明真实 FCL 场景通过但保守包围盒过严。

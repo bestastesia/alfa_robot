@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 #include <utility>
 
 namespace alfa_robot::motion
@@ -160,14 +161,66 @@ moveit::core::RobotState LoadedPoseSelector::makeGoalState(
 
 #include "alfa_robot_moveit_config/motion_scene_adapter.hpp"
 
+#include <geometric_shapes/shapes.h>
 #include <moveit_msgs/msg/collision_object.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <memory>
 #include <utility>
+#include <vector>
 
 namespace alfa_robot::motion
 {
+
+namespace
+{
+
+std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box)
+{
+  std::vector<std::string> links{box.link_name};
+  if (box.link_name.rfind("left_", 0) == 0) {
+    links.push_back("left_v5_link6");
+    links.push_back("left_v5_link5");
+  } else if (box.link_name.rfind("right_", 0) == 0) {
+    links.push_back("right_v5_link6");
+    links.push_back("right_v5_link5");
+  }
+  return links;
+}
+
+void attach_boxes_to_robot_state(
+  moveit::core::RobotState& state,
+  const std::vector<AttachedBoxSpec>& boxes,
+  double collision_padding)
+{
+  for (const auto& box : boxes) {
+    const double size_x = std::max(0.001, box.size[0] + 2.0 * collision_padding);
+    const double size_y = std::max(0.001, box.size[1] + 2.0 * collision_padding);
+    const double size_z = std::max(0.001, box.size[2] + 2.0 * collision_padding);
+    std::vector<shapes::ShapeConstPtr> shapes;
+    shapes.push_back(std::make_shared<shapes::Box>(size_x, size_y, size_z));
+
+    EigenSTL::vector_Isometry3d shape_poses;
+    Eigen::Isometry3d shape_pose = Eigen::Isometry3d::Identity();
+    shape_pose.translation() = Eigen::Vector3d(
+      box.center_in_link[0],
+      box.center_in_link[1],
+      box.center_in_link[2]);
+    shape_poses.push_back(shape_pose);
+
+    state.attachBody(
+      box.id,
+      Eigen::Isometry3d::Identity(),
+      shapes,
+      shape_poses,
+      touch_links_for_attached_box(box),
+      box.link_name);
+  }
+  state.update(true);
+}
+
+}  // namespace
 
 LoadedPosePlanner::LoadedPosePlanner(LoadedPosePlannerConfig config)
 : config_(std::move(config))
@@ -180,6 +233,154 @@ double LoadedPosePlanner::currentUpdown(const moveit::core::RobotState& state)
     return 0.0;
   }
   return state.getVariablePosition("updown");
+}
+
+bool LoadedPosePlanner::isCenterColumnBox(const AttachedBoxSpec& box)
+{
+  const auto last_underscore = box.id.find_last_of('_');
+  if (last_underscore == std::string::npos || last_underscore + 1 >= box.id.size()) {
+    return false;
+  }
+  try {
+    const int box_id = std::stoi(box.id.substr(last_underscore + 1));
+    return box_id % 5 == 3;
+  } catch (const std::exception&) {
+    return false;
+  }
+}
+
+bool LoadedPosePlanner::planLateralShift(
+  const std::string& stage_name,
+  const moveit::core::RobotState& start_state,
+  const std::vector<AttachedBoxSpec>& carried_boxes,
+  moveit::core::RobotState* shifted_state,
+  LoadedPosePlanResult* result)
+{
+  if (!shifted_state || !result) return false;
+  if (!config_.lateral_shift_enabled || config_.lateral_shift_distance <= 1e-6) {
+    *shifted_state = start_state;
+    return true;
+  }
+
+  const AttachedBoxSpec* center_box = nullptr;
+  for (const auto& box : carried_boxes) {
+    if (isCenterColumnBox(box)) {
+      center_box = &box;
+      break;
+    }
+  }
+  if (!center_box) {
+    *shifted_state = start_state;
+    return true;
+  }
+
+  const std::string side = center_box->link_name.rfind("left_", 0) == 0 ? "left" : "right";
+  const std::string tip_name = center_box->link_name;
+  const std::string group_name = side + "_v5_arm";
+  const moveit::core::JointModelGroup* arm_group =
+    start_state.getRobotModel()->getJointModelGroup(group_name);
+  if (!arm_group) {
+    result->failure_reason = "lateral_shift_missing_group_" + group_name;
+    return false;
+  }
+
+  const double direction_y = side == "left" ? 1.0 : -1.0;
+  const double distance = std::abs(config_.lateral_shift_distance);
+  const double step = std::max(0.01, std::abs(config_.lateral_shift_step));
+  const size_t step_count = std::max<size_t>(1, static_cast<size_t>(std::ceil(distance / step)));
+
+  moveit::core::RobotState current_state(start_state);
+  moveit::planning_interface::MoveGroupInterface::Plan full_plan_for_record;
+  const auto t0 = std::chrono::steady_clock::now();
+  const auto finish_partial = [&](bool shifted_any) {
+    result->lateral_shift_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - t0).count();
+    if (shifted_any) {
+      result->lateral_shift_success = true;
+      *shifted_state = current_state;
+      return true;
+    }
+    return false;
+  };
+
+  for (size_t step_index = 1; step_index <= step_count; ++step_index) {
+    const double shift = std::min(distance, step * static_cast<double>(step_index));
+    const Eigen::Isometry3d start_tip = start_state.getGlobalLinkTransform(tip_name);
+    Eigen::Isometry3d target_tip = start_tip;
+    target_tip.translation().y() += direction_y * shift;
+
+    moveit::core::RobotState target_state(current_state);
+    bool ik_ok = false;
+    {
+      const auto set_from_ik = [&]() {
+        return target_state.setFromIK(
+          arm_group,
+          target_tip,
+          tip_name,
+          0.02,
+          moveit::core::GroupStateValidityCallbackFn());
+      };
+      ik_ok = set_from_ik();
+    }
+    if (!ik_ok) {
+      result->failure_reason = "lateral_shift_ik_failed_step_" + std::to_string(step_index);
+      return finish_partial(result->lateral_shift_reached_distance > 1e-6);
+    }
+    target_state.update();
+
+    moveit::core::RobotState planning_start(current_state);
+    moveit::core::RobotState planning_goal(target_state);
+    attach_boxes_to_robot_state(planning_start, carried_boxes, config_.attached_box_collision_padding);
+    attach_boxes_to_robot_state(planning_goal, carried_boxes, config_.attached_box_collision_padding);
+
+    config_.move_group->setStartState(planning_start);
+    config_.move_group->setJointValueTarget(planning_goal);
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    const auto plan_result = config_.move_group->plan(plan);
+    result->lateral_shift_attempted = true;
+    result->lateral_shift_points += plan.trajectory_.joint_trajectory.points.size();
+    if (plan_result != moveit::core::MoveItErrorCode::SUCCESS) {
+      result->failure_reason =
+        "lateral_shift_moveit_failed_step_" + std::to_string(step_index) +
+        "_code_" + std::to_string(plan_result.val);
+      return finish_partial(result->lateral_shift_reached_distance > 1e-6);
+    }
+
+    std::string clearance_reason;
+    const bool clear = config_.clearance_callback
+      ? config_.clearance_callback(plan, planning_start, &clearance_reason)
+      : true;
+    if (!clear) {
+      result->failure_reason =
+        "lateral_shift_collision_step_" + std::to_string(step_index) + ": " + clearance_reason;
+      return finish_partial(result->lateral_shift_reached_distance > 1e-6);
+    }
+
+    if (config_.record_callback) {
+      nlohmann::json extra = {
+        {"stage_kind", "post_extract_lateral_shift"},
+        {"valid", true},
+        {"shift_side", side},
+        {"shift_step", step_index},
+        {"shift_step_count", step_count},
+        {"shift_distance_y", direction_y * shift},
+        {"target_box", center_box->id},
+        {"carried_box_count", carried_boxes.size()}
+      };
+      config_.record_callback(
+        stage_name + "/lateral_shift_step_" + std::to_string(step_index),
+        plan,
+        planning_start,
+        planning_goal,
+        config_.target_joint_names,
+        extra);
+    }
+
+    current_state = target_state;
+    result->lateral_shift_reached_distance = shift;
+  }
+
+  return finish_partial(true);
 }
 
 LoadedPosePlanResult LoadedPosePlanner::plan(
@@ -223,10 +424,28 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
     return result;
   }
 
-  moveit::core::RobotState goal_state = config_.selector->makeGoalState(
-    extract_state, &result.selection);
+  moveit::core::RobotState start_state_with_boxes(extract_state);
+  attach_boxes_to_robot_state(
+    start_state_with_boxes,
+    carried_boxes,
+    config_.attached_box_collision_padding);
 
-  config_.move_group->setStartState(extract_state);
+  moveit::core::RobotState loaded_start_state(start_state_with_boxes);
+  moveit::core::RobotState shifted_state(extract_state);
+  if (!planLateralShift(stage_name, extract_state, carried_boxes, &shifted_state, &result)) {
+    restore_boxes();
+    return result;
+  }
+  attach_boxes_to_robot_state(
+    shifted_state,
+    carried_boxes,
+    config_.attached_box_collision_padding);
+  loaded_start_state = shifted_state;
+
+  moveit::core::RobotState goal_state = config_.selector->makeGoalState(
+    loaded_start_state, &result.selection);
+
+  config_.move_group->setStartState(loaded_start_state);
   config_.move_group->setJointValueTarget(goal_state);
   moveit::planning_interface::MoveGroupInterface::Plan plan;
   const auto t0 = std::chrono::steady_clock::now();
@@ -245,7 +464,7 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
 
   std::string carried_collision_reason;
   result.carried_clear = config_.clearance_callback
-    ? config_.clearance_callback(plan, extract_state, &carried_collision_reason)
+    ? config_.clearance_callback(plan, loaded_start_state, &carried_collision_reason)
     : true;
   if (!result.carried_clear) {
     result.failure_reason = carried_collision_reason;
@@ -257,9 +476,15 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
     nlohmann::json extra = {
       {"stage_kind", "post_extract_loaded_plan"},
       {"valid", result.carried_clear},
+      {"lateral_shift_enabled", config_.lateral_shift_enabled},
+      {"lateral_shift_attempted", result.lateral_shift_attempted},
+      {"lateral_shift_success", result.lateral_shift_success},
+      {"lateral_shift_ms", result.lateral_shift_ms},
+      {"lateral_shift_reached_distance", result.lateral_shift_reached_distance},
+      {"lateral_shift_points", result.lateral_shift_points},
       {"loaded_plan_ms", result.plan_ms},
       {"loaded_plan_points", result.plan_points},
-      {"start_updown", currentUpdown(extract_state)},
+      {"start_updown", currentUpdown(loaded_start_state)},
       {"target_updown", currentUpdown(goal_state)},
       {"carried_box_count", carried_boxes.size()},
       {"loaded_plan_rank", loaded_plan_rank},
@@ -276,7 +501,7 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
       {"failure_reason", result.carried_clear ? "" : carried_collision_reason}
     };
     config_.record_callback(
-      stage_name, plan, extract_state, goal_state, config_.target_joint_names, extra);
+      stage_name, plan, loaded_start_state, goal_state, config_.target_joint_names, extra);
   }
 
   if (!result.carried_clear) {
@@ -347,6 +572,11 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
 
     timing.loaded_plan_attempted = result.attempted;
     timing.loaded_plan_success = result.success;
+    timing.lateral_shift_attempted = result.lateral_shift_attempted;
+    timing.lateral_shift_success = result.lateral_shift_success;
+    timing.lateral_shift_ms = result.lateral_shift_ms;
+    timing.lateral_shift_reached_distance = result.lateral_shift_reached_distance;
+    timing.lateral_shift_points = result.lateral_shift_points;
     timing.loaded_plan_ms = result.plan_ms;
     timing.loaded_plan_points = result.plan_points;
     timing.selected_left_loaded_pose_index = result.selection.left_index;

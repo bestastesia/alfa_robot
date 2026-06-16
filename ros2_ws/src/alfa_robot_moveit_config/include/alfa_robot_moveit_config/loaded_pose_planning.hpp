@@ -92,6 +92,11 @@ struct LoadedPosePlanResult
   bool success = false;
   bool attempted = false;
   bool carried_clear = false;
+  bool lateral_shift_attempted = false;
+  bool lateral_shift_success = false;
+  double lateral_shift_ms = 0.0;
+  double lateral_shift_reached_distance = 0.0;
+  size_t lateral_shift_points = 0;
   double plan_ms = 0.0;
   size_t plan_points = 0;
   std::string failure_reason;
@@ -131,6 +136,10 @@ struct LoadedPosePlannerConfig
   LoadedPoseSelector* selector = nullptr;
   MotionSceneAdapter* scene_adapter = nullptr;
   std::vector<std::string> target_joint_names;
+  double attached_box_collision_padding = 0.0;
+  bool lateral_shift_enabled = false;
+  double lateral_shift_distance = 0.4;
+  double lateral_shift_step = 0.04;
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
 };
@@ -154,6 +163,14 @@ public:
 
 private:
   static double currentUpdown(const moveit::core::RobotState& state);
+  static bool isCenterColumnBox(const AttachedBoxSpec& box);
+
+  bool planLateralShift(
+    const std::string& stage_name,
+    const moveit::core::RobotState& start_state,
+    const std::vector<AttachedBoxSpec>& carried_boxes,
+    moveit::core::RobotState* shifted_state,
+    LoadedPosePlanResult* result);
 
   LoadedPosePlannerConfig config_;
 };

@@ -90,6 +90,11 @@ struct ExtractRolloutTiming
   bool success = false;
   bool loaded_plan_attempted = false;
   bool loaded_plan_success = false;
+  bool lateral_shift_attempted = false;
+  bool lateral_shift_success = false;
+  double lateral_shift_ms = 0.0;
+  double lateral_shift_reached_distance = 0.0;
+  size_t lateral_shift_points = 0;
   double loaded_plan_ms = 0.0;
   size_t loaded_plan_points = 0;
   size_t selected_left_loaded_pose_index = 0;

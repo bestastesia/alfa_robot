@@ -1374,6 +1374,7 @@ bool ExtractBenchmarkCsvWriter::write(
 
   out << "candidate_order,h_index,seed_index,h,ik_score,ik_solve_ms,rollout_ms,interval_ms,success,"
          "loaded_plan_attempted,loaded_plan_success,loaded_plan_ms,loaded_plan_points,"
+         "lateral_shift_attempted,lateral_shift_success,lateral_shift_ms,lateral_shift_reached_distance,lateral_shift_points,"
          "loaded_plan_rank,loaded_pose_distance_sum,loaded_pose_distance_l2,loaded_pose_max_joint_delta,"
          "selected_left_loaded_pose_index,selected_right_loaded_pose_index,"
          "selected_left_loaded_pose_distance,selected_right_loaded_pose_distance,"
@@ -1396,6 +1397,11 @@ bool ExtractBenchmarkCsvWriter::write(
         << (timing.loaded_plan_success ? 1 : 0) << ','
         << timing.loaded_plan_ms << ','
         << timing.loaded_plan_points << ','
+        << (timing.lateral_shift_attempted ? 1 : 0) << ','
+        << (timing.lateral_shift_success ? 1 : 0) << ','
+        << timing.lateral_shift_ms << ','
+        << timing.lateral_shift_reached_distance << ','
+        << timing.lateral_shift_points << ','
         << timing.loaded_plan_rank << ','
         << timing.loaded_pose_distance_sum << ','
         << timing.loaded_pose_distance_l2 << ','
