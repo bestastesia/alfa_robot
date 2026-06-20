@@ -22,6 +22,7 @@ namespace alfa_robot::motion
 {
 
 class MotionSceneAdapter;
+class ExtractCandidateSolver;
 struct ExtractRolloutTiming;
 
 struct LoadedPoseSelection
@@ -140,6 +141,10 @@ struct LoadedPosePlannerConfig
   bool lateral_shift_enabled = false;
   double lateral_shift_distance = 0.4;
   double lateral_shift_step = 0.04;
+  double fixed_updown = 0.3;
+  double min_tool_normal_z = -1e-4;
+  double max_joint_delta = 0.0;
+  ExtractCandidateSolver* lateral_shift_solver = nullptr;
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
 };

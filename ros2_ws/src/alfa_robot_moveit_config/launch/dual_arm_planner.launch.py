@@ -110,7 +110,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_loaded_target_updown", default_value="0.3"),
         DeclareLaunchArgument("extract_loaded_lateral_shift_enabled", default_value="false"),
         DeclareLaunchArgument("extract_loaded_lateral_shift_distance", default_value="0.4"),
-        DeclareLaunchArgument("extract_loaded_lateral_shift_step", default_value="0.04"),
+        DeclareLaunchArgument("extract_loaded_lateral_shift_step", default_value="0.0"),
         DeclareLaunchArgument("extract_use_independent_kdl", default_value="false"),
         DeclareLaunchArgument("extract_independent_kdl_max_iterations", default_value="120"),
         DeclareLaunchArgument("extract_independent_kdl_eps", default_value="1e-5"),

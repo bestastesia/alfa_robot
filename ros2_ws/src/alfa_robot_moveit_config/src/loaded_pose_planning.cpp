@@ -163,6 +163,8 @@ moveit::core::RobotState LoadedPoseSelector::makeGoalState(
 
 #include <geometric_shapes/shapes.h>
 #include <moveit_msgs/msg/collision_object.hpp>
+#include <rclcpp/duration.hpp>
+#include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -286,11 +288,10 @@ bool LoadedPosePlanner::planLateralShift(
 
   const double direction_y = side == "left" ? 1.0 : -1.0;
   const double distance = std::abs(config_.lateral_shift_distance);
-  const double step = std::max(0.01, std::abs(config_.lateral_shift_step));
+  const double step = std::max(0.001, std::abs(config_.lateral_shift_step));
   const size_t step_count = std::max<size_t>(1, static_cast<size_t>(std::ceil(distance / step)));
 
   moveit::core::RobotState current_state(start_state);
-  moveit::planning_interface::MoveGroupInterface::Plan full_plan_for_record;
   const auto t0 = std::chrono::steady_clock::now();
   const auto finish_partial = [&](bool shifted_any) {
     result->lateral_shift_ms = std::chrono::duration<double, std::milli>(
@@ -305,27 +306,54 @@ bool LoadedPosePlanner::planLateralShift(
 
   for (size_t step_index = 1; step_index <= step_count; ++step_index) {
     const double shift = std::min(distance, step * static_cast<double>(step_index));
-    const Eigen::Isometry3d start_tip = start_state.getGlobalLinkTransform(tip_name);
+    const double step_delta = shift - result->lateral_shift_reached_distance;
+    const Eigen::Isometry3d start_tip = current_state.getGlobalLinkTransform(tip_name);
     Eigen::Isometry3d target_tip = start_tip;
-    target_tip.translation().y() += direction_y * shift;
+    target_tip.translation().y() += direction_y * step_delta;
 
-    moveit::core::RobotState target_state(current_state);
-    bool ik_ok = false;
-    {
-      const auto set_from_ik = [&]() {
-        return target_state.setFromIK(
-          arm_group,
-          target_tip,
-          tip_name,
-          0.02,
-          moveit::core::GroupStateValidityCallbackFn());
-      };
-      ik_ok = set_from_ik();
-    }
-    if (!ik_ok) {
-      result->failure_reason = "lateral_shift_ik_failed_step_" + std::to_string(step_index);
+    if (!config_.lateral_shift_solver) {
+      result->failure_reason = "lateral_shift_solver_not_initialized";
       return finish_partial(result->lateral_shift_reached_distance > 1e-6);
     }
+
+    geometry_msgs::msg::Pose target_pose;
+    target_pose.position.x = target_tip.translation().x();
+    target_pose.position.y = target_tip.translation().y();
+    target_pose.position.z = target_tip.translation().z();
+    Eigen::Quaterniond q(target_tip.linear());
+    q.normalize();
+    target_pose.orientation.x = q.x();
+    target_pose.orientation.y = q.y();
+    target_pose.orientation.z = q.z();
+    target_pose.orientation.w = q.w();
+
+    ExtractCandidateSolveRequest request;
+    request.side = side;
+    request.current_state = &current_state;
+    request.target_pose = target_pose;
+    request.step_index = step_index;
+    request.candidate_index = 0;
+    request.retreat_x = 0.0;
+    request.retreat_delta_x = 0.0;
+    request.lift_z = 0.0;
+    request.lift_delta_z = 0.0;
+    request.pitch_up_rad = 0.0;
+    request.pitch_delta_rad = 0.0;
+    request.min_allowed_tip_z = start_tip.translation().z();
+    request.fixed_updown = currentUpdown(current_state);
+
+    ExtractCandidate candidate;
+    if (!config_.lateral_shift_solver->solve(request, &candidate) || !candidate.state) {
+      result->failure_reason = "lateral_shift_kdl_failed_step_" + std::to_string(step_index);
+      if (!candidate.rejection_reason.empty()) {
+        result->failure_reason += ": " + candidate.rejection_reason;
+      }
+      return finish_partial(result->lateral_shift_reached_distance > 1e-6);
+    }
+
+    moveit::core::RobotState target_state(*candidate.state);
+    target_state.setVariablePosition("updown", currentUpdown(current_state));
+    target_state.enforceBounds(arm_group);
     target_state.update();
 
     moveit::core::RobotState planning_start(current_state);
@@ -333,18 +361,24 @@ bool LoadedPosePlanner::planLateralShift(
     attach_boxes_to_robot_state(planning_start, carried_boxes, config_.attached_box_collision_padding);
     attach_boxes_to_robot_state(planning_goal, carried_boxes, config_.attached_box_collision_padding);
 
-    config_.move_group->setStartState(planning_start);
-    config_.move_group->setJointValueTarget(planning_goal);
     moveit::planning_interface::MoveGroupInterface::Plan plan;
-    const auto plan_result = config_.move_group->plan(plan);
-    result->lateral_shift_attempted = true;
-    result->lateral_shift_points += plan.trajectory_.joint_trajectory.points.size();
-    if (plan_result != moveit::core::MoveItErrorCode::SUCCESS) {
-      result->failure_reason =
-        "lateral_shift_moveit_failed_step_" + std::to_string(step_index) +
-        "_code_" + std::to_string(plan_result.val);
-      return finish_partial(result->lateral_shift_reached_distance > 1e-6);
+    auto& trajectory = plan.trajectory_.joint_trajectory;
+    trajectory.joint_names = config_.target_joint_names;
+    trajectory_msgs::msg::JointTrajectoryPoint start_point;
+    trajectory_msgs::msg::JointTrajectoryPoint goal_point;
+    start_point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+    goal_point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(step_index));
+    start_point.positions.reserve(trajectory.joint_names.size());
+    goal_point.positions.reserve(trajectory.joint_names.size());
+    for (const auto& name : trajectory.joint_names) {
+      start_point.positions.push_back(current_state.getVariablePosition(name));
+      goal_point.positions.push_back(target_state.getVariablePosition(name));
     }
+    trajectory.points.push_back(start_point);
+    trajectory.points.push_back(goal_point);
+
+    result->lateral_shift_attempted = true;
+    result->lateral_shift_points += trajectory.points.size();
 
     std::string clearance_reason;
     const bool clear = config_.clearance_callback
@@ -352,7 +386,7 @@ bool LoadedPosePlanner::planLateralShift(
       : true;
     if (!clear) {
       result->failure_reason =
-        "lateral_shift_collision_step_" + std::to_string(step_index) + ": " + clearance_reason;
+        "lateral_shift_kdl_collision_step_" + std::to_string(step_index) + ": " + clearance_reason;
       return finish_partial(result->lateral_shift_reached_distance > 1e-6);
     }
 
@@ -364,6 +398,9 @@ bool LoadedPosePlanner::planLateralShift(
         {"shift_step", step_index},
         {"shift_step_count", step_count},
         {"shift_distance_y", direction_y * shift},
+        {"shift_method", "kdl_step"},
+        {"shift_step_resolution", step},
+        {"shift_joint_delta_limit", config_.max_joint_delta},
         {"target_box", center_box->id},
         {"carried_box_count", carried_boxes.size()}
       };

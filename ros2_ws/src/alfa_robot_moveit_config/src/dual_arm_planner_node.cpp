@@ -327,7 +327,7 @@ public:
     extract_loaded_lateral_shift_distance_ =
       get_or_declare_parameter<double>("extract_loaded_lateral_shift_distance", 0.4);
     extract_loaded_lateral_shift_step_ =
-      get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.04);
+      get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.0);
     enforce_loaded_plan_aabb_clearance_ =
       get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
     extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", false);
@@ -431,7 +431,6 @@ public:
     }
 
     scene_adapter_ = std::make_unique<MotionSceneAdapter>(motion_scene_adapter_config());
-    loaded_pose_planner_ = std::make_unique<LoadedPosePlanner>(loaded_pose_planner_config());
     extract_motion_planner_ = std::make_unique<ExtractMotionPlanner>(extract_motion_planner_config());
     extract_candidate_scorer_ = std::make_unique<ExtractCandidateScorer>(extract_candidate_scorer_config());
     extract_candidate_solver_ = std::make_unique<ExtractCandidateSolver>(extract_candidate_solver_config());
@@ -439,6 +438,7 @@ public:
     if (!extract_candidate_solver_->initialize(&extract_solver_error)) {
       throw std::runtime_error("Failed to initialize extract candidate solver: " + extract_solver_error);
     }
+    loaded_pose_planner_ = std::make_unique<LoadedPosePlanner>(loaded_pose_planner_config());
     extract_rollout_planner_ = std::make_unique<ExtractRolloutPlanner>(extract_rollout_planner_config());
     ik_candidate_selector_ = std::make_unique<IkCandidateSelector>(ik_candidate_selector_config());
     apply_container_obstacles();
@@ -785,7 +785,13 @@ private:
     config.attached_box_collision_padding = attached_box_collision_padding_;
     config.lateral_shift_enabled = extract_loaded_lateral_shift_enabled_;
     config.lateral_shift_distance = extract_loaded_lateral_shift_distance_;
-    config.lateral_shift_step = extract_loaded_lateral_shift_step_;
+    config.lateral_shift_step = extract_loaded_lateral_shift_step_ > 0.0
+      ? extract_loaded_lateral_shift_step_
+      : extract_step_x_;
+    config.fixed_updown = extract_loaded_target_updown_;
+    config.min_tool_normal_z = extract_min_tool_normal_z_;
+    config.max_joint_delta = extract_max_joint_delta_;
+    config.lateral_shift_solver = extract_candidate_solver_.get();
     config.clearance_callback = [this](
       const moveit::planning_interface::MoveGroupInterface::Plan& plan,
       const moveit::core::RobotState& start_state,
@@ -2381,7 +2387,7 @@ private:
   double extract_loaded_target_updown_ = 0.3;
   bool extract_loaded_lateral_shift_enabled_ = false;
   double extract_loaded_lateral_shift_distance_ = 0.4;
-  double extract_loaded_lateral_shift_step_ = 0.04;
+  double extract_loaded_lateral_shift_step_ = 0.0;
   bool extract_use_independent_kdl_ = false;
   int extract_independent_kdl_max_iterations_ = 120;
   double extract_independent_kdl_eps_ = 1e-5;
