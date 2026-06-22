@@ -23,7 +23,13 @@
 #include <rclcpp/rclcpp.hpp>
 #include <geometric_shapes/shapes.h>
 #include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/kinematic_constraints/utils.h>
+#include <moveit/planning_interface/planning_request.h>
+#include <moveit/planning_interface/planning_response.h>
+#include <moveit/planning_pipeline/planning_pipeline.h>
+#include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_monitor/planning_scene_monitor.h>
+#include <moveit/robot_state/conversions.h>
 #include <moveit/robot_state/robot_state.h>
 #include <moveit/collision_detection/collision_common.h>
 #include <geometry_msgs/msg/pose.hpp>
@@ -37,6 +43,7 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <map>
@@ -45,6 +52,7 @@
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <random>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -197,7 +205,7 @@ public:
     include_top_suction_ = get_or_declare_parameter<bool>("include_top_suction", true);
     ik_timeout_ = get_or_declare_parameter<double>("ik_timeout", 2.0);
     planning_time_ = get_or_declare_parameter<double>("planning_time", 8.0);
-    planning_attempts_ = get_or_declare_parameter<int>("planning_attempts", 20);
+    planning_attempts_ = get_or_declare_parameter<int>("planning_attempts", 8);
     velocity_scale_ = get_or_declare_parameter<double>("velocity_scale", 1.0);
     acceleration_scale_ = get_or_declare_parameter<double>("acceleration_scale", 1.0);
     joint_goal_tolerance_rad_ = get_or_declare_parameter<double>("joint_goal_tolerance_rad", 0.02);
@@ -205,6 +213,9 @@ public:
     record_jsonl_path_ = get_or_declare_parameter<std::string>(
       "record_jsonl_path", "/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/moveit_box_stack_flow/moveit_box_stack_flow.jsonl");
     record_trajectories_ = get_or_declare_parameter<bool>("record_trajectories", true);
+    extract_monitor_snapshot_path_ = get_or_declare_parameter<std::string>(
+      "extract_monitor_snapshot_path",
+      "/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_stage_monitor/latest_snapshot.json");
 
     ik_config_.fixed_group = get_or_declare_parameter<std::string>("ik_fixed_group", "dual_v5_arm");
     ik_config_.free_group = get_or_declare_parameter<std::string>("ik_free_group", "dual_v5_arm_with_base");
@@ -279,7 +290,7 @@ public:
     extract_fail_fast_ = get_or_declare_parameter<bool>("extract_fail_fast", false);
     extract_success_extra_steps_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_success_extra_steps", 3)));
-    extract_kdl_timeout_ = get_or_declare_parameter<double>("extract_kdl_timeout", 0.01);
+    extract_kdl_timeout_ = get_or_declare_parameter<double>("extract_kdl_timeout", 0.003);
     extract_position_tolerance_ = get_or_declare_parameter<double>("extract_position_tolerance", 0.01);
     extract_orientation_tolerance_ = get_or_declare_parameter<double>("extract_orientation_tolerance", 0.05);
     extract_max_tip_z_drop_ = get_or_declare_parameter<double>("extract_max_tip_z_drop", 0.002);
@@ -314,7 +325,11 @@ public:
       get_or_declare_parameter<std::string>("extract_loaded_planning_group", "dual_v5_arm_with_base");
     extract_loaded_planning_time_ = get_or_declare_parameter<double>("extract_loaded_planning_time", 1.0);
     extract_loaded_planning_attempts_ =
-      std::max(1, get_or_declare_parameter<int>("extract_loaded_planning_attempts", 4));
+      std::max(1, get_or_declare_parameter<int>("extract_loaded_planning_attempts", 8));
+    extract_loaded_use_direct_pipeline_ =
+      get_or_declare_parameter<bool>("extract_loaded_use_direct_pipeline", false);
+    extract_loaded_parallel_workers_ = static_cast<size_t>(
+      std::max(1, get_or_declare_parameter<int>("extract_loaded_parallel_workers", 1)));
     extract_loaded_candidate_limit_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_loaded_candidate_limit", 0)));
     extract_loaded_sort_by_pose_distance_ =
@@ -330,7 +345,7 @@ public:
       get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.0);
     enforce_loaded_plan_aabb_clearance_ =
       get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
-    extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", false);
+    extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", true);
     extract_independent_kdl_max_iterations_ =
       std::max(1, get_or_declare_parameter<int>("extract_independent_kdl_max_iterations", 120));
     extract_independent_kdl_eps_ =
@@ -430,6 +445,29 @@ public:
       planning_scene_monitor_->requestPlanningSceneState();
     }
 
+    if (extract_loaded_use_direct_pipeline_) {
+      const std::vector<std::string> request_adapters = {
+        "default_planner_request_adapters/AddTimeOptimalParameterization",
+        "default_planner_request_adapters/ResolveConstraintFrames",
+        "default_planner_request_adapters/FixWorkspaceBounds",
+        "default_planner_request_adapters/FixStartStateBounds",
+        "default_planner_request_adapters/FixStartStateCollision",
+        "default_planner_request_adapters/FixStartStatePathConstraints",
+      };
+      loaded_planning_pipeline_ = std::make_shared<planning_pipeline::PlanningPipeline>(
+        robot_model_, shared_from_this(), "ompl", "ompl_interface/OMPLPlanner", request_adapters);
+      loaded_planning_pipeline_->displayComputedMotionPlans(false);
+      loaded_planning_pipeline_->publishReceivedRequests(false);
+      loaded_planning_pipeline_->checkSolutionPaths(true);
+      RCLCPP_INFO(
+        get_logger(),
+        "Loaded pose direct planning pipeline ready: plugin=%s workers=%zu attempts=%d time=%.3fs",
+        loaded_planning_pipeline_->getPlannerPluginName().c_str(),
+        extract_loaded_parallel_workers_,
+        extract_loaded_planning_attempts_,
+        extract_loaded_planning_time_);
+    }
+
     scene_adapter_ = std::make_unique<MotionSceneAdapter>(motion_scene_adapter_config());
     extract_motion_planner_ = std::make_unique<ExtractMotionPlanner>(extract_motion_planner_config());
     extract_candidate_scorer_ = std::make_unique<ExtractCandidateScorer>(extract_candidate_scorer_config());
@@ -473,12 +511,35 @@ public:
         response->message = ok ? "left extract primitive finished" : last_error_;
       });
 
+    extract_monitor_next_srv_ = create_service<std_srvs::srv::Trigger>(
+      "~/run_extract_monitor_next",
+      [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+             std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        RCLCPP_INFO(get_logger(), "Received /%s/run_extract_monitor_next request", get_name());
+        std::string message;
+        const bool ok = run_extract_monitor_next(&message);
+        response->success = ok;
+        response->message = ok ? message : (message.empty() ? last_error_ : message);
+      });
+
+    extract_monitor_full_selected_srv_ = create_service<std_srvs::srv::Trigger>(
+      "~/run_extract_monitor_full_selected",
+      [this](const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+             std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        RCLCPP_INFO(get_logger(), "Received /%s/run_extract_monitor_full_selected request", get_name());
+        std::string message;
+        const bool ok = run_extract_monitor_full_selected(&message);
+        response->success = ok;
+        response->message = ok ? message : (message.empty() ? last_error_ : message);
+      });
+
     RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
     RCLCPP_INFO(get_logger(), "  group=%s execute=%s box_front_x=%.3f max_rounds=%d include_top=%s",
                 planning_group_.c_str(), execute_ ? "true" : "false", box_front_x_, max_rounds_,
                 include_top_suction_ ? "true" : "false");
-    RCLCPP_INFO(get_logger(), "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo",
-                get_name(), get_name(), get_name());
+    RCLCPP_INFO(get_logger(),
+                "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected",
+                get_name(), get_name(), get_name(), get_name(), get_name());
     RCLCPP_INFO(get_logger(),
                 "  IK strategy=fixed_discrete h=%zu seed=%zu workers=%zu timeout=%.3fs collision=%s",
                 ik_config_.h_candidate_count, ik_config_.seed_count, ik_config_.workers, ik_config_.timeout,
@@ -492,6 +553,13 @@ public:
                 "  Extract primitive IK=%s fixed-updown timeout=%.3fs pos_tol=%.3fm ori_tol=%.3frad",
                 extract_use_independent_kdl_ ? "independent Orocos KDL chains" : "MoveIt setFromIK/KDL plugin",
                 extract_kdl_timeout_, extract_position_tolerance_, extract_orientation_tolerance_);
+    if (!extract_use_independent_kdl_ && extract_benchmark_extract_workers_ > 1) {
+      RCLCPP_WARN(
+        get_logger(),
+        "  Extract primitive IK is using MoveIt setFromIK with %zu workers; this path is mutex-guarded and can serialize rollout IK. "
+        "Use extract_use_independent_kdl:=true for the benchmarked parallel extract path.",
+        extract_benchmark_extract_workers_);
+    }
     if (extract_use_independent_kdl_) {
       RCLCPP_INFO(get_logger(), "  Independent KDL settings: max_iterations=%d eps=%.2e",
                   extract_independent_kdl_max_iterations_, extract_independent_kdl_eps_);
@@ -570,6 +638,13 @@ private:
     if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) return true;
     planning_scene_monitor::LockedPlanningSceneRO scene(planning_scene_monitor_);
     return !scene->isStateColliding(state, joint_group_->getName());
+  }
+
+  static bool robot_state_has_attached_body(const moveit::core::RobotState& state)
+  {
+    std::vector<const moveit::core::AttachedBody*> attached_bodies;
+    state.getAttachedBodies(attached_bodies);
+    return !attached_bodies.empty();
   }
 
   bool is_state_valid_with_attached_boxes(
@@ -792,6 +867,16 @@ private:
     config.min_tool_normal_z = extract_min_tool_normal_z_;
     config.max_joint_delta = extract_max_joint_delta_;
     config.lateral_shift_solver = extract_candidate_solver_.get();
+    if (extract_loaded_use_direct_pipeline_) {
+      config.direct_plan_callback = [this](
+        const std::string& stage_name,
+        const moveit::core::RobotState& start_state,
+        const moveit::core::RobotState& goal_state,
+        moveit::planning_interface::MoveGroupInterface::Plan* plan,
+        std::string* reason) {
+        return plan_loaded_pose_with_direct_pipeline(stage_name, start_state, goal_state, plan, reason);
+      };
+    }
     config.clearance_callback = [this](
       const moveit::planning_interface::MoveGroupInterface::Plan& plan,
       const moveit::core::RobotState& start_state,
@@ -819,7 +904,77 @@ private:
     options.sort_by_pose_distance = extract_loaded_sort_by_pose_distance_;
     options.stop_on_first_success = extract_loaded_stop_on_first_success_;
     options.candidate_limit = extract_loaded_candidate_limit_;
+    options.parallel_workers = extract_loaded_use_direct_pipeline_ ? extract_loaded_parallel_workers_ : 1;
     return options;
+  }
+
+  bool plan_loaded_pose_with_direct_pipeline(
+    const std::string& stage_name,
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    moveit::planning_interface::MoveGroupInterface::Plan* plan,
+    std::string* reason) const
+  {
+    if (!plan) {
+      if (reason) *reason = "direct_pipeline_plan_output_null";
+      return false;
+    }
+    if (!loaded_planning_pipeline_) {
+      if (reason) *reason = "direct_pipeline_not_initialized";
+      return false;
+    }
+    if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+      if (reason) *reason = "direct_pipeline_planning_scene_not_initialized";
+      return false;
+    }
+    const auto* loaded_group = robot_model_->getJointModelGroup(extract_loaded_planning_group_);
+    if (!loaded_group) {
+      if (reason) *reason = "direct_pipeline_missing_group_" + extract_loaded_planning_group_;
+      return false;
+    }
+
+    planning_scene::PlanningScenePtr scene_snapshot;
+    {
+      planning_scene_monitor::LockedPlanningSceneRO locked_scene(planning_scene_monitor_);
+      if (!locked_scene) {
+        if (reason) *reason = "direct_pipeline_planning_scene_lock_failed";
+        return false;
+      }
+      scene_snapshot = planning_scene::PlanningScene::clone(
+        static_cast<const planning_scene::PlanningSceneConstPtr&>(locked_scene));
+    }
+    scene_snapshot->setCurrentState(start_state);
+
+    planning_interface::MotionPlanRequest request;
+    request.group_name = extract_loaded_planning_group_;
+    request.allowed_planning_time = extract_loaded_planning_time_;
+    request.num_planning_attempts = extract_loaded_planning_attempts_;
+    request.max_velocity_scaling_factor = velocity_scale_;
+    request.max_acceleration_scaling_factor = acceleration_scale_;
+    moveit::core::robotStateToRobotStateMsg(start_state, request.start_state, true);
+    request.goal_constraints.push_back(
+      kinematic_constraints::constructGoalConstraints(goal_state, loaded_group, joint_goal_tolerance_rad_));
+
+    planning_interface::MotionPlanResponse response;
+    const bool generated = loaded_planning_pipeline_->generatePlan(scene_snapshot, request, response);
+    if (!generated || response.error_code_.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS ||
+        !response.trajectory_) {
+      if (reason) {
+        *reason = "direct_pipeline_planning_failed_code_" +
+          std::to_string(response.error_code_.val);
+      }
+      return false;
+    }
+
+    moveit::core::robotStateToRobotStateMsg(start_state, plan->start_state_, true);
+    response.trajectory_->getRobotTrajectoryMsg(plan->trajectory_);
+    plan->planning_time_ = response.planning_time_;
+    if (plan->trajectory_.joint_trajectory.points.empty()) {
+      if (reason) *reason = "direct_pipeline_empty_trajectory";
+      return false;
+    }
+    (void)stage_name;
+    return true;
   }
 
   BoxStackFlowConfig box_stack_flow_config() const
@@ -867,6 +1022,15 @@ private:
     };
     callbacks.validate_attached_boxes = [this](const std::string& stage_name) {
       if (auto attached_state = get_current_robot_state()) {
+        std::string moveit_collision_reason;
+        if (!is_state_valid_with_attached_boxes(
+              *attached_state,
+              active_attached_boxes(),
+              true,
+              &moveit_collision_reason)) {
+          return fail(stage_name + ": carried box collides in MoveIt scene (" +
+                      moveit_collision_reason + ")");
+        }
         std::string carried_collision_reason;
         if (!carried_boxes_clear_static_obstacles(*attached_state, &carried_collision_reason)) {
           return fail(stage_name + ": carried box collides with static box obstacle (" +
@@ -1266,7 +1430,8 @@ private:
     const moveit::core::RobotState& start_state,
     std::string* reason) const
   {
-    if (!enable_attached_box_collision_ || active_attached_boxes().empty()) return true;
+    if (!enable_attached_box_collision_) return true;
+    if (active_attached_boxes().empty() && !robot_state_has_attached_body(start_state)) return true;
 
     std::string moveit_scene_reason;
     if (!planned_trajectory_clear_in_moveit_scene(plan, start_state, &moveit_scene_reason)) {
@@ -1293,6 +1458,9 @@ private:
     const moveit::core::RobotState& start_state,
     std::string* reason) const
   {
+    if (!enable_attached_box_collision_) return true;
+    if (active_attached_boxes().empty() && !robot_state_has_attached_body(start_state)) return true;
+
     const auto& trajectory = plan.trajectory_.joint_trajectory;
     for (size_t point_index = 0; point_index < trajectory.points.size(); ++point_index) {
       moveit::core::RobotState state(start_state);
@@ -2105,6 +2273,20 @@ private:
     return boxes;
   }
 
+  nlohmann::json attached_boxes_json(const std::vector<AttachedBoxSpec>& specs) const
+  {
+    nlohmann::json boxes = nlohmann::json::array();
+    for (const auto& box : specs) {
+      boxes.push_back({
+        {"id", box.id},
+        {"link_name", box.link_name},
+        {"center_in_link", {box.center_in_link[0], box.center_in_link[1], box.center_in_link[2]}},
+        {"size", {box.size[0], box.size[1], box.size[2]}},
+      });
+    }
+    return boxes;
+  }
+
   nlohmann::json robot_state_json(const moveit::core::RobotState& state) const
   {
     const auto& names = robot_model_->getVariableNames();
@@ -2112,6 +2294,167 @@ private:
     values.reserve(names.size());
     for (const auto& name : names) values.push_back(state.getVariablePosition(name));
     return {{"joint_names", names}, {"joint_values", values}, {"joint_map", names_values_json(names, values)}};
+  }
+
+  nlohmann::json trajectory_json(const moveit::planning_interface::MoveGroupInterface::Plan& plan) const
+  {
+    const auto& traj = plan.trajectory_.joint_trajectory;
+    nlohmann::json points = nlohmann::json::array();
+    for (const auto& point : traj.points) {
+      points.push_back({
+        {"time_from_start_sec", rclcpp::Duration(point.time_from_start).seconds()},
+        {"positions", point.positions},
+        {"velocities", point.velocities}
+      });
+    }
+    return {
+      {"joint_names", traj.joint_names},
+      {"point_count", traj.points.size()},
+      {"points", points}
+    };
+  }
+
+  nlohmann::json monitor_stage_json(
+    const std::string& stage_name,
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    const std::vector<std::string>& target_names,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    const nlohmann::json& extra) const
+  {
+    return {
+      {"type", "stage"},
+      {"stage", stage_name},
+      {"trajectory", trajectory_json(plan)},
+      {"target_names", target_names},
+      {"start_state", robot_state_json(start_state)},
+      {"goal_state", robot_state_json(goal_state)},
+      {"attached_boxes", attached_boxes_json(attached_boxes)},
+      {"static_box_obstacles", static_box_obstacles_json()},
+      {"extra", extra}
+    };
+  }
+
+  nlohmann::json monitor_candidate_json(
+    const ik_benchmark::UpdownAwareIkCandidate& candidate,
+    size_t display_index,
+    const moveit::core::RobotState& state) const
+  {
+    return {
+      {"display_index", display_index},
+      {"h", candidate.h},
+      {"h_index", candidate.h_index},
+      {"seed_index", candidate.seed_index},
+      {"score", candidate.score},
+      {"solve_ms", candidate.solve_ms},
+      {"solver_path", candidate.solver_path},
+      {"target_order", candidate.target_order},
+      {"updown_delta", candidate.updown_delta},
+      {"joint_delta", candidate.joint_delta},
+      {"state", robot_state_json(state)}
+    };
+  }
+
+  nlohmann::json monitor_timing_json(
+    const ExtractRolloutTiming& timing,
+    size_t display_index,
+    const moveit::core::RobotState& state) const
+  {
+    return {
+      {"display_index", display_index},
+      {"candidate_order", timing.candidate_order},
+      {"h", timing.h},
+      {"h_index", timing.h_index},
+      {"seed_index", timing.seed_index},
+      {"ik_score", timing.ik_score},
+      {"ik_solve_ms", timing.ik_solve_ms},
+      {"rollout_ms", timing.rollout_ms},
+      {"interval_ms", timing.interval_ms},
+      {"accepted_steps", timing.accepted_steps},
+      {"failed_steps", timing.failed_steps},
+      {"final_retreat_x", timing.final_retreat_x},
+      {"final_lift_z", timing.final_lift_z},
+      {"final_pitch_deg", timing.final_pitch_deg},
+      {"right_final_retreat_x", timing.right_final_retreat_x},
+      {"right_final_lift_z", timing.right_final_lift_z},
+      {"right_final_pitch_deg", timing.right_final_pitch_deg},
+      {"loaded_plan_rank", timing.loaded_plan_rank},
+      {"loaded_plan_ms", timing.loaded_plan_ms},
+      {"loaded_plan_points", timing.loaded_plan_points},
+      {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
+      {"loaded_pose_distance_sum", timing.loaded_pose_distance_sum},
+      {"loaded_pose_distance_l2", timing.loaded_pose_distance_l2},
+      {"loaded_pose_max_joint_delta", timing.loaded_pose_max_joint_delta},
+      {"loaded_plan_selected", timing.loaded_plan_selected},
+      {"state", robot_state_json(state)}
+    };
+  }
+
+  bool write_extract_monitor_snapshot(const nlohmann::json& snapshot) const
+  {
+    try {
+      const std::filesystem::path path(extract_monitor_snapshot_path_);
+      if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path());
+      }
+      std::ofstream out(path);
+      if (!out) {
+        RCLCPP_ERROR(get_logger(), "Failed to open extract monitor snapshot: %s",
+                     extract_monitor_snapshot_path_.c_str());
+        return false;
+      }
+      out << snapshot.dump(2) << '\n';
+      return true;
+    } catch (const std::exception& e) {
+      RCLCPP_ERROR(get_logger(), "Failed to write extract monitor snapshot %s: %s",
+                   extract_monitor_snapshot_path_.c_str(), e.what());
+      return false;
+    }
+  }
+
+  std::vector<ik_benchmark::UpdownAwareIkCandidate> selected_monitor_ik_candidates(
+    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    IkCandidateSelectionStats* stats) const
+  {
+    std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
+    legal_candidates.reserve(ik_result.candidates.size());
+    for (const auto& candidate : ik_result.candidates) {
+      if (candidate.legal) {
+        legal_candidates.push_back(candidate);
+      }
+    }
+    std::sort(legal_candidates.begin(), legal_candidates.end(),
+              [](const auto& lhs, const auto& rhs) {
+                if (lhs.score != rhs.score) return lhs.score < rhs.score;
+                if (lhs.h_index != rhs.h_index) return lhs.h_index < rhs.h_index;
+                return lhs.seed_index < rhs.seed_index;
+              });
+    if (ik_candidate_selector_) {
+      return ik_candidate_selector_->select(legal_candidates, stats);
+    }
+    if (stats) {
+      stats->input_count = legal_candidates.size();
+      stats->unique_count = legal_candidates.size();
+      stats->selected_count = legal_candidates.size();
+    }
+    return legal_candidates;
+  }
+
+  moveit::core::RobotState make_extract_monitor_seed_state() const
+  {
+    moveit::core::RobotState seed_state(robot_model_);
+    seed_state.setToDefaultValues();
+    for (size_t i = 0; i < left_pregrasp_arm_.size(); ++i) {
+      seed_state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
+    }
+    for (size_t i = 0; i < right_pregrasp_arm_.size(); ++i) {
+      seed_state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
+    }
+    seed_state.setVariablePosition("updown", extract_grasp_ik_home_updown_);
+    seed_state.enforceBounds(joint_group_);
+    seed_state.update();
+    return seed_state;
   }
 
   void record_stage(
@@ -2143,6 +2486,545 @@ private:
   {
     return make_pose(
       box.x + top_suction_x_offset_, box.y, box.z + top_suction_z_offset_ - world_to_base_z_, top_suction_orientation());
+  }
+
+  bool run_extract_monitor_next(std::string* message)
+  {
+    std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
+    if (!message) {
+      return fail("extract monitor: output message is null");
+    }
+
+    switch (extract_monitor_phase_) {
+      case ExtractMonitorPhase::ReadyForIk:
+        return run_extract_monitor_ik_stage(message);
+      case ExtractMonitorPhase::ReadyForExtract:
+        return run_extract_monitor_extract_stage(message);
+      case ExtractMonitorPhase::ReadyForLoaded:
+        return run_extract_monitor_loaded_stage(message);
+      case ExtractMonitorPhase::ReadyForFinal:
+        return run_extract_monitor_final_stage(message);
+      case ExtractMonitorPhase::Done:
+        extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
+        return run_extract_monitor_ik_stage(message);
+    }
+    return fail("extract monitor: unknown phase");
+  }
+
+  bool run_extract_monitor_full_selected(std::string* message)
+  {
+    std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
+    if (!message) {
+      return fail("extract monitor full: output message is null");
+    }
+
+    const auto total_start = std::chrono::steady_clock::now();
+    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
+
+    std::string ik_message;
+    if (!run_extract_monitor_ik_stage(&ik_message)) {
+      *message = "完整流程失败在IK阶段: " + ik_message;
+      return false;
+    }
+    const double ik_elapsed_ms = extract_monitor_last_stage_ms_;
+
+    std::string extract_message;
+    if (!run_extract_monitor_extract_stage(&extract_message)) {
+      *message = "完整流程失败在抽离阶段: " + extract_message;
+      return false;
+    }
+    const double extract_elapsed_ms = extract_monitor_last_stage_ms_;
+
+    std::string loaded_message;
+    if (!run_extract_monitor_loaded_stage(&loaded_message)) {
+      *message = "完整流程失败在负重规划阶段: " + loaded_message;
+      return false;
+    }
+    const double loaded_elapsed_ms = extract_monitor_last_stage_ms_;
+
+    std::string final_message;
+    if (!run_extract_monitor_final_stage(&final_message)) {
+      *message = "完整流程失败在最终选择阶段: " + final_message;
+      return false;
+    }
+    const double final_elapsed_ms = extract_monitor_last_stage_ms_;
+
+    const double total_elapsed_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - total_start).count();
+
+    nlohmann::json snapshot;
+    try {
+      snapshot = nlohmann::json::parse(std::ifstream(extract_monitor_snapshot_path_));
+    } catch (const std::exception&) {
+      snapshot = nlohmann::json::object();
+    }
+    if (snapshot.is_object()) {
+      snapshot["phase"] = "full_selected";
+      snapshot["phase_label"] = "完整流程最终采用方案";
+      snapshot["elapsed_ms"] = total_elapsed_ms;
+      snapshot["ik_elapsed_ms"] = ik_elapsed_ms;
+      snapshot["extract_elapsed_ms"] = extract_elapsed_ms;
+      snapshot["loaded_elapsed_ms"] = loaded_elapsed_ms;
+      snapshot["final_elapsed_ms"] = final_elapsed_ms;
+      write_extract_monitor_snapshot(snapshot);
+    }
+
+    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
+    std::ostringstream out;
+    out << "完整流程完成: total=" << total_elapsed_ms << "ms"
+        << " ik=" << ik_elapsed_ms << "ms"
+        << " extract=" << extract_elapsed_ms << "ms"
+        << " loaded=" << loaded_elapsed_ms << "ms"
+        << " final=" << final_elapsed_ms << "ms"
+        << " snapshot=" << extract_monitor_snapshot_path_;
+    *message = out.str();
+    return true;
+  }
+
+  bool run_extract_monitor_ik_stage(std::string* message)
+  {
+    const auto stage_start = std::chrono::steady_clock::now();
+    clear_carried_boxes_from_scene();
+    last_error_.clear();
+    last_commanded_state_.reset();
+    extract_monitor_state_ = ExtractMonitorState{};
+
+    const int left_box_id = extract_demo_left_box_id_;
+    const int right_box_id = extract_demo_right_box_id_;
+    const auto boxes = make_boxes(box_front_x_);
+    const auto left_it = boxes.find(left_box_id);
+    const auto right_it = boxes.find(right_box_id);
+    if (left_it == boxes.end() || right_it == boxes.end()) {
+      return fail("extract monitor IK: unknown box id");
+    }
+    set_static_box_wall_opening(left_box_id, right_box_id, "extract_monitor");
+
+    extract_monitor_state_.left_box_id = left_box_id;
+    extract_monitor_state_.right_box_id = right_box_id;
+    extract_monitor_state_.left_box = make_carried_box_spec("left", left_box_id, false);
+    extract_monitor_state_.right_box = make_carried_box_spec("right", right_box_id, false);
+    extract_monitor_state_.prefix = "extract_monitor_L" + std::to_string(left_box_id) +
+                                    "_R" + std::to_string(right_box_id);
+    extract_monitor_state_.seed_state =
+      std::make_shared<moveit::core::RobotState>(make_extract_monitor_seed_state());
+
+    moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
+    nlohmann::json ik_extra;
+    ik_benchmark::UpdownAwareIkResult ik_result;
+    if (!solve_dual_tip_ik_state(
+          extract_monitor_state_.prefix + "/monitor_ik",
+          front_grasp_pose(left_it->second),
+          front_grasp_pose(right_it->second),
+          false,
+          *extract_monitor_state_.seed_state,
+          &selected_state,
+          &ik_extra,
+          &ik_result)) {
+      *message = "IK阶段失败: " + last_error_;
+      return false;
+    }
+
+    IkCandidateSelectionStats dedup_stats;
+    extract_monitor_state_.ik_result = ik_result;
+    extract_monitor_state_.legal_candidates = selected_monitor_ik_candidates(ik_result, &dedup_stats);
+    extract_monitor_state_.candidate_states.clear();
+    extract_monitor_state_.candidate_states.reserve(extract_monitor_state_.legal_candidates.size());
+
+    nlohmann::json records = nlohmann::json::array();
+    for (size_t i = 0; i < extract_monitor_state_.legal_candidates.size(); ++i) {
+      auto state = std::make_shared<moveit::core::RobotState>(
+        state_from_ik_candidate(*extract_monitor_state_.seed_state, extract_monitor_state_.legal_candidates[i]));
+      extract_monitor_state_.candidate_states.push_back(state);
+      records.push_back(monitor_candidate_json(extract_monitor_state_.legal_candidates[i], i, *state));
+    }
+
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - stage_start).count();
+    extract_monitor_last_stage_ms_ = elapsed_ms;
+    nlohmann::json snapshot = {
+      {"type", "extract_monitor_snapshot"},
+      {"phase", "ik_candidates"},
+      {"phase_label", "不重复 IK 候选"},
+      {"elapsed_ms", elapsed_ms},
+      {"left_box_id", left_box_id},
+      {"right_box_id", right_box_id},
+      {"box_front_x", box_front_x_},
+      {"snapshot_path", extract_monitor_snapshot_path_},
+      {"ik_trial_count", ik_result.trial_count},
+      {"ik_legal_count", ik_result.legal_count},
+      {"ik_wall_ms", ik_result.wall_ms},
+      {"ik_dedup_enabled", dedup_stats.enabled},
+      {"ik_dedup_input_count", dedup_stats.input_count},
+      {"ik_dedup_unique_count", dedup_stats.unique_count},
+      {"ik_dedup_removed_count", dedup_stats.removed_count},
+      {"ik_dedup_selected_count", dedup_stats.selected_count},
+      {"ik_dedup_ms", dedup_stats.elapsed_ms},
+      {"rejection_counts", ik_candidate_rejection_counts_json(ik_result)},
+      {"records", records}
+    };
+    if (!write_extract_monitor_snapshot(snapshot)) {
+      return fail("extract monitor IK: failed to write snapshot");
+    }
+
+    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForExtract;
+    std::ostringstream out;
+    out << "IK阶段完成: unique=" << extract_monitor_state_.legal_candidates.size()
+        << " legal=" << ik_result.legal_count
+        << " trials=" << ik_result.trial_count
+        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
+    *message = out.str();
+    return true;
+  }
+
+  bool run_extract_monitor_extract_stage(std::string* message)
+  {
+    if (!extract_monitor_state_.seed_state || extract_monitor_state_.legal_candidates.empty()) {
+      return fail("extract monitor extract: IK stage has no candidates");
+    }
+
+    const auto stage_start = std::chrono::steady_clock::now();
+    const size_t count = extract_monitor_state_.legal_candidates.size();
+    extract_monitor_state_.timings.clear();
+    extract_monitor_state_.timings.resize(count);
+
+    const size_t worker_count = std::max<size_t>(1, std::min(extract_benchmark_extract_workers_, count));
+    std::atomic<size_t> next_index{0};
+    std::vector<std::thread> workers;
+    workers.reserve(worker_count);
+    for (size_t worker = 0; worker < worker_count; ++worker) {
+      workers.emplace_back([&, worker]() {
+        (void)worker;
+        while (true) {
+          const size_t index = next_index.fetch_add(1);
+          if (index >= count) {
+            break;
+          }
+          const auto state = state_from_ik_candidate(
+            *extract_monitor_state_.seed_state,
+            extract_monitor_state_.legal_candidates[index]);
+          std::vector<nlohmann::json> rollout_records;
+          auto record_step = [&](size_t step, const moveit::core::RobotState& step_state, const nlohmann::json& extra) {
+            trajectory_msgs::msg::JointTrajectory traj;
+            const auto names = arm_joint_target_names();
+            traj.joint_names = names;
+            trajectory_msgs::msg::JointTrajectoryPoint point;
+            point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(step));
+            point.positions.reserve(names.size());
+            for (const auto& name : names) {
+              point.positions.push_back(step_state.getVariablePosition(name));
+            }
+            traj.points.push_back(point);
+
+            moveit::planning_interface::MoveGroupInterface::Plan plan;
+            plan.trajectory_.joint_trajectory = traj;
+
+            nlohmann::json enriched = extra;
+            enriched["stage_kind"] = "monitor_selected_extract_replay";
+            enriched["candidate_order"] = index;
+            enriched["left_box_id"] = extract_monitor_state_.left_box_id;
+            enriched["right_box_id"] = extract_monitor_state_.right_box_id;
+            rollout_records.push_back(monitor_stage_json(
+              extract_monitor_state_.prefix + "/selected_extract_step_" + std::to_string(step),
+              plan,
+              step_state,
+              step_state,
+              names,
+              {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+              enriched));
+          };
+          auto timing = rollout_dual_extract_from_state(
+            state,
+            extract_monitor_state_.left_box,
+            extract_monitor_state_.left_box_id,
+            extract_monitor_state_.right_box,
+            extract_monitor_state_.right_box_id,
+            index,
+            extract_monitor_state_.legal_candidates[index],
+            record_step);
+          if (timing.success) {
+            timing.rollout_records = std::move(rollout_records);
+          }
+          fill_loaded_pose_distance_metrics(timing);
+          extract_monitor_state_.timings[index] = std::move(timing);
+        }
+      });
+    }
+    for (auto& worker : workers) {
+      worker.join();
+    }
+
+    nlohmann::json records = nlohmann::json::array();
+    size_t success_count = 0;
+    std::map<std::string, size_t> failure_counts;
+    for (size_t i = 0; i < extract_monitor_state_.timings.size(); ++i) {
+      const auto& timing = extract_monitor_state_.timings[i];
+      if (timing.success && timing.final_state) {
+        records.push_back(monitor_timing_json(timing, success_count, *timing.final_state));
+        ++success_count;
+      } else {
+        failure_counts[timing.failure_reason.empty() ? "unknown" : timing.failure_reason]++;
+      }
+    }
+
+    nlohmann::json failure_json = nlohmann::json::object();
+    for (const auto& [reason, count_value] : failure_counts) {
+      failure_json[reason] = count_value;
+    }
+
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - stage_start).count();
+    extract_monitor_last_stage_ms_ = elapsed_ms;
+    nlohmann::json snapshot = {
+      {"type", "extract_monitor_snapshot"},
+      {"phase", "extract_successes"},
+      {"phase_label", "抽离成功候选"},
+      {"elapsed_ms", elapsed_ms},
+      {"left_box_id", extract_monitor_state_.left_box_id},
+      {"right_box_id", extract_monitor_state_.right_box_id},
+      {"input_candidate_count", count},
+      {"success_count", success_count},
+      {"worker_count", worker_count},
+      {"failure_counts", failure_json},
+      {"records", records}
+    };
+    if (!write_extract_monitor_snapshot(snapshot)) {
+      return fail("extract monitor extract: failed to write snapshot");
+    }
+
+    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForLoaded;
+    std::ostringstream out;
+    out << "抽离阶段完成: success=" << success_count << "/" << count
+        << " workers=" << worker_count
+        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
+    *message = out.str();
+    return true;
+  }
+
+  bool run_extract_monitor_loaded_stage(std::string* message)
+  {
+    if (extract_monitor_state_.timings.empty()) {
+      return fail("extract monitor loaded: extract stage has no timings");
+    }
+
+    const auto stage_start = std::chrono::steady_clock::now();
+    auto options = loaded_pose_batch_plan_options();
+    options.enabled = true;
+    const std::vector<AttachedBoxSpec> boxes{
+      extract_monitor_state_.left_box,
+      extract_monitor_state_.right_box,
+    };
+    const LoadedPoseBatchPlanResult batch = loaded_pose_planner_
+      ? loaded_pose_planner_->planBatch(
+          extract_monitor_state_.prefix + "/monitor_loaded",
+          extract_monitor_state_.timings,
+          boxes,
+          options)
+      : LoadedPoseBatchPlanResult{};
+
+    nlohmann::json records = nlohmann::json::array();
+    size_t success_count = 0;
+    size_t attempted_count = 0;
+    std::map<std::string, size_t> failure_counts;
+    for (const auto index : batch.plan_indices) {
+      if (index >= extract_monitor_state_.timings.size()) {
+        continue;
+      }
+      const auto& timing = extract_monitor_state_.timings[index];
+      if (timing.loaded_plan_attempted) {
+        ++attempted_count;
+      }
+      if (timing.loaded_plan_success && timing.final_state && loaded_pose_selector_) {
+        moveit::core::RobotState goal_state = loaded_pose_selector_->makeGoalState(*timing.final_state);
+        records.push_back(monitor_timing_json(timing, success_count, goal_state));
+        ++success_count;
+      } else if (timing.loaded_plan_attempted) {
+        failure_counts[timing.loaded_plan_failure_reason.empty() ? "unknown" : timing.loaded_plan_failure_reason]++;
+      }
+    }
+
+    nlohmann::json failure_json = nlohmann::json::object();
+    for (const auto& [reason, count_value] : failure_counts) {
+      failure_json[reason] = count_value;
+    }
+
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - stage_start).count();
+    extract_monitor_last_stage_ms_ = elapsed_ms;
+    nlohmann::json snapshot = {
+      {"type", "extract_monitor_snapshot"},
+      {"phase", "loaded_plan_successes"},
+      {"phase_label", "负重规划成功候选"},
+      {"elapsed_ms", elapsed_ms},
+      {"left_box_id", extract_monitor_state_.left_box_id},
+      {"right_box_id", extract_monitor_state_.right_box_id},
+      {"extract_success_count", batch.plan_indices.size()},
+      {"attempted_count", attempted_count},
+      {"success_count", success_count},
+      {"loaded_plan_batch_wall_ms", batch.wall_ms},
+      {"loaded_parallel_workers", options.parallel_workers},
+      {"loaded_candidate_limit", options.candidate_limit},
+      {"failure_counts", failure_json},
+      {"records", records}
+    };
+    if (!write_extract_monitor_snapshot(snapshot)) {
+      return fail("extract monitor loaded: failed to write snapshot");
+    }
+
+    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForFinal;
+    std::ostringstream out;
+    out << "负重规划阶段完成: success=" << success_count
+        << " attempted=" << attempted_count
+        << " candidates=" << batch.plan_indices.size()
+        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
+    *message = out.str();
+    return true;
+  }
+
+  bool run_extract_monitor_final_stage(std::string* message)
+  {
+    const auto stage_start = std::chrono::steady_clock::now();
+    ExtractRolloutTiming* selected = nullptr;
+    for (auto& timing : extract_monitor_state_.timings) {
+      if (timing.loaded_plan_selected && timing.loaded_plan_success) {
+        selected = &timing;
+        break;
+      }
+    }
+    if (!selected) {
+      for (auto& timing : extract_monitor_state_.timings) {
+        if (timing.loaded_plan_success) {
+          selected = &timing;
+          break;
+        }
+      }
+    }
+    if (!selected || !selected->final_state || !loaded_pose_selector_) {
+      return fail("extract monitor final: no loaded-plan success to select");
+    }
+
+    moveit::core::RobotState goal_state = selected->loaded_goal_state
+      ? *selected->loaded_goal_state
+      : loaded_pose_selector_->makeGoalState(*selected->final_state);
+
+    if (selected->rollout_records.empty() &&
+        selected->candidate_order < extract_monitor_state_.legal_candidates.size() &&
+        extract_monitor_state_.seed_state) {
+      std::vector<nlohmann::json> rollout_records;
+      auto record_step = [&](size_t step, const moveit::core::RobotState& state, const nlohmann::json& extra) {
+        trajectory_msgs::msg::JointTrajectory traj;
+        const auto names = arm_joint_target_names();
+        traj.joint_names = names;
+        trajectory_msgs::msg::JointTrajectoryPoint point;
+        point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(step));
+        point.positions.reserve(names.size());
+        for (const auto& name : names) {
+          point.positions.push_back(state.getVariablePosition(name));
+        }
+        traj.points.push_back(point);
+
+        moveit::planning_interface::MoveGroupInterface::Plan plan;
+        plan.trajectory_.joint_trajectory = traj;
+
+        nlohmann::json enriched = extra;
+        enriched["stage_kind"] = "monitor_selected_extract_replay";
+        enriched["candidate_order"] = selected->candidate_order;
+        enriched["left_box_id"] = extract_monitor_state_.left_box_id;
+        enriched["right_box_id"] = extract_monitor_state_.right_box_id;
+        rollout_records.push_back(monitor_stage_json(
+          extract_monitor_state_.prefix + "/selected_extract_step_" + std::to_string(step),
+          plan,
+          state,
+          state,
+          names,
+          {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+          enriched));
+      };
+      const auto& candidate = extract_monitor_state_.legal_candidates[selected->candidate_order];
+      auto replay_timing = rollout_dual_extract_from_state(
+        state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate),
+        extract_monitor_state_.left_box,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box,
+        extract_monitor_state_.right_box_id,
+        selected->candidate_order,
+        candidate,
+        record_step);
+      if (replay_timing.success) {
+        selected->rollout_records = std::move(rollout_records);
+      }
+    }
+
+    nlohmann::json replay_stages = nlohmann::json::array();
+    for (const auto& stage : selected->rollout_records) {
+      replay_stages.push_back(stage);
+    }
+    for (const auto& shift_stage : selected->lateral_shift_replay_stages) {
+      if (!shift_stage.start_state || !shift_stage.goal_state) {
+        continue;
+      }
+      nlohmann::json extra = shift_stage.extra;
+      extra["candidate_order"] = selected->candidate_order;
+      extra["loaded_plan_rank"] = selected->loaded_plan_rank;
+      extra["left_box_id"] = extract_monitor_state_.left_box_id;
+      extra["right_box_id"] = extract_monitor_state_.right_box_id;
+      replay_stages.push_back(monitor_stage_json(
+        shift_stage.stage_name,
+        shift_stage.plan,
+        *shift_stage.start_state,
+        *shift_stage.goal_state,
+        arm_joint_target_names(),
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        extra));
+    }
+    if (selected->loaded_start_state && selected->loaded_goal_state &&
+        !selected->loaded_plan.trajectory_.joint_trajectory.points.empty()) {
+      nlohmann::json extra = {
+        {"stage_kind", "monitor_selected_loaded_plan_replay"},
+        {"valid", true},
+        {"candidate_order", selected->candidate_order},
+        {"loaded_plan_rank", selected->loaded_plan_rank},
+        {"loaded_plan_ms", selected->loaded_plan_ms},
+        {"loaded_plan_points", selected->loaded_plan_points},
+        {"loaded_plan_trajectory_distance", selected->loaded_plan_trajectory_distance},
+        {"moveit_attached_box_count", 2},
+        {"left_box_id", extract_monitor_state_.left_box_id},
+        {"right_box_id", extract_monitor_state_.right_box_id}
+      };
+      replay_stages.push_back(monitor_stage_json(
+        extract_monitor_state_.prefix + "/selected_loaded_plan",
+        selected->loaded_plan,
+        *selected->loaded_start_state,
+        *selected->loaded_goal_state,
+        arm_joint_target_names(),
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        extra));
+    }
+
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - stage_start).count();
+    extract_monitor_last_stage_ms_ = elapsed_ms;
+    nlohmann::json snapshot = {
+      {"type", "extract_monitor_snapshot"},
+      {"phase", "final_selected"},
+      {"phase_label", "最终采用方案"},
+      {"elapsed_ms", elapsed_ms},
+      {"left_box_id", extract_monitor_state_.left_box_id},
+      {"right_box_id", extract_monitor_state_.right_box_id},
+      {"records", nlohmann::json::array({monitor_timing_json(*selected, 0, goal_state)})},
+      {"replay_stages", replay_stages}
+    };
+    if (!write_extract_monitor_snapshot(snapshot)) {
+      return fail("extract monitor final: failed to write snapshot");
+    }
+
+    extract_monitor_phase_ = ExtractMonitorPhase::Done;
+    std::ostringstream out;
+    out << "最终方案已选择: candidate_order=" << selected->candidate_order
+        << " loaded_rank=" << selected->loaded_plan_rank
+        << " trajectory_distance=" << selected->loaded_plan_trajectory_distance
+        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
+    *message = out.str();
+    return true;
   }
 
   bool run_left_extract_demo()
@@ -2380,7 +3262,9 @@ private:
   bool extract_benchmark_plan_loaded_after_success_ = false;
   std::string extract_loaded_planning_group_ = "dual_v5_arm_with_base";
   double extract_loaded_planning_time_ = 1.0;
-  int extract_loaded_planning_attempts_ = 4;
+  int extract_loaded_planning_attempts_ = 8;
+  bool extract_loaded_use_direct_pipeline_ = false;
+  size_t extract_loaded_parallel_workers_ = 1;
   size_t extract_loaded_candidate_limit_ = 0;
   bool extract_loaded_sort_by_pose_distance_ = false;
   bool extract_loaded_stop_on_first_success_ = false;
@@ -2397,8 +3281,9 @@ private:
   size_t record_tip_error_ik_candidate_limit_ = 80;
   std::string record_jsonl_path_;
   bool record_trajectories_ = true;
+  std::string extract_monitor_snapshot_path_;
   int max_rounds_ = 10;
-  int planning_attempts_ = 20;
+  int planning_attempts_ = 8;
   std::vector<double> left_pregrasp_arm_;
   std::vector<double> right_pregrasp_arm_;
   std::vector<double> left_loaded_arm_;
@@ -2422,6 +3307,7 @@ private:
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
+  planning_pipeline::PlanningPipelinePtr loaded_planning_pipeline_;
   moveit::core::RobotModelConstPtr robot_model_;
   const moveit::core::JointModelGroup* joint_group_ = nullptr;
   const moveit::core::JointModelGroup* left_arm_group_ = nullptr;
@@ -2431,9 +3317,39 @@ private:
   std::unique_ptr<OptimizedDualIkSolver> optimized_dual_ik_solver_;
   std::unique_ptr<MotionFlowRecorder> recorder_;
 
+  enum class ExtractMonitorPhase
+  {
+    ReadyForIk,
+    ReadyForExtract,
+    ReadyForLoaded,
+    ReadyForFinal,
+    Done,
+  };
+
+  struct ExtractMonitorState
+  {
+    int left_box_id = 0;
+    int right_box_id = 0;
+    std::string prefix;
+    AttachedBoxSpec left_box;
+    AttachedBoxSpec right_box;
+    moveit::core::RobotStatePtr seed_state;
+    ik_benchmark::UpdownAwareIkResult ik_result;
+    std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
+    std::vector<moveit::core::RobotStatePtr> candidate_states;
+    std::vector<ExtractRolloutTiming> timings;
+  };
+
+  ExtractMonitorPhase extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
+  ExtractMonitorState extract_monitor_state_;
+  std::mutex extract_monitor_mutex_;
+  double extract_monitor_last_stage_ms_ = 0.0;
+
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr demo_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr box_stack_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_demo_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_next_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;

@@ -1374,6 +1374,7 @@ bool ExtractBenchmarkCsvWriter::write(
 
   out << "candidate_order,h_index,seed_index,h,ik_score,ik_solve_ms,rollout_ms,interval_ms,success,"
          "loaded_plan_attempted,loaded_plan_success,loaded_plan_ms,loaded_plan_points,"
+         "loaded_plan_trajectory_distance,loaded_plan_selected,"
          "lateral_shift_attempted,lateral_shift_success,lateral_shift_ms,lateral_shift_reached_distance,lateral_shift_points,"
          "loaded_plan_rank,loaded_pose_distance_sum,loaded_pose_distance_l2,loaded_pose_max_joint_delta,"
          "selected_left_loaded_pose_index,selected_right_loaded_pose_index,"
@@ -1397,6 +1398,8 @@ bool ExtractBenchmarkCsvWriter::write(
         << (timing.loaded_plan_success ? 1 : 0) << ','
         << timing.loaded_plan_ms << ','
         << timing.loaded_plan_points << ','
+        << timing.loaded_plan_trajectory_distance << ','
+        << (timing.loaded_plan_selected ? 1 : 0) << ','
         << (timing.lateral_shift_attempted ? 1 : 0) << ','
         << (timing.lateral_shift_success ? 1 : 0) << ','
         << timing.lateral_shift_ms << ','
@@ -1744,6 +1747,24 @@ bool ExtractBenchmarkRunner::runDual(
       {"loaded_plan_success_count", summary.loaded_plan_success_count},
       {"loaded_plan_first_success_rank", summary.loaded_plan_first_success_rank},
       {"loaded_plan_first_success_candidate_order", summary.loaded_plan_first_success_candidate_order},
+      {"loaded_plan_selected_candidate_order", [&]() {
+        for (const auto& timing : timings) {
+          if (timing.loaded_plan_selected) return nlohmann::json(timing.candidate_order);
+        }
+        return nlohmann::json(nullptr);
+      }()},
+      {"loaded_plan_selected_rank", [&]() {
+        for (const auto& timing : timings) {
+          if (timing.loaded_plan_selected) return nlohmann::json(timing.loaded_plan_rank);
+        }
+        return nlohmann::json(nullptr);
+      }()},
+      {"loaded_plan_selected_trajectory_distance", [&]() {
+        for (const auto& timing : timings) {
+          if (timing.loaded_plan_selected) return nlohmann::json(timing.loaded_plan_trajectory_distance);
+        }
+        return nlohmann::json(nullptr);
+      }()},
       {"loaded_plan_wall_ms", loaded_plan_wall_ms},
       {"loaded_plan_sum_ms", summary.total_loaded_plan_ms},
       {"mean_loaded_plan_ms", summary.mean_loaded_plan_ms},

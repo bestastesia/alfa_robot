@@ -8,6 +8,7 @@ import importlib.util
 import json
 import math
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,21 @@ def read_jsonl(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], dict[s
             elif row_type == "summary":
                 summary = row
     return header, stages, summary
+
+
+def follow_jsonl(path: Path, start_at_end: bool = False):
+    with path.open() as file:
+        if start_at_end:
+            file.seek(0, 2)
+        while True:
+            line = file.readline()
+            if not line:
+                yield None
+                continue
+            line = line.strip()
+            if not line:
+                continue
+            yield json.loads(line)
 
 
 def all_boxes(box_x: float) -> dict[int, tuple[float, float, float]]:
@@ -350,11 +366,75 @@ def robot_module_matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
     return [float(x), float(y), float(z), float(w)]
 
 
+class FlowLogger:
+    def __init__(self, args: argparse.Namespace, helpers: Any, header: dict[str, Any]):
+        self.args = args
+        self.helpers = helpers
+        self.header = header
+        self.robot = helpers.UrdfRobot(helpers.render_current_urdf())
+        self.base_to_world = self.robot.fk({}).get("base_link", np.eye(4))
+        self.sample = 0
+        self.stride = max(1, args.stride)
+        self.repeat_factor = 1
+        velocity_scale = float(header.get("velocity_scale", args.reference_velocity_scale))
+        if not args.no_playback_normalization and args.reference_velocity_scale > 1e-9:
+            self.repeat_factor = max(1, int(round(velocity_scale / args.reference_velocity_scale)))
+
+        rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
+        helpers.log_robot_static_model(self.robot, args.robot_path, log_meshes=not args.no_meshes)
+        log_box_stack(float(header.get("box_front_x", 0.625)))
+        if not args.no_container:
+            log_container_obstacle(header.get("container_obstacle"))
+
+    def log_stage(self, stage: dict[str, Any]) -> int:
+        extra = stage.get("extra", {})
+        log_target_pose("targets/left", extra.get("left_target", {}), [0, 220, 255], "left target", self.base_to_world)
+        log_target_pose("targets/right", extra.get("right_target", {}), [255, 120, 0], "right target", self.base_to_world)
+        points = stage.get("trajectory", {}).get("points", [])
+        if not points:
+            return 0
+        points = ensure_points_start_at_stage_start(stage, points)
+        points = normalize_playback_points(points, self.repeat_factor)
+        selected_indices = list(range(0, len(points), self.stride))
+        if selected_indices[-1] != len(points) - 1:
+            selected_indices.append(len(points) - 1)
+        logged = 0
+        for point_index in selected_indices:
+            self.helpers.set_sample_time(self.sample)
+            log_static_box_obstacles(stage.get("static_box_obstacles", self.header.get("static_box_obstacles")))
+            point = points[point_index]
+            joints = joint_dict_from_point(stage, point)
+            self.helpers.log_robot_state(self.robot, joints, self.args.robot_path)
+            stage_success = bool(
+                stage.get("extra", {}).get("valid", False)
+                and stage.get("extra", {}).get("stage_kind") == "post_extract_loaded_plan"
+            )
+            log_attached_boxes(self.robot, joints, stage.get("attached_boxes", []), success=stage_success)
+            log_stage_text(stage, point_index, len(points))
+            self.sample += 1
+            logged += 1
+        return logged
+
+
+def wait_for_header(jsonl_path: Path, timeout: float) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if jsonl_path.exists():
+            header, _, _ = read_jsonl(jsonl_path)
+            if header:
+                return header
+        time.sleep(0.1)
+    raise SystemExit(f"no header record in {jsonl_path} after {timeout:.1f}s")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Visualize MoveIt box-stack flow JSONL")
     parser.add_argument("jsonl", type=Path)
     parser.add_argument("--save", type=Path, default=None)
     parser.add_argument("--connect", action="store_true")
+    parser.add_argument("--follow", action="store_true", help="Tail JSONL and stream new stages to Rerun")
+    parser.add_argument("--follow-timeout", type=float, default=0.0, help="Stop follow mode after N idle seconds; 0 means never")
+    parser.add_argument("--header-timeout", type=float, default=30.0)
     parser.add_argument("--stride", type=int, default=1, help="Log every Nth trajectory point")
     parser.add_argument("--no-meshes", action="store_true")
     parser.add_argument("--no-container", action="store_true")
@@ -373,6 +453,43 @@ def main() -> None:
     args = parser.parse_args()
 
     helpers = load_rerun_helpers()
+    if args.follow and args.save:
+        raise SystemExit("--follow cannot be combined with --save")
+
+    if args.follow:
+        header = wait_for_header(args.jsonl, args.header_timeout)
+        rr.init("moveit_box_stack_flow_live", recording_id=f"moveit_flow_live_{args.jsonl.stem}")
+        if args.connect:
+            rr.connect()
+        else:
+            rr.spawn()
+        flow_logger = FlowLogger(args, helpers, header)
+        seen_stage_indices: set[int] = set()
+        idle_since = time.monotonic()
+        print(f"Following {args.jsonl}; waiting for stage records...")
+        for row in follow_jsonl(args.jsonl):
+            if row is None:
+                if args.follow_timeout > 0.0 and time.monotonic() - idle_since > args.follow_timeout:
+                    print(f"follow idle timeout reached: {args.follow_timeout:.1f}s")
+                    break
+                time.sleep(0.05)
+                continue
+            idle_since = time.monotonic()
+            row_type = row.get("type")
+            if row_type == "stage":
+                stage_index = int(row.get("stage_index", len(seen_stage_indices)))
+                if stage_index in seen_stage_indices:
+                    continue
+                seen_stage_indices.add(stage_index)
+                logged = flow_logger.log_stage(row)
+                print(f"live stage {stage_index}: {row.get('stage')} logged_samples={logged}", flush=True)
+            elif row_type == "summary":
+                rr.log("info/summary", rr.TextLog(json.dumps(row, ensure_ascii=False, indent=2)))
+                print("live summary received", flush=True)
+                if args.follow_timeout <= 0.0:
+                    break
+        return
+
     header, stages, summary = read_jsonl(args.jsonl)
     if not stages:
         raise SystemExit(f"no stage records in {args.jsonl}")
@@ -387,50 +504,14 @@ def main() -> None:
         rr.init("moveit_box_stack_flow", recording_id=f"moveit_flow_{args.jsonl.stem}")
         rr.spawn()
 
-    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
-    robot = helpers.UrdfRobot(helpers.render_current_urdf())
-    helpers.log_robot_static_model(robot, args.robot_path, log_meshes=not args.no_meshes)
-    base_to_world = robot.fk({}).get("base_link", np.eye(4))
-    log_box_stack(float(header.get("box_front_x", 0.625)))
-    if not args.no_container:
-        log_container_obstacle(header.get("container_obstacle"))
-
-    velocity_scale = float(header.get("velocity_scale", args.reference_velocity_scale))
-    repeat_factor = 1
-    if not args.no_playback_normalization and args.reference_velocity_scale > 1e-9:
-        repeat_factor = max(1, int(round(velocity_scale / args.reference_velocity_scale)))
-
-    sample = 0
-    stride = max(1, args.stride)
+    flow_logger = FlowLogger(args, helpers, header)
+    sample_count = 0
     for stage in stages:
-        extra = stage.get("extra", {})
-        log_target_pose("targets/left", extra.get("left_target", {}), [0, 220, 255], "left target", base_to_world)
-        log_target_pose("targets/right", extra.get("right_target", {}), [255, 120, 0], "right target", base_to_world)
-        points = stage.get("trajectory", {}).get("points", [])
-        if not points:
-            continue
-        points = ensure_points_start_at_stage_start(stage, points)
-        points = normalize_playback_points(points, repeat_factor)
-        selected_indices = list(range(0, len(points), stride))
-        if selected_indices[-1] != len(points) - 1:
-            selected_indices.append(len(points) - 1)
-        for point_index in selected_indices:
-            helpers.set_sample_time(sample)
-            log_static_box_obstacles(stage.get("static_box_obstacles", header.get("static_box_obstacles")))
-            point = points[point_index]
-            joints = joint_dict_from_point(stage, point)
-            helpers.log_robot_state(robot, joints, args.robot_path)
-            stage_success = bool(
-                stage.get("extra", {}).get("valid", False)
-                and stage.get("extra", {}).get("stage_kind") == "post_extract_loaded_plan"
-            )
-            log_attached_boxes(robot, joints, stage.get("attached_boxes", []), success=stage_success)
-            log_stage_text(stage, point_index, len(points))
-            sample += 1
+        sample_count += flow_logger.log_stage(stage)
 
     rr.log("info/summary", rr.TextLog(json.dumps(summary, ensure_ascii=False, indent=2)))
-    print(f"Loaded {len(stages)} stages, logged {sample} samples from {args.jsonl}")
-    print(f"Rerun playback repeat factor: {repeat_factor} (velocity_scale={velocity_scale})")
+    print(f"Loaded {len(stages)} stages, logged {sample_count} samples from {args.jsonl}")
+    print(f"Rerun playback repeat factor: {flow_logger.repeat_factor}")
     if args.save:
         print(f"saved: {args.save}")
 

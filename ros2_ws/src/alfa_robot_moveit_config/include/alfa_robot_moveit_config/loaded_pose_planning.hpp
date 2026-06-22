@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,15 @@ private:
 
 class MotionSceneAdapter;
 
+struct LoadedPoseReplayStage
+{
+  std::string stage_name;
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  moveit::core::RobotStatePtr start_state;
+  moveit::core::RobotStatePtr goal_state;
+  nlohmann::json extra;
+};
+
 struct LoadedPosePlanResult
 {
   bool success = false;
@@ -100,8 +110,13 @@ struct LoadedPosePlanResult
   size_t lateral_shift_points = 0;
   double plan_ms = 0.0;
   size_t plan_points = 0;
+  double trajectory_joint_distance = std::numeric_limits<double>::infinity();
   std::string failure_reason;
   LoadedPoseSelection selection;
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  moveit::core::RobotStatePtr start_state;
+  moveit::core::RobotStatePtr goal_state;
+  std::vector<LoadedPoseReplayStage> lateral_shift_replay_stages;
 };
 
 struct LoadedPoseBatchPlanOptions
@@ -110,6 +125,7 @@ struct LoadedPoseBatchPlanOptions
   bool sort_by_pose_distance = true;
   bool stop_on_first_success = false;
   size_t candidate_limit = 0;
+  size_t parallel_workers = 1;
 };
 
 struct LoadedPoseBatchPlanResult
@@ -131,6 +147,13 @@ using LoadedPlanRecordCallback = std::function<void(
   const std::vector<std::string>&,
   const nlohmann::json&)>;
 
+using LoadedDirectPlanCallback = std::function<bool(
+  const std::string&,
+  const moveit::core::RobotState&,
+  const moveit::core::RobotState&,
+  moveit::planning_interface::MoveGroupInterface::Plan*,
+  std::string*)>;
+
 struct LoadedPosePlannerConfig
 {
   moveit::planning_interface::MoveGroupInterface* move_group = nullptr;
@@ -147,6 +170,7 @@ struct LoadedPosePlannerConfig
   ExtractCandidateSolver* lateral_shift_solver = nullptr;
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
+  LoadedDirectPlanCallback direct_plan_callback;
 };
 
 class LoadedPosePlanner
@@ -170,6 +194,13 @@ private:
   static double currentUpdown(const moveit::core::RobotState& state);
   static bool isCenterColumnBox(const AttachedBoxSpec& box);
 
+  LoadedPosePlanResult planInternal(
+    const std::string& stage_name,
+    const moveit::core::RobotState& extract_state,
+    const std::vector<AttachedBoxSpec>& carried_boxes,
+    size_t loaded_plan_rank,
+    bool manage_scene_adapter);
+
   bool planLateralShift(
     const std::string& stage_name,
     const moveit::core::RobotState& start_state,
@@ -178,6 +209,7 @@ private:
     LoadedPosePlanResult* result);
 
   LoadedPosePlannerConfig config_;
+  std::mutex record_mutex_;
 };
 
 }  // namespace alfa_robot::motion

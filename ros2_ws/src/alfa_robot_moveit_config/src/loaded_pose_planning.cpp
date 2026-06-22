@@ -168,7 +168,10 @@ moveit::core::RobotState LoadedPoseSelector::makeGoalState(
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -177,6 +180,46 @@ namespace alfa_robot::motion
 
 namespace
 {
+
+double trajectory_joint_distance(
+  const moveit_msgs::msg::RobotTrajectory& trajectory,
+  const std::vector<std::string>& target_joint_names)
+{
+  const auto& joint_trajectory = trajectory.joint_trajectory;
+  if (joint_trajectory.points.size() < 2 || joint_trajectory.joint_names.empty()) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  std::vector<size_t> indices;
+  indices.reserve(target_joint_names.size());
+  for (const auto& target_name : target_joint_names) {
+    const auto found = std::find(
+      joint_trajectory.joint_names.begin(),
+      joint_trajectory.joint_names.end(),
+      target_name);
+    if (found != joint_trajectory.joint_names.end()) {
+      indices.push_back(static_cast<size_t>(
+        std::distance(joint_trajectory.joint_names.begin(), found)));
+    }
+  }
+  if (indices.empty()) {
+    for (size_t i = 0; i < joint_trajectory.joint_names.size(); ++i) {
+      indices.push_back(i);
+    }
+  }
+
+  double total = 0.0;
+  for (size_t point_index = 1; point_index < joint_trajectory.points.size(); ++point_index) {
+    const auto& previous = joint_trajectory.points[point_index - 1];
+    const auto& current = joint_trajectory.points[point_index];
+    for (const size_t index : indices) {
+      if (index < previous.positions.size() && index < current.positions.size()) {
+        total += std::abs(current.positions[index] - previous.positions[index]);
+      }
+    }
+  }
+  return total;
+}
 
 std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box)
 {
@@ -404,6 +447,13 @@ bool LoadedPosePlanner::planLateralShift(
         {"target_box", center_box->id},
         {"carried_box_count", carried_boxes.size()}
       };
+      LoadedPoseReplayStage replay_stage;
+      replay_stage.stage_name = stage_name + "/lateral_shift_step_" + std::to_string(step_index);
+      replay_stage.plan = plan;
+      replay_stage.start_state = std::make_shared<moveit::core::RobotState>(planning_start);
+      replay_stage.goal_state = std::make_shared<moveit::core::RobotState>(planning_goal);
+      replay_stage.extra = extra;
+      result->lateral_shift_replay_stages.push_back(std::move(replay_stage));
       config_.record_callback(
         stage_name + "/lateral_shift_step_" + std::to_string(step_index),
         plan,
@@ -426,8 +476,18 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
   const std::vector<AttachedBoxSpec>& carried_boxes,
   size_t loaded_plan_rank)
 {
+  return planInternal(stage_name, extract_state, carried_boxes, loaded_plan_rank, true);
+}
+
+LoadedPosePlanResult LoadedPosePlanner::planInternal(
+  const std::string& stage_name,
+  const moveit::core::RobotState& extract_state,
+  const std::vector<AttachedBoxSpec>& carried_boxes,
+  size_t loaded_plan_rank,
+  bool manage_scene_adapter)
+{
   LoadedPosePlanResult result;
-  if (!config_.move_group) {
+  if (!config_.move_group && !config_.direct_plan_callback) {
     result.failure_reason = "loaded_move_group_not_initialized";
     return result;
   }
@@ -440,10 +500,16 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
     return result;
   }
 
-  const auto saved_boxes = config_.scene_adapter->activeAttachedBoxes();
-  config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(carried_boxes);
+  std::vector<AttachedBoxSpec> saved_boxes;
+  if (manage_scene_adapter) {
+    saved_boxes = config_.scene_adapter->activeAttachedBoxes();
+    config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(carried_boxes);
+  }
 
   auto restore_boxes = [&]() {
+    if (!manage_scene_adapter) {
+      return;
+    }
     std::vector<std::string> ids;
     ids.reserve(carried_boxes.size());
     for (const auto& box : carried_boxes) {
@@ -453,7 +519,8 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
     config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(saved_boxes);
   };
 
-  if (!config_.scene_adapter->applyAttachedBoxState(
+  if (manage_scene_adapter &&
+      !config_.scene_adapter->applyAttachedBoxState(
         config_.scene_adapter->activeAttachedBoxes(),
         moveit_msgs::msg::CollisionObject::ADD)) {
     result.failure_reason = "failed_to_attach_box_for_loaded_plan";
@@ -469,9 +536,12 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
 
   moveit::core::RobotState loaded_start_state(start_state_with_boxes);
   moveit::core::RobotState shifted_state(extract_state);
-  if (!planLateralShift(stage_name, extract_state, carried_boxes, &shifted_state, &result)) {
-    restore_boxes();
-    return result;
+  {
+    std::lock_guard<std::mutex> lock(record_mutex_);
+    if (!planLateralShift(stage_name, extract_state, carried_boxes, &shifted_state, &result)) {
+      restore_boxes();
+      return result;
+    }
   }
   attach_boxes_to_robot_state(
     shifted_state,
@@ -482,19 +552,36 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
   moveit::core::RobotState goal_state = config_.selector->makeGoalState(
     loaded_start_state, &result.selection);
 
-  config_.move_group->setStartState(loaded_start_state);
-  config_.move_group->setJointValueTarget(goal_state);
   moveit::planning_interface::MoveGroupInterface::Plan plan;
   const auto t0 = std::chrono::steady_clock::now();
-  const auto plan_result = config_.move_group->plan(plan);
+  moveit::core::MoveItErrorCode plan_result = moveit::core::MoveItErrorCode::FAILURE;
+  std::string direct_failure_reason;
+  if (config_.direct_plan_callback) {
+    const bool direct_ok = config_.direct_plan_callback(
+      stage_name, loaded_start_state, goal_state, &plan, &direct_failure_reason);
+    plan_result = direct_ok
+      ? moveit::core::MoveItErrorCode::SUCCESS
+      : moveit::core::MoveItErrorCode::FAILURE;
+  } else {
+    config_.move_group->setStartState(loaded_start_state);
+    config_.move_group->setJointValueTarget(goal_state);
+    plan_result = config_.move_group->plan(plan);
+  }
   const auto t1 = std::chrono::steady_clock::now();
 
   result.attempted = true;
   result.plan_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
   result.plan_points = plan.trajectory_.joint_trajectory.points.size();
+  result.trajectory_joint_distance = trajectory_joint_distance(
+    plan.trajectory_, config_.target_joint_names);
+  result.plan = plan;
+  result.start_state = std::make_shared<moveit::core::RobotState>(loaded_start_state);
+  result.goal_state = std::make_shared<moveit::core::RobotState>(goal_state);
 
   if (plan_result != moveit::core::MoveItErrorCode::SUCCESS) {
-    result.failure_reason = "moveit_planning_failed_code_" + std::to_string(plan_result.val);
+    result.failure_reason = direct_failure_reason.empty()
+      ? "moveit_planning_failed_code_" + std::to_string(plan_result.val)
+      : direct_failure_reason;
     restore_boxes();
     return result;
   }
@@ -521,9 +608,11 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
       {"lateral_shift_points", result.lateral_shift_points},
       {"loaded_plan_ms", result.plan_ms},
       {"loaded_plan_points", result.plan_points},
+      {"loaded_plan_trajectory_distance", result.trajectory_joint_distance},
       {"start_updown", currentUpdown(loaded_start_state)},
       {"target_updown", currentUpdown(goal_state)},
       {"carried_box_count", carried_boxes.size()},
+      {"moveit_attached_box_count", carried_boxes.size()},
       {"loaded_plan_rank", loaded_plan_rank},
       {"loaded_pose_distance_sum", result.selection.distance_sum},
       {"loaded_pose_distance_l2", result.selection.distance_l2},
@@ -537,6 +626,7 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
       {"selected_right_loaded_pose_deg", pose_degrees_json(right_family[result.selection.right_index])},
       {"failure_reason", result.carried_clear ? "" : carried_collision_reason}
     };
+    std::lock_guard<std::mutex> lock(record_mutex_);
     config_.record_callback(
       stage_name, plan, loaded_start_state, goal_state, config_.target_joint_names, extra);
   }
@@ -592,21 +682,8 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     : batch_result.plan_indices.size();
 
   const auto start = std::chrono::steady_clock::now();
-  for (size_t rank = 0; rank < batch_result.plan_indices.size(); ++rank) {
+  const auto apply_result = [&](size_t rank, const LoadedPosePlanResult& result) {
     auto& timing = timings[batch_result.plan_indices[rank]];
-    timing.loaded_plan_rank = rank + 1;
-
-    if (rank >= loaded_limit) {
-      timing.loaded_plan_failure_reason = "loaded_plan_skipped_by_limit";
-      continue;
-    }
-
-    const LoadedPosePlanResult result = plan(
-      prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/post_extract_loaded",
-      *timing.final_state,
-      carried_boxes,
-      timing.loaded_plan_rank);
-
     timing.loaded_plan_attempted = result.attempted;
     timing.loaded_plan_success = result.success;
     timing.lateral_shift_attempted = result.lateral_shift_attempted;
@@ -616,6 +693,9 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     timing.lateral_shift_points = result.lateral_shift_points;
     timing.loaded_plan_ms = result.plan_ms;
     timing.loaded_plan_points = result.plan_points;
+    timing.loaded_plan_trajectory_distance = std::isfinite(result.trajectory_joint_distance)
+      ? result.trajectory_joint_distance
+      : 0.0;
     timing.selected_left_loaded_pose_index = result.selection.left_index;
     timing.selected_right_loaded_pose_index = result.selection.right_index;
     timing.selected_left_loaded_pose_distance = result.selection.left_distance;
@@ -624,15 +704,170 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     timing.loaded_pose_distance_l2 = result.selection.distance_l2;
     timing.loaded_pose_max_joint_delta = result.selection.max_joint_delta;
     timing.loaded_plan_failure_reason = result.failure_reason;
+    if (result.success && result.start_state && result.goal_state) {
+      timing.loaded_plan = result.plan;
+      timing.loaded_start_state = result.start_state;
+      timing.loaded_goal_state = result.goal_state;
+      timing.lateral_shift_replay_stages = result.lateral_shift_replay_stages;
+    }
+  };
 
-    if (options.stop_on_first_success && timing.loaded_plan_success) {
-      for (size_t rest_rank = rank + 1; rest_rank < batch_result.plan_indices.size(); ++rest_rank) {
-        auto& skipped = timings[batch_result.plan_indices[rest_rank]];
-        skipped.loaded_plan_rank = rest_rank + 1;
+  const auto set_skipped_after_success = [&](size_t from_rank) {
+    for (size_t rest_rank = from_rank; rest_rank < batch_result.plan_indices.size(); ++rest_rank) {
+      auto& skipped = timings[batch_result.plan_indices[rest_rank]];
+      skipped.loaded_plan_rank = rest_rank + 1;
+      if (!skipped.loaded_plan_attempted && skipped.loaded_plan_failure_reason.empty()) {
         skipped.loaded_plan_failure_reason = "loaded_plan_skipped_after_first_success";
       }
-      break;
     }
+  };
+
+  const auto choose_best_success = [&]() {
+    size_t best_index = timings.size();
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (const size_t timing_index : batch_result.plan_indices) {
+      auto& timing = timings[timing_index];
+      timing.loaded_plan_selected = false;
+      if (!timing.loaded_plan_success) {
+        continue;
+      }
+      const double distance = timing.loaded_plan_trajectory_distance;
+      if (distance < best_distance ||
+          (distance == best_distance &&
+           (best_index >= timings.size() || timing.loaded_plan_rank < timings[best_index].loaded_plan_rank))) {
+        best_distance = distance;
+        best_index = timing_index;
+      }
+    }
+    if (best_index < timings.size()) {
+      timings[best_index].loaded_plan_selected = true;
+    }
+  };
+
+  const size_t worker_count = std::max<size_t>(1, std::min(options.parallel_workers, loaded_limit));
+  const bool use_parallel = worker_count > 1;
+  if (!use_parallel) {
+    for (size_t rank = 0; rank < batch_result.plan_indices.size(); ++rank) {
+      auto& timing = timings[batch_result.plan_indices[rank]];
+      timing.loaded_plan_rank = rank + 1;
+
+      if (rank >= loaded_limit) {
+        timing.loaded_plan_failure_reason = "loaded_plan_skipped_by_limit";
+        continue;
+      }
+
+      const LoadedPosePlanResult result = plan(
+        prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/post_extract_loaded",
+        *timing.final_state,
+        carried_boxes,
+        timing.loaded_plan_rank);
+
+      apply_result(rank, result);
+
+      if (options.stop_on_first_success && timing.loaded_plan_success) {
+        set_skipped_after_success(rank + 1);
+        break;
+      }
+    }
+  } else {
+    const auto saved_boxes = config_.scene_adapter->activeAttachedBoxes();
+    config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(carried_boxes);
+    if (!config_.scene_adapter->applyAttachedBoxState(
+          config_.scene_adapter->activeAttachedBoxes(),
+          moveit_msgs::msg::CollisionObject::ADD)) {
+      for (size_t rank = 0; rank < batch_result.plan_indices.size(); ++rank) {
+        auto& timing = timings[batch_result.plan_indices[rank]];
+        timing.loaded_plan_rank = rank + 1;
+        timing.loaded_plan_failure_reason = rank < loaded_limit
+          ? "failed_to_attach_box_for_parallel_loaded_plan"
+          : "loaded_plan_skipped_by_limit";
+      }
+      batch_result.wall_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+      return batch_result;
+    }
+
+    std::vector<LoadedPosePlanResult> results(loaded_limit);
+    std::vector<bool> finished(loaded_limit, false);
+    std::mutex result_mutex;
+    std::atomic<size_t> next_rank{0};
+    std::atomic<bool> stop{false};
+
+    std::vector<std::thread> workers;
+    workers.reserve(worker_count);
+    for (size_t worker_index = 0; worker_index < worker_count; ++worker_index) {
+      workers.emplace_back([&, worker_index]() {
+        (void)worker_index;
+        while (true) {
+          if (options.stop_on_first_success && stop.load(std::memory_order_relaxed)) {
+            break;
+          }
+          const size_t rank = next_rank.fetch_add(1, std::memory_order_relaxed);
+          if (rank >= loaded_limit) {
+            break;
+          }
+          const auto& timing = timings[batch_result.plan_indices[rank]];
+          LoadedPosePlanResult result = planInternal(
+            prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/post_extract_loaded",
+            *timing.final_state,
+            carried_boxes,
+            rank + 1,
+            false);
+          if (options.stop_on_first_success && result.success) {
+            stop.store(true, std::memory_order_relaxed);
+          }
+          {
+            std::lock_guard<std::mutex> lock(result_mutex);
+            results[rank] = std::move(result);
+            finished[rank] = true;
+          }
+        }
+      });
+    }
+    for (auto& worker : workers) {
+      if (worker.joinable()) {
+        worker.join();
+      }
+    }
+
+    for (size_t rank = 0; rank < batch_result.plan_indices.size(); ++rank) {
+      auto& timing = timings[batch_result.plan_indices[rank]];
+      timing.loaded_plan_rank = rank + 1;
+      if (rank >= loaded_limit) {
+        timing.loaded_plan_failure_reason = "loaded_plan_skipped_by_limit";
+        continue;
+      }
+      if (!finished[rank]) {
+        timing.loaded_plan_failure_reason = "loaded_plan_skipped_after_first_success";
+        continue;
+      }
+      apply_result(rank, results[rank]);
+    }
+
+    if (options.stop_on_first_success) {
+      size_t first_success_rank = loaded_limit;
+      for (size_t rank = 0; rank < loaded_limit; ++rank) {
+        if (finished[rank] && results[rank].success) {
+          first_success_rank = rank;
+          break;
+        }
+      }
+      if (first_success_rank + 1 < batch_result.plan_indices.size()) {
+        set_skipped_after_success(first_success_rank + 1);
+      }
+    }
+    choose_best_success();
+
+    std::vector<std::string> ids;
+    ids.reserve(carried_boxes.size());
+    for (const auto& box : carried_boxes) {
+      ids.push_back(box.id);
+    }
+    config_.scene_adapter->removeCarriedBoxIds(ids);
+    config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(saved_boxes);
+  }
+  if (!use_parallel) {
+    choose_best_success();
   }
   batch_result.wall_ms = std::chrono::duration<double, std::milli>(
     std::chrono::steady_clock::now() - start).count();

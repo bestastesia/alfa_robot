@@ -97,6 +97,8 @@ struct ExtractRolloutTiming
   size_t lateral_shift_points = 0;
   double loaded_plan_ms = 0.0;
   size_t loaded_plan_points = 0;
+  double loaded_plan_trajectory_distance = 0.0;
+  bool loaded_plan_selected = false;
   size_t selected_left_loaded_pose_index = 0;
   size_t selected_right_loaded_pose_index = 0;
   double selected_left_loaded_pose_distance = 0.0;
@@ -116,6 +118,11 @@ struct ExtractRolloutTiming
   std::string failure_reason;
   std::string loaded_plan_failure_reason;
   moveit::core::RobotStatePtr final_state;
+  std::vector<nlohmann::json> rollout_records;
+  moveit::planning_interface::MoveGroupInterface::Plan loaded_plan;
+  moveit::core::RobotStatePtr loaded_start_state;
+  moveit::core::RobotStatePtr loaded_goal_state;
+  std::vector<LoadedPoseReplayStage> lateral_shift_replay_stages;
 };
 
 struct ExtractMotionDelta
