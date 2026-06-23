@@ -164,6 +164,7 @@ struct LoadedPosePlannerConfig
   bool lateral_shift_enabled = false;
   double lateral_shift_distance = 0.4;
   double lateral_shift_step = 0.04;
+  int lateral_shift_column = 3;
   double fixed_updown = 0.3;
   double min_tool_normal_z = -1e-4;
   double max_joint_delta = 0.0;
@@ -192,7 +193,7 @@ public:
 
 private:
   static double currentUpdown(const moveit::core::RobotState& state);
-  static bool isCenterColumnBox(const AttachedBoxSpec& box);
+  static int boxColumn(const AttachedBoxSpec& box);
 
   LoadedPosePlanResult planInternal(
     const std::string& stage_name,

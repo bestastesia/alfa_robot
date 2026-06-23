@@ -344,8 +344,10 @@ public:
       get_or_declare_parameter<double>("extract_loaded_lateral_shift_distance", 0.4);
     extract_loaded_lateral_shift_step_ =
       get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.0);
+    extract_loaded_lateral_shift_column_ =
+      get_or_declare_parameter<int>("extract_loaded_lateral_shift_column", 3);
     enforce_loaded_plan_aabb_clearance_ =
-      get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
+      get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", true);
     extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", true);
     extract_independent_kdl_max_iterations_ =
       std::max(1, get_or_declare_parameter<int>("extract_independent_kdl_max_iterations", 120));
@@ -865,6 +867,7 @@ private:
     config.lateral_shift_step = extract_loaded_lateral_shift_step_ > 0.0
       ? extract_loaded_lateral_shift_step_
       : extract_step_x_;
+    config.lateral_shift_column = extract_loaded_lateral_shift_column_;
     config.fixed_updown = extract_loaded_target_updown_;
     config.min_tool_normal_z = extract_min_tool_normal_z_;
     config.max_joint_delta = extract_max_joint_delta_;
@@ -946,6 +949,10 @@ private:
         static_cast<const planning_scene::PlanningSceneConstPtr&>(locked_scene));
     }
     scene_snapshot->setCurrentState(start_state);
+    if (scene_adapter_) {
+      scene_adapter_->applyToPlanningSceneSnapshot(*scene_snapshot, active_attached_boxes());
+      scene_snapshot->setCurrentState(start_state);
+    }
 
     planning_interface::MotionPlanRequest request;
     request.group_name = extract_loaded_planning_group_;
@@ -3238,7 +3245,7 @@ private:
   double carried_box_width_ = 0.4;
   double carried_box_height_ = 0.4;
   double attached_box_collision_padding_ = -0.002;
-  bool enforce_loaded_plan_aabb_clearance_ = false;
+  bool enforce_loaded_plan_aabb_clearance_ = true;
   bool enable_static_box_obstacles_ = true;
   double static_box_obstacle_inset_ = 0.002;
   int extract_demo_left_box_id_ = 2;
@@ -3289,6 +3296,7 @@ private:
   bool extract_loaded_lateral_shift_enabled_ = false;
   double extract_loaded_lateral_shift_distance_ = 0.4;
   double extract_loaded_lateral_shift_step_ = 0.0;
+  int extract_loaded_lateral_shift_column_ = 3;
   bool extract_use_independent_kdl_ = false;
   int extract_independent_kdl_max_iterations_ = 120;
   double extract_independent_kdl_eps_ = 1e-5;

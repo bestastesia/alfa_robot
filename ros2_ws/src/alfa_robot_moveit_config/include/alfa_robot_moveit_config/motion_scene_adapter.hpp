@@ -2,6 +2,7 @@
 
 #include "alfa_robot_moveit_config/motion_core/scene_geometry.hpp"
 
+#include <moveit/planning_scene/planning_scene.h>
 #include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <moveit_msgs/msg/attached_collision_object.hpp>
 #include <moveit_msgs/msg/collision_object.hpp>
@@ -62,6 +63,10 @@ public:
   bool applyAttachedBoxState(
     const std::vector<AttachedBoxSpec>& specs,
     int operation);
+
+  void applyToPlanningSceneSnapshot(
+    planning_scene::PlanningScene& scene,
+    const std::vector<AttachedBoxSpec>& attached_boxes) const;
 
   bool removeCarriedBoxIds(const std::vector<std::string>& ids);
 

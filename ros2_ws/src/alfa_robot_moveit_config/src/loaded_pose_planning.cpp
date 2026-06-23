@@ -280,17 +280,17 @@ double LoadedPosePlanner::currentUpdown(const moveit::core::RobotState& state)
   return state.getVariablePosition("updown");
 }
 
-bool LoadedPosePlanner::isCenterColumnBox(const AttachedBoxSpec& box)
+int LoadedPosePlanner::boxColumn(const AttachedBoxSpec& box)
 {
   const auto last_underscore = box.id.find_last_of('_');
   if (last_underscore == std::string::npos || last_underscore + 1 >= box.id.size()) {
-    return false;
+    return 0;
   }
   try {
     const int box_id = std::stoi(box.id.substr(last_underscore + 1));
-    return box_id % 5 == 3;
+    return (box_id - 1) % 5 + 1;
   } catch (const std::exception&) {
-    return false;
+    return 0;
   }
 }
 
@@ -308,8 +308,9 @@ bool LoadedPosePlanner::planLateralShift(
   }
 
   const AttachedBoxSpec* center_box = nullptr;
+  const int shift_column = std::max(1, std::min(5, config_.lateral_shift_column));
   for (const auto& box : carried_boxes) {
-    if (isCenterColumnBox(box)) {
+    if (boxColumn(box) == shift_column) {
       center_box = &box;
       break;
     }

@@ -188,6 +188,38 @@ bool MotionSceneAdapter::applyAttachedBoxState(
   return true;
 }
 
+void MotionSceneAdapter::applyToPlanningSceneSnapshot(
+  planning_scene::PlanningScene& scene,
+  const std::vector<AttachedBoxSpec>& attached_boxes) const
+{
+  if (config_.enable_container_obstacle) {
+    for (const auto& panel : containerPanels()) {
+      scene.processCollisionObjectMsg(makeCollisionObject(
+        panel.id,
+        panel.center,
+        panel.size,
+        moveit_msgs::msg::CollisionObject::ADD));
+    }
+  }
+
+  if (config_.enable_static_box_obstacles) {
+    for (const auto& obstacle : current_static_box_obstacles_) {
+      scene.processCollisionObjectMsg(makeCollisionObject(
+        obstacle.id,
+        obstacle.center,
+        obstacle.size,
+        moveit_msgs::msg::CollisionObject::ADD));
+    }
+  }
+
+  if (config_.enable_attached_box_collision) {
+    for (const auto& spec : attached_boxes) {
+      scene.processAttachedCollisionObjectMsg(
+        makeAttachedCollisionObject(spec, moveit_msgs::msg::CollisionObject::ADD));
+    }
+  }
+}
+
 bool MotionSceneAdapter::removeCarriedBoxIds(const std::vector<std::string>& ids)
 {
   if (!config_.enable_attached_box_collision) return true;

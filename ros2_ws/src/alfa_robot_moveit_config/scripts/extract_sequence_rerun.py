@@ -55,6 +55,7 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_distance=args.lateral_shift_distance,
         lateral_shift_step=args.lateral_shift_step,
+        lateral_shift_column=args.lateral_shift_column,
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
@@ -224,6 +225,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
+    parser.add_argument("--lateral-shift-column", type=int, default=2)
     parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
