@@ -198,6 +198,7 @@ public:
     prefer_commanded_state_ = get_or_declare_parameter<bool>("prefer_commanded_state", true);
     fixed_updown_ = get_or_declare_parameter<double>("fixed_updown", 0.45);
     box_front_x_ = get_or_declare_parameter<double>("box_front_x", 0.625);
+    scene_y_shift_ = get_or_declare_parameter<double>("scene_y_shift", 0.0);
     world_to_base_z_ = get_or_declare_parameter<double>("world_to_base_z", 0.202094);
     top_suction_x_offset_ = get_or_declare_parameter<double>("top_suction_x_offset", 0.15);
     top_suction_z_offset_ = get_or_declare_parameter<double>("top_suction_z_offset", 0.2);
@@ -695,7 +696,7 @@ private:
   {
     return {
       container_center_x_,
-      container_center_y_,
+      container_center_y_ + scene_y_shift_,
       container_width_,
       container_height_,
       container_length_,
@@ -708,7 +709,8 @@ private:
   {
     return {
       box_front_x_,
-      container_center_y_,
+      scene_y_shift_,
+      container_center_y_ + scene_y_shift_,
       container_width_,
       container_floor_z_,
       carried_box_width_,
@@ -981,6 +983,7 @@ private:
   {
     return {
       box_front_x_,
+      scene_y_shift_,
       fixed_updown_,
       include_top_suction_,
       max_rounds_,
@@ -1278,6 +1281,7 @@ private:
       attached_box_world_aabb(state, carried_box),
       box_id,
       box_front_x_,
+      scene_y_shift_,
       carried_box_width_,
       carried_box_height_,
       carried_box_depth_,
@@ -1773,7 +1777,7 @@ private:
     const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
-    const auto boxes = make_boxes(box_front_x_);
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     if (left_it == boxes.end()) {
       ExtractRolloutTiming timing;
@@ -1810,7 +1814,7 @@ private:
     const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
-    const auto boxes = make_boxes(box_front_x_);
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     const auto right_it = boxes.find(right_box_id);
     if (left_it == boxes.end() || right_it == boxes.end()) {
@@ -1959,7 +1963,7 @@ private:
     if (!start_state) return fail(prefix + "/extract: cannot get start state");
 
     const AttachedBoxSpec left_box = make_carried_box_spec("left", left_box_id, false);
-    const auto boxes = make_boxes(box_front_x_);
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     if (left_it == boxes.end()) return fail(prefix + "/extract: unknown left box id");
 
@@ -2160,6 +2164,7 @@ private:
       {"ik_strategy", "fixed_discrete_h_multi_seed_cost_scorer"},
       {"planning_group", planning_group_},
       {"box_front_x", box_front_x_},
+      {"scene_y_shift", scene_y_shift_},
       {"world_to_base_z", world_to_base_z_},
       {"fixed_updown", fixed_updown_},
       {"velocity_scale", velocity_scale_},
@@ -2222,7 +2227,9 @@ private:
       {"width", container_width_},
       {"height", container_height_},
       {"center_x", container_center_x_},
-      {"center_y", container_center_y_},
+      {"center_y", container_center_y_ + scene_y_shift_},
+      {"nominal_center_y", container_center_y_},
+      {"scene_y_shift", scene_y_shift_},
       {"floor_z", container_floor_z_},
       {"wall_thickness", container_wall_thickness_},
       {"panels", panels},
@@ -2561,6 +2568,8 @@ private:
     if (snapshot.is_object()) {
       snapshot["phase"] = "full_selected";
       snapshot["phase_label"] = "完整流程最终采用方案";
+      snapshot["box_front_x"] = box_front_x_;
+      snapshot["scene_y_shift"] = scene_y_shift_;
       snapshot["elapsed_ms"] = total_elapsed_ms;
       snapshot["ik_elapsed_ms"] = ik_elapsed_ms;
       snapshot["extract_elapsed_ms"] = extract_elapsed_ms;
@@ -2591,7 +2600,7 @@ private:
 
     const int left_box_id = extract_demo_left_box_id_;
     const int right_box_id = extract_demo_right_box_id_;
-    const auto boxes = make_boxes(box_front_x_);
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     const auto right_it = boxes.find(right_box_id);
     if (left_it == boxes.end() || right_it == boxes.end()) {
@@ -2649,6 +2658,7 @@ private:
       {"left_box_id", left_box_id},
       {"right_box_id", right_box_id},
       {"box_front_x", box_front_x_},
+      {"scene_y_shift", scene_y_shift_},
       {"snapshot_path", extract_monitor_snapshot_path_},
       {"ik_trial_count", ik_result.trial_count},
       {"ik_legal_count", ik_result.legal_count},
@@ -2781,6 +2791,8 @@ private:
       {"elapsed_ms", elapsed_ms},
       {"left_box_id", extract_monitor_state_.left_box_id},
       {"right_box_id", extract_monitor_state_.right_box_id},
+      {"box_front_x", box_front_x_},
+      {"scene_y_shift", scene_y_shift_},
       {"input_candidate_count", count},
       {"success_count", success_count},
       {"worker_count", worker_count},
@@ -2857,6 +2869,8 @@ private:
       {"elapsed_ms", elapsed_ms},
       {"left_box_id", extract_monitor_state_.left_box_id},
       {"right_box_id", extract_monitor_state_.right_box_id},
+      {"box_front_x", box_front_x_},
+      {"scene_y_shift", scene_y_shift_},
       {"extract_success_count", batch.plan_indices.size()},
       {"attempted_count", attempted_count},
       {"success_count", success_count},
@@ -3010,6 +3024,8 @@ private:
       {"elapsed_ms", elapsed_ms},
       {"left_box_id", extract_monitor_state_.left_box_id},
       {"right_box_id", extract_monitor_state_.right_box_id},
+      {"box_front_x", box_front_x_},
+      {"scene_y_shift", scene_y_shift_},
       {"records", nlohmann::json::array({monitor_timing_json(*selected, 0, goal_state)})},
       {"replay_stages", replay_stages}
     };
@@ -3039,7 +3055,7 @@ private:
     last_error_.clear();
     last_commanded_state_.reset();
 
-    const auto boxes = make_boxes(box_front_x_);
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     const auto right_it = boxes.find(right_box_id);
     if (left_it == boxes.end() || right_it == boxes.end()) {
@@ -3198,6 +3214,7 @@ private:
   bool include_top_suction_ = true;
   double fixed_updown_ = 0.45;
   double box_front_x_ = 0.625;
+  double scene_y_shift_ = 0.0;
   double world_to_base_z_ = 0.202094;
   double top_suction_x_offset_ = 0.15;
   double top_suction_z_offset_ = 0.2;

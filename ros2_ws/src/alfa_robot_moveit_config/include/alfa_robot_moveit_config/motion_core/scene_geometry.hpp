@@ -24,6 +24,7 @@ struct ContainerGeometryConfig
 struct BoxWallGeometryConfig
 {
   double box_front_x = 0.625;
+  double scene_y_shift = 0.0;
   double container_center_y = 0.0;
   double container_width = 2.2;
   double container_floor_z = 0.0;
@@ -69,6 +70,7 @@ bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,
   double box_front_x,
+  double scene_y_shift,
   double carried_box_width,
   double carried_box_height,
   double carried_box_depth,

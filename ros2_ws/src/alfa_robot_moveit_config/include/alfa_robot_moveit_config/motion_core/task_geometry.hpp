@@ -55,7 +55,7 @@ struct AxisAlignedBox
 
 std::string trim_copy(std::string value);
 
-std::map<int, BoxSpec> make_boxes(double front_x);
+std::map<int, BoxSpec> make_boxes(double front_x, double y_shift = 0.0);
 
 std::vector<std::pair<int, int>> parse_box_pair_list(const std::string& value);
 

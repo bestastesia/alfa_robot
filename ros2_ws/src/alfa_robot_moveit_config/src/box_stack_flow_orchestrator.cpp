@@ -54,7 +54,7 @@ bool BoxStackFlowOrchestrator::runOnePair(
 {
   if (callbacks_.clear_scene) callbacks_.clear_scene();
 
-  const auto boxes = make_boxes(config_.box_front_x);
+  const auto boxes = make_boxes(config_.box_front_x, config_.scene_y_shift);
   const auto left_it = boxes.find(left_box_id);
   const auto right_it = boxes.find(right_box_id);
   if (left_it == boxes.end() || right_it == boxes.end()) {

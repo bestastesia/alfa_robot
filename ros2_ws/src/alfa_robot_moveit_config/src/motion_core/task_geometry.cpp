@@ -13,7 +13,7 @@ std::string trim_copy(std::string value)
   return value.substr(first, last - first + 1);
 }
 
-std::map<int, BoxSpec> make_boxes(double front_x)
+std::map<int, BoxSpec> make_boxes(double front_x, double y_shift)
 {
   const std::vector<std::vector<std::pair<int, double>>> rows_top_to_bottom = {
     {{1, 0.8}, {2, 0.4}, {3, 0.0}, {4, -0.4}, {5, -0.8}},
@@ -27,7 +27,7 @@ std::map<int, BoxSpec> make_boxes(double front_x)
   for (size_t row = 0; row < rows_top_to_bottom.size(); ++row) {
     const double z = 0.2 + 0.4 * static_cast<double>(rows_top_to_bottom.size() - 1 - row);
     for (const auto& [id, y] : rows_top_to_bottom[row]) {
-      boxes[id] = BoxSpec{id, front_x, y, z};
+      boxes[id] = BoxSpec{id, front_x, y + y_shift, z};
     }
   }
   return boxes;

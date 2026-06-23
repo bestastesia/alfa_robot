@@ -67,7 +67,7 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
 {
   std::vector<StaticBoxObstacle> obstacles;
 
-  const auto boxes = make_boxes(config.box_front_x);
+  const auto boxes = make_boxes(config.box_front_x, config.scene_y_shift);
   const auto left_it = boxes.find(left_box_id);
   const auto right_it = boxes.find(right_box_id);
   if (left_it == boxes.end() || right_it == boxes.end()) return obstacles;
@@ -208,6 +208,7 @@ bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,
   double box_front_x,
+  double scene_y_shift,
   double carried_box_width,
   double carried_box_height,
   double carried_box_depth,
@@ -221,7 +222,7 @@ bool carried_box_detached_from_neighbors(
   if (column > 1) neighbor_ids.push_back(row * 5 + column - 1);
   if (column < 5) neighbor_ids.push_back(row * 5 + column + 1);
 
-  const auto boxes = make_boxes(box_front_x);
+  const auto boxes = make_boxes(box_front_x, scene_y_shift);
   const AxisAlignedBox carried = expanded_aabb(carried_box, margin);
   const double carried_min_x = carried.center[0] - 0.5 * carried.size[0];
   const double carried_max_x = carried.center[0] + 0.5 * carried.size[0];

@@ -149,7 +149,10 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "execute:=false",
         "start_move_group:=true",
         f"box_front_x:={args.box_front_x}",
+        f"scene_y_shift:={args.scene_y_shift}",
         f"fixed_updown:={args.fixed_updown}",
+        f"front_z_reach_lower:={args.front_z_reach_lower}",
+        f"front_z_reach_upper:={args.front_z_reach_upper}",
         f"extract_demo_left_box_id:={args.left_box_id}",
         f"extract_demo_right_box_id:={args.right_box_id}",
         "extract_demo_direct_grasp_start:=true",
@@ -302,7 +305,7 @@ def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
     return [float(x), float(y), float(z), float(w)]
 
 
-def all_boxes(box_x: float) -> dict[int, tuple[float, float, float]]:
+def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, float, float]]:
     rows = [
         [(1, 0.8), (2, 0.4), (3, 0.0), (4, -0.4), (5, -0.8)],
         [(6, 0.8), (7, 0.4), (8, 0.0), (9, -0.4), (10, -0.8)],
@@ -314,33 +317,33 @@ def all_boxes(box_x: float) -> dict[int, tuple[float, float, float]]:
     for row_i, row in enumerate(rows):
         z = 0.2 + 0.4 * (len(rows) - 1 - row_i)
         for box_id, y in row:
-            out[box_id] = (box_x, y, z)
+            out[box_id] = (box_x, y + y_shift, z)
     return out
 
 
-def log_box_stack(box_x: float, left_box_id: int, right_box_id: int) -> None:
+def log_box_stack(box_x: float, left_box_id: int, right_box_id: int, y_shift: float = 0.0) -> None:
     centers = []
     half_sizes = []
     colors = []
     labels = []
-    for box_id, (x, y, z) in sorted(all_boxes(box_x).items()):
+    for box_id, (x, y, z) in sorted(all_boxes(box_x, y_shift).items()):
         centers.append([x + 0.15, y, z])
         half_sizes.append([0.15, 0.2, 0.2])
         if box_id in (left_box_id, right_box_id):
-            colors.append([80, 220, 100, 70])
+            colors.append([80, 240, 100, 190])
         else:
-            colors.append([255, 180, 60, 45])
+            colors.append([255, 180, 60, 125])
         labels.append(str(box_id))
     rr.log("monitor/scene/boxes", rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels), static=True)
 
 
-def log_default_container() -> None:
+def log_default_container(y_shift: float = 0.0) -> None:
     thickness = 0.02
     length = 4.0
     width = 2.2
     height = 2.4
     center_x = 0.8
-    center_y = 0.0
+    center_y = y_shift
     floor_z = 0.0
     panels = [
         ([center_x, center_y + width * 0.5 + thickness * 0.5, floor_z + height * 0.5], [length, thickness, height], "left_wall"),
@@ -525,8 +528,9 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
         rr.log("monitor", rr.Clear(recursive=True))
     rr.log("monitor", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     helpers.log_robot_static_model(robot, "monitor/robot", log_meshes=True)
-    log_default_container()
-    log_box_stack(float(args.box_front_x), int(snapshot.get("left_box_id", args.left_box_id)), int(snapshot.get("right_box_id", args.right_box_id)))
+    scene_y_shift = float(snapshot.get("scene_y_shift", args.scene_y_shift))
+    log_default_container(scene_y_shift)
+    log_box_stack(float(args.box_front_x), int(snapshot.get("left_box_id", args.left_box_id)), int(snapshot.get("right_box_id", args.right_box_id)), scene_y_shift)
     rr.log(
         "monitor/title",
         rr.TextLog(
@@ -557,6 +561,13 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
+            log_default_container(scene_y_shift)
+            log_box_stack(
+                float(args.box_front_x),
+                int(snapshot.get("left_box_id", args.left_box_id)),
+                int(snapshot.get("right_box_id", args.right_box_id)),
+                scene_y_shift,
+            )
             log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = joint_dict_from_stage_point(stage, point)
@@ -644,7 +655,11 @@ def main() -> int:
     parser.add_argument("--left-box-id", type=int, default=2)
     parser.add_argument("--right-box-id", type=int, default=3)
     parser.add_argument("--box-front-x", type=float, default=0.925)
+    parser.add_argument("--scene-y-shift", type=float, default=None, help="场景相对机器人 y 偏移；机器人左移 0.4m 时通常传 -0.4")
+    parser.add_argument("--box-stack-y-shift", type=float, default=None, help="兼容旧参数名；等同于 --scene-y-shift")
     parser.add_argument("--fixed-updown", type=float, default=0.3)
+    parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
+    parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
@@ -679,6 +694,8 @@ def main() -> int:
         help="full-selected 默认 mesh 动态回放；staged 多候选模式可用 skeleton 避免爆显存",
     )
     args = parser.parse_args()
+    if args.scene_y_shift is None:
+        args.scene_y_shift = 0.0 if args.box_stack_y_shift is None else args.box_stack_y_shift
     if args.save is not None and args.no_rerun:
         raise RuntimeError("--save 需要启用 Rerun 记录，不能和 --no-rerun 同时使用")
     if args.save is not None and args.mode != "full-selected":

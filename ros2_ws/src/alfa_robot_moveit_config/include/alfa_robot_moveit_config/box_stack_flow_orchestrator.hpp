@@ -25,6 +25,7 @@ struct BoxStackFlowCallbacks
 struct BoxStackFlowConfig
 {
   double box_front_x = 0.625;
+  double scene_y_shift = 0.0;
   double fixed_updown = 0.0;
   bool include_top_suction = true;
   int max_rounds = 10;
