@@ -204,6 +204,7 @@ install(PROGRAMS
   scripts/semantic_scene_utils.py
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
+  scripts/extract_failed_attempts_rerun.py
   scripts/run_extract_live_benchmark.py
   scripts/visualize_moveit_box_stack_flow.py
   DESTINATION lib/${PROJECT_NAME}

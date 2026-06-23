@@ -282,13 +282,18 @@ double LoadedPosePlanner::currentUpdown(const moveit::core::RobotState& state)
 
 int LoadedPosePlanner::boxColumn(const AttachedBoxSpec& box)
 {
+  const int box_id = boxId(box);
+  return box_id > 0 ? (box_id - 1) % 5 + 1 : 0;
+}
+
+int LoadedPosePlanner::boxId(const AttachedBoxSpec& box)
+{
   const auto last_underscore = box.id.find_last_of('_');
   if (last_underscore == std::string::npos || last_underscore + 1 >= box.id.size()) {
     return 0;
   }
   try {
-    const int box_id = std::stoi(box.id.substr(last_underscore + 1));
-    return (box_id - 1) % 5 + 1;
+    return std::stoi(box.id.substr(last_underscore + 1));
   } catch (const std::exception&) {
     return 0;
   }
@@ -537,11 +542,70 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
 
   moveit::core::RobotState loaded_start_state(start_state_with_boxes);
   moveit::core::RobotState shifted_state(extract_state);
+  const bool apply_pre_loaded_lower =
+    config_.pre_loaded_lower_updown_delta > 1e-6 &&
+    carried_boxes.size() == 2 &&
+    boxId(carried_boxes[0]) == config_.pre_loaded_lower_left_box_id &&
+    boxId(carried_boxes[1]) == config_.pre_loaded_lower_right_box_id;
   {
     std::lock_guard<std::mutex> lock(record_mutex_);
-    if (!planLateralShift(stage_name, extract_state, carried_boxes, &shifted_state, &result)) {
+    if (!planLateralShift(stage_name, shifted_state, carried_boxes, &shifted_state, &result)) {
       restore_boxes();
       return result;
+    }
+  }
+  if (apply_pre_loaded_lower) {
+    const moveit::core::RobotState pre_lower_start(shifted_state);
+    shifted_state.setVariablePosition(
+      "updown",
+      currentUpdown(pre_lower_start) - config_.pre_loaded_lower_updown_delta);
+    shifted_state.enforceBounds();
+    shifted_state.update();
+    if (config_.record_callback) {
+      moveit::core::RobotState planning_start(pre_lower_start);
+      moveit::core::RobotState planning_goal(shifted_state);
+      attach_boxes_to_robot_state(planning_start, carried_boxes, config_.attached_box_collision_padding);
+      attach_boxes_to_robot_state(planning_goal, carried_boxes, config_.attached_box_collision_padding);
+
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      auto& trajectory = plan.trajectory_.joint_trajectory;
+      trajectory.joint_names = config_.target_joint_names;
+      trajectory_msgs::msg::JointTrajectoryPoint start_point;
+      trajectory_msgs::msg::JointTrajectoryPoint goal_point;
+      start_point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+      goal_point.time_from_start = rclcpp::Duration::from_seconds(0.1);
+      start_point.positions.reserve(trajectory.joint_names.size());
+      goal_point.positions.reserve(trajectory.joint_names.size());
+      for (const auto& name : trajectory.joint_names) {
+        start_point.positions.push_back(pre_lower_start.getVariablePosition(name));
+        goal_point.positions.push_back(shifted_state.getVariablePosition(name));
+      }
+      trajectory.points.push_back(start_point);
+      trajectory.points.push_back(goal_point);
+
+      nlohmann::json extra = {
+        {"stage_kind", "pre_loaded_lower_updown"},
+        {"valid", true},
+        {"lower_left_box_id", config_.pre_loaded_lower_left_box_id},
+        {"lower_right_box_id", config_.pre_loaded_lower_right_box_id},
+        {"updown_delta", -config_.pre_loaded_lower_updown_delta},
+        {"start_updown", currentUpdown(pre_lower_start)},
+        {"target_updown", currentUpdown(shifted_state)}
+      };
+      LoadedPoseReplayStage replay_stage;
+      replay_stage.stage_name = stage_name + "/pre_loaded_lower_updown";
+      replay_stage.plan = plan;
+      replay_stage.start_state = std::make_shared<moveit::core::RobotState>(planning_start);
+      replay_stage.goal_state = std::make_shared<moveit::core::RobotState>(planning_goal);
+      replay_stage.extra = extra;
+      result.lateral_shift_replay_stages.push_back(std::move(replay_stage));
+      config_.record_callback(
+        stage_name + "/pre_loaded_lower_updown",
+        plan,
+        planning_start,
+        planning_goal,
+      config_.target_joint_names,
+      extra);
     }
   }
   attach_boxes_to_robot_state(
@@ -705,11 +769,11 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     timing.loaded_pose_distance_l2 = result.selection.distance_l2;
     timing.loaded_pose_max_joint_delta = result.selection.max_joint_delta;
     timing.loaded_plan_failure_reason = result.failure_reason;
-    if (result.success && result.start_state && result.goal_state) {
+    timing.lateral_shift_replay_stages = result.lateral_shift_replay_stages;
+    if (result.start_state && result.goal_state) {
       timing.loaded_plan = result.plan;
       timing.loaded_start_state = result.start_state;
       timing.loaded_goal_state = result.goal_state;
-      timing.lateral_shift_replay_stages = result.lateral_shift_replay_stages;
     }
   };
 

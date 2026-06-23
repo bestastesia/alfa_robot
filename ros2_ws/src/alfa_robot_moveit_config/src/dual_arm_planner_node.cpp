@@ -346,6 +346,12 @@ public:
       get_or_declare_parameter<double>("extract_loaded_lateral_shift_step", 0.0);
     extract_loaded_lateral_shift_column_ =
       get_or_declare_parameter<int>("extract_loaded_lateral_shift_column", 3);
+    extract_loaded_pre_lower_left_box_id_ =
+      get_or_declare_parameter<int>("extract_loaded_pre_lower_left_box_id", 0);
+    extract_loaded_pre_lower_right_box_id_ =
+      get_or_declare_parameter<int>("extract_loaded_pre_lower_right_box_id", 0);
+    extract_loaded_pre_lower_updown_delta_ =
+      get_or_declare_parameter<double>("extract_loaded_pre_lower_updown_delta", 0.0);
     enforce_loaded_plan_aabb_clearance_ =
       get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", true);
     extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", true);
@@ -868,6 +874,9 @@ private:
       ? extract_loaded_lateral_shift_step_
       : extract_step_x_;
     config.lateral_shift_column = extract_loaded_lateral_shift_column_;
+    config.pre_loaded_lower_left_box_id = extract_loaded_pre_lower_left_box_id_;
+    config.pre_loaded_lower_right_box_id = extract_loaded_pre_lower_right_box_id_;
+    config.pre_loaded_lower_updown_delta = extract_loaded_pre_lower_updown_delta_;
     config.fixed_updown = extract_loaded_target_updown_;
     config.min_tool_normal_z = extract_min_tool_normal_z_;
     config.max_joint_delta = extract_max_joint_delta_;
@@ -2375,6 +2384,58 @@ private:
     size_t display_index,
     const moveit::core::RobotState& state) const
   {
+    const std::vector<AttachedBoxSpec> carried_boxes{
+      extract_monitor_state_.left_box,
+      extract_monitor_state_.right_box,
+    };
+    nlohmann::json replay_stages = nlohmann::json::array();
+    for (const auto& stage : timing.rollout_records) {
+      replay_stages.push_back(stage);
+    }
+    for (const auto& shift_stage : timing.lateral_shift_replay_stages) {
+      if (!shift_stage.start_state || !shift_stage.goal_state) {
+        continue;
+      }
+      nlohmann::json extra = shift_stage.extra;
+      extra["candidate_order"] = timing.candidate_order;
+      extra["loaded_plan_rank"] = timing.loaded_plan_rank;
+      extra["loaded_plan_success"] = timing.loaded_plan_success;
+      extra["loaded_plan_failure_reason"] = timing.loaded_plan_failure_reason;
+      extra["left_box_id"] = extract_monitor_state_.left_box_id;
+      extra["right_box_id"] = extract_monitor_state_.right_box_id;
+      replay_stages.push_back(monitor_stage_json(
+        shift_stage.stage_name,
+        shift_stage.plan,
+        *shift_stage.start_state,
+        *shift_stage.goal_state,
+        arm_joint_target_names(),
+        carried_boxes,
+        extra));
+    }
+    if (timing.loaded_start_state && timing.loaded_goal_state &&
+        !timing.loaded_plan.trajectory_.joint_trajectory.points.empty()) {
+      nlohmann::json extra = {
+        {"stage_kind", "monitor_loaded_plan_attempt_replay"},
+        {"valid", timing.loaded_plan_success},
+        {"candidate_order", timing.candidate_order},
+        {"loaded_plan_rank", timing.loaded_plan_rank},
+        {"loaded_plan_success", timing.loaded_plan_success},
+        {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
+        {"loaded_plan_ms", timing.loaded_plan_ms},
+        {"loaded_plan_points", timing.loaded_plan_points},
+        {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
+        {"left_box_id", extract_monitor_state_.left_box_id},
+        {"right_box_id", extract_monitor_state_.right_box_id}
+      };
+      replay_stages.push_back(monitor_stage_json(
+        extract_monitor_state_.prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/loaded_plan_attempt",
+        timing.loaded_plan,
+        *timing.loaded_start_state,
+        *timing.loaded_goal_state,
+        arm_joint_target_names(),
+        carried_boxes,
+        extra));
+    }
     return {
       {"display_index", display_index},
       {"candidate_order", timing.candidate_order},
@@ -2393,15 +2454,27 @@ private:
       {"right_final_retreat_x", timing.right_final_retreat_x},
       {"right_final_lift_z", timing.right_final_lift_z},
       {"right_final_pitch_deg", timing.right_final_pitch_deg},
+      {"success", timing.success},
+      {"failure_reason", timing.failure_reason},
+      {"loaded_plan_attempted", timing.loaded_plan_attempted},
+      {"loaded_plan_success", timing.loaded_plan_success},
+      {"lateral_shift_attempted", timing.lateral_shift_attempted},
+      {"lateral_shift_success", timing.lateral_shift_success},
+      {"lateral_shift_ms", timing.lateral_shift_ms},
+      {"lateral_shift_reached_distance", timing.lateral_shift_reached_distance},
+      {"lateral_shift_points", timing.lateral_shift_points},
       {"loaded_plan_rank", timing.loaded_plan_rank},
       {"loaded_plan_ms", timing.loaded_plan_ms},
       {"loaded_plan_points", timing.loaded_plan_points},
       {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
+      {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
       {"loaded_pose_distance_sum", timing.loaded_pose_distance_sum},
       {"loaded_pose_distance_l2", timing.loaded_pose_distance_l2},
       {"loaded_pose_max_joint_delta", timing.loaded_pose_max_joint_delta},
       {"loaded_plan_selected", timing.loaded_plan_selected},
-      {"state", robot_state_json(state)}
+      {"state", robot_state_json(state)},
+      {"replay_stage_count", replay_stages.size()},
+      {"replay_stages", replay_stages}
     };
   }
 
@@ -2852,9 +2925,13 @@ private:
       if (timing.loaded_plan_attempted) {
         ++attempted_count;
       }
+      if (timing.loaded_plan_attempted && timing.final_state && loaded_pose_selector_) {
+        moveit::core::RobotState record_state = timing.loaded_goal_state
+          ? *timing.loaded_goal_state
+          : loaded_pose_selector_->makeGoalState(*timing.final_state);
+        records.push_back(monitor_timing_json(timing, records.size(), record_state));
+      }
       if (timing.loaded_plan_success && timing.final_state && loaded_pose_selector_) {
-        moveit::core::RobotState goal_state = loaded_pose_selector_->makeGoalState(*timing.final_state);
-        records.push_back(monitor_timing_json(timing, success_count, goal_state));
         ++success_count;
       } else if (timing.loaded_plan_attempted) {
         failure_counts[timing.loaded_plan_failure_reason.empty() ? "unknown" : timing.loaded_plan_failure_reason]++;
@@ -3297,6 +3374,9 @@ private:
   double extract_loaded_lateral_shift_distance_ = 0.4;
   double extract_loaded_lateral_shift_step_ = 0.0;
   int extract_loaded_lateral_shift_column_ = 3;
+  int extract_loaded_pre_lower_left_box_id_ = 0;
+  int extract_loaded_pre_lower_right_box_id_ = 0;
+  double extract_loaded_pre_lower_updown_delta_ = 0.0;
   bool extract_use_independent_kdl_ = false;
   int extract_independent_kdl_max_iterations_ = 120;
   double extract_independent_kdl_eps_ = 1e-5;
