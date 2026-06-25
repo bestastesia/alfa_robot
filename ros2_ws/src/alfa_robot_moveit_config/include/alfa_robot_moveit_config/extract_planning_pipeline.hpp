@@ -323,6 +323,12 @@ using ExtractDualClearCallback = std::function<bool(
   bool*,
   std::string*)>;
 
+using ExtractTrajectoryClearCallback = std::function<bool(
+  const moveit::planning_interface::MoveGroupInterface::Plan&,
+  const moveit::core::RobotState&,
+  const std::vector<AttachedBoxSpec>&,
+  std::string*)>;
+
 struct ExtractRolloutPlannerConfig
 {
   ExtractMotionPlanner* motion_planner = nullptr;
@@ -339,6 +345,7 @@ struct ExtractRolloutPlannerConfig
   size_t top_valid_limit = 6;
   ExtractSingleClearCallback single_clear_callback;
   ExtractDualClearCallback dual_clear_callback;
+  ExtractTrajectoryClearCallback trajectory_clear_callback;
 };
 
 class ExtractRolloutPlanner

@@ -700,6 +700,130 @@ private:
     return false;
   }
 
+  std::string scene_collision_reason(
+    const planning_scene::PlanningSceneConstPtr& scene,
+    const moveit::core::RobotState& state,
+    const moveit::core::JointModelGroup* group) const
+  {
+    if (!scene) return "scene_missing";
+    collision_detection::CollisionRequest request;
+    collision_detection::CollisionResult result;
+    request.contacts = true;
+    request.max_contacts = 5;
+    request.max_contacts_per_pair = 1;
+    if (group) {
+      request.group_name = group->getName();
+    }
+    scene->checkCollision(request, result, state);
+    if (!result.collision) return "";
+    std::ostringstream out;
+    out << "collision";
+    size_t count = 0;
+    for (const auto& entry : result.contacts) {
+      if (count == 0) {
+        out << ":";
+      } else {
+        out << ",";
+      }
+      out << entry.first.first << "<->" << entry.first.second;
+      ++count;
+      if (count >= 3) break;
+    }
+    return out.str();
+  }
+
+  std::string group_bounds_reason(
+    const moveit::core::RobotState& state,
+    const moveit::core::JointModelGroup* group) const
+  {
+    if (!group) return "bounds_missing_group";
+    if (state.satisfiesBounds(group)) return "";
+    std::ostringstream out;
+    out << "bounds";
+    size_t count = 0;
+    for (const auto& name : group->getVariableNames()) {
+      const auto& bounds = robot_model_->getVariableBounds(name);
+      const double value = state.getVariablePosition(name);
+      bool bad = false;
+      if (bounds.position_bounded_) {
+        bad = value < bounds.min_position_ - 1e-9 || value > bounds.max_position_ + 1e-9;
+      }
+      if (!bad) continue;
+      out << (count == 0 ? ":" : ",")
+          << name << "=" << value
+          << "[" << bounds.min_position_ << "," << bounds.max_position_ << "]";
+      ++count;
+      if (count >= 4) break;
+    }
+    return out.str();
+  }
+
+  std::string direct_pipeline_failure_diagnostic(
+    const planning_scene::PlanningSceneConstPtr& scene,
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    const moveit::core::JointModelGroup* group) const
+  {
+    if (!group) return "diagnostic=missing_group";
+
+    auto state_status = [&](const char* label, const moveit::core::RobotState& state) {
+      std::ostringstream out;
+      const std::string bounds = group_bounds_reason(state, group);
+      out << label << "_bounds=" << (bounds.empty() ? "ok" : bounds);
+      const std::string collision = scene_collision_reason(scene, state, group);
+      out << "," << label << "_collision=" << (collision.empty() ? "clear" : collision);
+      return out.str();
+    };
+
+    std::ostringstream out;
+    out << "diagnostic{"
+        << state_status("start", start_state) << ";"
+        << state_status("goal", goal_state);
+
+    if (!start_state.satisfiesBounds(group) || !goal_state.satisfiesBounds(group)) {
+      out << ";line=skipped_bounds}";
+      return out.str();
+    }
+    const std::string start_collision = scene_collision_reason(scene, start_state, group);
+    const std::string goal_collision = scene_collision_reason(scene, goal_state, group);
+    if (!start_collision.empty() || !goal_collision.empty()) {
+      out << ";line=skipped_endpoint_collision}";
+      return out.str();
+    }
+
+    moveit::core::RobotState probe(start_state);
+    const auto& variable_names = group->getVariableNames();
+    constexpr int kInterpolationSteps = 50;
+    for (int step = 1; step < kInterpolationSteps; ++step) {
+      const double t = static_cast<double>(step) / static_cast<double>(kInterpolationSteps);
+      for (const auto& name : variable_names) {
+        const double start_value = start_state.getVariablePosition(name);
+        const double goal_value = goal_state.getVariablePosition(name);
+        const auto* variable_joint = robot_model_->getJointOfVariable(name);
+        const bool angular_variable =
+          variable_joint && variable_joint->getType() != moveit::core::JointModel::PRISMATIC;
+        const double delta = angular_variable ?
+          shortest_angular_distance(start_value, goal_value) :
+          (goal_value - start_value);
+        probe.setVariablePosition(name, start_value + delta * t);
+      }
+      probe.update(true);
+      const std::string bounds = group_bounds_reason(probe, group);
+      if (!bounds.empty()) {
+        out << ";line=first_" << bounds << "@" << step << "/" << kInterpolationSteps << "}";
+        return out.str();
+      }
+      const std::string collision = scene_collision_reason(scene, probe, group);
+      if (!collision.empty()) {
+        out << ";line=first_" << collision << "@" << step << "/" << kInterpolationSteps << "}";
+        return out.str();
+      }
+    }
+
+    out << ";line=straight_joint_interpolation_clear}";
+    return out.str();
+  }
+
   ContainerGeometryConfig container_geometry_config() const
   {
     return {
@@ -822,6 +946,14 @@ private:
           state, left_box, left_box_id, right_box, right_box_id,
           left_detached, right_detached, reason);
       };
+    config.trajectory_clear_callback =
+      [this](
+        const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+        const moveit::core::RobotState& start_state,
+        const std::vector<AttachedBoxSpec>& attached_boxes,
+        std::string* reason) {
+        return planned_trajectory_clear_in_full_scene(plan, start_state, attached_boxes, reason);
+      };
     return config;
   }
 
@@ -895,7 +1027,7 @@ private:
       const moveit::planning_interface::MoveGroupInterface::Plan& plan,
       const moveit::core::RobotState& start_state,
       std::string* reason) {
-      return planned_carried_boxes_clear_static_obstacles(plan, start_state, reason);
+      return planned_trajectory_clear_in_full_scene(plan, start_state, active_attached_boxes(), reason);
     };
     config.record_callback = [this](
       const std::string& stage_name,
@@ -979,7 +1111,8 @@ private:
         !response.trajectory_) {
       if (reason) {
         *reason = "direct_pipeline_planning_failed_code_" +
-          std::to_string(response.error_code_.val);
+          std::to_string(response.error_code_.val) + " " +
+          direct_pipeline_failure_diagnostic(scene_snapshot, start_state, goal_state, loaded_group);
       }
       return false;
     }
@@ -1441,6 +1574,104 @@ private:
     if (right_detached) *right_detached = right_ok;
     if ((!left_ok || !right_ok) && reason) {
       *reason = !left_ok ? left_reason : right_reason;
+    }
+    return true;
+  }
+
+  planning_scene::PlanningScenePtr make_full_scene_snapshot(
+    const moveit::core::RobotState& start_state,
+    const std::vector<AttachedBoxSpec>& attached_boxes) const
+  {
+    if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+      return nullptr;
+    }
+    planning_scene::PlanningScenePtr scene_snapshot;
+    {
+      planning_scene_monitor::LockedPlanningSceneRO locked_scene(planning_scene_monitor_);
+      if (!locked_scene) return nullptr;
+      scene_snapshot = planning_scene::PlanningScene::clone(
+        static_cast<const planning_scene::PlanningSceneConstPtr&>(locked_scene));
+    }
+    scene_snapshot->setCurrentState(start_state);
+    if (scene_adapter_) {
+      scene_adapter_->applyToPlanningSceneSnapshot(*scene_snapshot, attached_boxes);
+      scene_snapshot->setCurrentState(start_state);
+    }
+    return scene_snapshot;
+  }
+
+  bool state_clear_in_full_scene(
+    const planning_scene::PlanningSceneConstPtr& scene,
+    const moveit::core::RobotState& state,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    std::string* reason) const
+  {
+    if (!joint_group_) return true;
+    const std::string bounds = group_bounds_reason(state, joint_group_);
+    if (!bounds.empty()) {
+      if (reason) *reason = bounds;
+      return false;
+    }
+    moveit::core::RobotState collision_state(state);
+    if (enable_attached_box_collision_) {
+      std::vector<AttachedBoxSpec> missing_boxes;
+      missing_boxes.reserve(attached_boxes.size());
+      for (const auto& box : attached_boxes) {
+        if (!collision_state.hasAttachedBody(box.id)) {
+          missing_boxes.push_back(box);
+        }
+      }
+      attach_boxes_to_robot_state(collision_state, missing_boxes, attached_box_collision_padding_);
+    }
+    collision_state.update(true);
+    const std::string collision = scene_collision_reason(scene, collision_state, joint_group_);
+    if (!collision.empty()) {
+      if (reason) *reason = collision;
+      return false;
+    }
+    if (enforce_loaded_plan_aabb_clearance_) {
+      for (const auto& box : attached_boxes) {
+        std::string aabb_reason;
+        if (!carried_box_clear_scene_obstacles(collision_state, box, &aabb_reason)) {
+          if (reason) *reason = "conservative AABB check failed (" + aabb_reason + ")";
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  bool planned_trajectory_clear_in_full_scene(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    std::string* reason) const
+  {
+    if (!enable_attached_box_collision_) return true;
+    const bool has_boxes = !attached_boxes.empty() || robot_state_has_attached_body(start_state);
+    if (!has_boxes) return true;
+    auto scene_snapshot = make_full_scene_snapshot(start_state, attached_boxes);
+    if (!scene_snapshot) return true;
+
+    const auto& trajectory = plan.trajectory_.joint_trajectory;
+    for (size_t point_index = 0; point_index < trajectory.points.size(); ++point_index) {
+      moveit::core::RobotState state(start_state);
+      const auto& point = trajectory.points[point_index];
+      for (size_t i = 0; i < trajectory.joint_names.size() && i < point.positions.size(); ++i) {
+        if (is_robot_variable(trajectory.joint_names[i])) {
+          state.setVariablePosition(trajectory.joint_names[i], point.positions[i]);
+        }
+      }
+      state.update(true);
+      std::string point_reason;
+      if (!state_clear_in_full_scene(scene_snapshot, state, attached_boxes, &point_reason)) {
+        if (reason) {
+          *reason = "trajectory point " + std::to_string(point_index) +
+                    ": full scene check failed";
+          if (!point_reason.empty()) *reason += " (" + point_reason + ")";
+        }
+        return false;
+      }
     }
     return true;
   }

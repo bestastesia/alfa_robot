@@ -586,6 +586,33 @@ bool ExtractRolloutPlanner::solveCandidate(
     return false;
   }
 
+  if (config_.trajectory_clear_callback) {
+    moveit::core::RobotState planning_start(current_state);
+    moveit::core::RobotState planning_goal(*out->state);
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    auto& trajectory = plan.trajectory_.joint_trajectory;
+    if (config_.joint_group) {
+      trajectory.joint_names = config_.joint_group->getVariableNames();
+    }
+    trajectory_msgs::msg::JointTrajectoryPoint start_point;
+    trajectory_msgs::msg::JointTrajectoryPoint goal_point;
+    start_point.time_from_start = rclcpp::Duration::from_seconds(0.0);
+    goal_point.time_from_start = rclcpp::Duration::from_seconds(0.1);
+    start_point.positions.reserve(trajectory.joint_names.size());
+    goal_point.positions.reserve(trajectory.joint_names.size());
+    for (const auto& name : trajectory.joint_names) {
+      start_point.positions.push_back(planning_start.getVariablePosition(name));
+      goal_point.positions.push_back(planning_goal.getVariablePosition(name));
+    }
+    trajectory.points.push_back(start_point);
+    trajectory.points.push_back(goal_point);
+    if (!config_.trajectory_clear_callback(plan, planning_start, {carried_box}, &reason)) {
+      out->rejection_reason = "extract_step_collision: " +
+        (reason.empty() ? std::string("trajectory_clear_callback_failed") : reason);
+      return false;
+    }
+  }
+
   out->state_valid = true;
   out->carried_clear = true;
   out->detached_from_neighbors = detached;
