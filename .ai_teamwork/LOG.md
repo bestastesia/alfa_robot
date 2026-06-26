@@ -655,3 +655,40 @@
 - 改了哪里：新增 `scripts/plc_trajectory_queue_test/plc_queue_client.py` 和 `scripts/plc_trajectory_queue_test/README.md`；协议常量使用 `Unit ID=1`、状态区 `100`、包头区 `200`、点数据区 `240~359`，`packetCrc32=0`。
 - 验证结果：`python3 -m py_compile scripts/plc_trajectory_queue_test/plc_queue_client.py` 通过；本地生成 `mixed-delta` 20 点 CSV 成功，未连接/写入 PLC。
 - 留给下个 AI：正式接桥层前先用该脚本在实机上按 README 顺序测试：只读状态、5 点保持 commit-only、5 点保持 start、20 点单轴小幅、40 点 `sync-wave`、40/240 点 `mixed-delta`；测试时必须传入真实 12 轴当前角度作为 `--base`，未运动轴不能填 0。
+
+## 2026-06-25 运控 / Codex / PLC 执行链路退场与 EtherCAT 主栈切换
+- 做了什么：Linear 已取消 PLC/Modbus 主线 `MOTION-27`、PLC 轨迹队列协作 `SEV-7`、PLC 插值测试 `MOTION-54`，新建 `MOTION-55` 作为 EtherCAT 主栈封装主线；本地清理旧 PLC bridge 与 PLC 队列测试工具。
+- 改了哪里：删除 `ros2_ws/src/alfa_robot_plc_bridge/`、`scripts/plc_trajectory_queue_test/`；新增方向标定文档 `docs/ethercat/joint_direction_calibration.md`。
+- 验证结果：源码层全局搜索旧 `alfa_robot_plc_bridge` / `plc_joint_trajectory` / PLC service / PLC 队列测试工具引用无残留；`colcon list` 不再发现 `alfa_robot_plc_bridge`；`source ros2_ws/install/setup.bash` 通过。
+- 留给下个 AI：后续执行层优先围绕 `MOTION-55` 封装电控侧 EtherCAT 主栈 / ros2_control；常态开发应支持无电机 mock/仿真与实机主栈简单切换，不要恢复 PLC bridge 主线。
+
+## 2026-06-26 运控 / Codex / 统一执行接口 mock 包
+- 做了什么：新增 `alfa_robot_execution_bridge` ROS2 包，先提供统一 `FollowJointTrajectory` action 接口和 mock 后端；用于无电机/无 EtherCAT 主栈时打通上层任务编排、MoveIt 与执行层。
+- 改了哪里：新增 `ros2_ws/src/alfa_robot_execution_bridge/`；默认 action 为 `/alfa_execution/execute_joint_trajectory`，mock 发布完整 13 轴 `/joint_states`。
+- 验证结果：`python3 -m py_compile` 通过；`colcon build --packages-select alfa_robot_execution_bridge --symlink-install` 通过；本地启动 mock 节点并用测试客户端发送 13 轴轨迹成功返回。
+- 留给下个 AI：真实 EtherCAT 后端应复用同一个 action 和 joint state 语义，只替换执行后端；mock 后端不使用 `direction_signs`，实机后端需要参考 `docs/ethercat/joint_direction_calibration.md` 做 ROS 方向到电机方向转换。
+
+## 2026-06-26 运控 / Codex / execution bridge ros2_control 转发后端
+- 做了什么：`alfa_robot_execution_bridge` 增加 `ros2_control` 后端，可把统一 action 转发到 `/dual_arm_trajectory_controller/follow_joint_trajectory`；默认关节顺序改为左臂 6 轴、右臂 6 轴、`turn`。
+- 改了哪里：`execution_bridge_node.py` 现在支持 `mode=mock|ros2_control`；新增 `config/ros2_control_bridge.yaml`；launch 改为通用 `execution_bridge_node`；方向文档同步为左臂优先顺序。
+- 验证结果：`python3 -m py_compile` 通过；`colcon build --packages-select alfa_robot_execution_bridge --symlink-install` 通过；mock action 烟测成功；ros2_control 模式在无下游控制器时会清晰返回 `downstream action server unavailable`。
+- 留给下个 AI：实机测试前先启动电控侧 EtherCAT 主栈和 ros2_control；若下游已经处理方向，保持 `apply_direction_signs=false`，避免双重翻转。
+
+## 2026-06-26 运控 / Codex / dual_arm_planner 丐版接 execution bridge
+- 做了什么：`dual_arm_planner_node` 增加 `execution_backend:=alfa_execution_bridge` 路径，规划成功后不走 MoveIt execute，而是把 `JointTrajectory` 发到 `/alfa_execution/execute_joint_trajectory`。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增 FollowJointTrajectory action client、MoveIt 关节名到执行接口关节名映射（`left_v5_joint*`→`left_joint*`，`right_v5_joint*`→`right_joint*`），并默认带 `turn` 保持值；`dual_arm_planner.launch.py` 暴露 execution 参数。
+- 验证结果：`colcon build --packages-select alfa_robot_execution_bridge alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`dual_arm_planner.launch.py start_move_group:=false execute:=false execution_backend:=alfa_execution_bridge` 可启动到加载机器人模型。
+- 留给下个 AI：这是“丐版接线”不是最终控制器；默认会拒绝规划里发生变化但未映射到执行接口的轴（如 `updown`），防止静默丢轴。若未来真实执行层支持更多轴，再扩展 `alfa_execution_joint_names()` 和映射表。
+
+## 2026-06-26 Codex / 运控 / L6-R8 mock 执行闭环
+- 做了什么：新增 L6/R8 单任务实时执行程序，流程为启动 mock 执行桥、计算 IK/抽离/负重规划、先执行全 0 到负重姿态、回车后按 10Hz 轨迹点执行任务，并用执行器反馈同步写入 Rerun。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py`；安装入口 `ros2_ws/src/alfa_robot_moveit_config/CMakeLists.txt`；执行桥配置 `ros2_ws/src/alfa_robot_execution_bridge/config/execution_bridge.yaml`；执行桥优雅退出 `ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/execution_bridge_node.py`；`.gitignore` 放行新脚本。
+- 验证结果：`colcon build --packages-select alfa_robot_execution_bridge alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；smoke 生成 `/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/live_mock_execution/L6_R8_mock_live_smoke.rrd`，计算成功，mock 执行全 0→负重 3.022s，L6/R8 任务轨迹 113 点、10Hz、执行 11.279s。
+- 留给下个 AI：当前执行桥接口是 13 轴 `left_joint*`/`right_joint*`/`turn`，不含 `updown`；脚本按 `fixed_updown=0.3` 进行 Rerun 显示与执行语义，若后续实机需要升降轴运动，必须扩展执行接口或锁死 IK 的 h。
+
+## 2026-06-26 运控 / Codex / L6-R8 实机流程迁移到工控机 lhy_dev
+- 做了什么：将 L6/R8 全流程测试从 mock 版本扩展为实机直连版本，并把最小运行集同步到工控机 `~/lhy_dev`，不依赖旧运行目录。
+- 改了哪里：`execute_l6_r8_mock_live.py` 支持 `executor-mode=mock|real`、自动探测仓库根目录、实机直连默认发 `/dual_arm_trajectory_controller/follow_joint_trajectory`；新增入口 `execute_l6_r8_real_live.py`；`extract_stage_monitor_console.py` 去除本机硬编码路径。
+- 工控机内容：同步 `alfa_robot_description`、`alfa_robot_moveit_config`、`alfa_robot_execution_bridge`、`bio_ik`、`scripts/ik_benchmark` 到 `~/lhy_dev`；`pick_ik` 暂留但加 `COLCON_IGNORE`，当前流程只用 `bio_ik`。
+- 验证结果：工控机 `~/lhy_dev/ros2_ws` 中 `alfa_robot_description/bio_ik/alfa_robot_execution_bridge/alfa_robot_moveit_config` 编译通过；`ros2 run alfa_robot_moveit_config execute_l6_r8_real_live.py --help` 可用；运行脚本中无 `/mnt/mydisk/ALFA/alfa_robot` 硬编码残留。
+- 留给下个 AI：工控机真实控制器当前 joint order 是 `right_joint1..6,left_joint1..6,turn`，实机脚本默认按该顺序发送；内部/Rerun 仍按左臂优先整理。脚本只发送 12 个手臂轴 + `turn=0`，不发送 `updown`。Rerun 已安装到用户环境，`numpy` 保持 ROS 兼容的 `1.24.2`。

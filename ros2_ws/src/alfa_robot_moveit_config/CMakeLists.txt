@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(control_msgs REQUIRED)
 find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_ros_planning REQUIRED)
 find_package(moveit_core REQUIRED)
@@ -98,6 +99,7 @@ ament_target_dependencies(alfa_robot_motion_scene_adapter
   pluginlib
   random_numbers
   rclcpp
+  control_msgs
   shape_msgs
   srdfdom
   urdf
@@ -122,6 +124,7 @@ target_link_libraries(dual_arm_planner_node
 ament_target_dependencies(dual_arm_planner_node
   rclcpp
   rclcpp_action
+  control_msgs
   moveit_core
   moveit_ros_planning_interface
   moveit_ros_planning
@@ -173,6 +176,7 @@ ament_export_dependencies(
   pluginlib
   random_numbers
   rclcpp
+  control_msgs
   shape_msgs
   srdfdom
   urdf
@@ -205,6 +209,8 @@ install(PROGRAMS
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
   scripts/extract_failed_attempts_rerun.py
+  scripts/execute_l6_r8_mock_live.py
+  scripts/execute_l6_r8_real_live.py
   scripts/run_extract_live_benchmark.py
   scripts/visualize_moveit_box_stack_flow.py
   DESTINATION lib/${PROJECT_NAME}

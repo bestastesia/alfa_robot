@@ -1,0 +1,1 @@
+from alfa_robot_execution_bridge.execution_bridge_node import main

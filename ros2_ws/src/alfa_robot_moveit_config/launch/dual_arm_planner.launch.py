@@ -17,6 +17,13 @@ def generate_launch_description():
 
     declared_arguments = [
         DeclareLaunchArgument("execute", default_value="true"),
+        DeclareLaunchArgument("execution_backend", default_value="moveit"),
+        DeclareLaunchArgument("execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
+        DeclareLaunchArgument("execution_action_wait_timeout_s", default_value="5.0"),
+        DeclareLaunchArgument("execution_result_timeout_s", default_value="0.0"),
+        DeclareLaunchArgument("execution_include_turn", default_value="true"),
+        DeclareLaunchArgument("execution_allow_hold_missing_target_joints", default_value="true"),
+        DeclareLaunchArgument("execution_reject_unmapped_planned_joints", default_value="true"),
         DeclareLaunchArgument("start_move_group", default_value="true"),
         DeclareLaunchArgument("box_front_x", default_value="0.625"),
         DeclareLaunchArgument("scene_y_shift", default_value="0.0"),
@@ -154,6 +161,13 @@ def generate_launch_description():
             moveit_config.joint_limits,
             {
                 "execute": ParameterValue(LaunchConfiguration("execute"), value_type=bool),
+                "execution_backend": LaunchConfiguration("execution_backend"),
+                "execution_action_name": LaunchConfiguration("execution_action_name"),
+                "execution_action_wait_timeout_s": ParameterValue(LaunchConfiguration("execution_action_wait_timeout_s"), value_type=float),
+                "execution_result_timeout_s": ParameterValue(LaunchConfiguration("execution_result_timeout_s"), value_type=float),
+                "execution_include_turn": ParameterValue(LaunchConfiguration("execution_include_turn"), value_type=bool),
+                "execution_allow_hold_missing_target_joints": ParameterValue(LaunchConfiguration("execution_allow_hold_missing_target_joints"), value_type=bool),
+                "execution_reject_unmapped_planned_joints": ParameterValue(LaunchConfiguration("execution_reject_unmapped_planned_joints"), value_type=bool),
                 "box_front_x": ParameterValue(LaunchConfiguration("box_front_x"), value_type=float),
                 "scene_y_shift": ParameterValue(LaunchConfiguration("scene_y_shift"), value_type=float),
                 "fixed_updown": ParameterValue(LaunchConfiguration("fixed_updown"), value_type=float),

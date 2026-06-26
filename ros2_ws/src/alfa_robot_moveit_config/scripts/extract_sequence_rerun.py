@@ -66,7 +66,7 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
     )
 
 
-def wait_until_service_gone(timeout: float = 5.0) -> None:
+def wait_until_service_gone(timeout: float = 15.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if not (
@@ -75,6 +75,16 @@ def wait_until_service_gone(timeout: float = 5.0) -> None:
         ):
             return
         time.sleep(0.1)
+
+
+def cleanup_planner_processes() -> None:
+    subprocess.run(
+        ["pkill", "-INT", "-f", "dual_arm_planner|move_group|ros2 launch alfa_robot_moveit_config dual_arm_planner"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    wait_until_service_gone(15.0)
 
 
 def log_sequence_replay(
@@ -208,6 +218,8 @@ def run_one_pair(
     finally:
         monitor.terminate_process(planner)
         wait_until_service_gone()
+        if monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
+            cleanup_planner_processes()
 
 
 def main() -> int:

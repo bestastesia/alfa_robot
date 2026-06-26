@@ -20,7 +20,9 @@
 #include "alfa_robot_moveit_config/motion_core/scene_geometry.hpp"
 #include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
 
+#include <control_msgs/action/follow_joint_trajectory.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <geometric_shapes/shapes.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/kinematic_constraints/utils.h>
@@ -134,6 +136,9 @@ using alfa_robot::motion::shortest_angular_distance;
 using alfa_robot::motion::top_suction_orientation;
 using alfa_robot::motion::vector_json;
 
+using FollowJointTrajectory = control_msgs::action::FollowJointTrajectory;
+using FollowJointTrajectoryGoalHandle = rclcpp_action::ClientGoalHandle<FollowJointTrajectory>;
+
 std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box)
 {
   std::vector<std::string> links{box.link_name};
@@ -193,6 +198,16 @@ public:
     left_tip_ = get_or_declare_parameter<std::string>("left_tip", "left_v5_tool0");
     right_tip_ = get_or_declare_parameter<std::string>("right_tip", "right_v5_tool0");
     execute_ = get_or_declare_parameter<bool>("execute", true);
+    execution_backend_ = get_or_declare_parameter<std::string>("execution_backend", "moveit");
+    execution_action_name_ = get_or_declare_parameter<std::string>(
+      "execution_action_name", "/alfa_execution/execute_joint_trajectory");
+    execution_action_wait_timeout_s_ = get_or_declare_parameter<double>("execution_action_wait_timeout_s", 5.0);
+    execution_result_timeout_s_ = get_or_declare_parameter<double>("execution_result_timeout_s", 0.0);
+    execution_include_turn_ = get_or_declare_parameter<bool>("execution_include_turn", true);
+    execution_allow_hold_missing_target_joints_ =
+      get_or_declare_parameter<bool>("execution_allow_hold_missing_target_joints", true);
+    execution_reject_unmapped_planned_joints_ =
+      get_or_declare_parameter<bool>("execution_reject_unmapped_planned_joints", true);
     reject_ik_collisions_ = get_or_declare_parameter<bool>("reject_ik_collisions", false);
     check_goal_collision_ = get_or_declare_parameter<bool>("check_goal_collision", false);
     prefer_commanded_state_ = get_or_declare_parameter<bool>("prefer_commanded_state", true);
@@ -410,6 +425,15 @@ public:
       },
       joint_state_sub_options);
 
+    if (execution_backend_ == "alfa_execution_bridge") {
+      execution_action_client_ = rclcpp_action::create_client<FollowJointTrajectory>(
+        shared_from_this(), execution_action_name_);
+    } else if (execution_backend_ != "moveit") {
+      throw std::runtime_error(
+        "Unsupported execution_backend '" + execution_backend_ +
+        "'; expected 'moveit' or 'alfa_execution_bridge'");
+    }
+
     move_group_ = std::make_shared<moveit::planning_interface::MoveGroupInterface>(
       shared_from_this(), planning_group_);
     move_group_->setPlanningTime(planning_time_);
@@ -543,8 +567,9 @@ public:
       });
 
     RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
-    RCLCPP_INFO(get_logger(), "  group=%s execute=%s box_front_x=%.3f max_rounds=%d include_top=%s",
-                planning_group_.c_str(), execute_ ? "true" : "false", box_front_x_, max_rounds_,
+    RCLCPP_INFO(get_logger(), "  group=%s execute=%s backend=%s box_front_x=%.3f max_rounds=%d include_top=%s",
+                planning_group_.c_str(), execute_ ? "true" : "false", execution_backend_.c_str(),
+                box_front_x_, max_rounds_,
                 include_top_suction_ ? "true" : "false");
     RCLCPP_INFO(get_logger(),
                 "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected",
@@ -1647,9 +1672,6 @@ private:
     const std::vector<AttachedBoxSpec>& attached_boxes,
     std::string* reason) const
   {
-    if (!enable_attached_box_collision_) return true;
-    const bool has_boxes = !attached_boxes.empty() || robot_state_has_attached_body(start_state);
-    if (!has_boxes) return true;
     auto scene_snapshot = make_full_scene_snapshot(start_state, attached_boxes);
     if (!scene_snapshot) return true;
 
@@ -1672,6 +1694,234 @@ private:
         }
         return false;
       }
+    }
+    return true;
+  }
+
+  moveit::planning_interface::MoveGroupInterface::Plan make_interpolated_joint_plan(
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    double duration_s) const
+  {
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    auto& trajectory = plan.trajectory_.joint_trajectory;
+    trajectory.joint_names = arm_joint_target_names();
+
+    double max_delta = 0.0;
+    for (const auto& name : trajectory.joint_names) {
+      const double delta = std::abs(joint_variable_delta(name, start_state, goal_state));
+      max_delta = std::max(max_delta, delta);
+    }
+    const size_t steps = std::max<size_t>(2, static_cast<size_t>(std::ceil(max_delta / (5.0 * M_PI / 180.0))) + 1);
+    trajectory.points.reserve(steps);
+    for (size_t step = 0; step < steps; ++step) {
+      const double ratio = steps <= 1 ? 1.0 : static_cast<double>(step) / static_cast<double>(steps - 1);
+      trajectory_msgs::msg::JointTrajectoryPoint point;
+      point.time_from_start = rclcpp::Duration::from_seconds(duration_s * ratio);
+      point.positions.reserve(trajectory.joint_names.size());
+      for (const auto& name : trajectory.joint_names) {
+        const double start = start_state.getVariablePosition(name);
+        point.positions.push_back(start + joint_variable_delta(name, start_state, goal_state) * ratio);
+      }
+      trajectory.points.push_back(std::move(point));
+    }
+    moveit::core::robotStateToRobotStateMsg(start_state, plan.start_state_, true);
+    plan.planning_time_ = 0.0;
+    return plan;
+  }
+
+  double joint_variable_delta(
+    const std::string& name,
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state) const
+  {
+    const double start = start_state.getVariablePosition(name);
+    const double goal = goal_state.getVariablePosition(name);
+    const auto* variable_joint = robot_model_ ? robot_model_->getJointOfVariable(name) : nullptr;
+    const bool angular_variable =
+      variable_joint && variable_joint->getType() != moveit::core::JointModel::PRISMATIC;
+    return angular_variable ? shortest_angular_distance(start, goal) : (goal - start);
+  }
+
+  moveit::planning_interface::MoveGroupInterface::Plan shortcut_joint_plan(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    std::string* reason) const
+  {
+    const auto& trajectory = plan.trajectory_.joint_trajectory;
+    if (trajectory.points.size() <= 2) {
+      return plan;
+    }
+
+    std::vector<moveit::core::RobotState> states;
+    states.reserve(trajectory.points.size());
+    for (const auto& point : trajectory.points) {
+      moveit::core::RobotState state(start_state);
+      for (size_t i = 0; i < trajectory.joint_names.size() && i < point.positions.size(); ++i) {
+        if (is_robot_variable(trajectory.joint_names[i])) {
+          state.setVariablePosition(trajectory.joint_names[i], point.positions[i]);
+        }
+      }
+      state.update(true);
+      states.push_back(std::move(state));
+    }
+
+    std::vector<size_t> kept;
+    kept.push_back(0);
+    size_t from = 0;
+    while (from + 1 < states.size()) {
+      size_t best = from + 1;
+      for (size_t to = states.size() - 1; to > from + 1; --to) {
+        auto candidate = make_interpolated_joint_plan(states[from], states[to], 0.1);
+        std::string segment_reason;
+        if (planned_trajectory_clear_in_full_scene(candidate, states[from], attached_boxes, &segment_reason)) {
+          best = to;
+          break;
+        }
+      }
+      kept.push_back(best);
+      from = best;
+    }
+
+    if (kept.size() >= states.size()) {
+      return plan;
+    }
+
+    moveit::planning_interface::MoveGroupInterface::Plan out;
+    out.start_state_ = plan.start_state_;
+    out.planning_time_ = plan.planning_time_;
+    auto& out_traj = out.trajectory_.joint_trajectory;
+    out_traj.joint_names = trajectory.joint_names;
+    const double duration = trajectory.points.empty()
+      ? 1.0
+      : rclcpp::Duration(trajectory.points.back().time_from_start).seconds();
+    for (size_t i = 0; i < kept.size(); ++i) {
+      const auto& state = states[kept[i]];
+      trajectory_msgs::msg::JointTrajectoryPoint point;
+      const double ratio = kept.size() <= 1 ? 1.0 : static_cast<double>(i) / static_cast<double>(kept.size() - 1);
+      point.time_from_start = rclcpp::Duration::from_seconds(duration * ratio);
+      point.positions.reserve(out_traj.joint_names.size());
+      for (const auto& name : out_traj.joint_names) {
+        point.positions.push_back(state.getVariablePosition(name));
+      }
+      out_traj.points.push_back(std::move(point));
+    }
+
+    if (reason) {
+      *reason = "shortcut " + std::to_string(trajectory.points.size()) + " -> " +
+                std::to_string(out_traj.points.size()) + " points";
+    }
+    return out;
+  }
+
+  moveit::planning_interface::MoveGroupInterface::Plan densify_joint_plan(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    double max_joint_step_rad,
+    double max_updown_step_m) const
+  {
+    const auto& trajectory = plan.trajectory_.joint_trajectory;
+    if (trajectory.points.size() < 2 || trajectory.joint_names.empty()) {
+      return plan;
+    }
+
+    moveit::planning_interface::MoveGroupInterface::Plan out;
+    out.start_state_ = plan.start_state_;
+    out.planning_time_ = plan.planning_time_;
+    auto& out_traj = out.trajectory_.joint_trajectory;
+    out_traj.joint_names = trajectory.joint_names;
+
+    auto point_time = [](const trajectory_msgs::msg::JointTrajectoryPoint& point) {
+      return rclcpp::Duration(point.time_from_start).seconds();
+    };
+    out_traj.points.push_back(trajectory.points.front());
+    for (size_t point_index = 1; point_index < trajectory.points.size(); ++point_index) {
+      const auto& previous = trajectory.points[point_index - 1];
+      const auto& current = trajectory.points[point_index];
+      if (previous.positions.size() != trajectory.joint_names.size() ||
+          current.positions.size() != trajectory.joint_names.size()) {
+        out_traj.points.push_back(current);
+        continue;
+      }
+
+      double max_ratio = 0.0;
+      for (size_t i = 0; i < trajectory.joint_names.size(); ++i) {
+        const double delta = std::abs(current.positions[i] - previous.positions[i]);
+        const double limit = trajectory.joint_names[i] == "updown"
+          ? std::max(1e-4, max_updown_step_m)
+          : std::max(1e-4, max_joint_step_rad);
+        max_ratio = std::max(max_ratio, delta / limit);
+      }
+      const size_t steps = std::max<size_t>(1, static_cast<size_t>(std::ceil(max_ratio)));
+      const double start_time = point_time(previous);
+      const double end_time = point_time(current);
+      for (size_t step = 1; step <= steps; ++step) {
+        const double ratio = static_cast<double>(step) / static_cast<double>(steps);
+        trajectory_msgs::msg::JointTrajectoryPoint point;
+        point.time_from_start = rclcpp::Duration::from_seconds(start_time + (end_time - start_time) * ratio);
+        point.positions.reserve(trajectory.joint_names.size());
+        for (size_t i = 0; i < trajectory.joint_names.size(); ++i) {
+          point.positions.push_back(previous.positions[i] + (current.positions[i] - previous.positions[i]) * ratio);
+        }
+        out_traj.points.push_back(std::move(point));
+      }
+    }
+    return out;
+  }
+
+  bool plan_joint_space_with_direct_pipeline(
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    moveit::planning_interface::MoveGroupInterface::Plan* plan,
+    std::string* reason) const
+  {
+    if (!plan) {
+      if (reason) *reason = "direct_joint_plan_output_null";
+      return false;
+    }
+    if (!loaded_planning_pipeline_) {
+      if (reason) *reason = "direct_pipeline_not_initialized";
+      return false;
+    }
+    const auto* loaded_group = robot_model_->getJointModelGroup(extract_loaded_planning_group_);
+    if (!loaded_group) {
+      if (reason) *reason = "direct_pipeline_missing_group_" + extract_loaded_planning_group_;
+      return false;
+    }
+    auto scene_snapshot = make_full_scene_snapshot(start_state, {});
+    if (!scene_snapshot) {
+      if (reason) *reason = "direct_pipeline_planning_scene_not_initialized";
+      return false;
+    }
+
+    planning_interface::MotionPlanRequest request;
+    request.group_name = extract_loaded_planning_group_;
+    request.allowed_planning_time = extract_loaded_planning_time_;
+    request.num_planning_attempts = extract_loaded_planning_attempts_;
+    request.max_velocity_scaling_factor = velocity_scale_;
+    request.max_acceleration_scaling_factor = acceleration_scale_;
+    moveit::core::robotStateToRobotStateMsg(start_state, request.start_state, true);
+    request.goal_constraints.push_back(
+      kinematic_constraints::constructGoalConstraints(goal_state, loaded_group, joint_goal_tolerance_rad_));
+
+    planning_interface::MotionPlanResponse response;
+    const bool generated = loaded_planning_pipeline_->generatePlan(scene_snapshot, request, response);
+    if (!generated || response.error_code_.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS ||
+        !response.trajectory_) {
+      if (reason) {
+        *reason = "direct_pipeline_planning_failed_code_" +
+          std::to_string(response.error_code_.val) + " " +
+          direct_pipeline_failure_diagnostic(scene_snapshot, start_state, goal_state, loaded_group);
+      }
+      return false;
+    }
+
+    moveit::core::robotStateToRobotStateMsg(start_state, plan->start_state_, true);
+    response.trajectory_->getRobotTrajectoryMsg(plan->trajectory_);
+    plan->planning_time_ = response.planning_time_;
+    if (plan->trajectory_.joint_trajectory.points.empty()) {
+      if (reason) *reason = "direct_pipeline_empty_trajectory";
+      return false;
     }
     return true;
   }
@@ -2286,9 +2536,15 @@ private:
     record_stage(stage_name, plan, planning_start_state, planning_goal_state, target_names, extra);
 
     if (execute_) {
-      const auto exec_result = move_group_->execute(plan);
-      if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
-        return fail(stage_name + ": MoveIt execute failed, code=" + std::to_string(exec_result.val));
+      if (execution_backend_ == "alfa_execution_bridge") {
+        if (!execute_with_alfa_execution_bridge(stage_name, plan, planning_start_state)) {
+          return false;
+        }
+      } else {
+        const auto exec_result = move_group_->execute(plan);
+        if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
+          return fail(stage_name + ": MoveIt execute failed, code=" + std::to_string(exec_result.val));
+        }
       }
     }
 
@@ -2330,6 +2586,228 @@ private:
     return false;
   }
 
+  bool execute_with_alfa_execution_bridge(
+    const std::string& stage_name,
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& planning_start_state)
+  {
+    if (!execution_action_client_) {
+      return fail(stage_name + ": execution action client is not initialized");
+    }
+    if (!execution_action_client_->wait_for_action_server(
+          std::chrono::duration<double>(execution_action_wait_timeout_s_))) {
+      return fail(stage_name + ": execution action server unavailable: " + execution_action_name_);
+    }
+
+    auto goal = FollowJointTrajectory::Goal();
+    std::string reason;
+    if (!build_alfa_execution_goal(plan.trajectory_.joint_trajectory, planning_start_state, &goal, &reason)) {
+      return fail(stage_name + ": cannot build alfa execution goal (" + reason + ")");
+    }
+
+    RCLCPP_INFO(get_logger(), "[%s] sending trajectory to %s: points=%zu joints=%zu",
+                stage_name.c_str(), execution_action_name_.c_str(),
+                goal.trajectory.points.size(), goal.trajectory.joint_names.size());
+
+    auto send_future = execution_action_client_->async_send_goal(goal);
+    if (!wait_for_future(send_future, execution_action_wait_timeout_s_)) {
+      return fail(stage_name + ": failed to send alfa execution goal");
+    }
+
+    auto goal_handle = send_future.get();
+    if (!goal_handle) {
+      return fail(stage_name + ": alfa execution goal rejected");
+    }
+
+    auto result_future = execution_action_client_->async_get_result(goal_handle);
+    if (!wait_for_future(result_future, execution_result_timeout_s_)) {
+      return fail(stage_name + ": failed waiting alfa execution result");
+    }
+
+    const auto wrapped_result = result_future.get();
+    if (wrapped_result.code != rclcpp_action::ResultCode::SUCCEEDED ||
+        wrapped_result.result->error_code != FollowJointTrajectory::Result::SUCCESSFUL) {
+      std::ostringstream oss;
+      oss << stage_name << ": alfa execution failed code="
+          << static_cast<int>(wrapped_result.code)
+          << " action_error=" << wrapped_result.result->error_code
+          << " message=" << wrapped_result.result->error_string;
+      return fail(oss.str());
+    }
+    return true;
+  }
+
+  template<typename FutureT>
+  bool wait_for_future(FutureT& future, double timeout_s) const
+  {
+    const auto start = std::chrono::steady_clock::now();
+    while (rclcpp::ok()) {
+      if (future.wait_for(std::chrono::milliseconds(20)) == std::future_status::ready) {
+        return true;
+      }
+      if (timeout_s > 0.0) {
+        const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= timeout_s) {
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  bool build_alfa_execution_goal(
+    const trajectory_msgs::msg::JointTrajectory& source,
+    const moveit::core::RobotState& planning_start_state,
+    FollowJointTrajectory::Goal* goal,
+    std::string* reason) const
+  {
+    if (!goal) return false;
+    if (source.points.empty()) {
+      if (reason) *reason = "source trajectory is empty";
+      return false;
+    }
+
+    const auto target_names = alfa_execution_joint_names();
+    std::vector<int> source_indices;
+    source_indices.reserve(target_names.size());
+    for (const auto& target_name : target_names) {
+      const auto moveit_name = alfa_to_moveit_joint_name(target_name);
+      const auto it = std::find(source.joint_names.begin(), source.joint_names.end(), moveit_name);
+      if (it == source.joint_names.end()) {
+        if (!execution_allow_hold_missing_target_joints_) {
+          if (reason) *reason = "missing planned joint " + moveit_name + " for target " + target_name;
+          return false;
+        }
+        source_indices.push_back(-1);
+      } else {
+        source_indices.push_back(static_cast<int>(std::distance(source.joint_names.begin(), it)));
+      }
+    }
+
+    if (execution_reject_unmapped_planned_joints_) {
+      const auto mapped_target_names = alfa_execution_joint_names();
+      for (const auto& planned_name : source.joint_names) {
+        if (std::find(mapped_target_names.begin(), mapped_target_names.end(),
+                      moveit_to_alfa_joint_name(planned_name)) != mapped_target_names.end()) {
+          continue;
+        }
+        if (planned_joint_changes(source, planned_name)) {
+          if (reason) {
+            *reason = "planned joint " + planned_name +
+              " changes but is not mapped to alfa execution target joints";
+          }
+          return false;
+        }
+      }
+    }
+
+    goal->trajectory = trajectory_msgs::msg::JointTrajectory();
+    goal->trajectory.header = source.header;
+    goal->trajectory.joint_names = target_names;
+    goal->trajectory.points.reserve(source.points.size());
+
+    for (const auto& source_point : source.points) {
+      trajectory_msgs::msg::JointTrajectoryPoint point;
+      point.time_from_start = source_point.time_from_start;
+      point.positions.reserve(target_names.size());
+      if (!source_point.velocities.empty()) point.velocities.reserve(target_names.size());
+      if (!source_point.accelerations.empty()) point.accelerations.reserve(target_names.size());
+      if (!source_point.effort.empty()) point.effort.reserve(target_names.size());
+
+      for (size_t i = 0; i < target_names.size(); ++i) {
+        const int source_index = source_indices[i];
+        if (source_index >= 0) {
+          const auto index = static_cast<size_t>(source_index);
+          point.positions.push_back(index < source_point.positions.size() ? source_point.positions[index] : 0.0);
+          if (!source_point.velocities.empty()) {
+            point.velocities.push_back(index < source_point.velocities.size() ? source_point.velocities[index] : 0.0);
+          }
+          if (!source_point.accelerations.empty()) {
+            point.accelerations.push_back(index < source_point.accelerations.size() ? source_point.accelerations[index] : 0.0);
+          }
+          if (!source_point.effort.empty()) {
+            point.effort.push_back(index < source_point.effort.size() ? source_point.effort[index] : 0.0);
+          }
+        } else {
+          const auto moveit_name = alfa_to_moveit_joint_name(target_names[i]);
+          const double hold_position =
+            is_robot_variable(moveit_name) ? planning_start_state.getVariablePosition(moveit_name) : 0.0;
+          point.positions.push_back(hold_position);
+          if (!source_point.velocities.empty()) point.velocities.push_back(0.0);
+          if (!source_point.accelerations.empty()) point.accelerations.push_back(0.0);
+          if (!source_point.effort.empty()) point.effort.push_back(0.0);
+        }
+      }
+      goal->trajectory.points.push_back(std::move(point));
+    }
+    return true;
+  }
+
+  bool planned_joint_changes(
+    const trajectory_msgs::msg::JointTrajectory& source,
+    const std::string& joint_name) const
+  {
+    const auto it = std::find(source.joint_names.begin(), source.joint_names.end(), joint_name);
+    if (it == source.joint_names.end()) return false;
+    const auto index = static_cast<size_t>(std::distance(source.joint_names.begin(), it));
+    std::optional<double> first_value;
+    for (const auto& point : source.points) {
+      if (index >= point.positions.size()) continue;
+      if (!first_value) {
+        first_value = point.positions[index];
+        continue;
+      }
+      if (std::abs(point.positions[index] - *first_value) > 1e-6) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::vector<std::string> alfa_execution_joint_names() const
+  {
+    std::vector<std::string> names = {
+      "left_joint1",
+      "left_joint2",
+      "left_joint3",
+      "left_joint4",
+      "left_joint5",
+      "left_joint6",
+      "right_joint1",
+      "right_joint2",
+      "right_joint3",
+      "right_joint4",
+      "right_joint5",
+      "right_joint6",
+    };
+    if (execution_include_turn_) {
+      names.push_back("turn");
+    }
+    return names;
+  }
+
+  std::string alfa_to_moveit_joint_name(const std::string& name) const
+  {
+    if (name.rfind("left_joint", 0) == 0) {
+      return "left_v5_joint" + name.substr(std::string("left_joint").size());
+    }
+    if (name.rfind("right_joint", 0) == 0) {
+      return "right_v5_joint" + name.substr(std::string("right_joint").size());
+    }
+    return name;
+  }
+
+  std::string moveit_to_alfa_joint_name(const std::string& name) const
+  {
+    if (name.rfind("left_v5_joint", 0) == 0) {
+      return "left_joint" + name.substr(std::string("left_v5_joint").size());
+    }
+    if (name.rfind("right_v5_joint", 0) == 0) {
+      return "right_joint" + name.substr(std::string("right_v5_joint").size());
+    }
+    return name;
+  }
+
   bool robot_state_matches(
     const moveit::core::RobotState& goal_state,
     const moveit::core::RobotState& current_state,
@@ -2351,7 +2829,11 @@ private:
     const std::vector<std::string>& target_names) const
   {
     for (const auto& name : target_names) {
-      const auto it = std::find(msg.name.begin(), msg.name.end(), name);
+      auto it = std::find(msg.name.begin(), msg.name.end(), name);
+      if (it == msg.name.end()) {
+        const auto alfa_name = moveit_to_alfa_joint_name(name);
+        it = std::find(msg.name.begin(), msg.name.end(), alfa_name);
+      }
       if (it == msg.name.end()) continue;
       const size_t index = static_cast<size_t>(std::distance(msg.name.begin(), it));
       if (index >= msg.position.size()) continue;
@@ -2775,6 +3257,22 @@ private:
     return seed_state;
   }
 
+  moveit::core::RobotState make_extract_monitor_loaded_start_state() const
+  {
+    moveit::core::RobotState state(robot_model_);
+    state.setToDefaultValues();
+    for (size_t i = 0; i < left_loaded_arm_.size(); ++i) {
+      state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_loaded_arm_[i]);
+    }
+    for (size_t i = 0; i < right_loaded_arm_.size(); ++i) {
+      state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_loaded_arm_[i]);
+    }
+    state.setVariablePosition("updown", extract_grasp_ik_home_updown_);
+    state.enforceBounds(joint_group_);
+    state.update();
+    return state;
+  }
+
   void record_stage(
     const std::string& stage_name,
     const moveit::planning_interface::MoveGroupInterface::Plan& plan,
@@ -2927,6 +3425,8 @@ private:
                                     "_R" + std::to_string(right_box_id);
     extract_monitor_state_.seed_state =
       std::make_shared<moveit::core::RobotState>(make_extract_monitor_seed_state());
+    extract_monitor_state_.loaded_start_state =
+      std::make_shared<moveit::core::RobotState>(make_extract_monitor_loaded_start_state());
 
     moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
     nlohmann::json ik_extra;
@@ -3213,8 +3713,22 @@ private:
   {
     const auto stage_start = std::chrono::steady_clock::now();
     ExtractRolloutTiming* selected = nullptr;
+    auto pre_attach_is_smooth = [&](const ExtractRolloutTiming& timing) {
+      if (!extract_monitor_state_.loaded_start_state ||
+          timing.candidate_order >= extract_monitor_state_.legal_candidates.size() ||
+          !extract_monitor_state_.seed_state) {
+        return false;
+      }
+      const auto ik_state = state_from_ik_candidate(
+        *extract_monitor_state_.seed_state,
+        extract_monitor_state_.legal_candidates[timing.candidate_order]);
+      auto plan = make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, ik_state, 1.0);
+      std::string reason;
+      return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.loaded_start_state, {}, &reason);
+    };
+
     for (auto& timing : extract_monitor_state_.timings) {
-      if (timing.loaded_plan_selected && timing.loaded_plan_success) {
+      if (timing.loaded_plan_success && pre_attach_is_smooth(timing)) {
         selected = &timing;
         break;
       }
@@ -3234,6 +3748,12 @@ private:
     moveit::core::RobotState goal_state = selected->loaded_goal_state
       ? *selected->loaded_goal_state
       : loaded_pose_selector_->makeGoalState(*selected->final_state);
+    moveit::core::RobotState ik_goal_state = selected->candidate_order < extract_monitor_state_.legal_candidates.size() &&
+        extract_monitor_state_.seed_state
+      ? state_from_ik_candidate(
+          *extract_monitor_state_.seed_state,
+          extract_monitor_state_.legal_candidates[selected->candidate_order])
+      : *selected->final_state;
 
     if (selected->rollout_records.empty() &&
         selected->candidate_order < extract_monitor_state_.legal_candidates.size() &&
@@ -3284,6 +3804,55 @@ private:
     }
 
     nlohmann::json replay_stages = nlohmann::json::array();
+    if (extract_monitor_state_.loaded_start_state) {
+      const auto transition_t0 = std::chrono::steady_clock::now();
+      moveit::planning_interface::MoveGroupInterface::Plan transition_plan =
+        make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, ik_goal_state, 1.0);
+      transition_plan = densify_joint_plan(transition_plan, 5.0 * M_PI / 180.0, 0.01);
+      std::string transition_reason;
+      bool transition_ok =
+        planned_trajectory_clear_in_full_scene(
+          transition_plan, *extract_monitor_state_.loaded_start_state, {}, &transition_reason);
+      std::string transition_method = "joint_interpolation";
+      if (!transition_ok) {
+        transition_method = "rrt";
+        transition_reason.clear();
+        transition_ok = plan_joint_space_with_direct_pipeline(
+          *extract_monitor_state_.loaded_start_state, ik_goal_state, &transition_plan, &transition_reason);
+        if (transition_ok) {
+          std::string shortcut_reason;
+          transition_plan = shortcut_joint_plan(
+            transition_plan, *extract_monitor_state_.loaded_start_state, {}, &shortcut_reason);
+          transition_plan = densify_joint_plan(transition_plan, 5.0 * M_PI / 180.0, 0.01);
+          transition_ok = planned_trajectory_clear_in_full_scene(
+            transition_plan, *extract_monitor_state_.loaded_start_state, {}, &transition_reason);
+          if (!shortcut_reason.empty()) {
+            transition_reason = shortcut_reason + (transition_reason.empty() ? "" : "; " + transition_reason);
+          }
+        }
+      }
+      const double transition_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - transition_t0).count();
+      nlohmann::json extra = {
+        {"stage_kind", "monitor_selected_pre_attach_loaded_to_ik_replay"},
+        {"valid", transition_ok},
+        {"method", transition_method},
+        {"transition_ms", transition_ms},
+        {"failure_reason", transition_ok ? "" : transition_reason},
+        {"candidate_order", selected->candidate_order},
+        {"loaded_plan_rank", selected->loaded_plan_rank},
+        {"left_box_id", extract_monitor_state_.left_box_id},
+        {"right_box_id", extract_monitor_state_.right_box_id}
+      };
+      replay_stages.push_back(monitor_stage_json(
+        extract_monitor_state_.prefix + "/selected_pre_attach_loaded_to_ik",
+        transition_plan,
+        *extract_monitor_state_.loaded_start_state,
+        ik_goal_state,
+        arm_joint_target_names(),
+        {},
+        extra));
+    }
     for (const auto& stage : selected->rollout_records) {
       replay_stages.push_back(stage);
     }
@@ -3523,6 +4092,13 @@ private:
   std::string left_tip_;
   std::string right_tip_;
   bool execute_ = true;
+  std::string execution_backend_ = "moveit";
+  std::string execution_action_name_ = "/alfa_execution/execute_joint_trajectory";
+  double execution_action_wait_timeout_s_ = 5.0;
+  double execution_result_timeout_s_ = 0.0;
+  bool execution_include_turn_ = true;
+  bool execution_allow_hold_missing_target_joints_ = true;
+  bool execution_reject_unmapped_planned_joints_ = true;
   bool reject_ik_collisions_ = false;
   bool check_goal_collision_ = false;
   bool prefer_commanded_state_ = true;
@@ -3670,6 +4246,7 @@ private:
     AttachedBoxSpec left_box;
     AttachedBoxSpec right_box;
     moveit::core::RobotStatePtr seed_state;
+    moveit::core::RobotStatePtr loaded_start_state;
     ik_benchmark::UpdownAwareIkResult ik_result;
     std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
     std::vector<moveit::core::RobotStatePtr> candidate_states;
@@ -3686,6 +4263,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_demo_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_next_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
+  rclcpp_action::Client<FollowJointTrajectory>::SharedPtr execution_action_client_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   sensor_msgs::msg::JointState::SharedPtr latest_joint_state_;

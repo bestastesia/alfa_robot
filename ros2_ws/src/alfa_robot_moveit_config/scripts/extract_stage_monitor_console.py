@@ -31,7 +31,22 @@ import numpy as np
 rr: Any | None = None
 
 
-REPO_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot")
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def find_repo_root() -> Path:
+    env_root = os.environ.get("ALFA_ROBOT_ROOT")
+    if env_root:
+        return Path(env_root).expanduser().resolve()
+    for candidate in [SCRIPT_DIR, *SCRIPT_DIR.parents]:
+        if (candidate / "ros2_ws").is_dir() and (candidate / "scripts/ik_benchmark").is_dir():
+            return candidate
+        if candidate.name == "ros2_ws":
+            return candidate.parent
+    return Path.cwd().resolve()
+
+
+REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
