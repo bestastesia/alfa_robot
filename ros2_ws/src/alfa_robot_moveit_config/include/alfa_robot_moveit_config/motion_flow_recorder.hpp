@@ -12,6 +12,27 @@
 namespace alfa_robot::motion
 {
 
+struct MotionFlowHeaderRequest
+{
+  std::string planning_group;
+  double box_front_x = 0.0;
+  double scene_y_shift = 0.0;
+  double world_to_base_z = 0.0;
+  double fixed_updown = 0.0;
+  double velocity_scale = 1.0;
+  double acceleration_scale = 1.0;
+  int max_rounds = 0;
+  bool include_top_suction = false;
+  bool execute = false;
+  nlohmann::json container_obstacle = nlohmann::json::object();
+  nlohmann::json static_box_obstacles = nlohmann::json::object();
+  nlohmann::json attached_box_collision = nlohmann::json::object();
+  nlohmann::json loaded_pose_family = nlohmann::json::object();
+  nlohmann::json ik_config = nlohmann::json::object();
+};
+
+nlohmann::json motion_flow_header_json(const MotionFlowHeaderRequest& request);
+
 class MotionFlowRecorder
 {
 public:

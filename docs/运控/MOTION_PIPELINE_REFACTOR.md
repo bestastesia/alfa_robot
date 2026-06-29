@@ -23,16 +23,21 @@
 
 | 模块 | 责任 | 当前文件 |
 | --- | --- | --- |
-| `motion_core/task_geometry` | 箱子编号、箱垛坐标、抓取 pair、基础碰撞几何数据结构 | `include/alfa_robot_moveit_config/motion_core/task_geometry.hpp` / `src/motion_core/task_geometry.cpp` |
+| `motion_core/task_geometry` | 箱子编号、箱垛坐标、抓取 pair、基础碰撞几何数据结构，以及 `updown + 双臂 12 轴` 的标准目标关节顺序 | `include/alfa_robot_moveit_config/motion_core/task_geometry.hpp` / `src/motion_core/task_geometry.cpp` |
 | `motion_core/pose_math` | 角度解析、抓取姿态、Pose/Eigen 转换、误差计算、JSON 辅助 | `include/alfa_robot_moveit_config/motion_core/pose_math.hpp` / `src/motion_core/pose_math.cpp` |
-| `motion_core/scene_geometry` | 集装箱板、动态箱墙、末端附着箱、AABB 与邻箱脱离判断 | `include/alfa_robot_moveit_config/motion_core/scene_geometry.hpp` / `src/motion_core/scene_geometry.cpp` |
-| `MotionSceneAdapter` | 将场景几何转换为 MoveIt collision/attached objects，并管理 ADD/REMOVE 与当前场景状态 | `include/alfa_robot_moveit_config/motion_scene_adapter.hpp` / `src/motion_scene_adapter.cpp` |
+| `robot_motion_scene_service/motion_core/scene_geometry` | 集装箱板、动态箱墙、末端附着箱、AABB 与邻箱脱离判断 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_core/scene_geometry.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_core/scene_geometry.cpp` |
+| `MotionSceneAdapter` | 将场景几何转换为 MoveIt collision/attached objects，并管理 ADD/REMOVE 与当前场景状态；当前是库级 Adapter，不是独立 ROS 节点 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_scene_adapter.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_scene_adapter.cpp` |
 | `optimized_ik_pipeline` | 抓取 IK 选优整体算法：`OptimizedDualIkSolver` 负责 fixed h × multi seed × cost scorer 求解，`IkCandidateSelector` 负责 legal candidate 排序、相似姿态去重和 TopN 截断 | `include/alfa_robot_moveit_config/optimized_ik_pipeline.hpp` / `src/optimized_ik_pipeline.cpp` |
 | `extract_planning_pipeline` | 抽箱子整体算法：抽离动作模板、单步 KDL IK、抽离候选评分、单臂/双臂 rollout、候选调度、CSV/summary 统计都在这里 | `include/alfa_robot_moveit_config/extract_planning_pipeline.hpp` / `src/extract_planning_pipeline.cpp` |
 | `loaded_pose_planning` | 负重姿态阶段整体算法：从抽离末态选择最近负重姿态族，并调用 MoveIt 批量规划到负重 joint state | `include/alfa_robot_moveit_config/loaded_pose_planning.hpp` / `src/loaded_pose_planning.cpp` |
 | `MotionFlowRecorder` | JSONL 文件、stage 序号、轨迹/summary 记录写入 | `include/alfa_robot_moveit_config/motion_flow_recorder.hpp` / `src/motion_flow_recorder.cpp` |
 | `BoxStackFlowOrchestrator` | 传统 box-stack flow 的按轮任务顺序、预抓取/抓取/负重/回预抓取流程编排 | `include/alfa_robot_moveit_config/box_stack_flow_orchestrator.hpp` / `src/box_stack_flow_orchestrator.cpp` |
 | `ExtractDemoOrchestrator` | 抽离 demo 的单 pair / 多 pair 遍历、失败传播和 summary 记录 | `include/alfa_robot_moveit_config/extract_demo_orchestrator.hpp` / `src/extract_demo_orchestrator.cpp` |
+| `extract_monitor_state` | 交互式 monitor 的阶段状态机、候选缓存、候选任务调度、抽离/负重统计、最终候选选择 | `include/alfa_robot_moveit_config/extract_monitor_state.hpp` / `src/extract_monitor_state.cpp` |
+| `extract_monitor_json` | monitor 的候选、阶段、快照、replay extra 字段 schema | `include/alfa_robot_moveit_config/extract_monitor_json.hpp` / `src/extract_monitor_json.cpp` |
+| `ExtractMonitorSnapshotWriter` | monitor 快照文件读写，保证目录创建和 JSON 落盘错误集中处理 | `include/alfa_robot_moveit_config/extract_monitor_snapshot_writer.hpp` / `src/extract_monitor_snapshot_writer.cpp` |
+| `ExtractMonitorTransitionPlanner` | monitor 最终回放中“负重位 → IK 吸附位”的过渡规划策略：插值、densify、碰撞验证、失败后 RRT、shortcut、再次验证 | `include/alfa_robot_moveit_config/extract_monitor_transition_planning.hpp` / `src/extract_monitor_transition_planning.cpp` |
+| `ExtractMonitorReplayBuilder` | monitor 最终采用方案的 Rerun/JSON 回放阶段组装：预吸附过渡、抽离记录、横向让位、负重规划按固定顺序合并 | `include/alfa_robot_moveit_config/extract_monitor_replay_builder.hpp` / `src/extract_monitor_replay_builder.cpp` |
 | `DualArmPlannerNode` | ROS 参数、MoveIt 后端、场景碰撞判定、service callback 装配 | `src/dual_arm_planner_node.cpp` |
 | 启动配置 | 暴露算法超参数和实验参数 | `launch/dual_arm_planner.launch.py` |
 | 回放工具 | 将 JSONL 转为 Rerun 场景 | `scripts/visualize_moveit_box_stack_flow.py` |
@@ -43,8 +48,8 @@
 
 - `make_boxes(box_front_x)` 生成 5×5 箱垛坐标。
 - `parse_box_pair_list()` / `make_pick_pairs()` 生成抓取 pair。
-- `makeFrontGraspPose()` / `makeTopGraspPose()` 在 `DualArmPlannerNode` 内结合抓取模式生成左右末端 Pose。
-- 集装箱和箱墙几何来自 `motion_core/scene_geometry`，再由 `MotionSceneAdapter` 注入 MoveIt。
+- `make_front_grasp_pose()` / `make_top_suction_pose()` 在 `motion_core/pose_math` 内结合抓取模式生成左右末端 Pose。
+- 集装箱和箱墙几何来自 `robot_motion_scene_service/motion_core/scene_geometry`，再由 `MotionSceneAdapter` 注入 MoveIt。
 
 ### 3.2 抓取 IK
 
@@ -83,6 +88,7 @@
 ### 3.5 抽离后负重规划
 
 - `LoadedPoseSelector` 根据抽离末态，从左右各 3 个负重姿态族中选择最近目标。
+- `LoadedPoseSelector` 同时负责把最近负重姿态距离、L2 距离和最大关节差写回 `ExtractRolloutTiming`，供候选排序、CSV 和 monitor 快照复用。
 - `LoadedPosePlanner` 在保留末端附着箱的情况下调用 MoveIt 规划到负重姿态。
 - `ExtractBenchmarkRunner` 可对抽离成功候选按负重姿态距离排序，按 `extract_loaded_candidate_limit` 截断，并可 `extract_loaded_stop_on_first_success` 首成功即停。
 
@@ -92,9 +98,43 @@
 - `ExtractBenchmarkCsvWriter` 写逐候选 timing CSV。
 - `visualize_moveit_box_stack_flow.py` 将 JSONL 转成 Rerun，系统 Python `/usr/bin/python3` 下可用。
 
+### 3.7 交互式 monitor 流程
+
+`extract_stage_monitor_console.py` 用于按一次命令运行或分阶段观察 `IK → 抽离 → 负重规划 → 最终回放`。它仍然通过 `DualArmPlannerNode` 的 ROS service 触发计算，但计算结果的状态、快照和 replay schema 已经拆到独立模块：
+
+1. `ExtractMonitorController` 根据当前 phase 调用 IK、抽离、负重、最终四个阶段；节点只提供四个阶段 Adapter。
+2. IK 阶段调用 `OptimizedDualIkSolver` 后，由 `IkCandidateSelector` 排序/去重，再由 `populate_extract_monitor_candidate_states()` 建候选状态缓存。
+3. 抽离阶段通过 `run_extract_monitor_candidate_tasks()` 统一调度候选任务，节点只描述“单个候选如何 rollout”。
+4. 负重阶段调用 `LoadedPosePlanner::planBatch()` 后，由 `summarize_loaded_plan_timings()` 汇总 attempted/success/failure。
+5. 最终阶段通过 `select_extract_monitor_final_timing()` 选择候选；`ExtractMonitorReplayBuilder` 负责把预吸附过渡、抽离记录、横向让位和负重规划合并成最终回放；其中预吸附过渡由 `ExtractMonitorTransitionPlanner` 执行，字段 schema 仍由 `extract_monitor_json` 提供。
+
+当前 monitor 相关测试：
+
+- `test_extract_monitor_state`：阶段状态机、候选缓存、调度、统计和最终选择规则。
+- `test_extract_monitor_json`：快照和 replay 字段 schema。
+- `test_extract_monitor_replay_builder`：最终采用方案 replay 阶段顺序、预吸附过渡 fallback 和缺失起点处理。
+- `test_extract_monitor_snapshot_writer`：快照写入错误处理。
+- `test_extract_monitor_transition_planning`：预吸附过渡规划的插值成功、RRT fallback 和失败传播。
+- `test_loaded_pose_selector`：最近负重姿态选择、timing 距离指标写回和目标姿态生成。
+
+这部分的迁移建议：不要复制 `run_extract_monitor_*` 的线性实现；应优先迁移上述四个 monitor 模块，再在新仓库里重新写 ROS service Adapter。
+
 ## 4. 可复用库与迁移建议
 
-当前 CMake 导出两个库：
+当前 CMake 导出两个层级：
+
+第一层是独立场景包 `robot_motion_scene_service`，负责场景几何和 MoveIt PlanningScene 适配：
+
+```cmake
+find_package(robot_motion_scene_service REQUIRED)
+
+target_link_libraries(your_target
+  robot_motion_scene_service::robot_motion_scene_core
+  robot_motion_scene_service::robot_motion_scene_adapter
+)
+```
+
+第二层是 `alfa_robot_moveit_config` 内的运控流程库：
 
 ```cmake
 find_package(alfa_robot_moveit_config REQUIRED)
@@ -104,7 +144,7 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_core` 只包含纯几何/姿态/箱垛模块，适合被非 MoveIt 算法复用。
+`alfa_robot_motion_core` 只包含姿态/箱垛等轻量模块，并链接 `robot_motion_scene_service::robot_motion_scene_core` 复用场景几何。
 
 ```cmake
 target_link_libraries(your_target
@@ -112,22 +152,22 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_scene_adapter` 包含 MoveIt 场景适配、IK 选优、抽离规划、负重规划、benchmark runner 等模块。它依赖 MoveIt、KDL 和 benchmark IK solver。
+`alfa_robot_motion_scene_adapter` 包含 IK 选优、抽离规划、负重规划、benchmark runner 和 monitor 辅助模块。它依赖 MoveIt、KDL、`robot_motion_scene_service` 和 benchmark IK solver。
 
 迁移到新运控包时建议顺序：
 
-1. 先迁移 `motion_core/*`，保持纯数据和几何不变。
-2. 再迁移 `optimized_ik_pipeline`，作为独立 IK 服务的核心算法。
+1. 先迁移 `robot_motion_scene_service`，让集装箱、箱墙、末端附着箱的碰撞口径先稳定下来。
+2. 再迁移 `motion_core/*` 和 `optimized_ik_pipeline`，作为独立 IK 服务的核心算法。
 3. 再迁移 `extract_planning_pipeline`，作为抽箱子动作生成、单步 IK、评分和 rollout 的完整模块。
-4. 最后迁移 `loaded_pose_planning` 和 `MotionSceneAdapter`，接入新 MoveIt/PlanningScene 后端。
-5. `DualArmPlannerNode` 不建议整文件复制；它只应作为 ROS 参数和 service/action 包装参考。
+4. 最后迁移 `loaded_pose_planning`，接入新 MoveIt/PlanningScene 后端。
+5. `DualArmPlannerNode` 不建议整文件复制；它只应作为 ROS 参数、MoveIt 后端和 service/action 包装参考。
 
 ## 5. 关键启动参数
 
 | 参数 | 当前默认 | 含义 |
 | --- | --- | --- |
 | `extract_demo_pair_sequence` | `2,4;7,9;12,14;17,19` | 当前固定版原抓取任务 |
-| `front_z_reach_lower` / `front_z_reach_upper` | `0.9` / `1.3` | 侧吸目标高度窗：`updown + 0.9 ~ updown + 1.3` |
+| `front_z_reach_lower` / `front_z_reach_upper` | `0.45` / `1.25` | 侧吸目标高度窗：`updown + 0.45 ~ updown + 1.25` |
 | `top_z_reach_lower` / `top_z_reach_upper` | `0.3` / `0.45` | 顶吸目标高度窗 |
 | `ik_h_candidate_count` / `ik_seed_count` | `16` / `32` | 抓取 IK 主候选池大小 |
 | `ik_candidate_timeout` | `0.01` | 单次 BioIK timeout |
@@ -153,7 +193,7 @@ target_link_libraries(your_target
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
 source /opt/ros/humble/setup.bash
 source install/setup.bash
-colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF
+colcon build --packages-select robot_motion_scene_service alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF
 ```
 
 运行原四组抽离 + 负重规划复现：
@@ -233,7 +273,8 @@ ros2 service call /dual_arm_planner/run_left_extract_demo std_srvs/srv/Trigger {
 
 ## 8. 当前仍需注意
 
-- `DualArmPlannerNode` 仍有约 2300 行，主要剩 ROS 参数、MoveIt 后端、碰撞判定和 callback 装配；后续迁移时不要继续在该节点里堆新算法。
+- `DualArmPlannerNode` 仍有约 3600 行，主要剩 ROS 参数、MoveIt 后端、碰撞判定和 callback 装配；后续迁移时不要继续在该节点里堆新算法。
 - `ExtractRolloutPlanner` 通过 callback 复用节点内碰撞判定，这是刻意保留的 seam，避免重构时改变 PlanningScene 语义。
+- `robot_motion_scene_service` 虽然名字里有 service，但当前不是独立运行节点；它是场景几何与 PlanningScene Adapter 包。后续若要做真正场景服务，应在新仓库里另建 ROS node/action/service 包装层。
 - 负重规划依赖 MoveIt；如果 `start_move_group=false`，必须外部已有可用 move_group、robot state publisher 和 controller/joint state 相关支持节点，否则 `DualArmPlannerNode` 可能在 MoveGroupInterface 初始化阶段等待。
 - 当前 `alfa_robot_motion_scene_adapter` 名字偏窄，实际已经包含 IK、抽离和负重规划模块；后续迁移到新包时可以重命名为更准确的 motion pipeline/runtime 库。

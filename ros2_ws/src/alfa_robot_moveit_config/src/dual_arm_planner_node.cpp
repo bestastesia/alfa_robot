@@ -12,13 +12,21 @@
 #include "alfa_robot_moveit_config/box_stack_flow_orchestrator.hpp"
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 #include "alfa_robot_moveit_config/extract_demo_orchestrator.hpp"
+#include "alfa_robot_moveit_config/extract_monitor_json.hpp"
+#include "alfa_robot_moveit_config/extract_monitor_replay_builder.hpp"
+#include "alfa_robot_moveit_config/extract_monitor_snapshot_writer.hpp"
+#include "alfa_robot_moveit_config/extract_monitor_state.hpp"
+#include "alfa_robot_moveit_config/extract_monitor_transition_planning.hpp"
+#include "alfa_robot_moveit_config/execution_trajectory_adapter.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
 #include "alfa_robot_moveit_config/loaded_pose_planning.hpp"
 #include "alfa_robot_moveit_config/motion_flow_recorder.hpp"
-#include "alfa_robot_moveit_config/motion_scene_adapter.hpp"
+#include "alfa_robot_moveit_config/planning_diagnostics.hpp"
+#include "alfa_robot_moveit_config/trajectory_plan_utils.hpp"
+#include "robot_motion_scene_service/motion_scene_adapter.hpp"
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
-#include "alfa_robot_moveit_config/motion_core/scene_geometry.hpp"
-#include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
+#include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
+#include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 
 #include <control_msgs/action/follow_joint_trajectory.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -41,7 +49,6 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -66,6 +73,55 @@ using alfa_robot::motion::AttachedBoxSpec;
 using alfa_robot::motion::ArmExtractPath;
 using alfa_robot::motion::ExtractBenchmarkRunner;
 using alfa_robot::motion::ExtractBenchmarkRunnerCallbacks;
+using alfa_robot::motion::ExecutionTrajectoryAdapter;
+using alfa_robot::motion::ExecutionTrajectoryAdapterConfig;
+using alfa_robot::motion::ExecutionJointStateMatchRequest;
+using alfa_robot::motion::ExecutionStateMatchRequest;
+using alfa_robot::motion::attached_boxes_json;
+using alfa_robot::motion::ExecutionTrajectoryBuildRequest;
+using alfa_robot::motion::ExtractMonitorArmSeed;
+using alfa_robot::motion::ExtractMonitorController;
+using alfa_robot::motion::ExtractMonitorExtractSnapshotRequest;
+using alfa_robot::motion::ExtractMonitorExtractStageMessageRequest;
+using alfa_robot::motion::ExtractMonitorFinalSnapshotRequest;
+using alfa_robot::motion::ExtractMonitorFinalStageMessageRequest;
+using alfa_robot::motion::ExtractMonitorFullSelectedSnapshotRequest;
+using alfa_robot::motion::ExtractMonitorInitialStateRequest;
+using alfa_robot::motion::ExtractMonitorIkSnapshotRequest;
+using alfa_robot::motion::ExtractMonitorIkStageMessageRequest;
+using alfa_robot::motion::ExtractMonitorLoadedSnapshotRequest;
+using alfa_robot::motion::ExtractMonitorLoadedStageMessageRequest;
+using alfa_robot::motion::ExtractMonitorSnapshotWriter;
+using alfa_robot::motion::ExtractMonitorState;
+using alfa_robot::motion::ExtractMonitorStageSnapshotWriteRequest;
+using alfa_robot::motion::ExtractMonitorStageCallbacks;
+using alfa_robot::motion::ExtractMonitorReplayBuilder;
+using alfa_robot::motion::ExtractMonitorSelectedExtractReplayStateRequest;
+using alfa_robot::motion::ExtractMonitorTransitionPlanner;
+using alfa_robot::motion::ExtractMonitorTimingRecordsRequest;
+using alfa_robot::motion::extract_monitor_candidate_records_json;
+using alfa_robot::motion::extract_monitor_extract_snapshot;
+using alfa_robot::motion::extract_monitor_final_snapshot;
+using alfa_robot::motion::extract_monitor_final_stage_message;
+using alfa_robot::motion::extract_monitor_ik_snapshot;
+using alfa_robot::motion::extract_monitor_ik_stage_message;
+using alfa_robot::motion::extract_monitor_loaded_snapshot;
+using alfa_robot::motion::extract_monitor_loaded_stage_message;
+using alfa_robot::motion::extract_monitor_candidate_state_for_timing;
+using alfa_robot::motion::extract_monitor_candidate_for_timing;
+using alfa_robot::motion::extract_monitor_extract_stage_message;
+using alfa_robot::motion::extract_monitor_snapshot_base;
+using alfa_robot::motion::extract_monitor_selected_extract_replay_state_stage;
+using alfa_robot::motion::extract_monitor_timing_records_json;
+using alfa_robot::motion::ik_candidate_rejection_counts_json;
+using alfa_robot::motion::dual_arm_with_updown_joint_names;
+using alfa_robot::motion::populate_extract_monitor_candidate_states;
+using alfa_robot::motion::run_extract_monitor_candidate_tasks;
+using alfa_robot::motion::robot_state_from_ik_candidate;
+using alfa_robot::motion::select_extract_monitor_final_timing;
+using alfa_robot::motion::single_state_plan;
+using alfa_robot::motion::summarize_extract_monitor_timings;
+using alfa_robot::motion::summarize_loaded_plan_timings;
 using alfa_robot::motion::ExtractBenchmarkRunnerConfig;
 using alfa_robot::motion::ExtractCandidateScorer;
 using alfa_robot::motion::ExtractCandidateScorerConfig;
@@ -103,6 +159,7 @@ using alfa_robot::motion::LoadedPoseSelector;
 using alfa_robot::motion::LoadedPoseSelectorConfig;
 using alfa_robot::motion::MotionSceneAdapter;
 using alfa_robot::motion::MotionSceneAdapterConfig;
+using alfa_robot::motion::MotionFlowHeaderRequest;
 using alfa_robot::motion::MotionFlowRecorder;
 using alfa_robot::motion::OptimizedDualIkSolver;
 using alfa_robot::motion::OptimizedDualIkSolverConfig;
@@ -110,16 +167,21 @@ using alfa_robot::motion::OptimizedDualIkSolveRequest;
 using alfa_robot::motion::PickPair;
 using alfa_robot::motion::StaticBoxObstacle;
 using alfa_robot::motion::aabb_from_attached_box_transform;
-using alfa_robot::motion::aabb_overlaps;
 using alfa_robot::motion::carried_box_detached_from_neighbors;
 using alfa_robot::motion::deg_to_rad;
+using alfa_robot::motion::direct_pipeline_failure_diagnostic;
 using alfa_robot::motion::format_degrees;
 using alfa_robot::motion::forward_x_orientation;
+using alfa_robot::motion::group_bounds_reason;
 using alfa_robot::motion::make_attached_box_spec;
 using alfa_robot::motion::make_boxes;
 using alfa_robot::motion::make_box_wall_obstacles_for_opening;
 using alfa_robot::motion::make_container_panels;
+using alfa_robot::motion::make_extract_monitor_joint_state;
+using alfa_robot::motion::make_extract_monitor_initial_state;
+using alfa_robot::motion::make_extract_monitor_replay_request;
 using alfa_robot::motion::make_identity_pose;
+using alfa_robot::motion::motion_flow_header_json;
 using alfa_robot::motion::make_pick_pairs;
 using alfa_robot::motion::make_pose;
 using alfa_robot::motion::names_values_json;
@@ -132,6 +194,8 @@ using alfa_robot::motion::pose_json;
 using alfa_robot::motion::pose_orientation_error;
 using alfa_robot::motion::pose_position_error;
 using alfa_robot::motion::pose_to_eigen;
+using alfa_robot::motion::robot_state_json;
+using alfa_robot::motion::scene_collision_reason;
 using alfa_robot::motion::shortest_angular_distance;
 using alfa_robot::motion::top_suction_orientation;
 using alfa_robot::motion::vector_json;
@@ -232,6 +296,7 @@ public:
     extract_monitor_snapshot_path_ = get_or_declare_parameter<std::string>(
       "extract_monitor_snapshot_path",
       "/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_stage_monitor/latest_snapshot.json");
+    extract_monitor_snapshot_writer_.setPath(extract_monitor_snapshot_path_);
 
     ik_config_.fixed_group = get_or_declare_parameter<std::string>("ik_fixed_group", "dual_v5_arm");
     ik_config_.free_group = get_or_declare_parameter<std::string>("ik_free_group", "dual_v5_arm_with_base");
@@ -240,8 +305,8 @@ public:
     ik_config_.left_tip = left_tip_;
     ik_config_.right_tip = right_tip_;
     ik_config_.tool0_offset = get_or_declare_parameter<double>("ik_tool0_offset", 0.0);
-    ik_config_.gripper_z_reach_lower = get_or_declare_parameter<double>("front_z_reach_lower", 0.9) - world_to_base_z_;
-    ik_config_.gripper_z_reach_upper = get_or_declare_parameter<double>("front_z_reach_upper", 1.3) - world_to_base_z_;
+    ik_config_.gripper_z_reach_lower = get_or_declare_parameter<double>("front_z_reach_lower", 0.45) - world_to_base_z_;
+    ik_config_.gripper_z_reach_upper = get_or_declare_parameter<double>("front_z_reach_upper", 1.25) - world_to_base_z_;
     ik_config_.top_suction_z_reach_lower = get_or_declare_parameter<double>("top_z_reach_lower", 0.3) - world_to_base_z_;
     ik_config_.top_suction_z_reach_upper = get_or_declare_parameter<double>("top_z_reach_upper", 0.45) - world_to_base_z_;
     ik_config_.h_lower = get_or_declare_parameter<double>("ik_h_lower", 0.0);
@@ -725,130 +790,6 @@ private:
     return false;
   }
 
-  std::string scene_collision_reason(
-    const planning_scene::PlanningSceneConstPtr& scene,
-    const moveit::core::RobotState& state,
-    const moveit::core::JointModelGroup* group) const
-  {
-    if (!scene) return "scene_missing";
-    collision_detection::CollisionRequest request;
-    collision_detection::CollisionResult result;
-    request.contacts = true;
-    request.max_contacts = 5;
-    request.max_contacts_per_pair = 1;
-    if (group) {
-      request.group_name = group->getName();
-    }
-    scene->checkCollision(request, result, state);
-    if (!result.collision) return "";
-    std::ostringstream out;
-    out << "collision";
-    size_t count = 0;
-    for (const auto& entry : result.contacts) {
-      if (count == 0) {
-        out << ":";
-      } else {
-        out << ",";
-      }
-      out << entry.first.first << "<->" << entry.first.second;
-      ++count;
-      if (count >= 3) break;
-    }
-    return out.str();
-  }
-
-  std::string group_bounds_reason(
-    const moveit::core::RobotState& state,
-    const moveit::core::JointModelGroup* group) const
-  {
-    if (!group) return "bounds_missing_group";
-    if (state.satisfiesBounds(group)) return "";
-    std::ostringstream out;
-    out << "bounds";
-    size_t count = 0;
-    for (const auto& name : group->getVariableNames()) {
-      const auto& bounds = robot_model_->getVariableBounds(name);
-      const double value = state.getVariablePosition(name);
-      bool bad = false;
-      if (bounds.position_bounded_) {
-        bad = value < bounds.min_position_ - 1e-9 || value > bounds.max_position_ + 1e-9;
-      }
-      if (!bad) continue;
-      out << (count == 0 ? ":" : ",")
-          << name << "=" << value
-          << "[" << bounds.min_position_ << "," << bounds.max_position_ << "]";
-      ++count;
-      if (count >= 4) break;
-    }
-    return out.str();
-  }
-
-  std::string direct_pipeline_failure_diagnostic(
-    const planning_scene::PlanningSceneConstPtr& scene,
-    const moveit::core::RobotState& start_state,
-    const moveit::core::RobotState& goal_state,
-    const moveit::core::JointModelGroup* group) const
-  {
-    if (!group) return "diagnostic=missing_group";
-
-    auto state_status = [&](const char* label, const moveit::core::RobotState& state) {
-      std::ostringstream out;
-      const std::string bounds = group_bounds_reason(state, group);
-      out << label << "_bounds=" << (bounds.empty() ? "ok" : bounds);
-      const std::string collision = scene_collision_reason(scene, state, group);
-      out << "," << label << "_collision=" << (collision.empty() ? "clear" : collision);
-      return out.str();
-    };
-
-    std::ostringstream out;
-    out << "diagnostic{"
-        << state_status("start", start_state) << ";"
-        << state_status("goal", goal_state);
-
-    if (!start_state.satisfiesBounds(group) || !goal_state.satisfiesBounds(group)) {
-      out << ";line=skipped_bounds}";
-      return out.str();
-    }
-    const std::string start_collision = scene_collision_reason(scene, start_state, group);
-    const std::string goal_collision = scene_collision_reason(scene, goal_state, group);
-    if (!start_collision.empty() || !goal_collision.empty()) {
-      out << ";line=skipped_endpoint_collision}";
-      return out.str();
-    }
-
-    moveit::core::RobotState probe(start_state);
-    const auto& variable_names = group->getVariableNames();
-    constexpr int kInterpolationSteps = 50;
-    for (int step = 1; step < kInterpolationSteps; ++step) {
-      const double t = static_cast<double>(step) / static_cast<double>(kInterpolationSteps);
-      for (const auto& name : variable_names) {
-        const double start_value = start_state.getVariablePosition(name);
-        const double goal_value = goal_state.getVariablePosition(name);
-        const auto* variable_joint = robot_model_->getJointOfVariable(name);
-        const bool angular_variable =
-          variable_joint && variable_joint->getType() != moveit::core::JointModel::PRISMATIC;
-        const double delta = angular_variable ?
-          shortest_angular_distance(start_value, goal_value) :
-          (goal_value - start_value);
-        probe.setVariablePosition(name, start_value + delta * t);
-      }
-      probe.update(true);
-      const std::string bounds = group_bounds_reason(probe, group);
-      if (!bounds.empty()) {
-        out << ";line=first_" << bounds << "@" << step << "/" << kInterpolationSteps << "}";
-        return out.str();
-      }
-      const std::string collision = scene_collision_reason(scene, probe, group);
-      if (!collision.empty()) {
-        out << ";line=first_" << collision << "@" << step << "/" << kInterpolationSteps << "}";
-        return out.str();
-      }
-    }
-
-    out << ";line=straight_joint_interpolation_clear}";
-    return out.str();
-  }
-
   ContainerGeometryConfig container_geometry_config() const
   {
     return {
@@ -1023,7 +964,7 @@ private:
     config.move_group = loaded_move_group_.get();
     config.selector = loaded_pose_selector_.get();
     config.scene_adapter = scene_adapter_.get();
-    config.target_joint_names = arm_joint_target_names();
+    config.target_joint_names = dual_arm_with_updown_joint_names();
     config.attached_box_collision_padding = attached_box_collision_padding_;
     config.lateral_shift_enabled = extract_loaded_lateral_shift_enabled_;
     config.lateral_shift_distance = extract_loaded_lateral_shift_distance_;
@@ -1190,8 +1131,18 @@ private:
       const BoxSpec& left_box,
       const BoxSpec& right_box,
       bool top_suction) {
-      const auto left_pose = top_suction ? top_suction_pose(left_box) : front_grasp_pose(left_box);
-      const auto right_pose = top_suction ? top_suction_pose(right_box) : front_grasp_pose(right_box);
+      const auto left_pose = top_suction ? make_top_suction_pose(
+                                             left_box,
+                                             world_to_base_z_,
+                                             top_suction_x_offset_,
+                                             top_suction_z_offset_)
+                                         : make_front_grasp_pose(left_box, world_to_base_z_);
+      const auto right_pose = top_suction ? make_top_suction_pose(
+                                              right_box,
+                                              world_to_base_z_,
+                                              top_suction_x_offset_,
+                                              top_suction_z_offset_)
+                                          : make_front_grasp_pose(right_box, world_to_base_z_);
       return plan_dual_tip_ik(stage_name, left_pose, right_pose, top_suction);
     };
     callbacks.attach_boxes = [this](int left_box_id, int right_box_id, bool top_suction) {
@@ -1301,7 +1252,7 @@ private:
     callbacks.state_from_candidate = [this](
       const moveit::core::RobotState& seed_state,
       const ik_benchmark::UpdownAwareIkCandidate& candidate) {
-      return state_from_ik_candidate(seed_state, candidate);
+      return robot_state_from_ik_candidate(seed_state, candidate, joint_group_);
     };
     callbacks.rollout_left = [this](
       const moveit::core::RobotState& start_state,
@@ -1326,7 +1277,9 @@ private:
         candidate_order, ik_candidate, record_step);
     };
     callbacks.fill_loaded_metrics = [this](ExtractRolloutTiming& timing) {
-      fill_loaded_pose_distance_metrics(timing);
+      if (loaded_pose_selector_) {
+        loaded_pose_selector_->fillTimingDistanceMetrics(timing);
+      }
     };
     callbacks.record_keyframe = [this](
       const std::string& stage_name,
@@ -1494,28 +1447,12 @@ private:
   {
     if (!enable_attached_box_collision_) return true;
     const auto carried_aabb = attached_box_world_aabb(state, carried_box);
-
-    if (enable_static_box_obstacles_) {
-      for (const auto& obstacle : static_box_obstacles()) {
-        const AxisAlignedBox obstacle_aabb{obstacle.center, obstacle.size};
-        if (aabb_overlaps(carried_aabb, obstacle_aabb)) {
-          if (reason) *reason = carried_box.id + " overlaps " + obstacle.id;
-          return false;
-        }
-      }
-    }
-
-    if (enable_container_obstacle_) {
-      for (const auto& panel : container_panels()) {
-        const AxisAlignedBox panel_aabb{panel.center, panel.size};
-        if (aabb_overlaps(carried_aabb, panel_aabb)) {
-          if (reason) *reason = carried_box.id + " overlaps " + panel.id;
-          return false;
-        }
-      }
-    }
-
-    return true;
+    return carried_box_clear_obstacles(
+      carried_aabb,
+      carried_box.id,
+      enable_static_box_obstacles_ ? static_box_obstacles() : std::vector<StaticBoxObstacle>{},
+      enable_container_obstacle_ ? container_panels() : std::vector<ContainerPanel>{},
+      reason);
   }
 
   bool state_clear_for_extract(
@@ -1705,7 +1642,7 @@ private:
   {
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     auto& trajectory = plan.trajectory_.joint_trajectory;
-    trajectory.joint_names = arm_joint_target_names();
+    trajectory.joint_names = dual_arm_with_updown_joint_names();
 
     double max_delta = 0.0;
     for (const auto& name : trajectory.joint_names) {
@@ -2199,73 +2136,6 @@ private:
     return make_pose(tf.translation().x(), tf.translation().y(), tf.translation().z(), q);
   }
 
-  nlohmann::json ik_candidate_rejection_counts_json(const ik_benchmark::UpdownAwareIkResult& result) const
-  {
-    if (optimized_dual_ik_solver_) {
-      return optimized_dual_ik_solver_->candidateRejectionCountsJson(result);
-    }
-    std::map<std::string, size_t> counts;
-    for (const auto& candidate : result.candidates) {
-      if (candidate.legal) {
-        counts["legal"]++;
-      } else if (!candidate.rejection_reason.empty()) {
-        counts[candidate.rejection_reason]++;
-      } else {
-        counts["unknown"]++;
-      }
-    }
-    nlohmann::json out = nlohmann::json::object();
-    for (const auto& [reason, count] : counts) {
-      out[reason] = count;
-    }
-    return out;
-  }
-
-  moveit::core::RobotState state_from_ik_candidate(
-    const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkCandidate& candidate) const
-  {
-    moveit::core::RobotState state(seed_state);
-    for (size_t i = 0; i < candidate.full_joint_names.size() && i < candidate.full_joint_values.size(); ++i) {
-      const auto& name = candidate.full_joint_names[i];
-      if (is_robot_variable(name)) {
-        state.setVariablePosition(name, candidate.full_joint_values[i]);
-      }
-    }
-    state.enforceBounds(joint_group_);
-    state.update();
-    return state;
-  }
-
-  std::vector<std::string> arm_joint_target_names() const
-  {
-    return {
-      "updown",
-      "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-      "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-      "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-      "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
-    };
-  }
-
-  void fill_loaded_pose_distance_metrics(ExtractRolloutTiming& timing) const
-  {
-    if (!timing.final_state) {
-      return;
-    }
-    if (!loaded_pose_selector_) {
-      return;
-    }
-    const auto selection = loaded_pose_selector_->select(*timing.final_state);
-    timing.selected_left_loaded_pose_index = selection.left_index;
-    timing.selected_right_loaded_pose_index = selection.right_index;
-    timing.selected_left_loaded_pose_distance = selection.left_distance;
-    timing.selected_right_loaded_pose_distance = selection.right_distance;
-    timing.loaded_pose_distance_sum = selection.distance_sum;
-    timing.loaded_pose_distance_l2 = selection.distance_l2;
-    timing.loaded_pose_max_joint_delta = selection.max_joint_delta;
-  }
-
   ExtractRolloutTiming rollout_left_extract_from_state(
     const moveit::core::RobotState& start_state,
     const AttachedBoxSpec& left_box,
@@ -2376,19 +2246,8 @@ private:
     const auto saved_boxes = active_attached_boxes();
     if (scene_adapter_) scene_adapter_->setActiveAttachedBoxesForRecordOnly(boxes);
 
-    trajectory_msgs::msg::JointTrajectory traj;
     const auto names = optimized_ik_solver_ ? optimized_ik_solver_->freeVariableNames() : robot_model_->getVariableNames();
-    traj.joint_names = names;
-    trajectory_msgs::msg::JointTrajectoryPoint point;
-    point.time_from_start = rclcpp::Duration::from_seconds(0.0);
-    point.positions.reserve(names.size());
-    for (const auto& name : names) {
-      point.positions.push_back(is_robot_variable(name) ? state.getVariablePosition(name) : 0.0);
-    }
-    traj.points.push_back(point);
-
-    moveit::planning_interface::MoveGroupInterface::Plan plan;
-    plan.trajectory_.joint_trajectory = traj;
+    const auto plan = single_state_plan(state, names, 0.0);
     record_stage(stage_name, plan, state, state, names, extra);
 
     if (scene_adapter_) scene_adapter_->setActiveAttachedBoxesForRecordOnly(saved_boxes);
@@ -2655,157 +2514,37 @@ private:
     return false;
   }
 
+  ExecutionTrajectoryAdapterConfig execution_trajectory_adapter_config() const
+  {
+    ExecutionTrajectoryAdapterConfig config;
+    config.include_turn = execution_include_turn_;
+    config.allow_hold_missing_target_joints = execution_allow_hold_missing_target_joints_;
+    config.reject_unmapped_planned_joints = execution_reject_unmapped_planned_joints_;
+    return config;
+  }
+
   bool build_alfa_execution_goal(
     const trajectory_msgs::msg::JointTrajectory& source,
     const moveit::core::RobotState& planning_start_state,
     FollowJointTrajectory::Goal* goal,
     std::string* reason) const
   {
-    if (!goal) return false;
-    if (source.points.empty()) {
-      if (reason) *reason = "source trajectory is empty";
-      return false;
-    }
-
-    const auto target_names = alfa_execution_joint_names();
-    std::vector<int> source_indices;
-    source_indices.reserve(target_names.size());
-    for (const auto& target_name : target_names) {
-      const auto moveit_name = alfa_to_moveit_joint_name(target_name);
-      const auto it = std::find(source.joint_names.begin(), source.joint_names.end(), moveit_name);
-      if (it == source.joint_names.end()) {
-        if (!execution_allow_hold_missing_target_joints_) {
-          if (reason) *reason = "missing planned joint " + moveit_name + " for target " + target_name;
-          return false;
-        }
-        source_indices.push_back(-1);
-      } else {
-        source_indices.push_back(static_cast<int>(std::distance(source.joint_names.begin(), it)));
-      }
-    }
-
-    if (execution_reject_unmapped_planned_joints_) {
-      const auto mapped_target_names = alfa_execution_joint_names();
-      for (const auto& planned_name : source.joint_names) {
-        if (std::find(mapped_target_names.begin(), mapped_target_names.end(),
-                      moveit_to_alfa_joint_name(planned_name)) != mapped_target_names.end()) {
-          continue;
-        }
-        if (planned_joint_changes(source, planned_name)) {
-          if (reason) {
-            *reason = "planned joint " + planned_name +
-              " changes but is not mapped to alfa execution target joints";
-          }
-          return false;
-        }
-      }
-    }
-
-    goal->trajectory = trajectory_msgs::msg::JointTrajectory();
-    goal->trajectory.header = source.header;
-    goal->trajectory.joint_names = target_names;
-    goal->trajectory.points.reserve(source.points.size());
-
-    for (const auto& source_point : source.points) {
-      trajectory_msgs::msg::JointTrajectoryPoint point;
-      point.time_from_start = source_point.time_from_start;
-      point.positions.reserve(target_names.size());
-      if (!source_point.velocities.empty()) point.velocities.reserve(target_names.size());
-      if (!source_point.accelerations.empty()) point.accelerations.reserve(target_names.size());
-      if (!source_point.effort.empty()) point.effort.reserve(target_names.size());
-
-      for (size_t i = 0; i < target_names.size(); ++i) {
-        const int source_index = source_indices[i];
-        if (source_index >= 0) {
-          const auto index = static_cast<size_t>(source_index);
-          point.positions.push_back(index < source_point.positions.size() ? source_point.positions[index] : 0.0);
-          if (!source_point.velocities.empty()) {
-            point.velocities.push_back(index < source_point.velocities.size() ? source_point.velocities[index] : 0.0);
-          }
-          if (!source_point.accelerations.empty()) {
-            point.accelerations.push_back(index < source_point.accelerations.size() ? source_point.accelerations[index] : 0.0);
-          }
-          if (!source_point.effort.empty()) {
-            point.effort.push_back(index < source_point.effort.size() ? source_point.effort[index] : 0.0);
-          }
-        } else {
-          const auto moveit_name = alfa_to_moveit_joint_name(target_names[i]);
-          const double hold_position =
-            is_robot_variable(moveit_name) ? planning_start_state.getVariablePosition(moveit_name) : 0.0;
-          point.positions.push_back(hold_position);
-          if (!source_point.velocities.empty()) point.velocities.push_back(0.0);
-          if (!source_point.accelerations.empty()) point.accelerations.push_back(0.0);
-          if (!source_point.effort.empty()) point.effort.push_back(0.0);
-        }
-      }
-      goal->trajectory.points.push_back(std::move(point));
-    }
-    return true;
-  }
-
-  bool planned_joint_changes(
-    const trajectory_msgs::msg::JointTrajectory& source,
-    const std::string& joint_name) const
-  {
-    const auto it = std::find(source.joint_names.begin(), source.joint_names.end(), joint_name);
-    if (it == source.joint_names.end()) return false;
-    const auto index = static_cast<size_t>(std::distance(source.joint_names.begin(), it));
-    std::optional<double> first_value;
-    for (const auto& point : source.points) {
-      if (index >= point.positions.size()) continue;
-      if (!first_value) {
-        first_value = point.positions[index];
-        continue;
-      }
-      if (std::abs(point.positions[index] - *first_value) > 1e-6) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  std::vector<std::string> alfa_execution_joint_names() const
-  {
-    std::vector<std::string> names = {
-      "left_joint1",
-      "left_joint2",
-      "left_joint3",
-      "left_joint4",
-      "left_joint5",
-      "left_joint6",
-      "right_joint1",
-      "right_joint2",
-      "right_joint3",
-      "right_joint4",
-      "right_joint5",
-      "right_joint6",
+    const ExecutionTrajectoryAdapter adapter(execution_trajectory_adapter_config());
+    ExecutionTrajectoryBuildRequest request;
+    request.source = &source;
+    request.is_robot_variable = [this](const std::string& name) { return is_robot_variable(name); };
+    request.hold_position = [&planning_start_state](const std::string& name) {
+      return planning_start_state.getVariablePosition(name);
     };
-    if (execution_include_turn_) {
-      names.push_back("turn");
-    }
-    return names;
-  }
-
-  std::string alfa_to_moveit_joint_name(const std::string& name) const
-  {
-    if (name.rfind("left_joint", 0) == 0) {
-      return "left_v5_joint" + name.substr(std::string("left_joint").size());
-    }
-    if (name.rfind("right_joint", 0) == 0) {
-      return "right_v5_joint" + name.substr(std::string("right_joint").size());
-    }
-    return name;
+    return adapter.buildGoal(
+      request,
+      goal,
+      reason);
   }
 
   std::string moveit_to_alfa_joint_name(const std::string& name) const
   {
-    if (name.rfind("left_v5_joint", 0) == 0) {
-      return "left_joint" + name.substr(std::string("left_v5_joint").size());
-    }
-    if (name.rfind("right_v5_joint", 0) == 0) {
-      return "right_joint" + name.substr(std::string("right_v5_joint").size());
-    }
-    return name;
+    return ExecutionTrajectoryAdapter(execution_trajectory_adapter_config()).moveItToAlfaJointName(name);
   }
 
   bool robot_state_matches(
@@ -2813,14 +2552,18 @@ private:
     const moveit::core::RobotState& current_state,
     const std::vector<std::string>& target_names) const
   {
-    for (const auto& name : target_names) {
-      if (!is_robot_variable(name)) continue;
-      const double error = std::abs(current_state.getVariablePosition(name) - goal_state.getVariablePosition(name));
-      if (error > joint_goal_tolerance_rad_) {
-        return false;
-      }
-    }
-    return true;
+    const ExecutionTrajectoryAdapter adapter(execution_trajectory_adapter_config());
+    ExecutionStateMatchRequest request;
+    request.target_names = target_names;
+    request.tolerance = joint_goal_tolerance_rad_;
+    request.is_robot_variable = [this](const std::string& name) { return is_robot_variable(name); };
+    request.goal_position = [&goal_state](const std::string& name) {
+      return goal_state.getVariablePosition(name);
+    };
+    request.current_position = [&current_state](const std::string& name) {
+      return current_state.getVariablePosition(name);
+    };
+    return adapter.robotStateMatches(request);
   }
 
   bool joint_state_matches(
@@ -2828,22 +2571,16 @@ private:
     const sensor_msgs::msg::JointState& msg,
     const std::vector<std::string>& target_names) const
   {
-    for (const auto& name : target_names) {
-      auto it = std::find(msg.name.begin(), msg.name.end(), name);
-      if (it == msg.name.end()) {
-        const auto alfa_name = moveit_to_alfa_joint_name(name);
-        it = std::find(msg.name.begin(), msg.name.end(), alfa_name);
-      }
-      if (it == msg.name.end()) continue;
-      const size_t index = static_cast<size_t>(std::distance(msg.name.begin(), it));
-      if (index >= msg.position.size()) continue;
-      if (!is_robot_variable(name)) continue;
-      const double error = std::abs(msg.position[index] - goal_state.getVariablePosition(name));
-      if (error > joint_goal_tolerance_rad_) {
-        return false;
-      }
-    }
-    return true;
+    const ExecutionTrajectoryAdapter adapter(execution_trajectory_adapter_config());
+    ExecutionJointStateMatchRequest request;
+    request.current = &msg;
+    request.target_names = target_names;
+    request.tolerance = joint_goal_tolerance_rad_;
+    request.is_robot_variable = [this](const std::string& name) { return is_robot_variable(name); };
+    request.goal_position = [&goal_state](const std::string& name) {
+      return goal_state.getVariablePosition(name);
+    };
+    return adapter.jointStateMatches(request);
   }
 
   bool is_robot_variable(const std::string& name) const
@@ -2887,32 +2624,29 @@ private:
   void open_record_file()
   {
     if (!record_trajectories_ || record_jsonl_path_.empty()) return;
-    nlohmann::json header = {
-      {"type", "header"},
-      {"schema", "moveit_box_stack_flow_v1"},
-      {"ik_strategy", "fixed_discrete_h_multi_seed_cost_scorer"},
-      {"planning_group", planning_group_},
-      {"box_front_x", box_front_x_},
-      {"scene_y_shift", scene_y_shift_},
-      {"world_to_base_z", world_to_base_z_},
-      {"fixed_updown", fixed_updown_},
-      {"velocity_scale", velocity_scale_},
-      {"acceleration_scale", acceleration_scale_},
-      {"max_rounds", max_rounds_},
-      {"include_top_suction", include_top_suction_},
-      {"execute", execute_},
-      {"container_obstacle", container_obstacle_json()},
-      {"static_box_obstacles", static_box_obstacles_json()},
-      {"attached_box_collision", attached_box_config_json()},
-      {"loaded_pose_family", {
+    const auto header = motion_flow_header_json(MotionFlowHeaderRequest{
+      planning_group_,
+      box_front_x_,
+      scene_y_shift_,
+      world_to_base_z_,
+      fixed_updown_,
+      velocity_scale_,
+      acceleration_scale_,
+      max_rounds_,
+      include_top_suction_,
+      execute_,
+      container_obstacle_json(),
+      static_box_obstacles_json(),
+      attached_box_config_json(),
+      {
         {"left_candidates_deg", pose_family_degrees_json(left_loaded_pose_family_)},
         {"right_candidates_deg", pose_family_degrees_json(right_loaded_pose_family_)},
         {"left_preferred_index", left_preferred_loaded_pose_index_},
         {"right_preferred_index", right_preferred_loaded_pose_index_},
         {"family_distance_weight", ik_config_.cost_loaded_family_distance},
         {"preferred_distance_weight", ik_config_.cost_loaded_preferred_distance}
-      }},
-      {"ik_config", {
+      },
+      {
         {"fixed_group", ik_config_.fixed_group},
         {"free_group", ik_config_.free_group},
         {"solver_plugin", ik_config_.solver_plugin},
@@ -2927,8 +2661,7 @@ private:
         {"check_collision", ik_config_.check_collision},
         {"cost_loaded_family_distance", ik_config_.cost_loaded_family_distance},
         {"cost_loaded_preferred_distance", ik_config_.cost_loaded_preferred_distance}
-      }}
-    };
+      }});
     recorder_ = std::make_unique<MotionFlowRecorder>();
     std::string error;
     if (!recorder_->open(record_jsonl_path_, header, &error)) {
@@ -2941,336 +2674,105 @@ private:
 
   nlohmann::json container_obstacle_json() const
   {
-    nlohmann::json panels = nlohmann::json::array();
-    for (const auto& panel : container_panels()) {
-      panels.push_back({
-        {"id", panel.id},
-        {"center", {panel.center[0], panel.center[1], panel.center[2]}},
-        {"size", {panel.size[0], panel.size[1], panel.size[2]}},
-      });
-    }
-    return {
-      {"enabled", enable_container_obstacle_},
-      {"frame", container_frame_},
-      {"length", container_length_},
-      {"width", container_width_},
-      {"height", container_height_},
-      {"center_x", container_center_x_},
-      {"center_y", container_center_y_ + scene_y_shift_},
-      {"nominal_center_y", container_center_y_},
-      {"scene_y_shift", scene_y_shift_},
-      {"floor_z", container_floor_z_},
-      {"wall_thickness", container_wall_thickness_},
-      {"panels", panels},
-    };
+    return alfa_robot::motion::container_obstacle_json(
+      enable_container_obstacle_,
+      container_frame_,
+      container_length_,
+      container_width_,
+      container_height_,
+      container_center_x_,
+      container_center_y_ + scene_y_shift_,
+      container_center_y_,
+      scene_y_shift_,
+      container_floor_z_,
+      container_wall_thickness_,
+      container_panels());
   }
 
   nlohmann::json attached_box_config_json() const
   {
-    return {
-      {"enabled", enable_attached_box_collision_},
-      {"depth", carried_box_depth_},
-      {"width", carried_box_width_},
-      {"height", carried_box_height_},
-    };
+    return alfa_robot::motion::attached_box_config_json(
+      enable_attached_box_collision_,
+      carried_box_depth_,
+      carried_box_width_,
+      carried_box_height_);
   }
 
   nlohmann::json static_box_obstacles_json() const
   {
-    nlohmann::json boxes = nlohmann::json::array();
-    for (const auto& box : static_box_obstacles()) {
-      boxes.push_back({
-        {"id", box.id},
-        {"center", {box.center[0], box.center[1], box.center[2]}},
-        {"size", {box.size[0], box.size[1], box.size[2]}},
-      });
-    }
-    return {
-      {"enabled", enable_static_box_obstacles_},
-      {"mode", "dynamic_box_wall_with_pair_opening"},
-      {"opening_left_box_id", scene_adapter_ ? scene_adapter_->activeStaticLeftBoxId() : 0},
-      {"opening_right_box_id", scene_adapter_ ? scene_adapter_->activeStaticRightBoxId() : 0},
-      {"inset", static_box_obstacle_inset_},
-      {"boxes", boxes},
-    };
+    return alfa_robot::motion::static_box_obstacles_json(
+      enable_static_box_obstacles_,
+      scene_adapter_ ? scene_adapter_->activeStaticLeftBoxId() : 0,
+      scene_adapter_ ? scene_adapter_->activeStaticRightBoxId() : 0,
+      static_box_obstacle_inset_,
+      static_box_obstacles());
   }
 
   nlohmann::json active_attached_boxes_json() const
   {
-    nlohmann::json boxes = nlohmann::json::array();
-    for (const auto& box : active_attached_boxes()) {
-      boxes.push_back({
-        {"id", box.id},
-        {"link_name", box.link_name},
-        {"center_in_link", {box.center_in_link[0], box.center_in_link[1], box.center_in_link[2]}},
-        {"size", {box.size[0], box.size[1], box.size[2]}},
-      });
+    return attached_boxes_json(active_attached_boxes());
+  }
+
+  void record_monitor_extract_replay_step(
+    size_t step,
+    size_t candidate_order,
+    const moveit::core::RobotState& state,
+    const nlohmann::json& extra,
+    std::vector<nlohmann::json>* rollout_records) const
+  {
+    if (!rollout_records) {
+      return;
     }
-    return boxes;
+    const auto names = dual_arm_with_updown_joint_names();
+    rollout_records->push_back(extract_monitor_selected_extract_replay_state_stage(
+      ExtractMonitorSelectedExtractReplayStateRequest{
+        extract_monitor_state_.prefix,
+        step,
+        candidate_order,
+        &state,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        names,
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        static_box_obstacles_json(),
+        extra,
+        0.1 * static_cast<double>(step)}));
   }
 
-  nlohmann::json attached_boxes_json(const std::vector<AttachedBoxSpec>& specs) const
+  bool finish_extract_monitor_stage(
+    const nlohmann::json& snapshot,
+    const std::string& context,
+    const std::string& success_message,
+    std::string* message)
   {
-    nlohmann::json boxes = nlohmann::json::array();
-    for (const auto& box : specs) {
-      boxes.push_back({
-        {"id", box.id},
-        {"link_name", box.link_name},
-        {"center_in_link", {box.center_in_link[0], box.center_in_link[1], box.center_in_link[2]}},
-        {"size", {box.size[0], box.size[1], box.size[2]}},
-      });
-    }
-    return boxes;
-  }
-
-  nlohmann::json robot_state_json(const moveit::core::RobotState& state) const
-  {
-    const auto& names = robot_model_->getVariableNames();
-    std::vector<double> values;
-    values.reserve(names.size());
-    for (const auto& name : names) values.push_back(state.getVariablePosition(name));
-    return {{"joint_names", names}, {"joint_values", values}, {"joint_map", names_values_json(names, values)}};
-  }
-
-  nlohmann::json trajectory_json(const moveit::planning_interface::MoveGroupInterface::Plan& plan) const
-  {
-    const auto& traj = plan.trajectory_.joint_trajectory;
-    nlohmann::json points = nlohmann::json::array();
-    for (const auto& point : traj.points) {
-      points.push_back({
-        {"time_from_start_sec", rclcpp::Duration(point.time_from_start).seconds()},
-        {"positions", point.positions},
-        {"velocities", point.velocities}
-      });
-    }
-    return {
-      {"joint_names", traj.joint_names},
-      {"point_count", traj.points.size()},
-      {"points", points}
-    };
-  }
-
-  nlohmann::json monitor_stage_json(
-    const std::string& stage_name,
-    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
-    const moveit::core::RobotState& start_state,
-    const moveit::core::RobotState& goal_state,
-    const std::vector<std::string>& target_names,
-    const std::vector<AttachedBoxSpec>& attached_boxes,
-    const nlohmann::json& extra) const
-  {
-    return {
-      {"type", "stage"},
-      {"stage", stage_name},
-      {"trajectory", trajectory_json(plan)},
-      {"target_names", target_names},
-      {"start_state", robot_state_json(start_state)},
-      {"goal_state", robot_state_json(goal_state)},
-      {"attached_boxes", attached_boxes_json(attached_boxes)},
-      {"static_box_obstacles", static_box_obstacles_json()},
-      {"extra", extra}
-    };
-  }
-
-  nlohmann::json monitor_candidate_json(
-    const ik_benchmark::UpdownAwareIkCandidate& candidate,
-    size_t display_index,
-    const moveit::core::RobotState& state) const
-  {
-    return {
-      {"display_index", display_index},
-      {"h", candidate.h},
-      {"h_index", candidate.h_index},
-      {"seed_index", candidate.seed_index},
-      {"score", candidate.score},
-      {"solve_ms", candidate.solve_ms},
-      {"solver_path", candidate.solver_path},
-      {"target_order", candidate.target_order},
-      {"updown_delta", candidate.updown_delta},
-      {"joint_delta", candidate.joint_delta},
-      {"state", robot_state_json(state)}
-    };
-  }
-
-  nlohmann::json monitor_timing_json(
-    const ExtractRolloutTiming& timing,
-    size_t display_index,
-    const moveit::core::RobotState& state) const
-  {
-    const std::vector<AttachedBoxSpec> carried_boxes{
-      extract_monitor_state_.left_box,
-      extract_monitor_state_.right_box,
-    };
-    nlohmann::json replay_stages = nlohmann::json::array();
-    for (const auto& stage : timing.rollout_records) {
-      replay_stages.push_back(stage);
-    }
-    for (const auto& shift_stage : timing.lateral_shift_replay_stages) {
-      if (!shift_stage.start_state || !shift_stage.goal_state) {
-        continue;
+    const auto result = extract_monitor_snapshot_writer_.writeStageSnapshot(
+      ExtractMonitorStageSnapshotWriteRequest{
+        &snapshot,
+        context,
+        success_message});
+    if (result.success) {
+      if (message) {
+        *message = result.message;
       }
-      nlohmann::json extra = shift_stage.extra;
-      extra["candidate_order"] = timing.candidate_order;
-      extra["loaded_plan_rank"] = timing.loaded_plan_rank;
-      extra["loaded_plan_success"] = timing.loaded_plan_success;
-      extra["loaded_plan_failure_reason"] = timing.loaded_plan_failure_reason;
-      extra["left_box_id"] = extract_monitor_state_.left_box_id;
-      extra["right_box_id"] = extract_monitor_state_.right_box_id;
-      replay_stages.push_back(monitor_stage_json(
-        shift_stage.stage_name,
-        shift_stage.plan,
-        *shift_stage.start_state,
-        *shift_stage.goal_state,
-        arm_joint_target_names(),
-        carried_boxes,
-        extra));
-    }
-    if (timing.loaded_start_state && timing.loaded_goal_state &&
-        !timing.loaded_plan.trajectory_.joint_trajectory.points.empty()) {
-      nlohmann::json extra = {
-        {"stage_kind", "monitor_loaded_plan_attempt_replay"},
-        {"valid", timing.loaded_plan_success},
-        {"candidate_order", timing.candidate_order},
-        {"loaded_plan_rank", timing.loaded_plan_rank},
-        {"loaded_plan_success", timing.loaded_plan_success},
-        {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
-        {"loaded_plan_ms", timing.loaded_plan_ms},
-        {"loaded_plan_points", timing.loaded_plan_points},
-        {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
-        {"left_box_id", extract_monitor_state_.left_box_id},
-        {"right_box_id", extract_monitor_state_.right_box_id}
-      };
-      replay_stages.push_back(monitor_stage_json(
-        extract_monitor_state_.prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/loaded_plan_attempt",
-        timing.loaded_plan,
-        *timing.loaded_start_state,
-        *timing.loaded_goal_state,
-        arm_joint_target_names(),
-        carried_boxes,
-        extra));
-    }
-    return {
-      {"display_index", display_index},
-      {"candidate_order", timing.candidate_order},
-      {"h", timing.h},
-      {"h_index", timing.h_index},
-      {"seed_index", timing.seed_index},
-      {"ik_score", timing.ik_score},
-      {"ik_solve_ms", timing.ik_solve_ms},
-      {"rollout_ms", timing.rollout_ms},
-      {"interval_ms", timing.interval_ms},
-      {"accepted_steps", timing.accepted_steps},
-      {"failed_steps", timing.failed_steps},
-      {"final_retreat_x", timing.final_retreat_x},
-      {"final_lift_z", timing.final_lift_z},
-      {"final_pitch_deg", timing.final_pitch_deg},
-      {"right_final_retreat_x", timing.right_final_retreat_x},
-      {"right_final_lift_z", timing.right_final_lift_z},
-      {"right_final_pitch_deg", timing.right_final_pitch_deg},
-      {"success", timing.success},
-      {"failure_reason", timing.failure_reason},
-      {"loaded_plan_attempted", timing.loaded_plan_attempted},
-      {"loaded_plan_success", timing.loaded_plan_success},
-      {"lateral_shift_attempted", timing.lateral_shift_attempted},
-      {"lateral_shift_success", timing.lateral_shift_success},
-      {"lateral_shift_ms", timing.lateral_shift_ms},
-      {"lateral_shift_reached_distance", timing.lateral_shift_reached_distance},
-      {"lateral_shift_points", timing.lateral_shift_points},
-      {"loaded_plan_rank", timing.loaded_plan_rank},
-      {"loaded_plan_ms", timing.loaded_plan_ms},
-      {"loaded_plan_points", timing.loaded_plan_points},
-      {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
-      {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
-      {"loaded_pose_distance_sum", timing.loaded_pose_distance_sum},
-      {"loaded_pose_distance_l2", timing.loaded_pose_distance_l2},
-      {"loaded_pose_max_joint_delta", timing.loaded_pose_max_joint_delta},
-      {"loaded_plan_selected", timing.loaded_plan_selected},
-      {"state", robot_state_json(state)},
-      {"replay_stage_count", replay_stages.size()},
-      {"replay_stages", replay_stages}
-    };
-  }
-
-  bool write_extract_monitor_snapshot(const nlohmann::json& snapshot) const
-  {
-    try {
-      const std::filesystem::path path(extract_monitor_snapshot_path_);
-      if (path.has_parent_path()) {
-        std::filesystem::create_directories(path.parent_path());
-      }
-      std::ofstream out(path);
-      if (!out) {
-        RCLCPP_ERROR(get_logger(), "Failed to open extract monitor snapshot: %s",
-                     extract_monitor_snapshot_path_.c_str());
-        return false;
-      }
-      out << snapshot.dump(2) << '\n';
       return true;
-    } catch (const std::exception& e) {
-      RCLCPP_ERROR(get_logger(), "Failed to write extract monitor snapshot %s: %s",
-                   extract_monitor_snapshot_path_.c_str(), e.what());
-      return false;
     }
+    if (!result.error_log_message.empty()) {
+      RCLCPP_ERROR(get_logger(), "%s", result.error_log_message.c_str());
+    }
+    return fail(result.message);
   }
 
   std::vector<ik_benchmark::UpdownAwareIkCandidate> selected_monitor_ik_candidates(
     const ik_benchmark::UpdownAwareIkResult& ik_result,
     IkCandidateSelectionStats* stats) const
   {
-    std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
-    legal_candidates.reserve(ik_result.candidates.size());
-    for (const auto& candidate : ik_result.candidates) {
-      if (candidate.legal) {
-        legal_candidates.push_back(candidate);
-      }
-    }
-    std::sort(legal_candidates.begin(), legal_candidates.end(),
-              [](const auto& lhs, const auto& rhs) {
-                if (lhs.score != rhs.score) return lhs.score < rhs.score;
-                if (lhs.h_index != rhs.h_index) return lhs.h_index < rhs.h_index;
-                return lhs.seed_index < rhs.seed_index;
-              });
     if (ik_candidate_selector_) {
-      return ik_candidate_selector_->select(legal_candidates, stats);
+      return ik_candidate_selector_->selectLegalFromResult(ik_result, stats);
     }
     if (stats) {
-      stats->input_count = legal_candidates.size();
-      stats->unique_count = legal_candidates.size();
-      stats->selected_count = legal_candidates.size();
+      *stats = IkCandidateSelectionStats{};
     }
-    return legal_candidates;
-  }
-
-  moveit::core::RobotState make_extract_monitor_seed_state() const
-  {
-    moveit::core::RobotState seed_state(robot_model_);
-    seed_state.setToDefaultValues();
-    for (size_t i = 0; i < left_pregrasp_arm_.size(); ++i) {
-      seed_state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
-    }
-    for (size_t i = 0; i < right_pregrasp_arm_.size(); ++i) {
-      seed_state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
-    }
-    seed_state.setVariablePosition("updown", extract_grasp_ik_home_updown_);
-    seed_state.enforceBounds(joint_group_);
-    seed_state.update();
-    return seed_state;
-  }
-
-  moveit::core::RobotState make_extract_monitor_loaded_start_state() const
-  {
-    moveit::core::RobotState state(robot_model_);
-    state.setToDefaultValues();
-    for (size_t i = 0; i < left_loaded_arm_.size(); ++i) {
-      state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_loaded_arm_[i]);
-    }
-    for (size_t i = 0; i < right_loaded_arm_.size(); ++i) {
-      state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_loaded_arm_[i]);
-    }
-    state.setVariablePosition("updown", extract_grasp_ik_home_updown_);
-    state.enforceBounds(joint_group_);
-    state.update();
-    return state;
+    return {};
   }
 
   void record_stage(
@@ -3293,15 +2795,14 @@ private:
       extra);
   }
 
-  geometry_msgs::msg::Pose front_grasp_pose(const BoxSpec& box) const
+  ExtractMonitorStageCallbacks extract_monitor_stage_callbacks()
   {
-    return make_pose(box.x, box.y, box.z - world_to_base_z_, forward_x_orientation());
-  }
-
-  geometry_msgs::msg::Pose top_suction_pose(const BoxSpec& box) const
-  {
-    return make_pose(
-      box.x + top_suction_x_offset_, box.y, box.z + top_suction_z_offset_ - world_to_base_z_, top_suction_orientation());
+    ExtractMonitorStageCallbacks callbacks;
+    callbacks.ik = [this](std::string* message) { return run_extract_monitor_ik_stage(message); };
+    callbacks.extract = [this](std::string* message) { return run_extract_monitor_extract_stage(message); };
+    callbacks.loaded = [this](std::string* message) { return run_extract_monitor_loaded_stage(message); };
+    callbacks.final = [this](std::string* message) { return run_extract_monitor_final_stage(message); };
+    return callbacks;
   }
 
   bool run_extract_monitor_next(std::string* message)
@@ -3311,20 +2812,10 @@ private:
       return fail("extract monitor: output message is null");
     }
 
-    switch (extract_monitor_phase_) {
-      case ExtractMonitorPhase::ReadyForIk:
-        return run_extract_monitor_ik_stage(message);
-      case ExtractMonitorPhase::ReadyForExtract:
-        return run_extract_monitor_extract_stage(message);
-      case ExtractMonitorPhase::ReadyForLoaded:
-        return run_extract_monitor_loaded_stage(message);
-      case ExtractMonitorPhase::ReadyForFinal:
-        return run_extract_monitor_final_stage(message);
-      case ExtractMonitorPhase::Done:
-        extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
-        return run_extract_monitor_ik_stage(message);
-    }
-    return fail("extract monitor: unknown phase");
+    return extract_monitor_controller_.runNext(
+      extract_monitor_stage_callbacks(),
+      [this] { return extract_monitor_last_stage_ms_; },
+      message);
   }
 
   bool run_extract_monitor_full_selected(std::string* message)
@@ -3334,68 +2825,28 @@ private:
       return fail("extract monitor full: output message is null");
     }
 
-    const auto total_start = std::chrono::steady_clock::now();
-    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
-
-    std::string ik_message;
-    if (!run_extract_monitor_ik_stage(&ik_message)) {
-      *message = "完整流程失败在IK阶段: " + ik_message;
+    const auto result = extract_monitor_controller_.runFull(
+      extract_monitor_stage_callbacks(),
+      [this] { return extract_monitor_last_stage_ms_; });
+    if (!result.success) {
+      *message = result.message;
       return false;
     }
-    const double ik_elapsed_ms = extract_monitor_last_stage_ms_;
 
-    std::string extract_message;
-    if (!run_extract_monitor_extract_stage(&extract_message)) {
-      *message = "完整流程失败在抽离阶段: " + extract_message;
-      return false;
-    }
-    const double extract_elapsed_ms = extract_monitor_last_stage_ms_;
-
-    std::string loaded_message;
-    if (!run_extract_monitor_loaded_stage(&loaded_message)) {
-      *message = "完整流程失败在负重规划阶段: " + loaded_message;
-      return false;
-    }
-    const double loaded_elapsed_ms = extract_monitor_last_stage_ms_;
-
-    std::string final_message;
-    if (!run_extract_monitor_final_stage(&final_message)) {
-      *message = "完整流程失败在最终选择阶段: " + final_message;
-      return false;
-    }
-    const double final_elapsed_ms = extract_monitor_last_stage_ms_;
-
-    const double total_elapsed_ms = std::chrono::duration<double, std::milli>(
-      std::chrono::steady_clock::now() - total_start).count();
-
-    nlohmann::json snapshot;
-    try {
-      snapshot = nlohmann::json::parse(std::ifstream(extract_monitor_snapshot_path_));
-    } catch (const std::exception&) {
-      snapshot = nlohmann::json::object();
-    }
-    if (snapshot.is_object()) {
-      snapshot["phase"] = "full_selected";
-      snapshot["phase_label"] = "完整流程最终采用方案";
-      snapshot["box_front_x"] = box_front_x_;
-      snapshot["scene_y_shift"] = scene_y_shift_;
-      snapshot["elapsed_ms"] = total_elapsed_ms;
-      snapshot["ik_elapsed_ms"] = ik_elapsed_ms;
-      snapshot["extract_elapsed_ms"] = extract_elapsed_ms;
-      snapshot["loaded_elapsed_ms"] = loaded_elapsed_ms;
-      snapshot["final_elapsed_ms"] = final_elapsed_ms;
-      write_extract_monitor_snapshot(snapshot);
+    std::string error;
+    if (!extract_monitor_snapshot_writer_.writeFullSelectedSnapshot(
+      ExtractMonitorFullSelectedSnapshotRequest{
+        box_front_x_,
+        scene_y_shift_,
+        result.total_elapsed_ms,
+        result.stage_elapsed_ms},
+      &error))
+    {
+      RCLCPP_ERROR(get_logger(), "%s", extract_monitor_snapshot_writer_.writeError(error).c_str());
+      return fail("extract monitor full: failed to write snapshot");
     }
 
-    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
-    std::ostringstream out;
-    out << "完整流程完成: total=" << total_elapsed_ms << "ms"
-        << " ik=" << ik_elapsed_ms << "ms"
-        << " extract=" << extract_elapsed_ms << "ms"
-        << " loaded=" << loaded_elapsed_ms << "ms"
-        << " final=" << final_elapsed_ms << "ms"
-        << " snapshot=" << extract_monitor_snapshot_path_;
-    *message = out.str();
+    *message = extract_monitor_snapshot_writer_.appendSnapshotPath(result.message);
     return true;
   }
 
@@ -3417,24 +2868,24 @@ private:
     }
     set_static_box_wall_opening(left_box_id, right_box_id, "extract_monitor");
 
-    extract_monitor_state_.left_box_id = left_box_id;
-    extract_monitor_state_.right_box_id = right_box_id;
-    extract_monitor_state_.left_box = make_carried_box_spec("left", left_box_id, false);
-    extract_monitor_state_.right_box = make_carried_box_spec("right", right_box_id, false);
-    extract_monitor_state_.prefix = "extract_monitor_L" + std::to_string(left_box_id) +
-                                    "_R" + std::to_string(right_box_id);
-    extract_monitor_state_.seed_state =
-      std::make_shared<moveit::core::RobotState>(make_extract_monitor_seed_state());
-    extract_monitor_state_.loaded_start_state =
-      std::make_shared<moveit::core::RobotState>(make_extract_monitor_loaded_start_state());
+    extract_monitor_state_ = make_extract_monitor_initial_state(
+      ExtractMonitorInitialStateRequest{
+        left_box_id,
+        right_box_id,
+        make_carried_box_spec("left", left_box_id, false),
+        make_carried_box_spec("right", right_box_id, false),
+        robot_model_,
+        joint_group_,
+        ExtractMonitorArmSeed{left_pregrasp_arm_, right_pregrasp_arm_, extract_grasp_ik_home_updown_},
+        ExtractMonitorArmSeed{left_loaded_arm_, right_loaded_arm_, extract_grasp_ik_home_updown_}});
 
     moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
     nlohmann::json ik_extra;
     ik_benchmark::UpdownAwareIkResult ik_result;
     if (!solve_dual_tip_ik_state(
           extract_monitor_state_.prefix + "/monitor_ik",
-          front_grasp_pose(left_it->second),
-          front_grasp_pose(right_it->second),
+          make_front_grasp_pose(left_it->second, world_to_base_z_),
+          make_front_grasp_pose(right_it->second, world_to_base_z_),
           false,
           *extract_monitor_state_.seed_state,
           &selected_state,
@@ -3447,54 +2898,43 @@ private:
     IkCandidateSelectionStats dedup_stats;
     extract_monitor_state_.ik_result = ik_result;
     extract_monitor_state_.legal_candidates = selected_monitor_ik_candidates(ik_result, &dedup_stats);
-    extract_monitor_state_.candidate_states.clear();
-    extract_monitor_state_.candidate_states.reserve(extract_monitor_state_.legal_candidates.size());
+    populate_extract_monitor_candidate_states(
+      extract_monitor_state_,
+      [this](const ik_benchmark::UpdownAwareIkCandidate& candidate) {
+        return std::make_shared<moveit::core::RobotState>(
+          robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_));
+      });
 
-    nlohmann::json records = nlohmann::json::array();
-    for (size_t i = 0; i < extract_monitor_state_.legal_candidates.size(); ++i) {
-      auto state = std::make_shared<moveit::core::RobotState>(
-        state_from_ik_candidate(*extract_monitor_state_.seed_state, extract_monitor_state_.legal_candidates[i]));
-      extract_monitor_state_.candidate_states.push_back(state);
-      records.push_back(monitor_candidate_json(extract_monitor_state_.legal_candidates[i], i, *state));
-    }
+    const nlohmann::json records = extract_monitor_candidate_records_json(
+      extract_monitor_state_.legal_candidates,
+      extract_monitor_state_.candidate_states);
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
     extract_monitor_last_stage_ms_ = elapsed_ms;
-    nlohmann::json snapshot = {
-      {"type", "extract_monitor_snapshot"},
-      {"phase", "ik_candidates"},
-      {"phase_label", "不重复 IK 候选"},
-      {"elapsed_ms", elapsed_ms},
-      {"left_box_id", left_box_id},
-      {"right_box_id", right_box_id},
-      {"box_front_x", box_front_x_},
-      {"scene_y_shift", scene_y_shift_},
-      {"snapshot_path", extract_monitor_snapshot_path_},
-      {"ik_trial_count", ik_result.trial_count},
-      {"ik_legal_count", ik_result.legal_count},
-      {"ik_wall_ms", ik_result.wall_ms},
-      {"ik_dedup_enabled", dedup_stats.enabled},
-      {"ik_dedup_input_count", dedup_stats.input_count},
-      {"ik_dedup_unique_count", dedup_stats.unique_count},
-      {"ik_dedup_removed_count", dedup_stats.removed_count},
-      {"ik_dedup_selected_count", dedup_stats.selected_count},
-      {"ik_dedup_ms", dedup_stats.elapsed_ms},
-      {"rejection_counts", ik_candidate_rejection_counts_json(ik_result)},
-      {"records", records}
-    };
-    if (!write_extract_monitor_snapshot(snapshot)) {
-      return fail("extract monitor IK: failed to write snapshot");
-    }
-
-    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForExtract;
-    std::ostringstream out;
-    out << "IK阶段完成: unique=" << extract_monitor_state_.legal_candidates.size()
-        << " legal=" << ik_result.legal_count
-        << " trials=" << ik_result.trial_count
-        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
-    *message = out.str();
-    return true;
+    const nlohmann::json snapshot = extract_monitor_ik_snapshot(
+      ExtractMonitorIkSnapshotRequest{
+        extract_monitor_snapshot_path_,
+        elapsed_ms,
+        left_box_id,
+        right_box_id,
+        box_front_x_,
+        scene_y_shift_,
+        &ik_result,
+        dedup_stats,
+        ik_candidate_rejection_counts_json(ik_result),
+        records});
+    return finish_extract_monitor_stage(
+      snapshot,
+      "extract monitor IK",
+      extract_monitor_ik_stage_message(
+      ExtractMonitorIkStageMessageRequest{
+        extract_monitor_state_.legal_candidates.size(),
+        ik_result.legal_count,
+        ik_result.trial_count,
+        elapsed_ms,
+        extract_monitor_snapshot_path_}),
+      message);
   }
 
   bool run_extract_monitor_extract_stage(std::string* message)
@@ -3505,122 +2945,72 @@ private:
 
     const auto stage_start = std::chrono::steady_clock::now();
     const size_t count = extract_monitor_state_.legal_candidates.size();
-    extract_monitor_state_.timings.clear();
-    extract_monitor_state_.timings.resize(count);
-
-    const size_t worker_count = std::max<size_t>(1, std::min(extract_benchmark_extract_workers_, count));
-    std::atomic<size_t> next_index{0};
-    std::vector<std::thread> workers;
-    workers.reserve(worker_count);
-    for (size_t worker = 0; worker < worker_count; ++worker) {
-      workers.emplace_back([&, worker]() {
-        (void)worker;
-        while (true) {
-          const size_t index = next_index.fetch_add(1);
-          if (index >= count) {
-            break;
-          }
-          const auto state = state_from_ik_candidate(
-            *extract_monitor_state_.seed_state,
-            extract_monitor_state_.legal_candidates[index]);
-          std::vector<nlohmann::json> rollout_records;
-          auto record_step = [&](size_t step, const moveit::core::RobotState& step_state, const nlohmann::json& extra) {
-            trajectory_msgs::msg::JointTrajectory traj;
-            const auto names = arm_joint_target_names();
-            traj.joint_names = names;
-            trajectory_msgs::msg::JointTrajectoryPoint point;
-            point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(step));
-            point.positions.reserve(names.size());
-            for (const auto& name : names) {
-              point.positions.push_back(step_state.getVariablePosition(name));
-            }
-            traj.points.push_back(point);
-
-            moveit::planning_interface::MoveGroupInterface::Plan plan;
-            plan.trajectory_.joint_trajectory = traj;
-
-            nlohmann::json enriched = extra;
-            enriched["stage_kind"] = "monitor_selected_extract_replay";
-            enriched["candidate_order"] = index;
-            enriched["left_box_id"] = extract_monitor_state_.left_box_id;
-            enriched["right_box_id"] = extract_monitor_state_.right_box_id;
-            rollout_records.push_back(monitor_stage_json(
-              extract_monitor_state_.prefix + "/selected_extract_step_" + std::to_string(step),
-              plan,
-              step_state,
-              step_state,
-              names,
-              {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
-              enriched));
-          };
-          auto timing = rollout_dual_extract_from_state(
-            state,
-            extract_monitor_state_.left_box,
-            extract_monitor_state_.left_box_id,
-            extract_monitor_state_.right_box,
-            extract_monitor_state_.right_box_id,
-            index,
-            extract_monitor_state_.legal_candidates[index],
-            record_step);
-          if (timing.success) {
-            timing.rollout_records = std::move(rollout_records);
-          }
-          fill_loaded_pose_distance_metrics(timing);
-          extract_monitor_state_.timings[index] = std::move(timing);
+    const size_t worker_count = run_extract_monitor_candidate_tasks(
+      extract_monitor_state_,
+      extract_benchmark_extract_workers_,
+      [&](size_t index, const ik_benchmark::UpdownAwareIkCandidate& candidate) {
+        const auto state = robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_);
+        std::vector<nlohmann::json> rollout_records;
+        auto record_step = [&](size_t step, const moveit::core::RobotState& step_state, const nlohmann::json& extra) {
+          record_monitor_extract_replay_step(step, index, step_state, extra, &rollout_records);
+        };
+        auto timing = rollout_dual_extract_from_state(
+          state,
+          extract_monitor_state_.left_box,
+          extract_monitor_state_.left_box_id,
+          extract_monitor_state_.right_box,
+          extract_monitor_state_.right_box_id,
+          index,
+          candidate,
+          record_step);
+        if (timing.success) {
+          timing.rollout_records = std::move(rollout_records);
         }
+        if (loaded_pose_selector_) {
+          loaded_pose_selector_->fillTimingDistanceMetrics(timing);
+        }
+        return timing;
       });
-    }
-    for (auto& worker : workers) {
-      worker.join();
-    }
 
-    nlohmann::json records = nlohmann::json::array();
-    size_t success_count = 0;
-    std::map<std::string, size_t> failure_counts;
-    for (size_t i = 0; i < extract_monitor_state_.timings.size(); ++i) {
-      const auto& timing = extract_monitor_state_.timings[i];
-      if (timing.success && timing.final_state) {
-        records.push_back(monitor_timing_json(timing, success_count, *timing.final_state));
-        ++success_count;
-      } else {
-        failure_counts[timing.failure_reason.empty() ? "unknown" : timing.failure_reason]++;
-      }
-    }
-
-    nlohmann::json failure_json = nlohmann::json::object();
-    for (const auto& [reason, count_value] : failure_counts) {
-      failure_json[reason] = count_value;
-    }
+    const auto summary = summarize_extract_monitor_timings(extract_monitor_state_.timings);
+    const nlohmann::json records = extract_monitor_timing_records_json(
+      ExtractMonitorTimingRecordsRequest{
+        &extract_monitor_state_.timings,
+        summary.success_indices,
+        extract_monitor_state_.prefix,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        dual_arm_with_updown_joint_names(),
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        static_box_obstacles_json(),
+        [](const ExtractRolloutTiming& timing) { return timing.final_state; }});
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
     extract_monitor_last_stage_ms_ = elapsed_ms;
-    nlohmann::json snapshot = {
-      {"type", "extract_monitor_snapshot"},
-      {"phase", "extract_successes"},
-      {"phase_label", "抽离成功候选"},
-      {"elapsed_ms", elapsed_ms},
-      {"left_box_id", extract_monitor_state_.left_box_id},
-      {"right_box_id", extract_monitor_state_.right_box_id},
-      {"box_front_x", box_front_x_},
-      {"scene_y_shift", scene_y_shift_},
-      {"input_candidate_count", count},
-      {"success_count", success_count},
-      {"worker_count", worker_count},
-      {"failure_counts", failure_json},
-      {"records", records}
-    };
-    if (!write_extract_monitor_snapshot(snapshot)) {
-      return fail("extract monitor extract: failed to write snapshot");
-    }
-
-    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForLoaded;
-    std::ostringstream out;
-    out << "抽离阶段完成: success=" << success_count << "/" << count
-        << " workers=" << worker_count
-        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
-    *message = out.str();
-    return true;
+    const nlohmann::json snapshot = extract_monitor_extract_snapshot(
+      ExtractMonitorExtractSnapshotRequest{
+        elapsed_ms,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        box_front_x_,
+        scene_y_shift_,
+        count,
+        summary.success_count,
+        worker_count,
+        summary.failure_counts,
+        records});
+    return finish_extract_monitor_stage(
+      snapshot,
+      "extract monitor extract",
+      extract_monitor_extract_stage_message(
+      ExtractMonitorExtractStageMessageRequest{
+        summary.success_count,
+        count,
+        worker_count,
+        elapsed_ms,
+        extract_monitor_snapshot_path_}),
+      message);
   }
 
   bool run_extract_monitor_loaded_stage(std::string* message)
@@ -3644,103 +3034,155 @@ private:
           options)
       : LoadedPoseBatchPlanResult{};
 
-    nlohmann::json records = nlohmann::json::array();
-    size_t success_count = 0;
-    size_t attempted_count = 0;
-    std::map<std::string, size_t> failure_counts;
-    for (const auto index : batch.plan_indices) {
-      if (index >= extract_monitor_state_.timings.size()) {
-        continue;
-      }
-      const auto& timing = extract_monitor_state_.timings[index];
-      if (timing.loaded_plan_attempted) {
-        ++attempted_count;
-      }
-      if (timing.loaded_plan_attempted && timing.final_state && loaded_pose_selector_) {
-        moveit::core::RobotState record_state = timing.loaded_goal_state
-          ? *timing.loaded_goal_state
-          : loaded_pose_selector_->makeGoalState(*timing.final_state);
-        records.push_back(monitor_timing_json(timing, records.size(), record_state));
-      }
-      if (timing.loaded_plan_success && timing.final_state && loaded_pose_selector_) {
-        ++success_count;
-      } else if (timing.loaded_plan_attempted) {
-        failure_counts[timing.loaded_plan_failure_reason.empty() ? "unknown" : timing.loaded_plan_failure_reason]++;
-      }
-    }
-
-    nlohmann::json failure_json = nlohmann::json::object();
-    for (const auto& [reason, count_value] : failure_counts) {
-      failure_json[reason] = count_value;
-    }
+    const auto summary = summarize_loaded_plan_timings(extract_monitor_state_.timings, batch.plan_indices);
+    const nlohmann::json records = extract_monitor_timing_records_json(
+      ExtractMonitorTimingRecordsRequest{
+        &extract_monitor_state_.timings,
+        summary.attempted_indices,
+        extract_monitor_state_.prefix,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        dual_arm_with_updown_joint_names(),
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        static_box_obstacles_json(),
+        [this](const ExtractRolloutTiming& timing) -> moveit::core::RobotStatePtr {
+          if (!timing.loaded_plan_attempted || !timing.final_state || !loaded_pose_selector_) {
+            return {};
+          }
+          if (timing.loaded_goal_state) {
+            return std::make_shared<moveit::core::RobotState>(*timing.loaded_goal_state);
+          }
+          return std::make_shared<moveit::core::RobotState>(
+            loaded_pose_selector_->makeGoalState(*timing.final_state));
+        }});
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
     extract_monitor_last_stage_ms_ = elapsed_ms;
-    nlohmann::json snapshot = {
-      {"type", "extract_monitor_snapshot"},
-      {"phase", "loaded_plan_successes"},
-      {"phase_label", "负重规划成功候选"},
-      {"elapsed_ms", elapsed_ms},
-      {"left_box_id", extract_monitor_state_.left_box_id},
-      {"right_box_id", extract_monitor_state_.right_box_id},
-      {"box_front_x", box_front_x_},
-      {"scene_y_shift", scene_y_shift_},
-      {"extract_success_count", batch.plan_indices.size()},
-      {"attempted_count", attempted_count},
-      {"success_count", success_count},
-      {"loaded_plan_batch_wall_ms", batch.wall_ms},
-      {"loaded_parallel_workers", options.parallel_workers},
-      {"loaded_candidate_limit", options.candidate_limit},
-      {"failure_counts", failure_json},
-      {"records", records}
-    };
-    if (!write_extract_monitor_snapshot(snapshot)) {
-      return fail("extract monitor loaded: failed to write snapshot");
+    const nlohmann::json snapshot = extract_monitor_loaded_snapshot(
+      ExtractMonitorLoadedSnapshotRequest{
+        elapsed_ms,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        box_front_x_,
+        scene_y_shift_,
+        batch.plan_indices.size(),
+        summary.attempted_count,
+        summary.success_count,
+        batch.wall_ms,
+        options.parallel_workers,
+        options.candidate_limit,
+        summary.failure_counts,
+        records});
+    return finish_extract_monitor_stage(
+      snapshot,
+      "extract monitor loaded",
+      extract_monitor_loaded_stage_message(
+      ExtractMonitorLoadedStageMessageRequest{
+        summary.success_count,
+        summary.attempted_count,
+        batch.plan_indices.size(),
+        elapsed_ms,
+        extract_monitor_snapshot_path_}),
+      message);
+  }
+
+  bool extract_monitor_pre_attach_transition_is_smooth(const ExtractRolloutTiming& timing)
+  {
+    if (!extract_monitor_state_.loaded_start_state ||
+        extract_monitor_state_.candidate_states.empty()) {
+      return false;
+    }
+    const auto ik_state = extract_monitor_candidate_state_for_timing(extract_monitor_state_, timing);
+    if (!ik_state) {
+      return false;
+    }
+    auto plan = make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, *ik_state, 1.0);
+    std::string reason;
+    return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.loaded_start_state, {}, &reason);
+  }
+
+  ExtractRolloutTiming* select_extract_monitor_final_timing()
+  {
+    return alfa_robot::motion::select_extract_monitor_final_timing(
+      extract_monitor_state_.timings,
+      [this](const ExtractRolloutTiming& timing) {
+        return extract_monitor_pre_attach_transition_is_smooth(timing);
+      });
+  }
+
+  void ensure_selected_extract_replay_records(ExtractRolloutTiming& selected)
+  {
+    if (!selected.rollout_records.empty()) {
+      return;
+    }
+    const auto* candidate = extract_monitor_candidate_for_timing(extract_monitor_state_, selected);
+    auto start_state = extract_monitor_candidate_state_for_timing(extract_monitor_state_, selected);
+    if (!candidate || !start_state) {
+      return;
     }
 
-    extract_monitor_phase_ = ExtractMonitorPhase::ReadyForFinal;
-    std::ostringstream out;
-    out << "负重规划阶段完成: success=" << success_count
-        << " attempted=" << attempted_count
-        << " candidates=" << batch.plan_indices.size()
-        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
-    *message = out.str();
-    return true;
+    std::vector<nlohmann::json> rollout_records;
+    auto record_step = [&](size_t step, const moveit::core::RobotState& state, const nlohmann::json& extra) {
+      record_monitor_extract_replay_step(step, selected.candidate_order, state, extra, &rollout_records);
+    };
+    auto replay_timing = rollout_dual_extract_from_state(
+      *start_state,
+      extract_monitor_state_.left_box,
+      extract_monitor_state_.left_box_id,
+      extract_monitor_state_.right_box,
+      extract_monitor_state_.right_box_id,
+      selected.candidate_order,
+      *candidate,
+      record_step);
+    if (replay_timing.success) {
+      selected.rollout_records = std::move(rollout_records);
+    }
+  }
+
+  ExtractMonitorTransitionPlanner extract_monitor_transition_planner()
+  {
+    ExtractMonitorTransitionPlanner transition_planner;
+    transition_planner.make_interpolated_plan =
+      [this](const auto& start, const auto& goal, double duration_s) {
+        return make_interpolated_joint_plan(start, goal, duration_s);
+      };
+    transition_planner.densify_plan = [this](const auto& plan) {
+      return densify_joint_plan(plan, 5.0 * M_PI / 180.0, 0.01);
+    };
+    transition_planner.validate_plan = [this](const auto& plan, const auto& start, std::string* reason) {
+      return planned_trajectory_clear_in_full_scene(plan, start, {}, reason);
+    };
+    transition_planner.direct_plan = [this](const auto& start, const auto& goal, auto* plan, std::string* reason) {
+      return plan_joint_space_with_direct_pipeline(start, goal, plan, reason);
+    };
+    transition_planner.shortcut_plan = [this](const auto& plan, const auto& start, std::string* reason) {
+      return shortcut_joint_plan(plan, start, {}, reason);
+    };
+    return transition_planner;
+  }
+
+  nlohmann::json build_final_replay_stages(
+    ExtractRolloutTiming& selected,
+    const moveit::core::RobotState& ik_goal_state)
+  {
+    ExtractMonitorReplayBuilder builder;
+    builder.transition_planner = extract_monitor_transition_planner();
+    builder.ensure_extract_replay = [this](ExtractRolloutTiming& timing) {
+      ensure_selected_extract_replay_records(timing);
+    };
+
+    return builder.build(selected, make_extract_monitor_replay_request(
+      extract_monitor_state_,
+      dual_arm_with_updown_joint_names(),
+      static_box_obstacles_json(),
+      std::make_shared<moveit::core::RobotState>(ik_goal_state)));
   }
 
   bool run_extract_monitor_final_stage(std::string* message)
   {
     const auto stage_start = std::chrono::steady_clock::now();
-    ExtractRolloutTiming* selected = nullptr;
-    auto pre_attach_is_smooth = [&](const ExtractRolloutTiming& timing) {
-      if (!extract_monitor_state_.loaded_start_state ||
-          timing.candidate_order >= extract_monitor_state_.legal_candidates.size() ||
-          !extract_monitor_state_.seed_state) {
-        return false;
-      }
-      const auto ik_state = state_from_ik_candidate(
-        *extract_monitor_state_.seed_state,
-        extract_monitor_state_.legal_candidates[timing.candidate_order]);
-      auto plan = make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, ik_state, 1.0);
-      std::string reason;
-      return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.loaded_start_state, {}, &reason);
-    };
-
-    for (auto& timing : extract_monitor_state_.timings) {
-      if (timing.loaded_plan_success && pre_attach_is_smooth(timing)) {
-        selected = &timing;
-        break;
-      }
-    }
-    if (!selected) {
-      for (auto& timing : extract_monitor_state_.timings) {
-        if (timing.loaded_plan_success) {
-          selected = &timing;
-          break;
-        }
-      }
-    }
+    ExtractRolloutTiming* selected = select_extract_monitor_final_timing();
     if (!selected || !selected->final_state || !loaded_pose_selector_) {
       return fail("extract monitor final: no loaded-plan success to select");
     }
@@ -3748,183 +3190,46 @@ private:
     moveit::core::RobotState goal_state = selected->loaded_goal_state
       ? *selected->loaded_goal_state
       : loaded_pose_selector_->makeGoalState(*selected->final_state);
-    moveit::core::RobotState ik_goal_state = selected->candidate_order < extract_monitor_state_.legal_candidates.size() &&
-        extract_monitor_state_.seed_state
-      ? state_from_ik_candidate(
-          *extract_monitor_state_.seed_state,
-          extract_monitor_state_.legal_candidates[selected->candidate_order])
-      : *selected->final_state;
+    const auto ik_candidate_state = extract_monitor_candidate_state_for_timing(extract_monitor_state_, *selected);
+    moveit::core::RobotState ik_goal_state = ik_candidate_state ? *ik_candidate_state : *selected->final_state;
 
-    if (selected->rollout_records.empty() &&
-        selected->candidate_order < extract_monitor_state_.legal_candidates.size() &&
-        extract_monitor_state_.seed_state) {
-      std::vector<nlohmann::json> rollout_records;
-      auto record_step = [&](size_t step, const moveit::core::RobotState& state, const nlohmann::json& extra) {
-        trajectory_msgs::msg::JointTrajectory traj;
-        const auto names = arm_joint_target_names();
-        traj.joint_names = names;
-        trajectory_msgs::msg::JointTrajectoryPoint point;
-        point.time_from_start = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(step));
-        point.positions.reserve(names.size());
-        for (const auto& name : names) {
-          point.positions.push_back(state.getVariablePosition(name));
-        }
-        traj.points.push_back(point);
-
-        moveit::planning_interface::MoveGroupInterface::Plan plan;
-        plan.trajectory_.joint_trajectory = traj;
-
-        nlohmann::json enriched = extra;
-        enriched["stage_kind"] = "monitor_selected_extract_replay";
-        enriched["candidate_order"] = selected->candidate_order;
-        enriched["left_box_id"] = extract_monitor_state_.left_box_id;
-        enriched["right_box_id"] = extract_monitor_state_.right_box_id;
-        rollout_records.push_back(monitor_stage_json(
-          extract_monitor_state_.prefix + "/selected_extract_step_" + std::to_string(step),
-          plan,
-          state,
-          state,
-          names,
-          {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
-          enriched));
-      };
-      const auto& candidate = extract_monitor_state_.legal_candidates[selected->candidate_order];
-      auto replay_timing = rollout_dual_extract_from_state(
-        state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate),
-        extract_monitor_state_.left_box,
-        extract_monitor_state_.left_box_id,
-        extract_monitor_state_.right_box,
-        extract_monitor_state_.right_box_id,
-        selected->candidate_order,
-        candidate,
-        record_step);
-      if (replay_timing.success) {
-        selected->rollout_records = std::move(rollout_records);
-      }
-    }
-
-    nlohmann::json replay_stages = nlohmann::json::array();
-    if (extract_monitor_state_.loaded_start_state) {
-      const auto transition_t0 = std::chrono::steady_clock::now();
-      moveit::planning_interface::MoveGroupInterface::Plan transition_plan =
-        make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, ik_goal_state, 1.0);
-      transition_plan = densify_joint_plan(transition_plan, 5.0 * M_PI / 180.0, 0.01);
-      std::string transition_reason;
-      bool transition_ok =
-        planned_trajectory_clear_in_full_scene(
-          transition_plan, *extract_monitor_state_.loaded_start_state, {}, &transition_reason);
-      std::string transition_method = "joint_interpolation";
-      if (!transition_ok) {
-        transition_method = "rrt";
-        transition_reason.clear();
-        transition_ok = plan_joint_space_with_direct_pipeline(
-          *extract_monitor_state_.loaded_start_state, ik_goal_state, &transition_plan, &transition_reason);
-        if (transition_ok) {
-          std::string shortcut_reason;
-          transition_plan = shortcut_joint_plan(
-            transition_plan, *extract_monitor_state_.loaded_start_state, {}, &shortcut_reason);
-          transition_plan = densify_joint_plan(transition_plan, 5.0 * M_PI / 180.0, 0.01);
-          transition_ok = planned_trajectory_clear_in_full_scene(
-            transition_plan, *extract_monitor_state_.loaded_start_state, {}, &transition_reason);
-          if (!shortcut_reason.empty()) {
-            transition_reason = shortcut_reason + (transition_reason.empty() ? "" : "; " + transition_reason);
-          }
-        }
-      }
-      const double transition_ms = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - transition_t0).count();
-      nlohmann::json extra = {
-        {"stage_kind", "monitor_selected_pre_attach_loaded_to_ik_replay"},
-        {"valid", transition_ok},
-        {"method", transition_method},
-        {"transition_ms", transition_ms},
-        {"failure_reason", transition_ok ? "" : transition_reason},
-        {"candidate_order", selected->candidate_order},
-        {"loaded_plan_rank", selected->loaded_plan_rank},
-        {"left_box_id", extract_monitor_state_.left_box_id},
-        {"right_box_id", extract_monitor_state_.right_box_id}
-      };
-      replay_stages.push_back(monitor_stage_json(
-        extract_monitor_state_.prefix + "/selected_pre_attach_loaded_to_ik",
-        transition_plan,
-        *extract_monitor_state_.loaded_start_state,
-        ik_goal_state,
-        arm_joint_target_names(),
-        {},
-        extra));
-    }
-    for (const auto& stage : selected->rollout_records) {
-      replay_stages.push_back(stage);
-    }
-    for (const auto& shift_stage : selected->lateral_shift_replay_stages) {
-      if (!shift_stage.start_state || !shift_stage.goal_state) {
-        continue;
-      }
-      nlohmann::json extra = shift_stage.extra;
-      extra["candidate_order"] = selected->candidate_order;
-      extra["loaded_plan_rank"] = selected->loaded_plan_rank;
-      extra["left_box_id"] = extract_monitor_state_.left_box_id;
-      extra["right_box_id"] = extract_monitor_state_.right_box_id;
-      replay_stages.push_back(monitor_stage_json(
-        shift_stage.stage_name,
-        shift_stage.plan,
-        *shift_stage.start_state,
-        *shift_stage.goal_state,
-        arm_joint_target_names(),
-        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
-        extra));
-    }
-    if (selected->loaded_start_state && selected->loaded_goal_state &&
-        !selected->loaded_plan.trajectory_.joint_trajectory.points.empty()) {
-      nlohmann::json extra = {
-        {"stage_kind", "monitor_selected_loaded_plan_replay"},
-        {"valid", true},
-        {"candidate_order", selected->candidate_order},
-        {"loaded_plan_rank", selected->loaded_plan_rank},
-        {"loaded_plan_ms", selected->loaded_plan_ms},
-        {"loaded_plan_points", selected->loaded_plan_points},
-        {"loaded_plan_trajectory_distance", selected->loaded_plan_trajectory_distance},
-        {"moveit_attached_box_count", 2},
-        {"left_box_id", extract_monitor_state_.left_box_id},
-        {"right_box_id", extract_monitor_state_.right_box_id}
-      };
-      replay_stages.push_back(monitor_stage_json(
-        extract_monitor_state_.prefix + "/selected_loaded_plan",
-        selected->loaded_plan,
-        *selected->loaded_start_state,
-        *selected->loaded_goal_state,
-        arm_joint_target_names(),
-        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
-        extra));
-    }
+    const nlohmann::json replay_stages = build_final_replay_stages(*selected, ik_goal_state);
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
     extract_monitor_last_stage_ms_ = elapsed_ms;
-    nlohmann::json snapshot = {
-      {"type", "extract_monitor_snapshot"},
-      {"phase", "final_selected"},
-      {"phase_label", "最终采用方案"},
-      {"elapsed_ms", elapsed_ms},
-      {"left_box_id", extract_monitor_state_.left_box_id},
-      {"right_box_id", extract_monitor_state_.right_box_id},
-      {"box_front_x", box_front_x_},
-      {"scene_y_shift", scene_y_shift_},
-      {"records", nlohmann::json::array({monitor_timing_json(*selected, 0, goal_state)})},
-      {"replay_stages", replay_stages}
-    };
-    if (!write_extract_monitor_snapshot(snapshot)) {
-      return fail("extract monitor final: failed to write snapshot");
-    }
-
-    extract_monitor_phase_ = ExtractMonitorPhase::Done;
-    std::ostringstream out;
-    out << "最终方案已选择: candidate_order=" << selected->candidate_order
-        << " loaded_rank=" << selected->loaded_plan_rank
-        << " trajectory_distance=" << selected->loaded_plan_trajectory_distance
-        << " elapsed=" << elapsed_ms << "ms snapshot=" << extract_monitor_snapshot_path_;
-    *message = out.str();
-    return true;
+    const std::vector<ExtractRolloutTiming> selected_records{*selected};
+    const nlohmann::json final_records = extract_monitor_timing_records_json(
+      ExtractMonitorTimingRecordsRequest{
+        &selected_records,
+        {0},
+        extract_monitor_state_.prefix,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        dual_arm_with_updown_joint_names(),
+        {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
+        static_box_obstacles_json(),
+        [&goal_state](const ExtractRolloutTiming&) {
+          return std::make_shared<moveit::core::RobotState>(goal_state);
+        }});
+    const nlohmann::json snapshot = extract_monitor_final_snapshot(
+      ExtractMonitorFinalSnapshotRequest{
+        elapsed_ms,
+        extract_monitor_state_.left_box_id,
+        extract_monitor_state_.right_box_id,
+        box_front_x_,
+        scene_y_shift_,
+        final_records.empty() ? nlohmann::json::object() : final_records[0],
+        replay_stages});
+    return finish_extract_monitor_stage(
+      snapshot,
+      "extract monitor final",
+      extract_monitor_final_stage_message(
+      ExtractMonitorFinalStageMessageRequest{
+        selected,
+        elapsed_ms,
+        extract_monitor_snapshot_path_}),
+      message);
   }
 
   bool run_left_extract_demo()
@@ -3950,8 +3255,8 @@ private:
     const std::string prefix = "left_extract_demo_L" + std::to_string(left_box_id) +
                                "_R" + std::to_string(right_box_id);
 
-    const auto left_pose = front_grasp_pose(left_it->second);
-    const auto right_pose = front_grasp_pose(right_it->second);
+    const auto left_pose = make_front_grasp_pose(left_it->second, world_to_base_z_);
+    const auto right_pose = make_front_grasp_pose(right_it->second, world_to_base_z_);
 
     if (extract_demo_direct_grasp_start_) {
       auto seed_state = std::make_shared<moveit::core::RobotState>(robot_model_);
@@ -4194,6 +3499,7 @@ private:
   std::string record_jsonl_path_;
   bool record_trajectories_ = true;
   std::string extract_monitor_snapshot_path_;
+  ExtractMonitorSnapshotWriter extract_monitor_snapshot_writer_;
   int max_rounds_ = 10;
   int planning_attempts_ = 8;
   std::vector<double> left_pregrasp_arm_;
@@ -4229,31 +3535,7 @@ private:
   std::unique_ptr<OptimizedDualIkSolver> optimized_dual_ik_solver_;
   std::unique_ptr<MotionFlowRecorder> recorder_;
 
-  enum class ExtractMonitorPhase
-  {
-    ReadyForIk,
-    ReadyForExtract,
-    ReadyForLoaded,
-    ReadyForFinal,
-    Done,
-  };
-
-  struct ExtractMonitorState
-  {
-    int left_box_id = 0;
-    int right_box_id = 0;
-    std::string prefix;
-    AttachedBoxSpec left_box;
-    AttachedBoxSpec right_box;
-    moveit::core::RobotStatePtr seed_state;
-    moveit::core::RobotStatePtr loaded_start_state;
-    ik_benchmark::UpdownAwareIkResult ik_result;
-    std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
-    std::vector<moveit::core::RobotStatePtr> candidate_states;
-    std::vector<ExtractRolloutTiming> timings;
-  };
-
-  ExtractMonitorPhase extract_monitor_phase_ = ExtractMonitorPhase::ReadyForIk;
+  ExtractMonitorController extract_monitor_controller_;
   ExtractMonitorState extract_monitor_state_;
   std::mutex extract_monitor_mutex_;
   double extract_monitor_last_stage_ms_ = 0.0;

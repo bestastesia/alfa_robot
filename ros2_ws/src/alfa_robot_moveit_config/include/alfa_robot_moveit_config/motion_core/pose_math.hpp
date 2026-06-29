@@ -4,6 +4,8 @@
 #include <Eigen/Geometry>
 #include <nlohmann/json.hpp>
 
+#include "robot_motion_scene_service/motion_core/task_geometry.hpp"
+
 #include <string>
 #include <vector>
 
@@ -39,6 +41,16 @@ geometry_msgs::msg::Pose make_pose(
   const Eigen::Quaterniond& quat);
 
 geometry_msgs::msg::Pose make_identity_pose(double x, double y, double z);
+
+geometry_msgs::msg::Pose make_front_grasp_pose(
+  const BoxSpec& box,
+  double world_to_base_z);
+
+geometry_msgs::msg::Pose make_top_suction_pose(
+  const BoxSpec& box,
+  double world_to_base_z,
+  double x_offset,
+  double z_offset);
 
 Eigen::Isometry3d pose_to_eigen(const geometry_msgs::msg::Pose& pose);
 

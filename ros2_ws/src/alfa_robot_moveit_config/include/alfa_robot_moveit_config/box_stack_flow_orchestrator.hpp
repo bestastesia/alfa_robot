@@ -1,6 +1,6 @@
 #pragma once
 
-#include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
+#include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 
 #include <functional>
 #include <string>

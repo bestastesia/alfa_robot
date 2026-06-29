@@ -1,8 +1,8 @@
 #pragma once
 
 #include "alfa_robot_moveit_config/loaded_pose_planning.hpp"
-#include "alfa_robot_moveit_config/motion_core/scene_geometry.hpp"
-#include "alfa_robot_moveit_config/motion_core/task_geometry.hpp"
+#include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
+#include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
 #include "ik_benchmark/parallel_updown_aware_ik_solver.h"
 

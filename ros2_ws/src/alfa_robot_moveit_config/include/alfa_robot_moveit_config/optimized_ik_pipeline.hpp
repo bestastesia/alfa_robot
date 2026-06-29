@@ -42,6 +42,9 @@ struct OptimizedDualIkSolverConfig
   double fallback_updown = 0.0;
 };
 
+nlohmann::json ik_candidate_rejection_counts_json(
+  const ik_benchmark::UpdownAwareIkResult& result);
+
 class OptimizedDualIkSolver
 {
 public:
@@ -60,9 +63,6 @@ public:
     const std::vector<std::string>& names) const;
 
   double currentUpdown(const moveit::core::RobotState& state) const;
-
-  nlohmann::json candidateRejectionCountsJson(
-    const ik_benchmark::UpdownAwareIkResult& result) const;
 
   nlohmann::json resultJson(
     const ik_benchmark::UpdownAwareIkResult& result,
@@ -92,6 +92,11 @@ struct IkCandidateSelectionStats
   double elapsed_ms = 0.0;
 };
 
+moveit::core::RobotState robot_state_from_ik_candidate(
+  const moveit::core::RobotState& seed_state,
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const moveit::core::JointModelGroup* enforce_bounds_group = nullptr);
+
 class IkCandidateSelector
 {
 public:
@@ -101,6 +106,10 @@ public:
 
   std::vector<ik_benchmark::UpdownAwareIkCandidate> select(
     const std::vector<ik_benchmark::UpdownAwareIkCandidate>& sorted_legal_candidates,
+    IkCandidateSelectionStats* stats = nullptr) const;
+
+  std::vector<ik_benchmark::UpdownAwareIkCandidate> selectLegalFromResult(
+    const ik_benchmark::UpdownAwareIkResult& result,
     IkCandidateSelectionStats* stats = nullptr) const;
 
 private:
