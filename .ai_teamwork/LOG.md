@@ -1112,3 +1112,21 @@
 - 改了哪里：核心新增/调整包括 `ros2_ws/src/robot_motion_scene_service/`、`ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`、`ros2_ws/src/alfa_robot_moveit_config/include/alfa_robot_moveit_config/*`、`docs/运控/MOTION_PIPELINE_REFACTOR.md`。
 - 验证结果：`colcon build --packages-select robot_motion_scene_service alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`robot_motion_scene_service` 1/1 单测通过；`alfa_robot_moveit_config` 11/11 单测通过；L6/R8 monitor full-selected 烟测成功，功能链路可跑通。
 - 留给下个 AI：`DualArmPlannerNode` 仍约 3578 行，保留 ROS 参数、MoveIt 后端、碰撞判定和 callback 装配；不要继续往节点堆算法。L6/R8 烟测负重 RRT 阶段仍有随机耗时波动，曾出现约 3.8s 和约 14s 两类样本，属于 MoveIt/RRT 候选规划波动，不是本轮重构的确定性接口失败。迁移到新仓库时优先迁移 `robot_motion_scene_service`，再迁移 IK/抽离/负重模块，`dual_arm_planner_node.cpp` 只作包装参考。
+
+## 2026-06-30 Codex / 环境依赖 / rosdep 构建依赖修正
+- 做了什么：排查用户 `rosdep install --from-paths src --ignore-src -r -y` 失败；确认 `ament_python` 和 `nlohmann_json` 是错误/不适配的 rosdep key，`warehouse_ros_mongo` 在 Humble 二进制源中不可用且只属于可选 MoveIt warehouse 后端。
+- 改了哪里：`box_perception`、`alfa_robot_rerun`、`alfa_robot_execution_bridge` 的 `package.xml` 将 `buildtool_depend` 从 `ament_python` 改为 `ament_cmake_python`；`alfa_robot_moveit_config/package.xml` 将 `nlohmann_json` rosdep 依赖改为 `nlohmann-json-dev`，并移除默认 `warehouse_ros_mongo` exec depend，保留注释说明其为可选后端。
+- 验证结果：`rosdep install --from-paths ros2_ws/src --ignore-src -r -y --simulate` 已不再有 unresolved rosdep key，仅提示需安装 `nlohmann-json3-dev`；前序 `pick_ik` 构建还需要系统包 `librange-v3-dev`。
+- 留给下个 AI：实际机器上执行 `sudo apt install -y nlohmann-json3-dev librange-v3-dev` 后再重新 `colcon build`；如确实需要 MoveIt warehouse 数据库功能，再单独源码引入/安装 warehouse backend，不要让默认 rosdep 被 `warehouse_ros_mongo` 卡住。
+
+## 2026-06-30 Codex / 构建修复 / moveit_config 安装脚本列表
+- 做了什么：排查 `alfa_robot_moveit_config` 安装阶段找不到 `scripts/mujoco_digital_twin.py` 的失败；确认该脚本和 `run_extract_live_benchmark.py` 在当前 HEAD 中不存在，但仍残留在 `CMakeLists.txt` 安装列表。
+- 改了哪里：`alfa_robot_moveit_config/CMakeLists.txt` 删除两个不存在脚本的 install 条目；`mujoco_digital_twin.launch.py` 改为调用现有 `mujoco_sync_bridge.py`，并使用其实际支持的 `--rate` 参数。
+- 验证结果：安装列表中已无不存在的脚本；清理旧 `build/install` 中该包缓存后，`colcon build --packages-select alfa_robot_moveit_config` 通过。
+- 留给下个 AI：如果旧 build 目录报 `ament_cmake_python` symlink 被目录挡住，删除 `ros2_ws/build/alfa_robot_moveit_config` 和 `ros2_ws/install/alfa_robot_moveit_config` 后重建即可；这是缓存形态切换问题，不是源码缺包。
+
+## 2026-07-02 运控 / Codex / 双臂箱垛执行阶段预规划
+- 做了什么：在 `dual_arm_planner_node` 中加入执行阶段 lookahead：当前轮 `loaded` 轨迹执行窗口内提前规划本轮 `return_pregrasp`，并提前计算下一轮抓取的 `pregrasp` 与 `grasp_ik` 轨迹。
+- 改了哪里：`ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp` 新增 lookahead pipeline、异步缓存、缓存命中校验与回退逻辑；`dual_arm_planner.launch.py` 新增 `lookahead_return_pregrasp_enabled`、`lookahead_next_pick_enabled`；新增说明 `ros2_ws/src/alfa_robot_moveit_config/docs/execution_stage_lookahead.md`。
+- 验证结果：`cmake --build build/alfa_robot_moveit_config --target dual_arm_planner_node -j2` 通过；`cmake --install build/alfa_robot_moveit_config --prefix install/alfa_robot_moveit_config` 通过；两轮测试 `lookahead_return_pregrasp_enabled:=true lookahead_next_pick_enabled:=true` 成功，日志命中 `started next_pick`、`using next_pick pregrasp/grasp` 并 `Box-stack flow finished`。测试样本中下一轮隐藏计算量约 `1401.8ms`，其中 IK `1310.9ms`、grasp plan `90.4ms`。
+- 留给下个 AI：功能默认关闭，测试需显式打开两个 lookahead 开关；缓存命中前会校验预测状态，不匹配会回退串行规划。当前 fake/mock 环境仍有 `/joint_states` 时间戳为 0 导致的 `Failed to fetch current robot state` 告警，但本次流程依赖 last commanded state 可跑通；实机前建议修 joint state 时间戳。

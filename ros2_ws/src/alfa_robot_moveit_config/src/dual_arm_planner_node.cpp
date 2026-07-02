@@ -44,6 +44,7 @@
 #include <moveit/collision_detection/collision_common.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <shape_msgs/msg/solid_primitive.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
 #include <Eigen/Geometry>
@@ -54,6 +55,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <limits>
 #include <map>
 #include <memory>
@@ -247,6 +249,12 @@ void attach_boxes_to_robot_state(
   state.update(true);
 }
 
+bool ends_with(const std::string& value, const std::string& suffix)
+{
+  return value.size() >= suffix.size() &&
+         value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 }  // namespace
 
 class DualArmPlannerNode : public rclcpp::Node
@@ -290,6 +298,10 @@ public:
     acceleration_scale_ = get_or_declare_parameter<double>("acceleration_scale", 1.0);
     joint_goal_tolerance_rad_ = get_or_declare_parameter<double>("joint_goal_tolerance_rad", 0.02);
     state_wait_timeout_s_ = get_or_declare_parameter<double>("state_wait_timeout_s", 2.0);
+    lookahead_return_pregrasp_enabled_ =
+      get_or_declare_parameter<bool>("lookahead_return_pregrasp_enabled", false);
+    lookahead_next_pick_enabled_ =
+      get_or_declare_parameter<bool>("lookahead_next_pick_enabled", false);
     record_jsonl_path_ = get_or_declare_parameter<std::string>(
       "record_jsonl_path", "/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/moveit_box_stack_flow/moveit_box_stack_flow.jsonl");
     record_trajectories_ = get_or_declare_parameter<bool>("record_trajectories", true);
@@ -543,8 +555,8 @@ public:
       planning_scene_monitor_->requestPlanningSceneState();
     }
 
-    if (extract_loaded_use_direct_pipeline_) {
-      const std::vector<std::string> request_adapters = {
+    auto make_default_request_adapters = []() {
+      return std::vector<std::string>{
         "default_planner_request_adapters/AddTimeOptimalParameterization",
         "default_planner_request_adapters/ResolveConstraintFrames",
         "default_planner_request_adapters/FixWorkspaceBounds",
@@ -552,8 +564,11 @@ public:
         "default_planner_request_adapters/FixStartStateCollision",
         "default_planner_request_adapters/FixStartStatePathConstraints",
       };
+    };
+
+    if (extract_loaded_use_direct_pipeline_) {
       loaded_planning_pipeline_ = std::make_shared<planning_pipeline::PlanningPipeline>(
-        robot_model_, shared_from_this(), "ompl", "ompl_interface/OMPLPlanner", request_adapters);
+        robot_model_, shared_from_this(), "ompl", "ompl_interface/OMPLPlanner", make_default_request_adapters());
       loaded_planning_pipeline_->displayComputedMotionPlans(false);
       loaded_planning_pipeline_->publishReceivedRequests(false);
       loaded_planning_pipeline_->checkSolutionPaths(true);
@@ -564,6 +579,22 @@ public:
         extract_loaded_parallel_workers_,
         extract_loaded_planning_attempts_,
         extract_loaded_planning_time_);
+    }
+
+    if (lookahead_return_pregrasp_enabled_ || lookahead_next_pick_enabled_) {
+      lookahead_planning_pipeline_ = std::make_shared<planning_pipeline::PlanningPipeline>(
+        robot_model_, shared_from_this(), "ompl", "ompl_interface/OMPLPlanner", make_default_request_adapters());
+      lookahead_planning_pipeline_->displayComputedMotionPlans(false);
+      lookahead_planning_pipeline_->publishReceivedRequests(false);
+      lookahead_planning_pipeline_->checkSolutionPaths(true);
+      RCLCPP_INFO(
+        get_logger(),
+        "Lookahead planning pipeline ready: plugin=%s attempts=%d time=%.3fs return_pregrasp=%s next_pick=%s",
+        lookahead_planning_pipeline_->getPlannerPluginName().c_str(),
+        planning_attempts_,
+        planning_time_,
+        lookahead_return_pregrasp_enabled_ ? "true" : "false",
+        lookahead_next_pick_enabled_ ? "true" : "false");
     }
 
     scene_adapter_ = std::make_unique<MotionSceneAdapter>(motion_scene_adapter_config());
@@ -675,6 +706,40 @@ public:
   }
 
 private:
+  struct ReturnPregraspLookaheadPlan
+  {
+    bool success = false;
+    std::string stage_name;
+    std::string failure_reason;
+    double wall_ms = 0.0;
+    moveit::planning_interface::MoveGroupInterface::Plan plan;
+    moveit::core::RobotStatePtr expected_start;
+    moveit::core::RobotStatePtr expected_goal;
+    std::vector<std::string> target_names;
+  };
+
+  struct NextPickLookaheadPlan
+  {
+    bool success = false;
+    int round = 0;
+    int left_box_id = 0;
+    int right_box_id = 0;
+    bool top_suction = false;
+    std::string prefix;
+    std::string failure_reason;
+    double wall_ms = 0.0;
+    double ik_wall_ms = 0.0;
+    double pregrasp_plan_ms = 0.0;
+    double grasp_plan_ms = 0.0;
+    moveit::planning_interface::MoveGroupInterface::Plan pregrasp_plan;
+    moveit::planning_interface::MoveGroupInterface::Plan grasp_plan;
+    moveit::core::RobotStatePtr expected_pregrasp_start;
+    moveit::core::RobotStatePtr pregrasp_goal;
+    moveit::core::RobotStatePtr grasp_goal;
+    std::vector<std::string> target_names;
+    nlohmann::json grasp_extra = nlohmann::json::object();
+  };
+
   template<typename T>
   T get_or_declare_parameter(const std::string& name, const T& default_value)
   {
@@ -1611,7 +1676,17 @@ private:
   {
     auto scene_snapshot = make_full_scene_snapshot(start_state, attached_boxes);
     if (!scene_snapshot) return true;
+    return planned_trajectory_clear_in_scene(plan, start_state, attached_boxes, scene_snapshot, reason);
+  }
 
+  bool planned_trajectory_clear_in_scene(
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& start_state,
+    const std::vector<AttachedBoxSpec>& attached_boxes,
+    const planning_scene::PlanningSceneConstPtr& scene_snapshot,
+    std::string* reason) const
+  {
+    if (!scene_snapshot) return true;
     const auto& trajectory = plan.trajectory_.joint_trajectory;
     for (size_t point_index = 0; point_index < trajectory.points.size(); ++point_index) {
       moveit::core::RobotState state(start_state);
@@ -1863,6 +1938,664 @@ private:
     return true;
   }
 
+  planning_pipeline::PlanningPipelinePtr ensure_lookahead_planning_pipeline()
+  {
+    if (lookahead_planning_pipeline_) return lookahead_planning_pipeline_;
+    const std::vector<std::string> request_adapters = {
+      "default_planner_request_adapters/AddTimeOptimalParameterization",
+      "default_planner_request_adapters/ResolveConstraintFrames",
+      "default_planner_request_adapters/FixWorkspaceBounds",
+      "default_planner_request_adapters/FixStartStateBounds",
+      "default_planner_request_adapters/FixStartStateCollision",
+      "default_planner_request_adapters/FixStartStatePathConstraints",
+    };
+    lookahead_planning_pipeline_ = std::make_shared<planning_pipeline::PlanningPipeline>(
+      robot_model_, shared_from_this(), "ompl", "ompl_interface/OMPLPlanner", request_adapters);
+    lookahead_planning_pipeline_->displayComputedMotionPlans(false);
+    lookahead_planning_pipeline_->publishReceivedRequests(false);
+    lookahead_planning_pipeline_->checkSolutionPaths(true);
+    return lookahead_planning_pipeline_;
+  }
+
+  bool plan_lookahead_joint_space(
+    const std::string& stage_name,
+    const moveit::core::RobotState& start_state,
+    const moveit::core::RobotState& goal_state,
+    const std::vector<std::string>& detached_box_ids,
+    const std::optional<std::pair<int, int>>& static_wall_opening,
+    moveit::planning_interface::MoveGroupInterface::Plan* plan,
+    std::string* reason)
+  {
+    if (!plan) {
+      if (reason) *reason = "lookahead_plan_output_null";
+      return false;
+    }
+    planning_pipeline::PlanningPipelinePtr pipeline;
+    {
+      std::lock_guard<std::mutex> lock(lookahead_pipeline_mutex_);
+      pipeline = ensure_lookahead_planning_pipeline();
+    }
+    if (!pipeline) {
+      if (reason) *reason = "lookahead_pipeline_not_initialized";
+      return false;
+    }
+    if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+      if (reason) *reason = "lookahead_planning_scene_not_initialized";
+      return false;
+    }
+    const auto* group = robot_model_->getJointModelGroup(planning_group_);
+    if (!group) {
+      if (reason) *reason = "lookahead_missing_group_" + planning_group_;
+      return false;
+    }
+
+    planning_scene::PlanningScenePtr scene_snapshot;
+    {
+      planning_scene_monitor::LockedPlanningSceneRO locked_scene(planning_scene_monitor_);
+      if (!locked_scene) {
+        if (reason) *reason = "lookahead_planning_scene_lock_failed";
+        return false;
+      }
+      scene_snapshot = planning_scene::PlanningScene::clone(
+        static_cast<const planning_scene::PlanningSceneConstPtr&>(locked_scene));
+    }
+    scene_snapshot->setCurrentState(start_state);
+    remove_carried_boxes_from_scene_snapshot(*scene_snapshot, detached_box_ids);
+    if (scene_adapter_) {
+      scene_adapter_->applyToPlanningSceneSnapshot(*scene_snapshot, {});
+      scene_snapshot->setCurrentState(start_state);
+    }
+    if (static_wall_opening) {
+      apply_static_box_wall_opening_to_scene_snapshot(
+        *scene_snapshot,
+        static_wall_opening->first,
+        static_wall_opening->second);
+      scene_snapshot->setCurrentState(start_state);
+    }
+
+    planning_interface::MotionPlanRequest request;
+    request.group_name = planning_group_;
+    request.allowed_planning_time = planning_time_;
+    request.num_planning_attempts = planning_attempts_;
+    request.max_velocity_scaling_factor = velocity_scale_;
+    request.max_acceleration_scaling_factor = acceleration_scale_;
+    moveit::core::robotStateToRobotStateMsg(start_state, request.start_state, true);
+    request.goal_constraints.push_back(
+      kinematic_constraints::constructGoalConstraints(goal_state, group, joint_goal_tolerance_rad_));
+
+    planning_interface::MotionPlanResponse response;
+    bool generated = false;
+    {
+      std::lock_guard<std::mutex> lock(lookahead_pipeline_mutex_);
+      generated = pipeline->generatePlan(scene_snapshot, request, response);
+    }
+    if (!generated || response.error_code_.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS ||
+        !response.trajectory_) {
+      if (reason) {
+        *reason = "lookahead_planning_failed_code_" +
+          std::to_string(response.error_code_.val) + " " +
+          direct_pipeline_failure_diagnostic(scene_snapshot, start_state, goal_state, group);
+      }
+      return false;
+    }
+
+    moveit::core::robotStateToRobotStateMsg(start_state, plan->start_state_, true);
+    response.trajectory_->getRobotTrajectoryMsg(plan->trajectory_);
+    plan->planning_time_ = response.planning_time_;
+    if (plan->trajectory_.joint_trajectory.points.empty()) {
+      if (reason) *reason = "lookahead_empty_trajectory";
+      return false;
+    }
+
+    std::string clear_reason;
+    if (!planned_trajectory_clear_in_scene(*plan, start_state, {}, scene_snapshot, &clear_reason)) {
+      if (reason) *reason = "lookahead full-scene check failed (" + clear_reason + ")";
+      return false;
+    }
+    (void)stage_name;
+    return true;
+  }
+
+  static bool parse_round_from_stage_name(const std::string& stage_name, int* round)
+  {
+    if (!round) return false;
+    const std::string prefix = "round_";
+    if (stage_name.rfind(prefix, 0) != 0) return false;
+    const auto end = stage_name.find('_', prefix.size());
+    if (end == std::string::npos || end == prefix.size()) return false;
+    try {
+      *round = std::stoi(stage_name.substr(prefix.size(), end - prefix.size()));
+    } catch (const std::exception&) {
+      return false;
+    }
+    return true;
+  }
+
+  std::optional<PickPair> next_pick_pair_after_round(int round) const
+  {
+    const auto pairs = make_pick_pairs(include_top_suction_, extract_demo_pair_sequence_);
+    const int rounds_to_run = std::min<int>(
+      std::max(1, max_rounds_),
+      static_cast<int>(pairs.size()));
+    for (int i = 0; i < rounds_to_run; ++i) {
+      const auto& pair = pairs[static_cast<size_t>(i)];
+      if (pair.round == round && (i + 1) < rounds_to_run) {
+        return pairs[static_cast<size_t>(i + 1)];
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::string pair_prefix(const PickPair& pair) const
+  {
+    return "round_" + std::to_string(pair.round) +
+      "_L" + std::to_string(pair.left_box) +
+      "_R" + std::to_string(pair.right_box);
+  }
+
+  sensor_msgs::msg::JointState pregrasp_joint_target() const
+  {
+    return make_dual_arm_joint_target(fixed_updown_, left_pregrasp_arm_, right_pregrasp_arm_);
+  }
+
+  moveit::core::RobotState make_joint_goal_state(
+    const moveit::core::RobotState& start_state,
+    const sensor_msgs::msg::JointState& target) const
+  {
+    moveit::core::RobotState goal_state(start_state);
+    for (size_t i = 0; i < target.name.size() && i < target.position.size(); ++i) {
+      if (is_robot_variable(target.name[i])) {
+        goal_state.setVariablePosition(target.name[i], target.position[i]);
+      }
+    }
+    goal_state.enforceBounds(joint_group_);
+    goal_state.update(true);
+    return goal_state;
+  }
+
+  bool make_grasp_poses_for_pair(
+    const PickPair& pair,
+    geometry_msgs::msg::Pose* left_pose,
+    geometry_msgs::msg::Pose* right_pose,
+    std::string* reason) const
+  {
+    if (!left_pose || !right_pose) {
+      if (reason) *reason = "grasp_pose_output_null";
+      return false;
+    }
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
+    const auto left_it = boxes.find(pair.left_box);
+    const auto right_it = boxes.find(pair.right_box);
+    if (left_it == boxes.end() || right_it == boxes.end()) {
+      if (reason) *reason = "unknown_box_id";
+      return false;
+    }
+    *left_pose = pair.top_suction
+      ? make_top_suction_pose(left_it->second, world_to_base_z_, top_suction_x_offset_, top_suction_z_offset_)
+      : make_front_grasp_pose(left_it->second, world_to_base_z_);
+    *right_pose = pair.top_suction
+      ? make_top_suction_pose(right_it->second, world_to_base_z_, top_suction_x_offset_, top_suction_z_offset_)
+      : make_front_grasp_pose(right_it->second, world_to_base_z_);
+    return true;
+  }
+
+  void remove_box_wall_obstacles_from_scene_snapshot(planning_scene::PlanningScene& scene) const
+  {
+    const auto& world = scene.getWorld();
+    if (!world) return;
+    for (const auto& id : world->getObjectIds()) {
+      if (id.rfind("box_wall_", 0) != 0) continue;
+      moveit_msgs::msg::CollisionObject remove;
+      remove.header.frame_id = container_frame_;
+      remove.id = id;
+      remove.operation = moveit_msgs::msg::CollisionObject::REMOVE;
+      scene.processCollisionObjectMsg(remove);
+    }
+  }
+
+  void apply_static_box_wall_opening_to_scene_snapshot(
+    planning_scene::PlanningScene& scene,
+    int left_box_id,
+    int right_box_id) const
+  {
+    remove_box_wall_obstacles_from_scene_snapshot(scene);
+    if (!enable_static_box_obstacles_) return;
+    const auto obstacles = make_static_box_wall_obstacles_for_opening(left_box_id, right_box_id);
+    for (const auto& obstacle : obstacles) {
+      moveit_msgs::msg::CollisionObject object;
+      object.header.frame_id = container_frame_;
+      object.id = obstacle.id;
+      object.operation = moveit_msgs::msg::CollisionObject::ADD;
+      shape_msgs::msg::SolidPrimitive primitive;
+      primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+      primitive.dimensions = {obstacle.size[0], obstacle.size[1], obstacle.size[2]};
+      object.primitives.push_back(primitive);
+      object.primitive_poses.push_back(make_identity_pose(
+        obstacle.center[0],
+        obstacle.center[1],
+        obstacle.center[2]));
+      scene.processCollisionObjectMsg(object);
+    }
+  }
+
+  void start_return_pregrasp_lookahead(
+    const std::string& loaded_stage_name,
+    const moveit::core::RobotState& loaded_goal_state,
+    const moveit::core::RobotState& predicted_pregrasp_state,
+    const std::vector<std::string>& return_target_names)
+  {
+    if (!lookahead_return_pregrasp_enabled_ || !execute_) return;
+    if (!ends_with(loaded_stage_name, "/loaded")) return;
+
+    wait_for_return_pregrasp_lookahead();
+
+    const auto loaded_attached_box_ids = attached_box_ids(active_attached_boxes());
+    auto start_state = std::make_shared<moveit::core::RobotState>(loaded_goal_state);
+    detach_carried_boxes_from_state(*start_state, loaded_attached_box_ids);
+    auto goal_state = std::make_shared<moveit::core::RobotState>(predicted_pregrasp_state);
+    detach_carried_boxes_from_state(*goal_state, loaded_attached_box_ids);
+
+    const std::string return_stage_name =
+      loaded_stage_name.substr(0, loaded_stage_name.size() - std::string("/loaded").size()) +
+      "/return_pregrasp";
+    auto target_names = return_target_names;
+    if (target_names.empty()) {
+      target_names = dual_arm_with_updown_joint_names();
+    }
+
+    lookahead_future_ = std::async(
+      std::launch::async,
+      [this, return_stage_name, start_state, goal_state, target_names, loaded_attached_box_ids]() {
+        ReturnPregraspLookaheadPlan result;
+        result.stage_name = return_stage_name;
+        result.expected_start = start_state;
+        result.expected_goal = goal_state;
+        result.target_names = target_names;
+        const auto begin = std::chrono::steady_clock::now();
+        result.success = plan_lookahead_joint_space(
+          return_stage_name,
+          *start_state,
+          *goal_state,
+          loaded_attached_box_ids,
+          std::nullopt,
+          &result.plan,
+          &result.failure_reason);
+        result.wall_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - begin).count();
+        return result;
+    });
+    RCLCPP_INFO(get_logger(), "[%s] started return_pregrasp lookahead", loaded_stage_name.c_str());
+  }
+
+  bool build_next_pick_lookahead(
+    const PickPair& next_pair,
+    const moveit::core::RobotState& pregrasp_start_state,
+    NextPickLookaheadPlan* result)
+  {
+    if (!result) return false;
+    result->round = next_pair.round;
+    result->left_box_id = next_pair.left_box;
+    result->right_box_id = next_pair.right_box;
+    result->top_suction = next_pair.top_suction;
+    result->prefix = pair_prefix(next_pair);
+    result->expected_pregrasp_start =
+      std::make_shared<moveit::core::RobotState>(pregrasp_start_state);
+    result->target_names = dual_arm_with_updown_joint_names();
+
+    const auto target = pregrasp_joint_target();
+    result->pregrasp_goal = std::make_shared<moveit::core::RobotState>(
+      make_joint_goal_state(pregrasp_start_state, target));
+    result->pregrasp_plan = single_state_plan(
+      *result->pregrasp_goal,
+      target.name,
+      0.0);
+    moveit::core::robotStateToRobotStateMsg(pregrasp_start_state, result->pregrasp_plan.start_state_, true);
+
+    geometry_msgs::msg::Pose left_pose;
+    geometry_msgs::msg::Pose right_pose;
+    if (!make_grasp_poses_for_pair(next_pair, &left_pose, &right_pose, &result->failure_reason)) {
+      return false;
+    }
+    if (!optimized_dual_ik_solver_ || !optimized_dual_ik_solver_->ready()) {
+      result->failure_reason = "optimized IK solver is not initialized";
+      return false;
+    }
+
+    const auto ik_begin = std::chrono::steady_clock::now();
+    const auto solved = optimized_dual_ik_solver_->solve(
+      OptimizedDualIkSolveRequest{
+        result->prefix + "/grasp_ik",
+        left_pose,
+        right_pose,
+        next_pair.top_suction,
+        result->pregrasp_goal.get()},
+      "optimized_dual_tip_ik_lookahead");
+    result->ik_wall_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - ik_begin).count();
+    result->grasp_extra = solved.extra;
+    if (!solved.success || !solved.goal_state) {
+      result->failure_reason = solved.failure_reason;
+      return false;
+    }
+    if (!is_state_valid(*solved.goal_state, check_goal_collision_)) {
+      result->failure_reason = "selected IK state out of bounds or colliding";
+      return false;
+    }
+    result->grasp_goal = solved.goal_state;
+
+    std::string plan_reason;
+    const auto plan_begin = std::chrono::steady_clock::now();
+    if (!plan_lookahead_joint_space(
+          result->prefix + "/grasp_ik",
+          *result->pregrasp_goal,
+          *result->grasp_goal,
+          {},
+          std::make_pair(next_pair.left_box, next_pair.right_box),
+          &result->grasp_plan,
+          &plan_reason)) {
+      result->failure_reason = plan_reason;
+      return false;
+    }
+    result->grasp_plan_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - plan_begin).count();
+    result->success = true;
+    return true;
+  }
+
+  bool discard_next_pick_lookahead_locked()
+  {
+    next_pick_lookahead_plan_.reset();
+    return false;
+  }
+
+  bool consume_next_pick_pregrasp_lookahead(
+    const std::string& stage_name,
+    const moveit::core::RobotState& current_start_state,
+    const moveit::core::RobotState& goal_state,
+    const std::vector<std::string>& target_names)
+  {
+    if (!lookahead_next_pick_enabled_ || !execute_) return false;
+    if (!ends_with(stage_name, "/pregrasp")) return false;
+
+    wait_for_next_pick_lookahead();
+    NextPickLookaheadPlan cached;
+    {
+      std::lock_guard<std::mutex> lock(lookahead_mutex_);
+      if (!next_pick_lookahead_plan_ ||
+          next_pick_lookahead_plan_->prefix + "/pregrasp" != stage_name) {
+        return false;
+      }
+      cached = *next_pick_lookahead_plan_;
+      if (!cached.success || !cached.expected_pregrasp_start || !cached.pregrasp_goal) {
+        RCLCPP_WARN(
+          get_logger(),
+          "[%s] next_pick pregrasp lookahead unavailable: %s",
+          stage_name.c_str(),
+          cached.failure_reason.c_str());
+        return discard_next_pick_lookahead_locked();
+      }
+      if (!robot_state_matches(*cached.expected_pregrasp_start, current_start_state, target_names) ||
+          !robot_state_matches(*cached.pregrasp_goal, goal_state, target_names)) {
+        RCLCPP_WARN(
+          get_logger(),
+          "[%s] next_pick pregrasp lookahead discarded: current/goal state no longer matches prediction",
+          stage_name.c_str());
+        return discard_next_pick_lookahead_locked();
+      }
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[%s] using next_pick pregrasp lookahead total_wall=%.1fms",
+      stage_name.c_str(),
+      cached.wall_ms);
+    record_stage(
+      stage_name,
+      cached.pregrasp_plan,
+      current_start_state,
+      *cached.pregrasp_goal,
+      target_names,
+      {
+        {"stage_kind", "next_pick_pregrasp_lookahead"},
+        {"lookahead_total_ms", cached.wall_ms},
+        {"lookahead_ik_ms", cached.ik_wall_ms},
+        {"lookahead_grasp_plan_ms", cached.grasp_plan_ms}
+      });
+    last_commanded_state_ = std::make_shared<moveit::core::RobotState>(*cached.pregrasp_goal);
+    wait_for_joint_state_near(*cached.pregrasp_goal, target_names);
+    return true;
+  }
+
+  bool consume_next_pick_grasp_lookahead(
+    const std::string& stage_name,
+    const moveit::core::RobotState& current_start_state)
+  {
+    if (!lookahead_next_pick_enabled_ || !execute_) return false;
+    if (!ends_with(stage_name, "/grasp_ik")) return false;
+
+    wait_for_next_pick_lookahead();
+    NextPickLookaheadPlan cached;
+    {
+      std::lock_guard<std::mutex> lock(lookahead_mutex_);
+      if (!next_pick_lookahead_plan_ ||
+          next_pick_lookahead_plan_->prefix + "/grasp_ik" != stage_name) {
+        return false;
+      }
+      cached = *next_pick_lookahead_plan_;
+      next_pick_lookahead_plan_.reset();
+    }
+
+    if (!cached.success || !cached.pregrasp_goal || !cached.grasp_goal) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] next_pick grasp lookahead unavailable: %s",
+        stage_name.c_str(),
+        cached.failure_reason.c_str());
+      return false;
+    }
+    if (!robot_state_matches(*cached.pregrasp_goal, current_start_state, cached.target_names)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] next_pick grasp lookahead discarded: current state no longer matches predicted pregrasp",
+        stage_name.c_str());
+      return false;
+    }
+
+    std::string clear_reason;
+    if (!planned_trajectory_clear_in_full_scene(cached.grasp_plan, current_start_state, {}, &clear_reason)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] next_pick grasp lookahead discarded: %s",
+        stage_name.c_str(),
+        clear_reason.c_str());
+      return false;
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[%s] using next_pick grasp lookahead points=%zu total_wall=%.1fms ik_wall=%.1fms plan_wall=%.1fms",
+      stage_name.c_str(),
+      cached.grasp_plan.trajectory_.joint_trajectory.points.size(),
+      cached.wall_ms,
+      cached.ik_wall_ms,
+      cached.grasp_plan_ms);
+
+    nlohmann::json extra = cached.grasp_extra.is_object() ? cached.grasp_extra : nlohmann::json::object();
+    extra["stage_kind"] = "next_pick_grasp_lookahead";
+    extra["lookahead_total_ms"] = cached.wall_ms;
+    extra["lookahead_ik_ms"] = cached.ik_wall_ms;
+    extra["lookahead_grasp_plan_ms"] = cached.grasp_plan_ms;
+    record_stage(
+      stage_name,
+      cached.grasp_plan,
+      current_start_state,
+      *cached.grasp_goal,
+      cached.target_names,
+      extra);
+    if (!execute_plan(stage_name, cached.grasp_plan, current_start_state)) {
+      return false;
+    }
+    last_commanded_state_ = std::make_shared<moveit::core::RobotState>(*cached.grasp_goal);
+    wait_for_joint_state_near(*cached.grasp_goal, cached.target_names);
+    return true;
+  }
+
+  void start_next_pick_lookahead(
+    const std::string& loaded_stage_name,
+    const moveit::core::RobotState& predicted_pregrasp_state)
+  {
+    if (!lookahead_next_pick_enabled_ || !execute_) return;
+    if (!ends_with(loaded_stage_name, "/loaded")) return;
+
+    int round = 0;
+    if (!parse_round_from_stage_name(loaded_stage_name, &round)) return;
+    const auto next_pair = next_pick_pair_after_round(round);
+    if (!next_pair) return;
+
+    wait_for_next_pick_lookahead();
+
+    auto start_state = std::make_shared<moveit::core::RobotState>(predicted_pregrasp_state);
+    next_pick_lookahead_future_ = std::async(
+      std::launch::async,
+      [this, next_pair, start_state]() {
+        NextPickLookaheadPlan result;
+        const auto begin = std::chrono::steady_clock::now();
+        build_next_pick_lookahead(*next_pair, *start_state, &result);
+        result.wall_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - begin).count();
+        return result;
+      });
+    RCLCPP_INFO(
+      get_logger(),
+      "[%s] started next_pick lookahead for round_%d_L%d_R%d",
+      loaded_stage_name.c_str(),
+      next_pair->round,
+      next_pair->left_box,
+      next_pair->right_box);
+  }
+
+  void start_loaded_stage_lookahead(
+    const std::string& loaded_stage_name,
+    const moveit::core::RobotState& loaded_goal_state,
+    const std::vector<std::string>& return_target_names)
+  {
+    if (!ends_with(loaded_stage_name, "/loaded")) return;
+
+    const auto loaded_attached_box_ids = attached_box_ids(active_attached_boxes());
+    moveit::core::RobotState predicted_pregrasp_state(loaded_goal_state);
+    detach_carried_boxes_from_state(predicted_pregrasp_state, loaded_attached_box_ids);
+    predicted_pregrasp_state.setVariablePosition("updown", fixed_updown_);
+    for (size_t i = 0; i < left_pregrasp_arm_.size(); ++i) {
+      predicted_pregrasp_state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
+    }
+    for (size_t i = 0; i < right_pregrasp_arm_.size(); ++i) {
+      predicted_pregrasp_state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
+    }
+    predicted_pregrasp_state.enforceBounds(joint_group_);
+    predicted_pregrasp_state.update(true);
+
+    start_return_pregrasp_lookahead(
+      loaded_stage_name,
+      loaded_goal_state,
+      predicted_pregrasp_state,
+      return_target_names);
+    start_next_pick_lookahead(
+      loaded_stage_name,
+      predicted_pregrasp_state);
+  }
+
+  void wait_for_return_pregrasp_lookahead()
+  {
+    if (!lookahead_future_.valid()) return;
+    const auto result = lookahead_future_.get();
+    std::lock_guard<std::mutex> lock(lookahead_mutex_);
+    lookahead_return_pregrasp_plan_ = result;
+  }
+
+  void wait_for_next_pick_lookahead()
+  {
+    if (!next_pick_lookahead_future_.valid()) return;
+    const auto result = next_pick_lookahead_future_.get();
+    std::lock_guard<std::mutex> lock(lookahead_mutex_);
+    next_pick_lookahead_plan_ = result;
+  }
+
+  void clear_lookahead_cache()
+  {
+    wait_for_return_pregrasp_lookahead();
+    wait_for_next_pick_lookahead();
+    std::lock_guard<std::mutex> lock(lookahead_mutex_);
+    lookahead_return_pregrasp_plan_.reset();
+    next_pick_lookahead_plan_.reset();
+  }
+
+  bool consume_return_pregrasp_lookahead(
+    const std::string& stage_name,
+    const moveit::core::RobotState& current_start_state,
+    const std::vector<std::string>& target_names)
+  {
+    if (!lookahead_return_pregrasp_enabled_ || !execute_) return false;
+    if (!ends_with(stage_name, "/return_pregrasp")) return false;
+
+    wait_for_return_pregrasp_lookahead();
+    ReturnPregraspLookaheadPlan cached;
+    {
+      std::lock_guard<std::mutex> lock(lookahead_mutex_);
+      if (!lookahead_return_pregrasp_plan_ ||
+          lookahead_return_pregrasp_plan_->stage_name != stage_name) {
+        return false;
+      }
+      cached = *lookahead_return_pregrasp_plan_;
+      lookahead_return_pregrasp_plan_.reset();
+    }
+
+    if (!cached.success || !cached.expected_start || !cached.expected_goal) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] return_pregrasp lookahead unavailable: %s",
+        stage_name.c_str(),
+        cached.failure_reason.c_str());
+      return false;
+    }
+    if (!robot_state_matches(*cached.expected_start, current_start_state, target_names)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] return_pregrasp lookahead discarded: current state no longer matches predicted loaded end",
+        stage_name.c_str());
+      return false;
+    }
+
+    std::string clear_reason;
+    if (!planned_trajectory_clear_in_full_scene(cached.plan, current_start_state, {}, &clear_reason)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "[%s] return_pregrasp lookahead discarded: %s",
+        stage_name.c_str(),
+        clear_reason.c_str());
+      return false;
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[%s] using return_pregrasp lookahead points=%zu plan_wall=%.1fms",
+      stage_name.c_str(),
+      cached.plan.trajectory_.joint_trajectory.points.size(),
+      cached.wall_ms);
+    record_stage(
+      stage_name,
+      cached.plan,
+      current_start_state,
+      *cached.expected_goal,
+      cached.target_names,
+      {{"stage_kind", "return_pregrasp_lookahead"}, {"lookahead_plan_ms", cached.wall_ms}});
+    if (!execute_plan(stage_name, cached.plan, current_start_state)) {
+      return false;
+    }
+    last_commanded_state_ = std::make_shared<moveit::core::RobotState>(*cached.expected_goal);
+    wait_for_joint_state_near(*cached.expected_goal, cached.target_names);
+    return true;
+  }
+
   bool planned_carried_boxes_clear_static_obstacles(
     const moveit::planning_interface::MoveGroupInterface::Plan& plan,
     const moveit::core::RobotState& start_state,
@@ -2032,6 +2765,13 @@ private:
       return fail(stage_name + ": joint target out of bounds or colliding");
     }
 
+    if (consume_return_pregrasp_lookahead(stage_name, *start_state, target.name)) {
+      return true;
+    }
+    if (consume_next_pick_pregrasp_lookahead(stage_name, *start_state, goal_state, target.name)) {
+      return true;
+    }
+
     RCLCPP_INFO(get_logger(), "[%s] planning joint target", stage_name.c_str());
     return plan_to_goal_state(stage_name, *start_state, goal_state, target.name);
   }
@@ -2048,6 +2788,10 @@ private:
     }
     if (!optimized_dual_ik_solver_ || !optimized_dual_ik_solver_->ready()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
+    }
+
+    if (consume_next_pick_grasp_lookahead(stage_name, *start_state)) {
+      return true;
     }
 
     RCLCPP_INFO(get_logger(), "[%s] optimized IK L=(%.3f, %.3f, %.3f) R=(%.3f, %.3f, %.3f) current_h=%.3f",
@@ -2393,22 +3137,78 @@ private:
     }
 
     record_stage(stage_name, plan, planning_start_state, planning_goal_state, target_names, extra);
+    start_loaded_stage_lookahead(stage_name, planning_goal_state, target_names);
 
-    if (execute_) {
-      if (execution_backend_ == "alfa_execution_bridge") {
-        if (!execute_with_alfa_execution_bridge(stage_name, plan, planning_start_state)) {
-          return false;
-        }
-      } else {
-        const auto exec_result = move_group_->execute(plan);
-        if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
-          return fail(stage_name + ": MoveIt execute failed, code=" + std::to_string(exec_result.val));
-        }
-      }
+    if (!execute_plan(stage_name, plan, planning_start_state)) {
+      return false;
     }
 
     last_commanded_state_ = std::make_shared<moveit::core::RobotState>(goal_state);
     wait_for_joint_state_near(goal_state, target_names);
+    return true;
+  }
+
+  static std::vector<std::string> attached_box_ids(const std::vector<AttachedBoxSpec>& boxes)
+  {
+    std::vector<std::string> ids;
+    ids.reserve(boxes.size());
+    for (const auto& box : boxes) {
+      ids.push_back(box.id);
+    }
+    return ids;
+  }
+
+  void detach_carried_boxes_from_state(
+    moveit::core::RobotState& state,
+    const std::vector<std::string>& ids) const
+  {
+    for (const auto& id : ids) {
+      if (state.hasAttachedBody(id)) {
+        state.clearAttachedBody(id);
+      }
+    }
+    state.update(true);
+  }
+
+  void remove_carried_boxes_from_scene_snapshot(
+    planning_scene::PlanningScene& scene,
+    const std::vector<std::string>& ids) const
+  {
+    for (const auto& id : ids) {
+      if (scene.getCurrentState().hasAttachedBody(id)) {
+        moveit_msgs::msg::AttachedCollisionObject attached_remove;
+        attached_remove.link_name = id.find("_right_") != std::string::npos ? right_tip_ : left_tip_;
+        attached_remove.object.header.frame_id = attached_remove.link_name;
+        attached_remove.object.id = id;
+        attached_remove.object.operation = moveit_msgs::msg::CollisionObject::REMOVE;
+        scene.processAttachedCollisionObjectMsg(attached_remove);
+      }
+
+      const auto& world = scene.getWorld();
+      if (world && world->hasObject(id)) {
+        moveit_msgs::msg::CollisionObject world_remove;
+        world_remove.header.frame_id = container_frame_;
+        world_remove.id = id;
+        world_remove.operation = moveit_msgs::msg::CollisionObject::REMOVE;
+        scene.processCollisionObjectMsg(world_remove);
+      }
+    }
+  }
+
+  bool execute_plan(
+    const std::string& stage_name,
+    const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+    const moveit::core::RobotState& planning_start_state)
+  {
+    if (!execute_) return true;
+    if (execution_backend_ == "alfa_execution_bridge") {
+      return execute_with_alfa_execution_bridge(stage_name, plan, planning_start_state);
+    }
+
+    const auto exec_result = move_group_->execute(plan);
+    if (exec_result != moveit::core::MoveItErrorCode::SUCCESS) {
+      return fail(stage_name + ": MoveIt execute failed, code=" + std::to_string(exec_result.val));
+    }
     return true;
   }
 
@@ -3362,9 +4162,11 @@ private:
   {
     last_error_.clear();
     last_commanded_state_.reset();
+    clear_lookahead_cache();
 
     BoxStackFlowOrchestrator orchestrator(box_stack_flow_config(), box_stack_flow_callbacks());
     const bool ok = orchestrator.run();
+    clear_lookahead_cache();
     if (!ok) {
       return false;
     }
@@ -3420,6 +4222,8 @@ private:
   double acceleration_scale_ = 1.0;
   double joint_goal_tolerance_rad_ = 0.02;
   double state_wait_timeout_s_ = 2.0;
+  bool lookahead_return_pregrasp_enabled_ = false;
+  bool lookahead_next_pick_enabled_ = false;
   bool enable_container_obstacle_ = true;
   std::string container_frame_ = "world";
   double container_length_ = 4.0;
@@ -3526,6 +4330,7 @@ private:
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
   planning_pipeline::PlanningPipelinePtr loaded_planning_pipeline_;
+  planning_pipeline::PlanningPipelinePtr lookahead_planning_pipeline_;
   moveit::core::RobotModelConstPtr robot_model_;
   const moveit::core::JointModelGroup* joint_group_ = nullptr;
   const moveit::core::JointModelGroup* left_arm_group_ = nullptr;
@@ -3534,6 +4339,12 @@ private:
   std::unique_ptr<ik_benchmark::ParallelUpdownAwareIkSolver> optimized_ik_solver_;
   std::unique_ptr<OptimizedDualIkSolver> optimized_dual_ik_solver_;
   std::unique_ptr<MotionFlowRecorder> recorder_;
+  std::future<ReturnPregraspLookaheadPlan> lookahead_future_;
+  std::optional<ReturnPregraspLookaheadPlan> lookahead_return_pregrasp_plan_;
+  std::future<NextPickLookaheadPlan> next_pick_lookahead_future_;
+  std::optional<NextPickLookaheadPlan> next_pick_lookahead_plan_;
+  std::mutex lookahead_mutex_;
+  std::mutex lookahead_pipeline_mutex_;
 
   ExtractMonitorController extract_monitor_controller_;
   ExtractMonitorState extract_monitor_state_;
