@@ -34,6 +34,7 @@ find_package(Eigen3 REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/SemanticCargo.msg"
   "msg/SemanticScene.msg"
+  "srv/ConfigureExtractMonitor.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
@@ -136,6 +137,9 @@ target_link_libraries(dual_arm_planner_node
   robot_motion_scene_service::robot_motion_scene_adapter
 )
 
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(dual_arm_planner_node "${cpp_typesupport_target}")
+
 ament_target_dependencies(dual_arm_planner_node
   rclcpp
   rclcpp_action
@@ -202,6 +206,11 @@ ament_export_dependencies(
 
 if(BUILD_TESTING)
   enable_testing()
+  add_test(
+    NAME check_l6_r8_real_safety
+    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/safety/check_l6_r8_real_safety.py
+  )
+
   add_executable(test_execution_trajectory_adapter test/test_execution_trajectory_adapter.cpp)
   target_link_libraries(test_execution_trajectory_adapter alfa_robot_motion_scene_adapter)
   ament_target_dependencies(test_execution_trajectory_adapter control_msgs trajectory_msgs)
@@ -254,6 +263,11 @@ if(BUILD_TESTING)
   target_link_libraries(test_loaded_pose_selector alfa_robot_motion_scene_adapter)
   ament_target_dependencies(test_loaded_pose_selector srdfdom urdf)
   add_test(NAME test_loaded_pose_selector COMMAND test_loaded_pose_selector)
+
+  add_test(
+    NAME test_process_lifecycle
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_process_lifecycle.py
+  )
 endif()
 
 ament_package()
@@ -280,6 +294,8 @@ install(PROGRAMS
   scripts/mujoco_planning_scene_bridge.py
   scripts/semantic_scene_to_planning_scene.py
   scripts/semantic_scene_utils.py
+  scripts/process_lifecycle.py
+  scripts/extract_startup_stability_smoke.py
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
   scripts/extract_failed_attempts_rerun.py

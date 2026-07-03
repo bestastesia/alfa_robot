@@ -45,6 +45,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
+#include "alfa_robot_moveit_config/srv/configure_extract_monitor.hpp"
 
 #include <Eigen/Geometry>
 #include <algorithm>
@@ -107,6 +108,7 @@ using alfa_robot::motion::extract_monitor_ik_snapshot;
 using alfa_robot::motion::extract_monitor_ik_stage_message;
 using alfa_robot::motion::extract_monitor_loaded_snapshot;
 using alfa_robot::motion::extract_monitor_loaded_stage_message;
+using alfa_robot::motion::failure_counts_json;
 using alfa_robot::motion::extract_monitor_candidate_state_for_timing;
 using alfa_robot::motion::extract_monitor_candidate_for_timing;
 using alfa_robot::motion::extract_monitor_extract_stage_message;
@@ -460,7 +462,7 @@ public:
       right_loaded_pose_family_.push_back(deg_to_rad({0, -75, 135, 0, 60, 0}));
     }
     const size_t loaded_preferred_index = static_cast<size_t>(
-      std::max(0, get_or_declare_parameter<int>("loaded_preferred_pose_index", 1)));
+      std::max(0, get_or_declare_parameter<int>("loaded_preferred_pose_index", 0)));
     left_preferred_loaded_pose_index_ = std::min(loaded_preferred_index, left_loaded_pose_family_.size() - 1);
     right_preferred_loaded_pose_index_ = std::min(loaded_preferred_index, right_loaded_pose_family_.size() - 1);
     ik_config_.left_loaded_pose_family = left_loaded_pose_family_;
@@ -528,9 +530,6 @@ public:
 
     loaded_pose_selector_config_.enforce_bounds_group = joint_group_;
     loaded_pose_selector_ = std::make_unique<LoadedPoseSelector>(loaded_pose_selector_config_);
-
-    optimized_ik_solver_ = std::make_unique<ik_benchmark::ParallelUpdownAwareIkSolver>(ik_config_);
-    optimized_dual_ik_solver_ = std::make_unique<OptimizedDualIkSolver>(optimized_dual_ik_solver_config());
 
     planning_scene_monitor_ = std::make_shared<planning_scene_monitor::PlanningSceneMonitor>(
       shared_from_this(), "robot_description");
@@ -627,6 +626,17 @@ public:
         RCLCPP_INFO(get_logger(), "Received /%s/run_extract_monitor_full_selected request", get_name());
         std::string message;
         const bool ok = run_extract_monitor_full_selected(&message);
+        response->success = ok;
+        response->message = ok ? message : (message.empty() ? last_error_ : message);
+      });
+
+    extract_monitor_config_srv_ = create_service<alfa_robot_moveit_config::srv::ConfigureExtractMonitor>(
+      "~/configure_extract_monitor",
+      [this](
+        const std::shared_ptr<alfa_robot_moveit_config::srv::ConfigureExtractMonitor::Request> request,
+        std::shared_ptr<alfa_robot_moveit_config::srv::ConfigureExtractMonitor::Response> response) {
+        std::string message;
+        const bool ok = configure_extract_monitor_task(*request, &message);
         response->success = ok;
         response->message = ok ? message : (message.empty() ? last_error_ : message);
       });
@@ -941,6 +951,27 @@ private:
       joint_group_,
       fixed_updown_,
     };
+  }
+
+  bool ensure_optimized_ik_solver()
+  {
+    if (optimized_dual_ik_solver_ && optimized_dual_ik_solver_->ready()) {
+      return true;
+    }
+    if (!optimized_ik_solver_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Initializing optimized IK solver on first use: h=%zu seed=%zu workers=%zu timeout=%.3fs",
+        ik_config_.h_candidate_count,
+        ik_config_.seed_count,
+        ik_config_.workers,
+        ik_config_.timeout);
+      optimized_ik_solver_ = std::make_unique<ik_benchmark::ParallelUpdownAwareIkSolver>(ik_config_);
+    }
+    if (!optimized_dual_ik_solver_) {
+      optimized_dual_ik_solver_ = std::make_unique<OptimizedDualIkSolver>(optimized_dual_ik_solver_config());
+    }
+    return optimized_dual_ik_solver_->ready();
   }
 
   MotionSceneAdapterConfig motion_scene_adapter_config() const
@@ -2046,7 +2077,7 @@ private:
     if (!start_state) {
       return fail(stage_name + ": cannot get start state");
     }
-    if (!optimized_dual_ik_solver_ || !optimized_dual_ik_solver_->ready()) {
+    if (!ensure_optimized_ik_solver()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
     }
 
@@ -2087,7 +2118,7 @@ private:
     nlohmann::json* extra_out,
     ik_benchmark::UpdownAwareIkResult* result_out = nullptr)
   {
-    if (!optimized_dual_ik_solver_ || !optimized_dual_ik_solver_->ready()) {
+    if (!ensure_optimized_ik_solver()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
     }
     if (!goal_state) {
@@ -2246,7 +2277,7 @@ private:
     const auto saved_boxes = active_attached_boxes();
     if (scene_adapter_) scene_adapter_->setActiveAttachedBoxesForRecordOnly(boxes);
 
-    const auto names = optimized_ik_solver_ ? optimized_ik_solver_->freeVariableNames() : robot_model_->getVariableNames();
+    const auto names = dual_arm_with_updown_joint_names();
     const auto plan = single_state_plan(state, names, 0.0);
     record_stage(stage_name, plan, state, state, names, extra);
 
@@ -2818,6 +2849,63 @@ private:
       message);
   }
 
+  bool configure_extract_monitor_task(
+    const alfa_robot_moveit_config::srv::ConfigureExtractMonitor::Request& request,
+    std::string* message)
+  {
+    std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
+    const auto configure_start = std::chrono::steady_clock::now();
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
+    if (boxes.find(request.left_box_id) == boxes.end() ||
+        boxes.find(request.right_box_id) == boxes.end())
+    {
+      const std::string error = "unknown box id: L" + std::to_string(request.left_box_id) +
+                                "/R" + std::to_string(request.right_box_id);
+      if (message) {
+        *message = error;
+      }
+      return fail("configure extract monitor: " + error);
+    }
+    if (request.snapshot_path.empty()) {
+      if (message) {
+        *message = "snapshot_path is empty";
+      }
+      return fail("configure extract monitor: snapshot_path is empty");
+    }
+
+    extract_demo_left_box_id_ = request.left_box_id;
+    extract_demo_right_box_id_ = request.right_box_id;
+    extract_monitor_snapshot_path_ = request.snapshot_path;
+    extract_monitor_snapshot_writer_.setPath(extract_monitor_snapshot_path_);
+    extract_monitor_controller_.reset();
+    extract_monitor_state_ = ExtractMonitorState{};
+    extract_monitor_last_stage_ms_ = 0.0;
+    if (!ensure_optimized_ik_solver()) {
+      if (message) {
+        *message = "optimized IK solver is not initialized";
+      }
+      return fail("configure extract monitor: optimized IK solver is not initialized");
+    }
+    clear_carried_boxes_from_scene();
+    set_static_box_wall_opening(extract_demo_left_box_id_, extract_demo_right_box_id_, "configure_extract_monitor");
+
+    const double configure_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - configure_start).count();
+    if (message) {
+      *message = "configured extract monitor: L" + std::to_string(extract_demo_left_box_id_) +
+                 "/R" + std::to_string(extract_demo_right_box_id_) +
+                 " snapshot=" + extract_monitor_snapshot_path_ +
+                 " configure_ms=" + std::to_string(configure_ms);
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "Configured extract monitor task: L%d/R%d snapshot=%s",
+      extract_demo_left_box_id_,
+      extract_demo_right_box_id_,
+      extract_monitor_snapshot_path_.c_str());
+    return true;
+  }
+
   bool run_extract_monitor_full_selected(std::string* message)
   {
     std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
@@ -3035,6 +3123,13 @@ private:
       : LoadedPoseBatchPlanResult{};
 
     const auto summary = summarize_loaded_plan_timings(extract_monitor_state_.timings, batch.plan_indices);
+    extract_monitor_state_.loaded_plan_batch_wall_ms = batch.wall_ms;
+    extract_monitor_state_.loaded_plan_candidate_count = batch.plan_indices.size();
+    extract_monitor_state_.loaded_plan_attempted_count = summary.attempted_count;
+    extract_monitor_state_.loaded_plan_success_count = summary.success_count;
+    extract_monitor_state_.loaded_parallel_workers = options.parallel_workers;
+    extract_monitor_state_.loaded_candidate_limit = options.candidate_limit;
+    extract_monitor_state_.loaded_plan_failure_counts = summary.failure_counts;
     const nlohmann::json records = extract_monitor_timing_records_json(
       ExtractMonitorTimingRecordsRequest{
         &extract_monitor_state_.timings,
@@ -3221,8 +3316,17 @@ private:
         scene_y_shift_,
         final_records.empty() ? nlohmann::json::object() : final_records[0],
         replay_stages});
+    nlohmann::json enriched_snapshot = snapshot;
+    enriched_snapshot["loaded_plan_batch_wall_ms"] = extract_monitor_state_.loaded_plan_batch_wall_ms;
+    enriched_snapshot["loaded_plan_candidate_count"] = extract_monitor_state_.loaded_plan_candidate_count;
+    enriched_snapshot["loaded_plan_attempted_count"] = extract_monitor_state_.loaded_plan_attempted_count;
+    enriched_snapshot["loaded_plan_success_count"] = extract_monitor_state_.loaded_plan_success_count;
+    enriched_snapshot["loaded_parallel_workers"] = extract_monitor_state_.loaded_parallel_workers;
+    enriched_snapshot["loaded_candidate_limit"] = extract_monitor_state_.loaded_candidate_limit;
+    enriched_snapshot["loaded_plan_failure_counts"] =
+      failure_counts_json(extract_monitor_state_.loaded_plan_failure_counts);
     return finish_extract_monitor_stage(
-      snapshot,
+      enriched_snapshot,
       "extract monitor final",
       extract_monitor_final_stage_message(
       ExtractMonitorFinalStageMessageRequest{
@@ -3545,6 +3649,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_demo_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_next_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
+  rclcpp::Service<alfa_robot_moveit_config::srv::ConfigureExtractMonitor>::SharedPtr extract_monitor_config_srv_;
   rclcpp_action::Client<FollowJointTrajectory>::SharedPtr execution_action_client_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;

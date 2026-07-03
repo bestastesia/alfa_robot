@@ -67,33 +67,20 @@ ParallelUpdownAwareIkSolver::ParallelUpdownAwareIkSolver(UpdownAwareIkConfig con
         config_.workers = 1;
     }
     IkSolverOptions fixed_options = config_.solver_options;
-    IkSolverOptions free_options = config_.solver_options;
     fixed_options.base_frame = "updown";
-    free_options.base_frame = config_.base_frame;
     if (fixed_options.tip_link.empty()) {
         fixed_options.tip_link = config_.left_tip;
     }
     if (fixed_options.tip_link2.empty()) {
         fixed_options.tip_link2 = config_.right_tip;
     }
-    if (free_options.tip_link.empty()) {
-        free_options.tip_link = config_.left_tip;
-    }
-    if (free_options.tip_link2.empty()) {
-        free_options.tip_link2 = config_.right_tip;
-    }
     fixed_options.reject_collisions = false;
     fixed_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
-    free_options.reject_collisions = false;
-    free_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
 
     fixed_solvers_.reserve(config_.workers);
-    free_solvers_.reserve(config_.workers);
     for (size_t i = 0; i < config_.workers; ++i) {
         fixed_solvers_.push_back(std::make_unique<IkSolver>(
             config_.fixed_group, config_.solver_plugin, config_.timeout, false, fixed_options));
-        free_solvers_.push_back(std::make_unique<IkSolver>(
-            config_.free_group, config_.solver_plugin, config_.fallback_timeout, false, free_options));
     }
 }
 
@@ -102,8 +89,14 @@ const std::vector<std::string>& ParallelUpdownAwareIkSolver::fixedVariableNames(
     return fixed_solvers_.front()->variableNames();
 }
 
+std::vector<std::string> ParallelUpdownAwareIkSolver::fixedFullVariableNames() const
+{
+    return fullJointNamesForFixedGroup();
+}
+
 const std::vector<std::string>& ParallelUpdownAwareIkSolver::freeVariableNames() const
 {
+    ensureFreeSolvers();
     return free_solvers_.front()->variableNames();
 }
 
@@ -445,12 +438,46 @@ std::vector<ParallelUpdownAwareIkSolver::TrialSpec> ParallelUpdownAwareIkSolver:
     return trials;
 }
 
+void ParallelUpdownAwareIkSolver::ensureFreeSolvers() const
+{
+    if (!free_solvers_.empty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(free_solvers_mutex_);
+    if (!free_solvers_.empty()) {
+        return;
+    }
+
+    IkSolverOptions free_options = config_.solver_options;
+    free_options.base_frame = config_.base_frame;
+    if (free_options.tip_link.empty()) {
+        free_options.tip_link = config_.left_tip;
+    }
+    if (free_options.tip_link2.empty()) {
+        free_options.tip_link2 = config_.right_tip;
+    }
+    free_options.reject_collisions = false;
+    free_options.enforce_arm_base_collisions = config_.enforce_arm_base_collisions;
+
+    free_solvers_.reserve(config_.workers);
+    for (size_t i = 0; i < config_.workers; ++i) {
+        free_solvers_.push_back(std::make_unique<IkSolver>(
+            config_.free_group, config_.solver_plugin, config_.fallback_timeout, false, free_options));
+    }
+}
+
 std::vector<UpdownAwareIkCandidate> ParallelUpdownAwareIkSolver::executeTrials(
     const std::vector<TrialSpec>& trials,
     const UpdownAwareIkRequest& request,
     const HeightPlan& plan,
     bool fallback)
 {
+    const bool needs_free_solver = std::any_of(
+        trials.begin(), trials.end(), [](const TrialSpec& trial) { return trial.free_updown; });
+    if (needs_free_solver) {
+        ensureFreeSolvers();
+    }
+
     std::vector<UpdownAwareIkCandidate> results(trials.size() * (config_.try_target_orders ? 2 : 1));
     std::atomic_size_t next{0};
     const size_t order_count = config_.try_target_orders ? 2 : 1;
@@ -604,7 +631,7 @@ Eigen::Isometry3d ParallelUpdownAwareIkSolver::compensateTool0(const Eigen::Isom
 
 Eigen::Isometry3d ParallelUpdownAwareIkSolver::updownTransformInBase(double h) const
 {
-    return free_solvers_.front()->linkTransformNamed("updown", {"updown"}, {h});
+    return fixed_solvers_.front()->linkTransformNamedInFrame("base_link", "updown", {"updown"}, {h});
 }
 
 Eigen::Isometry3d ParallelUpdownAwareIkSolver::fixedTarget(

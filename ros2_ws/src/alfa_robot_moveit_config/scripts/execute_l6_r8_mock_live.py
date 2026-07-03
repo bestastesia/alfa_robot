@@ -73,10 +73,27 @@ REAL_CONTROLLER_JOINT_NAMES = [
     "turn",
 ]
 
+EXECUTION_TO_ETHERCAT_SIGN = {
+    "left_joint1": 1.0,
+    "left_joint2": 1.0,
+    "left_joint3": -1.0,
+    "left_joint4": 1.0,
+    "left_joint5": -1.0,
+    "left_joint6": 1.0,
+    "right_joint1": 1.0,
+    "right_joint2": -1.0,
+    "right_joint3": 1.0,
+    "right_joint4": 1.0,
+    "right_joint5": 1.0,
+    "right_joint6": 1.0,
+    "turn": 1.0,
+}
+
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 import extract_stage_monitor_console as monitor  # noqa: E402
+import process_lifecycle  # noqa: E402
 
 
 def bash_source_command(command: str) -> list[str]:
@@ -91,27 +108,7 @@ def bash_source_command(command: str) -> list[str]:
 
 
 def terminate_process(process: subprocess.Popen[str] | None, timeout: float = 5.0) -> None:
-    if process is None or process.poll() is not None:
-        return
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGINT)
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=timeout)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
-        process.wait(timeout=2.0)
-        return
-    except (ProcessLookupError, subprocess.TimeoutExpired):
-        pass
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    process_lifecycle.terminate_process_tree(process, interrupt_timeout=timeout)
 
 
 def seconds_to_duration(seconds: float):
@@ -155,6 +152,14 @@ def execution_to_rerun_joint_map(positions: list[float], updown: float = 0.3) ->
     return joint_map
 
 
+def ros_to_ethercat_position(name: str, value: float) -> float:
+    return float(value) * EXECUTION_TO_ETHERCAT_SIGN[name]
+
+
+def ethercat_to_ros_position(name: str, value: float) -> float:
+    return float(value) * EXECUTION_TO_ETHERCAT_SIGN[name]
+
+
 def extract_position_from_stage_point(stage: dict[str, Any], point: dict[str, Any], previous: dict[str, float]) -> dict[str, float]:
     joints = dict(previous)
     names = list(stage.get("trajectory", {}).get("joint_names", []))
@@ -196,7 +201,12 @@ def make_point(time_s: float, positions: list[float]) -> JointTrajectoryPoint:
     return point
 
 
-def make_trajectory(samples: list[tuple[float, dict[str, float]]], joint_names: list[str] | None = None) -> JointTrajectory:
+def make_trajectory(
+    samples: list[tuple[float, dict[str, float]]],
+    joint_names: list[str] | None = None,
+    *,
+    apply_ethercat_signs: bool = False,
+) -> JointTrajectory:
     joint_names = joint_names or EXECUTION_JOINT_NAMES
     trajectory = JointTrajectory()
     trajectory.joint_names = list(joint_names)
@@ -204,15 +214,30 @@ def make_trajectory(samples: list[tuple[float, dict[str, float]]], joint_names: 
         return trajectory
     start_time = samples[0][0]
     for time_s, joint_map in samples:
-        positions = [joint_map[name] for name in joint_names]
+        if apply_ethercat_signs:
+            positions = [ros_to_ethercat_position(name, joint_map[name]) for name in joint_names]
+        else:
+            positions = [joint_map[name] for name in joint_names]
         trajectory.points.append(make_point(time_s - start_time, positions))
     return trajectory
 
 
-def loaded_joint_map() -> dict[str, float]:
-    loaded = math.radians
-    left = [loaded(v) for v in [0.0, -75.0, 135.0, 0.0, 60.0, 0.0]]
-    right = [loaded(v) for v in [0.0, -75.0, 135.0, 0.0, 60.0, 0.0]]
+LOADED_LEFT_POSE_FAMILY_DEG = [
+    [0.0, 59.04, -135.16, 0.0, -76.13, 0.0],
+    [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
+    [33.87, 75.82, -135.08, 0.0, -59.25, -33.87],
+]
+LOADED_RIGHT_POSE_FAMILY_DEG = [
+    [0.0, 58.88, -134.84, 0.0, -75.96, 0.0],
+    [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
+    [-30.93, 74.17, -134.92, 0.0, -60.74, 30.93],
+]
+
+
+def loaded_joint_map(index: int = 0) -> dict[str, float]:
+    pose_index = max(0, min(int(index), len(LOADED_LEFT_POSE_FAMILY_DEG) - 1))
+    left = [math.radians(v) for v in LOADED_LEFT_POSE_FAMILY_DEG[pose_index]]
+    right = [math.radians(v) for v in LOADED_RIGHT_POSE_FAMILY_DEG[pose_index]]
     values = left + right + [0.0]
     return dict(zip(EXECUTION_JOINT_NAMES, values))
 
@@ -293,11 +318,16 @@ class LiveExecutionClient(Node):
         self.feedback_count = 0
         self._lock = threading.Lock()
 
-    def actual_positions_to_execution_order(self, feedback) -> list[float]:
+    def actual_positions_to_execution_order(self, feedback, *, from_ethercat_signs: bool) -> list[float]:
         joint_names = list(getattr(feedback, "joint_names", []))
         positions = list(feedback.actual.positions)
         if joint_names and len(joint_names) == len(positions):
             name_to_position = dict(zip(joint_names, positions))
+            if from_ethercat_signs:
+                return [
+                    ethercat_to_ros_position(name, float(name_to_position.get(name, 0.0)))
+                    for name in EXECUTION_JOINT_NAMES
+                ]
             return [float(name_to_position.get(name, 0.0)) for name in EXECUTION_JOINT_NAMES]
         if len(positions) == len(EXECUTION_JOINT_NAMES):
             return [float(value) for value in positions]
@@ -339,7 +369,14 @@ class LiveExecutionClient(Node):
             )
             self.sample += 1
 
-    def send_and_wait(self, trajectory: JointTrajectory, contexts: list[dict[str, Any]], label: str) -> bool:
+    def send_and_wait(
+        self,
+        trajectory: JointTrajectory,
+        contexts: list[dict[str, Any]],
+        label: str,
+        *,
+        feedback_uses_ethercat_signs: bool = False,
+    ) -> bool:
         if not self.client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error("execution action server is not available")
             return False
@@ -364,7 +401,13 @@ class LiveExecutionClient(Node):
             context = dict(context)
             context["label"] = label
             self.feedback_count += 1
-            self.log_positions(self.actual_positions_to_execution_order(feedback), context)
+            self.log_positions(
+                self.actual_positions_to_execution_order(
+                    feedback,
+                    from_ethercat_signs=feedback_uses_ethercat_signs,
+                ),
+                context,
+            )
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
@@ -406,6 +449,7 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
+        loaded_preferred_pose_index=args.loaded_preferred_pose_index,
         extract_kdl_timeout=args.extract_kdl_timeout,
     )
 
@@ -430,6 +474,17 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
             args.service_timeout,
             launch_log,
         )
+        prewarm_ok, prewarm_output, prewarm_ms = monitor.call_configure_extract_monitor_service(
+            "/dual_arm_planner/configure_extract_monitor",
+            args.left_box_id,
+            args.right_box_id,
+            snapshot_path,
+            args.service_timeout,
+        )
+        print(prewarm_output, flush=True)
+        if not prewarm_ok:
+            raise RuntimeError(f"IK solver 预热失败：{prewarm_output}")
+        print(f"planner 启动完成，IK solver 已预热：{prewarm_ms:.1f}ms", flush=True)
         print("开始计算 L6/R8：IK → 抽离 → 横向让位 → 负重规划", flush=True)
         start = time.monotonic()
         success, output, elapsed_ms = monitor.call_trigger_service(
@@ -446,7 +501,7 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
         return snapshot_path
     finally:
         terminate_process(planner)
-        time.sleep(1.0)
+        monitor.wait_until_planner_services_gone(15.0)
 
 
 def start_execution_bridge(run_dir: Path, hz: float, config_name: str) -> subprocess.Popen[str]:
@@ -503,6 +558,12 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
+    parser.add_argument(
+        "--loaded-preferred-pose-index",
+        type=int,
+        default=0,
+        help="负重姿态族索引；0 是当前实机确认的安全姿态，1 是旧的 [-75,135,60] 姿态",
+    )
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
@@ -528,9 +589,38 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
         default="right_first",
         help="real 直连控制器 joint_names 顺序；工控机当前 dual_arm_trajectory_controller 为 right_first",
     )
+    parser.add_argument(
+        "--real-apply-direction-signs",
+        dest="real_apply_direction_signs",
+        action="store_true",
+        default=True,
+        help="real 直连时按 EtherCAT 方向标定表翻转目标；默认开启",
+    )
+    parser.add_argument(
+        "--no-real-apply-direction-signs",
+        dest="real_apply_direction_signs",
+        action="store_false",
+        help="real 直连时不做方向映射，仅允许独立小角度诊断，不允许 L6/R8 实机流程使用",
+    )
     parser.add_argument("--save", type=Path, default=None, help="保存为 .rrd；不设置时默认打开实时 Rerun viewer")
     parser.add_argument("--connect", action="store_true", help="连接已有 Rerun viewer，而不是新开 viewer")
+    parser.add_argument(
+        "--ros-domain-id",
+        default="auto",
+        help="本次 ROS_DOMAIN_ID；auto 隔离自启动测试，inherit 表示沿用当前终端。",
+    )
     args = parser.parse_args()
+    if (
+        args.executor_mode == "real"
+        and not args.start_execution_bridge
+        and not args.real_apply_direction_signs
+        and os.environ.get("ALFA_ALLOW_UNSAFE_DIRECTION_OVERRIDE") != "I_UNDERSTAND_DIRECTION_RISK"
+    ):
+        raise SystemExit(
+            "禁止 real direct L6/R8 流程关闭方向映射：这会导致实机方向反。"
+            "如需诊断，必须使用独立小角度脚本；若确需绕过，显式设置 "
+            "ALFA_ALLOW_UNSAFE_DIRECTION_OVERRIDE=I_UNDERSTAND_DIRECTION_RISK。"
+        )
     if args.output_root is None:
         args.output_root = DEFAULT_REAL_OUTPUT_ROOT if args.executor_mode == "real" else DEFAULT_MOCK_OUTPUT_ROOT
     if args.action_name is None:
@@ -543,6 +633,7 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
 
 def main(default_executor_mode: str = "mock") -> int:
     args = parse_args(default_executor_mode)
+    domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = args.output_root / f"L{args.left_box_id}_R{args.right_box_id}_{stamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -557,6 +648,7 @@ def main(default_executor_mode: str = "mock") -> int:
 
     bridge = None
     try:
+        print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}", flush=True)
         if args.executor_mode == "mock":
             bridge = start_execution_bridge(run_dir, args.hz, "execution_bridge.yaml")
             print("mock执行桥启动中。", flush=True)
@@ -602,13 +694,18 @@ def main(default_executor_mode: str = "mock") -> int:
         try:
             client.log_static_scene()
             zero = {name: 0.0 for name in EXECUTION_JOINT_NAMES}
-            loaded = loaded_joint_map()
+            loaded = loaded_joint_map(args.loaded_preferred_pose_index)
             command_joint_names = (
                 REAL_CONTROLLER_JOINT_NAMES
                 if args.executor_mode == "real"
                 and not args.start_execution_bridge
                 and args.real_controller_order == "right_first"
                 else EXECUTION_JOINT_NAMES
+            )
+            apply_ethercat_signs = (
+                args.executor_mode == "real"
+                and not args.start_execution_bridge
+                and args.real_apply_direction_signs
             )
             home_samples = [
                 (0.0, zero),
@@ -626,11 +723,22 @@ def main(default_executor_mode: str = "mock") -> int:
             ]
             if args.executor_mode == "real":
                 print("实机将发送 12 个手臂关节 + turn=0；不发送 updown。", flush=True)
+                print(f"负重姿态族索引：{args.loaded_preferred_pose_index}（0 为当前实机确认方向）", flush=True)
+                print(f"实机方向映射：{'开启' if apply_ethercat_signs else '关闭'}", flush=True)
                 print("实机 joint_names 顺序：" + ", ".join(command_joint_names), flush=True)
                 input("确认真实机器人当前接近全0起点、人员远离、可运动后按回车开始 全0→负重姿态；Ctrl+C 取消...")
             print("开始执行：全0 → 负重姿态", flush=True)
             home_start = time.monotonic()
-            if not client.send_and_wait(make_trajectory(home_samples, command_joint_names), home_contexts, "home_to_loaded"):
+            if not client.send_and_wait(
+                make_trajectory(
+                    home_samples,
+                    command_joint_names,
+                    apply_ethercat_signs=apply_ethercat_signs,
+                ),
+                home_contexts,
+                "home_to_loaded",
+                feedback_uses_ethercat_signs=apply_ethercat_signs,
+            ):
                 return 1
             print(f"完成执行：全0 → 负重姿态，用时 {(time.monotonic() - home_start):.3f}s", flush=True)
 
@@ -648,7 +756,16 @@ def main(default_executor_mode: str = "mock") -> int:
                 raise RuntimeError("snapshot produced empty execution trajectory")
             print(f"开始执行：L6/R8 任务轨迹，轨迹点 {len(task_samples)}，频率 {args.hz:.1f}Hz", flush=True)
             task_start = time.monotonic()
-            if not client.send_and_wait(make_trajectory(task_samples, command_joint_names), task_contexts, "L6_R8_task"):
+            if not client.send_and_wait(
+                make_trajectory(
+                    task_samples,
+                    command_joint_names,
+                    apply_ethercat_signs=apply_ethercat_signs,
+                ),
+                task_contexts,
+                "L6_R8_task",
+                feedback_uses_ethercat_signs=apply_ethercat_signs,
+            ):
                 return 1
             print(f"完成执行：L6/R8 任务轨迹，用时 {(time.monotonic() - task_start):.3f}s", flush=True)
             if save_path is not None:

@@ -18,7 +18,6 @@ import json
 import math
 import os
 import re
-import signal
 import subprocess
 import sys
 import time
@@ -32,6 +31,10 @@ rr: Any | None = None
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import process_lifecycle  # noqa: E402
 
 
 def find_repo_root() -> Path:
@@ -141,21 +144,21 @@ def wait_for_service(
     raise TimeoutError(f"service {name} not available after {timeout:.1f}s")
 
 
-def terminate_process(process: subprocess.Popen[str], timeout: float = 5.0) -> None:
-    if process.poll() is not None:
-        return
-    process.send_signal(signal.SIGINT)
-    try:
-        process.wait(timeout=timeout)
-        return
-    except subprocess.TimeoutExpired:
-        pass
-    process.terminate()
-    try:
-        process.wait(timeout=2.0)
-        return
-    except subprocess.TimeoutExpired:
-        process.kill()
+def terminate_process(process: subprocess.Popen[str] | None, timeout: float = 5.0) -> None:
+    process_lifecycle.terminate_process_tree(process, interrupt_timeout=timeout)
+
+
+def planner_monitor_service_exists() -> bool:
+    return process_lifecycle.any_service_exists(service_exists)
+
+
+def wait_until_planner_services_gone(timeout: float = 15.0) -> bool:
+    return process_lifecycle.wait_until_services_gone(service_exists, timeout=timeout)
+
+
+def cleanup_stale_planner_stack(timeout: float = 15.0) -> bool:
+    process_lifecycle.request_stale_planner_shutdown()
+    return wait_until_planner_services_gone(timeout)
 
 
 def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path: Path) -> str:
@@ -195,6 +198,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
         f"extract_loaded_parallel_workers:={args.loaded_workers}",
+        f"loaded_preferred_pose_index:={getattr(args, 'loaded_preferred_pose_index', 0)}",
         "extract_use_independent_kdl:=true",
         f"extract_kdl_timeout:={args.extract_kdl_timeout}",
         f"planning_attempts:={args.loaded_planning_attempts}",
@@ -246,6 +250,158 @@ def call_trigger_service(service_name: str, timeout: float) -> tuple[bool, str, 
     finally:
         node.destroy_node()
         rclpy.shutdown()
+
+
+def call_configure_extract_monitor_service(
+    service_name: str,
+    left_box_id: int,
+    right_box_id: int,
+    snapshot_path: Path,
+    timeout: float,
+) -> tuple[bool, str, float]:
+    start = time.monotonic()
+    try:
+        import rclpy
+        from alfa_robot_moveit_config.srv import ConfigureExtractMonitor
+    except Exception:
+        command = (
+            f"ros2 service call {service_name} "
+            "alfa_robot_moveit_config/srv/ConfigureExtractMonitor "
+            f"\"{{left_box_id: {left_box_id}, right_box_id: {right_box_id}, "
+            f"snapshot_path: '{snapshot_path}'}}\""
+        )
+        result = run_text(command, timeout=timeout)
+        elapsed = (time.monotonic() - start) * 1000.0
+        output = result.stdout.strip()
+        success = result.returncode == 0 and ("success=True" in output or "success: true" in output)
+        return success, output, elapsed
+
+    rclpy.init(args=None)
+    node = rclpy.create_node("extract_monitor_config_client")
+    try:
+        client = node.create_client(ConfigureExtractMonitor, service_name)
+        if not client.wait_for_service(timeout_sec=timeout):
+            elapsed = (time.monotonic() - start) * 1000.0
+            return False, f"service {service_name} not available after {timeout:.1f}s", elapsed
+        request = ConfigureExtractMonitor.Request()
+        request.left_box_id = int(left_box_id)
+        request.right_box_id = int(right_box_id)
+        request.snapshot_path = str(snapshot_path)
+        future = client.call_async(request)
+        deadline = time.monotonic() + timeout
+        while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+            rclpy.spin_once(node, timeout_sec=0.05)
+        elapsed = (time.monotonic() - start) * 1000.0
+        if not future.done():
+            return False, f"service {service_name} call timed out after {timeout:.1f}s", elapsed
+        response = future.result()
+        if response is None:
+            return False, "service returned no response", elapsed
+        output = (
+            "requester: direct rclpy ConfigureExtractMonitor request\n\n"
+            f"response:\nConfigureExtractMonitor_Response(success={response.success}, "
+            f"message='{response.message}')"
+        )
+        return bool(response.success), output, elapsed
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+class ExtractMonitorServiceClient:
+    """Reusable rclpy clients for repeated extract monitor calls."""
+
+    def __init__(
+        self,
+        *,
+        configure_service: str,
+        trigger_service: str,
+        timeout: float,
+        node_name: str = "extract_monitor_service_client",
+    ) -> None:
+        import rclpy
+        from alfa_robot_moveit_config.srv import ConfigureExtractMonitor
+        from std_srvs.srv import Trigger
+
+        self._rclpy = rclpy
+        self._configure_type = ConfigureExtractMonitor
+        self._trigger_type = Trigger
+        self._owns_rclpy = not rclpy.ok()
+        if self._owns_rclpy:
+            rclpy.init(args=None)
+        self.node = rclpy.create_node(node_name)
+        self.configure_service = configure_service
+        self.trigger_service = trigger_service
+        self.configure_client = self.node.create_client(ConfigureExtractMonitor, configure_service)
+        self.trigger_client = self.node.create_client(Trigger, trigger_service)
+        self.wait_for_services(timeout)
+
+    def wait_for_services(self, timeout: float) -> None:
+        deadline = time.monotonic() + timeout
+        for client, service_name in (
+            (self.configure_client, self.configure_service),
+            (self.trigger_client, self.trigger_service),
+        ):
+            while time.monotonic() < deadline:
+                if client.wait_for_service(timeout_sec=0.1):
+                    break
+            else:
+                raise TimeoutError(f"service {service_name} not available after {timeout:.1f}s")
+
+    def configure(
+        self,
+        left_box_id: int,
+        right_box_id: int,
+        snapshot_path: Path,
+        timeout: float,
+    ) -> tuple[bool, str, float]:
+        start = time.monotonic()
+        request = self._configure_type.Request()
+        request.left_box_id = int(left_box_id)
+        request.right_box_id = int(right_box_id)
+        request.snapshot_path = str(snapshot_path)
+        future = self.configure_client.call_async(request)
+        self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
+        elapsed = (time.monotonic() - start) * 1000.0
+        if not future.done():
+            return False, f"ConfigureExtractMonitor timeout after {timeout:.1f}s", elapsed
+        response = future.result()
+        if response is None:
+            return False, f"ConfigureExtractMonitor failed: {future.exception()}", elapsed
+        output = (
+            "requester: reusable rclpy ConfigureExtractMonitor request\n\n"
+            f"response:\n{response}"
+        )
+        return bool(response.success), output, elapsed
+
+    def trigger(self, timeout: float) -> tuple[bool, str, float]:
+        start = time.monotonic()
+        future = self.trigger_client.call_async(self._trigger_type.Request())
+        self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
+        elapsed = (time.monotonic() - start) * 1000.0
+        if not future.done():
+            return False, f"Trigger timeout after {timeout:.1f}s", elapsed
+        response = future.result()
+        if response is None:
+            return False, f"Trigger failed: {future.exception()}", elapsed
+        output = (
+            "requester: reusable rclpy Trigger request\n\n"
+            f"response:\n{response}"
+        )
+        return bool(response.success), output, elapsed
+
+    def close(self) -> None:
+        if getattr(self, "node", None) is not None:
+            self.node.destroy_node()
+            self.node = None
+        if self._owns_rclpy and self._rclpy.ok():
+            self._rclpy.shutdown()
+
+    def __enter__(self) -> "ExtractMonitorServiceClient":
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        self.close()
 
 
 def read_snapshot(path: Path) -> dict[str, Any]:
@@ -702,10 +858,21 @@ def main() -> int:
         help="full-selected: 回车后完整计算并只显示最终方案；staged: 每次回车推进一个内部阶段",
     )
     parser.add_argument("--no-start-planner", action="store_true", help="不启动 planner，只连接已有监控服务")
+    parser.add_argument(
+        "--ros-domain-id",
+        default="auto",
+        help="本次 ROS_DOMAIN_ID；auto 会隔离自启动测试，inherit 表示沿用当前终端。",
+    )
     parser.add_argument("--connect", action="store_true", help="连接已有 Rerun viewer，而不是 spawn 新 viewer")
     parser.add_argument("--no-rerun", action="store_true", help="只在终端打印，不显示 Rerun")
     parser.add_argument("--once", action="store_true", help="不等待回车，只完整计算一次后退出")
     parser.add_argument("--save", type=Path, default=None, help="保存最终选中流程为 .rrd；设置后自动只跑一次")
+    parser.add_argument(
+        "--cleanup-stale-planner",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="启动自管 planner 前自动清理旧 dual_arm_planner/move_group 服务。",
+    )
     parser.add_argument("--max-display", type=int, default=64)
     parser.add_argument("--grid-cols", type=int, default=8)
     parser.add_argument("--spacing", type=float, default=2.4)
@@ -723,6 +890,10 @@ def main() -> int:
         raise RuntimeError("--save 需要启用 Rerun 记录，不能和 --no-rerun 同时使用")
     if args.save is not None and args.mode != "full-selected":
         raise RuntimeError("--save 只支持 full-selected 模式")
+    if args.no_start_planner and args.ros_domain_id == "auto":
+        args.ros_domain_id = "inherit"
+    domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
+    log_event(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}", run_start)
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = args.output_root / f"L{args.left_box_id}_R{args.right_box_id}_{stamp}"
@@ -738,15 +909,25 @@ def main() -> int:
 
     planner: subprocess.Popen[str] | None = None
     if not args.no_start_planner:
-        if service_exists("/dual_arm_planner/run_extract_monitor_next") or service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
-            raise RuntimeError(
-                "检测到已有 /dual_arm_planner 监控服务。"
-                "这通常说明上一轮 planner 没关干净；为了避免连到旧节点，本次拒绝启动。\n"
-                "请先清理旧 ROS 进程，例如：pkill -INT -f 'dual_arm_planner|move_group|ros2 launch alfa_robot_moveit_config dual_arm_planner'"
-            )
+        if planner_monitor_service_exists():
+            if not args.cleanup_stale_planner:
+                raise RuntimeError(
+                    "检测到已有 /dual_arm_planner 监控服务。"
+                    "这通常说明上一轮 planner 没关干净；为了避免连到旧节点，本次拒绝启动。\n"
+                    "可去掉 --no-cleanup-stale-planner 让脚本自动清理，"
+                    "或手动关闭仍在运行的 dual_arm_planner/move_group。"
+                )
+            log_event("检测到旧 /dual_arm_planner 服务，尝试自动清理旧 planner/move_group", run_start)
+            if not cleanup_stale_planner_stack(15.0):
+                raise RuntimeError(
+                    "旧 /dual_arm_planner 服务清理超时。"
+                    "请检查是否有外部终端仍在运行 dual_arm_planner/move_group。"
+                )
         launch_command = build_launch_command(args, run_dir, snapshot_path)
+        domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
         (run_dir / "launch_command.sh").write_text(
             "#!/usr/bin/env bash\nset -e\n"
+            f"{domain_export}"
             "source /opt/ros/humble/setup.bash\n"
             f"source {ROS_WS}/install/setup.bash\n"
             f"cd {ROS_WS}\n{launch_command}\n"
@@ -786,14 +967,30 @@ def main() -> int:
             if args.mode == "staged"
             else "/dual_arm_planner/run_extract_monitor_full_selected"
         )
+        log_offset = 0
         log_event(f"等待监控服务：{service_name}", run_start)
         wait_for_service(service_name, planner, args.service_timeout, launch_log)
-        log_event("监控服务已就绪", run_start)
+        if planner is not None:
+            log_event("预热 IK solver：配置初始抽箱任务", run_start)
+            prewarm_ok, prewarm_output, prewarm_ms = call_configure_extract_monitor_service(
+                "/dual_arm_planner/configure_extract_monitor",
+                args.left_box_id,
+                args.right_box_id,
+                snapshot_path,
+                args.service_timeout,
+            )
+            if launch_log.exists():
+                log_offset = stream_planner_log(launch_log, 0)
+            print(prewarm_output)
+            if not prewarm_ok:
+                raise RuntimeError(f"IK solver 预热失败：{prewarm_output}")
+            log_event(f"监控服务已就绪，IK solver 已预热：{prewarm_ms:.1f} ms", run_start)
+        else:
+            log_event("监控服务已就绪", run_start)
         if args.mode == "staged":
             print("回车顺序：1 IK候选 -> 2 抽离成功 -> 3 负重规划成功 -> 4 最终方案；第5次会重新开始。Ctrl-C 退出。")
         else:
             print("回车一次：从零开始完整计算 IK→抽离→负重规划，并只显示最终采用方案。Ctrl-C 退出。")
-        log_offset = 0
         if args.once or args.save is not None:
             ok, sample_count, log_offset = run_full_selected_once(
                 service_name=service_name,
@@ -872,7 +1069,11 @@ def main() -> int:
         return 0
     finally:
         if planner is not None:
+            log_event("关闭 planner 进程组", run_start)
             terminate_process(planner)
+            if not wait_until_planner_services_gone(15.0):
+                log_event("planner 服务仍未消失，追加清理旧 planner/move_group", run_start)
+                cleanup_stale_planner_stack(15.0)
     return 0
 
 

@@ -53,7 +53,7 @@ def generate_launch_description():
         DeclareLaunchArgument("ik_loaded_preferred_distance_weight", default_value="0.1"),
         DeclareLaunchArgument("loaded_left_pose_family_deg", default_value="[-0.0,59.04,-135.16,0.0,-76.13,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[33.87,75.82,-135.08,0.0,-59.25,-33.87]"),
         DeclareLaunchArgument("loaded_right_pose_family_deg", default_value="[0.0,58.88,-134.84,0.0,-75.96,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[-30.93,74.17,-134.92,0.0,-60.74,30.93]"),
-        DeclareLaunchArgument("loaded_preferred_pose_index", default_value="1"),
+        DeclareLaunchArgument("loaded_preferred_pose_index", default_value="0"),
         DeclareLaunchArgument("front_z_reach_lower", default_value="0.45"),
         DeclareLaunchArgument("front_z_reach_upper", default_value="1.25"),
         DeclareLaunchArgument("top_z_reach_lower", default_value="0.3"),

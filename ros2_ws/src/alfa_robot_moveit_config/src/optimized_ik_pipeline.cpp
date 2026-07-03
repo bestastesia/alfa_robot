@@ -79,7 +79,7 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
     ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
     : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
   ik_request.current_arm_joints = stateValues(*request.seed_state, config_.solver->fixedVariableNames());
-  ik_request.current_full_joints = stateValues(*request.seed_state, config_.solver->freeVariableNames());
+  ik_request.current_full_joints = stateValues(*request.seed_state, config_.solver->fixedFullVariableNames());
 
   output.ik_result = config_.solver->solve(ik_request);
   if (!output.ik_result.success) {

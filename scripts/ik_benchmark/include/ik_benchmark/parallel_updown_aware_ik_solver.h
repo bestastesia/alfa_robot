@@ -182,6 +182,7 @@ public:
     UpdownAwareIkResult solve(const UpdownAwareIkRequest& request);
 
     const std::vector<std::string>& fixedVariableNames() const;
+    std::vector<std::string> fixedFullVariableNames() const;
     const std::vector<std::string>& freeVariableNames() const;
     double jointLeverProxy(const UpdownAwareIkCandidate& candidate, const std::string& prefix, int joint_index) const;
 
@@ -217,6 +218,7 @@ private:
     std::vector<double> makeFixedHCandidates(const HeightInterval& interval, double h_center) const;
     std::vector<TrialSpec> makeNormalTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan) const;
     std::vector<TrialSpec> makeFallbackTrials(const UpdownAwareIkRequest& request, const HeightPlan& plan, size_t round_index) const;
+    void ensureFreeSolvers() const;
     std::vector<UpdownAwareIkCandidate> executeTrials(const std::vector<TrialSpec>& trials,
                                                       const UpdownAwareIkRequest& request,
                                                       const HeightPlan& plan,
@@ -264,7 +266,8 @@ private:
     UpdownAwareIkConfig config_;
     UpdownAwareCostFn custom_cost_;
     std::vector<std::unique_ptr<IkSolver>> fixed_solvers_;
-    std::vector<std::unique_ptr<IkSolver>> free_solvers_;
+    mutable std::vector<std::unique_ptr<IkSolver>> free_solvers_;
+    mutable std::mutex free_solvers_mutex_;
 };
 
 } // namespace ik_benchmark

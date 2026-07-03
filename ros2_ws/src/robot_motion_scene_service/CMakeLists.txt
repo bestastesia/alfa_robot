@@ -87,6 +87,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_scene_geometry robot_motion_scene_core)
   ament_target_dependencies(test_scene_geometry geometry_msgs)
   add_test(NAME test_scene_geometry COMMAND test_scene_geometry)
+
+  add_executable(test_task_geometry test/test_task_geometry.cpp)
+  target_link_libraries(test_task_geometry robot_motion_scene_core)
+  add_test(NAME test_task_geometry COMMAND test_task_geometry)
 endif()
 
 ament_package()

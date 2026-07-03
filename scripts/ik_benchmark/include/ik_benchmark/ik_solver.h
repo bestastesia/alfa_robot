@@ -76,6 +76,10 @@ public:
     Eigen::Isometry3d linkTransformNamed(const std::string& link_name,
                                          const std::vector<std::string>& joint_names,
                                          const std::vector<double>& joint_values) const;
+    Eigen::Isometry3d linkTransformNamedInFrame(const std::string& reference_link,
+                                                const std::string& link_name,
+                                                const std::vector<std::string>& joint_names,
+                                                const std::vector<double>& joint_values) const;
 
     /// 碰撞检查 (输入为完整命名关节状态，未提供的关节使用默认值)
     bool isNamedStateCollisionFree(const std::vector<std::string>& joint_names,

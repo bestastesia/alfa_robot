@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -17,6 +16,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import extract_stage_monitor_console as monitor
+import process_lifecycle
 
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
@@ -66,25 +66,13 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
     )
 
 
-def wait_until_service_gone(timeout: float = 15.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        if not (
-            monitor.service_exists("/dual_arm_planner/run_extract_monitor_next")
-            or monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected")
-        ):
-            return
-        time.sleep(0.1)
+def wait_until_service_gone(timeout: float = 15.0) -> bool:
+    return monitor.wait_until_planner_services_gone(timeout)
 
 
-def cleanup_planner_processes() -> None:
-    subprocess.run(
-        ["pkill", "-INT", "-f", "dual_arm_planner|move_group|ros2 launch alfa_robot_moveit_config dual_arm_planner"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=False,
-    )
-    wait_until_service_gone(15.0)
+def cleanup_planner_processes() -> bool:
+    process_lifecycle.request_stale_planner_shutdown()
+    return wait_until_service_gone(15.0)
 
 
 def log_sequence_replay(
@@ -137,51 +125,46 @@ def run_one_pair(
     helpers: Any,
     robot: Any,
     run_root: Path,
+    planner: subprocess.Popen[str],
+    launch_log: Path,
+    service_client: monitor.ExtractMonitorServiceClient,
+    startup_ms: float,
     left_id: int,
     right_id: int,
     task_index: int,
     pair_count: int,
     sample_start: int,
 ) -> tuple[bool, int, dict[str, Any]]:
-    pair_args = make_pair_args(args, left_id, right_id)
     run_dir = run_root / f"{task_index:02d}_L{left_id}_R{right_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
     snapshot_path = run_dir / "stage_snapshot.json"
-    launch_log = run_dir / "planner.log"
-    ros_home = run_dir / "ros_home"
-    ros_log_dir = run_dir / "ros_log"
-    ros_home.mkdir(parents=True, exist_ok=True)
-    ros_log_dir.mkdir(parents=True, exist_ok=True)
-    os.environ["ROS_HOME"] = str(ros_home)
-    os.environ["ROS_LOG_DIR"] = str(ros_log_dir)
-
-    if monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
-        raise RuntimeError("检测到旧 /dual_arm_planner 服务，请先清理旧 ROS 进程")
-
-    launch_command = monitor.build_launch_command(pair_args, run_dir, snapshot_path)
-    (run_dir / "launch_command.sh").write_text(
-        "#!/usr/bin/env bash\nset -e\n"
-        "source /opt/ros/humble/setup.bash\n"
-        f"source {monitor.ROS_WS}/install/setup.bash\n"
-        f"cd {monitor.ROS_WS}\n{launch_command}\n"
-    )
     print(f"\n===== 任务 {task_index}/{pair_count}: L{left_id}/R{right_id} =====")
-    print(f"启动 planner，日志：{launch_log}")
-    with launch_log.open("w") as log_file:
-        planner = subprocess.Popen(
-            monitor.bash_source_command(launch_command),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
-            preexec_fn=os.setsid,
-        )
-
     try:
-        service_name = "/dual_arm_planner/run_extract_monitor_full_selected"
-        monitor.wait_for_service(service_name, planner, args.service_timeout, launch_log)
+        config_ok, config_output, config_ms = service_client.configure(
+            left_id,
+            right_id,
+            snapshot_path,
+            args.service_timeout,
+        )
+        print(config_output)
+        print(f"任务配置完成：success={config_ok} configure={config_ms:.1f}ms snapshot={snapshot_path}")
+        if not config_ok:
+            summary = {
+                "left": left_id,
+                "right": right_id,
+                "success": False,
+                "startup_ms": startup_ms if task_index == 1 else 0.0,
+                "configure_ms": config_ms,
+                "service_ms": 0.0,
+                "wall_ms": 0.0,
+                "snapshot": str(snapshot_path),
+                "failure_reason": config_output,
+            }
+            return False, 1, summary
+
         print("计算开始：IK → 抽离 → 横向让位 → 负重规划")
         start = time.monotonic()
-        success, output, elapsed_ms = monitor.call_trigger_service(service_name, args.service_timeout)
+        success, output, elapsed_ms = service_client.trigger(args.service_timeout)
         wall_ms = (time.monotonic() - start) * 1000.0
         print(output)
         print(f"计算结束：success={success} service={elapsed_ms:.1f}ms wall={wall_ms:.1f}ms")
@@ -192,6 +175,8 @@ def run_one_pair(
             "left": left_id,
             "right": right_id,
             "success": success,
+            "startup_ms": startup_ms if task_index == 1 else 0.0,
+            "configure_ms": config_ms,
             "service_ms": elapsed_ms,
             "wall_ms": wall_ms,
             "snapshot": str(snapshot_path),
@@ -211,15 +196,18 @@ def run_one_pair(
                 "ik_ms": float(snapshot.get("ik_elapsed_ms", 0.0)),
                 "extract_ms": float(snapshot.get("extract_elapsed_ms", 0.0)),
                 "loaded_ms": float(snapshot.get("loaded_elapsed_ms", 0.0)),
+                "loaded_plan_batch_wall_ms": float(snapshot.get("loaded_plan_batch_wall_ms", 0.0)),
+                "loaded_plan_candidate_count": int(snapshot.get("loaded_plan_candidate_count", 0)),
+                "loaded_plan_attempted_count": int(snapshot.get("loaded_plan_attempted_count", 0)),
+                "loaded_plan_success_count": int(snapshot.get("loaded_plan_success_count", 0)),
+                "loaded_parallel_workers": int(snapshot.get("loaded_parallel_workers", 0)),
+                "final_ms": float(snapshot.get("final_elapsed_ms", 0.0)),
                 "samples": sample_count,
             }
         )
         return True, sample_count, summary
     finally:
-        monitor.terminate_process(planner)
-        wait_until_service_gone()
-        if monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
-            cleanup_planner_processes()
+        pass
 
 
 def main() -> int:
@@ -250,7 +238,14 @@ def main() -> int:
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--continue-on-failure", action="store_true")
+    parser.add_argument(
+        "--ros-domain-id",
+        default="auto",
+        help="本次 ROS_DOMAIN_ID；auto 隔离自启动序列测试，inherit 表示沿用当前终端。",
+    )
     args = parser.parse_args()
+    domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
+    print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
     pairs = parse_pair_sequence(args.pair_sequence)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -271,16 +266,94 @@ def main() -> int:
     rr.log("monitor", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     helpers.log_robot_static_model(robot, "monitor/robot", log_meshes=True)
 
+    if monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
+        print("检测到旧 /dual_arm_planner 服务，自动清理旧 planner/move_group...")
+        if not cleanup_planner_processes():
+            raise RuntimeError("旧 /dual_arm_planner 服务清理超时，请检查外部 ROS 进程")
+
+    ros_home = run_root / "ros_home"
+    ros_log_dir = run_root / "ros_log"
+    ros_home.mkdir(parents=True, exist_ok=True)
+    ros_log_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["ROS_HOME"] = str(ros_home)
+    os.environ["ROS_LOG_DIR"] = str(ros_log_dir)
+
+    first_left, first_right = pairs[0]
+    initial_args = make_pair_args(args, first_left, first_right)
+    launch_log = run_root / "planner.log"
+    initial_snapshot = run_root / "initial_stage_snapshot.json"
+    launch_command = monitor.build_launch_command(initial_args, run_root, initial_snapshot)
+    domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
+    (run_root / "launch_command.sh").write_text(
+        "#!/usr/bin/env bash\nset -e\n"
+        f"{domain_export}"
+        "source /opt/ros/humble/setup.bash\n"
+        f"source {monitor.ROS_WS}/install/setup.bash\n"
+        f"cd {monitor.ROS_WS}\n{launch_command}\n"
+    )
+    print(f"启动共享 planner，日志：{launch_log}")
+    startup_start = time.monotonic()
+    with launch_log.open("w") as log_file:
+        planner = subprocess.Popen(
+            monitor.bash_source_command(launch_command),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+            preexec_fn=os.setsid,
+        )
+
     sample = 0
     summaries: list[dict[str, Any]] = []
-    for index, (left_id, right_id) in enumerate(pairs, start=1):
-        ok, sample_count, summary = run_one_pair(
-            args, helpers, robot, run_root, left_id, right_id, index, len(pairs), sample
+    service_client: monitor.ExtractMonitorServiceClient | None = None
+    try:
+        monitor.wait_for_service(
+            "/dual_arm_planner/configure_extract_monitor",
+            planner,
+            args.service_timeout,
+            launch_log,
         )
-        summaries.append(summary)
-        sample += max(1, sample_count) + 5
-        if not ok and not args.continue_on_failure:
-            break
+        service_client = monitor.ExtractMonitorServiceClient(
+            configure_service="/dual_arm_planner/configure_extract_monitor",
+            trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
+            timeout=args.service_timeout,
+        )
+        prewarm_ok, prewarm_output, prewarm_ms = service_client.configure(
+            first_left,
+            first_right,
+            initial_snapshot,
+            args.service_timeout,
+        )
+        print(prewarm_output)
+        if not prewarm_ok:
+            raise RuntimeError(f"共享 planner IK 预热失败：{prewarm_output}")
+        startup_ms = (time.monotonic() - startup_start) * 1000.0
+        print(f"共享 planner 启动完成：startup={startup_ms:.1f}ms prewarm={prewarm_ms:.1f}ms")
+        for index, (left_id, right_id) in enumerate(pairs, start=1):
+            ok, sample_count, summary = run_one_pair(
+                args,
+                helpers,
+                robot,
+                run_root,
+                planner,
+                launch_log,
+                service_client,
+                startup_ms,
+                left_id,
+                right_id,
+                index,
+                len(pairs),
+                sample,
+            )
+            summaries.append(summary)
+            sample += max(1, sample_count) + 5
+            if not ok and not args.continue_on_failure:
+                break
+    finally:
+        if service_client is not None:
+            service_client.close()
+        monitor.terminate_process(planner)
+        if not wait_until_service_gone():
+            cleanup_planner_processes()
 
     summary_path = run_root / "summary.json"
     import json
@@ -291,7 +364,10 @@ def main() -> int:
         status = "成功" if item.get("success") else "失败"
         print(
             f"L{item['left']}/R{item['right']}: {status} "
-            f"total={item.get('total_ms', 0.0):.1f}ms samples={item.get('samples', 0)}"
+            f"startup={item.get('startup_ms', 0.0):.1f}ms "
+            f"total={item.get('total_ms', 0.0):.1f}ms "
+            f"loaded_batch={item.get('loaded_plan_batch_wall_ms', 0.0):.1f}ms "
+            f"samples={item.get('samples', 0)}"
         )
     print(f"Rerun: {save_path}")
     print(f"Summary: {summary_path}")

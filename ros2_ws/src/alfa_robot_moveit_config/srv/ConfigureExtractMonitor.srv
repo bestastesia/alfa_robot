@@ -1,0 +1,6 @@
+int32 left_box_id
+int32 right_box_id
+string snapshot_path
+---
+bool success
+string message

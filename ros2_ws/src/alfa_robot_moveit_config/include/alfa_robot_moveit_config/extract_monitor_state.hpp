@@ -65,6 +65,13 @@ struct ExtractMonitorState
   std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
   std::vector<moveit::core::RobotStatePtr> candidate_states;
   std::vector<ExtractRolloutTiming> timings;
+  double loaded_plan_batch_wall_ms = 0.0;
+  size_t loaded_plan_candidate_count = 0;
+  size_t loaded_plan_attempted_count = 0;
+  size_t loaded_plan_success_count = 0;
+  size_t loaded_parallel_workers = 0;
+  size_t loaded_candidate_limit = 0;
+  std::map<std::string, size_t> loaded_plan_failure_counts;
 };
 
 std::string extract_monitor_prefix(int left_box_id, int right_box_id);

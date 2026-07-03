@@ -82,6 +82,8 @@ install_manifest.txt
 *.bag.active
 *.bag.db3
 *.srv
+!ros2_ws/src/alfa_robot_moveit_config/srv/
+!ros2_ws/src/alfa_robot_moveit_config/srv/ConfigureExtractMonitor.srv
 *.msg.generated
 
 # Large binary files (models, maps, point clouds, images)
@@ -187,6 +189,7 @@ ros2_ws/src/alfa_robot_moveit_config/scripts/*
 !ros2_ws/src/alfa_robot_moveit_config/scripts/extract_failed_attempts_rerun.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_real_live.py
+!ros2_ws/src/alfa_robot_moveit_config/scripts/run_extract_live_benchmark.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/visualize_moveit_box_stack_flow.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py

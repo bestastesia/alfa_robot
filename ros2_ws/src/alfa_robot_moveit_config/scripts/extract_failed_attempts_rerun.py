@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -198,7 +197,14 @@ def main() -> int:
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--gap-samples", type=int, default=5)
     parser.add_argument("--max-display", type=int, default=128)
+    parser.add_argument(
+        "--ros-domain-id",
+        default="auto",
+        help="本次 ROS_DOMAIN_ID；auto 隔离自启动失败回放，inherit 表示沿用当前终端。",
+    )
     args = parser.parse_args()
+    domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
+    print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = args.output_root / f"L{args.left_box_id}_R{args.right_box_id}_{stamp}"
@@ -214,13 +220,17 @@ def main() -> int:
     os.environ["ROS_HOME"] = str(ros_home)
     os.environ["ROS_LOG_DIR"] = str(ros_log_dir)
 
-    if monitor.service_exists("/dual_arm_planner/run_extract_monitor_next"):
-        raise RuntimeError("检测到旧 /dual_arm_planner 服务，请先清理旧 ROS 进程")
+    if monitor.planner_monitor_service_exists():
+        print("检测到旧 /dual_arm_planner 服务，自动清理旧 planner/move_group...")
+        if not monitor.cleanup_stale_planner_stack(15.0):
+            raise RuntimeError("旧 /dual_arm_planner 服务清理超时，请检查外部 ROS 进程")
 
     launch_args = pair_args(args, run_dir, snapshot_path)
     launch_command = monitor.build_launch_command(launch_args, run_dir, snapshot_path)
+    domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
     (run_dir / "launch_command.sh").write_text(
         "#!/usr/bin/env bash\nset -e\n"
+        f"{domain_export}"
         "source /opt/ros/humble/setup.bash\n"
         f"source {monitor.ROS_WS}/install/setup.bash\n"
         f"cd {monitor.ROS_WS}\n{launch_command}\n"
@@ -240,6 +250,17 @@ def main() -> int:
 
     try:
         monitor.wait_for_service("/dual_arm_planner/run_extract_monitor_next", planner, args.service_timeout, launch_log)
+        prewarm_ok, prewarm_output, prewarm_ms = monitor.call_configure_extract_monitor_service(
+            "/dual_arm_planner/configure_extract_monitor",
+            args.left_box_id,
+            args.right_box_id,
+            snapshot_path,
+            args.service_timeout,
+        )
+        print(prewarm_output)
+        if not prewarm_ok:
+            raise RuntimeError(f"IK solver 预热失败：{prewarm_output}")
+        print(f"planner 启动完成，IK solver 已预热：{prewarm_ms:.1f}ms")
 
         global rr
         import rerun as rr
@@ -293,6 +314,8 @@ def main() -> int:
         return 0
     finally:
         monitor.terminate_process(planner)
+        if not monitor.wait_until_planner_services_gone(15.0):
+            monitor.cleanup_stale_planner_stack(15.0)
 
 
 if __name__ == "__main__":

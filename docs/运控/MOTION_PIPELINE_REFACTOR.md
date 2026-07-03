@@ -23,7 +23,7 @@
 
 | 模块 | 责任 | 当前文件 |
 | --- | --- | --- |
-| `motion_core/task_geometry` | 箱子编号、箱垛坐标、抓取 pair、基础碰撞几何数据结构，以及 `updown + 双臂 12 轴` 的标准目标关节顺序 | `include/alfa_robot_moveit_config/motion_core/task_geometry.hpp` / `src/motion_core/task_geometry.cpp` |
+| `robot_motion_scene_service/motion_core/task_geometry` | 箱子编号、箱垛坐标、抓取 pair、基础碰撞几何数据结构，以及 `updown + 双臂 12 轴` 的标准目标关节顺序 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_core/task_geometry.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_core/task_geometry.cpp` |
 | `motion_core/pose_math` | 角度解析、抓取姿态、Pose/Eigen 转换、误差计算、JSON 辅助 | `include/alfa_robot_moveit_config/motion_core/pose_math.hpp` / `src/motion_core/pose_math.cpp` |
 | `robot_motion_scene_service/motion_core/scene_geometry` | 集装箱板、动态箱墙、末端附着箱、AABB 与邻箱脱离判断 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_core/scene_geometry.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_core/scene_geometry.cpp` |
 | `MotionSceneAdapter` | 将场景几何转换为 MoveIt collision/attached objects，并管理 ADD/REMOVE 与当前场景状态；当前是库级 Adapter，不是独立 ROS 节点 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_scene_adapter.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_scene_adapter.cpp` |
@@ -41,6 +41,8 @@
 | `DualArmPlannerNode` | ROS 参数、MoveIt 后端、场景碰撞判定、service callback 装配 | `src/dual_arm_planner_node.cpp` |
 | 启动配置 | 暴露算法超参数和实验参数 | `launch/dual_arm_planner.launch.py` |
 | 回放工具 | 将 JSONL 转为 Rerun 场景 | `scripts/visualize_moveit_box_stack_flow.py` |
+
+兼容说明：`alfa_robot_moveit_config/include/alfa_robot_moveit_config/motion_core/task_geometry.hpp`、`motion_core/scene_geometry.hpp`、`motion_scene_adapter.hpp` 仍保留为转发头，方便旧 include 路径继续编译；真实实现已经迁入 `robot_motion_scene_service`，旧 `alfa_robot_moveit_config/src/motion_core/*` 和 `src/motion_scene_adapter.cpp` 不再保留重复实现。
 
 ## 3. 模块间数据流
 
@@ -119,6 +121,122 @@
 
 这部分的迁移建议：不要复制 `run_extract_monitor_*` 的线性实现；应优先迁移上述四个 monitor 模块，再在新仓库里重新写 ROS service Adapter。
 
+### 3.8 启动稳定性 smoke
+
+为了避免“上一轮 ROS 进程没关干净，下一轮测试连到旧服务”的问题，当前自启动 monitor/benchmark 脚本默认使用独立 `ROS_DOMAIN_ID=auto`，并在退出时按进程组清理 `ros2 launch` 及其子进程。公共逻辑在：
+
+- `ros2_ws/src/alfa_robot_moveit_config/scripts/process_lifecycle.py`
+- `ros2_ws/src/alfa_robot_moveit_config/test/test_process_lifecycle.py`
+
+推荐 AI 或工程师复测启动稳定性时直接运行：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+
+ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
+  --rounds 3 \
+  --ros-domain-id auto
+```
+
+这个 smoke 会在同一个隔离 ROS 域内连续执行 3 轮：
+
+1. 启动 `dual_arm_planner.launch.py`。
+2. 等待 `/dual_arm_planner/run_extract_monitor_full_selected` 服务。
+3. 调一次完整 `IK → 抽离 → 横向让位 → 负重规划`。
+4. 校验返回的 snapshot 路径必须属于本轮，避免误连旧 planner。
+5. 检查日志中旧关节名污染 `left_joint/right_joint` 必须为 0。
+6. 关闭 planner 进程组，并确认 `/dual_arm_planner` 服务消失。
+
+默认情况下，完整流程本身如果因为 IK/RRT 随机性没有选出最终方案，只会记录为 `flow_success=false`，不会把启动稳定性 smoke 判失败；因为这个脚本主要验证的是“服务能稳定启动、不会连旧节点、退出后不残留”。如果需要把算法完整成功也作为硬门槛，加 `--require-flow-success`。
+
+如果需要故意连接外部已经启动的 ROS 图，可以传 `--ros-domain-id inherit`；否则默认推荐保留 `auto`。
+
+### 3.9 关于算法进程和任务进程拆分
+
+本轮启动稳定性问题的主要根因不是“算法和任务必须拆成两个 ROS 进程”，而是：
+
+- 旧 `ros2 launch` 子进程没有随父进程完全退出，留下旧 `/dual_arm_planner` 服务。
+- 自启动测试复用默认 ROS 图，容易被旧 `/joint_states` 或旧服务污染。
+- fixed-h IK 流程在部分路径上提前碰到 free-h 求解池初始化，造成首次调用变慢。
+
+这些问题已经通过 `process_lifecycle.py`、`ROS_DOMAIN_ID=auto` 和 IK 懒初始化处理。因此当前不建议为了“看起来分层”立刻把算法进程、任务进程硬拆开：如果只是把现有 callback 包一层 ROS service，而调用顺序、场景状态、MoveIt planning scene 和候选缓存仍然全部外泄，那个 seam 会很浅，接口复杂度接近实现复杂度，反而更容易生成新残留进程和新同步问题。
+
+后续如果真的要拆进程，建议先满足两个条件：
+
+1. `DualArmPlannerNode` 内的 ROS/MoveIt Adapter 继续变薄，核心算法只通过明确 request/result 结构交互。
+2. 至少存在两个真实 Adapter，例如“同进程直接调用”和“跨进程 ROS 调用”，否则这个 seam 还只是理论 seam。
+
+当前更实际的维护策略是：
+
+- 用 `extract_startup_stability_smoke.py` 作为启动/关闭 gate。
+- 继续把 `DualArmPlannerNode` 中的纯算法请求构造、快照、记录、回放语义下沉到已有 deep module。
+- 保留一个一键总体启动/测试入口，避免 AI 或工程师为了验证一次流程手动拼多条命令。
+
+### 3.10 全流程服务复用与预热边界
+
+当前全流程实验不要按“每组箱子启动一次 planner”的方式跑。那样会把 MoveIt、PlanningScene、controller、以及 16 个 BioIK solver 的首次初始化都算进单次任务，导致 IK 阶段表面上从约 `0.5~0.8s` 膨胀到约 `4s`。正确口径是：
+
+```text
+启动期：
+  启动 dual_arm_planner.launch.py
+  -> 等待 /dual_arm_planner/configure_extract_monitor
+  -> 调 configure_extract_monitor 做首个任务配置和 IK solver 预热
+
+每个任务：
+  configure_extract_monitor(left_box_id, right_box_id, snapshot_path)
+  -> run_extract_monitor_full_selected
+  -> 读取 snapshot / 生成 Rerun / 记录阶段耗时
+
+收尾：
+  关闭 planner 进程组
+  -> 等待 /dual_arm_planner/* 服务消失
+```
+
+必须常驻复用的部分：
+
+- `dual_arm_planner_node`：保留 MoveIt 后端、场景状态、monitor 状态机入口、IK solver 缓存。
+- `move_group`、`robot_state_publisher`、`ros2_control_node`、controller spawner：由 `dual_arm_planner.launch.py` 管理，整段序列只启动一次。
+- `ParallelUpdownAwareIkSolver` 内部的 BioIK solver 池：通过 `configure_extract_monitor` 触发 `ensure_optimized_ik_solver()` 预热，后续任务复用。
+
+每个任务允许重置的部分：
+
+- 当前抓取箱号、箱墙开洞、左右 box 目标、snapshot 路径。
+- monitor 阶段状态、上一阶段耗时、候选缓存和最终回放缓存。
+- 末端携带箱与动态碰撞对象状态。
+
+新增服务：
+
+- `/dual_arm_planner/configure_extract_monitor`
+- 类型：`alfa_robot_moveit_config/srv/ConfigureExtractMonitor`
+- 字段：`left_box_id`、`right_box_id`、`snapshot_path`
+- 作用：切换当前任务、重置 monitor 状态、设置 snapshot 输出路径、更新箱墙开洞，并确保 IK solver 已预热。
+
+当前已接入该复用语义的入口：
+
+- `scripts/extract_sequence_rerun.py`：整段 pair sequence 共享一个 planner；启动期预热一次，每组任务只 configure。
+- `scripts/extract_stage_monitor_console.py`：自启动 planner 后先 configure/prewarm，再等待用户回车触发计算。
+- `scripts/extract_failed_attempts_rerun.py`：失败样本分阶段回放前先 configure/prewarm。
+- `scripts/execute_l6_r8_mock_live.py` / `execute_l6_r8_real_live.py`：计算到执行链路启动后先 configure/prewarm。
+- `scripts/extract_startup_stability_smoke.py`：把“服务就绪 + IK 预热”计入 startup，而不是计入单次 IK。
+- `scripts/run_extract_live_benchmark.py`：旧实时演示入口仍被安装；现在启动后也会先 configure/prewarm，再触发 `run_left_extract_demo`。
+
+耗时解释：
+
+- `startup_ms`：启动 ROS/MoveIt/controller，加上首次 configure/prewarm；这是整段序列启动成本，不是单任务算法耗时。
+- `configure_ms`：单任务切换成本；C++ 内部通常应为几十毫秒以内。长序列入口应复用 `ExtractMonitorServiceClient`，不要每个任务重新创建 rclpy node，否则 Python/DDS 客户端开销会把外部墙钟放大到数百毫秒。
+- `ik_elapsed_ms`：预热后的真实抓取 IK 阶段耗时；512 次 fixed h × multi seed 当前通常约 `0.5~0.8s`。
+- `loaded_elapsed_ms` / `loaded_ms`：负重阶段总耗时，包含候选排序、批量规划、records/snapshot 生成等阶段包装成本。
+- `loaded_plan_batch_wall_ms`：负重候选并行规划批次本身的墙钟耗时，更适合用来判断 RRT/MoveIt 规划是否拖慢流程；这个仍受 RRT 随机性影响，是当前秒级波动的主要来源。
+
+维护规则：
+
+- 新增全流程入口时，必须遵守“启动/预热一次 → 每任务 configure → trigger compute”的顺序。
+- 不要为了换箱号重启 `dual_arm_planner_node`；除非任务目标就是测试启动稳定性。
+- 如果跳过 `configure_extract_monitor` 直接调 `run_extract_monitor_full_selected`，首次调用仍可能触发懒初始化，耗时统计会再次混入启动成本。
+- `extract_startup_stability_smoke.py` 是例外：它刻意重启 planner，用于验证进程清理和启动稳定性；它已经把预热时间归到 startup。
+
 ## 4. 可复用库与迁移建议
 
 当前 CMake 导出两个层级：
@@ -144,7 +262,7 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_core` 只包含姿态/箱垛等轻量模块，并链接 `robot_motion_scene_service::robot_motion_scene_core` 复用场景几何。
+`alfa_robot_motion_core` 只包含姿态、角度、Pose/Eigen 转换和 JSON 辅助等轻量模块，并链接 `robot_motion_scene_service::robot_motion_scene_core` 复用 `task_geometry` 的箱垛/关节顺序结构。
 
 ```cmake
 target_link_libraries(your_target
