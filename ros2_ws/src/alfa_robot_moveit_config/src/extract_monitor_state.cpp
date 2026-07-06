@@ -243,7 +243,7 @@ ExtractMonitorLoadedPlanSummary summarize_loaded_plan_timings(
     if (timing.loaded_plan_success && timing.final_state) {
       ++summary.success_count;
       summary.success_indices.push_back(index);
-    } else if (timing.loaded_plan_attempted) {
+    } else {
       summary.failure_counts[
         timing.loaded_plan_failure_reason.empty() ? "unknown" : timing.loaded_plan_failure_reason]++;
     }

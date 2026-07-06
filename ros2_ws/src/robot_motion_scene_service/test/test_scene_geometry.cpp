@@ -34,6 +34,13 @@ int main()
   assert(left_box.id == "carried_left_box_6");
   assert(left_box.link_name == "left_tool0");
   assert(left_box.size[0] > 0.0);
+  assert(left_box.center_in_link[2] > 0.0);
+
+  const auto top_box = make_attached_box_spec("left", 16, true, CarriedBoxGeometryConfig{});
+  assert(top_box.id == "carried_left_box_16");
+  assert(top_box.link_name == "left_v5_tool0");
+  assert(top_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_height);
+  assert(top_box.center_in_link[2] > 0.0);
 
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);

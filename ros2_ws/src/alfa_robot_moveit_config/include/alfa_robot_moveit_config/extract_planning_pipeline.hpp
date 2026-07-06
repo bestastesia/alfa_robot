@@ -219,6 +219,7 @@ struct ExtractCandidateSolveRequest
   double pitch_delta_rad = 0.0;
   double min_allowed_tip_z = 0.0;
   double fixed_updown = 0.0;
+  double min_tool_normal_z = std::numeric_limits<double>::quiet_NaN();
 };
 
 class ExtractCandidateSolver

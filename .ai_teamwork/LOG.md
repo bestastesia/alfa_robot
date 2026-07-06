@@ -1202,3 +1202,33 @@
 - 改了哪里：删除 `ros2_ws/src/pick_ik`、`ros2_ws/src/trac_ik`、`ros2_ws/src/dependencies.repos`、`scripts/setup_pickik.sh`；`scripts/ik_benchmark` 默认和快捷入口改为仅保留 `kdl`/`bio_ik`；`docs/运控/IK/ik_service.md` 更新为当前 IK 口径；删除 description 包旧 `meshes/alfa_robot` 与旧 `alfa_robot_macro.xacro`，删除 MuJoCo 旧生成 mesh 缓存；`data/**/*.rrd` 按“同目录同任务/朝向保留最新”策略删除 159 个旧文件，manifest 写入 `data/cleanup_manifests/rrd_cleanup_20260706_180429.txt`。
 - 验证结果：当前 `alfa_robot_description` 源码和安装目录均只剩 `meshes/current_robot`；`colcon list` 中无 `pick_ik`/`trac_ik` 包；URDF mesh 引用 42 个、缺失 0 个；`xacro` + `check_urdf` 通过；`git diff --check` 通过；`colcon build --packages-select alfa_robot_description robot_motion_scene_service alfa_robot_moveit_config alfa_robot_bringup alfa_robot_execution_bridge alfa_robot_benchmarks --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_scene_service alfa_robot_moveit_config --return-code-on-test-failure` 通过，15/15 单测成功。`data` 从约 14.6GiB 降到约 7.5GiB，RRD 从 278 个/11.96GiB 降到 119 个/4.86GiB。
 - 留给下个 AI：`scripts/dh_workspace/configs/alfa_v*_urdf_left_arm_with_base.yaml` 仍保留旧 `alfa_robot_macro.xacro` 路径作为历史来源说明，不应用作当前 URDF 加载入口；历史报告中提到 pick/trac 只是历史对比，不代表当前仓库仍能运行这些插件。提交时注意把 `meshes/current_robot` 的 42 个 STL 纳入版本控制。
+
+## 2026-07-03 Codex / 运控 / 混合侧吸顶吸全流程实验
+- 做了什么：基于 `v5_dev` 新建 `feature/mixed-grasp-full-flow-research-20260703`，让 6 组抽箱序列支持按任务切换吸附模式；本次按 `front;front;front;top_suction;top_suction;top_suction` 运行。
+- 改了哪里：`extract_sequence_rerun.py` 支持 `--grasp-mode-sequence`，失败任务也回放最佳失败候选；`extract_stage_monitor_console.py`/`dual_arm_planner.launch.py` 透传顶吸距离、顶吸 IK 容差和 IK 参数；`extract_monitor_state.cpp` 修正负重规划失败统计，横向让位失败也计入 failure_counts；`alfa_robot.srdf` 恢复 `lidar_front/rear <-> turn` 零位接触忽略。
+- 验证结果：已生成 Rerun：`data/ik_benchmark/extract_sequence_mixed_grasp/mixed_front_top_failure_replay_20260703.rrd`；summary：`data/ik_benchmark/extract_sequence_mixed_grasp/sequence_20260703_164019/summary.json`。L6/R3、L7/R8、L11/R12、L16/R13 成功；L1/R2、L17/R18 失败但已写入失败回放轨迹。
+- 留给下个 AI：L1/R2 主要失败在右臂 joint4 越界或 `right_v5_link5 <-> turn` 路径碰撞；L17/R18 失败在保守 AABB 判定 `carried_left_box_17 overlaps box_wall_L17_R18_left_side`。若继续优化，先针对这两个端点/路径碰撞诊断，不要先动顶吸 IK 主链路。
+
+## 2026-07-03 Codex / 混合侧吸顶吸全流程验证
+- 做了什么：修复 `extract_sequence_rerun.py`/`extract_stage_monitor_console.py` 到 `dual_arm_planner` 的顶吸模式传递；此前外层任务序列知道 `top_suction`，但 monitor planner 没收到 `extract_monitor_top_suction`，导致 Rerun 看起来全是侧吸。
+- 改了哪里：`extract_stage_monitor_console.py` 新增 `--grasp-mode` 并传 `extract_monitor_top_suction:=true/false`；`dual_arm_planner_node.cpp` monitor IK/附着箱/目标 pose 使用 `extract_monitor_top_suction_`；`extract_sequence_rerun.py` 在失败且无 snapshot 时不中断，并在 Rerun 中标出失败目标点。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；新 Rerun 为 `data/ik_benchmark/extract_sequence_mixed_grasp/mixed_front_top_true_top_replay_20260703_c.rrd`，summary 为 `data/ik_benchmark/extract_sequence_mixed_grasp/sequence_20260703_171633/summary.json`。
+- 留给下个 AI：新结果中 L11/R12、L16/R13、L17/R18 已真实进入 top_suction IK，但 512 trials legal=0；这不是“Rerun 全侧吸”问题，而是当前顶吸目标/窗口/姿态约束下 IK 无合法解。
+
+## 2026-07-03 Codex / 顶吸车距修正
+- 做了什么：修正混合侧吸/顶吸序列中顶吸车距语义；顶吸时车辆应向箱墙前进 0.30m，因此机器人坐标系下顶吸 `box_front_x` 默认使用侧吸 `box_front_x - 0.30`。
+- 改了哪里：`extract_sequence_rerun.py` 新增 `--top-approach-forward` 和 `--top-box-front-x`，每个任务按吸附模式生成独立 planner 参数；顶吸失败标记和 Rerun 箱堆也使用顶吸有效 `box_front_x`。
+- 验证结果：重新运行 6 组混合流程，Rerun 为 `data/ik_benchmark/extract_sequence_mixed_grasp/mixed_front_top_top_forward30_skip_extract_20260703.rrd`，summary 为 `data/ik_benchmark/extract_sequence_mixed_grasp/sequence_20260703_173034/summary.json`。顶吸目标从 `x=1.075` 修正到 `x=0.775`，顶吸 IK 从 `legal=0` 变为 `legal=458/468/470`。
+- 留给下个 AI：当前后 3 组顶吸已不再卡 IK；失败转移到负重规划阶段，主要原因是附着箱体与 link3/link4 起点/目标碰撞，需要继续检查顶吸附着箱体姿态/几何或顶吸后的负重过渡策略。
+
+## 2026-07-03 Codex / 顶吸附着箱体位置修正
+- 做了什么：修复顶吸时箱体附着方向；经用户 Rerun 肉眼确认，当前 `left/right_v5_tool0` 的正 z 侧才对应吸盘外侧，顶吸箱体应位于 tool 正 z 方向。
+- 改了哪里：`robot_motion_scene_service/src/motion_core/scene_geometry.cpp` 中 `make_attached_box_spec(top_suction=true)` 使用 `center_in_link.z=+carried_box_height/2`；`test_scene_geometry.cpp` 增加顶吸箱体位于 tool 正 z 方向的断言。
+- 验证结果：`colcon build --packages-select robot_motion_scene_service alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`robot_motion_scene_service` 测试构建和 `colcon test --packages-select robot_motion_scene_service --ctest-args -R test_scene_geometry --output-on-failure` 通过；用户确认顶吸 Rerun 中箱体附着方向正确。
+- 留给下个 AI：不要再把顶吸 `center_in_link.z` 改回负值；后续顶吸失败应优先看顶吸抽离/负重过渡，而不是怀疑箱体“上飘”。
+
+## 2026-07-04 Codex / 运控 / 混合侧吸顶吸六组全流程跑通
+- 做了什么：完成 `1/2、6/3、7/8、11/12、16/13、17/18` 六组任务混合流程；前三组侧吸、后三组顶吸。顶吸抽离改为升降轴竖直抬升并用顶吸专用脱离判定，顶吸负重阶段改为“抬升后承载保持态”，不再强行套侧吸负重姿态。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增顶吸 lift extract 和 top-loaded hold 分支；`extract_planning_pipeline.cpp` 修正独立 KDL 链 joint 名到 MoveIt 变量名映射；`extract_sequence_rerun.py` 支持顶吸有效车距、顶吸专用负重姿态参数和失败回放；`scene_geometry.cpp` 保持顶吸箱体 `center_in_link.z=+height/2`。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`python3 -m py_compile` 通过；`colcon test --packages-select robot_motion_scene_service --ctest-args -R test_scene_geometry --output-on-failure` 通过；完整六组全成功 Rerun：`data/ik_benchmark/extract_sequence_mixed_grasp/mixed_front3_top3_full_loaded3s_20260704.rrd`；summary：`data/ik_benchmark/extract_sequence_rerun/sequence_20260704_194914/summary.json`。
+- 留给下个 AI：L1/R2 在默认 1s 负重规划时间下不稳定，3s 可通过；本轮成功命令使用 `--loaded-planning-time 3.0`。顶吸三组负重阶段是保持承载态，不等价于侧吸负重 RRT。

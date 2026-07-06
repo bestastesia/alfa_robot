@@ -174,11 +174,16 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"front_z_reach_upper:={args.front_z_reach_upper}",
         f"top_z_reach_lower:={args.top_z_reach_lower}",
         f"top_z_reach_upper:={args.top_z_reach_upper}",
+        f"top_suction_x_offset:={getattr(args, 'top_suction_x_offset', 0.15)}",
+        f"top_suction_z_offset:={getattr(args, 'top_suction_z_offset', 0.2)}",
+        f"ik_top_position_tolerance:={getattr(args, 'ik_top_position_tolerance', 0.04)}",
+        f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
         f"ik_seed_count:={args.ik_seed_count}",
         f"ik_candidate_timeout:={args.ik_candidate_timeout}",
         f"ik_try_target_orders:={str(args.ik_try_target_orders).lower()}",
         f"ik_use_reversed_target_order:={str(args.ik_use_reversed_target_order).lower()}",
+        f"optimized_ik_check_collision:={str(getattr(args, 'optimized_ik_check_collision', True)).lower()}",
         f"extract_demo_left_box_id:={args.left_box_id}",
         f"extract_demo_right_box_id:={args.right_box_id}",
         f"extract_monitor_top_suction:={str(args.grasp_mode == 'top_suction').lower()}",
@@ -196,7 +201,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
         "extract_loaded_sort_by_pose_distance:=true",
         "extract_loaded_stop_on_first_success:=false",
-        "extract_loaded_lateral_shift_enabled:=true",
+        f"extract_loaded_lateral_shift_enabled:={str(args.lateral_shift_enabled).lower()}",
         f"extract_loaded_lateral_shift_distance:={args.lateral_shift_distance}",
         f"extract_loaded_lateral_shift_step:={args.lateral_shift_step}",
         f"extract_loaded_lateral_shift_column:={args.lateral_shift_column}",
@@ -209,6 +214,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_loaded_use_direct_pipeline:=true",
         f"extract_loaded_parallel_workers:={args.loaded_workers}",
         f"loaded_preferred_pose_index:={getattr(args, 'loaded_preferred_pose_index', 0)}",
+        f"loaded_left_pose_family_deg:='{getattr(args, 'loaded_left_pose_family_deg', '[-0.0,59.04,-135.16,0.0,-76.13,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[33.87,75.82,-135.08,0.0,-59.25,-33.87]')}'",
+        f"loaded_right_pose_family_deg:='{getattr(args, 'loaded_right_pose_family_deg', '[0.0,58.88,-134.84,0.0,-75.96,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[-30.93,74.17,-134.92,0.0,-60.74,30.93]')}'",
         "extract_use_independent_kdl:=true",
         f"extract_kdl_timeout:={args.extract_kdl_timeout}",
         f"planning_attempts:={args.loaded_planning_attempts}",
@@ -506,7 +513,14 @@ def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, floa
     return out
 
 
-def log_box_stack(box_x: float, left_box_id: int, right_box_id: int, y_shift: float = 0.0) -> None:
+def log_box_stack(
+    box_x: float,
+    left_box_id: int,
+    right_box_id: int,
+    y_shift: float = 0.0,
+    *,
+    static: bool = False,
+) -> None:
     centers = []
     half_sizes = []
     colors = []
@@ -519,10 +533,14 @@ def log_box_stack(box_x: float, left_box_id: int, right_box_id: int, y_shift: fl
         else:
             colors.append([255, 180, 60, 125])
         labels.append(str(box_id))
-    rr.log("monitor/scene/boxes", rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels), static=True)
+    rr.log(
+        "monitor/scene/boxes",
+        rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels),
+        static=static,
+    )
 
 
-def log_default_container(y_shift: float = 0.0) -> None:
+def log_default_container(y_shift: float = 0.0, *, static: bool = False) -> None:
     thickness = 0.02
     length = 4.0
     width = 2.2
@@ -543,7 +561,7 @@ def log_default_container(y_shift: float = 0.0) -> None:
             colors=[[80, 170, 255, 45] for _ in panels],
             labels=[panel[2] for panel in panels],
         ),
-        static=True,
+        static=static,
     )
 
 
@@ -601,9 +619,79 @@ def ensure_points_start_at_stage_start(stage: dict[str, Any], points: list[dict[
     return [start_point, *points]
 
 
+def point_from_state_map(stage: dict[str, Any], state_key: str, time_from_start_sec: float) -> dict[str, Any] | None:
+    state_map = stage.get(state_key, {}).get("joint_map", {})
+    names = stage.get("trajectory", {}).get("joint_names", [])
+    if not state_map or not names:
+        return None
+    try:
+        positions = [float(state_map[str(name)]) for name in names]
+    except KeyError:
+        return None
+    return {
+        "time_from_start_sec": float(time_from_start_sec),
+        "positions": positions,
+        "velocities": [0.0 for _ in positions],
+    }
+
+
+def ensure_points_end_at_stage_goal(stage: dict[str, Any], points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not points:
+        return points
+    last_time = float(points[-1].get("time_from_start_sec", 0.0))
+    goal_point = point_from_state_map(stage, "goal_state", last_time)
+    if goal_point is None:
+        return points
+    last_positions = points[-1].get("positions", [])
+    goal_positions = goal_point["positions"]
+    if len(last_positions) == len(goal_positions):
+        if max(abs(float(last) - float(goal)) for last, goal in zip(last_positions, goal_positions)) < 1e-6:
+            return points
+    return [*points, goal_point]
+
+
+def densify_stage_points(points: list[dict[str, Any]], max_joint_step_rad: float = 5.0 * math.pi / 180.0) -> list[dict[str, Any]]:
+    if len(points) < 2:
+        return points
+    out: list[dict[str, Any]] = [points[0]]
+    for point in points[1:]:
+        prev = out[-1]
+        prev_positions = [float(value) for value in prev.get("positions", [])]
+        next_positions = [float(value) for value in point.get("positions", [])]
+        if len(prev_positions) != len(next_positions) or not prev_positions:
+            out.append(point)
+            continue
+        max_delta = max(abs(next_value - prev_value) for prev_value, next_value in zip(prev_positions, next_positions))
+        step_count = max(1, int(math.ceil(max_delta / max_joint_step_rad)))
+        prev_time = float(prev.get("time_from_start_sec", 0.0))
+        next_time = float(point.get("time_from_start_sec", prev_time))
+        for step in range(1, step_count + 1):
+            ratio = float(step) / float(step_count)
+            positions = [
+                prev_value + (next_value - prev_value) * ratio
+                for prev_value, next_value in zip(prev_positions, next_positions)
+            ]
+            if step == step_count:
+                out.append({**point, "positions": positions})
+            else:
+                out.append({
+                    "time_from_start_sec": prev_time + (next_time - prev_time) * ratio,
+                    "positions": positions,
+                    "velocities": [0.0 for _ in positions],
+                })
+    return out
+
+
+def playback_points_for_stage(stage: dict[str, Any]) -> list[dict[str, Any]]:
+    points = ensure_points_start_at_stage_start(stage, list(stage.get("trajectory", {}).get("points", [])))
+    points = ensure_points_end_at_stage_goal(stage, points)
+    return densify_stage_points(points)
+
+
 def log_attached_boxes(robot: Any, joints: dict[str, float], attached_boxes: list[dict[str, Any]]) -> None:
     if not attached_boxes:
         rr.log("monitor/scene/attached_boxes", rr.Clear(recursive=True))
+        rr.log("monitor/scene/attached_box_debug", rr.Clear(recursive=True))
         return
     fk = robot.fk(joints)
     centers = []
@@ -611,6 +699,12 @@ def log_attached_boxes(robot: Any, joints: dict[str, float], attached_boxes: lis
     quaternions = []
     colors = []
     labels = []
+    tool_points = []
+    box_points = []
+    link_to_center_lines = []
+    local_z_origins = []
+    local_z_vectors = []
+    debug_labels = []
     for box in attached_boxes:
         link_name = str(box.get("link_name", ""))
         link_tf = fk.get(link_name)
@@ -618,15 +712,43 @@ def log_attached_boxes(robot: Any, joints: dict[str, float], attached_boxes: lis
         size = box.get("size", [])
         if link_tf is None or len(center_in_link) != 3 or len(size) != 3:
             continue
-        centers.append(transform_point(link_tf, [float(value) for value in center_in_link]))
+        tool_origin = [
+            float(link_tf[0, 3]),
+            float(link_tf[1, 3]),
+            float(link_tf[2, 3]),
+        ]
+        center = transform_point(link_tf, [float(value) for value in center_in_link])
+        centers.append(center)
         half_sizes.append([float(value) * 0.5 for value in size])
         quaternions.append(matrix_to_quaternion(link_tf[:3, :3]))
         colors.append([40, 220, 90, 150])
         labels.append(str(box.get("id", "carried_box")))
+        tool_points.append(tool_origin)
+        box_points.append(center)
+        link_to_center_lines.append([tool_origin, center])
+        local_z_origins.append(tool_origin)
+        local_z_vectors.append([float(value) * 0.18 for value in link_tf[:3, :3] @ np.array([0.0, 0.0, 1.0])])
+        debug_labels.append(f"{box.get('id', 'box')}: tool0→box_center")
     if centers:
         rr.log(
             "monitor/scene/attached_boxes",
             rr.Boxes3D(centers=centers, half_sizes=half_sizes, quaternions=quaternions, colors=colors, labels=labels),
+        )
+        rr.log(
+            "monitor/scene/attached_box_debug/tool0_points",
+            rr.Points3D(positions=tool_points, colors=[80, 200, 255, 255], radii=0.025, labels=["tool0" for _ in tool_points]),
+        )
+        rr.log(
+            "monitor/scene/attached_box_debug/box_centers",
+            rr.Points3D(positions=box_points, colors=[40, 255, 80, 255], radii=0.025, labels=labels),
+        )
+        rr.log(
+            "monitor/scene/attached_box_debug/tool_to_box_center",
+            rr.LineStrips3D(strips=link_to_center_lines, colors=[255, 255, 80, 255], radii=0.008, labels=debug_labels),
+        )
+        rr.log(
+            "monitor/scene/attached_box_debug/tool_local_plus_z",
+            rr.Arrows3D(origins=local_z_origins, vectors=local_z_vectors, colors=[255, 80, 80, 255], radii=0.01),
         )
 
 
@@ -737,10 +859,21 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
         return 1
 
     sample = 0
+    previous_positions: list[float] | None = None
+    previous_joint_names: list[str] | None = None
     for stage_index, stage in enumerate(replay_stages):
-        points = ensure_points_start_at_stage_start(stage, list(stage.get("trajectory", {}).get("points", [])))
+        points = playback_points_for_stage(stage)
         if not points:
             continue
+        joint_names = list(stage.get("trajectory", {}).get("joint_names", []))
+        if previous_positions is not None and previous_joint_names == joint_names:
+            first_positions = [float(value) for value in points[0].get("positions", [])]
+            bridge_points = densify_stage_points([
+                {"time_from_start_sec": 0.0, "positions": previous_positions, "velocities": [0.0 for _ in previous_positions]},
+                {"time_from_start_sec": 0.1, "positions": first_positions, "velocities": [0.0 for _ in first_positions]},
+            ])
+            if len(bridge_points) > 2:
+                points = bridge_points[1:-1] + points
         selected_indices = list(range(0, len(points), max(1, args.stride)))
         if selected_indices[-1] != len(points) - 1:
             selected_indices.append(len(points) - 1)
@@ -766,6 +899,8 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
                 ),
             )
             sample += 1
+        previous_positions = [float(value) for value in points[-1].get("positions", [])]
+        previous_joint_names = joint_names
     return sample
 
 
@@ -849,11 +984,16 @@ def main() -> int:
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
     parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
     parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--top-suction-x-offset", type=float, default=0.15)
+    parser.add_argument("--top-suction-z-offset", type=float, default=0.2)
+    parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
+    parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=16)
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
@@ -861,6 +1001,7 @@ def main() -> int:
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
     parser.add_argument("--lateral-shift-column", type=int, default=2)

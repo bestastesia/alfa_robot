@@ -115,6 +115,17 @@ struct ExtractCandidateSolver::ArmKdlChain
 namespace
 {
 
+std::string moveit_variable_name_for_kdl_joint(const std::string& name)
+{
+  if (name.rfind("left_joint", 0) == 0) {
+    return "left_v5_joint" + name.substr(std::string("left_joint").size());
+  }
+  if (name.rfind("right_joint", 0) == 0) {
+    return "right_v5_joint" + name.substr(std::string("right_joint").size());
+  }
+  return name;
+}
+
 KDL::Frame eigen_to_kdl_frame(const Eigen::Isometry3d& transform)
 {
   const Eigen::Matrix3d rotation = transform.linear();
@@ -226,7 +237,7 @@ bool ExtractCandidateSolver::initArmKdlChain(const std::string& side, ArmKdlChai
     const auto& segment = chain.getSegment(segment_index);
     const auto& joint = segment.getJoint();
     if (joint.getType() != KDL::Joint::None) {
-      out->joint_names.push_back(joint.getName());
+      out->joint_names.push_back(moveit_variable_name_for_kdl_joint(joint.getName()));
     }
   }
 
@@ -404,7 +415,10 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
   }
 
   const Eigen::Vector3d tool_normal = actual.linear() * Eigen::Vector3d::UnitZ();
-  if (config_.enforce_tool_normal_not_down && tool_normal.z() < config_.min_tool_normal_z) {
+  const double min_tool_normal_z = std::isfinite(request.min_tool_normal_z)
+    ? request.min_tool_normal_z
+    : config_.min_tool_normal_z;
+  if (config_.enforce_tool_normal_not_down && tool_normal.z() < min_tool_normal_z) {
     std::ostringstream oss;
     oss << request.side << "_tool_normal_down z=" << tool_normal.z();
     out->rejection_reason = oss.str();

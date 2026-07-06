@@ -4,6 +4,7 @@
 
 #include <moveit/collision_detection/collision_common.h>
 #include <moveit/robot_model/joint_model.h>
+#include <moveit/robot_model/revolute_joint_model.h>
 
 #include <sstream>
 
@@ -112,10 +113,11 @@ std::string direct_pipeline_failure_diagnostic(
       const double start_value = start_state.getVariablePosition(name);
       const double goal_value = goal_state.getVariablePosition(name);
       const auto* variable_joint = robot_model->getJointOfVariable(name);
-      const bool angular_variable =
-        variable_joint && variable_joint->getType() != moveit::core::JointModel::PRISMATIC;
-      const double delta = angular_variable ?
-        shortest_angular_distance(start_value, goal_value) :
+      const auto* revolute_joint =
+        dynamic_cast<const moveit::core::RevoluteJointModel*>(variable_joint);
+      const bool continuous_variable = revolute_joint && revolute_joint->isContinuous();
+      const double delta = continuous_variable ?
+        std::atan2(std::sin(goal_value - start_value), std::cos(goal_value - start_value)) :
         (goal_value - start_value);
       probe.setVariablePosition(name, start_value + delta * t);
     }

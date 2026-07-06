@@ -42,22 +42,72 @@ def parse_pair_sequence(value: str) -> list[tuple[int, int]]:
     return pairs
 
 
-def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> SimpleNamespace:
+def parse_grasp_mode_sequence(value: str, count: int, default_mode: str) -> list[str]:
+    if not value.strip():
+        return [default_mode] * count
+    modes = [segment.strip() for segment in value.split(";") if segment.strip()]
+    aliases = {
+        "front": "front",
+        "side": "front",
+        "side_suction": "front",
+        "top": "top_suction",
+        "top_suction": "top_suction",
+        "down": "top_suction",
+    }
+    normalized: list[str] = []
+    for mode in modes:
+        key = mode.lower()
+        if key not in aliases:
+            raise ValueError(f"invalid grasp mode in sequence: {mode}")
+        normalized.append(aliases[key])
+    if len(normalized) != count:
+        raise ValueError(f"grasp mode count {len(normalized)} != pair count {count}")
+    return normalized
+
+
+def effective_box_front_x(args: argparse.Namespace, grasp_mode: str) -> float:
+    if grasp_mode == "top_suction":
+        top_box_front_x = getattr(args, "top_box_front_x", None)
+        if top_box_front_x is not None:
+            return float(top_box_front_x)
+        return float(args.box_front_x) - float(getattr(args, "top_approach_forward", 0.0))
+    return float(args.box_front_x)
+
+
+def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_mode: str | None = None) -> SimpleNamespace:
+    mode = grasp_mode or args.grasp_mode
+    lateral_shift_enabled = args.lateral_shift_enabled
+    if args.lateral_shift_enabled_auto:
+        lateral_shift_enabled = mode == "front"
+    loaded_preferred_pose_index = args.loaded_preferred_pose_index
+    loaded_left_pose_family_deg = args.loaded_left_pose_family_deg
+    loaded_right_pose_family_deg = args.loaded_right_pose_family_deg
+    if mode == "top_suction":
+        loaded_preferred_pose_index = args.top_loaded_preferred_pose_index
+        loaded_left_pose_family_deg = args.top_loaded_left_pose_family_deg or loaded_left_pose_family_deg
+        loaded_right_pose_family_deg = args.top_loaded_right_pose_family_deg or loaded_right_pose_family_deg
     return SimpleNamespace(
-        box_front_x=args.box_front_x,
+        box_front_x=effective_box_front_x(args, mode),
+        top_box_front_x=effective_box_front_x(args, mode),
+        top_approach_forward=0.0,
         scene_y_shift=args.scene_y_shift,
         fixed_updown=args.fixed_updown,
         turn_rad=math.radians(args.turn_deg),
-        grasp_mode=args.grasp_mode,
+        grasp_mode=mode,
         front_z_reach_lower=args.front_z_reach_lower,
         front_z_reach_upper=args.front_z_reach_upper,
         top_z_reach_lower=args.top_z_reach_lower,
         top_z_reach_upper=args.top_z_reach_upper,
+        top_suction_x_offset=args.top_suction_x_offset,
+        top_suction_z_offset=args.top_suction_z_offset,
+        ik_top_position_tolerance=args.ik_top_position_tolerance,
+        ik_top_orientation_tolerance_deg=args.ik_top_orientation_tolerance_deg,
         ik_h_candidate_count=args.ik_h_candidate_count,
         ik_seed_count=args.ik_seed_count,
         ik_candidate_timeout=args.ik_candidate_timeout,
         ik_try_target_orders=args.ik_try_target_orders,
         ik_use_reversed_target_order=args.ik_use_reversed_target_order,
+        optimized_ik_check_collision=args.optimized_ik_check_collision,
         left_box_id=left_id,
         right_box_id=right_id,
         extract_workers=args.extract_workers,
@@ -66,6 +116,7 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
+        lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
         lateral_shift_step=args.lateral_shift_step,
         lateral_shift_column=args.lateral_shift_column,
@@ -75,7 +126,13 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
+        loaded_preferred_pose_index=loaded_preferred_pose_index,
+        loaded_left_pose_family_deg=loaded_left_pose_family_deg,
+        loaded_right_pose_family_deg=loaded_right_pose_family_deg,
         extract_kdl_timeout=args.extract_kdl_timeout,
+        service_timeout=args.service_timeout,
+        stride=args.stride,
+        continue_on_failure=args.continue_on_failure,
     )
 
 
@@ -154,24 +211,57 @@ def log_sequence_replay(
     sample_start: int,
 ) -> int:
     replay_stages = list(snapshot.get("replay_stages", []))
-    scene_y_shift = display_scene_y_shift(args)
+    replay_source = "selected"
+    if not replay_stages:
+        records = list(snapshot.get("records", []))
+
+        def failure_record_score(record: dict[str, Any]) -> tuple[int, int, int, float]:
+            stages = list(record.get("replay_stages", []))
+            return (
+                1 if record.get("loaded_plan_attempted") else 0,
+                1 if record.get("lateral_shift_success") else 0,
+                len(stages),
+                -float(record.get("loaded_plan_rank", 999999)),
+            )
+
+        records = [record for record in records if record.get("replay_stages")]
+        if records:
+            record = max(records, key=failure_record_score)
+            replay_stages = list(record.get("replay_stages", []))
+            replay_source = (
+                "failed_candidate "
+                f"rank={record.get('loaded_plan_rank')} "
+                f"loaded_success={record.get('loaded_plan_success')} "
+                f"reason={record.get('loaded_plan_failure_reason') or record.get('failure_reason')}"
+            )
+    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
+    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
     sample = sample_start
+    previous_positions: list[float] | None = None
+    previous_joint_names: list[str] | None = None
 
     for stage_index, stage in enumerate(replay_stages):
-        points = monitor.ensure_points_start_at_stage_start(
-            stage, list(stage.get("trajectory", {}).get("points", []))
-        )
+        points = monitor.playback_points_for_stage(stage)
         if not points:
             continue
+        joint_names = list(stage.get("trajectory", {}).get("joint_names", []))
+        if previous_positions is not None and previous_joint_names == joint_names:
+            first_positions = [float(value) for value in points[0].get("positions", [])]
+            bridge_points = monitor.densify_stage_points([
+                {"time_from_start_sec": 0.0, "positions": previous_positions, "velocities": [0.0 for _ in previous_positions]},
+                {"time_from_start_sec": 0.1, "positions": first_positions, "velocities": [0.0 for _ in first_positions]},
+            ])
+            if len(bridge_points) > 2:
+                points = bridge_points[1:-1] + points
         selected_indices = list(range(0, len(points), max(1, args.stride)))
         if selected_indices[-1] != len(points) - 1:
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
             monitor.log_default_container(scene_y_shift)
-            monitor.log_box_stack(float(args.box_front_x), left_id, right_id, scene_y_shift)
+            monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
             monitor.log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = monitor.joint_dict_from_stage_point(stage, point)
@@ -181,12 +271,68 @@ def log_sequence_replay(
                 "monitor/info",
                 monitor.rr.TextLog(
                     f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} | "
+                    f"{replay_source} | "
                     f"stage {stage_index + 1}/{len(replay_stages)}: {stage.get('stage')} | "
                     f"point {point_index + 1}/{len(points)}"
                 ),
             )
             sample += 1
+        previous_positions = [float(value) for value in points[-1].get("positions", [])]
+        previous_joint_names = joint_names
     return sample - sample_start
+
+
+def log_failure_marker(
+    helpers: Any,
+    robot: Any,
+    args: argparse.Namespace,
+    task_index: int,
+    pair_count: int,
+    left_id: int,
+    right_id: int,
+    sample_start: int,
+    output: str,
+) -> int:
+    helpers.set_sample_time(sample_start)
+    monitor.log_default_container(args.scene_y_shift)
+    box_front_x = effective_box_front_x(args, getattr(args, "grasp_mode", "front"))
+    monitor.log_box_stack(box_front_x, left_id, right_id, args.scene_y_shift)
+    boxes = monitor.all_boxes(box_front_x, args.scene_y_shift)
+    target_centers = []
+    target_labels = []
+    for side, box_id in (("L", left_id), ("R", right_id)):
+        if box_id not in boxes:
+            continue
+        box_x, box_y, box_z = boxes[box_id]
+        if getattr(args, "grasp_mode", "front") == "top_suction":
+            target_centers.append([
+                box_x + float(args.top_suction_x_offset),
+                box_y,
+                box_z + float(args.top_suction_z_offset),
+            ])
+        else:
+            target_centers.append([box_x, box_y, box_z])
+        target_labels.append(f"{side}{box_id}_{getattr(args, 'grasp_mode', 'front')}_target")
+    if target_centers:
+        monitor.rr.log(
+            "monitor/scene/grasp_targets",
+            monitor.rr.Points3D(
+                positions=target_centers,
+                radii=[0.04 for _ in target_centers],
+                colors=[[80, 220, 255, 255] for _ in target_centers],
+                labels=target_labels,
+            ),
+        )
+    zero_joints = {name: 0.0 for name in robot.joints.keys()}
+    zero_joints["updown"] = float(args.fixed_updown)
+    helpers.log_robot_state(robot, zero_joints, "monitor/robot")
+    monitor.rr.log(
+        "monitor/info",
+        monitor.rr.TextLog(
+            f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} 失败，未生成可回放轨迹\n{output}"
+        ),
+    )
+    return 1
 
 
 def run_one_pair(
@@ -250,15 +396,33 @@ def run_one_pair(
             "wall_ms": wall_ms,
             "snapshot": str(snapshot_path),
         }
-        if not success:
-            helpers.set_sample_time(sample_start)
-            monitor.rr.log(
-                "monitor/info",
-                monitor.rr.TextLog(f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} 失败\n{output}"),
+        snapshot: dict[str, Any] | None = None
+        sample_count = 0
+        if snapshot_path.exists():
+            snapshot = monitor.read_snapshot(snapshot_path)
+            sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+        if not success and sample_count <= 0:
+            sample_count = log_failure_marker(
+                helpers, robot, args, task_index, pair_count, left_id, right_id, sample_start, output
             )
-            return False, 1, summary
-        snapshot = monitor.read_snapshot(snapshot_path)
-        sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+        if snapshot is None:
+            summary.update(
+                {
+                    "total_ms": wall_ms,
+                    "ik_ms": elapsed_ms,
+                    "extract_ms": 0.0,
+                    "loaded_ms": 0.0,
+                    "loaded_plan_batch_wall_ms": 0.0,
+                    "loaded_plan_candidate_count": 0,
+                    "loaded_plan_attempted_count": 0,
+                    "loaded_plan_success_count": 0,
+                    "loaded_parallel_workers": 0,
+                    "final_ms": 0.0,
+                    "samples": sample_count,
+                    "failure_reason": output,
+                }
+            )
+            return success, sample_count, summary
         summary.update(
             {
                 "total_ms": float(snapshot.get("elapsed_ms", 0.0)),
@@ -272,9 +436,10 @@ def run_one_pair(
                 "loaded_parallel_workers": int(snapshot.get("loaded_parallel_workers", 0)),
                 "final_ms": float(snapshot.get("final_elapsed_ms", 0.0)),
                 "samples": sample_count,
+                "failure_reason": "" if success else output,
             }
         )
-        return True, sample_count, summary
+        return success, sample_count, summary
     finally:
         pass
 
@@ -285,6 +450,8 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--save", type=Path, default=None)
     parser.add_argument("--box-front-x", type=float, default=0.925)
+    parser.add_argument("--top-approach-forward", type=float, default=0.30, help="顶吸时车向箱墙前进距离；未指定 --top-box-front-x 时，顶吸 box_front_x=box_front_x-该值")
+    parser.add_argument("--top-box-front-x", type=float, default=None, help="顶吸专用箱墙前表面 x；优先级高于 --top-approach-forward")
     parser.add_argument("--scene-y-shift", type=float, default=-0.4)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
@@ -293,15 +460,21 @@ def main() -> int:
     parser.add_argument("--display-base-y", type=float, default=0.0, help="仅用于 Rerun 回放显示底盘外部 y 平移；若 scene_y_shift=-base_y，则显示为世界固定箱墙")
     parser.add_argument("--display-turn-offset-deg", type=float, default=0.0, help="仅用于 Rerun 回放显示外部底盘 yaw 后的 turn 反向补偿")
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
+    parser.add_argument("--grasp-mode-sequence", default="", help="每组任务吸附模式，例如 front;front;top_suction。留空则全部使用 --grasp-mode")
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
     parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
     parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--top-suction-x-offset", type=float, default=0.15, help="顶吸目标相对箱子前表面向箱体内部的 x 偏移")
+    parser.add_argument("--top-suction-z-offset", type=float, default=0.2, help="顶吸目标相对箱子中心的 z 偏移")
+    parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
+    parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=16)
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
@@ -309,6 +482,28 @@ def main() -> int:
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
+    parser.add_argument(
+        "--loaded-left-pose-family-deg",
+        default="[-0.0,59.04,-135.16,0.0,-76.13,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[33.87,75.82,-135.08,0.0,-59.25,-33.87]",
+    )
+    parser.add_argument(
+        "--loaded-right-pose-family-deg",
+        default="[0.0,58.88,-134.84,0.0,-75.96,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[-30.93,74.17,-134.92,0.0,-60.74,30.93]",
+    )
+    parser.add_argument("--top-loaded-preferred-pose-index", type=int, default=0)
+    parser.add_argument(
+        "--top-loaded-left-pose-family-deg",
+        default="",
+        help="顶吸专用负重姿态族；留空则沿用 --loaded-left-pose-family-deg",
+    )
+    parser.add_argument(
+        "--top-loaded-right-pose-family-deg",
+        default="",
+        help="顶吸专用负重姿态族；留空则沿用 --loaded-right-pose-family-deg",
+    )
+    parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--lateral-shift-enabled-auto", action=argparse.BooleanOptionalAction, default=True, help="按吸附模式自动控制负重前横向让位：侧吸开启，顶吸关闭")
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
     parser.add_argument("--lateral-shift-column", type=int, default=2)
@@ -331,6 +526,7 @@ def main() -> int:
     print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
     pairs = parse_pair_sequence(args.pair_sequence)
+    grasp_modes = parse_grasp_mode_sequence(args.grasp_mode_sequence, len(pairs), args.grasp_mode)
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = args.output_root / f"sequence_{stamp}"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -361,64 +557,91 @@ def main() -> int:
     os.environ["ROS_HOME"] = str(ros_home)
     os.environ["ROS_LOG_DIR"] = str(ros_log_dir)
 
-    first_left, first_right = pairs[0]
-    initial_args = make_pair_args(args, first_left, first_right)
-    launch_log = run_root / "planner.log"
-    initial_snapshot = run_root / "initial_stage_snapshot.json"
-    launch_command = monitor.build_launch_command(initial_args, run_root, initial_snapshot)
-    domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
-    (run_root / "launch_command.sh").write_text(
-        "#!/usr/bin/env bash\nset -e\n"
-        f"{domain_export}"
-        "source /opt/ros/humble/setup.bash\n"
-        f"source {monitor.ROS_WS}/install/setup.bash\n"
-        f"cd {monitor.ROS_WS}\n{launch_command}\n"
-    )
-    print(f"启动共享 planner，日志：{launch_log}")
-    startup_start = time.monotonic()
-    with launch_log.open("w") as log_file:
-        planner = subprocess.Popen(
-            monitor.bash_source_command(launch_command),
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
-            text=True,
-            preexec_fn=os.setsid,
-        )
-
     sample = 0
     summaries: list[dict[str, Any]] = []
+    planner: subprocess.Popen[str] | None = None
     service_client: monitor.ExtractMonitorServiceClient | None = None
-    try:
+    current_mode: str | None = None
+    startup_ms = 0.0
+
+    def stop_current_planner() -> None:
+        nonlocal planner, service_client, current_mode
+        if service_client is not None:
+            service_client.close()
+            service_client = None
+        if planner is not None:
+            monitor.terminate_process(planner)
+            planner = None
+        if not wait_until_service_gone():
+            cleanup_planner_processes()
+        current_mode = None
+
+    def start_planner_for_mode(mode: str, left_id: int, right_id: int, group_index: int) -> tuple[subprocess.Popen[str], monitor.ExtractMonitorServiceClient, float]:
+        nonlocal current_mode
+        launch_log = run_root / f"planner_{group_index:02d}_{mode}.log"
+        initial_snapshot = run_root / f"initial_stage_snapshot_{group_index:02d}_{mode}.json"
+        initial_args = make_pair_args(args, left_id, right_id, mode)
+        launch_command = monitor.build_launch_command(initial_args, run_root, initial_snapshot)
+        domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
+        (run_root / f"launch_command_{group_index:02d}_{mode}.sh").write_text(
+            "#!/usr/bin/env bash\nset -e\n"
+            f"{domain_export}"
+            "source /opt/ros/humble/setup.bash\n"
+            f"source {monitor.ROS_WS}/install/setup.bash\n"
+            f"cd {monitor.ROS_WS}\n{launch_command}\n"
+        )
+        print(f"启动 planner[{mode}]，日志：{launch_log}")
+        start = time.monotonic()
+        with launch_log.open("w") as log_file:
+            new_planner = subprocess.Popen(
+                monitor.bash_source_command(launch_command),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                text=True,
+                preexec_fn=os.setsid,
+            )
         monitor.wait_for_service(
             "/dual_arm_planner/configure_extract_monitor",
-            planner,
+            new_planner,
             args.service_timeout,
             launch_log,
         )
-        service_client = monitor.ExtractMonitorServiceClient(
+        new_client = monitor.ExtractMonitorServiceClient(
             configure_service="/dual_arm_planner/configure_extract_monitor",
             trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
             timeout=args.service_timeout,
         )
-        prewarm_ok, prewarm_output, prewarm_ms = service_client.configure(
-            first_left,
-            first_right,
+        prewarm_ok, prewarm_output, prewarm_ms = new_client.configure(
+            left_id,
+            right_id,
             initial_snapshot,
             args.service_timeout,
         )
         print(prewarm_output)
         if not prewarm_ok:
-            raise RuntimeError(f"共享 planner IK 预热失败：{prewarm_output}")
-        startup_ms = (time.monotonic() - startup_start) * 1000.0
-        print(f"共享 planner 启动完成：startup={startup_ms:.1f}ms prewarm={prewarm_ms:.1f}ms")
-        for index, (left_id, right_id) in enumerate(pairs, start=1):
+            raise RuntimeError(f"planner[{mode}] IK 预热失败：{prewarm_output}")
+        elapsed = (time.monotonic() - start) * 1000.0
+        print(f"planner[{mode}] 启动完成：startup={elapsed:.1f}ms prewarm={prewarm_ms:.1f}ms")
+        current_mode = mode
+        return new_planner, new_client, elapsed
+
+    try:
+        group_index = 0
+        for index, ((left_id, right_id), mode) in enumerate(zip(pairs, grasp_modes), start=1):
+            pair_args = make_pair_args(args, left_id, right_id, mode)
+            if current_mode != mode:
+                stop_current_planner()
+                group_index += 1
+                planner, service_client, startup_ms = start_planner_for_mode(mode, left_id, right_id, group_index)
+            assert planner is not None
+            assert service_client is not None
             ok, sample_count, summary = run_one_pair(
-                args,
+                pair_args,
                 helpers,
                 robot,
                 run_root,
                 planner,
-                launch_log,
+                run_root / f"planner_{group_index:02d}_{mode}.log",
                 service_client,
                 startup_ms,
                 left_id,
@@ -427,16 +650,14 @@ def main() -> int:
                 len(pairs),
                 sample,
             )
+            summary["grasp_mode"] = mode
             summaries.append(summary)
             sample += max(1, sample_count) + 5
+            startup_ms = 0.0
             if not ok and not args.continue_on_failure:
                 break
     finally:
-        if service_client is not None:
-            service_client.close()
-        monitor.terminate_process(planner)
-        if not wait_until_service_gone():
-            cleanup_planner_processes()
+        stop_current_planner()
 
     summary_path = run_root / "summary.json"
     import json
