@@ -99,8 +99,8 @@ def log_arrow(path: str, origin: list[float], vector: list[float], color: list[i
 def log_tool0_extension(robot: Any, positions: dict[str, float], robot_path: str) -> None:
     transforms = robot.fk(positions)
     specs = [
-        ("left", "left_v5_link6", "left_v5_tool0", [0, 220, 255]),
-        ("right", "right_v5_link6", "right_v5_tool0", [255, 120, 0]),
+        ("left", "leftjoint6", "left_tool0", [0, 220, 255]),
+        ("right", "rightjoint6", "right_tool0", [255, 120, 0]),
     ]
     for side, link6, tool0, color in specs:
         if link6 not in transforms or tool0 not in transforms:
@@ -136,8 +136,8 @@ def home_positions() -> dict[str, float]:
     arm = [0.0, math.radians(15), math.radians(135), 0.0, math.radians(60), 0.0]
     names = [
         "updown",
-        "left_v5_joint1", "left_v5_joint2", "left_v5_joint3", "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-        "right_v5_joint1", "right_v5_joint2", "right_v5_joint3", "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+        "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6",
+        "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6",
     ]
     return dict(zip(names, [0.45] + arm + arm))
 

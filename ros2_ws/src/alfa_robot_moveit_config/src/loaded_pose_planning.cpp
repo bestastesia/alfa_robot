@@ -34,7 +34,7 @@ bool LoadedPoseSelector::hasVariable(const moveit::core::RobotState& state, cons
 
 std::string LoadedPoseSelector::jointName(const std::string& side, size_t index)
 {
-  return side + "_v5_joint" + std::to_string(index + 1);
+  return side + "joint" + std::to_string(index + 1);
 }
 
 double LoadedPoseSelector::armPoseDistance(
@@ -241,11 +241,15 @@ std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box
 {
   std::vector<std::string> links{box.link_name};
   if (box.link_name.rfind("left_", 0) == 0) {
-    links.push_back("left_v5_link6");
-    links.push_back("left_v5_link5");
+    links.push_back("leftjoint6");
+    links.push_back("leftjoint5");
+    links.push_back("leftjoint4");
+    links.push_back("leftjoint3");
   } else if (box.link_name.rfind("right_", 0) == 0) {
-    links.push_back("right_v5_link6");
-    links.push_back("right_v5_link5");
+    links.push_back("rightjoint6");
+    links.push_back("rightjoint5");
+    links.push_back("rightjoint4");
+    links.push_back("rightjoint3");
   }
   return links;
 }
@@ -343,7 +347,7 @@ bool LoadedPosePlanner::planLateralShift(
 
   const std::string side = center_box->link_name.rfind("left_", 0) == 0 ? "left" : "right";
   const std::string tip_name = center_box->link_name;
-  const std::string group_name = side + "_v5_arm";
+  const std::string group_name = side + "_arm";
   const moveit::core::JointModelGroup* arm_group =
     start_state.getRobotModel()->getJointModelGroup(group_name);
   if (!arm_group) {

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import subprocess
 import sys
@@ -17,6 +18,8 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import extract_stage_monitor_console as monitor
 import process_lifecycle
+
+import numpy as np
 
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
@@ -44,12 +47,22 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int) -> Sim
         box_front_x=args.box_front_x,
         scene_y_shift=args.scene_y_shift,
         fixed_updown=args.fixed_updown,
+        turn_rad=math.radians(args.turn_deg),
+        grasp_mode=args.grasp_mode,
         front_z_reach_lower=args.front_z_reach_lower,
         front_z_reach_upper=args.front_z_reach_upper,
+        top_z_reach_lower=args.top_z_reach_lower,
+        top_z_reach_upper=args.top_z_reach_upper,
+        ik_h_candidate_count=args.ik_h_candidate_count,
+        ik_seed_count=args.ik_seed_count,
+        ik_candidate_timeout=args.ik_candidate_timeout,
+        ik_try_target_orders=args.ik_try_target_orders,
+        ik_use_reversed_target_order=args.ik_use_reversed_target_order,
         left_box_id=left_id,
         right_box_id=right_id,
         extract_workers=args.extract_workers,
         candidate_limit=args.candidate_limit,
+        extract_step_x=args.extract_step_x,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -75,6 +88,62 @@ def cleanup_planner_processes() -> bool:
     return wait_until_service_gone(15.0)
 
 
+def display_base_transform(args: argparse.Namespace) -> np.ndarray:
+    yaw = math.radians(float(getattr(args, "display_base_yaw_deg", 0.0)))
+    c = math.cos(yaw)
+    s = math.sin(yaw)
+    transform = np.eye(4)
+    transform[:3, :3] = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    transform[:3, 3] = [float(getattr(args, "display_base_x", 0.0)), float(getattr(args, "display_base_y", 0.0)), 0.0]
+    return transform
+
+
+def display_scene_y_shift(args: argparse.Namespace) -> float:
+    return float(args.scene_y_shift) + float(getattr(args, "display_base_y", 0.0))
+
+
+def log_robot_state_display(helpers: Any, robot: Any, joints: dict[str, float], path: str, args: argparse.Namespace) -> None:
+    base_tf = display_base_transform(args)
+    display_joints = dict(joints)
+    display_joints["turn"] = float(display_joints.get("turn", 0.0)) + math.radians(float(getattr(args, "display_turn_offset_deg", 0.0)))
+    transforms = robot.fk(display_joints)
+    for link_name, transform in transforms.items():
+        helpers.log_transform_matrix(f"{path}/{link_name}", base_tf @ transform)
+
+
+def log_attached_boxes_display(robot: Any, joints: dict[str, float], attached_boxes: list[dict[str, Any]], args: argparse.Namespace) -> None:
+    if not attached_boxes:
+        monitor.rr.log("monitor/scene/attached_boxes", monitor.rr.Clear(recursive=True))
+        return
+    display_joints = dict(joints)
+    display_joints["turn"] = float(display_joints.get("turn", 0.0)) + math.radians(float(getattr(args, "display_turn_offset_deg", 0.0)))
+    fk = robot.fk(display_joints)
+    base_tf = display_base_transform(args)
+    centers = []
+    half_sizes = []
+    quaternions = []
+    colors = []
+    labels = []
+    for box in attached_boxes:
+        link_name = str(box.get("link_name", ""))
+        link_tf = fk.get(link_name)
+        center_in_link = box.get("center_in_link", [])
+        size = box.get("size", [])
+        if link_tf is None or len(center_in_link) != 3 or len(size) != 3:
+            continue
+        world_link_tf = base_tf @ link_tf
+        center = world_link_tf @ np.array([float(center_in_link[0]), float(center_in_link[1]), float(center_in_link[2]), 1.0])
+        centers.append(center[:3].tolist())
+        half_sizes.append([float(value) * 0.5 for value in size])
+        quaternions.append(monitor.matrix_to_quaternion(world_link_tf[:3, :3]))
+        colors.append([40, 220, 90, 150])
+        labels.append(str(box.get("id", "carried_box")))
+    monitor.rr.log(
+        "monitor/scene/attached_boxes",
+        monitor.rr.Boxes3D(centers=centers, half_sizes=half_sizes, quaternions=quaternions, colors=colors, labels=labels),
+    )
+
+
 def log_sequence_replay(
     snapshot: dict[str, Any],
     helpers: Any,
@@ -85,7 +154,7 @@ def log_sequence_replay(
     sample_start: int,
 ) -> int:
     replay_stages = list(snapshot.get("replay_stages", []))
-    scene_y_shift = float(snapshot.get("scene_y_shift", args.scene_y_shift))
+    scene_y_shift = display_scene_y_shift(args)
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
     sample = sample_start
@@ -106,8 +175,8 @@ def log_sequence_replay(
             monitor.log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = monitor.joint_dict_from_stage_point(stage, point)
-            helpers.log_robot_state(robot, joints, "monitor/robot")
-            monitor.log_attached_boxes(robot, joints, stage.get("attached_boxes", []))
+            log_robot_state_display(helpers, robot, joints, "monitor/robot", args)
+            log_attached_boxes_display(robot, joints, stage.get("attached_boxes", []), args)
             monitor.rr.log(
                 "monitor/info",
                 monitor.rr.TextLog(
@@ -218,10 +287,24 @@ def main() -> int:
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--scene-y-shift", type=float, default=-0.4)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
+    parser.add_argument("--turn-deg", type=float, default=0.0)
+    parser.add_argument("--display-base-yaw-deg", type=float, default=0.0, help="仅用于 Rerun 回放显示底盘外部 yaw；规划仍使用当前 MoveIt base_link")
+    parser.add_argument("--display-base-x", type=float, default=0.0, help="仅用于 Rerun 回放显示底盘外部 x 平移")
+    parser.add_argument("--display-base-y", type=float, default=0.0, help="仅用于 Rerun 回放显示底盘外部 y 平移；若 scene_y_shift=-base_y，则显示为世界固定箱墙")
+    parser.add_argument("--display-turn-offset-deg", type=float, default=0.0, help="仅用于 Rerun 回放显示外部底盘 yaw 后的 turn 反向补偿")
+    parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
+    parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
+    parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--ik-h-candidate-count", type=int, default=16)
+    parser.add_argument("--ik-seed-count", type=int, default=32)
+    parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
+    parser.add_argument("--ik-try-target-orders", action="store_true")
+    parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)

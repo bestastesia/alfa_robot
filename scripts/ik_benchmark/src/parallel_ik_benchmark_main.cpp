@@ -1016,7 +1016,7 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
 
-    std::string group = "dual_v5_arm";
+    std::string group = "dual_arm";
     std::string solver = "bio_ik/BioIKKinematicsPlugin";
     std::string profile = "all";
     std::string workers_list_text = "1,2,4,8";
@@ -1075,8 +1075,8 @@ int main(int argc, char** argv)
 
     IkSolverOptions options;
     options.base_frame = "base_link";
-    options.tip_link = "left_v5_tool0";
-    options.tip_link2 = "right_v5_tool0";
+    options.tip_link = "left_tool0";
+    options.tip_link2 = "right_tool0";
     options.reject_collisions = false;
 
     std::unique_ptr<IkSolver> prefilter_ik;

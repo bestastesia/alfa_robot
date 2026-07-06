@@ -37,8 +37,8 @@ class ArmConfig:
 
 
 ARM_CONFIGS = {
-    "left": ArmConfig("left_v5_arm", "left_v5_tool0", "left", (0.0, 0.7071, 0.0, 0.7071)),
-    "right": ArmConfig("right_v5_arm", "right_v5_tool0", "right", (0.0, 0.7071, 0.0, 0.7071)),
+    "left": ArmConfig("left_arm", "left_tool0", "left", (0.0, 0.7071, 0.0, 0.7071)),
+    "right": ArmConfig("right_arm", "right_tool0", "right", (0.0, 0.7071, 0.0, 0.7071)),
 }
 
 
@@ -149,10 +149,10 @@ class XEdgeRefineReachability(Node):
             "x_plus:0.80:0.85:0.2:0.45:0.55:0.75;"
             "x_minus:-0.80:-0.85:0.2:0.45:0.55:0.75",
         )
-        self.declare_parameter("left_group", "left_v5_arm")
-        self.declare_parameter("right_group", "right_v5_arm")
-        self.declare_parameter("left_tip", "left_v5_tool0")
-        self.declare_parameter("right_tip", "right_v5_tool0")
+        self.declare_parameter("left_group", "left_arm")
+        self.declare_parameter("right_group", "right_arm")
+        self.declare_parameter("left_tip", "left_tool0")
+        self.declare_parameter("right_tip", "right_tool0")
 
         self._latest_joint_state: Optional[JointState] = None
         self._joint_state_sub = self.create_subscription(

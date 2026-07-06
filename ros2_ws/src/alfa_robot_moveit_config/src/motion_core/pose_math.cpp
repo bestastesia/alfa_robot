@@ -98,7 +98,7 @@ Eigen::Quaterniond forward_x_orientation()
 
 Eigen::Quaterniond top_suction_orientation()
 {
-  return Eigen::Quaterniond(0.0, 1.0, 0.0, 0.0);
+  return Eigen::Quaterniond(0.0, 0.0, 1.0, 0.0);
 }
 
 Eigen::Quaterniond pitch_up_orientation(double pitch_up_rad)

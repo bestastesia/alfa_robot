@@ -16,9 +16,9 @@
 namespace ik_benchmark {
 namespace {
 
-bool isV5ArmLink(const std::string& link)
+bool isArmLink(const std::string& link)
 {
-    return link.rfind("left_v5_", 0) == 0 || link.rfind("right_v5_", 0) == 0;
+    return link.rfind("left_", 0) == 0 || link.rfind("right_", 0) == 0;
 }
 
 bool isBaseStructureLink(const std::string& link)
@@ -28,8 +28,8 @@ bool isBaseStructureLink(const std::string& link)
 
 bool isIgnoredArmBasePair(const std::string& link1, const std::string& link2)
 {
-    return (link1 == "updown" && (link2 == "left_v5_link1" || link2 == "right_v5_link1")) ||
-           (link2 == "updown" && (link1 == "left_v5_link1" || link1 == "right_v5_link1"));
+    return (link1 == "updown" && (link2 == "leftjoint1" || link2 == "rightjoint1")) ||
+           (link2 == "updown" && (link1 == "leftjoint1" || link1 == "rightjoint1"));
 }
 
 bool isArmBaseCollisionPair(const std::string& link1, const std::string& link2)
@@ -37,8 +37,8 @@ bool isArmBaseCollisionPair(const std::string& link1, const std::string& link2)
     if (isIgnoredArmBasePair(link1, link2)) {
         return false;
     }
-    return (isV5ArmLink(link1) && isBaseStructureLink(link2)) ||
-           (isV5ArmLink(link2) && isBaseStructureLink(link1));
+    return (isArmLink(link1) && isBaseStructureLink(link2)) ||
+           (isArmLink(link2) && isBaseStructureLink(link1));
 }
 
 } // namespace
@@ -56,8 +56,8 @@ IkSolver::IkSolver(const std::string& group_name,
 {
     is_dual_ = (group_name == "dual_arm_with_base" ||
                 group_name == "dual_arms" ||
-                group_name == "dual_v5_arm_with_base" ||
-                group_name == "dual_v5_arm");
+                group_name == "dual_arm_with_base" ||
+                group_name == "dual_arm");
 
     node_ = std::make_shared<rclcpp::Node>(
         "_ik_bench_node",
@@ -205,20 +205,6 @@ void IkSolver::declareSolverParams()
     node_->declare_parameter(ns + ".kinematics_solver_timeout",           default_timeout_);
     node_->declare_parameter(ns + ".kinematics_solver_attempts",          10);
 
-    if (solver_plugin_.find("pick_ik") != std::string::npos) {
-        node_->declare_parameter(ns + ".mode",                        std::string("global"));
-        node_->declare_parameter(ns + ".position_threshold",          0.001);
-        node_->declare_parameter(ns + ".orientation_threshold",       0.01);
-        node_->declare_parameter(ns + ".position_scale",              1.0);
-        node_->declare_parameter(ns + ".rotation_scale",              0.5);
-        node_->declare_parameter(ns + ".minimal_displacement_weight", 0.001);
-        node_->declare_parameter(ns + ".memetic_num_threads",         4);
-        node_->declare_parameter(ns + ".memetic_population_size",     32);
-        node_->declare_parameter(ns + ".memetic_max_generations",     200);
-        node_->declare_parameter(ns + ".memetic_elite_size",          8);
-        node_->declare_parameter(ns + ".cost_threshold",              0.1);
-        node_->declare_parameter(ns + ".fix_unspecified_end_effectors", true);
-    }
 
     if (solver_plugin_.find("bio_ik") != std::string::npos) {
         node_->declare_parameter(ns + ".bio_ik_max_computation_time", default_timeout_);
@@ -229,7 +215,7 @@ void IkSolver::buildIkMapping()
 {
     ik_joint_names_ = ik_solver_->getJointNames();
 
-    // IK solver 的关节可能超出 JMG 的变量范围 (如 TRAC-IK 包含 turn/updown)
+    // IK solver 的关节可能超出 JMG 的变量范围。
     // 对于超出 JMG 范围的关节，标记为 base_joint，seed 中设为 0
     ik_to_jmg_index_.resize(ik_joint_names_.size(), SIZE_MAX);
 
@@ -471,7 +457,7 @@ IkResult IkSolver::solveDual(const Eigen::Isometry3d& left_target,
 
     // BioIK stores multi-tip goals in the plugin's internal tip order, which is
     // reversed from the explicit {left, right} order passed to initialize() for
-    // the current dual_v5 groups. Keep IkSolver's public API as left/right and
+    // the current dual-arm groups. Keep IkSolver's public API as left/right and
     // compensate here so FK(actual[0]) still means left tip.
     std::vector<geometry_msgs::msg::Pose> targets = {
         to_msg(right_target), to_msg(left_target)

@@ -169,16 +169,26 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
         f"fixed_updown:={args.fixed_updown}",
+        f"extract_monitor_turn:={getattr(args, 'turn_rad', 0.0)}",
         f"front_z_reach_lower:={args.front_z_reach_lower}",
         f"front_z_reach_upper:={args.front_z_reach_upper}",
+        f"top_z_reach_lower:={args.top_z_reach_lower}",
+        f"top_z_reach_upper:={args.top_z_reach_upper}",
+        f"ik_h_candidate_count:={args.ik_h_candidate_count}",
+        f"ik_seed_count:={args.ik_seed_count}",
+        f"ik_candidate_timeout:={args.ik_candidate_timeout}",
+        f"ik_try_target_orders:={str(args.ik_try_target_orders).lower()}",
+        f"ik_use_reversed_target_order:={str(args.ik_use_reversed_target_order).lower()}",
         f"extract_demo_left_box_id:={args.left_box_id}",
         f"extract_demo_right_box_id:={args.right_box_id}",
+        f"extract_monitor_top_suction:={str(args.grasp_mode == 'top_suction').lower()}",
         "extract_demo_direct_grasp_start:=true",
         "extract_benchmark_all_legal_ik:=false",
         "extract_benchmark_dual_arm:=true",
         "extract_benchmark_dual_async:=true",
         f"extract_benchmark_extract_workers:={args.extract_workers}",
         f"extract_benchmark_candidate_limit:={args.candidate_limit}",
+        f"extract_step_x:={args.extract_step_x}",
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
@@ -833,10 +843,20 @@ def main() -> int:
     parser.add_argument("--scene-y-shift", type=float, default=None, help="场景相对机器人 y 偏移；机器人左移 0.4m 时通常传 -0.4")
     parser.add_argument("--box-stack-y-shift", type=float, default=None, help="兼容旧参数名；等同于 --scene-y-shift")
     parser.add_argument("--fixed-updown", type=float, default=0.3)
+    parser.add_argument("--turn-deg", type=float, default=0.0)
+    parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
+    parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
+    parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--ik-h-candidate-count", type=int, default=16)
+    parser.add_argument("--ik-seed-count", type=int, default=32)
+    parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
+    parser.add_argument("--ik-try-target-orders", action="store_true")
+    parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
@@ -884,6 +904,7 @@ def main() -> int:
         help="full-selected 默认 mesh 动态回放；staged 多候选模式可用 skeleton 避免爆显存",
     )
     args = parser.parse_args()
+    args.turn_rad = math.radians(args.turn_deg)
     if args.scene_y_shift is None:
         args.scene_y_shift = 0.0 if args.box_stack_y_shift is None else args.box_stack_y_shift
     if args.save is not None and args.no_rerun:

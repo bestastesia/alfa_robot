@@ -2,6 +2,8 @@
 
 本文档用于给其它仓库、其它部门 AI 或工程师对接当前双臂抓取流程。当前代码仍在 `alfa_robot_moveit_config` 包内，但已经把原来集中在 `dual_arm_planner_node.cpp` 的长流程拆成一组按职责划分的 C++ 模块，便于后续迁移到独立运控包或 IK 服务包。
 
+工程化护栏、碰撞真相源、关节命名/方向契约、motion baseline 记录规则见：`docs/运控/工程化护栏/MOTION_ENGINEERING_GUARDS.md`。
+
 ## 1. 当前流程总览
 
 当前固定版流程先到“负重位置”为止，暂未封装完整放置流程。

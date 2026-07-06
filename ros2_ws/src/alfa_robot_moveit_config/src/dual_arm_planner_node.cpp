@@ -209,11 +209,15 @@ std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box
 {
   std::vector<std::string> links{box.link_name};
   if (box.link_name.rfind("left_", 0) == 0) {
-    links.push_back("left_v5_link6");
-    links.push_back("left_v5_link5");
+    links.push_back("leftjoint6");
+    links.push_back("leftjoint5");
+    links.push_back("leftjoint4");
+    links.push_back("leftjoint3");
   } else if (box.link_name.rfind("right_", 0) == 0) {
-    links.push_back("right_v5_link6");
-    links.push_back("right_v5_link5");
+    links.push_back("rightjoint6");
+    links.push_back("rightjoint5");
+    links.push_back("rightjoint4");
+    links.push_back("rightjoint3");
   }
   return links;
 }
@@ -260,9 +264,9 @@ public:
 
   void init()
   {
-    planning_group_ = get_or_declare_parameter<std::string>("planning_group", "dual_v5_arm_with_base");
-    left_tip_ = get_or_declare_parameter<std::string>("left_tip", "left_v5_tool0");
-    right_tip_ = get_or_declare_parameter<std::string>("right_tip", "right_v5_tool0");
+    planning_group_ = get_or_declare_parameter<std::string>("planning_group", "dual_arm_with_base");
+    left_tip_ = get_or_declare_parameter<std::string>("left_tip", "left_tool0");
+    right_tip_ = get_or_declare_parameter<std::string>("right_tip", "right_tool0");
     execute_ = get_or_declare_parameter<bool>("execute", true);
     execution_backend_ = get_or_declare_parameter<std::string>("execution_backend", "moveit");
     execution_action_name_ = get_or_declare_parameter<std::string>(
@@ -300,8 +304,8 @@ public:
       "/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_stage_monitor/latest_snapshot.json");
     extract_monitor_snapshot_writer_.setPath(extract_monitor_snapshot_path_);
 
-    ik_config_.fixed_group = get_or_declare_parameter<std::string>("ik_fixed_group", "dual_v5_arm");
-    ik_config_.free_group = get_or_declare_parameter<std::string>("ik_free_group", "dual_v5_arm_with_base");
+    ik_config_.fixed_group = get_or_declare_parameter<std::string>("ik_fixed_group", "dual_arm");
+    ik_config_.free_group = get_or_declare_parameter<std::string>("ik_free_group", "dual_arm_with_base");
     ik_config_.solver_plugin = get_or_declare_parameter<std::string>("ik_solver_plugin", "bio_ik/BioIKKinematicsPlugin");
     ik_config_.base_frame = get_or_declare_parameter<std::string>("ik_base_frame", "base_link");
     ik_config_.left_tip = left_tip_;
@@ -365,6 +369,7 @@ public:
       extract_demo_pair_sequence_ = {{2, 4}, {7, 9}, {12, 14}, {17, 19}};
     }
     extract_demo_all_rows_ = get_or_declare_parameter<bool>("extract_demo_all_rows", false);
+    extract_monitor_top_suction_ = get_or_declare_parameter<bool>("extract_monitor_top_suction", false);
     extract_step_x_ = get_or_declare_parameter<double>("extract_step_x", 0.03);
     extract_max_x_ = get_or_declare_parameter<double>("extract_max_x", 0.36);
     extract_lift_candidates_ = get_or_declare_parameter<std::vector<double>>("extract_lift_candidates", std::vector<double>{0.0, 0.02, 0.05, 0.08});
@@ -387,6 +392,7 @@ public:
     extract_max_joint_delta_ = get_or_declare_parameter<double>("extract_max_joint_delta", 0.0);
     extract_demo_direct_grasp_start_ = get_or_declare_parameter<bool>("extract_demo_direct_grasp_start", false);
     extract_grasp_ik_home_updown_ = get_or_declare_parameter<double>("extract_grasp_ik_home_updown", 0.3);
+    extract_monitor_turn_ = get_or_declare_parameter<double>("extract_monitor_turn", 0.0);
     extract_benchmark_all_legal_ik_ = get_or_declare_parameter<bool>("extract_benchmark_all_legal_ik", false);
     extract_benchmark_dual_arm_ = get_or_declare_parameter<bool>("extract_benchmark_dual_arm", false);
     extract_benchmark_dual_async_ = get_or_declare_parameter<bool>("extract_benchmark_dual_async", false);
@@ -405,7 +411,7 @@ public:
     extract_benchmark_plan_loaded_after_success_ =
       get_or_declare_parameter<bool>("extract_benchmark_plan_loaded_after_success", false);
     extract_loaded_planning_group_ =
-      get_or_declare_parameter<std::string>("extract_loaded_planning_group", "dual_v5_arm_with_base");
+      get_or_declare_parameter<std::string>("extract_loaded_planning_group", "dual_arm_with_base");
     extract_loaded_planning_time_ = get_or_declare_parameter<double>("extract_loaded_planning_time", 1.0);
     extract_loaded_planning_attempts_ =
       std::max(1, get_or_declare_parameter<int>("extract_loaded_planning_attempts", 8));
@@ -435,7 +441,7 @@ public:
     extract_loaded_pre_lower_updown_delta_ =
       get_or_declare_parameter<double>("extract_loaded_pre_lower_updown_delta", 0.0);
     enforce_loaded_plan_aabb_clearance_ =
-      get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", true);
+      get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
     extract_use_independent_kdl_ = get_or_declare_parameter<bool>("extract_use_independent_kdl", true);
     extract_independent_kdl_max_iterations_ =
       std::max(1, get_or_declare_parameter<int>("extract_independent_kdl_max_iterations", 120));
@@ -522,10 +528,10 @@ public:
     if (!joint_group_) {
       throw std::runtime_error("No JointModelGroup named " + planning_group_);
     }
-    left_arm_group_ = robot_model_->getJointModelGroup("left_v5_arm");
-    right_arm_group_ = robot_model_->getJointModelGroup("right_v5_arm");
+    left_arm_group_ = robot_model_->getJointModelGroup("left_arm");
+    right_arm_group_ = robot_model_->getJointModelGroup("right_arm");
     if (!left_arm_group_ || !right_arm_group_) {
-      throw std::runtime_error("Missing single-arm JointModelGroup left_v5_arm/right_v5_arm");
+      throw std::runtime_error("Missing single-arm JointModelGroup left_arm/right_arm");
     }
 
     loaded_pose_selector_config_.enforce_bounds_group = joint_group_;
@@ -877,6 +883,9 @@ private:
       extract_orientation_tolerance_,
       extract_max_tip_z_drop_,
       extract_min_tool_normal_z_,
+      !extract_monitor_top_suction_,
+      extract_monitor_top_suction_,
+      ik_config_.top_suction_orientation_tolerance,
       extract_max_joint_delta_,
       extract_independent_kdl_max_iterations_,
       extract_independent_kdl_eps_,
@@ -898,6 +907,9 @@ private:
     config.right_tip = right_tip_;
     config.fail_fast = extract_fail_fast_;
     config.dual_async = extract_benchmark_dual_async_;
+    config.top_suction = extract_monitor_top_suction_;
+    config.top_suction_updown_step = extract_step_x_;
+    config.top_suction_max_lift = extract_max_x_;
     config.success_extra_steps = extract_success_extra_steps_;
     config.single_clear_callback =
       [this](
@@ -1414,6 +1426,22 @@ private:
     const moveit::core::RobotState& state,
     const AttachedBoxSpec& box) const
   {
+    if (box.id.find("carried_") == 0) {
+      const Eigen::Isometry3d& link_tf = state.getGlobalLinkTransform(box.link_name);
+      const Eigen::Vector3d center = link_tf * Eigen::Vector3d(
+        box.center_in_link[0], box.center_in_link[1], box.center_in_link[2]);
+      const bool top_suction_box =
+        std::abs(box.size[0] - carried_box_depth_) < 1e-6 &&
+        std::abs(box.size[1] - carried_box_width_) < 1e-6 &&
+        std::abs(box.size[2] - carried_box_height_) < 1e-6;
+      if (top_suction_box) {
+        return AxisAlignedBox{{
+          center.x(), center.y(), center.z()
+        }, {
+          carried_box_depth_, carried_box_width_, carried_box_height_
+        }};
+      }
+    }
     return aabb_from_attached_box_transform(state.getGlobalLinkTransform(box.link_name), box);
   }
 
@@ -1455,6 +1483,36 @@ private:
     std::string* reason) const
   {
     return carried_box_detached_from_neighbors(state, carried_box, left_box_id, reason);
+  }
+
+  bool carried_box_detached_for_extract_mode(
+    const moveit::core::RobotState& state,
+    const AttachedBoxSpec& carried_box,
+    int box_id,
+    std::string* reason) const
+  {
+    if (!extract_monitor_top_suction_) {
+      return carried_box_detached_from_neighbors(state, carried_box, box_id, reason);
+    }
+    const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
+    const auto it = boxes.find(box_id);
+    if (it == boxes.end()) {
+      if (reason) *reason = "unknown_box_id_for_top_detachment";
+      return false;
+    }
+    const auto aabb = attached_box_world_aabb(state, carried_box);
+    const double carried_bottom_z = aabb.center[2] - 0.5 * aabb.size[2];
+    const double source_top_z = it->second.z + 0.5 * carried_box_height_;
+    if (carried_bottom_z >= source_top_z + extract_neighbor_margin_) {
+      return true;
+    }
+    if (reason) {
+      std::ostringstream oss;
+      oss << carried_box.id << " bottom still below source top bottom_z="
+          << carried_bottom_z << " source_top_z=" << source_top_z;
+      *reason = oss.str();
+    }
+    return false;
   }
 
   bool carried_boxes_clear_static_obstacles(
@@ -1505,7 +1563,7 @@ private:
     }
 
     std::string detached_reason;
-    const bool detached_now = left_carried_box_detached_from_neighbors(state, left_carried_box, left_box_id, &detached_reason);
+    const bool detached_now = carried_box_detached_for_extract_mode(state, left_carried_box, left_box_id, &detached_reason);
     if (detached) *detached = detached_now;
     if (!detached_now && reason) *reason = detached_reason;
     return true;
@@ -1530,7 +1588,7 @@ private:
     }
 
     std::string detached_reason;
-    const bool detached_now = carried_box_detached_from_neighbors(state, carried_box, box_id, &detached_reason);
+    const bool detached_now = carried_box_detached_for_extract_mode(state, carried_box, box_id, &detached_reason);
     if (detached) *detached = detached_now;
     if (!detached_now && reason) *reason = detached_reason;
     return true;
@@ -1561,8 +1619,8 @@ private:
 
     std::string left_reason;
     std::string right_reason;
-    const bool left_ok = carried_box_detached_from_neighbors(state, left_box, left_box_id, &left_reason);
-    const bool right_ok = carried_box_detached_from_neighbors(state, right_box, right_box_id, &right_reason);
+    const bool left_ok = carried_box_detached_for_extract_mode(state, left_box, left_box_id, &left_reason);
+    const bool right_ok = carried_box_detached_for_extract_mode(state, right_box, right_box_id, &right_reason);
     if (left_detached) *left_detached = left_ok;
     if (right_detached) *right_detached = right_ok;
     if ((!left_ok || !right_ok) && reason) {
@@ -2031,10 +2089,10 @@ private:
     sensor_msgs::msg::JointState target;
     target.name = {
       "updown",
-      "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-      "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-      "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-      "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+      "leftjoint1", "leftjoint2", "leftjoint3",
+      "leftjoint4", "leftjoint5", "leftjoint6",
+      "rightjoint1", "rightjoint2", "rightjoint3",
+      "rightjoint4", "rightjoint5", "rightjoint6",
     };
     target.position.reserve(target.name.size());
     target.position.push_back(updown);
@@ -2167,6 +2225,23 @@ private:
     return make_pose(tf.translation().x(), tf.translation().y(), tf.translation().z(), q);
   }
 
+  BoxSpec extract_source_box_for_mode(
+    const BoxSpec& box,
+    const moveit::core::RobotState& state,
+    const std::string& tip_link) const
+  {
+    if (!extract_monitor_top_suction_) {
+      return box;
+    }
+    const Eigen::Isometry3d& tip_tf = state.getGlobalLinkTransform(tip_link);
+    return BoxSpec{
+      box.id,
+      tip_tf.translation().x(),
+      tip_tf.translation().y(),
+      tip_tf.translation().z(),
+    };
+  }
+
   ExtractRolloutTiming rollout_left_extract_from_state(
     const moveit::core::RobotState& start_state,
     const AttachedBoxSpec& left_box,
@@ -2190,7 +2265,7 @@ private:
     }
     return extract_rollout_planner_->rolloutLeft(
       start_state,
-      left_it->second,
+      extract_source_box_for_mode(left_it->second, start_state, left_tip_),
       left_box,
       left_box_id,
       candidate_order,
@@ -2228,10 +2303,10 @@ private:
     }
     return extract_rollout_planner_->rolloutDual(
       start_state,
-      left_it->second,
+      extract_source_box_for_mode(left_it->second, start_state, left_tip_),
       left_box,
       left_box_id,
-      right_it->second,
+      extract_source_box_for_mode(right_it->second, start_state, right_tip_),
       right_box,
       right_box_id,
       candidate_order,
@@ -2361,7 +2436,7 @@ private:
         : prefix + (accepted ? "/extract_step_" : "/extract_failed_step_") + std::to_string(step);
       nlohmann::json enriched = extra;
       enriched["stage_kind"] = accepted ? "left_extract_primitive" : "left_extract_primitive_candidates";
-      enriched["extract_ik"] = "left_v5_arm_kdl_fixed_updown";
+      enriched["extract_ik"] = "left_arm_kdl_fixed_updown";
       enriched["left_box_id"] = left_box_id;
       record_extract_keyframe(stage, state, left_box, enriched);
     };
@@ -2960,21 +3035,27 @@ private:
       ExtractMonitorInitialStateRequest{
         left_box_id,
         right_box_id,
-        make_carried_box_spec("left", left_box_id, false),
-        make_carried_box_spec("right", right_box_id, false),
+        make_carried_box_spec("left", left_box_id, extract_monitor_top_suction_),
+        make_carried_box_spec("right", right_box_id, extract_monitor_top_suction_),
         robot_model_,
         joint_group_,
-        ExtractMonitorArmSeed{left_pregrasp_arm_, right_pregrasp_arm_, extract_grasp_ik_home_updown_},
-        ExtractMonitorArmSeed{left_loaded_arm_, right_loaded_arm_, extract_grasp_ik_home_updown_}});
+        ExtractMonitorArmSeed{left_pregrasp_arm_, right_pregrasp_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_},
+        ExtractMonitorArmSeed{left_loaded_arm_, right_loaded_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_}});
 
     moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
     nlohmann::json ik_extra;
     ik_benchmark::UpdownAwareIkResult ik_result;
+    const auto left_pose = extract_monitor_top_suction_
+      ? make_top_suction_pose(left_it->second, world_to_base_z_, top_suction_x_offset_, top_suction_z_offset_)
+      : make_front_grasp_pose(left_it->second, world_to_base_z_);
+    const auto right_pose = extract_monitor_top_suction_
+      ? make_top_suction_pose(right_it->second, world_to_base_z_, top_suction_x_offset_, top_suction_z_offset_)
+      : make_front_grasp_pose(right_it->second, world_to_base_z_);
     if (!solve_dual_tip_ik_state(
           extract_monitor_state_.prefix + "/monitor_ik",
-          make_front_grasp_pose(left_it->second, world_to_base_z_),
-          make_front_grasp_pose(right_it->second, world_to_base_z_),
-          false,
+          left_pose,
+          right_pose,
+          extract_monitor_top_suction_,
           *extract_monitor_state_.seed_state,
           &selected_state,
           &ik_extra,
@@ -3366,12 +3447,15 @@ private:
       auto seed_state = std::make_shared<moveit::core::RobotState>(robot_model_);
       seed_state->setToDefaultValues();
       for (size_t i = 0; i < left_pregrasp_arm_.size(); ++i) {
-        seed_state->setVariablePosition("left_v5_joint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
+        seed_state->setVariablePosition("leftjoint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
       }
       for (size_t i = 0; i < right_pregrasp_arm_.size(); ++i) {
-        seed_state->setVariablePosition("right_v5_joint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
+        seed_state->setVariablePosition("rightjoint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
       }
       seed_state->setVariablePosition("updown", extract_grasp_ik_home_updown_);
+      if (is_robot_variable("turn")) {
+        seed_state->setVariablePosition("turn", extract_monitor_turn_);
+      }
       seed_state->enforceBounds(joint_group_);
       seed_state->update();
 
@@ -3538,13 +3622,14 @@ private:
   double carried_box_width_ = 0.4;
   double carried_box_height_ = 0.4;
   double attached_box_collision_padding_ = -0.002;
-  bool enforce_loaded_plan_aabb_clearance_ = true;
+  bool enforce_loaded_plan_aabb_clearance_ = false;
   bool enable_static_box_obstacles_ = true;
   double static_box_obstacle_inset_ = 0.002;
   int extract_demo_left_box_id_ = 2;
   int extract_demo_right_box_id_ = 4;
   std::vector<std::pair<int, int>> extract_demo_pair_sequence_{{2, 4}, {7, 9}, {12, 14}, {17, 19}};
   bool extract_demo_all_rows_ = false;
+  bool extract_monitor_top_suction_ = false;
   double extract_step_x_ = 0.03;
   double extract_max_x_ = 0.36;
   std::vector<double> extract_lift_candidates_;
@@ -3566,6 +3651,7 @@ private:
   double extract_max_joint_delta_ = 0.0;
   bool extract_demo_direct_grasp_start_ = false;
   double extract_grasp_ik_home_updown_ = 0.3;
+  double extract_monitor_turn_ = 0.0;
   bool extract_benchmark_all_legal_ik_ = false;
   bool extract_benchmark_dual_arm_ = false;
   bool extract_benchmark_dual_async_ = false;
@@ -3577,7 +3663,7 @@ private:
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;
   bool extract_benchmark_plan_loaded_after_success_ = false;
-  std::string extract_loaded_planning_group_ = "dual_v5_arm_with_base";
+  std::string extract_loaded_planning_group_ = "dual_arm_with_base";
   double extract_loaded_planning_time_ = 1.0;
   int extract_loaded_planning_attempts_ = 8;
   bool extract_loaded_use_direct_pipeline_ = false;

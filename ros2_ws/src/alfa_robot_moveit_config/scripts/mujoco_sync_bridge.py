@@ -34,10 +34,10 @@ DEFAULT_OBJECT_PREFIX = "mj_"
 JOINT_NAMES = [
     "base_x", "base_y", "base_yaw",
     "pitch", "turn", "updown",
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-    "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-    "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 
 

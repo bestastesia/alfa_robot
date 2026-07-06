@@ -24,7 +24,7 @@
 
 ### 电机 inertial 覆盖
 
-左右臂 v5_link1..6 的 inertial 参数被覆盖为：
+左右臂 current arm links 的 inertial 参数被覆盖为：
 
 | 参数 | 值 |
 |------|------|

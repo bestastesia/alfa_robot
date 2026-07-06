@@ -52,11 +52,11 @@ int main()
 
   AttachedBoxSpec left_box;
   left_box.id = "left_box";
-  left_box.link_name = "left_v5_tool0";
+  left_box.link_name = "left_tool0";
   left_box.size = {0.4, 0.4, 0.4};
   AttachedBoxSpec right_box;
   right_box.id = "right_box";
-  right_box.link_name = "right_v5_tool0";
+  right_box.link_name = "right_tool0";
   right_box.size = {0.4, 0.4, 0.4};
 
   alfa_robot::motion::ExtractRolloutTiming timing;
@@ -144,7 +144,7 @@ int main()
   monitor_state.loaded_start_state = start_state;
   const auto factory_request = make_extract_monitor_replay_request(
     monitor_state,
-    {"updown", "left_v5_joint1"},
+    {"updown", "leftjoint1"},
     nlohmann::json{{"boxes", nlohmann::json::array()}},
     ik_state);
   assert(factory_request.prefix == "extract_monitor_L1_R2");

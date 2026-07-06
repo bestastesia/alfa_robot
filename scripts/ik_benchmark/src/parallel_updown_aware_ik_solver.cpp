@@ -57,6 +57,21 @@ double angularDistance(double a, double b)
     return std::abs(std::atan2(std::sin(a - b), std::cos(a - b)));
 }
 
+Eigen::Isometry3d rotateAroundToolZ(
+    const Eigen::Isometry3d& target,
+    size_t variant,
+    size_t variant_count)
+{
+    if (variant_count <= 1) {
+        return target;
+    }
+    const double angle = 2.0 * M_PI * static_cast<double>(variant % variant_count) /
+                         static_cast<double>(variant_count);
+    Eigen::Isometry3d out = target;
+    out.linear() = target.linear() * Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+    return out;
+}
+
 } // namespace
 
 ParallelUpdownAwareIkSolver::ParallelUpdownAwareIkSolver(UpdownAwareIkConfig config,
@@ -527,12 +542,18 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     out.solver_path = trial.solver_path;
     out.target_order = swapped_order ? "swapped" : "normal";
 
-    const Eigen::Isometry3d left_target = trial.free_updown
+    Eigen::Isometry3d left_target = trial.free_updown
         ? compensateTool0(request.left_target)
         : fixedTarget(request.left_target, trial.h);
-    const Eigen::Isometry3d right_target = trial.free_updown
+    Eigen::Isometry3d right_target = trial.free_updown
         ? compensateTool0(request.right_target)
         : fixedTarget(request.right_target, trial.h);
+    const bool top_suction = request.grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction;
+    if (top_suction) {
+        constexpr size_t yaw_sample_count = 8;
+        left_target = rotateAroundToolZ(left_target, trial.seed_index, yaw_sample_count);
+        right_target = rotateAroundToolZ(right_target, trial.seed_index / yaw_sample_count + trial.h_index, yaw_sample_count);
+    }
 
     const double timeout = fallback ? config_.fallback_timeout : config_.timeout;
     const std::vector<double> solve_seed = trial.seed;
@@ -582,7 +603,6 @@ UpdownAwareIkCandidate ParallelUpdownAwareIkSolver::solveTrial(
     const double swapped_left = positionError(request.left_target, actual_poses[1]);
     const double swapped_right = positionError(request.right_target, actual_poses[0]);
     out.swapped_pos_error = std::max(swapped_left, swapped_right);
-    const bool top_suction = request.grasp_mode == UpdownAwareIkRequest::GraspMode::TopSuction;
     out.direct_ori_error = top_suction
         ? std::max(toolAxisError(request.left_target, actual_poses[0]),
                    toolAxisError(request.right_target, actual_poses[1]))
@@ -778,8 +798,8 @@ double ParallelUpdownAwareIkSolver::armTorqueProxy(
     const UpdownAwareIkCandidate& candidate, const std::string& prefix) const
 {
     const bool is_left = prefix == "left";
-    const double q2 = jointValue(candidate, prefix + "_v5_joint2");
-    const double q3 = jointValue(candidate, prefix + "_v5_joint3");
+    const double q2 = jointValue(candidate, prefix + "joint2");
+    const double q3 = jointValue(candidate, prefix + "joint3");
     const double q2_zero = is_left ? config_.left_joint2_horizontal_angle : config_.right_joint2_horizontal_angle;
     const double q3_zero = is_left ? config_.left_joint3_horizontal_angle : config_.right_joint3_horizontal_angle;
 
@@ -812,7 +832,7 @@ double ParallelUpdownAwareIkSolver::loadedPoseDistance(
     }
     double squared_sum = 0.0;
     for (size_t i = 0; i < 6; ++i) {
-        const std::string joint_name = prefix + "_v5_joint" + std::to_string(i + 1);
+        const std::string joint_name = prefix + "joint" + std::to_string(i + 1);
         const double diff = angularDistance(jointValue(candidate, joint_name), pose[i]);
         squared_sum += diff * diff;
     }
@@ -853,8 +873,8 @@ double ParallelUpdownAwareIkSolver::jointLeverProxy(
     const UpdownAwareIkCandidate& candidate, const std::string& prefix, int joint_index) const
 {
     const bool is_left = prefix == "left";
-    const double q2 = jointValue(candidate, prefix + "_v5_joint2");
-    const double q3 = jointValue(candidate, prefix + "_v5_joint3");
+    const double q2 = jointValue(candidate, prefix + "joint2");
+    const double q3 = jointValue(candidate, prefix + "joint3");
     const double q2_zero = is_left ? config_.left_joint2_horizontal_angle : config_.right_joint2_horizontal_angle;
     const double q3_zero = is_left ? config_.left_joint3_horizontal_angle : config_.right_joint3_horizontal_angle;
     const double shoulder_angle = q2 - q2_zero;

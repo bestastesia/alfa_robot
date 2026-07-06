@@ -90,7 +90,7 @@ int main()
 
   AttachedBoxSpec box;
   box.id = "carried_left_box_6";
-  box.link_name = "left_v5_tool0";
+  box.link_name = "left_tool0";
   box.center_in_link = {0.1, 0.2, 0.3};
   box.size = {0.4, 0.5, 0.6};
 
@@ -98,7 +98,7 @@ int main()
   assert(boxes.is_array());
   assert(boxes.size() == 1);
   assert(boxes[0].at("id") == "carried_left_box_6");
-  assert(boxes[0].at("link_name") == "left_v5_tool0");
+  assert(boxes[0].at("link_name") == "left_tool0");
   assert(boxes[0].at("center_in_link").size() == 3);
   assert(boxes[0].at("size").size() == 3);
 

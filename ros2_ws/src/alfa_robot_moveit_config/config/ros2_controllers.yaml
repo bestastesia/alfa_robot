@@ -1,4 +1,4 @@
-# 双控制器: torso (pitch/turn) + dual_v5_arm (updown + 12臂关节)
+# 双控制器: torso (pitch/turn) + dual_arm (updown + 12臂关节)
 
 controller_manager:
   ros__parameters:
@@ -10,7 +10,7 @@ controller_manager:
     torso_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    dual_v5_arm_controller:
+    dual_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
 joint_state_broadcaster:
@@ -27,22 +27,22 @@ torso_controller:
     state_interfaces:
       - position
 
-dual_v5_arm_controller:
+dual_arm_controller:
   ros__parameters:
     joints:
       - updown
-      - left_v5_joint1
-      - left_v5_joint2
-      - left_v5_joint3
-      - left_v5_joint4
-      - left_v5_joint5
-      - left_v5_joint6
-      - right_v5_joint1
-      - right_v5_joint2
-      - right_v5_joint3
-      - right_v5_joint4
-      - right_v5_joint5
-      - right_v5_joint6
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+      - leftjoint6
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+      - rightjoint5
+      - rightjoint6
     command_interfaces:
       - position
     state_interfaces:

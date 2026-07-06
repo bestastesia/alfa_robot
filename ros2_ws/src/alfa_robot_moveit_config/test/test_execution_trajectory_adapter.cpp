@@ -11,8 +11,8 @@ trajectory_msgs::msg::JointTrajectory make_source()
 {
   trajectory_msgs::msg::JointTrajectory source;
   source.joint_names = {
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3", "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3", "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6",
   };
   trajectory_msgs::msg::JointTrajectoryPoint point;
   for (size_t i = 0; i < source.joint_names.size(); ++i) {
@@ -36,8 +36,8 @@ int main()
   config.include_turn = true;
   ExecutionTrajectoryAdapter adapter(config);
 
-  assert(adapter.alfaToMoveItJointName("left_joint3") == "left_v5_joint3");
-  assert(adapter.moveItToAlfaJointName("right_v5_joint6") == "right_joint6");
+  assert(adapter.alfaToMoveItJointName("left_joint3") == "leftjoint3");
+  assert(adapter.moveItToAlfaJointName("rightjoint6") == "right_joint6");
 
   auto source = make_source();
   ExecutionTrajectoryAdapter::FollowJointTrajectory::Goal goal;
@@ -75,36 +75,36 @@ int main()
   assert(reason.find("updown") != std::string::npos);
 
   ExecutionStateMatchRequest state_match;
-  state_match.target_names = {"left_v5_joint1", "ignored_joint"};
+  state_match.target_names = {"leftjoint1", "ignored_joint"};
   state_match.tolerance = 0.05;
   state_match.is_robot_variable = [](const std::string& name) {
-    return name == "left_v5_joint1";
+    return name == "leftjoint1";
   };
   state_match.goal_position = [](const std::string& name) {
-    return name == "left_v5_joint1" ? 1.0 : 0.0;
+    return name == "leftjoint1" ? 1.0 : 0.0;
   };
   state_match.current_position = [](const std::string& name) {
-    return name == "left_v5_joint1" ? 1.02 : 100.0;
+    return name == "leftjoint1" ? 1.02 : 100.0;
   };
   assert(adapter.robotStateMatches(state_match));
   state_match.current_position = [](const std::string& name) {
-    return name == "left_v5_joint1" ? 1.10 : 0.0;
+    return name == "leftjoint1" ? 1.10 : 0.0;
   };
   assert(!adapter.robotStateMatches(state_match));
 
   sensor_msgs::msg::JointState joint_state;
-  joint_state.name = {"left_joint1", "right_v5_joint2"};
+  joint_state.name = {"left_joint1", "rightjoint2"};
   joint_state.position = {0.98, -0.51};
   ExecutionJointStateMatchRequest joint_match;
   joint_match.current = &joint_state;
-  joint_match.target_names = {"left_v5_joint1", "right_v5_joint2"};
+  joint_match.target_names = {"leftjoint1", "rightjoint2"};
   joint_match.tolerance = 0.05;
   joint_match.is_robot_variable = [](const std::string& name) {
-    return name == "left_v5_joint1" || name == "right_v5_joint2";
+    return name == "leftjoint1" || name == "rightjoint2";
   };
   joint_match.goal_position = [](const std::string& name) {
-    if (name == "left_v5_joint1") return 1.0;
-    if (name == "right_v5_joint2") return -0.5;
+    if (name == "leftjoint1") return 1.0;
+    if (name == "rightjoint2") return -0.5;
     return 0.0;
   };
   assert(adapter.jointStateMatches(joint_match));

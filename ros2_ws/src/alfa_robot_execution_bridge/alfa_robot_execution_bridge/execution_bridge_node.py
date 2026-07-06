@@ -15,7 +15,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 
-from alfa_robot_execution_bridge.joints import DEFAULT_DIRECTION_SIGNS, DEFAULT_JOINT_NAMES
+from alfa_robot_execution_bridge.joints import DEFAULT_JOINT_NAMES, direction_signs_for
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,7 @@ class ExecutionBridgeNode(Node):
         self.declare_parameter('publish_joint_states', True)
         self.declare_parameter('update_hz', 50.0)
         self.declare_parameter('joint_names', DEFAULT_JOINT_NAMES)
-        self.declare_parameter('direction_signs', DEFAULT_DIRECTION_SIGNS)
+        self.declare_parameter('direction_signs', [])
         self.declare_parameter('apply_direction_signs', False)
         self.declare_parameter('initial_positions', [0.0] * len(DEFAULT_JOINT_NAMES))
         self.declare_parameter('downstream_action_name', '/dual_arm_trajectory_controller/follow_joint_trajectory')
@@ -89,7 +89,8 @@ class ExecutionBridgeNode(Node):
         self.publish_joint_states = bool(self.get_parameter('publish_joint_states').value)
         self.update_hz = float(self.get_parameter('update_hz').value)
         self.joint_names = [str(name) for name in self.get_parameter('joint_names').value]
-        self.direction_signs = [float(value) for value in self.get_parameter('direction_signs').value]
+        configured_direction_signs = [float(value) for value in self.get_parameter('direction_signs').value]
+        self.direction_signs = configured_direction_signs or direction_signs_for(self.joint_names)
         self.apply_direction_signs = bool(self.get_parameter('apply_direction_signs').value)
         self.initial_positions = [float(value) for value in self.get_parameter('initial_positions').value]
         self.downstream_action_name = str(self.get_parameter('downstream_action_name').value)

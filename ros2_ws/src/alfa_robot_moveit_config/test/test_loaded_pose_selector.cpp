@@ -31,10 +31,10 @@ moveit::core::RobotModelPtr loaded_pose_test_model()
   for (const auto side : {"left", "right"}) {
     std::string parent = "updown_link";
     for (int i = 1; i <= 6; ++i) {
-      const std::string link = std::string(side) + "_v5_link" + std::to_string(i);
+      const std::string link = std::string(side) + "joint" + std::to_string(i);
       urdf_xml +=
         "  <link name=\"" + link + "\"/>\n"
-        "  <joint name=\"" + std::string(side) + "_v5_joint" + std::to_string(i) + "\" type=\"revolute\">\n"
+        "  <joint name=\"" + std::string(side) + "joint" + std::to_string(i) + "\" type=\"revolute\">\n"
         "    <parent link=\"" + parent + "\"/>\n"
         "    <child link=\"" + link + "\"/>\n"
         "    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n"
@@ -78,8 +78,8 @@ int main()
   state->setToDefaultValues();
   state->setVariablePosition("updown", 0.8);
   for (int i = 1; i <= 6; ++i) {
-    state->setVariablePosition("left_v5_joint" + std::to_string(i), 0.9);
-    state->setVariablePosition("right_v5_joint" + std::to_string(i), -0.8);
+    state->setVariablePosition("leftjoint" + std::to_string(i), 0.9);
+    state->setVariablePosition("rightjoint" + std::to_string(i), -0.8);
   }
   state->update();
 
@@ -104,8 +104,8 @@ int main()
   assert(selection.left_index == timing.selected_left_loaded_pose_index);
   assert(selection.right_index == timing.selected_right_loaded_pose_index);
   assert(std::abs(goal.getVariablePosition("updown") - 0.3) < 1e-9);
-  assert(std::abs(goal.getVariablePosition("left_v5_joint1") - 1.0) < 1e-9);
-  assert(std::abs(goal.getVariablePosition("right_v5_joint1") + 1.0) < 1e-9);
+  assert(std::abs(goal.getVariablePosition("leftjoint1") - 1.0) < 1e-9);
+  assert(std::abs(goal.getVariablePosition("rightjoint1") + 1.0) < 1e-9);
 
   return 0;
 }

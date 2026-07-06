@@ -357,7 +357,7 @@ std::vector<Stage> makeRoundStages(size_t round_index, const PickPoint& point, d
 void printHelp()
 {
     std::cout << "Usage: pick_place_baseline [options]\n"
-              << "  --group <name>              MoveIt group (default: dual_v5_arm_with_base)\n"
+              << "  --group <name>              MoveIt group (default: dual_arm_with_base)\n"
               << "  --solver <plugin>           IK solver plugin (default: bio_ik/BioIKKinematicsPlugin)\n"
               << "  --timeout <s>               IK timeout per stage (default: 2.0)\n"
               << "  --start <index>             Start round, 0-based (default: 0)\n"
@@ -377,7 +377,7 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
 
-    std::string group = "dual_v5_arm_with_base";
+    std::string group = "dual_arm_with_base";
     std::string solver = "bio_ik/BioIKKinematicsPlugin";
     std::string output = "/tmp/pick_place_baseline.jsonl";
     double timeout = 2.0;
@@ -433,8 +433,8 @@ int main(int argc, char** argv)
 
     IkSolverOptions options;
     options.base_frame = "base_link";
-    options.tip_link = "left_v5_tool0";
-    options.tip_link2 = "right_v5_tool0";
+    options.tip_link = "left_tool0";
+    options.tip_link2 = "right_tool0";
     options.reject_collisions = reject_collisions;
 
     IkSolver ik(group, solver, timeout, false, options);

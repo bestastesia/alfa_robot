@@ -54,8 +54,10 @@ ros2 launch alfa_robot_moveit_config dual_arm_planner.launch.py \
   execution_action_name:=/alfa_execution/execute_joint_trajectory
 ```
 
-该路径会把 MoveIt 里的 `left_v5_joint*` / `right_v5_joint*` 映射成执行接口里的 `left_joint*` / `right_joint*`，并默认带上 `turn` 保持当前值。若规划里有未映射且发生变化的轴，例如 `updown`，会默认拒绝执行，避免静默丢轴。
+该路径会把 MoveIt 里的 `leftjoint*` / `rightjoint*` 映射成执行接口里的 `left_joint*` / `right_joint*`，并默认带上 `turn` 保持当前值。若规划里有未映射且发生变化的轴，例如 `updown`，会默认拒绝执行，避免静默丢轴。
 
 ## 方向关系
 
-`config/*.yaml` 中的 `direction_signs` 记录当前实机方向标定关系。默认 `apply_direction_signs=false`，表示电控侧 ros2_control / 硬件层已经处理方向；如果确认下游没有处理方向，再打开该参数，避免双重翻转。
+`alfa_robot_execution_bridge/joints.py` 是当前实机方向标定的唯一真相源，包含 joint 顺序和 `ROS/Rerun -> EtherCAT` 方向映射。
+
+`config/*.yaml` 不再复制 `direction_signs`。默认 `apply_direction_signs=false`，表示电控侧 ros2_control / 硬件层已经处理方向；如果确认下游没有处理方向，再打开该参数，运行时会自动使用 `joints.py` 中的方向表，避免双重翻转和配置漂移。

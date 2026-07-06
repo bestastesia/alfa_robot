@@ -130,9 +130,9 @@ AttachedBoxSpec make_attached_box_spec(
 {
   AttachedBoxSpec spec;
   spec.id = "carried_" + side + "_box_" + std::to_string(box_id);
-  spec.link_name = side + "_v5_tool0";
+  spec.link_name = side + "_tool0";
   if (top_suction) {
-    spec.center_in_link = {0.0, 0.0, config.carried_box_height * 0.5};
+    spec.center_in_link = {0.0, 0.0, -config.carried_box_height * 0.5};
     spec.size = {config.carried_box_depth, config.carried_box_width, config.carried_box_height};
   } else {
     spec.center_in_link = {0.0, 0.0, config.carried_box_depth * 0.5};

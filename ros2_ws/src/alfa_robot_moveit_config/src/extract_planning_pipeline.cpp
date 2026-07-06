@@ -141,6 +141,14 @@ Eigen::Isometry3d kdl_frame_to_eigen(const KDL::Frame& frame)
   return transform;
 }
 
+double pose_tool_axis_error(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual)
+{
+  const Eigen::Vector3d target_axis = target.linear() * Eigen::Vector3d::UnitZ();
+  const Eigen::Vector3d actual_axis = actual.linear() * Eigen::Vector3d::UnitZ();
+  const double dot = std::clamp(target_axis.normalized().dot(actual_axis.normalized()), -1.0, 1.0);
+  return std::acos(dot);
+}
+
 }  // namespace
 
 ExtractCandidateSolver::ExtractCandidateSolver(ExtractCandidateSolverConfig config)
@@ -192,7 +200,7 @@ bool ExtractCandidateSolver::initArmKdlChain(const std::string& side, ArmKdlChai
   const auto* group = groupForSide(side);
   if (!group) return false;
 
-  const std::string base_link = side == "left" ? "left_v5_link0" : "right_v5_link0";
+  const std::string base_link = side == "left" ? "left_arm_base" : "right_arm_base";
   const std::string tip_link = tipForSide(side);
 
   KDL::Tree tree;
@@ -302,15 +310,22 @@ bool ExtractCandidateSolver::solveIndependentKdl(
     KDL::Frame achieved;
     if (fk_solver.JntToCart(solution, achieved) < 0) continue;
     const Eigen::Isometry3d achieved_eigen = kdl_frame_to_eigen(achieved);
+    const double position_error = pose_position_error(target_in_base, achieved_eigen);
+    const double orientation_error = config_.top_suction ?
+      pose_tool_axis_error(target_in_base, achieved_eigen) :
+      pose_orientation_error(target_in_base, achieved_eigen);
+    const double orientation_tolerance = config_.top_suction ?
+      config_.top_suction_orientation_tolerance :
+      config_.orientation_tolerance;
     const double error = pose_position_error(target_in_base, achieved_eigen) +
-                         pose_orientation_error(target_in_base, achieved_eigen);
+                         orientation_error;
     if (error < best_error) {
       best_error = error;
       best_solution = solution;
       found = true;
     }
-    if (pose_position_error(target_in_base, achieved_eigen) <= config_.position_tolerance &&
-        pose_orientation_error(target_in_base, achieved_eigen) <= config_.orientation_tolerance) {
+    if (position_error <= config_.position_tolerance &&
+        orientation_error <= orientation_tolerance) {
       break;
     }
   }
@@ -356,7 +371,16 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
     ik_ok = state->setFromIK(arm_group, target, tip, config_.kdl_timeout);
   }
   if (!ik_ok) {
-    out->rejection_reason = request.side + "_kdl_no_solution";
+    const Eigen::Isometry3d& current_tip = request.current_state->getGlobalLinkTransform(tip);
+    std::ostringstream oss;
+    oss << request.side << "_kdl_no_solution"
+        << " current=(" << current_tip.translation().x()
+        << "," << current_tip.translation().y()
+        << "," << current_tip.translation().z() << ")"
+        << " target=(" << target.translation().x()
+        << "," << target.translation().y()
+        << "," << target.translation().z() << ")";
+    out->rejection_reason = oss.str();
     return false;
   }
 
@@ -366,8 +390,13 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
 
   const Eigen::Isometry3d& actual = state->getGlobalLinkTransform(tip);
   const double pos_error = pose_position_error(target, actual);
-  const double ori_error = pose_orientation_error(target, actual);
-  if (pos_error > config_.position_tolerance || ori_error > config_.orientation_tolerance) {
+  const double ori_error = config_.top_suction ?
+    pose_tool_axis_error(target, actual) :
+    pose_orientation_error(target, actual);
+  const double ori_tolerance = config_.top_suction ?
+    config_.top_suction_orientation_tolerance :
+    config_.orientation_tolerance;
+  if (pos_error > config_.position_tolerance || ori_error > ori_tolerance) {
     std::ostringstream oss;
     oss << request.side << "_kdl_tip_error pos=" << pos_error << " ori=" << ori_error;
     out->rejection_reason = oss.str();
@@ -375,7 +404,7 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
   }
 
   const Eigen::Vector3d tool_normal = actual.linear() * Eigen::Vector3d::UnitZ();
-  if (tool_normal.z() < config_.min_tool_normal_z) {
+  if (config_.enforce_tool_normal_not_down && tool_normal.z() < config_.min_tool_normal_z) {
     std::ostringstream oss;
     oss << request.side << "_tool_normal_down z=" << tool_normal.z();
     out->rejection_reason = oss.str();
@@ -507,6 +536,26 @@ double ExtractCandidateScorer::score(
 namespace alfa_robot::motion
 {
 
+namespace
+{
+
+geometry_msgs::msg::Pose link_pose(
+  const moveit::core::RobotState& state,
+  const std::string& link_name,
+  const Eigen::Vector3d& translation_delta = Eigen::Vector3d::Zero())
+{
+  const Eigen::Isometry3d& tf = state.getGlobalLinkTransform(link_name);
+  Eigen::Quaterniond q(tf.linear());
+  q.normalize();
+  return make_pose(
+    tf.translation().x() + translation_delta.x(),
+    tf.translation().y() + translation_delta.y(),
+    tf.translation().z() + translation_delta.z(),
+    q);
+}
+
+}  // namespace
+
 ExtractRolloutPlanner::ExtractRolloutPlanner(ExtractRolloutPlannerConfig config)
 : config_(std::move(config))
 {}
@@ -634,13 +683,38 @@ std::vector<ExtractCandidate> ExtractRolloutPlanner::makeCandidatesForSide(
   if (!config_.motion_planner) return candidates;
   const double current_pitch = currentPitchUpRad(side, current_state);
 
+  if (config_.top_suction) {
+    const double lift_delta = std::max(1e-6, config_.motion_planner->config().step_x);
+    const double lift_z = current_lift_z + lift_delta;
+    const auto target_pose = link_pose(
+      current_state,
+      tipForSide(side),
+      Eigen::Vector3d(0.0, 0.0, lift_delta));
+
+    ExtractCandidate candidate;
+    solveCandidate(side, current_state, target_pose, step, 0,
+                   last_retreat_x, 0.0,
+                   lift_z, lift_delta,
+                   current_pitch, 0.0,
+                   min_allowed_tip_z, carried_box, box_id, &candidate);
+    candidates.push_back(candidate);
+    return candidates;
+  }
+
   for (const auto& layer : config_.motion_planner->layers(
          source_box, box_id, current_pitch, last_retreat_x, current_lift_z)) {
     std::vector<ExtractCandidate> layer_candidates;
     for (const auto& command : layer.commands) {
+      Eigen::Quaterniond target_orientation;
+      if (config_.top_suction) {
+        target_orientation = Eigen::Quaterniond(current_state.getGlobalLinkTransform(tipForSide(side)).linear());
+        target_orientation.normalize();
+      } else {
+        target_orientation = pitch_up_orientation(command.pitch_up_rad);
+      }
       const auto target_pose = make_pose(
         command.shifted_box.x, command.shifted_box.y, command.shifted_box.z,
-        pitch_up_orientation(command.pitch_up_rad));
+        target_orientation);
 
       ExtractCandidate candidate;
       solveCandidate(side, current_state, target_pose, step, command.candidate_index,
@@ -1104,6 +1178,107 @@ ExtractRolloutTiming ExtractRolloutPlanner::rolloutDual(
 
   const auto t0 = std::chrono::steady_clock::now();
   moveit::core::RobotState current_state(start_state);
+  if (config_.top_suction) {
+    const double start_updown = currentUpdown(start_state);
+    const double step_h = std::max(1e-6, config_.top_suction_updown_step);
+    const size_t max_steps = static_cast<size_t>(
+      std::ceil(std::max(0.0, config_.top_suction_max_lift) / step_h)) + config_.success_extra_steps + 1;
+
+    if (record_step) {
+      nlohmann::json extra = {
+        {"stage_kind", "dual_top_suction_extract_start"},
+        {"candidate_order", candidate_order},
+        {"h_index", h_index},
+        {"seed_index", seed_index},
+        {"h", h},
+        {"ik_score", ik_score},
+        {"ik_solve_ms", ik_solve_ms},
+        {"accepted", true},
+        {"step", 0},
+        {"updown", start_updown}
+      };
+      record_step(0, current_state, extra);
+    }
+
+    bool detached_seen = false;
+    size_t extra_steps_after_detached = 0;
+    for (size_t step = 1; step <= max_steps; ++step) {
+      const double lift = step_h * static_cast<double>(step);
+      current_state.setVariablePosition("updown", start_updown + lift);
+      current_state.enforceBounds(config_.joint_group);
+      current_state.update();
+
+      bool left_detached = false;
+      bool right_detached = false;
+      std::string state_reason;
+      const bool clear = !config_.dual_clear_callback ||
+        config_.dual_clear_callback(
+          current_state, left_box, left_box_id, right_box, right_box_id,
+          &left_detached, &right_detached, &state_reason);
+      if (!clear) {
+        ++timing.failed_steps;
+        timing.failure_reason = state_reason.empty() ? "top_suction_updown_extract_invalid" : state_reason;
+        if (record_step) {
+          nlohmann::json extra = {
+            {"stage_kind", "dual_top_suction_extract_failed_step"},
+            {"candidate_order", candidate_order},
+            {"h_index", h_index},
+            {"seed_index", seed_index},
+            {"h", h},
+            {"step", step},
+            {"updown", currentUpdown(current_state)},
+            {"lift_z", lift},
+            {"failure_reason", timing.failure_reason},
+            {"accepted", false}
+          };
+          record_step(step, current_state, extra);
+        }
+        if (config_.fail_fast) break;
+        continue;
+      }
+
+      ++timing.accepted_steps;
+      timing.final_lift_z = lift;
+      timing.right_final_lift_z = lift;
+      timing.final_state = std::make_shared<moveit::core::RobotState>(current_state);
+      if (record_step) {
+        nlohmann::json extra = {
+          {"stage_kind", "dual_top_suction_extract_step"},
+          {"candidate_order", candidate_order},
+          {"h_index", h_index},
+          {"seed_index", seed_index},
+          {"h", h},
+          {"step", step},
+          {"updown", currentUpdown(current_state)},
+          {"lift_z", lift},
+          {"left_detached_from_neighbors", left_detached},
+          {"right_detached_from_neighbors", right_detached},
+          {"accepted", true}
+        };
+        record_step(step, current_state, extra);
+      }
+
+      if (left_detached && right_detached) {
+        detached_seen = true;
+        timing.success = true;
+        timing.failure_reason.clear();
+      }
+      if (detached_seen) {
+        ++extra_steps_after_detached;
+      }
+      if (detached_seen && extra_steps_after_detached > config_.success_extra_steps) {
+        break;
+      }
+    }
+
+    if (!timing.success && timing.failure_reason.empty()) {
+      timing.failure_reason = "top_suction_reached_max_lift_without_detachment";
+    }
+    const auto t1 = std::chrono::steady_clock::now();
+    timing.rollout_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    return timing;
+  }
+
   if (config_.dual_async) {
     const auto left_path = rolloutArm("left", start_state, left_source_box, left_box, left_box_id);
     const auto right_path = rolloutArm("right", start_state, right_source_box, right_box, right_box_id);

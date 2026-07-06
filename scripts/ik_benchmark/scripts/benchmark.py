@@ -9,8 +9,7 @@ from pathlib import Path
 
 SOLVERS = {
     "kdl":    "kdl_kinematics_plugin/KDLKinematicsPlugin",
-    "trac_ik": "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
-    "pick_ik": "pick_ik/PickIkPlugin",
+    "bio_ik": "bio_ik/BioIKKinematicsPlugin",
 }
 
 GROUPS = ["left_arm", "right_arm", "dual_arm_with_base"]
@@ -61,7 +60,7 @@ def main():
     parser = argparse.ArgumentParser(description="IK Benchmark — batch test multiple solvers")
     parser.add_argument("--groups", nargs="+", default=["left_arm"],
                         choices=GROUPS, help="Groups to test")
-    parser.add_argument("--solvers", nargs="+", default=["pick_ik"],
+    parser.add_argument("--solvers", nargs="+", default=["kdl"],
                         choices=list(SOLVERS.keys()), help="Solvers to test")
     parser.add_argument("--samples", type=int, default=50)
     parser.add_argument("--timeout", type=float, default=2.0)
@@ -74,11 +73,6 @@ def main():
     for group in args.groups:
         for solver_key in args.solvers:
             solver = SOLVERS[solver_key]
-            # dual_arm only supports pick_ik
-            if group == "dual_arm_with_base" and solver_key not in ("pick_ik",):
-                print(f"Skip {solver_key} for dual_arm_with_base (not supported)")
-                continue
-
             jsonl_path = ""
             if args.output:
                 jsonl_path = str(Path(args.output).with_suffix(

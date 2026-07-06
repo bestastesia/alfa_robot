@@ -194,6 +194,8 @@ ros2_ws/src/alfa_robot_moveit_config/scripts/*
 !ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/nine_orient_reachability.py
+!ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/
+!ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/*.py
 
 # lidar workspace (nested git repos — ignore entirely)
 lidar_ws/src/FAST_LIO_LOCALIZATION2/

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Monitor RViz MoveIt interactive-marker target poses for both v5 end effectors.
+"""Monitor RViz MoveIt interactive-marker target poses for both end effectors.
 
 This node listens to RViz interactive marker feedback, extracts the target pose
 of the left/right MoveIt end-effector markers, prints them in real time, and
@@ -49,8 +49,8 @@ class RvizDualGoalPoseMonitor(Node):
                 "/move_marker/feedback",
             ],
         )
-        self.declare_parameter("left_marker_patterns", ["left", "left_v5", "left_v5_tool", "left_v5_tool0"])
-        self.declare_parameter("right_marker_patterns", ["right", "right_v5", "right_v5_tool", "right_v5_tool0"])
+        self.declare_parameter("left_marker_patterns", ["left", "left", "left_tool", "left_tool0"])
+        self.declare_parameter("right_marker_patterns", ["right", "right", "right_tool", "right_tool0"])
         self.declare_parameter("target_frame", "")
         self.declare_parameter("log_every_update", True)
         self.declare_parameter("publish_markers", True)

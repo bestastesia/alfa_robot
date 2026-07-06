@@ -566,7 +566,7 @@ std::vector<Stage> makeRoundStages(size_t round_index, const PickPoint& point, d
 void printHelp()
 {
     std::cout << "Usage: pick_place_updown_lookup [options]\n"
-              << "  --group <name>              MoveIt arm-only group (default: dual_v5_arm)\n"
+              << "  --group <name>              MoveIt arm-only group (default: dual_arm)\n"
               << "  --solver <plugin>           IK solver plugin (default: bio_ik/BioIKKinematicsPlugin)\n"
               << "  --timeout <s>               IK timeout per IK attempt (default: 2.0)\n"
               << "  --start <index>             Start round, 0-based (default: 0)\n"
@@ -583,7 +583,7 @@ void printHelp()
               << "  --sphere-margin <m>         Shrink reachability sphere radius (default: 0.0)\n"
               << "  --fallback-timeout <s>      Timeout per baseline fallback IK attempt (default: max(timeout, 2.0))\n"
               << "  --fallback-seed-attempts <n> Seed attempts for baseline fallback (default: max(seed-attempts, 12))\n"
-              << "  --no-baseline-fallback      Disable dual_v5_arm_with_base fallback when lookup fails\n"
+              << "  --no-baseline-fallback      Disable dual_arm_with_base fallback when lookup fails\n"
               << "  --allow-collision-solutions Keep full-state collision solutions (diagnostic only)\n"
               << "  --output <path>             JSONL output path (default: /tmp/pick_place_updown_lookup.jsonl)\n";
 }
@@ -594,7 +594,7 @@ int main(int argc, char** argv)
 {
     rclcpp::init(argc, argv);
 
-    std::string group = "dual_v5_arm";
+    std::string group = "dual_arm";
     std::string solver = "bio_ik/BioIKKinematicsPlugin";
     std::string output = "/tmp/pick_place_updown_lookup.jsonl";
     double timeout = 2.0;
@@ -676,8 +676,8 @@ int main(int argc, char** argv)
 
     IkSolverOptions options;
     options.base_frame = "base_link";
-    options.tip_link = "left_v5_tool0";
-    options.tip_link2 = "right_v5_tool0";
+    options.tip_link = "left_tool0";
+    options.tip_link2 = "right_tool0";
     options.reject_collisions = false;
 
     IkSolver ik(group, solver, timeout, false, options);
@@ -687,7 +687,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    IkSolver fallback_ik("dual_v5_arm_with_base", solver, fallback_timeout, false, options);
+    IkSolver fallback_ik("dual_arm_with_base", solver, fallback_timeout, false, options);
 
     std::ofstream ofs(output);
     if (!ofs.good()) {
@@ -1074,7 +1074,7 @@ int main(int argc, char** argv)
 
 
                     record["fallback_used"] = true;
-                    record["fallback_group"] = "dual_v5_arm_with_base";
+                    record["fallback_group"] = "dual_arm_with_base";
                     record["fallback_attempts"] = fallback_attempts;
                     record["fallback_selected_attempt"] = fallback_selected_attempt;
                     record["fallback_selected_seed"] = fallback_seed;

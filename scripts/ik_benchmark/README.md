@@ -20,9 +20,9 @@ ros2 run alfa_robot_benchmarks pick_place_baseline --help
 
 默认配置：
 
-- group: `dual_v5_arm_with_base`
+- group: `dual_arm_with_base`
 - solver: `bio_ik/BioIKKinematicsPlugin`
-- tips: `left_v5_tool0` / `right_v5_tool0`
+- tips: `left_tool0` / `right_tool0`
 - tool0 offset compensation: 默认按 URDF 中 `link6 -> tool0` 的局部 `+Z 0.1m` 固定偏移补偿后再调 C++ IK；JSONL 中 `target_pose` 仍表示期望 `tool0` 位姿，`ik_target_pose` 表示实际传给 IK 的补偿目标，`ik_result_raw` 保留补偿目标的原始 IK 误差。
 - output: `/tmp/pick_place_baseline.jsonl`
 
@@ -120,7 +120,7 @@ python3 scripts/ik_benchmark/scripts/ik_range_grid.py --help
 python3 scripts/ik_benchmark/scripts/ik_range_grid.py \
   --version current \
   --group left_arm_with_base \
-  --solver trac_ik \
+  --solver kdl \
   --tip-link leftjoint6 \
   --x -0.3 2.0 0.05 \
   --y -0.3 0.8 0.05 \
@@ -157,7 +157,7 @@ scripts/ik_benchmark/models/urdf_versions/v4/alfa_robot.urdf
 python3 scripts/ik_benchmark/scripts/ik_range_grid.py \
   --version v4 \
   --group left_arm_with_base \
-  --solver trac_ik \
+  --solver kdl \
   --tip-link leftjoint6 \
   --x -0.3 2.0 0.05 \
   --y -0.3 0.8 0.05 \

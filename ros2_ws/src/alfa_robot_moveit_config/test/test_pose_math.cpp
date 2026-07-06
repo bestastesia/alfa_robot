@@ -39,8 +39,8 @@ int main()
   assert_near(top.position.y, -0.4);
   assert_near(top.position.z, 1.007);
   assert_near(top.orientation.w, 0.0);
-  assert_near(top.orientation.x, 1.0);
-  assert_near(top.orientation.y, 0.0);
+  assert_near(top.orientation.x, 0.0);
+  assert_near(top.orientation.y, 1.0);
   assert_near(top.orientation.z, 0.0);
 
   return 0;

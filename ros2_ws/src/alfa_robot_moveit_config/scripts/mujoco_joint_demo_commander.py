@@ -24,10 +24,10 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 TORSO_JOINTS = ["pitch", "turn"]
 ARM_JOINTS = [
     "updown",
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-    "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-    "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 ALL_JOINTS = TORSO_JOINTS + ARM_JOINTS
 
@@ -43,8 +43,8 @@ class JointDemoCommander(Node):
                 ActionClient(self, FollowJointTrajectory, "/torso_controller/follow_joint_trajectory"),
                 TORSO_JOINTS,
             ),
-            "dual_v5_arm_controller": (
-                ActionClient(self, FollowJointTrajectory, "/dual_v5_arm_controller/follow_joint_trajectory"),
+            "dual_arm_controller": (
+                ActionClient(self, FollowJointTrajectory, "/dual_arm_controller/follow_joint_trajectory"),
                 ARM_JOINTS,
             ),
         }
@@ -121,22 +121,22 @@ class JointDemoCommander(Node):
                 "pitch": 0.04,
                 "turn": 0.15,
                 "updown": 0.12,
-                "left_v5_joint1": 0.20,
-                "right_v5_joint1": -0.20,
-                "left_v5_joint2": math.pi / 2 - 0.15,
-                "right_v5_joint2": math.pi / 2 - 0.15,
+                "leftjoint1": 0.20,
+                "rightjoint1": -0.20,
+                "leftjoint2": math.pi / 2 - 0.15,
+                "rightjoint2": math.pi / 2 - 0.15,
             },
             {
                 "pitch": 0.02,
                 "turn": -0.15,
                 "updown": 0.04,
-                "left_v5_joint1": -0.20,
-                "right_v5_joint1": 0.20,
-                "left_v5_joint2": math.pi / 2 + 0.10,
-                "right_v5_joint2": math.pi / 2 + 0.10,
+                "leftjoint1": -0.20,
+                "rightjoint1": 0.20,
+                "leftjoint2": math.pi / 2 + 0.10,
+                "rightjoint2": math.pi / 2 + 0.10,
             },
             {joint: 0.0 for joint in [
-                "pitch", "turn", "updown", "left_v5_joint1", "right_v5_joint1",
+                "pitch", "turn", "updown", "leftjoint1", "rightjoint1",
             ]},
         ]
         for loop_index in range(loops):

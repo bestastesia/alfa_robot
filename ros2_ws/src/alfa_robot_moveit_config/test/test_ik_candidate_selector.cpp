@@ -28,10 +28,10 @@ ik_benchmark::UpdownAwareIkCandidate make_candidate(
   candidate.seed_index = seed_index;
   candidate.h = h;
   candidate.full_joint_names = {
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-    "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-    "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
   };
   candidate.full_joint_values = {
     joint1, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -57,10 +57,10 @@ moveit::core::RobotModelPtr ik_candidate_test_model()
   for (const auto side : {"left", "right"}) {
     std::string parent = "updown_link";
     for (int i = 1; i <= 6; ++i) {
-      const std::string link = std::string(side) + "_v5_link" + std::to_string(i);
+      const std::string link = std::string(side) + "joint" + std::to_string(i);
       urdf_xml +=
         "  <link name=\"" + link + "\"/>\n"
-        "  <joint name=\"" + std::string(side) + "_v5_joint" + std::to_string(i) + "\" type=\"revolute\">\n"
+        "  <joint name=\"" + std::string(side) + "joint" + std::to_string(i) + "\" type=\"revolute\">\n"
         "    <parent link=\"" + parent + "\"/>\n"
         "    <child link=\"" + link + "\"/>\n"
         "    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n"
@@ -128,16 +128,16 @@ int main()
   moveit::core::RobotState seed(model);
   seed.setToDefaultValues();
   seed.setVariablePosition("updown", 0.2);
-  seed.setVariablePosition("left_v5_joint1", 0.1);
-  seed.setVariablePosition("right_v5_joint6", -0.1);
+  seed.setVariablePosition("leftjoint1", 0.1);
+  seed.setVariablePosition("rightjoint6", -0.1);
   seed.update();
 
   ik_benchmark::UpdownAwareIkCandidate state_candidate;
   state_candidate.full_joint_names = {
     "updown",
-    "left_v5_joint1",
+    "leftjoint1",
     "not_a_robot_joint",
-    "right_v5_joint6",
+    "rightjoint6",
   };
   state_candidate.full_joint_values = {
     0.7,
@@ -150,9 +150,9 @@ int main()
     state_candidate,
     nullptr);
   assert(std::abs(state.getVariablePosition("updown") - 0.7) < 1e-9);
-  assert(std::abs(state.getVariablePosition("left_v5_joint1") - 0.4) < 1e-9);
-  assert(std::abs(state.getVariablePosition("right_v5_joint6") + 0.6) < 1e-9);
-  assert(std::abs(state.getVariablePosition("left_v5_joint2")) < 1e-9);
+  assert(std::abs(state.getVariablePosition("leftjoint1") - 0.4) < 1e-9);
+  assert(std::abs(state.getVariablePosition("rightjoint6") + 0.6) < 1e-9);
+  assert(std::abs(state.getVariablePosition("leftjoint2")) < 1e-9);
 
   return 0;
 }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mujoco model="robot_only_scene_v5">
+<mujoco model="robot_only_scene">
   <compiler angle="radian" autolimits="true"/>
   <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" noslip_iterations="3"/>
   <include file="alfa_robot.xml"/>

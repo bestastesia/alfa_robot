@@ -13,10 +13,10 @@ parallel_updown_aware_ik:
       fallback_seed_count: 12
 
   groups:
-    fixed_h_group: dual_v5_arm
-    free_h_group: dual_v5_arm_with_base
-    left_tip: left_v5_tool0
-    right_tip: right_v5_tool0
+    fixed_h_group: dual_arm
+    free_h_group: dual_arm_with_base
+    left_tip: left_tool0
+    right_tip: right_tool0
     base_frame: base_link
     solver_plugin: bio_ik/BioIKKinematicsPlugin
 

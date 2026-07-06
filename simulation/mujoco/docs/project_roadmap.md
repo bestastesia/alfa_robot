@@ -509,8 +509,8 @@ robot_v2/
 │   ├── alfa_isaac_env.py
 │   └── config/
 │
-├── alfa_robot_arm_v2/             # ROS2 包（已有）
-├── alfa_robot_new_arm_v2/         # ROS2 包（已有）
+├── alfa_robot_arm/                # ROS2 包（已有）
+├── alfa_robot_new_arm/            # ROS2 包（已有）
 └── docs/
     └── sim2real_validation_report.md
 ```

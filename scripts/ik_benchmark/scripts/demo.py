@@ -7,8 +7,7 @@ import sys
 
 SOLVERS = {
     "kdl":     "kdl_kinematics_plugin/KDLKinematicsPlugin",
-    "trac_ik": "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin",
-    "pick_ik": "pick_ik/PickIkPlugin",
+    "bio_ik": "bio_ik/BioIKKinematicsPlugin",
 }
 
 GROUPS = ["left_arm", "right_arm", "dual_arm_with_base"]
@@ -18,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser(description="IK Demo — quick demonstration")
     parser.add_argument("--group", type=str, default="left_arm",
                         choices=GROUPS, help="Planning group")
-    parser.add_argument("--solver", type=str, default="pick_ik",
+    parser.add_argument("--solver", type=str, default="kdl",
                         choices=list(SOLVERS.keys()), help="IK solver")
     parser.add_argument("--trials", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=2.0)
@@ -29,10 +28,6 @@ def main():
     args = parser.parse_args()
 
     solver_plugin = SOLVERS[args.solver]
-    if args.group == "dual_arm_with_base" and args.solver not in ("pick_ik",):
-        print(f"Error: dual_arm_with_base only supports pick_ik, got {args.solver}")
-        sys.exit(1)
-
     cmd = [
         "ros2", "run", "alfa_robot_benchmarks", "ik_demo",
         "--group", args.group,

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Reachability test utility for ALFA v5 arms.
+"""Reachability test utility for ALFA arms.
 
 Modes:
 - manual: sample current TF pose(s) of the requested end-effector links and append to CSV.
@@ -75,11 +75,11 @@ class ReachabilityTester(Node):
         self.declare_parameter("output_csv", "reachability_results.csv")
         self.declare_parameter("append", False)
 
-        self.declare_parameter("left_group", "left_v5_arm_with_base")
-        self.declare_parameter("right_group", "right_v5_arm_with_base")
-        self.declare_parameter("dual_group", "dual_v5_arm_with_base")
-        self.declare_parameter("left_tip", "left_v5_tool0")
-        self.declare_parameter("right_tip", "right_v5_tool0")
+        self.declare_parameter("left_group", "left_arm_with_base")
+        self.declare_parameter("right_group", "right_arm_with_base")
+        self.declare_parameter("dual_group", "dual_arm_with_base")
+        self.declare_parameter("left_tip", "left_tool0")
+        self.declare_parameter("right_tip", "right_tool0")
 
         self.declare_parameter("avoid_collisions", True)
         self.declare_parameter("ik_timeout", 0.2)

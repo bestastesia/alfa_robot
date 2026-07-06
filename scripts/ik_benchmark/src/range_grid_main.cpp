@@ -26,7 +26,7 @@ struct Range {
 
 struct Config {
     std::string group = "left_arm_with_base";
-    std::string solver = "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin";
+    std::string solver = "kdl_kinematics_plugin/KDLKinematicsPlugin";
     std::string urdf;
     std::string srdf;
     std::string base_frame = "base_link";
@@ -48,8 +48,6 @@ struct Config {
 std::string solverShortcut(const std::string& value)
 {
     if (value == "kdl") return "kdl_kinematics_plugin/KDLKinematicsPlugin";
-    if (value == "trac_ik" || value == "tracik") return "trac_ik_kinematics_plugin/TRAC_IKKinematicsPlugin";
-    if (value == "pick_ik") return "pick_ik/PickIkPlugin";
     if (value == "bio_ik") return "bio_ik/BioIKKinematicsPlugin";
     return value;
 }
@@ -119,7 +117,7 @@ void printHelp()
     std::cout
         << "Usage: ik_range_grid [options]\n"
         << "  --group <name>           MoveIt group, default left_arm_with_base\n"
-        << "  --solver <name/plugin>   kdl/trac_ik/pick_ik/bio_ik or full plugin\n"
+        << "  --solver <name/plugin>   kdl/bio_ik or full plugin\n"
         << "  --urdf <path>            Optional standalone URDF path\n"
         << "  --srdf <path>            Optional SRDF path\n"
         << "  --base-frame <link>      Base frame, default base_link\n"

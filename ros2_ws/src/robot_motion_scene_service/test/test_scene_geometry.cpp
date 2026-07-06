@@ -32,16 +32,16 @@ int main()
 
   const auto left_box = make_attached_box_spec("left", 6, false, CarriedBoxGeometryConfig{});
   assert(left_box.id == "carried_left_box_6");
-  assert(left_box.link_name == "left_v5_tool0");
+  assert(left_box.link_name == "left_tool0");
   assert(left_box.size[0] > 0.0);
 
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
   assert(joint_names.front() == "updown");
-  assert(joint_names[1] == "left_v5_joint1");
-  assert(joint_names[6] == "left_v5_joint6");
-  assert(joint_names[7] == "right_v5_joint1");
-  assert(joint_names.back() == "right_v5_joint6");
+  assert(joint_names[1] == "leftjoint1");
+  assert(joint_names[6] == "leftjoint6");
+  assert(joint_names[7] == "rightjoint1");
+  assert(joint_names.back() == "rightjoint6");
 
   const AxisAlignedBox a{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
   const AxisAlignedBox b{{0.4, 0.0, 0.0}, {1.0, 1.0, 1.0}};

@@ -20,16 +20,16 @@
     <origin xyz="0 0 0.202094" rpy="0 0 0"/>
   </joint>
 
-<link name="base_link">
+  <link name="base_link">
     <inertial>
-      <origin xyz="-0.230864859994365 -3.59465059753261E-05 0.00982453569098829" rpy="0 0 0" />
-      <mass value="452.254374649793" />
-      <inertia ixx="42.2528118012676" ixy="2.90433873726581E-05" ixz="5.29862244779797" iyy="45.7334828734001" iyz="-7.53976926824646E-07" izz="73.6321595788915" />
+      <origin xyz="-0.230884916297589 -3.59403635404876E-05 0.0098300335923569" rpy="0 0 0" />
+      <mass value="452.331665683053" />
+      <inertia ixx="42.2528214496965" ixy="2.90433873714437E-05" ixz="5.298622447798" iyy="45.7349589120892" iyz="-7.53976926582118E-07" izz="73.6336356175808" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/base_link.STL" />
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/base_link.STL" />
       </geometry>
       <material name="">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
@@ -38,21 +38,21 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/base_link.STL" />
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/base_link.STL" />
       </geometry>
     </collision>
   </link>
-  
-<link name="pitch">
+
+  <link name="pitch">
     <inertial>
-      <origin xyz="-0.197037068600063 0.0545002757388739 0.0847212210627051" rpy="0 0 0" />
-      <mass value="31.6067905352622" />
-      <inertia ixx="0.518725062034511" ixy="2.02803901410849E-08" ixz="-0.00603915225902053" iyy="0.579528262067602" iyz="3.22538967579058E-07" izz="1.06221345040969" />
+      <origin xyz="-0.197223755735604 0.0545002751304142 0.0848583683408171" rpy="0 0 0" />
+      <mass value="31.6766900042973" />
+      <inertia ixx="0.518885879634885" ixy="2.02803902282039E-08" ixz="-0.0059164248689273" iyy="0.580169083875299" iyz="3.22538967435459E-07" izz="1.06295541093974" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/pitch.STL" />
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/pitch.STL" />
       </geometry>
       <material name="">
         <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
@@ -61,504 +61,657 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/pitch.STL" />
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/pitch.STL" />
       </geometry>
     </collision>
   </link>
-  
-<joint name="pitch" type="revolute">
+
+  <link name="turn">
+    <inertial>
+      <origin xyz="-0.0095811094528917 -7.73859721447945E-06 1.06018839944043" rpy="0 0 0" />
+      <mass value="53.4681885650186" />
+      <inertia ixx="7.9404350019494" ixy="5.99860879539091E-06" ixz="0.185339515626497" iyy="8.17240800709107" iyz="-8.94803411825732E-06" izz="0.75519185821394" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/turn.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/turn.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="updown">
+    <inertial>
+      <origin xyz="0.0637333774739139 -2.92604740437241E-09 0.104211014753682" rpy="0 0 0" />
+      <mass value="24.4167257440598" />
+      <inertia ixx="1.07967195604977" ixy="-1.55435028640832E-08" ixz="-0.00582099906204058" iyy="0.231957862842844" iyz="9.04966113481007E-11" izz="1.26737556353379" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/updown.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/updown.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ========== LEFT ARM mapped to project names ========== -->
+  <link name="left_arm_base">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="left_arm_mount" type="fixed">
+    <parent link="updown"/>
+    <child link="left_arm_base"/>
+    <origin xyz="0.095 0.26 0.2" rpy="0 0 0"/>
+  </joint>
+
+  <link name="leftjoint1">
+    <inertial>
+      <origin xyz="1.98132632578396E-05 0.0024729821757461 0.0580356323599247" rpy="0 0 0" />
+      <mass value="2.53849365971092" />
+      <inertia ixx="0.00565316591359222" ixy="1.39299660382164E-06" ixz="-2.78630772107311E-06" iyy="0.00554455173094155" iyz="-7.06906283259906E-05" izz="0.00447417412424819" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint1.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint1.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="left_arm_base" />
+    <child link="leftjoint1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
+  </joint>
+
+  <link name="leftjoint2">
+    <inertial>
+      <origin xyz="-3.91993260073775E-09 -0.198242241905537 0.0685963634370466" rpy="0 0 0" />
+      <mass value="13.5734229269593" />
+      <inertia ixx="0.347009291103137" ixy="1.79329294469621E-12" ixz="2.19848376530362E-12" iyy="0.0505989087942828" iyz="4.33552705015945E-12" izz="0.367314390536816" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint2.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint2.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint2" type="revolute">
+    <origin xyz="0 0.0825 0.058" rpy="-1.5708 0 0" />
+    <parent link="leftjoint1" />
+    <child link="leftjoint2" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+  </joint>
+
+  <link name="leftjoint3">
+    <inertial>
+      <origin xyz="2.86018788653308E-08 -0.174995964436896 -0.0214654505916678" rpy="0 0 0" />
+      <mass value="5.46918956371602" />
+      <inertia ixx="0.102635037762556" ixy="1.82331494669218E-08" ixz="3.03709958770067E-09" iyy="0.0138225294833702" iyz="4.39575520960004E-05" izz="0.114289616262011" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint3.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint3.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint3" type="revolute">
+    <origin xyz="0 -0.4 0.008" rpy="0 0 0" />
+    <parent link="leftjoint2" />
+    <child link="leftjoint3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
+  </joint>
+
+  <link name="leftjoint4">
+    <inertial>
+      <origin xyz="1.79301766545237E-05 0.0022398818670486 0.0513862987308302" rpy="0 0 0" />
+      <mass value="2.80270206383319" />
+      <inertia ixx="0.00725799360950605" ixy="1.39369533421895E-06" ixz="-2.78625386086696E-06" iyy="0.00714937209205323" iyz="-7.06885588698108E-05" izz="0.00491856957816283" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint4.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint4.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint4" type="revolute">
+    <origin xyz="0 -0.34 0.036" rpy="0 0 3.14159265" />
+    <parent link="leftjoint3" />
+    <child link="leftjoint4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+  </joint>
+
+  <link name="leftjoint5">
+    <inertial>
+      <origin xyz="0.00232761885815957 1.86282466611079E-05 -0.0541835932362768" rpy="0 0 0" />
+      <mass value="2.69701788961683" />
+      <inertia ixx="0.00644984661938273" ixy="1.39391456329041E-06" ixz="7.06885192213968E-05" iyy="0.00655846677979015" iyz="2.78593765647904E-06" izz="0.00474081002137964" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint5.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint5.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint5" type="revolute">
+    <origin xyz="0 0.076 0.058" rpy="-1.5708 0 3.14159265" />
+    <parent link="leftjoint4" />
+    <child link="leftjoint5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+  </joint>
+
+  <link name="leftjoint6">
+    <inertial>
+      <origin xyz="0.000656912040293556 0.000831354479587647 0.143020209405828" rpy="0 0 0" />
+      <mass value="9.66858880038425" />
+      <inertia ixx="0.0956031747008674" ixy="2.07680535688619E-07" ixz="-3.59179174235467E-07" iyy="0.073686444653942" iyz="-1.65114179069294E-07" izz="0.104451818743786" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/leftjoint6.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/leftjoint6.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="leftjoint6" type="revolute">
+    <origin xyz="0.0825 0 -0.058" rpy="0 1.5708 0" />
+    <parent link="leftjoint5" />
+    <child link="leftjoint6" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
+  </joint>
+
+  <!-- ========== RIGHT ARM mapped to project names ========== -->
+  <link name="right_arm_base">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+    </inertial>
+  </link>
+
+  <joint name="right_arm_mount" type="fixed">
+    <parent link="updown"/>
+    <child link="right_arm_base"/>
+    <origin xyz="0.095 -0.26 0.2" rpy="0 0 0"/>
+  </joint>
+
+  <link name="rightjoint1">
+    <inertial>
+      <origin xyz="-1.97935614578704E-05 -0.00247298310211252 0.0580356306667533" rpy="0 0 0" />
+      <mass value="2.53849328920251" />
+      <inertia ixx="0.00565316574735245" ixy="1.3934599584903E-06" ixz="2.78607721450309E-06" iyy="0.00554455177196281" iyz="7.06907347564618E-05" izz="0.00447417409155335" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint1.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint1.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint1" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0" />
+    <parent link="right_arm_base" />
+    <child link="rightjoint1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
+  </joint>
+
+  <link name="rightjoint2">
+    <inertial>
+      <origin xyz="-3.93094157224994E-09 -0.198242241906288 -0.0685963669555529" rpy="0 0 0" />
+      <mass value="13.573422926924" />
+      <inertia ixx="0.347009291103142" ixy="-1.77065393597298E-12" ixz="2.09998863566369E-12" iyy="0.0505989087942401" iyz="-4.27592541614651E-12" izz="0.367314390536786" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint2.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint2.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint2" type="revolute">
+    <origin xyz="0 -0.0825 0.058" rpy="-1.5708 0 0" />
+    <parent link="rightjoint1" />
+    <child link="rightjoint2" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+  </joint>
+
+  <link name="rightjoint3">
+    <inertial>
+      <origin xyz="-2.19745741603106E-08 -0.174995898002215 0.0214654414595061" rpy="0 0 0" />
+      <mass value="5.4691844498613" />
+      <inertia ixx="0.102634928752236" ixy="5.65369033783247E-09" ixz="4.23974883669152E-09" iyy="0.0138225144033142" iyz="-4.3961229805213E-05" izz="0.114289495613127" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint3.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint3.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint3" type="revolute">
+    <origin xyz="0 -0.4 -0.008" rpy="0 0 0" />
+    <parent link="rightjoint2" />
+    <child link="rightjoint3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
+  </joint>
+
+  <link name="rightjoint4">
+    <inertial>
+      <origin xyz="-1.79645036204601E-05 0.0022398851924712 -0.051386302023446" rpy="0 0 0" />
+      <mass value="2.80270248559314" />
+      <inertia ixx="0.00725799741358273" ixy="-1.39332050541169E-06" ixz="-2.78490826256503E-06" iyy="0.0071493749253995" iyz="7.06942901499408E-05" izz="0.00491856925289056" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint4.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint4.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint4" type="revolute">
+    <origin xyz="0 -0.34 -0.036" rpy="0 0 3.14159265" />
+    <parent link="rightjoint3" />
+    <child link="rightjoint4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+  </joint>
+
+  <link name="rightjoint5">
+    <inertial>
+      <origin xyz="0.00247297487810383 1.97916984613355E-05 -0.0580356333661171" rpy="0 0 0" />
+      <mass value="2.53849312800543" />
+      <inertia ixx="0.00554455132500751" ixy="1.39389901205095E-06" ixz="7.06885191840084E-05" iyy="0.00565317147277978" iyz="2.78593880297945E-06" izz="0.00447417137144372" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint5.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint5.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint5" type="revolute">
+    <origin xyz="0 0.076 -0.058" rpy="-1.5708 0 3.14159265" />
+    <parent link="rightjoint4" />
+    <child link="rightjoint5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+  </joint>
+
+  <link name="rightjoint6">
+    <inertial>
+      <origin xyz="0.000634748756222159 -0.000892103298974378 0.142311014574405" rpy="0 0 0" />
+      <mass value="10.0061845981926" />
+      <inertia ixx="0.0965039246677857" ixy="2.07682173746993E-07" ixz="-3.59162065968407E-07" iyy="0.0745871946288051" iyz="-1.65114636038161E-07" izz="0.105354421620743" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/rightjoint6.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/rightjoint6.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="rightjoint6" type="revolute">
+    <origin xyz="0.0825 0 -0.058" rpy="0 1.5708 0" />
+    <parent link="rightjoint5" />
+    <child link="rightjoint6" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
+  </joint>
+
+  <link name="front_sensor">
+    <inertial>
+      <origin xyz="-0.0068590617928026 3.29115128677726E-06 -0.0254404698773218" rpy="0 0 0" />
+      <mass value="2.17087239484208" />
+      <inertia ixx="0.00477613653037218" ixy="-8.4594928166351E-08" ixz="0.000112831215431541" iyy="0.00429438168517016" iyz="-3.0341298835646E-09" izz="0.00472063576709972" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/front_sensor.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/front_sensor.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="lidar_front">
+    <inertial>
+      <origin xyz="-6.42377262494165E-11 1.00857335138538E-05 0.00951653834947522" rpy="0 0 0" />
+      <mass value="0.252827408348011" />
+      <inertia ixx="0.000164416133413893" ixy="2.6454531446727E-18" ixz="1.10114283143059E-19" iyy="0.000164415989055094" iyz="-2.40939384610405E-20" izz="0.000177262067495138" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/lidar_front.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/lidar_front.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="lidar_rear">
+    <inertial>
+      <origin xyz="7.75510065591511E-05 1.02653775136408E-05 0.00951684895357141" rpy="0 0 0" />
+      <mass value="0.248402965613694" />
+      <inertia ixx="0.000159805078031122" ixy="-7.52982704090032E-15" ixz="-7.79270311473956E-20" iyy="0.000160217924153135" iyz="-6.22093291525299E-20" izz="0.000171107612850998" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/lidar_rear.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/lidar_rear.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="cam_front">
+    <inertial>
+      <origin xyz="-0.00227098557751482 -4.3665428511197E-05 -0.000398057067929225" rpy="0 0 0" />
+      <mass value="2.3426100924408" />
+      <inertia ixx="0.00293638912728114" ixy="-7.5454501185067E-07" ixz="-2.96443669227335E-05" iyy="0.000340681899162672" iyz="1.25064144184799E-06" izz="0.00294899043332607" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/cam_front.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/cam_front.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="cam_rear">
+    <inertial>
+      <origin xyz="-0.00227098523558933 -4.36653596929681E-05 -0.000398055905322103" rpy="0 0 0" />
+      <mass value="2.34260993804662" />
+      <inertia ixx="0.00293639495219172" ixy="-7.52742873129974E-07" ixz="-2.96453645115352E-05" iyy="0.000340698078875555" iyz="1.24612004802053E-06" izz="0.00294897952662791" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/visual/cam_rear.STL" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/current_robot/collision/cam_rear.STL" />
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="pitch" type="revolute">
     <origin xyz="0.25918 -0.0545 0.05" rpy="0 0 0" />
     <parent link="base_link" />
     <child link="pitch" />
     <axis xyz="0 1 0" />
     <limit lower="0" upper="0.26" effort="0" velocity="0" />
   </joint>
-  
-<link name="turn">
-    <inertial>
-      <origin xyz="-0.00579960525321255 -7.81089694046333E-06 1.06475532040538" rpy="0 0 0" />
-      <mass value="52.9957329420753" />
-      <inertia ixx="7.51064439986969" ixy="5.95969545267824E-06" ixz="0.221612834319679" iyy="7.73162717719144" iyz="-8.94723713424965E-06" izz="0.725095105907374" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/turn.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/turn.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="turn" type="continuous">
-    <origin xyz="-0.18924 0.0545 0.135" rpy="0 0 0" />
+
+  <joint name="turn" type="continuous">
+    <origin xyz="-0.18784 0.0545 0.135" rpy="0 0 0" />
     <parent link="pitch" />
     <child link="turn" />
     <axis xyz="0 0 1" />
   </joint>
-  
-<link name="updown">
-    <inertial>
-      <origin xyz="0.0601856186326954 3.82033426615802E-07 0.101233179160814" rpy="0 0 0" />
-      <mass value="28.1491686567643" />
-      <inertia ixx="1.18481506897735" ixy="-3.87618830042902E-08" ixz="-0.00404701824967137" iyy="0.266184937066632" iyz="7.22041694632457E-11" izz="1.39675046484991" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/updown.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/updown.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="updown" type="prismatic">
-    <origin xyz="-0.079765 0 0.038925" rpy="0 0 0" />
+
+  <joint name="updown" type="prismatic">
+    <origin xyz="-0.081156 0 0.127" rpy="0 0 0" />
     <parent link="turn" />
     <child link="updown" />
     <axis xyz="0 0 1" />
-    <limit lower="0" upper="0.99" effort="0" velocity="0" />
+    <limit lower="0" upper="0.92" effort="0" velocity="0" />
   </joint>
-  
-  <!-- ========== LEFT ARM v6 mapped to left_v5_* names ========== -->
-  <link name="left_v5_link0">
-    <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.001"/>
-      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
-    </inertial>
-  </link>
-  <joint name="left_v5_mount" type="fixed">
-    <parent link="updown"/>
-    <child link="left_v5_link0"/>
-    <origin xyz="0.095 0.26 0.2" rpy="0 0 0"/>
+
+  <joint name="front_sensor" type="fixed">
+    <origin xyz="0.2964 -0.045 0.16366" rpy="0 0 0" />
+    <parent link="updown" />
+    <child link="front_sensor" />
+    <axis xyz="0 0 0" />
   </joint>
-<link name="left_v5_link1">
-    <inertial>
-      <origin xyz="-1.38247218028908E-05 0.00247303063767434 0.0580356311548944" rpy="0 0 0" />
-      <mass value="2.53849373841165" />
-      <inertia ixx="0.00565311763556806" ixy="2.87080767363512E-06" ixz="-1.82289816008291E-06" iyy="0.00554461215364842" iyz="-7.07255020885019E-05" izz="0.00447417135930948" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint1.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint1.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint1" type="revolute">
-    <origin xyz="0 0 0" rpy="0 0 0" />
-    <parent link="left_v5_link0" />
-    <child link="left_v5_link1" />
-    <axis xyz="0 0 1" />
-    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
+
+  <joint name="lidar_front" type="fixed">
+    <origin xyz="0.16084 0 1.2155" rpy="0 0 0" />
+    <parent link="turn" />
+    <child link="lidar_front" />
+    <axis xyz="0 0 0" />
   </joint>
-  
-<link name="left_v5_link2">
-    <inertial>
-      <origin xyz="-0.00114761095593652 -0.198242125758531 0.0685871005229603" rpy="0 0 0" />
-      <mass value="13.5734229269752" />
-      <inertia ixx="0.347012700484599" ixy="-0.000320830236467938" ixz="-0.000276165756752952" iyy="0.0505992561206815" iyz="-4.3642790230726E-06" izz="0.367310633828645" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint2.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint2.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint2" type="revolute">
-    <origin xyz="-0.0011221 0.082492 0.058" rpy="-1.5708 0 0" />
-    <parent link="left_v5_link1" />
-    <child link="left_v5_link2" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+
+  <joint name="lidar_rear" type="fixed">
+    <origin xyz="-0.193155597668545 0 1.2155009" rpy="0 0 0" />
+    <parent link="turn" />
+    <child link="lidar_rear" />
+    <axis xyz="0 0 0" />
   </joint>
-  
-<link name="left_v5_link3">
-    <inertial>
-      <origin xyz="0.00103275104988376 -0.0982831580226123 -0.0759203082294151" rpy="0 0 0" />
-      <mass value="4.0139478821286" />
-      <inertia ixx="0.0273003816388092" ixy="5.84592384070607E-06" ixz="2.18344323795526E-06" iyy="0.00829509657803974" iyz="-0.00042974787806313" izz="0.0271399019630991" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint3.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint3.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint3" type="revolute">
-    <origin xyz="-0.00054177 -0.4 0.0079934" rpy="0 0 0" />
-    <parent link="left_v5_link2" />
-    <child link="left_v5_link3" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
+
+  <joint name="cam_front" type="fixed">
+    <origin xyz="0.224174685843815 0 1.28542950857142" rpy="0 0.261799387799146 0" />
+    <parent link="turn" />
+    <child link="cam_front" />
+    <axis xyz="0 0 0" />
   </joint>
-  
-<link name="left_v5_link4">
-    <inertial>
-      <origin xyz="-1.38247673107106E-05 0.00247303063742163 0.0580356311553323" rpy="0 0 0" />
-      <mass value="2.53849373841178" />
-      <inertia ixx="0.00565311763546312" ixy="2.87080966274479E-06" ixz="-1.8228968633843E-06" iyy="0.00554461215375412" iyz="-7.07255021219364E-05" izz="0.00447417135930963" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint4.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint4.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint4" type="revolute">
-    <origin xyz="0.0010609 -0.339 -0.077993" rpy="1.5708 0 0" />
-    <parent link="left_v5_link3" />
-    <child link="left_v5_link4" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+
+  <joint name="cam_rear" type="fixed">
+    <origin xyz="-0.256485881180905 0 1.28542950857142" rpy="0 0.261799387799146 3.14159263525858" />
+    <parent link="turn" />
+    <child link="cam_rear" />
+    <axis xyz="0 0 0" />
   </joint>
-  
-<link name="left_v5_link5">
-    <inertial>
-      <origin xyz="-0.000809179515076197 -0.0024730096812382 0.05802998452923" rpy="0 0 0" />
-      <mass value="2.53849399611644" />
-      <inertia ixx="0.00565287838044614" ixy="4.31903867495345E-07" ixz="1.88202259358897E-05" iyy="0.0055445510546746" iyz="7.07009713362851E-05" izz="0.00447446562052511" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint5.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint5.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint5" type="revolute">
-    <origin xyz="-0.0010337 0.075993 0.058" rpy="-1.5708 0 0" />
-    <parent link="left_v5_link4" />
-    <child link="left_v5_link5" />
-    <axis xyz="0 0 -1" />
-    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
-  </joint>
-  
-<link name="left_v5_link6">
-    <inertial>
-      <origin xyz="1.80240228142559E-06 -7.73532571834643E-07 0.0904168791589374" rpy="0 0 0" />
-      <mass value="5.65613352390432" />
-      <inertia ixx="0.0281386175561931" ixy="9.64891354728908E-08" ixz="3.70686884840644E-07" iyy="0.0236927388911715" iyz="-1.37246890011475E-07" izz="0.0322036182098302" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/leftjoint6.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/leftjoint6.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="left_v5_joint6" type="revolute">
-    <origin xyz="-0.00078891 -0.083 0.057995" rpy="1.5708 -0.013602 0" />
-    <parent link="left_v5_link5" />
-    <child link="left_v5_link6" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
-  </joint>
-  
-  <link name="left_v5_tool0">
+
+  <link name="left_tool0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="0.2"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
-  <joint name="left_v5_tool0_fixed" type="fixed">
-    <parent link="left_v5_link6"/>
-    <child link="left_v5_tool0"/>
+  <joint name="left_tool0_fixed" type="fixed">
+    <parent link="leftjoint6"/>
+    <child link="left_tool0"/>
     <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>
 
-  <!-- ========== RIGHT ARM v6 mapped to right_v5_* names ========== -->
-  <link name="right_v5_link0">
-    <inertial>
-      <origin xyz="0 0 0" rpy="0 0 0"/>
-      <mass value="0.001"/>
-      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
-    </inertial>
-  </link>
-  <joint name="right_v5_mount" type="fixed">
-    <parent link="updown"/>
-    <child link="right_v5_link0"/>
-    <origin xyz="0.095 -0.26 0.2" rpy="0 0 0"/>
-  </joint>
-<link name="right_v5_link1">
-    <inertial>
-      <origin xyz="1.38534274962687E-05 -0.0024730282209926 0.0580356266936892" rpy="0 0 0" />
-      <mass value="2.53849337335823" />
-      <inertia ixx="0.00565311777320545" ixy="2.87119068073336E-06" ixz="1.82285047161602E-06" iyy="0.00554461229627745" iyz="7.07256190270302E-05" izz="0.00447417118642972" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint1.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint1.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint1" type="revolute">
-    <origin xyz="0 0 0" rpy="0 0 0" />
-    <parent link="right_v5_link0" />
-    <child link="right_v5_link1" />
-    <axis xyz="0 0 1" />
-    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
-  </joint>
-  
-<link name="right_v5_link2">
-    <inertial>
-      <origin xyz="0.0011476109565427 -0.198242125759172 -0.0685871005231568" rpy="0 0 0" />
-      <mass value="13.5734229269404" />
-      <inertia ixx="0.347012700484608" ixy="0.000320830236484408" ixz="-0.000276165756864178" iyy="0.0505992561206399" iyz="4.36427906093052E-06" izz="0.367310633828614" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint2.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint2.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint2" type="revolute">
-    <origin xyz="0.0011222 -0.082492 0.058" rpy="-1.5708 0 0" />
-    <parent link="right_v5_link1" />
-    <child link="right_v5_link2" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
-  </joint>
-  
-<link name="right_v5_link3">
-    <inertial>
-      <origin xyz="-0.0010327510986623 -0.0982831581407237 0.0759203078979563" rpy="0 0 0" />
-      <mass value="4.01394788611251" />
-      <inertia ixx="0.027300381652338" ixy="-5.84593389023737E-06" ixz="2.18344141162958E-06" iyy="0.00829509658303117" iyz="0.000429747816643313" izz="0.0271399019706295" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint3.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint3.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint3" type="revolute">
-    <origin xyz="0.00054177 -0.4 -0.0079934" rpy="0 0 0" />
-    <parent link="right_v5_link2" />
-    <child link="right_v5_link3" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
-  </joint>
-  
-<link name="right_v5_link4">
-    <inertial>
-      <origin xyz="1.3853264397401E-05 -0.00247302826462092 0.0580356267949443" rpy="0 0 0" />
-      <mass value="2.53849337718254" />
-      <inertia ixx="0.00565311776239765" ixy="2.87117433381687E-06" ixz="1.82285292178537E-06" iyy="0.00554461231212413" iyz="7.07256188108858E-05" izz="0.00447417119141569" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint4.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint4.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint4" type="revolute">
-    <origin xyz="-0.0010609 -0.339 0.077993" rpy="1.5708 0 0" />
-    <parent link="right_v5_link3" />
-    <child link="right_v5_link4" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
-  </joint>
-  
-<link name="right_v5_link5">
-    <inertial>
-      <origin xyz="0.000809202478930793 -0.00247300976781001 -0.058029984570603" rpy="0 0 0" />
-      <mass value="2.53849423749645" />
-      <inertia ixx="0.00565288243158553" ixy="-4.31851787937177E-07" ixz="1.88188818729269E-05" iyy="0.00554455399809617" iyz="-7.07067832568832E-05" izz="0.00447446528263878" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint5.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint5.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint5" type="revolute">
-    <origin xyz="0.0010337 -0.075993 0.058" rpy="-1.5708 0 0" />
-    <parent link="right_v5_link4" />
-    <child link="right_v5_link5" />
-    <axis xyz="0 0 -1" />
-    <limit lower="-2.53072742" upper="2.53072742" effort="60" velocity="1.5" />
-  </joint>
-  
-<link name="right_v5_link6">
-    <inertial>
-      <origin xyz="-1.80239837654916E-06 7.73495783867872E-07 0.0904168791422066" rpy="0 0 0" />
-      <mass value="5.65613352487159" />
-      <inertia ixx="0.0281386175594038" ixy="9.64884191429767E-08" ixz="-3.70687460764501E-07" iyy="0.0236927388916379" iyz="1.3724241878237E-07" izz="0.0322036182097964" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/visual/rightjoint6.STL" />
-      </geometry>
-      <material name="">
-        <color rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="package://alfa_robot_description/meshes/alfa_robot_v2_arm_v6/collision/rightjoint6.STL" />
-      </geometry>
-    </collision>
-  </link>
-  
-<joint name="right_v5_joint6" type="revolute">
-    <origin xyz="0.00078891 -0.083 -0.057995" rpy="1.5708 -0.013602 0" />
-    <parent link="right_v5_link5" />
-    <child link="right_v5_link6" />
-    <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
-  </joint>
-  
-  <link name="right_v5_tool0">
+  <link name="right_tool0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="0.2"/>
       <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
     </inertial>
   </link>
-  <joint name="right_v5_tool0_fixed" type="fixed">
-    <parent link="right_v5_link6"/>
-    <child link="right_v5_tool0"/>
+  <joint name="right_tool0_fixed" type="fixed">
+    <parent link="rightjoint6"/>
+    <child link="right_tool0"/>
     <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>
-
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

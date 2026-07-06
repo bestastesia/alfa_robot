@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 EXECUTE = ROOT / "ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py"
+JOINTS = ROOT / "ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/joints.py"
 PLANNER = ROOT / "ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp"
 LAUNCH = ROOT / "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"
 DOC = ROOT / "docs/ethercat/REAL_DIRECTION_SAFETY.md"
@@ -40,6 +41,10 @@ def load_execute_tree() -> ast.Module:
     return ast.parse(EXECUTE.read_text(), filename=str(EXECUTE))
 
 
+def load_joints_tree() -> ast.Module:
+    return ast.parse(JOINTS.read_text(), filename=str(JOINTS))
+
+
 def literal_assignment(tree: ast.Module, name: str):
     for node in tree.body:
         if isinstance(node, ast.Assign):
@@ -64,11 +69,16 @@ def default_arg(tree: ast.Module, function_name: str, arg_name: str):
 
 
 def main() -> int:
-    tree = load_execute_tree()
-    signs = literal_assignment(tree, "EXECUTION_TO_ETHERCAT_SIGN")
+    joints_tree = load_joints_tree()
+    signs = literal_assignment(joints_tree, "ROS_TO_ETHERCAT_SIGN_BY_JOINT")
     if signs != EXPECTED_SIGNS:
         fail(f"EtherCAT direction signs changed: {signs}")
+    if "EXECUTION_TO_ETHERCAT_SIGN" in EXECUTE.read_text():
+        fail("execute script must not define its own EtherCAT direction sign table")
+    if "ROS_TO_ETHERCAT_SIGN_BY_JOINT" in EXECUTE.read_text():
+        fail("execute script must import direction helpers, not reference the sign table directly")
 
+    tree = load_execute_tree()
     left_family = literal_assignment(tree, "LOADED_LEFT_POSE_FAMILY_DEG")
     right_family = literal_assignment(tree, "LOADED_RIGHT_POSE_FAMILY_DEG")
     if left_family[0] != EXPECTED_LEFT0:
@@ -79,6 +89,15 @@ def main() -> int:
         fail("loaded_joint_map default index must be 0")
 
     execute_text = EXECUTE.read_text()
+    for required_import in [
+        "from alfa_robot_execution_bridge.joints import",
+        "ros_to_ethercat_position",
+        "ethercat_to_ros_position",
+        "REAL_CONTROLLER_JOINT_NAMES",
+        "EXECUTION_JOINT_NAMES",
+    ]:
+        if required_import not in execute_text:
+            fail(f"execute script missing canonical joint contract import: {required_import}")
     if "--loaded-preferred-pose-index" not in execute_text:
         fail("execute script lacks --loaded-preferred-pose-index")
     if "--no-real-apply-direction-signs" not in execute_text:

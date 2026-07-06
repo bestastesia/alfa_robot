@@ -42,56 +42,18 @@ REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 DEFAULT_MOCK_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_mock_execution"
 DEFAULT_REAL_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_real_execution"
-EXECUTION_JOINT_NAMES = [
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
-    "right_joint1",
-    "right_joint2",
-    "right_joint3",
-    "right_joint4",
-    "right_joint5",
-    "right_joint6",
-    "turn",
-]
-REAL_CONTROLLER_JOINT_NAMES = [
-    "right_joint1",
-    "right_joint2",
-    "right_joint3",
-    "right_joint4",
-    "right_joint5",
-    "right_joint6",
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
-    "turn",
-]
-
-EXECUTION_TO_ETHERCAT_SIGN = {
-    "left_joint1": 1.0,
-    "left_joint2": 1.0,
-    "left_joint3": -1.0,
-    "left_joint4": 1.0,
-    "left_joint5": -1.0,
-    "left_joint6": 1.0,
-    "right_joint1": 1.0,
-    "right_joint2": -1.0,
-    "right_joint3": 1.0,
-    "right_joint4": 1.0,
-    "right_joint5": 1.0,
-    "right_joint6": 1.0,
-    "turn": 1.0,
-}
-
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+BRIDGE_SRC = ROS_WS / "src/alfa_robot_execution_bridge"
+if str(BRIDGE_SRC) not in sys.path:
+    sys.path.insert(0, str(BRIDGE_SRC))
+from alfa_robot_execution_bridge.joints import (  # noqa: E402
+    EXECUTION_JOINT_NAMES,
+    REAL_CONTROLLER_JOINT_NAMES,
+    ethercat_to_ros_position,
+    ros_to_ethercat_position,
+)
 import extract_stage_monitor_console as monitor  # noqa: E402
 import process_lifecycle  # noqa: E402
 
@@ -128,10 +90,10 @@ def duration_to_seconds(duration: Any) -> float:
 
 
 def moveit_to_execution_name(name: str) -> str | None:
-    if name.startswith("left_v5_joint"):
-        return "left_joint" + name.removeprefix("left_v5_joint")
-    if name.startswith("right_v5_joint"):
-        return "right_joint" + name.removeprefix("right_v5_joint")
+    if name.startswith("left_joint"):
+        return "left_joint" + name.removeprefix("left_joint")
+    if name.startswith("right_joint"):
+        return "right_joint" + name.removeprefix("right_joint")
     if name == "turn":
         return "turn"
     return None
@@ -139,9 +101,9 @@ def moveit_to_execution_name(name: str) -> str | None:
 
 def execution_to_moveit_name(name: str) -> str:
     if name.startswith("left_joint"):
-        return "left_v5_joint" + name.removeprefix("left_joint")
+        return "left_joint" + name.removeprefix("left_joint")
     if name.startswith("right_joint"):
-        return "right_v5_joint" + name.removeprefix("right_joint")
+        return "right_joint" + name.removeprefix("right_joint")
     return name
 
 
@@ -150,14 +112,6 @@ def execution_to_rerun_joint_map(positions: list[float], updown: float = 0.3) ->
     for name, value in zip(EXECUTION_JOINT_NAMES, positions):
         joint_map[execution_to_moveit_name(name)] = float(value)
     return joint_map
-
-
-def ros_to_ethercat_position(name: str, value: float) -> float:
-    return float(value) * EXECUTION_TO_ETHERCAT_SIGN[name]
-
-
-def ethercat_to_ros_position(name: str, value: float) -> float:
-    return float(value) * EXECUTION_TO_ETHERCAT_SIGN[name]
 
 
 def extract_position_from_stage_point(stage: dict[str, Any], point: dict[str, Any], previous: dict[str, float]) -> dict[str, float]:

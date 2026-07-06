@@ -5,7 +5,7 @@
 int main()
 {
   alfa_robot::motion::MotionFlowHeaderRequest request;
-  request.planning_group = "dual_v5_arm_with_base";
+  request.planning_group = "dual_arm_with_base";
   request.box_front_x = 0.925;
   request.scene_y_shift = -0.4;
   request.world_to_base_z = 0.202;
@@ -25,7 +25,7 @@ int main()
   assert(header.at("type") == "header");
   assert(header.at("schema") == "moveit_box_stack_flow_v1");
   assert(header.at("ik_strategy") == "fixed_discrete_h_multi_seed_cost_scorer");
-  assert(header.at("planning_group") == "dual_v5_arm_with_base");
+  assert(header.at("planning_group") == "dual_arm_with_base");
   assert(header.at("box_front_x") == 0.925);
   assert(header.at("scene_y_shift") == -0.4);
   assert(header.at("world_to_base_z") == 0.202);

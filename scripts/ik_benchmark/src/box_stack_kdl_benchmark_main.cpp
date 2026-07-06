@@ -87,8 +87,8 @@ std::vector<std::string> fullJointNames()
 {
     return {
         "updown",
-        "left_v5_joint1", "left_v5_joint2", "left_v5_joint3", "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-        "right_v5_joint1", "right_v5_joint2", "right_v5_joint3", "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+        "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6",
+        "rightjoint1", "rightjoint2", "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6",
     };
 }
 
@@ -138,20 +138,20 @@ int main(int argc, char** argv)
     }
 
     IkSolverOptions left_options;
-    left_options.base_frame = "left_v5_link0";
-    left_options.tip_link = "left_v5_tool0";
+    left_options.base_frame = "left_arm_base";
+    left_options.tip_link = "left_tool0";
     left_options.reject_collisions = false;
     IkSolverOptions right_options;
-    right_options.base_frame = "right_v5_link0";
-    right_options.tip_link = "right_v5_tool0";
+    right_options.base_frame = "right_arm_base";
+    right_options.tip_link = "right_tool0";
     right_options.reject_collisions = false;
     IkSolverOptions scene_options;
     scene_options.reject_collisions = false;
     scene_options.enforce_arm_base_collisions = true;
 
-    IkSolver left_ik("left_v5_arm", "kdl_kinematics_plugin/KDLKinematicsPlugin", timeout, false, left_options);
-    IkSolver right_ik("right_v5_arm", "kdl_kinematics_plugin/KDLKinematicsPlugin", timeout, false, right_options);
-    IkSolver scene_checker("dual_v5_arm_with_base", "bio_ik/BioIKKinematicsPlugin", timeout, false, scene_options);
+    IkSolver left_ik("left_arm", "kdl_kinematics_plugin/KDLKinematicsPlugin", timeout, false, left_options);
+    IkSolver right_ik("right_arm", "kdl_kinematics_plugin/KDLKinematicsPlugin", timeout, false, right_options);
+    IkSolver scene_checker("dual_arm_with_base", "bio_ik/BioIKKinematicsPlugin", timeout, false, scene_options);
 
     const auto boxes = makeBoxes(x_offset);
     const auto pairs = makePickPairs();

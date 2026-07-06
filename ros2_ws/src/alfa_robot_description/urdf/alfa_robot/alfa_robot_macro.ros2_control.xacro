@@ -14,19 +14,19 @@
                canopen_profile_accel:=50000
                pitch_initial:=0.0
                turn_initial:=0.0
-               updown_initial:=0.45
-               left_v5_joint1_initial:=0.0
-               left_v5_joint2_initial:=0.26179939
-               left_v5_joint3_initial:=2.35619449
-               left_v5_joint4_initial:=0.0
-               left_v5_joint5_initial:=1.04719755
-               left_v5_joint6_initial:=0.0
-               right_v5_joint1_initial:=0.0
-               right_v5_joint2_initial:=0.26179939
-               right_v5_joint3_initial:=2.35619449
-               right_v5_joint4_initial:=0.0
-               right_v5_joint5_initial:=1.04719755
-               right_v5_joint6_initial:=0.0"
+               updown_initial:=0.0
+               leftjoint1_initial:=0.0
+               leftjoint2_initial:=0.0
+               leftjoint3_initial:=0.0
+               leftjoint4_initial:=0.0
+               leftjoint5_initial:=0.0
+               leftjoint6_initial:=0.0
+               rightjoint1_initial:=0.0
+               rightjoint2_initial:=0.0
+               rightjoint3_initial:=0.0
+               rightjoint4_initial:=0.0
+               rightjoint5_initial:=0.0
+               rightjoint6_initial:=0.0"
                >
 
     <ros2_control name="${name}" type="system">
@@ -86,7 +86,7 @@
       <joint name="${prefix}updown">
         <command_interface name="position">
           <param name="min">0</param>
-          <param name="max">0.99</param>
+          <param name="max">0.92</param>
         </command_interface>
         <state_interface name="position">
           <param name="initial_value">${updown_initial}</param>
@@ -95,8 +95,8 @@
         <state_interface name="acceleration"/>
       </joint>
 
-      <!-- v5 proxy arms (position controlled) -->
-      <xacro:macro name="v5_proxy_control_joint" params="joint_name lower upper velocity initial_value:=0.0">
+      <!-- dual arms (position controlled) -->
+      <xacro:macro name="arm_control_joint" params="joint_name lower upper velocity initial_value:=0.0">
         <joint name="${prefix}${joint_name}">
           <command_interface name="position">
             <param name="min">${lower}</param>
@@ -110,18 +110,18 @@
         </joint>
       </xacro:macro>
 
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint1" lower="-2.35619449" upper="2.35619449" velocity="1.2" initial_value="${left_v5_joint1_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${left_v5_joint2_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${left_v5_joint3_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_v5_joint4_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint5" lower="-2.53072742" upper="2.53072742" velocity="1.5" initial_value="${left_v5_joint5_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="left_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_v5_joint6_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint1" lower="-2.35619449" upper="2.35619449" velocity="1.2" initial_value="${right_v5_joint1_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${right_v5_joint2_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${right_v5_joint3_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_v5_joint4_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint5" lower="-2.53072742" upper="2.53072742" velocity="1.5" initial_value="${right_v5_joint5_initial}"/>
-      <xacro:v5_proxy_control_joint joint_name="right_v5_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_v5_joint6_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint1" lower="-0.0" upper="0.0" velocity="1.2" initial_value="${leftjoint1_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${leftjoint2_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${leftjoint3_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${leftjoint4_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint5" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${leftjoint5_initial}"/>
+      <xacro:arm_control_joint joint_name="leftjoint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${leftjoint6_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint1" lower="-0.0" upper="0.0" velocity="1.2" initial_value="${rightjoint1_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint2" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${rightjoint2_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${rightjoint3_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${rightjoint4_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint5" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${rightjoint5_initial}"/>
+      <xacro:arm_control_joint joint_name="rightjoint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${rightjoint6_initial}"/>
 
 
     </ros2_control>

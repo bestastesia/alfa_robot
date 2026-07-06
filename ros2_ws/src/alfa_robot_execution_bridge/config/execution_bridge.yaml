@@ -19,20 +19,6 @@ alfa_execution_bridge:
       - right_joint5
       - right_joint6
       - turn
-    direction_signs:
-      - 1.0
-      - 1.0
-      - -1.0
-      - 1.0
-      - -1.0
-      - 1.0
-      - 1.0
-      - -1.0
-      - 1.0
-      - 1.0
-      - 1.0
-      - 1.0
-      - 1.0
     apply_direction_signs: false
     initial_positions:
       - 0.0

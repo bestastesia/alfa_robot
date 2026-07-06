@@ -17,9 +17,17 @@ moveit::core::RobotModelPtr monitor_seed_test_model()
   std::string urdf_xml = R"(
 <robot name="monitor_seed_robot">
   <link name="base_link"/>
+  <link name="turn_link"/>
+  <joint name="turn" type="revolute">
+    <parent link="base_link"/>
+    <child link="turn_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14159" upper="3.14159" effort="1" velocity="1"/>
+  </joint>
   <link name="updown_link"/>
   <joint name="updown" type="prismatic">
-    <parent link="base_link"/>
+    <parent link="turn_link"/>
     <child link="updown_link"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
@@ -29,10 +37,10 @@ moveit::core::RobotModelPtr monitor_seed_test_model()
   for (const auto side : {"left", "right"}) {
     std::string parent = "updown_link";
     for (int i = 1; i <= 6; ++i) {
-      const std::string link = std::string(side) + "_v5_link" + std::to_string(i);
+      const std::string link = std::string(side) + "joint" + std::to_string(i);
       urdf_xml +=
         "  <link name=\"" + link + "\"/>\n"
-        "  <joint name=\"" + std::string(side) + "_v5_joint" + std::to_string(i) + "\" type=\"revolute\">\n"
+        "  <joint name=\"" + std::string(side) + "joint" + std::to_string(i) + "\" type=\"revolute\">\n"
         "    <parent link=\"" + parent + "\"/>\n"
         "    <child link=\"" + link + "\"/>\n"
         "    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n"
@@ -215,10 +223,10 @@ int main()
     0.35};
   const auto seed_state = make_extract_monitor_joint_state(seed_model, nullptr, arm_seed);
   assert(seed_state.getVariablePosition("updown") == 0.35);
-  assert(seed_state.getVariablePosition("left_v5_joint1") == 0.1);
-  assert(seed_state.getVariablePosition("left_v5_joint6") == 0.6);
-  assert(seed_state.getVariablePosition("right_v5_joint1") == -0.1);
-  assert(seed_state.getVariablePosition("right_v5_joint6") == -0.6);
+  assert(seed_state.getVariablePosition("leftjoint1") == 0.1);
+  assert(seed_state.getVariablePosition("leftjoint6") == 0.6);
+  assert(seed_state.getVariablePosition("rightjoint1") == -0.1);
+  assert(seed_state.getVariablePosition("rightjoint6") == -0.6);
 
   const auto initialized_state = make_extract_monitor_initial_state(
     ExtractMonitorInitialStateRequest{
@@ -240,8 +248,8 @@ int main()
   assert(initialized_state.loaded_start_state);
   assert(initialized_state.seed_state->getVariablePosition("updown") == 0.35);
   assert(initialized_state.loaded_start_state->getVariablePosition("updown") == 0.45);
-  assert(initialized_state.loaded_start_state->getVariablePosition("left_v5_joint1") == 1.1);
-  assert(initialized_state.loaded_start_state->getVariablePosition("right_v5_joint6") == -1.6);
+  assert(initialized_state.loaded_start_state->getVariablePosition("leftjoint1") == 1.1);
+  assert(initialized_state.loaded_start_state->getVariablePosition("rightjoint6") == -1.6);
 
   state.legal_candidates.resize(3);
   size_t built_count = 0;

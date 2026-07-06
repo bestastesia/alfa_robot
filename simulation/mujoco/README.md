@@ -7,7 +7,7 @@ This directory is the first MuJoCo side of TIM-41.
 `alfa_robot.xml` is generated from the current ROS description:
 
 - source xacro: `ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro`
-- current arm naming: `left_v5_joint1..6`, `right_v5_joint1..6`
+- current arm naming: `leftjoint1..6`, `rightjoint1..6`
 - current tool frames/sites: `left_ee`, `right_ee`
 - current mesh source: `ros2_ws/src/alfa_robot_description/meshes/`
 - MuJoCo keeps the same root-frame zero yaw as ROS/MoveIt; the logistics scene is
@@ -16,7 +16,7 @@ This directory is the first MuJoCo side of TIM-41.
 Regenerate after description changes:
 
 ```bash
-/usr/bin/python3 simulation/mujoco/tools/generate_v5_mujoco.py
+/usr/bin/python3 simulation/mujoco/tools/generate_mujoco.py
 ```
 
 ## Current logistics scene
@@ -124,7 +124,7 @@ ros2 run alfa_robot_moveit_config mujoco_joint_demo_commander.py --loops 1 --dur
 ```
 
 `set_joints.py` talks directly to `/torso_controller/follow_joint_trajectory`
-and `/dual_v5_arm_controller/follow_joint_trajectory`. The MuJoCo viewer follows
+and `/dual_arm_controller/follow_joint_trajectory`. The MuJoCo viewer follows
 through `/joint_states`, so it should mirror whatever the ROS controllers report.
 
 ## Dynamics/collision note

@@ -76,9 +76,9 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "robot_controller",
-            default_value="dual_v5_arm_controller",
+            default_value="dual_arm_controller",
             choices=[
-                "dual_v5_arm_controller",
+                "dual_arm_controller",
                 "all_position_controller",
             ],
             description="Robot controller to start.",

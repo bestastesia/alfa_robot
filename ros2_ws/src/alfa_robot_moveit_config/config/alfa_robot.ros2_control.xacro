@@ -27,76 +27,76 @@
                   <param name="initial_value">${initial_positions['updown']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint1">
+            <joint name="leftjoint1">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint1']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint1']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint2">
+            <joint name="leftjoint2">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint2']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint2']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint3">
+            <joint name="leftjoint3">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint3']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint3']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint4">
+            <joint name="leftjoint4">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint4']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint4']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint5">
+            <joint name="leftjoint5">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint5']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint5']}</param>
                 </state_interface>
             </joint>
-            <joint name="left_v5_joint6">
+            <joint name="leftjoint6">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_v5_joint6']}</param>
+                  <param name="initial_value">${initial_positions['leftjoint6']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint1">
+            <joint name="rightjoint1">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint1']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint1']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint2">
+            <joint name="rightjoint2">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint2']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint2']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint3">
+            <joint name="rightjoint3">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint3']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint3']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint4">
+            <joint name="rightjoint4">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint4']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint4']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint5">
+            <joint name="rightjoint5">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint5']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint5']}</param>
                 </state_interface>
             </joint>
-            <joint name="right_v5_joint6">
+            <joint name="rightjoint6">
                 <command_interface name="position"/>
                 <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_v5_joint6']}</param>
+                  <param name="initial_value">${initial_positions['rightjoint6']}</param>
                 </state_interface>
             </joint>
         </ros2_control>

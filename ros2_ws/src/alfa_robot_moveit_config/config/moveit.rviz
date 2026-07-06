@@ -71,41 +71,41 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link0:
+          left_arm_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          left_v5_link1:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          left_v5_link2:
+          leftjoint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link3:
+          leftjoint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link4:
+          leftjoint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link5:
+          leftjoint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link6:
+          leftjoint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_tool0:
+          leftjoint6:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          left_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -114,41 +114,41 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link0:
+          right_arm_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          right_v5_link1:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          right_v5_link2:
+          rightjoint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link3:
+          rightjoint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link4:
+          rightjoint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link5:
+          rightjoint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link6:
+          rightjoint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_tool0:
+          rightjoint6:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          right_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -188,7 +188,7 @@ Visualization Manager:
         Goal State Color: 250; 128; 0
         Interactive Marker Size: 0.25
         Joint Violation Color: 255; 0; 255
-        Planning Group: dual_v5_arm_with_base
+        Planning Group: dual_arm_with_base
         Query Goal State: true
         Query Start State: true
         Show Workspace: false
@@ -216,41 +216,41 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link0:
+          left_arm_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          left_v5_link1:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          left_v5_link2:
+          leftjoint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link3:
+          leftjoint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link4:
+          leftjoint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link5:
+          leftjoint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_link6:
+          leftjoint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          left_v5_tool0:
+          leftjoint6:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          left_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -259,41 +259,41 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link0:
+          right_arm_base:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          right_v5_link1:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-            Value: true
-          right_v5_link2:
+          rightjoint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link3:
+          rightjoint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link4:
+          rightjoint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link5:
+          rightjoint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_link6:
+          rightjoint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          right_v5_tool0:
+          rightjoint6:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          right_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false

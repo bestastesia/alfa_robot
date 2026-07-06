@@ -157,12 +157,12 @@ std::vector<double> makeHomeFullSeed()
 UpdownAwareIkConfig makeBioIkConfig()
 {
     UpdownAwareIkConfig config;
-    config.fixed_group = "dual_v5_arm";
-    config.free_group = "dual_v5_arm_with_base";
+    config.fixed_group = "dual_arm";
+    config.free_group = "dual_arm_with_base";
     config.solver_plugin = "bio_ik/BioIKKinematicsPlugin";
     config.base_frame = "base_link";
-    config.left_tip = "left_v5_tool0";
-    config.right_tip = "right_v5_tool0";
+    config.left_tip = "left_tool0";
+    config.right_tip = "right_tool0";
     config.tool0_offset = 0.0;
     config.gripper_z_reach_lower = 0.45 - kWorldToBaseZ;
     config.gripper_z_reach_upper = 1.25 - kWorldToBaseZ;

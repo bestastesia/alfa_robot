@@ -2,9 +2,9 @@
 """
 双末端位姿规划脚本
 
-使用 dual_v5_arm_with_base 规划组（bio_ik 求解器），同时指定：
-  - 左臂末端 (left_v5_tool0) 目标位姿
-  - 右臂末端 (right_v5_tool0) 目标位姿
+使用 dual_arm_with_base 规划组（bio_ik 求解器），同时指定：
+  - 左臂末端 (left_tool0) 目标位姿
+  - 右臂末端 (right_tool0) 目标位姿
 
 bio_ik 会协调 updown 关节和双臂关节，找到满足两个末端约束的全身解。
 
@@ -33,18 +33,18 @@ import tf2_ros
 import time
 
 
-LEFT_TIP = "left_v5_tool0"
-RIGHT_TIP = "right_v5_tool0"
-PLANNING_GROUP = "dual_v5_arm_with_base"
+LEFT_TIP = "left_tool0"
+RIGHT_TIP = "right_tool0"
+PLANNING_GROUP = "dual_arm_with_base"
 BASE_FRAME = "base_link"
 
-# 所有属于 dual_v5_arm_with_base 的关节（按 SRDF 顺序）
+# 所有属于 dual_arm_with_base 的关节（按 SRDF 顺序）
 DUAL_ARM_JOINTS = [
     "updown",
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-    "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-    "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 
 
@@ -256,7 +256,7 @@ def main():
         planner.print_ee_poses()
 
         print("\n" + "=" * 60)
-        print("双末端位姿规划器 (dual_v5_arm_with_base + bio_ik)")
+        print("双末端位姿规划器 (dual_arm_with_base + bio_ik)")
         print("同时指定左右臂目标位姿，bio_ik 协调 updown 关节")
         print("=" * 60)
 

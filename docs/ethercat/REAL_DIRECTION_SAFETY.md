@@ -19,6 +19,23 @@
 | right_joint2 | 翻转 |
 | 其它 10 个关节 | 不翻转 |
 
+## 唯一真相源
+
+仓库内方向映射唯一真相源是：
+
+```text
+ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/joints.py
+```
+
+其中 `ROS_TO_ETHERCAT_SIGN_BY_JOINT` 定义 `ROS/Rerun 语义角度 -> 实机 EtherCAT 指令角度`。
+
+规则：
+
+- 不要在执行脚本、launch、YAML 或临时测试脚本里复制方向表。
+- `execute_l6_r8_mock_live.py` 必须从 `alfa_robot_execution_bridge.joints` 导入 joint 顺序和方向转换函数。
+- `alfa_robot_execution_bridge/config/*.yaml` 只允许配置是否应用方向映射，不允许复制 `direction_signs`。
+- 如果实机方向重新标定，只改 `joints.py`，然后运行 `scripts/safety/check_l6_r8_real_safety.py`。
+
 ## 关键风险
 
 这次方向反复出现，不只可能来自 EtherCAT sign，还可能来自 L6/R8 的上层负重姿态族索引。

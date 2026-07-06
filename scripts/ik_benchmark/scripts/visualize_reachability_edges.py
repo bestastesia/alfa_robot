@@ -117,7 +117,7 @@ def main() -> None:
     parser.add_argument(
         "csv_path",
         nargs="?",
-        default="ros2_ws/nine_orient_reachability_newv5_nocollisions.csv",
+        default="ros2_ws/nine_orient_reachability_current_nocollisions.csv",
         help="Reachability CSV path",
     )
     parser.add_argument("--side", default="left", choices=["left", "right", "all"], help="Side to visualize")

@@ -24,12 +24,12 @@ struct UpdownAwareIkConfig {
         ContinuousRange,
     };
 
-    std::string fixed_group = "dual_v5_arm";
-    std::string free_group = "dual_v5_arm_with_base";
+    std::string fixed_group = "dual_arm";
+    std::string free_group = "dual_arm_with_base";
     std::string solver_plugin = "bio_ik/BioIKKinematicsPlugin";
     std::string base_frame = "base_link";
-    std::string left_tip = "left_v5_tool0";
-    std::string right_tip = "right_v5_tool0";
+    std::string left_tip = "left_tool0";
+    std::string right_tip = "right_tool0";
 
     ReachSphereConfig left_reach_sphere;
     ReachSphereConfig right_reach_sphere = {0.015, -0.3125, 0.6625, 0.815};

@@ -45,10 +45,10 @@ int main()
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
   assert(joint_names[0] == "updown");
-  assert(joint_names[1] == "left_v5_joint1");
-  assert(joint_names[6] == "left_v5_joint6");
-  assert(joint_names[7] == "right_v5_joint1");
-  assert(joint_names[12] == "right_v5_joint6");
+  assert(joint_names[1] == "leftjoint1");
+  assert(joint_names[6] == "leftjoint6");
+  assert(joint_names[7] == "rightjoint1");
+  assert(joint_names[12] == "rightjoint6");
 
   std::cout << "task geometry smoke passed\n";
   return 0;

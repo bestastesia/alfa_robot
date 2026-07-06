@@ -26,8 +26,8 @@ struct MotionSceneAdapterConfig
   bool enable_attached_box_collision = true;
   CarriedBoxGeometryConfig carried_box;
 
-  std::string left_tip = "left_v5_tool0";
-  std::string right_tip = "right_v5_tool0";
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
 };
 
 class MotionSceneAdapter

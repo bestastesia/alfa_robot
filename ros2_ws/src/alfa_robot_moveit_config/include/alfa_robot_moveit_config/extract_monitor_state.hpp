@@ -21,6 +21,7 @@ struct ExtractMonitorArmSeed
   std::vector<double> left_arm;
   std::vector<double> right_arm;
   double updown = 0.0;
+  double turn = 0.0;
 };
 
 struct ExtractMonitorInitialStateRequest

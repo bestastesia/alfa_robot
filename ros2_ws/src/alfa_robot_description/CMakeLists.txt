@@ -12,8 +12,13 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 install(
-  DIRECTORY config launch meshes rviz urdf test
+  DIRECTORY config launch rviz urdf test
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY meshes/current_robot
+  DESTINATION share/${PROJECT_NAME}/meshes
 )
 
 # install 后用 xacro 生成 URDF（供 ik_benchmark 等离线工具使用）
@@ -21,12 +26,6 @@ find_package(xacro REQUIRED)
 xacro_add_files(
   urdf/alfa_robot.urdf.xacro
   INSTALL DESTINATION share/${PROJECT_NAME}/urdf
-)
-
-# 显式安装 collision 网格，确保 RViz/Gazebo 能解析 package://.../collision/*.STL
-install(
-  DIRECTORY meshes/alfa_robot/collision
-  DESTINATION share/${PROJECT_NAME}/meshes/alfa_robot/collision
 )
 
 if(BUILD_TESTING)

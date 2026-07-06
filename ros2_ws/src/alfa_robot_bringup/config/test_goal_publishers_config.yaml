@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# v5 proxy dual-arm test goals. Joint order matches all_position_controller / dual_v5_arm_controller.
+# dual-arm test goals. Joint order matches all_position_controller / dual_arm_controller.
 
 publisher_forward_position_controller:
   ros__parameters:
@@ -30,7 +30,7 @@ publisher_forward_position_controller:
 publisher_joint_trajectory_controller:
   ros__parameters:
 
-    controller_name: "dual_v5_arm_controller"
+    controller_name: "dual_arm_controller"
     wait_sec_between_publish: 6
     repeat_the_same_goal: 1
 
@@ -49,15 +49,15 @@ publisher_joint_trajectory_controller:
       - pitch
       - turn
       - updown
-      - left_v5_joint1
-      - left_v5_joint2
-      - left_v5_joint3
-      - left_v5_joint4
-      - left_v5_joint5
-      - left_v5_joint6
-      - right_v5_joint1
-      - right_v5_joint2
-      - right_v5_joint3
-      - right_v5_joint4
-      - right_v5_joint5
-      - right_v5_joint6
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+      - leftjoint6
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+      - rightjoint5
+      - rightjoint6

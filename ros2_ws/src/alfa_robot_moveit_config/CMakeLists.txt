@@ -302,6 +302,8 @@ install(PROGRAMS
   scripts/execute_l6_r8_mock_live.py
   scripts/execute_l6_r8_real_live.py
   scripts/run_extract_live_benchmark.py
+  scripts/motion_contracts/check_joint_contract.py
+  scripts/motion_contracts/generate_motion_baseline.py
   scripts/visualize_moveit_box_stack_flow.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -47,42 +47,42 @@ JOINT_MASSES = {
 }
 
 MOTOR_LINK_NAMES = [       # 需要覆盖 inertial 的电机 link
-    "left_v5_link1", "left_v5_link2", "left_v5_link3",
-    "left_v5_link4", "left_v5_link5", "left_v5_link6",
-    "right_v5_link1", "right_v5_link2", "right_v5_link3",
-    "right_v5_link4", "right_v5_link5", "right_v5_link6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 
-# v5_5 新增 fixed link 的 site 名（用于接触检测 / 力语义标注）
+# legacy_5 新增 fixed link 的 site 名（用于接触检测 / 力语义标注）
 SITE_NAMES = {
-    "big_arm_site":   ("left_v5_big_arm",   "right_v5_big_arm"),
-    "big_arm_2_site": ("left_v5_big_arm_2", "right_v5_big_arm_2"),
-    "little_arm_site":("left_v5_little_arm", "right_v5_little_arm"),
+    "big_arm_site":   ("left_big_arm",   "right_big_arm"),
+    "big_arm_2_site": ("left_big_arm_2", "right_big_arm_2"),
+    "little_arm_site":("left_little_arm", "right_little_arm"),
 }
 
 LEFT_SITE_NAMES = [
-    "left_v5_big_arm",
-    "left_v5_big_arm_2",
-    "left_v5_little_arm",
+    "left_big_arm",
+    "left_big_arm_2",
+    "left_little_arm",
 ]
 
 RIGHT_SITE_NAMES = [
-    "right_v5_big_arm",
-    "right_v5_big_arm_2",
-    "right_v5_little_arm",
+    "right_big_arm",
+    "right_big_arm_2",
+    "right_little_arm",
 ]
 
 # 接触检测关心的 link 列表
 CONTACT_LINKS = {
     "left": [
-        "left_v5_link1", "left_v5_link2", "left_v5_link3",
-        "left_v5_link4", "left_v5_link5", "left_v5_link6",
-        "left_v5_big_arm", "left_v5_big_arm_2", "left_v5_little_arm",
+        "leftjoint1", "leftjoint2", "leftjoint3",
+        "leftjoint4", "leftjoint5", "leftjoint6",
+        "left_big_arm", "left_big_arm_2", "left_little_arm",
     ],
     "right": [
-        "right_v5_link1", "right_v5_link2", "right_v5_link3",
-        "right_v5_link4", "right_v5_link5", "right_v5_link6",
-        "right_v5_big_arm", "right_v5_big_arm_2", "right_v5_little_arm",
+        "rightjoint1", "rightjoint2", "rightjoint3",
+        "rightjoint4", "rightjoint5", "rightjoint6",
+        "right_big_arm", "right_big_arm_2", "right_little_arm",
     ],
 }
 
@@ -120,7 +120,7 @@ class AlfaPinocchioModel:
 
     # ── 电机 inertial 覆盖 ──────────────────────────────────────────────────
     def _override_motor_inertials(self, mass_kg: float = None):
-        """将左右臂 v5_link1..6 的 inertial 覆盖为 JOINT_MASSES 中指定的质量,
+        """将左右臂 legacy_link1..6 的 inertial 覆盖为 JOINT_MASSES 中指定的质量,
         com=[0,0,0], inertia 用均匀球近似 (r ≈ 0.05m)。
         mass_kg 参数已废弃，质量由 JOINT_MASSES 常量决定。"""
         r_approx = 0.05
@@ -132,7 +132,7 @@ class AlfaPinocchioModel:
             frame = self.model.frames[fid]
             jid = frame.parentJoint
 
-            # 提取关节编号 (left_v5_link3 → 3)
+            # 提取关节编号 (leftjoint3 → 3)
             joint_num = int(name[-1])
             m = JOINT_MASSES[joint_num]
 
@@ -144,7 +144,7 @@ class AlfaPinocchioModel:
     def _build_joint_maps(self):
         """构建 {joint_name: v_idx} 和活动关节列表。"""
         self.active_joints = {}  # name -> v_idx
-        self.v5_joints = {"left": {}, "right": {}}
+        self.legacy_joints = {"left": {}, "right": {}}
 
         for i in range(1, self.model.njoints):
             name = self.model.names[i]
@@ -154,12 +154,12 @@ class AlfaPinocchioModel:
             idx_v = joint.idx_v
             self.active_joints[name] = idx_v
 
-            # 识别左右臂 v5 关节
+            # 识别左右臂 legacy 关节
             for side in ("left", "right"):
-                prefix = f"{side}_v5_joint"
+                prefix = f"{side}_legacy_joint"
                 if name.startswith(prefix):
                     num = name.replace(prefix, "")
-                    self.v5_joints[side][f"J{num}"] = idx_v
+                    self.legacy_joints[side][f"J{num}"] = idx_v
 
     # ── RNEA 重力力矩 ───────────────────────────────────────────────────────
     def compute_gravity_torques(self, q: np.ndarray) -> np.ndarray:
@@ -176,7 +176,7 @@ class AlfaPinocchioModel:
         if payload_mass <= 0:
             return np.zeros(self.nv)
 
-        tool_frame_name = f"{side}_v5_tool0"
+        tool_frame_name = f"{side}_legacy_tool0"
         fid = self.model.getFrameId(tool_frame_name)
         if fid >= self.model.nframes:
             return np.zeros(self.nv)
@@ -376,7 +376,7 @@ class MeshCatVisualizerBridge:
         if not self.viz or mass <= 0:
             return
 
-        tool_frame_name = f"{side}_v5_tool0"
+        tool_frame_name = f"{side}_legacy_tool0"
         fid = self.alfa.model.getFrameId(tool_frame_name)
         if fid >= self.alfa.model.nframes:
             return
@@ -491,9 +491,9 @@ class SliderGUI:
 
     def _add_arm_sliders(self, parent, side: str):
         """左右臂 6 轴滑块。"""
-        v5 = self.alfa.v5_joints[side]
-        for jname, v_idx in sorted(v5.items()):
-            full_name = f"{side}_v5_joint{jname[1:]}"
+        legacy = self.alfa.legacy_joints[side]
+        for jname, v_idx in sorted(legacy.items()):
+            full_name = f"{side}_legacy_joint{jname[1:]}"
             label = f"J{jname[1:]} (°)"
             lo = np.degrees(self.alfa.model.lowerPositionLimit[v_idx])
             hi = np.degrees(self.alfa.model.upperPositionLimit[v_idx])
@@ -595,8 +595,8 @@ class SliderGUI:
 
         # 左右臂
         for side in ("left", "right"):
-            for jname, v_idx in self.alfa.v5_joints[side].items():
-                full_name = f"{side}_v5_joint{jname[1:]}"
+            for jname, v_idx in self.alfa.legacy_joints[side].items():
+                full_name = f"{side}_legacy_joint{jname[1:]}"
                 if full_name in self.sliders:
                     q[v_idx] = np.radians(self.sliders[full_name]["var"].get())
 
@@ -716,10 +716,10 @@ class T0027Validator:
         # 校验 1: 零位时关节力矩应接近 0（竖直向上，重力沿关节轴方向）
         q0 = self.alfa.neutral_q()
         tau0 = self.alfa.compute_gravity_torques(q0)
-        v5_tau = [tau0[self.alfa.v5_joints[s][j]]
+        legacy_tau = [tau0[self.alfa.legacy_joints[s][j]]
                   for s in ("left", "right")
-                  for j in sorted(self.alfa.v5_joints[s].keys())]
-        max_tau_zero = max(abs(t) for t in v5_tau)
+                  for j in sorted(self.alfa.legacy_joints[s].keys())]
+        max_tau_zero = max(abs(t) for t in legacy_tau)
         print(f"\n  [1] 零位重力力矩: 最大 |τ| = {max_tau_zero:.4f} Nm", end="")
         if max_tau_zero < 5.0:
             print(" ✓ (接近 0，合理)")
@@ -729,10 +729,10 @@ class T0027Validator:
         # 校验 2: 肩关节弯曲 90° 时，J2 力矩应最大（杠杆最长）
         q_j2 = self._q_left_j2_90()
         tau_j2 = self.alfa.compute_gravity_torques(q_j2)
-        left_v5_taus = {j: abs(tau_j2[v_idx])
-                        for j, v_idx in self.alfa.v5_joints["left"].items()}
-        j2_is_max = left_v5_taus["J2"] >= max(left_v5_taus.values()) * 0.5
-        print(f"  [2] J2 弯曲 90° 时左臂力矩: {left_v5_taus}")
+        left_legacy_taus = {j: abs(tau_j2[v_idx])
+                        for j, v_idx in self.alfa.legacy_joints["left"].items()}
+        j2_is_max = left_legacy_taus["J2"] >= max(left_legacy_taus.values()) * 0.5
+        print(f"  [2] J2 弯曲 90° 时左臂力矩: {left_legacy_taus}")
         if j2_is_max:
             print("     ✓ J2 力矩为最大之一（杠杆效应正确）")
         else:
@@ -755,25 +755,25 @@ class T0027Validator:
     def _q_left_j2_90(self) -> np.ndarray:
         q = self.alfa.neutral_q()
         q[2] = 0.5  # updown
-        q[self.alfa.v5_joints["left"]["J2"]] = np.pi / 2
+        q[self.alfa.legacy_joints["left"]["J2"]] = np.pi / 2
         return q
 
     def _q_left_j2_j3_90(self) -> np.ndarray:
         q = self._q_left_j2_90()
-        q[self.alfa.v5_joints["left"]["J3"]] = np.pi / 2
+        q[self.alfa.legacy_joints["left"]["J3"]] = np.pi / 2
         return q
 
     def _q_right_j2_90(self) -> np.ndarray:
         q = self.alfa.neutral_q()
         q[2] = 0.5
-        q[self.alfa.v5_joints["right"]["J2"]] = np.pi / 2
+        q[self.alfa.legacy_joints["right"]["J2"]] = np.pi / 2
         return q
 
     def _q_both_bent(self) -> np.ndarray:
         q = self.alfa.neutral_q()
         q[2] = 0.5
-        q[self.alfa.v5_joints["left"]["J2"]] = np.pi / 3
-        q[self.alfa.v5_joints["right"]["J2"]] = np.pi / 3
+        q[self.alfa.legacy_joints["left"]["J2"]] = np.pi / 3
+        q[self.alfa.legacy_joints["right"]["J2"]] = np.pi / 3
         return q
 
 

@@ -54,7 +54,7 @@ def main() -> None:
     parser.add_argument("--no-meshes", action="store_true", help="Only show robot link transforms")
     args = parser.parse_args()
 
-    rr.init("reachability_spheres", recording_id="v5_reachability_spheres")
+    rr.init("reachability_spheres", recording_id="current_reachability_spheres")
     if args.save:
         rr.save(args.save)
     elif args.connect:

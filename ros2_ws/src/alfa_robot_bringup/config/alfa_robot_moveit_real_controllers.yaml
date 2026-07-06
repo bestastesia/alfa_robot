@@ -1,5 +1,5 @@
 # Real hardware controllers for MoveIt execution and GUI slider control.
-# v5 proxy exposes position controllers for torso and dual six-axis arms.
+# Current model exposes position controllers for torso and dual six-axis arms.
 
 controller_manager:
   ros__parameters:
@@ -11,13 +11,13 @@ controller_manager:
     torso_group_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    left_v5_arm_controller:
+    left_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    right_v5_arm_controller:
+    right_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    dual_v5_arm_controller:
+    dual_arm_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
     all_position_controller:
@@ -35,54 +35,54 @@ torso_group_controller:
       - position
       - velocity
 
-left_v5_arm_controller:
+left_arm_controller:
   ros__parameters:
     joints:
-      - left_v5_joint1
-      - left_v5_joint2
-      - left_v5_joint3
-      - left_v5_joint4
-      - left_v5_joint5
-      - left_v5_joint6
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+      - leftjoint6
     command_interfaces:
       - position
     state_interfaces:
       - position
       - velocity
 
-right_v5_arm_controller:
+right_arm_controller:
   ros__parameters:
     joints:
-      - right_v5_joint1
-      - right_v5_joint2
-      - right_v5_joint3
-      - right_v5_joint4
-      - right_v5_joint5
-      - right_v5_joint6
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+      - rightjoint5
+      - rightjoint6
     command_interfaces:
       - position
     state_interfaces:
       - position
       - velocity
 
-dual_v5_arm_controller:
+dual_arm_controller:
   ros__parameters:
     joints:
       - pitch
       - turn
       - updown
-      - left_v5_joint1
-      - left_v5_joint2
-      - left_v5_joint3
-      - left_v5_joint4
-      - left_v5_joint5
-      - left_v5_joint6
-      - right_v5_joint1
-      - right_v5_joint2
-      - right_v5_joint3
-      - right_v5_joint4
-      - right_v5_joint5
-      - right_v5_joint6
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+      - leftjoint6
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+      - rightjoint5
+      - rightjoint6
     command_interfaces:
       - position
     state_interfaces:
@@ -95,16 +95,16 @@ all_position_controller:
       - pitch
       - turn
       - updown
-      - left_v5_joint1
-      - left_v5_joint2
-      - left_v5_joint3
-      - left_v5_joint4
-      - left_v5_joint5
-      - left_v5_joint6
-      - right_v5_joint1
-      - right_v5_joint2
-      - right_v5_joint3
-      - right_v5_joint4
-      - right_v5_joint5
-      - right_v5_joint6
+      - leftjoint1
+      - leftjoint2
+      - leftjoint3
+      - leftjoint4
+      - leftjoint5
+      - leftjoint6
+      - rightjoint1
+      - rightjoint2
+      - rightjoint3
+      - rightjoint4
+      - rightjoint5
+      - rightjoint6
     interface_name: position

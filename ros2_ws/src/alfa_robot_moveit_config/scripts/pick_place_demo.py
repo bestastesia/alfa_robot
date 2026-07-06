@@ -35,27 +35,27 @@ from sensor_msgs.msg import JointState
 
 # ── 常量 ──────────────────────────────────────────────────────
 
-LEFT_TIP = "left_v5_tool0"
-RIGHT_TIP = "right_v5_tool0"
+LEFT_TIP = "left_tool0"
+RIGHT_TIP = "right_tool0"
 BASE_FRAME = "base_link"
 
-DUAL_ARM_GROUP = "dual_v5_arm_with_base"
+DUAL_ARM_GROUP = "dual_arm_with_base"
 
 TORSO_JOINTS = ["pitch", "turn"]
 ARM_JOINTS = [
     "updown",
-    "left_v5_joint1", "left_v5_joint2", "left_v5_joint3",
-    "left_v5_joint4", "left_v5_joint5", "left_v5_joint6",
-    "right_v5_joint1", "right_v5_joint2", "right_v5_joint3",
-    "right_v5_joint4", "right_v5_joint5", "right_v5_joint6",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
 ]
 ALL_JOINTS = TORSO_JOINTS + ARM_JOINTS
 
-LEFT_TOUCH = ["left_v5_link6", "left_v5_tool0"]
-RIGHT_TOUCH = ["right_v5_link6", "right_v5_tool0"]
+LEFT_TOUCH = ["leftjoint6", "left_tool0"]
+RIGHT_TOUCH = ["rightjoint6", "right_tool0"]
 
-LEFT_ATTACH_LINK = LEFT_TIP  # left_v5_tool0
-RIGHT_ATTACH_LINK = RIGHT_TIP  # right_v5_tool0
+LEFT_ATTACH_LINK = LEFT_TIP  # left_tool0
+RIGHT_ATTACH_LINK = RIGHT_TIP  # right_tool0
 
 BOX_DIMS = [0.2, 0.2, 0.2]
 
@@ -110,8 +110,8 @@ class PickPlaceDemo(Node):
                 "ns": "/torso_controller/follow_joint_trajectory",
                 "joints": TORSO_JOINTS,
             },
-            "dual_v5_arm_controller": {
-                "ns": "/dual_v5_arm_controller/follow_joint_trajectory",
+            "dual_arm_controller": {
+                "ns": "/dual_arm_controller/follow_joint_trajectory",
                 "joints": ARM_JOINTS,
             },
         }

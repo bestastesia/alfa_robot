@@ -1,0 +1,77 @@
+# 当前运控实验基线 manifest。
+# 目的：把 URDF/tool0/坐标系/限位/场景/核心算法参数与实验结果绑定，避免旧数据解释新模型。
+# 注意：baseline_id 由脚本按本文件内容和关键文件 hash 生成，不要手写。
+
+schema_version: 1
+name: current_motion_baseline
+owner: motion_control
+
+robot_model:
+  description_package: alfa_robot_description
+  description_xacro: ros2_ws/src/alfa_robot_description/urdf/alfa_robot.urdf.xacro
+  moveit_wrapper_xacro: ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.urdf.xacro
+  srdf: ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.srdf
+  joint_limits: ros2_ws/src/alfa_robot_moveit_config/config/joint_limits.yaml
+  ros2_control: ros2_ws/src/alfa_robot_moveit_config/config/alfa_robot.ros2_control.xacro
+  left_tip: left_tool0
+  right_tip: right_tool0
+  tool0_semantics: current URDF tool0 is the planning TCP used by IK, collision replay, and Rerun
+
+frames:
+  world_frame: world
+  robot_base_frame: base_link
+  ik_base_frame: base_link
+  container_frame: world
+  world_to_base_z_m: 0.202094
+
+updown:
+  physical_lower_m: 0.0
+  physical_upper_m: 0.99
+  default_home_m: 0.3
+  front_grasp_z_reach_world_m: [0.45, 1.25]
+  top_suction_z_reach_world_m: [0.3, 0.45]
+
+box_and_container:
+  box_size_m:
+    depth_x: 0.3
+    width_y: 0.4
+    height_z: 0.4
+  container_size_m:
+    length_x: 4.0
+    width_y: 2.2
+    height_z: 2.4
+  container_center_world_m: [0.8, 0.0, 1.2]
+  container_floor_z_m: 0.0
+  container_wall_thickness_m: 0.02
+  static_box_obstacle_inset_m: 0.002
+  attached_box_collision_padding_m: -0.002
+
+ik_strategy:
+  solver: bio_ik
+  h_mode: fixed_discrete
+  h_candidate_count: 16
+  seed_count: 32
+  workers: 16
+  candidate_timeout_s: 0.01
+  target_order: reversed_only
+
+extract_strategy:
+  primitive: kdl_small_step
+  kdl_timeout_s: 0.003
+  step_x_m: 0.03
+  max_x_m: 0.36
+  position_tolerance_m: 0.01
+  orientation_tolerance_rad: 0.05
+
+loaded_planning:
+  planner: moveit_ompl_or_direct_pipeline
+  target_updown_m: 0.3
+  candidate_limit: 8
+  parallel_workers: 8
+  aabb_clearance_mode: diagnostic_only
+
+collision_truth:
+  hard_gate: moveit_planning_scene_fcl
+  diagnostic_only:
+    - carried_box_aabb_vs_container_and_box_wall
+    - rerun_visual_overlap

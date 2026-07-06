@@ -186,14 +186,17 @@ struct ExtractCandidateSolverConfig
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
   const moveit::core::JointModelGroup* right_arm_group = nullptr;
-  std::string left_tip = "left_v5_tool0";
-  std::string right_tip = "right_v5_tool0";
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
   bool use_independent_kdl = false;
   double kdl_timeout = 0.01;
   double position_tolerance = 0.01;
   double orientation_tolerance = 0.05;
   double max_tip_z_drop = 0.002;
   double min_tool_normal_z = -1e-4;
+  bool enforce_tool_normal_not_down = true;
+  bool top_suction = false;
+  double top_suction_orientation_tolerance = 0.12217304763960307;
   double max_joint_delta = 0.0;
   int independent_kdl_max_iterations = 120;
   double independent_kdl_eps = 1e-5;
@@ -257,8 +260,8 @@ struct ExtractCandidateScorerConfig
 {
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
   const moveit::core::JointModelGroup* right_arm_group = nullptr;
-  std::string left_tip = "left_v5_tool0";
-  std::string right_tip = "right_v5_tool0";
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
   double step_x = 0.03;
   double lift_weight = 10.0;
   double pitch_weight = 0.02;
@@ -337,10 +340,13 @@ struct ExtractRolloutPlannerConfig
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
   const moveit::core::JointModelGroup* right_arm_group = nullptr;
-  std::string left_tip = "left_v5_tool0";
-  std::string right_tip = "right_v5_tool0";
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
   bool fail_fast = true;
   bool dual_async = false;
+  bool top_suction = false;
+  double top_suction_updown_step = 0.01;
+  double top_suction_max_lift = 0.5;
   size_t success_extra_steps = 3;
   size_t top_valid_limit = 6;
   ExtractSingleClearCallback single_clear_callback;

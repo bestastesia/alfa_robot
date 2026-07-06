@@ -592,7 +592,7 @@ double loadedPoseDistance(const std::vector<std::string>& names,
     if (pose.size() < 6) return 0.0;
     double squared_sum = 0.0;
     for (size_t i = 0; i < 6; ++i) {
-        const double joint = namedJointValue(names, values, prefix + "_v5_joint" + std::to_string(i + 1));
+        const double joint = namedJointValue(names, values, prefix + "joint" + std::to_string(i + 1));
         const double diff = angularDistance(joint, pose[i]);
         squared_sum += diff * diff;
     }
@@ -630,8 +630,8 @@ double jointLeverProxy(const std::vector<std::string>& names,
                        const LeverParams& params)
 {
     const bool is_left = prefix == "left";
-    const double q2 = namedJointValue(names, values, prefix + "_v5_joint2");
-    const double q3 = namedJointValue(names, values, prefix + "_v5_joint3");
+    const double q2 = namedJointValue(names, values, prefix + "joint2");
+    const double q3 = namedJointValue(names, values, prefix + "joint3");
     const double q2_zero = is_left ? params.left_joint2_horizontal_angle : params.right_joint2_horizontal_angle;
     const double q3_zero = is_left ? params.left_joint3_horizontal_angle : params.right_joint3_horizontal_angle;
     const double shoulder_angle = q2 - q2_zero;
@@ -733,8 +733,8 @@ TorqueProxyBreakdown torqueProxyBreakdown(const std::vector<std::string>& names,
                                           const UpdownAwareIkConfig& config)
 {
     const bool is_left = prefix == "left";
-    const double q2 = namedJointValue(names, values, prefix + "_v5_joint2");
-    const double q3 = namedJointValue(names, values, prefix + "_v5_joint3");
+    const double q2 = namedJointValue(names, values, prefix + "joint2");
+    const double q3 = namedJointValue(names, values, prefix + "joint3");
     const double q2_zero = is_left ? config.left_joint2_horizontal_angle : config.right_joint2_horizontal_angle;
     const double q3_zero = is_left ? config.left_joint3_horizontal_angle : config.right_joint3_horizontal_angle;
     const double shoulder_angle = q2 - q2_zero;

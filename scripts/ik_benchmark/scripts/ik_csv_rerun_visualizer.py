@@ -453,7 +453,7 @@ def main() -> None:
     parser.add_argument("csv", type=Path, nargs="+", help="One or more IK CSV paths")
     parser.add_argument("--show-failed", action="store_true", help="Also show failed points")
     parser.add_argument("--max-points", type=int, default=None, help="Downsample each point cloud for display")
-    parser.add_argument("--csv-frame", default="left_v5_link0", help="Frame of x/y/z columns in CSV")
+    parser.add_argument("--csv-frame", default="left_arm_base", help="Frame of x/y/z columns in CSV")
     parser.add_argument("--robot-path", default="world/robot", help="Rerun path for the robot model")
     parser.add_argument("--no-robot", action="store_true", help="Only show point clouds")
     parser.add_argument("--no-meshes", action="store_true", help="Show robot link frames but skip STL meshes")

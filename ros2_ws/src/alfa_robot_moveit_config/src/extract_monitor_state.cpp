@@ -104,13 +104,28 @@ moveit::core::RobotState make_extract_monitor_joint_state(
 {
   moveit::core::RobotState state(robot_model);
   state.setToDefaultValues();
+  const auto& variable_names = robot_model->getVariableNames();
+  const auto has_variable = [&](const std::string& name) {
+    return std::find(variable_names.begin(), variable_names.end(), name) != variable_names.end();
+  };
   for (size_t i = 0; i < seed.left_arm.size(); ++i) {
-    state.setVariablePosition("left_v5_joint" + std::to_string(i + 1), seed.left_arm[i]);
+    const std::string name = "leftjoint" + std::to_string(i + 1);
+    if (has_variable(name)) {
+      state.setVariablePosition(name, seed.left_arm[i]);
+    }
   }
   for (size_t i = 0; i < seed.right_arm.size(); ++i) {
-    state.setVariablePosition("right_v5_joint" + std::to_string(i + 1), seed.right_arm[i]);
+    const std::string name = "rightjoint" + std::to_string(i + 1);
+    if (has_variable(name)) {
+      state.setVariablePosition(name, seed.right_arm[i]);
+    }
   }
-  state.setVariablePosition("updown", seed.updown);
+  if (has_variable("turn")) {
+    state.setVariablePosition("turn", seed.turn);
+  }
+  if (has_variable("updown")) {
+    state.setVariablePosition("updown", seed.updown);
+  }
   if (joint_group) {
     state.enforceBounds(joint_group);
   } else {
