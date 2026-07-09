@@ -16,11 +16,18 @@ def generate_launch_description():
             DeclareLaunchArgument("execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
             DeclareLaunchArgument("execute_wait_for_action_timeout_s", default_value="10.0"),
             DeclareLaunchArgument("execute_wait_for_goal_acceptance", default_value="false"),
+            DeclareLaunchArgument("execute_wait_for_result", default_value="false"),
+            DeclareLaunchArgument("execute_wait_for_result_timeout_s", default_value="120.0"),
             DeclareLaunchArgument("execute_resample_before_forward", default_value="true"),
             DeclareLaunchArgument("execute_resample_rate_hz", default_value="20.0"),
             DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
             DeclareLaunchArgument("solve_arm_ik_service_name", default_value="/robot_motion/solve_arm_ik"),
             DeclareLaunchArgument("run_dual_arm_pose_task_service_name", default_value="/robot_motion/run_dual_arm_pose_task"),
+            DeclareLaunchArgument("run_dual_grasp_task_service_name", default_value="/robot_motion/run_dual_grasp_task"),
+            DeclareLaunchArgument("task_receipt_topic", default_value="/robot_motion/task_receipt"),
+            DeclareLaunchArgument("default_fixed_updown", default_value="0.3"),
+            DeclareLaunchArgument("default_candidate_limit", default_value="8"),
+            DeclareLaunchArgument("default_planning_mode", default_value="shortcut"),
             DeclareLaunchArgument("publish_empty_scene_on_start", default_value="true"),
             DeclareLaunchArgument("plan_check_collision", default_value="false"),
             DeclareLaunchArgument("collision_service_name", default_value="/robot_motion/check_collision"),
@@ -80,6 +87,29 @@ def generate_launch_description():
             ),
             Node(
                 package="robot_motion_runtime",
+                executable="dual_grasp_task_adapter_node",
+                name="dual_grasp_task_adapter",
+                output="screen",
+                parameters=[
+                    {
+                        "service_name": LaunchConfiguration("run_dual_grasp_task_service_name"),
+                        "pose_task_service": LaunchConfiguration("run_dual_arm_pose_task_service_name"),
+                        "receipt_topic": LaunchConfiguration("task_receipt_topic"),
+                        "service_timeout_s": ParameterValue(
+                            LaunchConfiguration("task_service_timeout_s"), value_type=float
+                        ),
+                        "default_fixed_updown": ParameterValue(
+                            LaunchConfiguration("default_fixed_updown"), value_type=float
+                        ),
+                        "default_candidate_limit": ParameterValue(
+                            LaunchConfiguration("default_candidate_limit"), value_type=int
+                        ),
+                        "default_planning_mode": LaunchConfiguration("default_planning_mode"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
                 executable="plan_extract_service_node",
                 name="plan_extract_service",
                 output="screen",
@@ -122,6 +152,12 @@ def generate_launch_description():
                         ),
                         "wait_for_goal_acceptance": ParameterValue(
                             LaunchConfiguration("execute_wait_for_goal_acceptance"), value_type=bool
+                        ),
+                        "wait_for_result": ParameterValue(
+                            LaunchConfiguration("execute_wait_for_result"), value_type=bool
+                        ),
+                        "wait_for_result_timeout_s": ParameterValue(
+                            LaunchConfiguration("execute_wait_for_result_timeout_s"), value_type=float
                         ),
                         "resample_before_forward": ParameterValue(
                             LaunchConfiguration("execute_resample_before_forward"), value_type=bool

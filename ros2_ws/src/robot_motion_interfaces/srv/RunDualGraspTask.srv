@@ -1,0 +1,19 @@
+# Simplified external dual-grasp task entry.
+# The caller only provides two end-effector positions and grasp modes.
+# Detailed IK/extraction/loaded planning fields stay internal to robot_motion_runtime.
+MotionContext context
+string task_id
+string frame_id
+geometry_msgs/Point left_position
+geometry_msgs/Point right_position
+string left_grasp_mode
+string right_grasp_mode
+bool execute
+bool dry_run
+float64 velocity_scale
+float64 acceleration_scale
+---
+bool success
+string task_id
+string state
+string message

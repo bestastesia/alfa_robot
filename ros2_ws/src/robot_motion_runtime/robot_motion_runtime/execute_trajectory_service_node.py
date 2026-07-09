@@ -5,6 +5,7 @@ import threading
 import rclpy
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
@@ -26,6 +27,8 @@ class ExecuteTrajectoryServiceNode(Node):
         self.declare_parameter("forward_action", True)
         self.declare_parameter("wait_for_action_timeout_s", 2.0)
         self.declare_parameter("wait_for_goal_acceptance", False)
+        self.declare_parameter("wait_for_result", False)
+        self.declare_parameter("wait_for_result_timeout_s", 120.0)
         self.declare_parameter("resample_before_forward", True)
         self.declare_parameter("resample_rate_hz", 20.0)
 
@@ -34,11 +37,24 @@ class ExecuteTrajectoryServiceNode(Node):
         self.forward_action = bool(self.get_parameter("forward_action").value)
         self.wait_for_action_timeout_s = float(self.get_parameter("wait_for_action_timeout_s").value)
         self.wait_for_goal_acceptance = bool(self.get_parameter("wait_for_goal_acceptance").value)
+        self.wait_for_result = bool(self.get_parameter("wait_for_result").value)
+        self.wait_for_result_timeout_s = float(self.get_parameter("wait_for_result_timeout_s").value)
         self.resample_before_forward = bool(self.get_parameter("resample_before_forward").value)
         self.resample_rate_hz = float(self.get_parameter("resample_rate_hz").value)
 
-        self.action_client = ActionClient(self, FollowJointTrajectory, self.action_name)
-        self.service = self.create_service(ExecuteTrajectory, self.service_name, self.on_execute)
+        self.callback_group = ReentrantCallbackGroup()
+        self.action_client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            self.action_name,
+            callback_group=self.callback_group,
+        )
+        self.service = self.create_service(
+            ExecuteTrajectory,
+            self.service_name,
+            self.on_execute,
+            callback_group=self.callback_group,
+        )
         self.status = RuntimeStatusPublisher(
             self,
             self.service_name,
@@ -49,6 +65,7 @@ class ExecuteTrajectoryServiceNode(Node):
             f"ExecuteTrajectory service ready: service={self.service_name} "
             f"action={self.action_name} forward={self.forward_action} "
             f"wait_for_goal_acceptance={self.wait_for_goal_acceptance} "
+            f"wait_for_result={self.wait_for_result} "
             f"resample={self.resample_before_forward}@{self.resample_rate_hz:.1f}Hz"
         )
 
@@ -88,7 +105,7 @@ class ExecuteTrajectoryServiceNode(Node):
             else request.trajectory
         )
         future = self.action_client.send_goal_async(goal)
-        if not self.wait_for_goal_acceptance:
+        if not self.wait_for_goal_acceptance and not self.wait_for_result:
             response.accepted = True
             response.message = "action goal sent"
             self.status.mark_done(True, response.message)
@@ -110,7 +127,46 @@ class ExecuteTrajectoryServiceNode(Node):
 
         goal_handle = holder.get("goal_handle")
         response.accepted = bool(goal_handle and goal_handle.accepted)
-        response.message = "action goal accepted" if response.accepted else "action goal rejected"
+        if not response.accepted:
+            response.message = "action goal rejected"
+            self.status.mark_done(False, response.message)
+            return response
+        if not self.wait_for_result:
+            response.message = "action goal accepted"
+            self.status.mark_done(True, response.message)
+            return response
+
+        result_event = threading.Event()
+        result_holder = {}
+
+        def result_callback(done_future):
+            try:
+                result_holder["response"] = done_future.result()
+            except Exception as exc:  # pragma: no cover - defensive runtime path
+                result_holder["error"] = exc
+            result_event.set()
+
+        goal_handle.get_result_async().add_done_callback(result_callback)
+        if not result_event.wait(timeout=self.wait_for_result_timeout_s):
+            response.accepted = False
+            response.message = "timed out waiting for action result"
+            self.status.mark_done(False, response.message)
+            return response
+        if "error" in result_holder:
+            response.accepted = False
+            response.message = f"action result failed: {result_holder['error']}"
+            self.status.mark_done(False, response.message)
+            return response
+
+        result_response = result_holder.get("response")
+        result = getattr(result_response, "result", None)
+        error_code = getattr(result, "error_code", 0)
+        error_string = getattr(result, "error_string", "")
+        response.accepted = int(error_code) == int(FollowJointTrajectory.Result.SUCCESSFUL)
+        response.message = (
+            "action result received: "
+            f"error_code={int(error_code)} error_string='{str(error_string)}'"
+        )
         self.status.mark_done(response.accepted, response.message)
         return response
 
@@ -118,7 +174,7 @@ class ExecuteTrajectoryServiceNode(Node):
 def main() -> None:
     rclpy.init()
     node = ExecuteTrajectoryServiceNode()
-    executor = MultiThreadedExecutor(num_threads=2)
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()

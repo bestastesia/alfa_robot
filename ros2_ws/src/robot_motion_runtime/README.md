@@ -11,6 +11,7 @@
 | `motion_scene_source_node` | `/robot_motion/set_scene`、`/robot_motion/scene` | 生产/仿真统一场景事实源。仿真可先调用 `set_scene` 固定箱墙、集装箱等碰撞对象；Plan 服务会使用该场景做碰撞检查。 |
 | `dual_arm_ik_candidate_service_node` | `/robot_motion/plan_dual_arm_ik` | 调用左右两次 `SolveArmIk`，把目标位姿转成双臂 IK candidate states。 |
 | `box_pair_task_adapter_node` | `/robot_motion/run_box_pair_task` | 把箱号、吸附模式和箱墙几何转成左右目标 Pose 与附着箱，再调用 `/robot_motion/run_dual_arm_pose_task`。 |
+| `dual_grasp_task_adapter_node` | `/robot_motion/run_dual_grasp_task`、`/robot_motion/task_receipt` | 对外任务入口。整机只传左右末端位置和侧吸/顶吸字段；节点发布任务接收、执行中、成功或失败回执。 |
 | `plan_extract_service_node` | `/robot_motion/plan_extract` | 独立 `PlanExtract` 服务。轻量模式是 deterministic shortcut；完整栈可调用 `/robot_motion/check_collision` 过滤候选轨迹。 |
 | `plan_loaded_service_node` | `/robot_motion/plan_loaded` | 独立 `PlanLoaded` 服务。按最近负重姿态族生成 shortcut 轨迹；完整栈可调用碰撞服务过滤候选。 |
 | `execute_trajectory_service_node` | `/robot_motion/execute_trajectory` | 把 service 形式的执行请求转成现有 FollowJointTrajectory action，或 dry-run 验证。 |
@@ -47,14 +48,46 @@ ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
   subscribe_joint_states:=true \
   execute_forward_action:=true \
   execution_action_name:=/alfa_execution/execute_joint_trajectory \
-  execute_wait_for_goal_acceptance:=false \
+  execute_wait_for_goal_acceptance:=true \
+  execute_wait_for_result:=true \
   execute_resample_before_forward:=true \
   execute_resample_rate_hz:=20.0 \
-  task_service_timeout_s:=30.0 \
+  task_service_timeout_s:=60.0 \
   plan_check_collision:=true
 ```
 
-终端 3：发送一次箱号任务。这个请求会走完整链路：
+终端 3：发送一次简化末端任务。这个接口是给整机/上游调度对接用的正式入口；
+核心输入只有左右末端位置和吸附模式。任务状态通过 `/robot_motion/task_receipt` 回执：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source install/setup.bash
+
+ros2 service call /robot_motion/run_dual_grasp_task robot_motion_interfaces/srv/RunDualGraspTask "{
+  task_id: 'manual_dual_grasp_6_8',
+  context: {request_id: 'manual_dual_grasp_6_8', frame_id: 'base_link', scene_id: 'manual_box_stack', state_id: 'live_joint_states'},
+  frame_id: 'base_link',
+  left_position: {x: 0.925, y: 0.400, z: 1.197906},
+  right_position: {x: 0.925, y: -0.400, z: 1.197906},
+  left_grasp_mode: 'front',
+  right_grasp_mode: 'front',
+  execute: true,
+  dry_run: false,
+  velocity_scale: 1.0,
+  acceleration_scale: 1.0
+}"
+```
+
+任务回执监听：
+
+```bash
+ros2 topic echo /robot_motion/task_receipt
+```
+
+回执状态只面向整机控制，核心状态为 `accepted`、`running`、`succeeded`、`failed`、`cancelled`、`stopped`。
+内部 IK/抽离/负重规划调试信息继续留在 `/robot_motion/runtime_status` 和各服务返回值里。
+
+旧箱号任务入口仍保留，便于本地复现实验。这个请求会走完整链路：
 `RunBoxPairTask -> RunDualArmPoseTask -> PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
 
 ```bash

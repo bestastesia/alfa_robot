@@ -28,6 +28,7 @@ setup(
             "motion_scene_source_node = robot_motion_runtime.motion_scene_source_node:main",
             "dual_arm_ik_candidate_service_node = robot_motion_runtime.dual_arm_ik_candidate_service_node:main",
             "box_pair_task_adapter_node = robot_motion_runtime.box_pair_task_adapter_node:main",
+            "dual_grasp_task_adapter_node = robot_motion_runtime.dual_grasp_task_adapter_node:main",
             "plan_extract_service_node = robot_motion_runtime.plan_extract_service_node:main",
             "plan_loaded_service_node = robot_motion_runtime.plan_loaded_service_node:main",
             "execute_trajectory_service_node = robot_motion_runtime.execute_trajectory_service_node:main",
