@@ -1,0 +1,17 @@
+# Single-arm IK contract. Target pose is interpreted in target.header.frame_id.
+# seed_state and fixed_updown make the request deterministic and independent of live robot state.
+MotionContext context
+string side
+geometry_msgs/PoseStamped target
+sensor_msgs/JointState seed_state
+float64 fixed_updown
+bool top_suction
+float64 position_tolerance
+float64 orientation_tolerance
+uint32 max_solutions
+---
+bool success
+string message
+sensor_msgs/JointState[] solutions
+float64[] position_errors
+float64[] orientation_errors

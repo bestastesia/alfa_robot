@@ -45,7 +45,6 @@ def pair_args(args: argparse.Namespace, run_dir: Path, snapshot_path: Path) -> S
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
-        extract_kdl_timeout=args.extract_kdl_timeout,
         output_root=args.output_root,
         save=args.save,
         no_rerun=False,
@@ -190,7 +189,6 @@ def main() -> int:
     parser.add_argument("--pre-lower-left-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-right-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
-    parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)

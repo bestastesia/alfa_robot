@@ -1,0 +1,19 @@
+# Generate combined dual-arm IK candidate states from explicit target poses.
+# This service is the adapter between task/perception targets and PlanExtract.
+MotionContext context
+geometry_msgs/PoseStamped left_target
+geometry_msgs/PoseStamped right_target
+sensor_msgs/JointState seed_state
+float64 fixed_updown
+bool left_top_suction
+bool right_top_suction
+float64 position_tolerance
+float64 orientation_tolerance
+uint32 max_solutions_per_arm
+uint32 max_combined_candidates
+---
+bool success
+string message
+sensor_msgs/JointState[] candidate_states
+uint32 left_solution_count
+uint32 right_solution_count

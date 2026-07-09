@@ -1,0 +1,16 @@
+# Plan from extraction end states to loaded/transport pose family.
+# planning_mode examples: shortcut, rrt, rrtstar.
+MotionContext context
+sensor_msgs/JointState[] extract_goal_states
+AttachedBox[] attached_boxes
+sensor_msgs/JointState[] loaded_goal_family
+string planning_mode
+uint32 candidate_limit
+uint32 parallel_workers
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+---
+bool success
+string message
+MotionPlanCandidate[] candidates
+uint32 selected_index

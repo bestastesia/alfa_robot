@@ -1,0 +1,136 @@
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def generate_launch_description():
+    return LaunchDescription(
+        [
+            DeclareLaunchArgument("dashboard_host", default_value="127.0.0.1"),
+            DeclareLaunchArgument("dashboard_port", default_value="8766"),
+            DeclareLaunchArgument("subscribe_joint_states", default_value="true"),
+            DeclareLaunchArgument("state_publish_period_s", default_value="0.2"),
+            DeclareLaunchArgument("execute_forward_action", default_value="true"),
+            DeclareLaunchArgument("execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
+            DeclareLaunchArgument("solve_arm_ik_service_name", default_value="/robot_motion/solve_arm_ik"),
+            DeclareLaunchArgument("run_dual_arm_pose_task_service_name", default_value="/robot_motion/run_dual_arm_pose_task"),
+            DeclareLaunchArgument("publish_empty_scene_on_start", default_value="true"),
+            DeclareLaunchArgument("plan_check_collision", default_value="false"),
+            DeclareLaunchArgument("collision_service_name", default_value="/robot_motion/check_collision"),
+            Node(
+                package="robot_motion_runtime",
+                executable="motion_state_source_node",
+                name="motion_state_source",
+                output="screen",
+                parameters=[
+                    {
+                        "subscribe_joint_states": ParameterValue(
+                            LaunchConfiguration("subscribe_joint_states"), value_type=bool
+                        ),
+                        "publish_period_s": ParameterValue(
+                            LaunchConfiguration("state_publish_period_s"), value_type=float
+                        ),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="motion_scene_source_node",
+                name="motion_scene_source",
+                output="screen",
+                parameters=[
+                    {
+                        "publish_empty_scene_on_start": ParameterValue(
+                            LaunchConfiguration("publish_empty_scene_on_start"), value_type=bool
+                        ),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="dual_arm_ik_candidate_service_node",
+                name="dual_arm_ik_candidate_service",
+                output="screen",
+                parameters=[
+                    {
+                        "solve_arm_ik_service": LaunchConfiguration("solve_arm_ik_service_name"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="box_pair_task_adapter_node",
+                name="box_pair_task_adapter",
+                output="screen",
+                parameters=[
+                    {
+                        "pose_task_service": LaunchConfiguration("run_dual_arm_pose_task_service_name"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="plan_extract_service_node",
+                name="plan_extract_service",
+                output="screen",
+                parameters=[
+                    {
+                        "check_collision": ParameterValue(
+                            LaunchConfiguration("plan_check_collision"), value_type=bool
+                        ),
+                        "collision_service_name": LaunchConfiguration("collision_service_name"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="plan_loaded_service_node",
+                name="plan_loaded_service",
+                output="screen",
+                parameters=[
+                    {
+                        "check_collision": ParameterValue(
+                            LaunchConfiguration("plan_check_collision"), value_type=bool
+                        ),
+                        "collision_service_name": LaunchConfiguration("collision_service_name"),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="execute_trajectory_service_node",
+                name="execute_trajectory_service",
+                output="screen",
+                parameters=[
+                    {
+                        "action_name": LaunchConfiguration("execution_action_name"),
+                        "forward_action": ParameterValue(
+                            LaunchConfiguration("execute_forward_action"), value_type=bool
+                        ),
+                    }
+                ],
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="motion_task_orchestrator_node",
+                name="motion_task_orchestrator",
+                output="screen",
+            ),
+            Node(
+                package="robot_motion_runtime",
+                executable="motion_runtime_dashboard_node",
+                name="motion_runtime_dashboard",
+                output="screen",
+                parameters=[
+                    {
+                        "host": LaunchConfiguration("dashboard_host"),
+                        "port": ParameterValue(
+                            LaunchConfiguration("dashboard_port"), value_type=int
+                        ),
+                    }
+                ],
+            ),
+        ]
+    )

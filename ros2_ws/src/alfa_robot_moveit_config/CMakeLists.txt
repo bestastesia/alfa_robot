@@ -27,8 +27,8 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(robot_motion_scene_service REQUIRED)
-find_package(kdl_parser REQUIRED)
-find_package(orocos_kdl_vendor REQUIRED)
+find_package(robot_motion_interfaces REQUIRED)
+find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
@@ -39,8 +39,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 )
 ament_export_dependencies(rosidl_default_runtime)
 
-# dual_arm_planner_node: 双末端位姿规划，走 MoveGroupInterface::setPoseTarget
-# 让 bio_ik 通过 setFromIK(poses, tips) 路径统一协调双臂+updown
+# dual_arm_planner_node: 双末端全流程复现；抓取/抽离 IK 走当前三平行结构解析解。
 set(IK_BENCHMARK_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/ik_benchmark)
 
 add_library(alfa_robot_motion_core
@@ -80,8 +79,6 @@ add_library(alfa_robot_motion_scene_adapter
   src/optimized_ik_pipeline.cpp
   src/planning_diagnostics.cpp
   src/trajectory_plan_utils.cpp
-  ${IK_BENCHMARK_ROOT}/src/ik_solver.cpp
-  ${IK_BENCHMARK_ROOT}/src/parallel_updown_aware_ik_solver.cpp
 )
 
 target_compile_features(alfa_robot_motion_scene_adapter PUBLIC cxx_std_17)
@@ -94,20 +91,20 @@ target_include_directories(alfa_robot_motion_scene_adapter PUBLIC
 
 target_link_libraries(alfa_robot_motion_scene_adapter
   alfa_robot_motion_core
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
   robot_motion_scene_service::robot_motion_scene_core
   robot_motion_scene_service::robot_motion_scene_adapter
 )
 
 ament_target_dependencies(alfa_robot_motion_scene_adapter
   ament_index_cpp
+  alfa_robot_analytic_ik
   geometry_msgs
-  kdl_parser
   moveit_core
   moveit_ros_planning
   moveit_ros_planning_interface
   moveit_msgs
   nlohmann_json
-  orocos_kdl_vendor
   pluginlib
   random_numbers
   rclcpp
@@ -162,14 +159,66 @@ ament_target_dependencies(dual_arm_planner_node
   tf2_ros
   tf2_geometry_msgs
   tf2_eigen
-  kdl_parser
-  orocos_kdl_vendor
+  alfa_robot_analytic_ik
+)
+
+add_executable(analytic_arm_ik_service_node
+  src/analytic_arm_ik_service_node.cpp
+)
+
+target_compile_features(analytic_arm_ik_service_node PUBLIC cxx_std_17)
+
+target_include_directories(analytic_arm_ik_service_node PRIVATE
+  include
+)
+
+target_link_libraries(analytic_arm_ik_service_node
+  alfa_robot_motion_core
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+ament_target_dependencies(analytic_arm_ik_service_node
+  rclcpp
+  geometry_msgs
+  sensor_msgs
+  std_msgs
+  robot_motion_interfaces
+  alfa_robot_analytic_ik
+)
+
+add_executable(motion_collision_service_node
+  src/motion_collision_service_node.cpp
+)
+
+target_compile_features(motion_collision_service_node PUBLIC cxx_std_17)
+
+target_include_directories(motion_collision_service_node PRIVATE
+  include
+)
+
+target_link_libraries(motion_collision_service_node
+  alfa_robot_motion_core
+  alfa_robot_motion_scene_adapter
+)
+
+ament_target_dependencies(motion_collision_service_node
+  rclcpp
+  geometry_msgs
+  sensor_msgs
+  std_msgs
+  trajectory_msgs
+  moveit_core
+  moveit_ros_planning
+  moveit_msgs
+  robot_motion_interfaces
 )
 
 install(TARGETS
   alfa_robot_motion_core
   alfa_robot_motion_scene_adapter
   dual_arm_planner_node
+  analytic_arm_ik_service_node
+  motion_collision_service_node
   EXPORT export_alfa_robot_motion_core
   DESTINATION lib/${PROJECT_NAME}
   ARCHIVE DESTINATION lib
@@ -184,15 +233,14 @@ ament_export_targets(export_alfa_robot_motion_core HAS_LIBRARY_TARGET)
 ament_export_include_directories(include)
 ament_export_dependencies(
   Eigen3
+  alfa_robot_analytic_ik
   ament_index_cpp
   geometry_msgs
-  kdl_parser
   moveit_core
   moveit_msgs
   moveit_ros_planning
   moveit_ros_planning_interface
   nlohmann_json
-  orocos_kdl_vendor
   pluginlib
   random_numbers
   rclcpp
@@ -200,6 +248,7 @@ ament_export_dependencies(
   trajectory_msgs
   shape_msgs
   robot_motion_scene_service
+  robot_motion_interfaces
   srdfdom
   urdf
 )
@@ -259,6 +308,11 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_ik_candidate_selector srdfdom urdf)
   add_test(NAME test_ik_candidate_selector COMMAND test_ik_candidate_selector)
 
+  add_executable(test_analytic_moveit_fk test/test_analytic_moveit_fk.cpp)
+  target_link_libraries(test_analytic_moveit_fk alfa_robot_analytic_ik::alfa_robot_analytic_ik)
+  ament_target_dependencies(test_analytic_moveit_fk alfa_robot_analytic_ik moveit_core srdfdom urdf)
+  add_test(NAME test_analytic_moveit_fk COMMAND test_analytic_moveit_fk)
+
   add_executable(test_loaded_pose_selector test/test_loaded_pose_selector.cpp)
   target_link_libraries(test_loaded_pose_selector alfa_robot_motion_scene_adapter)
   ament_target_dependencies(test_loaded_pose_selector srdfdom urdf)
@@ -302,6 +356,7 @@ install(PROGRAMS
   scripts/execute_l6_r8_mock_live.py
   scripts/execute_l6_r8_real_live.py
   scripts/run_extract_live_benchmark.py
+  scripts/robot_motion_state_source.py
   scripts/motion_contracts/check_joint_contract.py
   scripts/motion_contracts/generate_motion_baseline.py
   scripts/visualize_moveit_box_stack_flow.py

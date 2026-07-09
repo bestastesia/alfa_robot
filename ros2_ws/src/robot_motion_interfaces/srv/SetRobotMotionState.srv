@@ -1,0 +1,11 @@
+# Set or override the authoritative robot state used by motion services.
+# Simulation/mock runtime can call this once before starting a task.
+# Real robot runtime should normally publish RobotMotionState from hardware feedback instead.
+MotionContext context
+sensor_msgs/JointState joint_state
+string source
+bool authoritative
+---
+bool success
+string message
+RobotMotionState state

@@ -1,30 +1,3 @@
-torso_group:
-  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 0.05
-left_arm:
-  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 0.05
-right_arm:
-  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 0.05
-left_arm_with_base:
-  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 0.05
-right_arm_with_base:
-  kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 0.05
-dual_arm_with_base:
-  kinematics_solver: bio_ik/BioIKKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 2.0
-  kinematics_solver_attempts: 10
-dual_arm:
-  kinematics_solver: bio_ik/BioIKKinematicsPlugin
-  kinematics_solver_search_resolution: 0.005
-  kinematics_solver_timeout: 2.0
-  kinematics_solver_attempts: 10
+# 当前三平行机械臂全流程 IK 由 `alfa_robot_analytic_ik` 和运控服务显式调用。
+# MoveIt 在本包中只做 joint-space planning / scene checking，不再加载 KDL/BioIK 插件。
+{}

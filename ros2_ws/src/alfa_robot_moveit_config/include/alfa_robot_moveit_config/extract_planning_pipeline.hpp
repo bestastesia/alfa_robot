@@ -1,5 +1,6 @@
 #pragma once
 
+#include "alfa_robot_analytic_ik/analytic_ik.hpp"
 #include "alfa_robot_moveit_config/loaded_pose_planning.hpp"
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 #include "robot_motion_scene_service/motion_core/task_geometry.hpp"
@@ -188,8 +189,6 @@ struct ExtractCandidateSolverConfig
   const moveit::core::JointModelGroup* right_arm_group = nullptr;
   std::string left_tip = "left_tool0";
   std::string right_tip = "right_tool0";
-  bool use_independent_kdl = false;
-  double kdl_timeout = 0.01;
   double position_tolerance = 0.01;
   double orientation_tolerance = 0.05;
   double max_tip_z_drop = 0.002;
@@ -198,10 +197,7 @@ struct ExtractCandidateSolverConfig
   bool top_suction = false;
   double top_suction_orientation_tolerance = 0.12217304763960307;
   double max_joint_delta = 0.0;
-  int independent_kdl_max_iterations = 120;
-  double independent_kdl_eps = 1e-5;
-  int independent_kdl_seed_attempts = 1;
-  double independent_kdl_seed_jitter = 8.0 * 3.14159265358979323846 / 180.0;
+  size_t analytic_root_samples = 360;
 };
 
 struct ExtractCandidateSolveRequest
@@ -220,6 +216,7 @@ struct ExtractCandidateSolveRequest
   double min_allowed_tip_z = 0.0;
   double fixed_updown = 0.0;
   double min_tool_normal_z = std::numeric_limits<double>::quiet_NaN();
+  bool top_suction = false;
 };
 
 class ExtractCandidateSolver
@@ -233,15 +230,12 @@ public:
   bool solve(const ExtractCandidateSolveRequest& request, ExtractCandidate* out) const;
 
 private:
-  struct ArmKdlChain;
-
-  bool initArmKdlChain(const std::string& side, ArmKdlChain* out, std::string* error) const;
-  bool solveIndependentKdl(
+  bool solveAnalytic(
     const std::string& side,
-    const ArmKdlChain& chain,
     const moveit::core::RobotState& current_state,
     const Eigen::Isometry3d& target_world,
     double fixed_updown,
+    bool top_suction,
     moveit::core::RobotState& state) const;
 
   const moveit::core::JointModelGroup* groupForSide(const std::string& side) const;
@@ -252,9 +246,7 @@ private:
     const moveit::core::RobotState& to) const;
 
   ExtractCandidateSolverConfig config_;
-  std::unique_ptr<ArmKdlChain> left_kdl_chain_;
-  std::unique_ptr<ArmKdlChain> right_kdl_chain_;
-  mutable std::mutex moveit_kdl_mutex_;
+  std::unique_ptr<alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk> analytic_solver_;
 };
 
 struct ExtractCandidateScorerConfig
@@ -346,6 +338,8 @@ struct ExtractRolloutPlannerConfig
   bool fail_fast = true;
   bool dual_async = false;
   bool top_suction = false;
+  bool left_top_suction = false;
+  bool right_top_suction = false;
   double top_suction_updown_step = 0.01;
   double top_suction_max_lift = 0.5;
   size_t success_extra_steps = 3;
@@ -393,6 +387,7 @@ private:
   double currentUpdown(const moveit::core::RobotState& state) const;
   const std::string& tipForSide(const std::string& side) const;
   const moveit::core::JointModelGroup* groupForSide(const std::string& side) const;
+  bool topSuctionForSide(const std::string& side) const;
 
   double currentPitchUpRad(const std::string& side, const moveit::core::RobotState& state) const;
 

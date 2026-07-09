@@ -85,72 +85,18 @@ size_t ExtractMotionPlanner::maxStepCount() const
 
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
 
-#include <kdl/chainfksolverpos_recursive.hpp>
-#include <kdl/chainiksolverpos_nr_jl.hpp>
-#include <kdl/chainiksolvervel_pinv.hpp>
-#include <kdl_parser/kdl_parser.hpp>
 #include <moveit/robot_model/joint_model_group.h>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <random>
 #include <sstream>
 
 namespace alfa_robot::motion
 {
 
-struct ExtractCandidateSolver::ArmKdlChain
-{
-  std::string side;
-  std::string base_link;
-  std::string tip_link;
-  KDL::Chain chain;
-  std::vector<std::string> joint_names;
-  KDL::JntArray lower;
-  KDL::JntArray upper;
-  bool valid = false;
-};
-
 namespace
 {
-
-std::string moveit_variable_name_for_kdl_joint(const std::string& name)
-{
-  if (name.rfind("left_joint", 0) == 0) {
-    return "left_v5_joint" + name.substr(std::string("left_joint").size());
-  }
-  if (name.rfind("right_joint", 0) == 0) {
-    return "right_v5_joint" + name.substr(std::string("right_joint").size());
-  }
-  return name;
-}
-
-KDL::Frame eigen_to_kdl_frame(const Eigen::Isometry3d& transform)
-{
-  const Eigen::Matrix3d rotation = transform.linear();
-  return KDL::Frame(
-    KDL::Rotation(
-      rotation(0, 0), rotation(0, 1), rotation(0, 2),
-      rotation(1, 0), rotation(1, 1), rotation(1, 2),
-      rotation(2, 0), rotation(2, 1), rotation(2, 2)),
-    KDL::Vector(
-      transform.translation().x(),
-      transform.translation().y(),
-      transform.translation().z()));
-}
-
-Eigen::Isometry3d kdl_frame_to_eigen(const KDL::Frame& frame)
-{
-  Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
-  for (int row = 0; row < 3; ++row) {
-    for (int col = 0; col < 3; ++col) {
-      transform.linear()(row, col) = frame.M(row, col);
-    }
-  }
-  transform.translation() = Eigen::Vector3d(frame.p.x(), frame.p.y(), frame.p.z());
-  return transform;
-}
 
 double pose_tool_axis_error(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual)
 {
@@ -170,12 +116,8 @@ ExtractCandidateSolver::~ExtractCandidateSolver() = default;
 
 bool ExtractCandidateSolver::initialize(std::string* error)
 {
-  if (!config_.use_independent_kdl) return true;
-
-  left_kdl_chain_ = std::make_unique<ArmKdlChain>();
-  right_kdl_chain_ = std::make_unique<ArmKdlChain>();
-  if (!initArmKdlChain("left", left_kdl_chain_.get(), error)) return false;
-  if (!initArmKdlChain("right", right_kdl_chain_.get(), error)) return false;
+  (void)error;
+  analytic_solver_ = std::make_unique<alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk>();
   return true;
 }
 
@@ -205,146 +147,48 @@ double ExtractCandidateSolver::armJointDelta(
   return std::sqrt(sum);
 }
 
-bool ExtractCandidateSolver::initArmKdlChain(const std::string& side, ArmKdlChain* out, std::string* error) const
-{
-  if (!out || !config_.robot_model) return false;
-  const auto* group = groupForSide(side);
-  if (!group) return false;
-
-  const std::string base_link = side == "left" ? "left_arm_base" : "right_arm_base";
-  const std::string tip_link = tipForSide(side);
-
-  KDL::Tree tree;
-  if (!kdl_parser::treeFromUrdfModel(*config_.robot_model->getURDF(), tree)) {
-    if (error) *error = "Failed to build KDL tree from URDF";
-    return false;
-  }
-
-  KDL::Chain chain;
-  if (!tree.getChain(base_link, tip_link, chain)) {
-    if (error) *error = "Failed to get KDL chain " + base_link + " -> " + tip_link;
-    return false;
-  }
-
-  out->side = side;
-  out->base_link = base_link;
-  out->tip_link = tip_link;
-  out->chain = chain;
-  out->joint_names.clear();
-  out->joint_names.reserve(chain.getNrOfJoints());
-
-  for (unsigned int segment_index = 0; segment_index < chain.getNrOfSegments(); ++segment_index) {
-    const auto& segment = chain.getSegment(segment_index);
-    const auto& joint = segment.getJoint();
-    if (joint.getType() != KDL::Joint::None) {
-      out->joint_names.push_back(moveit_variable_name_for_kdl_joint(joint.getName()));
-    }
-  }
-
-  if (out->joint_names.size() != chain.getNrOfJoints()) {
-    if (error) *error = "KDL chain joint name count mismatch for " + side;
-    return false;
-  }
-
-  out->lower.resize(chain.getNrOfJoints());
-  out->upper.resize(chain.getNrOfJoints());
-  for (unsigned int i = 0; i < chain.getNrOfJoints(); ++i) {
-    const auto& name = out->joint_names[i];
-    const auto& bounds = config_.robot_model->getVariableBounds(name);
-    out->lower(i) = bounds.position_bounded_ ? bounds.min_position_ : -M_PI;
-    out->upper(i) = bounds.position_bounded_ ? bounds.max_position_ : M_PI;
-  }
-
-  out->valid = true;
-  return true;
-}
-
-bool ExtractCandidateSolver::solveIndependentKdl(
+bool ExtractCandidateSolver::solveAnalytic(
   const std::string& side,
-  const ArmKdlChain& chain,
   const moveit::core::RobotState& current_state,
   const Eigen::Isometry3d& target_world,
   double fixed_updown,
+  bool top_suction,
   moveit::core::RobotState& state) const
 {
-  if (!chain.valid || chain.joint_names.empty()) return false;
+  if (!analytic_solver_) return false;
 
   state = current_state;
   state.setVariablePosition("updown", fixed_updown);
   state.update();
 
-  const Eigen::Isometry3d& base_world = state.getGlobalLinkTransform(chain.base_link);
+  const std::string base_link = side == "left" ? "left_arm_base" : "right_arm_base";
+  const Eigen::Isometry3d& base_world = state.getGlobalLinkTransform(base_link);
   const Eigen::Isometry3d target_in_base = base_world.inverse() * target_world;
 
-  KDL::JntArray seed(chain.chain.getNrOfJoints());
-  for (unsigned int i = 0; i < chain.chain.getNrOfJoints(); ++i) {
-    seed(i) = current_state.getVariablePosition(chain.joint_names[i]);
+  std::array<double, 6> seed{};
+  for (size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = current_state.getVariablePosition(side + "joint" + std::to_string(i + 1));
   }
 
-  KDL::ChainFkSolverPos_recursive fk_solver(chain.chain);
-  const int max_iterations = std::max(1, config_.independent_kdl_max_iterations);
-  const double eps = std::max(1e-9, config_.independent_kdl_eps);
-  const KDL::Frame target_frame = eigen_to_kdl_frame(target_in_base);
-
-  KDL::JntArray best_solution(chain.chain.getNrOfJoints());
-  double best_error = std::numeric_limits<double>::infinity();
-  bool found = false;
-
-  const uint32_t seed_base =
-    static_cast<uint32_t>(std::hash<std::string>{}(side) ^
-                          static_cast<size_t>(std::llround(target_world.translation().x() * 1000000.0)) ^
-                          (static_cast<size_t>(std::llround(target_world.translation().y() * 1000000.0)) << 1) ^
-                          (static_cast<size_t>(std::llround(target_world.translation().z() * 1000000.0)) << 2));
-  std::mt19937 rng(seed_base);
-  std::uniform_real_distribution<double> jitter_dist(
-    -std::abs(config_.independent_kdl_seed_jitter),
-    std::abs(config_.independent_kdl_seed_jitter));
-
-  for (int attempt = 0; attempt < std::max(1, config_.independent_kdl_seed_attempts); ++attempt) {
-    KDL::JntArray attempt_seed = seed;
-    if (attempt > 0) {
-      for (unsigned int i = 0; i < chain.chain.getNrOfJoints(); ++i) {
-        double value = seed(i) + jitter_dist(rng);
-        value = std::max(chain.lower(i), std::min(chain.upper(i), value));
-        attempt_seed(i) = value;
-      }
-    }
-
-    KDL::JntArray solution(chain.chain.getNrOfJoints());
-    KDL::ChainIkSolverVel_pinv vel_solver(chain.chain);
-    KDL::ChainIkSolverPos_NR_JL ik_solver(
-      chain.chain, chain.lower, chain.upper, fk_solver, vel_solver, max_iterations, eps);
-
-    const int rc = ik_solver.CartToJnt(attempt_seed, target_frame, solution);
-    if (rc < 0) continue;
-
-    KDL::Frame achieved;
-    if (fk_solver.JntToCart(solution, achieved) < 0) continue;
-    const Eigen::Isometry3d achieved_eigen = kdl_frame_to_eigen(achieved);
-    const double position_error = pose_position_error(target_in_base, achieved_eigen);
-    const double orientation_error = config_.top_suction ?
-      pose_tool_axis_error(target_in_base, achieved_eigen) :
-      pose_orientation_error(target_in_base, achieved_eigen);
-    const double orientation_tolerance = config_.top_suction ?
-      config_.top_suction_orientation_tolerance :
-      config_.orientation_tolerance;
-    const double error = pose_position_error(target_in_base, achieved_eigen) +
-                         orientation_error;
-    if (error < best_error) {
-      best_error = error;
-      best_solution = solution;
-      found = true;
-    }
-    if (position_error <= config_.position_tolerance &&
-        orientation_error <= orientation_tolerance) {
-      break;
-    }
+  alfa_robot::analytic_ik::ArmAnalyticIkRequest request;
+  request.side = side == "left"
+    ? alfa_robot::analytic_ik::ArmSide::Left
+    : alfa_robot::analytic_ik::ArmSide::Right;
+  request.target_in_arm_base = target_in_base;
+  request.seed = seed;
+  request.position_tolerance = std::max(1e-5, config_.position_tolerance);
+  request.orientation_tolerance = std::max(
+    1e-5,
+    top_suction ? config_.top_suction_orientation_tolerance : config_.orientation_tolerance);
+  request.root_samples = config_.analytic_root_samples;
+  const auto solutions = analytic_solver_->solveInArmBase(request);
+  if (solutions.empty()) {
+    return false;
   }
 
-  if (!found) return false;
-
-  for (unsigned int i = 0; i < chain.chain.getNrOfJoints(); ++i) {
-    state.setVariablePosition(chain.joint_names[i], best_solution(i));
+  const auto& best_solution = solutions.front();
+  for (size_t i = 0; i < best_solution.joints.size(); ++i) {
+    state.setVariablePosition(side + "joint" + std::to_string(i + 1), best_solution.joints[i]);
   }
   state.setVariablePosition("updown", fixed_updown);
   state.enforceBounds(config_.joint_group);
@@ -371,20 +215,17 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
 
   const Eigen::Isometry3d target = pose_to_eigen(request.target_pose);
   auto state = std::make_shared<moveit::core::RobotState>(*request.current_state);
-  bool ik_ok = false;
-  const ArmKdlChain* chain = request.side == "left" ? left_kdl_chain_.get() : right_kdl_chain_.get();
-  if (config_.use_independent_kdl && chain && chain->valid) {
-    ik_ok = solveIndependentKdl(request.side, *chain, *request.current_state, target, request.fixed_updown, *state);
-  } else {
-    state->setVariablePosition("updown", request.fixed_updown);
-    state->update();
-    std::lock_guard<std::mutex> lock(moveit_kdl_mutex_);
-    ik_ok = state->setFromIK(arm_group, target, tip, config_.kdl_timeout);
-  }
+  const bool ik_ok = solveAnalytic(
+    request.side,
+    *request.current_state,
+    target,
+    request.fixed_updown,
+    request.top_suction,
+    *state);
   if (!ik_ok) {
     const Eigen::Isometry3d& current_tip = request.current_state->getGlobalLinkTransform(tip);
     std::ostringstream oss;
-    oss << request.side << "_kdl_no_solution"
+    oss << request.side << "_analytic_no_solution"
         << " current=(" << current_tip.translation().x()
         << "," << current_tip.translation().y()
         << "," << current_tip.translation().z() << ")"
@@ -401,15 +242,15 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
 
   const Eigen::Isometry3d& actual = state->getGlobalLinkTransform(tip);
   const double pos_error = pose_position_error(target, actual);
-  const double ori_error = config_.top_suction ?
+  const double ori_error = request.top_suction ?
     pose_tool_axis_error(target, actual) :
     pose_orientation_error(target, actual);
-  const double ori_tolerance = config_.top_suction ?
+  const double ori_tolerance = request.top_suction ?
     config_.top_suction_orientation_tolerance :
     config_.orientation_tolerance;
   if (pos_error > config_.position_tolerance || ori_error > ori_tolerance) {
     std::ostringstream oss;
-    oss << request.side << "_kdl_tip_error pos=" << pos_error << " ori=" << ori_error;
+    oss << request.side << "_analytic_tip_error pos=" << pos_error << " ori=" << ori_error;
     out->rejection_reason = oss.str();
     return false;
   }
@@ -418,7 +259,7 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
   const double min_tool_normal_z = std::isfinite(request.min_tool_normal_z)
     ? request.min_tool_normal_z
     : config_.min_tool_normal_z;
-  if (config_.enforce_tool_normal_not_down && tool_normal.z() < min_tool_normal_z) {
+  if (config_.enforce_tool_normal_not_down && !request.top_suction && tool_normal.z() < min_tool_normal_z) {
     std::ostringstream oss;
     oss << request.side << "_tool_normal_down z=" << tool_normal.z();
     out->rejection_reason = oss.str();
@@ -593,6 +434,12 @@ const moveit::core::JointModelGroup* ExtractRolloutPlanner::groupForSide(const s
   return side == "left" ? config_.left_arm_group : config_.right_arm_group;
 }
 
+bool ExtractRolloutPlanner::topSuctionForSide(const std::string& side) const
+{
+  if (config_.top_suction) return true;
+  return side == "left" ? config_.left_top_suction : config_.right_top_suction;
+}
+
 double ExtractRolloutPlanner::currentPitchUpRad(
   const std::string& side,
   const moveit::core::RobotState& state) const
@@ -637,6 +484,8 @@ bool ExtractRolloutPlanner::solveCandidate(
       pitch_delta_rad,
       min_allowed_tip_z,
       currentUpdown(current_state),
+      std::numeric_limits<double>::quiet_NaN(),
+      topSuctionForSide(side),
     },
     out);
   if (!solved || !out || !out->state) return false;
@@ -697,7 +546,7 @@ std::vector<ExtractCandidate> ExtractRolloutPlanner::makeCandidatesForSide(
   if (!config_.motion_planner) return candidates;
   const double current_pitch = currentPitchUpRad(side, current_state);
 
-  if (config_.top_suction) {
+  if (topSuctionForSide(side)) {
     const double lift_delta = std::max(1e-6, config_.motion_planner->config().step_x);
     const double lift_z = current_lift_z + lift_delta;
     const auto target_pose = link_pose(
@@ -720,7 +569,7 @@ std::vector<ExtractCandidate> ExtractRolloutPlanner::makeCandidatesForSide(
     std::vector<ExtractCandidate> layer_candidates;
     for (const auto& command : layer.commands) {
       Eigen::Quaterniond target_orientation;
-      if (config_.top_suction) {
+      if (topSuctionForSide(side)) {
         target_orientation = Eigen::Quaterniond(current_state.getGlobalLinkTransform(tipForSide(side)).linear());
         target_orientation.normalize();
       } else {

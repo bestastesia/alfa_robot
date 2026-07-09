@@ -1,8 +1,11 @@
 #include "alfa_robot_moveit_config/loaded_pose_planning.hpp"
 
+#include "alfa_robot_moveit_config/extract_monitor_transition_planning.hpp"
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
+
+#include <moveit/robot_state/conversions.h>
 
 #include <algorithm>
 #include <cmath>
@@ -285,6 +288,56 @@ void attach_boxes_to_robot_state(
   state.update(true);
 }
 
+double joint_variable_delta(
+  const moveit::core::RobotState& start_state,
+  const moveit::core::RobotState& goal_state,
+  const std::string& name)
+{
+  const double start = start_state.getVariablePosition(name);
+  const double goal = goal_state.getVariablePosition(name);
+  const auto* variable_joint = start_state.getRobotModel()->getJointOfVariable(name);
+  const auto* revolute_joint =
+    dynamic_cast<const moveit::core::RevoluteJointModel*>(variable_joint);
+  const bool continuous_variable = revolute_joint && revolute_joint->isContinuous();
+  return continuous_variable
+    ? std::atan2(std::sin(goal - start), std::cos(goal - start))
+    : (goal - start);
+}
+
+moveit::planning_interface::MoveGroupInterface::Plan make_interpolated_joint_plan(
+  const moveit::core::RobotState& start_state,
+  const moveit::core::RobotState& goal_state,
+  const std::vector<std::string>& joint_names,
+  double duration_s)
+{
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  auto& trajectory = plan.trajectory_.joint_trajectory;
+  trajectory.joint_names = joint_names;
+  double max_delta = 0.0;
+  for (const auto& name : trajectory.joint_names) {
+    const double delta = joint_variable_delta(start_state, goal_state, name);
+    const double limit = name == "updown" ? 0.01 : (5.0 * M_PI / 180.0);
+    max_delta = std::max(max_delta, std::abs(delta) / limit);
+  }
+
+  const size_t steps = std::max<size_t>(2, static_cast<size_t>(std::ceil(max_delta)) + 1);
+  trajectory.points.reserve(steps);
+  for (size_t step_index = 0; step_index < steps; ++step_index) {
+    const double ratio = steps <= 1 ? 1.0 : static_cast<double>(step_index) / static_cast<double>(steps - 1);
+    trajectory_msgs::msg::JointTrajectoryPoint point;
+    point.time_from_start = rclcpp::Duration::from_seconds(duration_s * ratio);
+    point.positions.reserve(trajectory.joint_names.size());
+    for (const auto& name : trajectory.joint_names) {
+      const double start = start_state.getVariablePosition(name);
+      point.positions.push_back(start + joint_variable_delta(start_state, goal_state, name) * ratio);
+    }
+    trajectory.points.push_back(std::move(point));
+  }
+  moveit::core::robotStateToRobotStateMsg(start_state, plan.start_state_, true);
+  plan.planning_time_ = 0.0;
+  return plan;
+}
+
 }  // namespace
 
 LoadedPosePlanner::LoadedPosePlanner(LoadedPosePlannerConfig config)
@@ -413,7 +466,7 @@ bool LoadedPosePlanner::planLateralShift(
 
     ExtractCandidate candidate;
     if (!config_.lateral_shift_solver->solve(request, &candidate) || !candidate.state) {
-      result->failure_reason = "lateral_shift_kdl_failed_step_" + std::to_string(step_index);
+      result->failure_reason = "lateral_shift_analytic_failed_step_" + std::to_string(step_index);
       if (!candidate.rejection_reason.empty()) {
         result->failure_reason += ": " + candidate.rejection_reason;
       }
@@ -455,7 +508,7 @@ bool LoadedPosePlanner::planLateralShift(
       : true;
     if (!clear) {
       result->failure_reason =
-        "lateral_shift_kdl_collision_step_" + std::to_string(step_index) + ": " + clearance_reason;
+        "lateral_shift_analytic_collision_step_" + std::to_string(step_index) + ": " + clearance_reason;
       return finish_partial(result->lateral_shift_reached_distance > 1e-6);
     }
 
@@ -467,7 +520,7 @@ bool LoadedPosePlanner::planLateralShift(
         {"shift_step", step_index},
         {"shift_step_count", step_count},
         {"shift_distance_y", direction_y * shift},
-        {"shift_method", "kdl_step"},
+        {"shift_method", "analytic_step"},
         {"shift_step_resolution", step},
         {"shift_joint_delta_limit", config_.max_joint_delta},
         {"target_box", center_box->id},
@@ -641,7 +694,11 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   const auto t0 = std::chrono::steady_clock::now();
   moveit::core::MoveItErrorCode plan_result = moveit::core::MoveItErrorCode::FAILURE;
   std::string direct_failure_reason;
-  if (config_.direct_plan_callback) {
+  if (config_.planning_mode == "shortcut") {
+    plan = make_interpolated_joint_plan(
+      loaded_start_state, goal_state, config_.target_joint_names, 1.0);
+    plan_result = moveit::core::MoveItErrorCode::SUCCESS;
+  } else if (config_.direct_plan_callback) {
     const bool direct_ok = config_.direct_plan_callback(
       stage_name, loaded_start_state, goal_state, &plan, &direct_failure_reason);
     plan_result = direct_ok
@@ -677,6 +734,48 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     : true;
   if (!result.carried_clear) {
     result.failure_reason = carried_collision_reason;
+    if (config_.planning_mode == "shortcut" && config_.direct_plan_callback) {
+      const auto repair_start = std::chrono::steady_clock::now();
+      ExtractMonitorTransitionPlanner repair_planner;
+      repair_planner.make_interpolated_plan =
+        [this](const auto& start, const auto& goal, double duration_s) {
+          return make_interpolated_joint_plan(
+            start, goal, config_.target_joint_names, duration_s);
+        };
+      repair_planner.densify_plan = [](const auto& candidate) {
+        return candidate;
+      };
+      repair_planner.validate_plan = [this](const auto& candidate, const auto& start, std::string* reason) {
+        return config_.clearance_callback
+          ? config_.clearance_callback(candidate, start, reason)
+          : true;
+      };
+      repair_planner.direct_plan =
+        [this, &stage_name](const auto& start, const auto& goal, auto* repaired, std::string* reason) {
+          return config_.direct_plan_callback(
+            stage_name + "/shortcut_local_rrt_patch", start, goal, repaired, reason);
+        };
+
+      const auto repaired = repair_planner.plan(loaded_start_state, goal_state);
+      result.plan_ms += std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - repair_start).count();
+      if (repaired.valid) {
+        plan = repaired.plan;
+        result.plan = plan;
+        result.plan_points = plan.trajectory_.joint_trajectory.points.size();
+        result.trajectory_joint_distance = trajectory_joint_distance(
+          plan.trajectory_, config_.target_joint_names);
+        result.carried_clear = true;
+        carried_collision_reason.clear();
+        result.failure_reason.clear();
+      } else {
+        result.failure_reason = "shortcut_local_rrt_failed";
+        if (!repaired.failure_reason.empty()) {
+          result.failure_reason += ": " + repaired.failure_reason;
+        }
+        carried_collision_reason = result.failure_reason;
+      }
+    }
   }
 
   if (config_.record_callback) {
@@ -684,6 +783,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     const auto& right_family = config_.selector->rightPoseFamily();
     nlohmann::json extra = {
       {"stage_kind", "post_extract_loaded_plan"},
+      {"loaded_planning_mode", config_.planning_mode},
       {"valid", result.carried_clear},
       {"lateral_shift_enabled", config_.lateral_shift_enabled},
       {"lateral_shift_attempted", result.lateral_shift_attempted},

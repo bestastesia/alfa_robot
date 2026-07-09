@@ -38,7 +38,7 @@ int main()
 
   const auto top_box = make_attached_box_spec("left", 16, true, CarriedBoxGeometryConfig{});
   assert(top_box.id == "carried_left_box_16");
-  assert(top_box.link_name == "left_v5_tool0");
+  assert(top_box.link_name == "left_tool0");
   assert(top_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_height);
   assert(top_box.center_in_link[2] > 0.0);
 

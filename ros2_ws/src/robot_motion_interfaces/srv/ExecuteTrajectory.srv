@@ -1,0 +1,10 @@
+# Execution-layer contract. The executor validates and forwards trajectory to its backend.
+# Backend may be mock or hardware; callers should not depend on which backend consumes it.
+MotionContext context
+trajectory_msgs/JointTrajectory trajectory
+bool dry_run
+float64 velocity_scale
+float64 acceleration_scale
+---
+bool accepted
+string message

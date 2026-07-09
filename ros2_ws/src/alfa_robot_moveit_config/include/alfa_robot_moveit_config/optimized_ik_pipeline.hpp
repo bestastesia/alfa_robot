@@ -1,5 +1,6 @@
 #pragma once
 
+#include "alfa_robot_analytic_ik/analytic_ik.hpp"
 #include "ik_benchmark/parallel_updown_aware_ik_solver.h"
 
 #include <geometry_msgs/msg/pose.hpp>
@@ -23,6 +24,8 @@ struct OptimizedDualIkSolveRequest
   geometry_msgs::msg::Pose right_pose;
   bool top_suction = false;
   const moveit::core::RobotState* seed_state = nullptr;
+  bool left_top_suction = false;
+  bool right_top_suction = false;
 };
 
 struct OptimizedDualIkSolveResult
@@ -36,10 +39,11 @@ struct OptimizedDualIkSolveResult
 
 struct OptimizedDualIkSolverConfig
 {
-  ik_benchmark::ParallelUpdownAwareIkSolver* solver = nullptr;
+  const ik_benchmark::UpdownAwareIkConfig* ik_config = nullptr;
   const moveit::core::RobotModel* robot_model = nullptr;
   const moveit::core::JointModelGroup* enforce_bounds_group = nullptr;
   double fallback_updown = 0.0;
+  size_t analytic_root_samples = 360;
 };
 
 nlohmann::json ik_candidate_rejection_counts_json(
@@ -72,6 +76,7 @@ private:
   bool isRobotVariable(const std::string& name) const;
 
   OptimizedDualIkSolverConfig config_;
+  alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk analytic_solver_;
 };
 
 struct IkCandidateSelectorConfig

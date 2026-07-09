@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot_motion_runtime</name>
+  <version>0.1.0</version>
+  <description>Runtime service facades, authoritative state source, and dashboard for ALFA robot motion.</description>
+  <maintainer email="motion@example.com">Sevenova Motion Control Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>control_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>robot_motion_interfaces</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>alfa_robot_moveit_config</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

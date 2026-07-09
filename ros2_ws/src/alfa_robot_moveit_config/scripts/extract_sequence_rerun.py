@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import json
 import math
 import os
 import subprocess
@@ -23,7 +25,123 @@ import numpy as np
 
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
-DEFAULT_SEQUENCE = "1,2;6,3;7,8;11,12;16,13;17,18"
+DEFAULT_SEQUENCE = "1,3;1,8;6,3;6,8;6,13;11,8;11,13;11,18;16,13;16,18;16,23;21,18;21,23"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
+
+
+def point_positions_by_name(joint_names: list[str], point: dict[str, Any]) -> dict[str, float]:
+    positions = point.get("positions", [])
+    result: dict[str, float] = {}
+    for index, name in enumerate(joint_names):
+        if index < len(positions):
+            result[name] = float(positions[index])
+    return result
+
+
+def accumulate_joint_distance(
+    previous: dict[str, float] | None,
+    current: dict[str, float],
+) -> tuple[float, float, dict[str, float] | None]:
+    if previous is None:
+        return 0.0, 0.0, current
+    mixed_total = 0.0
+    revolute_total = 0.0
+    for name, value in current.items():
+        if name not in previous:
+            continue
+        delta = abs(value - previous[name])
+        mixed_total += delta
+        if name != "updown":
+            revolute_total += delta
+    return mixed_total, revolute_total, current
+
+
+def stage_kind(stage: dict[str, Any]) -> str:
+    name = str(stage.get("stage", ""))
+    extra = stage.get("extra", {})
+    if isinstance(extra, dict):
+        kind = str(extra.get("stage_kind", ""))
+        if kind:
+            return kind
+    if "pre_attach" in name:
+        return "pre_attach"
+    if "extract" in name:
+        return "extract"
+    if "lateral" in name:
+        return "lateral_shift"
+    if "loaded" in name:
+        return "loaded_plan"
+    return "other"
+
+
+def summarize_snapshot_motion(snapshot: dict[str, Any]) -> dict[str, Any]:
+    totals = {
+        "motion_total_axis_mixed": 0.0,
+        "motion_total_joint_rad": 0.0,
+        "motion_total_joint_deg": 0.0,
+        "motion_pre_attach_joint_rad": 0.0,
+        "motion_extract_joint_rad": 0.0,
+        "motion_lateral_joint_rad": 0.0,
+        "motion_loaded_joint_rad": 0.0,
+        "motion_other_joint_rad": 0.0,
+        "motion_point_count": 0,
+        "motion_stage_count": 0,
+    }
+    previous: dict[str, float] | None = None
+    for stage in snapshot.get("replay_stages", []):
+        if not isinstance(stage, dict):
+            continue
+        trajectory = stage.get("trajectory", {})
+        if not isinstance(trajectory, dict):
+            continue
+        joint_names = [str(name) for name in trajectory.get("joint_names", [])]
+        points = trajectory.get("points", [])
+        if not joint_names or not isinstance(points, list):
+            continue
+        totals["motion_stage_count"] += 1
+        kind = stage_kind(stage)
+        bucket = {
+            "pre_attach": "motion_pre_attach_joint_rad",
+            "extract": "motion_extract_joint_rad",
+            "lateral_shift": "motion_lateral_joint_rad",
+            "post_extract_loaded_plan": "motion_loaded_joint_rad",
+            "loaded_plan": "motion_loaded_joint_rad",
+        }.get(kind, "motion_other_joint_rad")
+        for point in points:
+            if not isinstance(point, dict):
+                continue
+            current = point_positions_by_name(joint_names, point)
+            if not current:
+                continue
+            mixed, revolute, previous = accumulate_joint_distance(previous, current)
+            totals["motion_total_axis_mixed"] += mixed
+            totals["motion_total_joint_rad"] += revolute
+            totals[bucket] += revolute
+            totals["motion_point_count"] += 1
+    totals["motion_total_joint_deg"] = totals["motion_total_joint_rad"] * 180.0 / math.pi
+
+    records = [record for record in snapshot.get("records", []) if isinstance(record, dict)]
+    selected = next((record for record in records if record.get("loaded_plan_selected")), None)
+    if selected is None:
+        selected = next((record for record in records if record.get("success")), None)
+    if selected is None and records:
+        selected = records[0]
+    if selected is not None:
+        totals.update(
+            {
+                "selected_candidate_order": selected.get("candidate_order", ""),
+                "selected_h": selected.get("h", ""),
+                "selected_h_index": selected.get("h_index", ""),
+                "selected_seed_index": selected.get("seed_index", ""),
+                "selected_ik_score": selected.get("ik_score", ""),
+                "selected_loaded_plan_rank": selected.get("loaded_plan_rank", ""),
+                "selected_loaded_plan_trajectory_distance": selected.get("loaded_plan_trajectory_distance", ""),
+                "selected_loaded_pose_distance_sum": selected.get("loaded_pose_distance_sum", ""),
+                "selected_loaded_pose_max_joint_delta": selected.get("loaded_pose_max_joint_delta", ""),
+            }
+        )
+    return totals
 
 
 def parse_pair_sequence(value: str) -> list[tuple[int, int]]:
@@ -65,6 +183,21 @@ def parse_grasp_mode_sequence(value: str, count: int, default_mode: str) -> list
     return normalized
 
 
+def grasp_mode_for_box(box_id: int) -> str:
+    return "front" if int(box_id) in FRONT_SUCTION_BOX_IDS else "top_suction"
+
+
+def pair_vehicle_mode(left_mode: str, right_mode: str) -> str:
+    return "top_suction" if "top_suction" in (left_mode, right_mode) else "front"
+
+
+def parse_arm_grasp_mode_sequence(value: str, pairs: list[tuple[int, int]], side: str) -> list[str]:
+    if not value.strip():
+        index = 0 if side == "left" else 1
+        return [grasp_mode_for_box(pair[index]) for pair in pairs]
+    return parse_grasp_mode_sequence(value, len(pairs), "front")
+
+
 def effective_box_front_x(args: argparse.Namespace, grasp_mode: str) -> float:
     if grasp_mode == "top_suction":
         top_box_front_x = getattr(args, "top_box_front_x", None)
@@ -74,11 +207,20 @@ def effective_box_front_x(args: argparse.Namespace, grasp_mode: str) -> float:
     return float(args.box_front_x)
 
 
-def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_mode: str | None = None) -> SimpleNamespace:
-    mode = grasp_mode or args.grasp_mode
+def make_pair_args(
+    args: argparse.Namespace,
+    left_id: int,
+    right_id: int,
+    grasp_mode: str | None = None,
+    left_grasp_mode: str | None = None,
+    right_grasp_mode: str | None = None,
+) -> SimpleNamespace:
+    left_mode = left_grasp_mode or grasp_mode_for_box(left_id)
+    right_mode = right_grasp_mode or grasp_mode_for_box(right_id)
+    mode = grasp_mode or pair_vehicle_mode(left_mode, right_mode)
     lateral_shift_enabled = args.lateral_shift_enabled
     if args.lateral_shift_enabled_auto:
-        lateral_shift_enabled = mode == "front"
+        lateral_shift_enabled = left_mode == "front" or right_mode == "front"
     loaded_preferred_pose_index = args.loaded_preferred_pose_index
     loaded_left_pose_family_deg = args.loaded_left_pose_family_deg
     loaded_right_pose_family_deg = args.loaded_right_pose_family_deg
@@ -94,6 +236,8 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_
         fixed_updown=args.fixed_updown,
         turn_rad=math.radians(args.turn_deg),
         grasp_mode=mode,
+        left_grasp_mode=left_mode,
+        right_grasp_mode=right_mode,
         front_z_reach_lower=args.front_z_reach_lower,
         front_z_reach_upper=args.front_z_reach_upper,
         top_z_reach_lower=args.top_z_reach_lower,
@@ -104,6 +248,7 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_
         ik_top_orientation_tolerance_deg=args.ik_top_orientation_tolerance_deg,
         ik_h_candidate_count=args.ik_h_candidate_count,
         ik_seed_count=args.ik_seed_count,
+        ik_workers=args.ik_workers,
         ik_candidate_timeout=args.ik_candidate_timeout,
         ik_try_target_orders=args.ik_try_target_orders,
         ik_use_reversed_target_order=args.ik_use_reversed_target_order,
@@ -113,6 +258,12 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_
         extract_workers=args.extract_workers,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
+        extract_rrt=args.extract_rrt,
+        extract_rrt_planning_group=args.extract_rrt_planning_group,
+        extract_rrt_planning_time=args.extract_rrt_planning_time,
+        extract_rrt_planning_attempts=args.extract_rrt_planning_attempts,
+        extract_rrt_endpoint_per_arm_limit=args.extract_rrt_endpoint_per_arm_limit,
+        extract_rrt_goal_limit=args.extract_rrt_goal_limit,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -123,13 +274,15 @@ def make_pair_args(args: argparse.Namespace, left_id: int, right_id: int, grasp_
         pre_lower_left_box_id=args.pre_lower_left_box_id,
         pre_lower_right_box_id=args.pre_lower_right_box_id,
         pre_lower_updown_delta=args.pre_lower_updown_delta,
+        loaded_updown=args.loaded_updown,
+        loaded_planner_id=args.loaded_planner_id,
+        loaded_planning_mode=args.loaded_planning_mode,
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
         loaded_preferred_pose_index=loaded_preferred_pose_index,
         loaded_left_pose_family_deg=loaded_left_pose_family_deg,
         loaded_right_pose_family_deg=loaded_right_pose_family_deg,
-        extract_kdl_timeout=args.extract_kdl_timeout,
         service_timeout=args.service_timeout,
         stride=args.stride,
         continue_on_failure=args.continue_on_failure,
@@ -300,11 +453,14 @@ def log_failure_marker(
     boxes = monitor.all_boxes(box_front_x, args.scene_y_shift)
     target_centers = []
     target_labels = []
-    for side, box_id in (("L", left_id), ("R", right_id)):
+    for side, box_id, side_mode in (
+        ("L", left_id, getattr(args, "left_grasp_mode", getattr(args, "grasp_mode", "front"))),
+        ("R", right_id, getattr(args, "right_grasp_mode", getattr(args, "grasp_mode", "front"))),
+    ):
         if box_id not in boxes:
             continue
         box_x, box_y, box_z = boxes[box_id]
-        if getattr(args, "grasp_mode", "front") == "top_suction":
+        if side_mode == "top_suction":
             target_centers.append([
                 box_x + float(args.top_suction_x_offset),
                 box_y,
@@ -312,7 +468,7 @@ def log_failure_marker(
             ])
         else:
             target_centers.append([box_x, box_y, box_z])
-        target_labels.append(f"{side}{box_id}_{getattr(args, 'grasp_mode', 'front')}_target")
+        target_labels.append(f"{side}{box_id}_{side_mode}_target")
     if target_centers:
         monitor.rr.log(
             "monitor/scene/grasp_targets",
@@ -337,8 +493,8 @@ def log_failure_marker(
 
 def run_one_pair(
     args: argparse.Namespace,
-    helpers: Any,
-    robot: Any,
+    helpers: Any | None,
+    robot: Any | None,
     run_root: Path,
     planner: subprocess.Popen[str],
     launch_log: Path,
@@ -360,6 +516,8 @@ def run_one_pair(
             right_id,
             snapshot_path,
             args.service_timeout,
+            args.left_grasp_mode == "top_suction",
+            args.right_grasp_mode == "top_suction",
         )
         print(config_output)
         print(f"任务配置完成：success={config_ok} configure={config_ms:.1f}ms snapshot={snapshot_path}")
@@ -390,6 +548,8 @@ def run_one_pair(
             "left": left_id,
             "right": right_id,
             "success": success,
+            "loaded_planning_mode": getattr(args, "loaded_planning_mode", "rrt"),
+            "loaded_planner_id": getattr(args, "loaded_planner_id", ""),
             "startup_ms": startup_ms if task_index == 1 else 0.0,
             "configure_ms": config_ms,
             "service_ms": elapsed_ms,
@@ -400,8 +560,10 @@ def run_one_pair(
         sample_count = 0
         if snapshot_path.exists():
             snapshot = monitor.read_snapshot(snapshot_path)
-            sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
-        if not success and sample_count <= 0:
+            summary.update(summarize_snapshot_motion(snapshot))
+            if helpers is not None and robot is not None:
+                sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+        if not success and sample_count <= 0 and helpers is not None and robot is not None:
             sample_count = log_failure_marker(
                 helpers, robot, args, task_index, pair_count, left_id, right_id, sample_start, output
             )
@@ -449,6 +611,9 @@ def main() -> int:
     parser.add_argument("--pair-sequence", default=DEFAULT_SEQUENCE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--save", type=Path, default=None)
+    parser.add_argument("--no-rerun", action="store_true", help="不生成 Rerun，只保存 snapshot/summary/stats CSV")
+    parser.add_argument("--repeat", type=int, default=1, help="重复运行整组 pair sequence 的次数")
+    parser.add_argument("--stats-csv", type=Path, default=None, help="统计 CSV 输出路径；默认写入 run_root/stats.csv")
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--top-approach-forward", type=float, default=0.30, help="顶吸时车向箱墙前进距离；未指定 --top-box-front-x 时，顶吸 box_front_x=box_front_x-该值")
     parser.add_argument("--top-box-front-x", type=float, default=None, help="顶吸专用箱墙前表面 x；优先级高于 --top-approach-forward")
@@ -461,16 +626,19 @@ def main() -> int:
     parser.add_argument("--display-turn-offset-deg", type=float, default=0.0, help="仅用于 Rerun 回放显示外部底盘 yaw 后的 turn 反向补偿")
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
     parser.add_argument("--grasp-mode-sequence", default="", help="每组任务吸附模式，例如 front;front;top_suction。留空则全部使用 --grasp-mode")
+    parser.add_argument("--left-grasp-mode-sequence", default="", help="左臂逐任务吸附模式；留空按箱号自动：1/6 为侧吸，其余顶吸")
+    parser.add_argument("--right-grasp-mode-sequence", default="", help="右臂逐任务吸附模式；留空按箱号自动：3/8 为侧吸，其余顶吸")
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
-    parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
+    parser.add_argument("--top-z-reach-lower", type=float, default=0.0)
     parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
     parser.add_argument("--top-suction-x-offset", type=float, default=0.15, help="顶吸目标相对箱子前表面向箱体内部的 x 偏移")
     parser.add_argument("--top-suction-z-offset", type=float, default=0.2, help="顶吸目标相对箱子中心的 z 偏移")
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
-    parser.add_argument("--ik-h-candidate-count", type=int, default=16)
+    parser.add_argument("--ik-h-candidate-count", type=int, default=64)
     parser.add_argument("--ik-seed-count", type=int, default=32)
+    parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
@@ -478,18 +646,27 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
+    parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
+    parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
+    parser.add_argument("--extract-rrt-endpoint-per-arm-limit", type=int, default=8)
+    parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
+    parser.add_argument("--loaded-planner-id", default="")
+    parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-updown", type=float, default=0.0)
     parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(
         "--loaded-left-pose-family-deg",
-        default="[-0.0,59.04,-135.16,0.0,-76.13,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[33.87,75.82,-135.08,0.0,-59.25,-33.87]",
+        default=DEFAULT_LOADED_POSE_FAMILY_DEG,
     )
     parser.add_argument(
         "--loaded-right-pose-family-deg",
-        default="[0.0,58.88,-134.84,0.0,-75.96,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[-30.93,74.17,-134.92,0.0,-60.74,30.93]",
+        default=DEFAULT_LOADED_POSE_FAMILY_DEG,
     )
     parser.add_argument("--top-loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(
@@ -510,10 +687,10 @@ def main() -> int:
     parser.add_argument("--pre-lower-left-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-right-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
-    parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)
+    parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--continue-on-failure", action="store_true")
     parser.add_argument(
@@ -522,28 +699,41 @@ def main() -> int:
         help="本次 ROS_DOMAIN_ID；auto 隔离自启动序列测试，inherit 表示沿用当前终端。",
     )
     args = parser.parse_args()
+    if args.repeat < 1:
+        raise ValueError("--repeat must be >= 1")
     domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
     print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
     pairs = parse_pair_sequence(args.pair_sequence)
-    grasp_modes = parse_grasp_mode_sequence(args.grasp_mode_sequence, len(pairs), args.grasp_mode)
+    left_grasp_modes = parse_arm_grasp_mode_sequence(args.left_grasp_mode_sequence, pairs, "left")
+    right_grasp_modes = parse_arm_grasp_mode_sequence(args.right_grasp_mode_sequence, pairs, "right")
+    if args.grasp_mode_sequence.strip():
+        vehicle_modes = parse_grasp_mode_sequence(args.grasp_mode_sequence, len(pairs), args.grasp_mode)
+    else:
+        vehicle_modes = [
+            pair_vehicle_mode(left_mode, right_mode)
+            for left_mode, right_mode in zip(left_grasp_modes, right_grasp_modes)
+        ]
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_root = args.output_root / f"sequence_{stamp}"
     run_root.mkdir(parents=True, exist_ok=True)
     save_path = args.save or (run_root / "extract_sequence_full.rrd")
-    save_path.parent.mkdir(parents=True, exist_ok=True)
+    helpers = None
+    robot = None
+    if not args.no_rerun:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    global rr
-    import rerun as rr
+        global rr
+        import rerun as rr
 
-    monitor.rr = rr
-    helpers = monitor.load_rerun_helpers()
-    rr.init("extract_sequence_rerun")
-    rr.save(str(save_path))
-    urdf_text = helpers.render_current_urdf()
-    robot = helpers.UrdfRobot(urdf_text)
-    rr.log("monitor", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
-    helpers.log_robot_static_model(robot, "monitor/robot", log_meshes=True)
+        monitor.rr = rr
+        helpers = monitor.load_rerun_helpers()
+        rr.init("extract_sequence_rerun")
+        rr.save(str(save_path))
+        urdf_text = helpers.render_current_urdf()
+        robot = helpers.UrdfRobot(urdf_text)
+        rr.log("monitor", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
+        helpers.log_robot_static_model(robot, "monitor/robot", log_meshes=True)
 
     if monitor.service_exists("/dual_arm_planner/run_extract_monitor_full_selected"):
         print("检测到旧 /dual_arm_planner 服务，自动清理旧 planner/move_group...")
@@ -576,11 +766,18 @@ def main() -> int:
             cleanup_planner_processes()
         current_mode = None
 
-    def start_planner_for_mode(mode: str, left_id: int, right_id: int, group_index: int) -> tuple[subprocess.Popen[str], monitor.ExtractMonitorServiceClient, float]:
+    def start_planner_for_mode(
+        mode: str,
+        left_mode: str,
+        right_mode: str,
+        left_id: int,
+        right_id: int,
+        group_index: int,
+    ) -> tuple[subprocess.Popen[str], monitor.ExtractMonitorServiceClient, float]:
         nonlocal current_mode
         launch_log = run_root / f"planner_{group_index:02d}_{mode}.log"
         initial_snapshot = run_root / f"initial_stage_snapshot_{group_index:02d}_{mode}.json"
-        initial_args = make_pair_args(args, left_id, right_id, mode)
+        initial_args = make_pair_args(args, left_id, right_id, mode, left_mode, right_mode)
         launch_command = monitor.build_launch_command(initial_args, run_root, initial_snapshot)
         domain_export = f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else ""
         (run_root / f"launch_command_{group_index:02d}_{mode}.sh").write_text(
@@ -600,69 +797,143 @@ def main() -> int:
                 text=True,
                 preexec_fn=os.setsid,
             )
-        monitor.wait_for_service(
-            "/dual_arm_planner/configure_extract_monitor",
-            new_planner,
-            args.service_timeout,
-            launch_log,
-        )
-        new_client = monitor.ExtractMonitorServiceClient(
-            configure_service="/dual_arm_planner/configure_extract_monitor",
-            trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
-            timeout=args.service_timeout,
-        )
-        prewarm_ok, prewarm_output, prewarm_ms = new_client.configure(
-            left_id,
-            right_id,
-            initial_snapshot,
-            args.service_timeout,
-        )
-        print(prewarm_output)
-        if not prewarm_ok:
-            raise RuntimeError(f"planner[{mode}] IK 预热失败：{prewarm_output}")
-        elapsed = (time.monotonic() - start) * 1000.0
-        print(f"planner[{mode}] 启动完成：startup={elapsed:.1f}ms prewarm={prewarm_ms:.1f}ms")
-        current_mode = mode
-        return new_planner, new_client, elapsed
+        try:
+            monitor.wait_for_service(
+                "/dual_arm_planner/configure_extract_monitor",
+                new_planner,
+                args.service_timeout,
+                launch_log,
+            )
+            new_client = monitor.ExtractMonitorServiceClient(
+                configure_service="/dual_arm_planner/configure_extract_monitor",
+                trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
+                timeout=args.service_timeout,
+            )
+            prewarm_ok, prewarm_output, prewarm_ms = new_client.configure(
+                left_id,
+                right_id,
+                initial_snapshot,
+                args.service_timeout,
+                left_mode == "top_suction",
+                right_mode == "top_suction",
+            )
+            print(prewarm_output)
+            if not prewarm_ok:
+                new_client.close()
+                raise RuntimeError(f"planner[{mode}] IK 预热失败：{prewarm_output}")
+            elapsed = (time.monotonic() - start) * 1000.0
+            print(f"planner[{mode}] 启动完成：startup={elapsed:.1f}ms prewarm={prewarm_ms:.1f}ms")
+            current_mode = mode
+            return new_planner, new_client, elapsed
+        except Exception:
+            monitor.terminate_process(new_planner)
+            wait_until_service_gone(10.0)
+            raise
 
     try:
         group_index = 0
-        for index, ((left_id, right_id), mode) in enumerate(zip(pairs, grasp_modes), start=1):
-            pair_args = make_pair_args(args, left_id, right_id, mode)
-            if current_mode != mode:
-                stop_current_planner()
-                group_index += 1
-                planner, service_client, startup_ms = start_planner_for_mode(mode, left_id, right_id, group_index)
-            assert planner is not None
-            assert service_client is not None
-            ok, sample_count, summary = run_one_pair(
-                pair_args,
-                helpers,
-                robot,
-                run_root,
-                planner,
-                run_root / f"planner_{group_index:02d}_{mode}.log",
-                service_client,
-                startup_ms,
-                left_id,
-                right_id,
-                index,
-                len(pairs),
-                sample,
-            )
-            summary["grasp_mode"] = mode
-            summaries.append(summary)
-            sample += max(1, sample_count) + 5
-            startup_ms = 0.0
-            if not ok and not args.continue_on_failure:
+        task_global_index = 0
+        for repeat_index in range(1, args.repeat + 1):
+            print(f"\n######## 重复轮次 {repeat_index}/{args.repeat} ########")
+            for pair_index, ((left_id, right_id), left_mode, right_mode, mode) in enumerate(
+                zip(pairs, left_grasp_modes, right_grasp_modes, vehicle_modes),
+                start=1,
+            ):
+                task_global_index += 1
+                pair_args = make_pair_args(args, left_id, right_id, mode, left_mode, right_mode)
+                if current_mode != mode:
+                    stop_current_planner()
+                    group_index += 1
+                    last_error: Exception | None = None
+                    for attempt in range(args.startup_retries + 1):
+                        try:
+                            if attempt > 0:
+                                print(f"planner[{mode}] 启动重试 {attempt}/{args.startup_retries}")
+                            planner, service_client, startup_ms = start_planner_for_mode(
+                                mode, left_mode, right_mode, left_id, right_id, group_index)
+                            last_error = None
+                            break
+                        except Exception as exc:
+                            last_error = exc
+                            cleanup_planner_processes()
+                    if last_error is not None:
+                        raise last_error
+                assert planner is not None
+                assert service_client is not None
+                ok, sample_count, summary = run_one_pair(
+                    pair_args,
+                    helpers,
+                    robot,
+                    run_root,
+                    planner,
+                    run_root / f"planner_{group_index:02d}_{mode}.log",
+                    service_client,
+                    startup_ms,
+                    left_id,
+                    right_id,
+                    task_global_index,
+                    len(pairs) * args.repeat,
+                    sample,
+                )
+                summary["repeat"] = repeat_index
+                summary["pair_index"] = pair_index
+                summary["grasp_mode"] = mode
+                summary["left_grasp_mode"] = left_mode
+                summary["right_grasp_mode"] = right_mode
+                summaries.append(summary)
+                sample += max(1, sample_count) + 5
+                startup_ms = 0.0
+                if not ok and not args.continue_on_failure:
+                    break
+            if summaries and not summaries[-1].get("success") and not args.continue_on_failure:
                 break
     finally:
         stop_current_planner()
 
     summary_path = run_root / "summary.json"
-    import json
-
     summary_path.write_text(json.dumps(summaries, ensure_ascii=False, indent=2))
+    stats_path = args.stats_csv or (run_root / "stats.csv")
+    if summaries:
+        fieldnames = [
+            "repeat",
+            "pair_index",
+            "left",
+            "right",
+            "success",
+            "loaded_planning_mode",
+            "loaded_planner_id",
+            "startup_ms",
+            "configure_ms",
+            "service_ms",
+            "wall_ms",
+            "total_ms",
+            "ik_ms",
+            "extract_ms",
+            "loaded_ms",
+            "loaded_plan_batch_wall_ms",
+            "loaded_plan_attempted_count",
+            "loaded_plan_success_count",
+            "motion_total_joint_rad",
+            "motion_total_joint_deg",
+            "motion_total_axis_mixed",
+            "motion_pre_attach_joint_rad",
+            "motion_extract_joint_rad",
+            "motion_lateral_joint_rad",
+            "motion_loaded_joint_rad",
+            "selected_loaded_plan_trajectory_distance",
+            "selected_loaded_plan_rank",
+            "selected_h",
+            "selected_h_index",
+            "selected_seed_index",
+            "failure_reason",
+            "snapshot",
+        ]
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        with stats_path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for item in summaries:
+                writer.writerow(item)
     print("\n===== 序列完成 =====")
     for item in summaries:
         status = "成功" if item.get("success") else "失败"
@@ -673,8 +944,10 @@ def main() -> int:
             f"loaded_batch={item.get('loaded_plan_batch_wall_ms', 0.0):.1f}ms "
             f"samples={item.get('samples', 0)}"
         )
-    print(f"Rerun: {save_path}")
+    if not args.no_rerun:
+        print(f"Rerun: {save_path}")
     print(f"Summary: {summary_path}")
+    print(f"Stats CSV: {stats_path}")
     return 0 if all(item.get("success") for item in summaries) else 1
 
 

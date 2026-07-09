@@ -84,6 +84,8 @@ install_manifest.txt
 *.srv
 !ros2_ws/src/alfa_robot_moveit_config/srv/
 !ros2_ws/src/alfa_robot_moveit_config/srv/ConfigureExtractMonitor.srv
+!ros2_ws/src/robot_motion_interfaces/srv/
+!ros2_ws/src/robot_motion_interfaces/srv/*.srv
 *.msg.generated
 
 # Large binary files (models, maps, point clouds, images)
@@ -194,6 +196,7 @@ ros2_ws/src/alfa_robot_moveit_config/scripts/*
 !ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/nine_orient_reachability.py
+!ros2_ws/src/alfa_robot_moveit_config/scripts/robot_motion_state_source.py
 !ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/
 !ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/*.py
 

@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cmath>
 #include <map>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -46,6 +47,238 @@ std::optional<double> candidate_joint_value(
   return std::nullopt;
 }
 
+const std::vector<std::string>& fixed_variable_names()
+{
+  static const std::vector<std::string> names = {
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
+  };
+  return names;
+}
+
+const std::vector<std::string>& fixed_full_variable_names()
+{
+  static const std::vector<std::string> names = {
+    "updown",
+    "leftjoint1", "leftjoint2", "leftjoint3",
+    "leftjoint4", "leftjoint5", "leftjoint6",
+    "rightjoint1", "rightjoint2", "rightjoint3",
+    "rightjoint4", "rightjoint5", "rightjoint6",
+  };
+  return names;
+}
+
+std::string arm_joint_name(const std::string& side, size_t index)
+{
+  return side + "joint" + std::to_string(index + 1);
+}
+
+std::array<double, 6> arm_seed_from_state(
+  const moveit::core::RobotState& state,
+  const std::string& side)
+{
+  std::array<double, 6> seed{};
+  for (size_t i = 0; i < seed.size(); ++i) {
+    seed[i] = state.getVariablePosition(arm_joint_name(side, i));
+  }
+  return seed;
+}
+
+struct AnalyticHeightPlan
+{
+  bool reachable = false;
+  double lower = 0.0;
+  double upper = 0.0;
+  double center = 0.0;
+  std::vector<double> candidates;
+};
+
+std::pair<double, double> target_h_interval(
+  const Eigen::Isometry3d& target,
+  ik_benchmark::UpdownAwareIkRequest::GraspMode grasp_mode,
+  const ik_benchmark::UpdownAwareIkConfig& config)
+{
+  const double lower_reach = grasp_mode == ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+    ? config.top_suction_z_reach_lower
+    : config.gripper_z_reach_lower;
+  const double upper_reach = grasp_mode == ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+    ? config.top_suction_z_reach_upper
+    : config.gripper_z_reach_upper;
+  return {
+    std::max(config.h_lower, target.translation().z() - upper_reach),
+    std::min(config.h_upper, target.translation().z() - lower_reach),
+  };
+}
+
+void push_unique_h(std::vector<double>* values, double value)
+{
+  if (!values) return;
+  for (double existing : *values) {
+    if (std::abs(existing - value) < 1e-9) {
+      return;
+    }
+  }
+  values->push_back(value);
+}
+
+AnalyticHeightPlan plan_height(
+  const ik_benchmark::UpdownAwareIkRequest& request,
+  ik_benchmark::UpdownAwareIkRequest::GraspMode left_grasp_mode,
+  ik_benchmark::UpdownAwareIkRequest::GraspMode right_grasp_mode,
+  const ik_benchmark::UpdownAwareIkConfig& config)
+{
+  const auto left = target_h_interval(request.left_target, left_grasp_mode, config);
+  const auto right = target_h_interval(request.right_target, right_grasp_mode, config);
+  AnalyticHeightPlan plan;
+  plan.lower = std::max(left.first, right.first);
+  plan.upper = std::min(left.second, right.second);
+  plan.reachable = plan.lower <= plan.upper + 1e-9;
+  if (!plan.reachable) {
+    return plan;
+  }
+
+  plan.center = std::clamp(request.current_h, plan.lower, plan.upper);
+  const double lower = std::max(plan.lower, plan.center - std::abs(config.h_search_margin));
+  const double upper = std::min(plan.upper, plan.center + std::abs(config.h_search_margin));
+  const size_t count = std::max<size_t>(1, config.h_candidate_count);
+  push_unique_h(&plan.candidates, plan.center);
+  if (count == 1 || std::abs(upper - lower) < 1e-9) {
+    std::sort(plan.candidates.begin(), plan.candidates.end());
+    return plan;
+  }
+
+  for (size_t i = 0; i < count; ++i) {
+    const double ratio = count == 1 ? 0.0 : static_cast<double>(i) / static_cast<double>(count - 1);
+    push_unique_h(&plan.candidates, lower + (upper - lower) * ratio);
+  }
+  std::sort(
+    plan.candidates.begin(), plan.candidates.end(),
+    [&](double lhs, double rhs) {
+      const double lhs_delta = std::abs(lhs - plan.center);
+      const double rhs_delta = std::abs(rhs - plan.center);
+      if (lhs_delta != rhs_delta) return lhs_delta < rhs_delta;
+      return lhs < rhs;
+    });
+  if (plan.candidates.size() > count) {
+    plan.candidates.resize(count);
+  }
+  return plan;
+}
+
+double loaded_pose_distance(
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const std::string& side,
+  const std::vector<double>& pose)
+{
+  if (pose.size() < 6) return 0.0;
+  double sum = 0.0;
+  for (size_t i = 0; i < 6; ++i) {
+    const auto value = candidate_joint_value(candidate, arm_joint_name(side, i));
+    if (!value) return 0.0;
+    sum += wrapped_angle_delta(*value, pose[i]);
+  }
+  return sum;
+}
+
+double loaded_pose_family_distance(
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const std::string& side,
+  const std::vector<std::vector<double>>& family)
+{
+  if (family.empty()) return 0.0;
+  double best = std::numeric_limits<double>::infinity();
+  for (const auto& pose : family) {
+    best = std::min(best, loaded_pose_distance(candidate, side, pose));
+  }
+  return std::isfinite(best) ? best : 0.0;
+}
+
+double preferred_loaded_pose_distance(
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const std::string& side,
+  const std::vector<std::vector<double>>& family,
+  size_t preferred_index)
+{
+  if (family.empty()) return 0.0;
+  const size_t index = std::min(preferred_index, family.size() - 1);
+  return loaded_pose_distance(candidate, side, family[index]);
+}
+
+double full_joint_delta(
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const std::vector<double>& current_full_joints)
+{
+  if (current_full_joints.size() < candidate.full_joint_values.size()) {
+    return 0.0;
+  }
+  double sum = 0.0;
+  for (size_t i = 0; i < candidate.full_joint_values.size(); ++i) {
+    const double delta = i == 0
+      ? std::abs(candidate.full_joint_values[i] - current_full_joints[i])
+      : wrapped_angle_delta(candidate.full_joint_values[i], current_full_joints[i]);
+    sum += delta * delta;
+  }
+  return std::sqrt(sum);
+}
+
+double score_analytic_candidate(
+  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const ik_benchmark::UpdownAwareIkRequest& request,
+  const ik_benchmark::UpdownAwareIkConfig& config)
+{
+  double score = 0.0;
+  const double updown_delta = std::abs(candidate.h - request.current_h);
+  if (updown_delta <= config.updown_static_epsilon) {
+    score -= config.cost_updown_static_bonus;
+  } else if (updown_delta <= config.updown_small_motion_threshold) {
+    score -= config.cost_updown_within_0p1_bonus;
+  } else {
+    score += config.cost_updown_over_0p1_distance *
+             (updown_delta - config.updown_small_motion_threshold);
+  }
+  score += 0.05 * candidate.joint_delta;
+  score += config.cost_loaded_family_distance * (
+    loaded_pose_family_distance(candidate, "left", config.left_loaded_pose_family) +
+    loaded_pose_family_distance(candidate, "right", config.right_loaded_pose_family));
+  score += config.cost_loaded_preferred_distance * (
+    preferred_loaded_pose_distance(
+      candidate, "left", config.left_loaded_pose_family, config.left_preferred_loaded_pose_index) +
+    preferred_loaded_pose_distance(
+      candidate, "right", config.right_loaded_pose_family, config.right_preferred_loaded_pose_index));
+  return score;
+}
+
+ik_benchmark::UpdownAwareIkCandidate make_rejected_candidate(
+  double h,
+  double h_center,
+  double h_lower,
+  double h_upper,
+  size_t h_index,
+  const std::string& reason)
+{
+  ik_benchmark::UpdownAwareIkCandidate candidate;
+  candidate.h = h;
+  candidate.h_center = h_center;
+  candidate.h_range_lower = h_lower;
+  candidate.h_range_upper = h_upper;
+  candidate.h_index = h_index;
+  candidate.solver_path = "analytic_fixed_h";
+  candidate.target_order = "normal";
+  candidate.rejection_reason = reason;
+  candidate.collision_free = true;
+  return candidate;
+}
+
+Eigen::Isometry3d tip_pose_in_base_link(
+  const moveit::core::RobotState& state,
+  const std::string& tip_link)
+{
+  return state.getGlobalLinkTransform("base_link").inverse() *
+         state.getGlobalLinkTransform(tip_link);
+}
+
 }  // namespace
 
 OptimizedDualIkSolver::OptimizedDualIkSolver(OptimizedDualIkSolverConfig config)
@@ -54,7 +287,7 @@ OptimizedDualIkSolver::OptimizedDualIkSolver(OptimizedDualIkSolverConfig config)
 
 bool OptimizedDualIkSolver::ready() const
 {
-  return config_.solver && config_.robot_model;
+  return config_.ik_config && config_.robot_model;
 }
 
 OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
@@ -71,17 +304,158 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
     return output;
   }
 
+  const auto start = std::chrono::steady_clock::now();
+  const auto& ik_config = *config_.ik_config;
+  const bool left_top_suction = request.top_suction || request.left_top_suction;
+  const bool right_top_suction = request.top_suction || request.right_top_suction;
+  const auto left_grasp_mode = left_top_suction
+    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+  const auto right_grasp_mode = right_top_suction
+    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+
   ik_benchmark::UpdownAwareIkRequest ik_request;
   ik_request.left_target = pose_to_eigen(request.left_pose);
   ik_request.right_target = pose_to_eigen(request.right_pose);
   ik_request.current_h = currentUpdown(*request.seed_state);
-  ik_request.grasp_mode = request.top_suction
+  ik_request.grasp_mode = (left_top_suction && right_top_suction)
     ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
     : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
-  ik_request.current_arm_joints = stateValues(*request.seed_state, config_.solver->fixedVariableNames());
-  ik_request.current_full_joints = stateValues(*request.seed_state, config_.solver->fixedFullVariableNames());
+  ik_request.current_arm_joints = stateValues(*request.seed_state, fixed_variable_names());
+  ik_request.current_full_joints = stateValues(*request.seed_state, fixed_full_variable_names());
 
-  output.ik_result = config_.solver->solve(ik_request);
+  output.ik_result.solver_path = "analytic_fixed_h";
+  const AnalyticHeightPlan height_plan = plan_height(ik_request, left_grasp_mode, right_grasp_mode, ik_config);
+  output.ik_result.range_reachable = height_plan.reachable;
+  output.ik_result.h_interval_lower = height_plan.lower;
+  output.ik_result.h_interval_upper = height_plan.upper;
+  output.ik_result.h_center = height_plan.center;
+  output.ik_result.h_candidates = height_plan.candidates;
+  if (!height_plan.reachable) {
+    output.ik_result.failure_reason = "h_interval_unreachable";
+    output.ik_result.wall_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - start).count();
+  } else {
+    const auto left_seed = arm_seed_from_state(*request.seed_state, "left");
+    const auto right_seed = arm_seed_from_state(*request.seed_state, "right");
+    const double left_position_tolerance = left_top_suction
+      ? ik_config.top_suction_position_tolerance
+      : ik_config.position_tolerance;
+    const double right_position_tolerance = right_top_suction
+      ? ik_config.top_suction_position_tolerance
+      : ik_config.position_tolerance;
+    const double left_orientation_tolerance = left_top_suction
+      ? ik_config.top_suction_orientation_tolerance
+      : ik_config.orientation_tolerance;
+    const double right_orientation_tolerance = right_top_suction
+      ? ik_config.top_suction_orientation_tolerance
+      : ik_config.orientation_tolerance;
+    size_t seed_index = 0;
+    for (size_t h_index = 0; h_index < height_plan.candidates.size(); ++h_index) {
+      const double h = height_plan.candidates[h_index];
+      const auto left_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Left,
+        ik_request.left_target,
+        h,
+        left_seed,
+        std::max(1e-5, left_position_tolerance),
+        std::max(1e-5, left_orientation_tolerance),
+        config_.analytic_root_samples);
+      const auto right_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Right,
+        ik_request.right_target,
+        h,
+        right_seed,
+        std::max(1e-5, right_position_tolerance),
+        std::max(1e-5, right_orientation_tolerance),
+        config_.analytic_root_samples);
+      if (left_solutions.empty() || right_solutions.empty()) {
+        output.ik_result.candidates.push_back(make_rejected_candidate(
+          h, height_plan.center, height_plan.lower, height_plan.upper, h_index,
+          left_solutions.empty() ? "left_analytic_no_solution" : "right_analytic_no_solution"));
+        continue;
+      }
+      for (const auto& left_solution : left_solutions) {
+        for (const auto& right_solution : right_solutions) {
+          ik_benchmark::UpdownAwareIkCandidate candidate;
+          candidate.legal = true;
+          candidate.collision_free = true;
+          candidate.solver_path = "analytic_fixed_h";
+          candidate.target_order = "normal";
+          candidate.h = h;
+          candidate.h_center = height_plan.center;
+          candidate.h_range_lower = height_plan.lower;
+          candidate.h_range_upper = height_plan.upper;
+          candidate.h_index = h_index;
+          candidate.seed_index = seed_index++;
+          candidate.updown_delta = std::abs(h - ik_request.current_h);
+          candidate.joint_names = fixed_variable_names();
+          candidate.joint_values.reserve(candidate.joint_names.size());
+          for (double value : left_solution.joints) candidate.joint_values.push_back(value);
+          for (double value : right_solution.joints) candidate.joint_values.push_back(value);
+          candidate.full_joint_names = fixed_full_variable_names();
+          candidate.full_joint_values.reserve(candidate.full_joint_names.size());
+          candidate.full_joint_values.push_back(h);
+          candidate.full_joint_values.insert(
+            candidate.full_joint_values.end(),
+            candidate.joint_values.begin(),
+            candidate.joint_values.end());
+          const auto candidate_state =
+            robot_state_from_ik_candidate(*request.seed_state, candidate, config_.enforce_bounds_group);
+          const Eigen::Isometry3d left_actual = tip_pose_in_base_link(candidate_state, "left_tool0");
+          const Eigen::Isometry3d right_actual = tip_pose_in_base_link(candidate_state, "right_tool0");
+          const double left_pos_error = pose_position_error(ik_request.left_target, left_actual);
+          const double right_pos_error = pose_position_error(ik_request.right_target, right_actual);
+          const double left_ori_error = pose_orientation_error(ik_request.left_target, left_actual);
+          const double right_ori_error = pose_orientation_error(ik_request.right_target, right_actual);
+          candidate.direct_pos_error = std::max(left_pos_error, right_pos_error);
+          candidate.direct_ori_error = std::max(left_ori_error, right_ori_error);
+          if (left_pos_error > left_position_tolerance) {
+            candidate.legal = false;
+            candidate.rejection_reason = "left_analytic_moveit_fk_position_error";
+          } else if (right_pos_error > right_position_tolerance) {
+            candidate.legal = false;
+            candidate.rejection_reason = "right_analytic_moveit_fk_position_error";
+          } else if (left_ori_error > left_orientation_tolerance) {
+            candidate.legal = false;
+            candidate.rejection_reason = "left_analytic_moveit_fk_orientation_error";
+          } else if (right_ori_error > right_orientation_tolerance) {
+            candidate.legal = false;
+            candidate.rejection_reason = "right_analytic_moveit_fk_orientation_error";
+          }
+          candidate.joint_delta = full_joint_delta(candidate, ik_request.current_full_joints);
+          candidate.score = score_analytic_candidate(candidate, ik_request, ik_config);
+          output.ik_result.candidates.push_back(std::move(candidate));
+        }
+      }
+    }
+
+    output.ik_result.trial_count = output.ik_result.candidates.size();
+    output.ik_result.legal_count = static_cast<size_t>(std::count_if(
+      output.ik_result.candidates.begin(), output.ik_result.candidates.end(),
+      [](const auto& candidate) { return candidate.legal; }));
+    output.ik_result.sum_solve_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - start).count();
+    output.ik_result.wall_ms = output.ik_result.sum_solve_ms;
+    std::sort(
+      output.ik_result.candidates.begin(), output.ik_result.candidates.end(),
+      [](const auto& lhs, const auto& rhs) {
+        if (lhs.legal != rhs.legal) return lhs.legal > rhs.legal;
+        if (lhs.score != rhs.score) return lhs.score < rhs.score;
+        if (lhs.h_index != rhs.h_index) return lhs.h_index < rhs.h_index;
+        return lhs.seed_index < rhs.seed_index;
+      });
+    const auto selected = std::find_if(
+      output.ik_result.candidates.begin(), output.ik_result.candidates.end(),
+      [](const auto& candidate) { return candidate.legal; });
+    if (selected != output.ik_result.candidates.end()) {
+      output.ik_result.success = true;
+      output.ik_result.selected = *selected;
+    } else {
+      output.ik_result.failure_reason = "no_legal_analytic_solution";
+    }
+  }
   if (!output.ik_result.success) {
     const auto rejection_counts = ik_candidate_rejection_counts_json(output.ik_result);
     double best_pos_error = std::numeric_limits<double>::infinity();
@@ -136,10 +510,16 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
   }
   output.goal_state->update();
 
-  const std::string grasp_mode = request.top_suction ? "top_suction" : "front";
+  const std::string left_grasp_mode_text = left_top_suction ? "top_suction" : "front";
+  const std::string right_grasp_mode_text = right_top_suction ? "top_suction" : "front";
+  const std::string grasp_mode = left_grasp_mode_text == right_grasp_mode_text
+    ? left_grasp_mode_text
+    : "mixed";
   output.extra = {
     {"stage_kind", stage_kind},
     {"grasp_mode", grasp_mode},
+    {"left_grasp_mode", left_grasp_mode_text},
+    {"right_grasp_mode", right_grasp_mode_text},
     {"left_target", pose_json(request.left_pose)},
     {"right_target", pose_json(request.right_pose)},
     {"ik", resultJson(output.ik_result, grasp_mode)}
@@ -190,7 +570,7 @@ nlohmann::json OptimizedDualIkSolver::resultJson(
   const std::string&) const
 {
   return {
-    {"strategy", "fixed_discrete_h_multi_seed_cost_scorer"},
+    {"strategy", "analytic_three_parallel_fixed_h_cost_scorer"},
     {"success", result.success},
     {"fallback_used", result.fallback_used},
     {"failure_reason", result.failure_reason},

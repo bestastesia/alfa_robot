@@ -171,6 +171,7 @@ struct LoadedPosePlannerConfig
   int pre_loaded_lower_right_box_id = 0;
   double pre_loaded_lower_updown_delta = 0.0;
   double fixed_updown = 0.3;
+  std::string planning_mode = "rrt";
   double min_tool_normal_z = -1e-4;
   double max_joint_delta = 0.0;
   ExtractCandidateSolver* lateral_shift_solver = nullptr;

@@ -73,9 +73,11 @@ moveit::core::RobotModelPtr ik_candidate_test_model()
   urdf_xml += "</robot>";
 
   auto urdf_model = std::make_shared<urdf::Model>();
-  assert(urdf_model->initString(urdf_xml));
+  const bool urdf_ok = urdf_model->initString(urdf_xml);
+  assert(urdf_ok);
   auto srdf_model = std::make_shared<srdf::Model>();
-  assert(srdf_model->initString(*urdf_model, R"(<robot name="ik_candidate_robot"/>)"));
+  const bool srdf_ok = srdf_model->initString(*urdf_model, R"(<robot name="ik_candidate_robot"/>)");
+  assert(srdf_ok);
   return std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
 }
 

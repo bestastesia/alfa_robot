@@ -1,0 +1,23 @@
+# Thin runtime task contract for service-composed motion execution.
+# The caller supplies already-produced IK candidate states for this first service split.
+# Later task adapters can turn box ids / perception targets into the same candidate list.
+MotionContext context
+sensor_msgs/JointState seed_state
+sensor_msgs/JointState[] ik_candidate_states
+AttachedBox[] attached_boxes
+sensor_msgs/JointState[] loaded_goal_family
+uint32 candidate_limit
+string planning_mode
+bool execute
+bool dry_run
+float64 velocity_scale
+float64 acceleration_scale
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+---
+bool success
+string message
+MotionPlanCandidate selected_extract
+MotionPlanCandidate selected_loaded
+MotionPlanCandidate[] extract_candidates
+MotionPlanCandidate[] loaded_candidates

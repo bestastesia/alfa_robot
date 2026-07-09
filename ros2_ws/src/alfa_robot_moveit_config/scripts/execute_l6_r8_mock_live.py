@@ -404,7 +404,6 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
         loaded_preferred_pose_index=args.loaded_preferred_pose_index,
-        extract_kdl_timeout=args.extract_kdl_timeout,
     )
 
 
@@ -526,7 +525,6 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--pre-lower-left-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-right-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
-    parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)

@@ -1,0 +1,31 @@
+# Service-composed task entry using explicit dual-arm target poses.
+# Runtime flow:
+#   PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory
+MotionContext context
+sensor_msgs/JointState seed_state
+geometry_msgs/PoseStamped left_target
+geometry_msgs/PoseStamped right_target
+AttachedBox[] attached_boxes
+sensor_msgs/JointState[] loaded_goal_family
+float64 fixed_updown
+bool left_top_suction
+bool right_top_suction
+float64 position_tolerance
+float64 orientation_tolerance
+uint32 max_solutions_per_arm
+uint32 candidate_limit
+string planning_mode
+bool execute
+bool dry_run
+float64 velocity_scale
+float64 acceleration_scale
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+---
+bool success
+string message
+sensor_msgs/JointState[] ik_candidate_states
+MotionPlanCandidate selected_extract
+MotionPlanCandidate selected_loaded
+MotionPlanCandidate[] extract_candidates
+MotionPlanCandidate[] loaded_candidates

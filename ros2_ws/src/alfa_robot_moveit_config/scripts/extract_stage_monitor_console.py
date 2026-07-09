@@ -53,6 +53,7 @@ REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
 
 
 def wall_stamp() -> str:
@@ -180,6 +181,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
         f"ik_seed_count:={args.ik_seed_count}",
+        f"ik_workers:={args.ik_workers}",
         f"ik_candidate_timeout:={args.ik_candidate_timeout}",
         f"ik_try_target_orders:={str(args.ik_try_target_orders).lower()}",
         f"ik_use_reversed_target_order:={str(args.ik_use_reversed_target_order).lower()}",
@@ -187,6 +189,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_demo_left_box_id:={args.left_box_id}",
         f"extract_demo_right_box_id:={args.right_box_id}",
         f"extract_monitor_top_suction:={str(args.grasp_mode == 'top_suction').lower()}",
+        f"extract_monitor_left_top_suction:={str(getattr(args, 'left_grasp_mode', args.grasp_mode) == 'top_suction').lower()}",
+        f"extract_monitor_right_top_suction:={str(getattr(args, 'right_grasp_mode', args.grasp_mode) == 'top_suction').lower()}",
         "extract_demo_direct_grasp_start:=true",
         "extract_benchmark_all_legal_ik:=false",
         "extract_benchmark_dual_arm:=true",
@@ -197,6 +201,12 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
+        f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
+        f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
+        f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
+        f"extract_rrt_planning_attempts:={getattr(args, 'extract_rrt_planning_attempts', 1)}",
+        f"extract_rrt_endpoint_per_arm_limit:={getattr(args, 'extract_rrt_endpoint_per_arm_limit', 8)}",
+        f"extract_rrt_goal_limit:={getattr(args, 'extract_rrt_goal_limit', 8)}",
         "extract_benchmark_plan_loaded_after_success:=true",
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
         "extract_loaded_sort_by_pose_distance:=true",
@@ -208,16 +218,16 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_pre_lower_left_box_id:={args.pre_lower_left_box_id}",
         f"extract_loaded_pre_lower_right_box_id:={args.pre_lower_right_box_id}",
         f"extract_loaded_pre_lower_updown_delta:={args.pre_lower_updown_delta}",
-        f"extract_loaded_target_updown:={args.fixed_updown}",
+        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.0)}",
+        f"extract_loaded_planner_id:={getattr(args, 'loaded_planner_id', '')}",
         f"extract_loaded_planning_time:={args.loaded_planning_time}",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
+        f"extract_loaded_planning_mode:={getattr(args, 'loaded_planning_mode', 'rrt')}",
         f"extract_loaded_parallel_workers:={args.loaded_workers}",
         f"loaded_preferred_pose_index:={getattr(args, 'loaded_preferred_pose_index', 0)}",
-        f"loaded_left_pose_family_deg:='{getattr(args, 'loaded_left_pose_family_deg', '[-0.0,59.04,-135.16,0.0,-76.13,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[33.87,75.82,-135.08,0.0,-59.25,-33.87]')}'",
-        f"loaded_right_pose_family_deg:='{getattr(args, 'loaded_right_pose_family_deg', '[0.0,58.88,-134.84,0.0,-75.96,0.0];[0.0,-75.0,135.0,0.0,60.0,0.0];[-30.93,74.17,-134.92,0.0,-60.74,30.93]')}'",
-        "extract_use_independent_kdl:=true",
-        f"extract_kdl_timeout:={args.extract_kdl_timeout}",
+        f"loaded_left_pose_family_deg:='{getattr(args, 'loaded_left_pose_family_deg', DEFAULT_LOADED_POSE_FAMILY_DEG)}'",
+        f"loaded_right_pose_family_deg:='{getattr(args, 'loaded_right_pose_family_deg', DEFAULT_LOADED_POSE_FAMILY_DEG)}'",
         f"planning_attempts:={args.loaded_planning_attempts}",
         "velocity_scale:=1.0",
         "acceleration_scale:=1.0",
@@ -275,6 +285,8 @@ def call_configure_extract_monitor_service(
     right_box_id: int,
     snapshot_path: Path,
     timeout: float,
+    left_top_suction: bool = False,
+    right_top_suction: bool = False,
 ) -> tuple[bool, str, float]:
     start = time.monotonic()
     try:
@@ -285,7 +297,9 @@ def call_configure_extract_monitor_service(
             f"ros2 service call {service_name} "
             "alfa_robot_moveit_config/srv/ConfigureExtractMonitor "
             f"\"{{left_box_id: {left_box_id}, right_box_id: {right_box_id}, "
-            f"snapshot_path: '{snapshot_path}'}}\""
+            f"snapshot_path: '{snapshot_path}', "
+            f"left_top_suction: {str(left_top_suction).lower()}, "
+            f"right_top_suction: {str(right_top_suction).lower()}}}\""
         )
         result = run_text(command, timeout=timeout)
         elapsed = (time.monotonic() - start) * 1000.0
@@ -304,6 +318,8 @@ def call_configure_extract_monitor_service(
         request.left_box_id = int(left_box_id)
         request.right_box_id = int(right_box_id)
         request.snapshot_path = str(snapshot_path)
+        request.left_top_suction = bool(left_top_suction)
+        request.right_top_suction = bool(right_top_suction)
         future = client.call_async(request)
         deadline = time.monotonic() + timeout
         while rclpy.ok() and not future.done() and time.monotonic() < deadline:
@@ -371,12 +387,16 @@ class ExtractMonitorServiceClient:
         right_box_id: int,
         snapshot_path: Path,
         timeout: float,
+        left_top_suction: bool = False,
+        right_top_suction: bool = False,
     ) -> tuple[bool, str, float]:
         start = time.monotonic()
         request = self._configure_type.Request()
         request.left_box_id = int(left_box_id)
         request.right_box_id = int(right_box_id)
         request.snapshot_path = str(snapshot_path)
+        request.left_top_suction = bool(left_top_suction)
+        request.right_top_suction = bool(right_top_suction)
         future = self.configure_client.call_async(request)
         self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
         elapsed = (time.monotonic() - start) * 1000.0
@@ -980,16 +1000,19 @@ def main() -> int:
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
+    parser.add_argument("--left-grasp-mode", choices=["front", "top_suction"], default=None)
+    parser.add_argument("--right-grasp-mode", choices=["front", "top_suction"], default=None)
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
-    parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
+    parser.add_argument("--top-z-reach-lower", type=float, default=0.0)
     parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
     parser.add_argument("--top-suction-x-offset", type=float, default=0.15)
     parser.add_argument("--top-suction-z-offset", type=float, default=0.2)
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
-    parser.add_argument("--ik-h-candidate-count", type=int, default=16)
+    parser.add_argument("--ik-h-candidate-count", type=int, default=64)
     parser.add_argument("--ik-seed-count", type=int, default=32)
+    parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
@@ -997,10 +1020,19 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
+    parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
+    parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
+    parser.add_argument("--extract-rrt-endpoint-per-arm-limit", type=int, default=8)
+    parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
+    parser.add_argument("--loaded-planner-id", default="")
+    parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-updown", type=float, default=0.0)
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
@@ -1008,7 +1040,6 @@ def main() -> int:
     parser.add_argument("--pre-lower-left-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-right-box-id", type=int, default=0)
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
-    parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)
@@ -1045,6 +1076,10 @@ def main() -> int:
         help="full-selected 默认 mesh 动态回放；staged 多候选模式可用 skeleton 避免爆显存",
     )
     args = parser.parse_args()
+    if args.left_grasp_mode is None:
+        args.left_grasp_mode = args.grasp_mode
+    if args.right_grasp_mode is None:
+        args.right_grasp_mode = args.grasp_mode
     args.turn_rad = math.radians(args.turn_deg)
     if args.scene_y_shift is None:
         args.scene_y_shift = 0.0 if args.box_stack_y_shift is None else args.box_stack_y_shift
@@ -1140,6 +1175,8 @@ def main() -> int:
                 args.right_box_id,
                 snapshot_path,
                 args.service_timeout,
+                args.left_grasp_mode == "top_suction",
+                args.right_grasp_mode == "top_suction",
             )
             if launch_log.exists():
                 log_offset = stream_planner_log(launch_log, 0)

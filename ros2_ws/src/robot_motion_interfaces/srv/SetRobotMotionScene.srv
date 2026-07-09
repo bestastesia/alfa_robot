@@ -1,0 +1,11 @@
+# Set or override the authoritative planning scene used by motion services.
+# Use alongside SetRobotMotionState in simulation/mock startup.
+MotionContext context
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+string source
+bool authoritative
+---
+bool success
+string message
+RobotMotionScene scene

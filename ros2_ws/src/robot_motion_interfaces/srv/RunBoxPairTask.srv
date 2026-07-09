@@ -1,0 +1,39 @@
+# Service-composed box-pair task entry.
+# This is the adapter from semantic task input (left/right box id) to target poses.
+# Runtime flow:
+#   RunBoxPairTask -> RunDualArmPoseTask -> PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory
+MotionContext context
+sensor_msgs/JointState seed_state
+int32 left_box_id
+int32 right_box_id
+string left_grasp_mode
+string right_grasp_mode
+float64 box_front_x
+float64 scene_y_shift
+float64 world_to_base_z
+float64 fixed_updown
+float64 top_suction_x_offset
+float64 top_suction_z_offset
+sensor_msgs/JointState[] loaded_goal_family
+float64 position_tolerance
+float64 orientation_tolerance
+uint32 max_solutions_per_arm
+uint32 candidate_limit
+string planning_mode
+bool execute
+bool dry_run
+float64 velocity_scale
+float64 acceleration_scale
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+---
+bool success
+string message
+geometry_msgs/PoseStamped left_target
+geometry_msgs/PoseStamped right_target
+AttachedBox[] attached_boxes
+sensor_msgs/JointState[] ik_candidate_states
+MotionPlanCandidate selected_extract
+MotionPlanCandidate selected_loaded
+MotionPlanCandidate[] extract_candidates
+MotionPlanCandidate[] loaded_candidates

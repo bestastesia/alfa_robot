@@ -17,9 +17,11 @@ moveit::core::RobotModelPtr empty_model()
   const std::string urdf_xml =
     R"(<robot name="empty_robot"><link name="world"/></robot>)";
   auto urdf_model = std::make_shared<urdf::Model>();
-  assert(urdf_model->initString(urdf_xml));
+  const bool urdf_ok = urdf_model->initString(urdf_xml);
+  assert(urdf_ok);
   auto srdf_model = std::make_shared<srdf::Model>();
-  assert(srdf_model->initString(*urdf_model, R"(<robot name="empty_robot"/>)"));
+  const bool srdf_ok = srdf_model->initString(*urdf_model, R"(<robot name="empty_robot"/>)");
+  assert(srdf_ok);
   return std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
 }
 
@@ -38,9 +40,11 @@ moveit::core::RobotModelPtr one_joint_model()
       </joint>
     </robot>)";
   auto urdf_model = std::make_shared<urdf::Model>();
-  assert(urdf_model->initString(urdf_xml));
+  const bool urdf_ok = urdf_model->initString(urdf_xml);
+  assert(urdf_ok);
   auto srdf_model = std::make_shared<srdf::Model>();
-  assert(srdf_model->initString(*urdf_model, R"(<robot name="one_joint_robot"/>)"));
+  const bool srdf_ok = srdf_model->initString(*urdf_model, R"(<robot name="one_joint_robot"/>)");
+  assert(srdf_ok);
   return std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
 }
 
@@ -138,9 +142,9 @@ int main()
   assert(attached_config.at("width") == 0.4);
   assert(attached_config.at("height") == 0.5);
 
-  const auto failures = failure_counts_json({{"left_kdl_no_solution", 2}, {"unknown", 1}});
+  const auto failures = failure_counts_json({{"left_analytic_no_solution", 2}, {"unknown", 1}});
   assert(failures.is_object());
-  assert(failures.at("left_kdl_no_solution") == 2);
+  assert(failures.at("left_analytic_no_solution") == 2);
   assert(failures.at("unknown") == 1);
 
   const auto snapshot = extract_monitor_snapshot_base(
@@ -205,13 +209,13 @@ int main()
       64,
       13,
       16,
-      {{"left_kdl_no_solution", 5}},
+      {{"left_analytic_no_solution", 5}},
       nlohmann::json::array({nlohmann::json{{"candidate_order", 12}}})});
   assert(extract_snapshot_from_request.at("phase") == "extract_successes");
   assert(extract_snapshot_from_request.at("input_candidate_count") == 64);
   assert(extract_snapshot_from_request.at("success_count") == 13);
   assert(extract_snapshot_from_request.at("worker_count") == 16);
-  assert(extract_snapshot_from_request.at("failure_counts").at("left_kdl_no_solution") == 5);
+  assert(extract_snapshot_from_request.at("failure_counts").at("left_analytic_no_solution") == 5);
   assert(extract_snapshot_from_request.at("records").size() == 1);
 
   const auto loaded_snapshot = extract_monitor_loaded_snapshot(

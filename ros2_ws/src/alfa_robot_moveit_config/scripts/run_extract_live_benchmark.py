@@ -121,13 +121,11 @@ def build_launch_args(args: argparse.Namespace, run_dir: Path) -> list[str]:
         "extract_loaded_lateral_shift_enabled:=true",
         f"extract_loaded_lateral_shift_distance:={args.lateral_shift_distance}",
         f"extract_loaded_lateral_shift_step:={args.lateral_shift_step}",
-        f"extract_loaded_target_updown:={args.fixed_updown}",
+        f"extract_loaded_target_updown:={args.loaded_updown}",
         "extract_loaded_planning_time:=1.0",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
         f"extract_loaded_parallel_workers:={args.loaded_workers}",
-        "extract_use_independent_kdl:=true",
-        f"extract_kdl_timeout:={args.extract_kdl_timeout}",
         f"planning_attempts:={args.loaded_planning_attempts}",
         "velocity_scale:=1.0",
         "acceleration_scale:=1.0",
@@ -336,9 +334,9 @@ def main() -> None:
     parser.add_argument("--pair-sequence", default="2,3;7,4;8,9;12,13;17,14;18,19")
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
+    parser.add_argument("--loaded-updown", type=float, default=0.0)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
-    parser.add_argument("--extract-kdl-timeout", type=float, default=0.003)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planning-attempts", type=int, default=1)

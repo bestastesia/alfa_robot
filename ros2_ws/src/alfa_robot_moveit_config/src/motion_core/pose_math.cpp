@@ -93,12 +93,20 @@ std::string format_degrees(
 
 Eigen::Quaterniond forward_x_orientation()
 {
-  return Eigen::Quaterniond(0.70710678, 0.0, 0.70710678, 0.0);
+  Eigen::Quaterniond q =
+    Eigen::Quaterniond(0.70710678, 0.0, 0.70710678, 0.0) *
+    Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ());
+  q.normalize();
+  return q;
 }
 
 Eigen::Quaterniond top_suction_orientation()
 {
-  return Eigen::Quaterniond(0.0, 0.0, 1.0, 0.0);
+  Eigen::Quaterniond q =
+    Eigen::Quaterniond(0.0, 0.0, 1.0, 0.0) *
+    Eigen::AngleAxisd(M_PI, Eigen::Vector3d::UnitZ());
+  q.normalize();
+  return q;
 }
 
 Eigen::Quaterniond pitch_up_orientation(double pitch_up_rad)

@@ -11,7 +11,7 @@
 ```text
 箱子编号 / 视觉目标
   -> 箱垛几何：生成左右末端抓取目标、箱墙开洞、集装箱障碍
-  -> 抓取 IK：按侧吸 / 顶吸高度窗生成 h 候选，运行 fixed h × multi seed × cost scorer
+  -> 抓取 IK：按侧吸 / 顶吸高度窗生成 h 候选，对每个 h 调解析 IK 生成左右臂解组合并按 cost scorer 排序
   -> IK 候选整理：过滤 legal candidate，按 score 排序，相似姿态去重，截断 TopN
   -> 抽离搜索：对候选 IK 做左右臂抽离 rollout，检查末端箱/机器人/集装箱/箱墙碰撞
   -> 负重姿态选择：对抽离成功结果选择最近的负重姿态族
@@ -29,7 +29,7 @@
 | `motion_core/pose_math` | 角度解析、抓取姿态、Pose/Eigen 转换、误差计算、JSON 辅助 | `include/alfa_robot_moveit_config/motion_core/pose_math.hpp` / `src/motion_core/pose_math.cpp` |
 | `robot_motion_scene_service/motion_core/scene_geometry` | 集装箱板、动态箱墙、末端附着箱、AABB 与邻箱脱离判断 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_core/scene_geometry.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_core/scene_geometry.cpp` |
 | `MotionSceneAdapter` | 将场景几何转换为 MoveIt collision/attached objects，并管理 ADD/REMOVE 与当前场景状态；当前是库级 Adapter，不是独立 ROS 节点 | `ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_scene_adapter.hpp` / `ros2_ws/src/robot_motion_scene_service/src/motion_scene_adapter.cpp` |
-| `optimized_ik_pipeline` | 抓取 IK 选优整体算法：`OptimizedDualIkSolver` 负责 fixed h × multi seed × cost scorer 求解，`IkCandidateSelector` 负责 legal candidate 排序、相似姿态去重和 TopN 截断 | `include/alfa_robot_moveit_config/optimized_ik_pipeline.hpp` / `src/optimized_ik_pipeline.cpp` |
+| `optimized_ik_pipeline` | 抓取 IK 选优整体算法：`OptimizedDualIkSolver` 负责 h 高度窗、解析 IK 候选枚举、cost scorer 排序；`IkCandidateSelector` 负责 legal candidate 排序、相似姿态去重和 TopN 截断 | `include/alfa_robot_moveit_config/optimized_ik_pipeline.hpp` / `src/optimized_ik_pipeline.cpp` |
 | `extract_planning_pipeline` | 抽箱子整体算法：抽离动作模板、单步 KDL IK、抽离候选评分、单臂/双臂 rollout、候选调度、CSV/summary 统计都在这里 | `include/alfa_robot_moveit_config/extract_planning_pipeline.hpp` / `src/extract_planning_pipeline.cpp` |
 | `loaded_pose_planning` | 负重姿态阶段整体算法：从抽离末态选择最近负重姿态族，并调用 MoveIt 批量规划到负重 joint state | `include/alfa_robot_moveit_config/loaded_pose_planning.hpp` / `src/loaded_pose_planning.cpp` |
 | `MotionFlowRecorder` | JSONL 文件、stage 序号、轨迹/summary 记录写入 | `include/alfa_robot_moveit_config/motion_flow_recorder.hpp` / `src/motion_flow_recorder.cpp` |
@@ -57,11 +57,12 @@
 
 ### 3.2 抓取 IK
 
-- `OptimizedDualIkSolver::solve()` 是当前自研 BioIK 选优流程的 Adapter。
+- `OptimizedDualIkSolver::solve()` 是当前抓取 IK 的 Adapter。
 - 输入：左右末端 Pose、当前 seed state、抓取模式。
-- 内部：构造 `ik_benchmark::UpdownAwareIkRequest`，调用 `ParallelUpdownAwareIkSolver`。
+- 内部：根据侧吸 / 顶吸高度窗计算 `h_interval`，围绕当前 `updown` 生成 `h_candidates`；对每个 h 分别调用 `alfa_robot_analytic_ik::ThreeParallelArmAnalyticIk` 求左右臂解析解，再组合成双臂候选。
+- 排序：每个候选记录 FK 误差、`updown_delta`、`joint_delta`、负重姿态族距离，并用 cost scorer 排序。
 - 输出：selected joint state、完整 IK 审计 JSON、所有候选统计。
-- 当前 solver 实现来自 `scripts/ik_benchmark`，但 CMake 已把相关实现和头文件纳入 `alfa_robot_motion_scene_adapter`，便于其它包链接复用。
+- 当前保留 `ik_seed_count` 字段主要是兼容旧 JSON / CSV schema；解析 IK 不再依赖随机 seed。`ik_workers` 默认已经降为 1，常规入口不再创建 16 个 IK worker。
 
 ### 3.3 IK 候选去重
 
@@ -83,7 +84,7 @@
 - `ExtractBenchmarkRunner` 取 IK 候选，按配置调度 `ExtractRolloutPlanner`。
 - `ExtractRolloutPlanner` 负责单臂/双臂 rollout 状态机：
   - 每一步由 `ExtractMotionPlanner` 给出后退/上抬/pitch 候选。
-  - `ExtractCandidateSolver` 对候选目标做 KDL 求解。
+  - `ExtractCandidateSolver` 对候选目标做单臂解析 IK 求解，并固定当前 `updown`。
   - `ExtractCandidateScorer` 在合法候选中选择局部最低代价。
   - 通过 callback 调用 `DualArmPlannerNode` 内的碰撞检查，保留现有 MoveIt PlanningScene 语义。
 - 支持异步双臂抽离：左右臂分别求抽离路径，再组合检查全程双臂和环境碰撞。
@@ -93,8 +94,26 @@
 
 - `LoadedPoseSelector` 根据抽离末态，从左右各 3 个负重姿态族中选择最近目标。
 - `LoadedPoseSelector` 同时负责把最近负重姿态距离、L2 距离和最大关节差写回 `ExtractRolloutTiming`，供候选排序、CSV 和 monitor 快照复用。
-- `LoadedPosePlanner` 在保留末端附着箱的情况下调用 MoveIt 规划到负重姿态。
+- `LoadedPosePlanner` 在保留末端附着箱的情况下规划到负重姿态；`extract_loaded_planning_mode=rrt` 时调用 MoveIt/OMPL，`shortcut` 时直接生成关节空间插值并用同源 PlanningScene/FCL 校验全程碰撞。
 - `ExtractBenchmarkRunner` 可对抽离成功候选按负重姿态距离排序，按 `extract_loaded_candidate_limit` 截断，并可 `extract_loaded_stop_on_first_success` 首成功即停。
+
+
+### 3.5.1 负重规划模式对比
+
+2026-07-09 对当前可稳定进入“抽离后规划到全 0 负重姿态”的四组侧吸任务 `L1/R3`、`L1/R8`、`L6/R3`、`L6/R8` 复测了三种负重规划模式。测试条件：Release 构建，`box_front_x=0.925`、`scene_y_shift=-0.4`、`fixed_updown=0.3`、侧吸高度窗 `0.45~1.25`、进入负重规划的候选数 8、负重规划 worker 8。
+
+注意：旧六组任务 `L1/R2; L6/R3; L7/R8; L11/R12; L16/R13; L17/R18` 在当前机械/任务脚本口径下第一组 `L1/R2` 已失败在最终选择阶段，没有进入负重规划，因此不能用来公平比较 RRT/RRT*/shortcut。
+
+| 模式 | 成功率 | 平均总耗时 | 平均负重规划 batch | 平均累计关节运动量 | 结论 |
+| --- | --- | ---: | ---: | ---: | --- |
+| RRTConnect | 4/4 | 1631.6ms | 1233.5ms | 27.86rad | 稳定但负重阶段约 1.2s |
+| RRT* | 4/4 | 1633.8ms | 1235.7ms | 24.73rad | 这组任务没有明显快于 RRTConnect |
+| Shortcut | 4/4 | 586.1ms | 208.0ms | 23.74rad | 当前四组最优，前提是关节空间直连经碰撞校验可行 |
+
+复测数据：`data/ik_benchmark/loaded_planning_mode_compare_front4_release_current/summary_compare.csv`。
+Shortcut 回放：`data/ik_benchmark/loaded_planning_mode_compare_front4/shortcut_rerun/shortcut_front4_full.rrd`。
+
+工程含义：负重阶段如果不需要绕障，优先使用 `extract_loaded_planning_mode:=shortcut`；若 shortcut 被 PlanningScene/FCL 判碰撞失败，再 fallback 到 `rrt`，不要默认让 RRT 承担直连可行的场景。
 
 ### 3.6 记录与回放
 
@@ -178,7 +197,7 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 
 ### 3.10 全流程服务复用与预热边界
 
-当前全流程实验不要按“每组箱子启动一次 planner”的方式跑。那样会把 MoveIt、PlanningScene、controller、以及 16 个 BioIK solver 的首次初始化都算进单次任务，导致 IK 阶段表面上从约 `0.5~0.8s` 膨胀到约 `4s`。正确口径是：
+当前全流程实验不要按“每组箱子启动一次 planner”的方式跑。那样会把 MoveIt、PlanningScene、controller 和解析 IK / PlanningScene 首次初始化都算进单次任务，导致阶段耗时口径失真。正确口径是：
 
 ```text
 启动期：
@@ -200,7 +219,7 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 
 - `dual_arm_planner_node`：保留 MoveIt 后端、场景状态、monitor 状态机入口、IK solver 缓存。
 - `move_group`、`robot_state_publisher`、`ros2_control_node`、controller spawner：由 `dual_arm_planner.launch.py` 管理，整段序列只启动一次。
-- `ParallelUpdownAwareIkSolver` 内部的 BioIK solver 池：通过 `configure_extract_monitor` 触发 `ensure_optimized_ik_solver()` 预热，后续任务复用。
+- `OptimizedDualIkSolver` / 解析 IK / PlanningScene 缓存：通过 `configure_extract_monitor` 触发初始化，后续任务复用。
 
 每个任务允许重置的部分：
 
@@ -228,7 +247,7 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 
 - `startup_ms`：启动 ROS/MoveIt/controller，加上首次 configure/prewarm；这是整段序列启动成本，不是单任务算法耗时。
 - `configure_ms`：单任务切换成本；C++ 内部通常应为几十毫秒以内。长序列入口应复用 `ExtractMonitorServiceClient`，不要每个任务重新创建 rclpy node，否则 Python/DDS 客户端开销会把外部墙钟放大到数百毫秒。
-- `ik_elapsed_ms`：预热后的真实抓取 IK 阶段耗时；512 次 fixed h × multi seed 当前通常约 `0.5~0.8s`。
+- `ik_elapsed_ms`：预热后的真实抓取 IK 阶段耗时；当前解析 IK + 64 个 h 候选通常约 `55~60ms`，不再是原 BioIK 时代的 `0.5~0.8s`。
 - `loaded_elapsed_ms` / `loaded_ms`：负重阶段总耗时，包含候选排序、批量规划、records/snapshot 生成等阶段包装成本。
 - `loaded_plan_batch_wall_ms`：负重候选并行规划批次本身的墙钟耗时，更适合用来判断 RRT/MoveIt 规划是否拖慢流程；这个仍受 RRT 随机性影响，是当前秒级波动的主要来源。
 
@@ -238,6 +257,135 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 - 不要为了换箱号重启 `dual_arm_planner_node`；除非任务目标就是测试启动稳定性。
 - 如果跳过 `configure_extract_monitor` 直接调 `run_extract_monitor_full_selected`，首次调用仍可能触发懒初始化，耗时统计会再次混入启动成本。
 - `extract_startup_stability_smoke.py` 是例外：它刻意重启 planner，用于验证进程清理和启动稳定性；它已经把预热时间归到 startup。
+
+
+### 3.11 当前接口 seam、事实源与运行时服务图
+
+当前代码已经形成几个有用的 Module，并开始拆出独立 ROS 运行时服务。按 interface 看，现状如下：
+
+| 阶段 | 当前 Module / seam | 输入 | 输出 | 当前问题 |
+| --- | --- | --- | --- | --- |
+| 抓取 IK | `OptimizedDualIkSolver` / `analytic_arm_ik_service_node` | 左右末端 Pose、seed `RobotState`、抓取模式、高度窗参数；或单臂 Pose + seed + fixed updown | `UpdownAwareIkResult`、selected `RobotState`、候选审计 JSON；或 `SolveArmIk` 多解列表 | 主流程仍走算法 Module；单臂解析 IK 已有独立 ROS service 包装 |
+| IK 去重/截断 | `IkCandidateSelector` | 已排序 legal candidates、去重阈值、TopN | 去重后的候选列表和统计 | 复杂度 `O(N×U×12)`，当前规模不是瓶颈 |
+| 抽离 | `ExtractRolloutPlanner` / `ExtractBenchmarkRunner` | IK candidate state、左右 carried box、箱墙几何、碰撞 callback | 每个候选的抽离结果、失败原因、replay records | 算法 Module 已拆出；碰撞 callback 仍由 `DualArmPlannerNode` 提供 |
+| 负重规划 | `LoadedPosePlanner` | 抽离末态、负重姿态族、carried boxes、PlanningScene callback | 负重轨迹、选择的负重姿态、失败原因 | 支持 `rrt` 和 `shortcut`；MoveIt 后端仍在节点内 |
+| 场景建模 | `robot_motion_scene_service::MotionSceneAdapter` | 集装箱参数、箱墙开洞、附着箱规格 | MoveIt collision objects / PlanningScene snapshot 更新 | 当前是库级 Adapter，不是独立 ROS 节点 |
+| 碰撞检查 | `make_full_scene_snapshot()` + `planned_trajectory_clear_in_full_scene()` / `motion_collision_service_node` | 任意 `RobotState`、轨迹、scene objects、attached boxes | FCL 碰撞通过/失败原因/contacts | 算法内部和独立 ROS service 都支持 explicit requested state，不只检查当前 `/joint_states` |
+| 状态事实源 | `robot_motion_runtime/motion_state_source_node.py` + 显式 `RobotState` 参数 | 实际或仿真 joint state；或 `/robot_motion/set_state` | `/robot_motion/state`、规划起点 / 碰撞检查状态 | 已有独立 authoritative publisher；生产系统仍需保证只有一个 authoritative publisher |
+
+关键原则：碰撞检查不能只依赖当前机器人状态。当前实现通过 `make_full_scene_snapshot(start_state, attached_boxes)` 克隆 PlanningScene，再显式 `setCurrentState(start_state)`，因此可以检查任意请求态和任意轨迹点。这是后续迁移到独立 collision service 时必须保留的 interface。
+
+当前已新增轻量接口包 `robot_motion_interfaces` 和运行时包 `robot_motion_runtime`。`DualArmPlannerNode` 仍是完整箱垛实验的主流程 Adapter，但事实源、PlanExtract、PlanLoaded、ExecuteTrajectory 和最小任务编排已具备独立 ROS 节点形态：
+
+- `robot_motion_interfaces/srv/SolveArmIk.srv`：单臂目标 Pose + seed state + fixed updown -> 多个单臂 IK 解；当前 `alfa_robot_moveit_config/analytic_arm_ik_service_node` 已实现该服务，默认服务名 `/robot_motion/solve_arm_ik`，支持 `base_link` 和 `{left,right}_arm_base` frame。
+- `robot_motion_interfaces/srv/PlanDualArmIk.srv`：左右目标 Pose + seed state + fixed updown -> 双臂组合 IK candidate states；当前 `robot_motion_runtime/dual_arm_ik_candidate_service_node.py` 已实现该服务，默认服务名 `/robot_motion/plan_dual_arm_ik`。
+- `robot_motion_interfaces/srv/PlanExtract.srv`：IK candidate states + carried boxes -> 抽离候选轨迹与选中项。
+- `robot_motion_interfaces/srv/PlanLoaded.srv`：抽离末态集合 + 负重姿态族 + carried boxes + planning mode -> 负重规划候选轨迹与选中项。
+- `robot_motion_interfaces/srv/CheckCollision.srv`：显式 `start_state` 或 `trajectory` + scene objects + attached boxes -> valid/reason/contacts；当前 `alfa_robot_moveit_config/motion_collision_service_node` 已实现该服务，默认服务名 `/robot_motion/check_collision`。该服务禁止静默替换成 live `/joint_states`。
+- `robot_motion_interfaces/srv/ExecuteTrajectory.srv`：轨迹 + 速度参数 -> accepted/message；执行层只负责验证和转发，不关心后端是 mock 还是真机。
+- `robot_motion_interfaces/srv/SetRobotMotionState.srv`：仿真/mock 启动时显式固定 `/robot_motion/state`；真实机器人通常由硬件反馈持续发布。
+- `robot_motion_interfaces/srv/SetRobotMotionScene.srv`：仿真/mock 启动时显式固定 `/robot_motion/scene`；真实系统可由感知/世界模型持续发布。
+- `robot_motion_interfaces/srv/RunMotionTask.srv`：最小任务编排契约；当前输入为 IK candidate states，服务内部串起 `PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
+- `robot_motion_interfaces/srv/RunDualArmPoseTask.srv`：目标位姿任务编排契约；服务内部串起 `PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`，用于把“下一次信息启动任务”从 IK candidate 输入推进到目标 pose 输入。
+- `robot_motion_interfaces/srv/RunBoxPairTask.srv`：箱号任务 adapter 契约；输入左右箱号、吸附模式和箱墙几何，服务内部生成左右目标 Pose 与附着箱，再转发 `RunDualArmPoseTask`。
+- `robot_motion_interfaces/msg/RobotMotionState.msg`：机器人姿态事实源样本；`robot_motion_runtime/motion_state_source_node.py` 可把指定 `/joint_states` 包装成 `/robot_motion/state`，也可通过 `/robot_motion/set_state` 固定仿真事实状态。生产运行时应只有一个节点发布 `authoritative=true`。
+- `robot_motion_interfaces/msg/RobotMotionScene.msg`：场景事实源样本；`robot_motion_runtime/motion_scene_source_node.py` 可通过 `/robot_motion/set_scene` 固定箱墙、集装箱等碰撞对象；`PlanExtract/PlanLoaded` 会把请求内显式 scene 或最新 `/robot_motion/scene` 传给 `CheckCollision`。
+
+这些 interface 当前是契约和第一版可运行服务骨架，不强制改变已有实验入口。它们的作用是防止迁移到 `robot_motion_control` 时继续把 IK、抽离、规划、碰撞和执行都塞在一个 demo 节点里。
+
+运行时服务栈启动示例：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_motion_runtime runtime_services.launch.py \
+  subscribe_joint_states:=false \
+  execute_forward_action:=false
+```
+
+如果要让前端看到更完整的服务图，包括解析 IK 和碰撞服务，用完整栈：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
+  subscribe_joint_states:=false \
+  execute_forward_action:=false
+```
+
+运行时前端：
+
+```bash
+xdg-open http://127.0.0.1:8766
+```
+
+当前 `robot_motion_runtime` 包含：
+
+- `motion_state_source_node`：发布 `/robot_motion/state`，提供 `/robot_motion/set_state`。
+- `motion_scene_source_node`：发布 `/robot_motion/scene`，提供 `/robot_motion/set_scene`。
+- `dual_arm_ik_candidate_service_node`：提供 `/robot_motion/plan_dual_arm_ik`，调用左右两次 `SolveArmIk` 并组合候选。
+- `box_pair_task_adapter_node`：提供 `/robot_motion/run_box_pair_task`，把 5×5 箱垛箱号、侧吸/顶吸模式和箱墙参数转换为左右目标 Pose 与 carried box，再调用 `/robot_motion/run_dual_arm_pose_task`。
+- `plan_extract_service_node`：提供 `/robot_motion/plan_extract`。轻量模式是 deterministic shortcut；完整栈下会调用 `/robot_motion/check_collision` 并使用请求 scene 或 `/robot_motion/scene` 过滤候选轨迹。后续要把 C++ 抽离 rollout 迁入。
+- `plan_loaded_service_node`：提供 `/robot_motion/plan_loaded`。当前生成关节空间 shortcut；完整栈下会调用碰撞服务并使用请求 scene 或 `/robot_motion/scene` 过滤候选。后续要把 RRT/local-RRT 迁入。
+- `execute_trajectory_service_node`：提供 `/robot_motion/execute_trajectory`，可 dry-run 或转发到 FollowJointTrajectory action。
+- `motion_task_orchestrator_node`：提供 `/robot_motion/run_task` 和 `/robot_motion/run_dual_arm_pose_task`；前者接收 IK candidates，后者接收左右目标 Pose 并串起 `PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
+- `motion_runtime_dashboard_node`：提供 `http://127.0.0.1:8766`，显示服务是否启动、runtime status、最新 `RobotMotionState` 和 ROS graph。
+- `runtime_full_stack.launch.py`：组合启动 `robot_motion_runtime`、`analytic_arm_ik_service_node` 和 `motion_collision_service_node`，用于验证完整服务图。
+- `analytic_arm_ik_service_node`、`motion_collision_service_node` 已接入 `/robot_motion/runtime_status`，所以前端不只知道服务是否存在，也能看到请求次数、成功/失败次数和最近一次详情。
+
+2026-07-09 场景事实源 smoke 已通过：在隔离 `ROS_DOMAIN_ID=228` 下启动 `runtime_full_stack.launch.py`，先调用 `/robot_motion/set_state` 固定 h=0.55 的 15 轴仿真状态，再调用 `/robot_motion/set_scene` 固定 1 个显式 collision object，最后调用 `/robot_motion/run_box_pair_task` 跑 L1/R3 侧吸 dry-run。返回 `ik=4`、`extract=4`、`loaded=4`，dashboard `/api/status` 能看到 `latest_scene.scene_object_count=1`，并且 `set_state`、`set_scene`、`run_box_pair_task`、`run_dual_arm_pose_task`、`plan_dual_arm_ik`、`solve_arm_ik`、`plan_extract`、`plan_loaded`、`check_collision`、`execute_trajectory` 均有 request_count。
+
+解析 IK 服务启动示例：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch alfa_robot_moveit_config analytic_arm_ik_service.launch.py
+```
+
+碰撞服务启动示例：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch alfa_robot_moveit_config motion_collision_service.launch.py
+```
+
+旧 `alfa_robot_moveit_config/robot_motion_state_source.launch.py` 仍可用于历史验证；新运行时应优先使用 `robot_motion_runtime`：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 launch robot_motion_runtime runtime_services.launch.py \
+  subscribe_joint_states:=true
+```
+
+事实源约束：
+
+- 正常运行时只允许一个 `/robot_motion/state` publisher 设置 `authoritative=true`。
+- `RobotMotionState.context.state_id` 由来源和时间戳组成，用于把规划请求、碰撞请求和执行请求关联到同一个状态样本。
+- 规划/碰撞服务如果请求里已经显式传入 `JointState`，应优先使用请求状态，而不是再读取 live `/joint_states`。
+
+碰撞服务调用原则：
+
+- `start_state` 必须显式传入，服务不会用 live `/joint_states` 自动替代。
+- 如果 `trajectory.points` 为空，只检查 `start_state`。
+- 如果 `trajectory.points` 非空，则从 `start_state` 逐点覆盖 trajectory joint positions 并检查每个轨迹点。
+- `attached_boxes` 会转换成 MoveIt `AttachedCollisionObject` 后参与 FCL 检查；也可以直接传 `attached_collision_objects`。
+- `use_current_scene_as_base=false` 时，服务只使用请求里的 `scene_objects` / attached objects 构建临时场景；`true` 时才克隆当前 PlanningScene 作为底图。
+
+如果终端处于 Conda 环境，构建自定义 ROS interface 时必须显式使用系统 Python，否则会生成 `cpython-311` 的 typesupport，Humble 的 `ros2 service call` 会无法导入：
+
+```bash
+colcon build --packages-select robot_motion_interfaces alfa_robot_moveit_config \
+  --symlink-install \
+  --cmake-args -DPYTHON_EXECUTABLE=/usr/bin/python3 -DPython3_EXECUTABLE=/usr/bin/python3 -DBUILD_TESTING=OFF
+```
 
 ## 4. 可复用库与迁移建议
 
@@ -289,8 +437,9 @@ target_link_libraries(your_target
 | `extract_demo_pair_sequence` | `2,4;7,9;12,14;17,19` | 当前固定版原抓取任务 |
 | `front_z_reach_lower` / `front_z_reach_upper` | `0.45` / `1.25` | 侧吸目标高度窗：`updown + 0.45 ~ updown + 1.25` |
 | `top_z_reach_lower` / `top_z_reach_upper` | `0.3` / `0.45` | 顶吸目标高度窗 |
-| `ik_h_candidate_count` / `ik_seed_count` | `16` / `32` | 抓取 IK 主候选池大小 |
-| `ik_candidate_timeout` | `0.01` | 单次 BioIK timeout |
+| `ik_h_candidate_count` / `ik_seed_count` | `64` / `32` | 解析 IK 的 h 候选数量 / 兼容旧候选 schema 的 seed 字段 |
+| `ik_workers` | `1` | 抓取 IK worker 数；解析 IK 默认单线程，必要时才显式覆盖 |
+| `ik_candidate_timeout` | `0.01` | 兼容旧参数；解析 IK 路径不依赖随机 BioIK timeout |
 | `extract_ik_dedup_enabled` | `false` | 是否开启 IK 相似姿态去重；实验常显式开 `true` |
 | `extract_ik_dedup_joint_threshold_deg` | `1.0` | 去重关节阈值 |
 | `extract_ik_dedup_h_threshold` | `0.005` | 去重 updown 阈值 |

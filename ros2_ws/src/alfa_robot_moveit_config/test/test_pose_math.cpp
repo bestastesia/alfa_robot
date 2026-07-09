@@ -29,18 +29,18 @@ int main()
   assert_near(front.position.x, 0.925);
   assert_near(front.position.y, -0.4);
   assert_near(front.position.z, 0.798);
-  assert_near(front.orientation.w, 0.70710678);
-  assert_near(front.orientation.x, 0.0);
-  assert_near(front.orientation.y, 0.70710678);
-  assert_near(front.orientation.z, 0.0);
+  assert_near(front.orientation.w, 0.0);
+  assert_near(front.orientation.x, 0.70710678);
+  assert_near(front.orientation.y, 0.0);
+  assert_near(front.orientation.z, 0.70710678);
 
   const auto top = make_top_suction_pose(box, 0.202, 0.15, 0.209);
   assert_near(top.position.x, 1.075);
   assert_near(top.position.y, -0.4);
   assert_near(top.position.z, 1.007);
   assert_near(top.orientation.w, 0.0);
-  assert_near(top.orientation.x, 0.0);
-  assert_near(top.orientation.y, 1.0);
+  assert_near(top.orientation.x, 1.0);
+  assert_near(top.orientation.y, 0.0);
   assert_near(top.orientation.z, 0.0);
 
   return 0;

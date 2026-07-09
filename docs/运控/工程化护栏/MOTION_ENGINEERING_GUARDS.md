@@ -103,5 +103,5 @@ ros2 run alfa_robot_moveit_config generate_motion_baseline.py --print-id
 - 关节统一改名：风险高，影响 MoveIt/执行/PLC/历史数据。
 - 硬件总线和 node id 全配置化：电控方案仍在调试，过早抽象可能反而制造漂移。
 - 完整生产生命周期管理：当前 Python 脚本仍定位为测试工具，不作为生产入口。
-- 替换 BioIK：短期没有低成本替代，当前继续使用多候选 + 去重 + cost scorer。
+- 替换解析 IK：当前抓取 IK 已切到 `alfa_robot_analytic_ik`；后续若机械结构再次变化，需要同步验证解析 IK、h 高度窗和 cost scorer。
 - 替换 MoveIt/FCL 碰撞：当前仍以 MoveIt/FCL 为唯一硬判定真相源。

@@ -1,0 +1,15 @@
+# Collision check over an explicit state or trajectory.
+# If trajectory has points, check the trajectory from start_state; otherwise check start_state only.
+# This must not silently substitute the current live /joint_states.
+MotionContext context
+sensor_msgs/JointState start_state
+trajectory_msgs/JointTrajectory trajectory
+AttachedBox[] attached_boxes
+moveit_msgs/CollisionObject[] scene_objects
+moveit_msgs/AttachedCollisionObject[] attached_collision_objects
+bool use_current_scene_as_base
+bool enforce_bounds
+---
+bool valid
+string reason
+string[] contacts

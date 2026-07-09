@@ -47,17 +47,18 @@ box_and_container:
   attached_box_collision_padding_m: -0.002
 
 ik_strategy:
-  solver: bio_ik
+  solver: analytic_three_parallel
   h_mode: fixed_discrete
-  h_candidate_count: 16
-  seed_count: 32
-  workers: 16
-  candidate_timeout_s: 0.01
+  h_candidate_count: 64
+  root_samples: 360
+  seed_count: 0
+  workers: 1
+  candidate_timeout_s: 0.0
   target_order: reversed_only
 
 extract_strategy:
-  primitive: kdl_small_step
-  kdl_timeout_s: 0.003
+  primitive: analytic_three_parallel_small_step
+  root_samples: 360
   step_x_m: 0.03
   max_x_m: 0.36
   position_tolerance_m: 0.01
@@ -65,7 +66,7 @@ extract_strategy:
 
 loaded_planning:
   planner: moveit_ompl_or_direct_pipeline
-  target_updown_m: 0.3
+  target_updown_m: 0.0
   candidate_limit: 8
   parallel_workers: 8
   aabb_clearance_mode: diagnostic_only
