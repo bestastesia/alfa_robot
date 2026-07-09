@@ -18,7 +18,7 @@ from robot_motion_interfaces.srv import (
     RunDualArmPoseTask,
     RunMotionTask,
 )
-from robot_motion_runtime.common import RuntimeStatusPublisher
+from robot_motion_runtime.common import RuntimeStatusPublisher, concatenate_trajectories
 
 
 class MotionTaskOrchestratorNode(Node):
@@ -206,7 +206,20 @@ class MotionTaskOrchestratorNode(Node):
         if execute:
             execute_request = ExecuteTrajectory.Request()
             execute_request.context = context
-            execute_request.trajectory = selected_loaded.trajectory
+            try:
+                execute_request.trajectory = concatenate_trajectories(
+                    selected_extract.trajectory,
+                    selected_loaded.trajectory,
+                )
+            except ValueError as exc:
+                return {
+                    "success": False,
+                    "message": f"failed to compose execution trajectory: {exc}",
+                    "extract_candidates": extract_candidates,
+                    "loaded_candidates": loaded_candidates,
+                    "selected_extract": selected_extract,
+                    "selected_loaded": selected_loaded,
+                }
             execute_request.dry_run = dry_run
             execute_request.velocity_scale = velocity_scale
             execute_request.acceleration_scale = acceleration_scale

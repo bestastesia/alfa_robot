@@ -14,6 +14,11 @@ def generate_launch_description():
             DeclareLaunchArgument("state_publish_period_s", default_value="0.2"),
             DeclareLaunchArgument("execute_forward_action", default_value="true"),
             DeclareLaunchArgument("execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
+            DeclareLaunchArgument("execute_wait_for_action_timeout_s", default_value="10.0"),
+            DeclareLaunchArgument("execute_wait_for_goal_acceptance", default_value="false"),
+            DeclareLaunchArgument("execute_resample_before_forward", default_value="true"),
+            DeclareLaunchArgument("execute_resample_rate_hz", default_value="20.0"),
+            DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
             DeclareLaunchArgument("solve_arm_ik_service_name", default_value="/robot_motion/solve_arm_ik"),
             DeclareLaunchArgument("run_dual_arm_pose_task_service_name", default_value="/robot_motion/run_dual_arm_pose_task"),
             DeclareLaunchArgument("publish_empty_scene_on_start", default_value="true"),
@@ -67,6 +72,9 @@ def generate_launch_description():
                 parameters=[
                     {
                         "pose_task_service": LaunchConfiguration("run_dual_arm_pose_task_service_name"),
+                        "service_timeout_s": ParameterValue(
+                            LaunchConfiguration("task_service_timeout_s"), value_type=float
+                        ),
                     }
                 ],
             ),
@@ -109,6 +117,18 @@ def generate_launch_description():
                         "forward_action": ParameterValue(
                             LaunchConfiguration("execute_forward_action"), value_type=bool
                         ),
+                        "wait_for_action_timeout_s": ParameterValue(
+                            LaunchConfiguration("execute_wait_for_action_timeout_s"), value_type=float
+                        ),
+                        "wait_for_goal_acceptance": ParameterValue(
+                            LaunchConfiguration("execute_wait_for_goal_acceptance"), value_type=bool
+                        ),
+                        "resample_before_forward": ParameterValue(
+                            LaunchConfiguration("execute_resample_before_forward"), value_type=bool
+                        ),
+                        "resample_rate_hz": ParameterValue(
+                            LaunchConfiguration("execute_resample_rate_hz"), value_type=float
+                        ),
                     }
                 ],
             ),
@@ -117,6 +137,13 @@ def generate_launch_description():
                 executable="motion_task_orchestrator_node",
                 name="motion_task_orchestrator",
                 output="screen",
+                parameters=[
+                    {
+                        "service_timeout_s": ParameterValue(
+                            LaunchConfiguration("task_service_timeout_s"), value_type=float
+                        ),
+                    }
+                ],
             ),
             Node(
                 package="robot_motion_runtime",

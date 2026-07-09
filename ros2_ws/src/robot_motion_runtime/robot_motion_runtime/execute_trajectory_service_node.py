@@ -9,7 +9,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
 from robot_motion_interfaces.srv import ExecuteTrajectory
-from robot_motion_runtime.common import RuntimeStatusPublisher
+from robot_motion_runtime.common import RuntimeStatusPublisher, resample_trajectory
 
 
 class ExecuteTrajectoryServiceNode(Node):
@@ -25,11 +25,17 @@ class ExecuteTrajectoryServiceNode(Node):
         self.declare_parameter("action_name", "/alfa_execution/execute_joint_trajectory")
         self.declare_parameter("forward_action", True)
         self.declare_parameter("wait_for_action_timeout_s", 2.0)
+        self.declare_parameter("wait_for_goal_acceptance", False)
+        self.declare_parameter("resample_before_forward", True)
+        self.declare_parameter("resample_rate_hz", 20.0)
 
         self.service_name = str(self.get_parameter("service_name").value)
         self.action_name = str(self.get_parameter("action_name").value)
         self.forward_action = bool(self.get_parameter("forward_action").value)
         self.wait_for_action_timeout_s = float(self.get_parameter("wait_for_action_timeout_s").value)
+        self.wait_for_goal_acceptance = bool(self.get_parameter("wait_for_goal_acceptance").value)
+        self.resample_before_forward = bool(self.get_parameter("resample_before_forward").value)
+        self.resample_rate_hz = float(self.get_parameter("resample_rate_hz").value)
 
         self.action_client = ActionClient(self, FollowJointTrajectory, self.action_name)
         self.service = self.create_service(ExecuteTrajectory, self.service_name, self.on_execute)
@@ -41,7 +47,9 @@ class ExecuteTrajectoryServiceNode(Node):
         self.status.mark_ready(f"action={self.action_name}, forward_action={self.forward_action}")
         self.get_logger().info(
             f"ExecuteTrajectory service ready: service={self.service_name} "
-            f"action={self.action_name} forward={self.forward_action}"
+            f"action={self.action_name} forward={self.forward_action} "
+            f"wait_for_goal_acceptance={self.wait_for_goal_acceptance} "
+            f"resample={self.resample_before_forward}@{self.resample_rate_hz:.1f}Hz"
         )
 
     def on_execute(self, request, response):
@@ -74,8 +82,18 @@ class ExecuteTrajectoryServiceNode(Node):
             return response
 
         goal = FollowJointTrajectory.Goal()
-        goal.trajectory = request.trajectory
+        goal.trajectory = (
+            resample_trajectory(request.trajectory, self.resample_rate_hz)
+            if self.resample_before_forward
+            else request.trajectory
+        )
         future = self.action_client.send_goal_async(goal)
+        if not self.wait_for_goal_acceptance:
+            response.accepted = True
+            response.message = "action goal sent"
+            self.status.mark_done(True, response.message)
+            return response
+
         event = threading.Event()
         holder = {}
 

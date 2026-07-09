@@ -13,7 +13,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import AttachedBox
+from robot_motion_interfaces.msg import AttachedBox, RobotMotionState
 from robot_motion_interfaces.srv import RunBoxPairTask, RunDualArmPoseTask
 from robot_motion_runtime.common import RuntimeStatusPublisher
 
@@ -211,6 +211,7 @@ class BoxPairTaskAdapterNode(Node):
         super().__init__("box_pair_task_adapter")
         self.declare_parameter("service_name", "/robot_motion/run_box_pair_task")
         self.declare_parameter("pose_task_service", "/robot_motion/run_dual_arm_pose_task")
+        self.declare_parameter("state_topic", "/robot_motion/state")
         self.declare_parameter("service_timeout_s", 10.0)
         self.declare_parameter("default_box_front_x", 0.925)
         self.declare_parameter("default_scene_y_shift", -0.4)
@@ -223,6 +224,7 @@ class BoxPairTaskAdapterNode(Node):
 
         self.service_name = str(self.get_parameter("service_name").value)
         self.pose_task_service = str(self.get_parameter("pose_task_service").value)
+        self.state_topic = str(self.get_parameter("state_topic").value)
         self.service_timeout_s = float(self.get_parameter("service_timeout_s").value)
         self.default_box_front_x = float(self.get_parameter("default_box_front_x").value)
         self.default_scene_y_shift = float(self.get_parameter("default_scene_y_shift").value)
@@ -234,6 +236,14 @@ class BoxPairTaskAdapterNode(Node):
         self.default_planning_mode = str(self.get_parameter("default_planning_mode").value)
 
         self.callback_group = ReentrantCallbackGroup()
+        self.latest_state: RobotMotionState | None = None
+        self.state_sub = self.create_subscription(
+            RobotMotionState,
+            self.state_topic,
+            self.on_state,
+            10,
+            callback_group=self.callback_group,
+        )
         self.pose_task_client = self.create_client(
             RunDualArmPoseTask,
             self.pose_task_service,
@@ -254,6 +264,10 @@ class BoxPairTaskAdapterNode(Node):
         self.get_logger().info(
             f"BoxPairTask adapter ready: service={self.service_name} pose_task={self.pose_task_service}"
         )
+
+    def on_state(self, state: RobotMotionState) -> None:
+        if state.authoritative:
+            self.latest_state = state
 
     def call_pose_task(self, request: RunDualArmPoseTask.Request) -> RunDualArmPoseTask.Response:
         if not self.pose_task_client.wait_for_service(timeout_sec=self.service_timeout_s):
@@ -304,6 +318,13 @@ class BoxPairTaskAdapterNode(Node):
         response.extract_candidates = list(pose_response.extract_candidates)
         response.loaded_candidates = list(pose_response.loaded_candidates)
 
+    def seed_state_for_request(self, request, fixed_updown: float) -> JointState:
+        if request.seed_state.name:
+            return request.seed_state
+        if self.latest_state is not None and self.latest_state.joint_state.name:
+            return self.latest_state.joint_state
+        return seed_or_default(request.seed_state, fixed_updown)
+
     def on_run_box_pair_task(self, request, response):
         started = time.monotonic()
         self.status.mark_running(
@@ -343,7 +364,7 @@ class BoxPairTaskAdapterNode(Node):
 
             pose_request = RunDualArmPoseTask.Request()
             pose_request.context = request.context
-            pose_request.seed_state = seed_or_default(request.seed_state, fixed_updown)
+            pose_request.seed_state = self.seed_state_for_request(request, fixed_updown)
             pose_request.left_target = response.left_target
             pose_request.right_target = response.right_target
             pose_request.attached_boxes = list(response.attached_boxes)

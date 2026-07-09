@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from copy import deepcopy
 from typing import Iterable
 
 from builtin_interfaces.msg import Time
@@ -122,6 +123,85 @@ def make_interpolated_trajectory(
             point.positions.append(start_value + (goal_value - start_value) * ratio)
         trajectory.points.append(point)
     return trajectory
+
+
+def point_positions_equal(lhs: JointTrajectoryPoint, rhs: JointTrajectoryPoint, tolerance: float = 1e-9) -> bool:
+    if len(lhs.positions) != len(rhs.positions):
+        return False
+    return all(abs(float(a) - float(b)) <= tolerance for a, b in zip(lhs.positions, rhs.positions))
+
+
+def copy_point_with_time(point: JointTrajectoryPoint, seconds: float) -> JointTrajectoryPoint:
+    out = deepcopy(point)
+    out.time_from_start = make_duration(seconds)
+    return out
+
+
+def concatenate_trajectories(first: JointTrajectory, second: JointTrajectory) -> JointTrajectory:
+    if not first.points:
+        return deepcopy(second)
+    if not second.points:
+        return deepcopy(first)
+    if list(first.joint_names) != list(second.joint_names):
+        raise ValueError(
+            "cannot concatenate trajectories with different joint_names: "
+            f"{list(first.joint_names)} != {list(second.joint_names)}"
+        )
+
+    out = JointTrajectory()
+    out.header = first.header
+    out.joint_names = list(first.joint_names)
+    out.points = [deepcopy(point) for point in first.points]
+    offset_s = duration_seconds(out.points[-1].time_from_start)
+    first_tail = out.points[-1]
+    for index, point in enumerate(second.points):
+        point_s = duration_seconds(point.time_from_start)
+        if index == 0 and point_s <= 1e-9 and point_positions_equal(first_tail, point):
+            continue
+        out.points.append(copy_point_with_time(point, offset_s + point_s))
+    return out
+
+
+def sample_trajectory_positions(trajectory: JointTrajectory, sample_time_s: float) -> list[float]:
+    if not trajectory.points:
+        return []
+    if sample_time_s <= 0.0:
+        return list(trajectory.points[0].positions)
+    previous = trajectory.points[0]
+    previous_time = duration_seconds(previous.time_from_start)
+    for point in trajectory.points[1:]:
+        point_time = duration_seconds(point.time_from_start)
+        if sample_time_s <= point_time:
+            if point_time <= previous_time:
+                return list(point.positions)
+            alpha = (sample_time_s - previous_time) / (point_time - previous_time)
+            return [
+                float(a) + (float(b) - float(a)) * alpha
+                for a, b in zip(previous.positions, point.positions)
+            ]
+        previous = point
+        previous_time = point_time
+    return list(trajectory.points[-1].positions)
+
+
+def resample_trajectory(trajectory: JointTrajectory, rate_hz: float) -> JointTrajectory:
+    if not trajectory.points or rate_hz <= 0.0:
+        return deepcopy(trajectory)
+    duration_s = duration_seconds(trajectory.points[-1].time_from_start)
+    if duration_s <= 0.0:
+        return deepcopy(trajectory)
+    period_s = 1.0 / rate_hz
+    sample_count = max(2, int(math.ceil(duration_s / period_s)) + 1)
+    out = JointTrajectory()
+    out.header = trajectory.header
+    out.joint_names = list(trajectory.joint_names)
+    for index in range(sample_count):
+        t = duration_s if index == sample_count - 1 else min(duration_s, index * period_s)
+        point = JointTrajectoryPoint()
+        point.time_from_start = make_duration(t)
+        point.positions = sample_trajectory_positions(trajectory, t)
+        out.points.append(point)
+    return out
 
 
 class RuntimeStatusPublisher:

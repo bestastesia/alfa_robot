@@ -21,6 +21,79 @@
 
 ## 启动
 
+### 手动全流程测试：仿真 bringup -> 算法栈 -> ROS 任务 -> Rerun 实时显示
+
+这个流程用于模拟“实体机器已经 bringup，算法只负责接任务并发执行”的状态。
+
+终端 1：启动仿真 bringup。它会发布 `/joint_states`，并提供执行 action
+`/alfa_execution/execute_joint_trajectory`：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source install/setup.bash
+
+ros2 launch robot_motion_runtime sim_bringup.launch.py \
+  initial_updown:=0.0 \
+  start_rerun:=true
+```
+
+终端 2：启动算法服务栈。它会订阅终端 1 的 `/joint_states` 作为事实状态，并把最终轨迹发给仿真执行器：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source install/setup.bash
+
+ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
+  subscribe_joint_states:=true \
+  execute_forward_action:=true \
+  execution_action_name:=/alfa_execution/execute_joint_trajectory \
+  execute_wait_for_goal_acceptance:=false \
+  execute_resample_before_forward:=true \
+  execute_resample_rate_hz:=20.0 \
+  task_service_timeout_s:=30.0 \
+  plan_check_collision:=true
+```
+
+终端 3：发送一次箱号任务。这个请求会走完整链路：
+`RunBoxPairTask -> RunDualArmPoseTask -> PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source install/setup.bash
+
+ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/RunBoxPairTask "{
+  context: {request_id: 'manual_box_pair_6_8', frame_id: 'base_link', scene_id: 'manual_box_stack', state_id: 'live_joint_states'},
+  left_box_id: 6,
+  right_box_id: 8,
+  left_grasp_mode: 'front',
+  right_grasp_mode: 'front',
+  box_front_x: 0.925,
+  scene_y_shift: -0.4,
+  world_to_base_z: 0.202094,
+  fixed_updown: 0.3,
+  candidate_limit: 8,
+  planning_mode: 'shortcut',
+  execute: true,
+  dry_run: false,
+  velocity_scale: 1.0,
+  acceleration_scale: 1.0
+}"
+```
+
+当前已验证的 smoke 是 L6/R8。L1/R3 在 `fixed_updown=0.3` 下目标高度约 1.598m，解析 IK 会判定不可达，不适合作为手动首测任务。
+验证时执行器收到的是完整 `当前状态 -> IK/抽离 -> 负重` 轨迹，示例日志为
+`points=41 duration=2.000s initial_delta=0.000000 first_updown=0.000 last_updown=0.300`。
+
+可选终端 4：打开服务状态看板：
+
+```bash
+xdg-open http://127.0.0.1:8766
+```
+
+如果要换真实执行层，保留终端 2 的算法栈，只把 `execution_action_name` 改成真实电控提供的
+`FollowJointTrajectory` action；如果真实执行层不使用 action，则需要替换
+`execute_trajectory_service_node` 的后端适配。
+
 只启动运行时骨架：
 
 ```bash
