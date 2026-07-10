@@ -426,6 +426,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   }
 
   std::map<std::string, size_t> failure_counts;
+  bool collision_diagnostic_recorded = false;
   for (size_t pair_rank = 0; pair_rank < pairs.size(); ++pair_rank) {
     const auto& left = left_paths[pairs[pair_rank].left];
     const auto& right = right_paths[pairs[pair_rank].right];
@@ -459,6 +460,32 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
         collision_free = false;
         failure_reason = (reason.empty() ? "box_pose_rrt_full_collision_rejected" : reason) +
           " first_step=" + std::to_string(step);
+        if (record_step && !collision_diagnostic_recorded) {
+          const auto& previous = combined_states.empty() ? start_state : *combined_states.back();
+          record_step(0, previous, {
+            {"stage_kind", "box_pose_rrt_collision_previous"},
+            {"path_pair_rank", pair_rank + 1},
+            {"path_pair_joint_motion", pairs[pair_rank].cost},
+            {"accepted", true},
+            {"collision_diagnostic", true},
+            {"collision_step", step},
+            {"collision_reason", failure_reason},
+            {"left_top_suction", left_top_suction},
+            {"right_top_suction", right_top_suction}
+          });
+          record_step(1, *combined, {
+            {"stage_kind", "box_pose_rrt_collision_frame"},
+            {"path_pair_rank", pair_rank + 1},
+            {"path_pair_joint_motion", pairs[pair_rank].cost},
+            {"accepted", false},
+            {"collision_diagnostic", true},
+            {"collision_step", step},
+            {"collision_reason", failure_reason},
+            {"left_top_suction", left_top_suction},
+            {"right_top_suction", right_top_suction}
+          });
+          collision_diagnostic_recorded = true;
+        }
         break;
       }
       final_left_detached = left_detached;
@@ -499,6 +526,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   }
 
   if (!timing.success) {
+    timing.failed_steps = collision_diagnostic_recorded ? 1 : 0;
     timing.failure_reason = "box_pose_rrt_no_collision_free_path_pair";
     size_t largest_count = 0;
     for (const auto& [reason, count] : failure_counts) {

@@ -430,6 +430,18 @@ def log_sequence_replay(
                     f"point {point_index + 1}/{len(points)}"
                 ),
             )
+            extra = stage.get("extra", {})
+            if isinstance(extra, dict) and extra.get("collision_diagnostic"):
+                collision_frame = not bool(extra.get("accepted", True))
+                monitor.rr.log(
+                    "monitor/diagnostics/collision_frame",
+                    monitor.rr.Points3D(
+                        positions=[[0.0, 0.0, 0.0]],
+                        radii=[0.08],
+                        colors=[[255, 30, 30, 255] if collision_frame else [255, 210, 30, 255]],
+                        labels=[str(extra.get("collision_reason", "collision diagnostic"))],
+                    ),
+                )
             sample += 1
         previous_positions = [float(value) for value in points[-1].get("positions", [])]
         previous_joint_names = joint_names

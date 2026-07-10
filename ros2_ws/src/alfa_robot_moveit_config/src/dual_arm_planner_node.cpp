@@ -3960,7 +3960,7 @@ private:
                 index,
                 candidate,
                 record_step);
-          if (timing.success) {
+          if (!rollout_records.empty()) {
             timing.rollout_records = std::move(rollout_records);
           }
           if (loaded_pose_selector_) {
@@ -3971,17 +3971,40 @@ private:
     }
 
     const auto summary = summarize_extract_monitor_timings(extract_monitor_state_.timings);
+    std::vector<size_t> record_indices = summary.success_indices;
+    if (record_indices.empty()) {
+      auto diagnostic = std::find_if(
+        extract_monitor_state_.timings.begin(), extract_monitor_state_.timings.end(),
+        [](const ExtractRolloutTiming& timing) {
+          return !timing.rollout_records.empty() &&
+                 timing.failure_reason.find("joint2 <-> updown") != std::string::npos;
+        });
+      if (diagnostic == extract_monitor_state_.timings.end()) {
+        diagnostic = std::find_if(
+          extract_monitor_state_.timings.begin(), extract_monitor_state_.timings.end(),
+          [](const ExtractRolloutTiming& timing) { return !timing.rollout_records.empty(); });
+      }
+      if (diagnostic != extract_monitor_state_.timings.end()) {
+        record_indices.push_back(static_cast<size_t>(
+          std::distance(extract_monitor_state_.timings.begin(), diagnostic)));
+      }
+    }
     const nlohmann::json records = extract_monitor_timing_records_json(
       ExtractMonitorTimingRecordsRequest{
         &extract_monitor_state_.timings,
-        summary.success_indices,
+        record_indices,
         extract_monitor_state_.prefix,
         extract_monitor_state_.left_box_id,
         extract_monitor_state_.right_box_id,
         dual_arm_with_updown_joint_names(),
         {extract_monitor_state_.left_box, extract_monitor_state_.right_box},
         static_box_obstacles_json(),
-        [](const ExtractRolloutTiming& timing) { return timing.final_state; }});
+        [this](const ExtractRolloutTiming& timing) {
+          if (timing.final_state) {
+            return timing.final_state;
+          }
+          return extract_monitor_candidate_state_for_timing(extract_monitor_state_, timing);
+        }});
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();

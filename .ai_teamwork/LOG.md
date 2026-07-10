@@ -1341,3 +1341,8 @@
 - 改了哪里：在 `robot_motion_scene_service` 增加箱体相对原箱位的 X-Z 投影脱离判断；顶吸最终验收与箱体 RRT 核心统一。抽离/负重阶段 `0/N` 时立即失败并回传主导原因，失败快照保留真实阶段耗时；补十三组序列自动测试和固定传感器基线 SRDF 允许碰撞对。
 - 验证结果：三包构建通过，30 项测试零失败。完整十三组真实流程中 `L11/R13`、`L16/R18` 成功；侧吸/混合任务主要在 RRT 第 4～8 步发生 `joint2 <-> updown`，底部任务主要没有附着场景合法 IK 起点。Rerun：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_final_20260710.rrd`；统计：`data/ik_benchmark/extract_sequence_rerun/sequence_20260710_234401/stats.csv`。
 - 留给下个 AI：顶吸箱体位姿 RRT 已证明几何与集成可行，但约 20 秒/任务；侧吸需要增加合理自由度或重设终点，底部任务需要先解决附着起点自碰撞/箱墙重叠。稳定默认不要直接改成 RRT。
+
+## 2026-07-11 运控 / Codex / 抽离首碰撞帧诊断
+- 做了什么：箱体位姿 RRT 双臂路径组合被碰撞拒绝时，保留首个碰撞前状态和碰撞状态；抽离全失败时优先选择 `joint2 <-> updown` 候选写入失败快照，避免只留下文字原因。
+- 验证结果：`L1/R3` 稳定复现第 8 步 `leftjoint2 <-> updown`，Rerun 共两帧；两帧 `leftjoint2` 仅变化约 `1.685°`，说明碰撞来自连续路径逐步进入中心柱，而非关节突变。证据：`data/ik_benchmark/extract_sequence_rerun/L1_R3_joint2_updown_collision_frames.rrd`。
+- 留给下个 AI：诊断帧只用于失败分析，不进入成功轨迹选择；黄色为碰撞前一帧，红色为首次碰撞帧。
