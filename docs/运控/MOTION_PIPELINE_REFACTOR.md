@@ -557,3 +557,56 @@ ros2 service call /dual_arm_planner/run_left_extract_demo std_srvs/srv/Trigger {
 - `robot_motion_scene_service` 虽然名字里有 service，但当前不是独立运行节点；它是场景几何与 PlanningScene Adapter 包。后续若要做真正场景服务，应在新仓库里另建 ROS node/action/service 包装层。
 - 负重规划依赖 MoveIt；如果 `start_move_group=false`，必须外部已有可用 move_group、robot state publisher 和 controller/joint state 相关支持节点，否则 `DualArmPlannerNode` 可能在 MoveGroupInterface 初始化阶段等待。
 - 当前 `alfa_robot_motion_scene_adapter` 名字偏窄，实际已经包含 IK、抽离和负重规划模块；后续迁移到新包时可以重命名为更准确的 motion pipeline/runtime 库。
+
+## 9. 箱体位姿 RRT 抽离实验模式
+
+### 9.1 Module 与调用关系
+
+新抽离策略拆成两层，避免把 MoveIt、解析 IK 和搜索树重新揉回主节点：
+
+| Module | Interface | Implementation / Adapter |
+| --- | --- | --- |
+| 箱体位姿 RRT 核心 | `BoxPoseExtractState`、`BoxPoseExtractRrtConfig`、边可达性回调、候选路径结果 | `robot_motion_core/include/robot_motion_core/box_pose_extract_rrt.hpp`、`robot_motion_core/src/box_pose_extract_rrt.cpp`；只负责箱体搜索空间、单调约束、RRT、shortcut 和路径排序，不依赖 ROS/MoveIt |
+| 运控抽离 Adapter | 输入抓取 IK 状态、左右附着箱和抓取模式，输出 `ExtractRolloutTiming` | `alfa_robot_moveit_config/src/box_pose_rrt_extract_planner.cpp`；把箱体路径离散成末端 Pose，调用三平行解析 IK，再用统一双臂碰撞检查筛选路径组合 |
+| 场景几何 Module | 箱墙、集装箱、附着箱、后侧封闭板 | `robot_motion_scene_service/motion_core/scene_geometry`；箱墙开洞后方新增 `_rear_guard`，防止抽离搜索把箱子重新推入货墙 |
+
+这一 Seam 的价值是：RRT 核心可以用纯单测验证；解析 IK 和碰撞是两个 Adapter，后续迁移到标准运控仓库时不需要搬运 `dual_arm_planner_node` 的全部实现。
+
+### 9.2 搜索与碰撞顺序
+
+```text
+抓取 IK 候选
+  -> 左右臂分别在箱体位姿空间生成多条 RRT 路径
+  -> 每条边只做解析 IK 连续可达检查，不做碰撞
+  -> shortcut 去除冗余节点
+  -> 按累计关节运动量排序
+  -> 左右路径交叉组合
+  -> 从低代价到高代价逐条做统一全场景碰撞检查
+  -> 选择第一条双臂、附着箱、箱墙、集装箱均合法且完成脱离的组合
+```
+
+侧吸搜索状态为 `retreat + pitch`，顶吸搜索状态为 `retreat + lift`。侧吸末端运动方向由世界坐标中的“远离货墙”约束确定，不再从附着碰撞盒重排后的局部尺寸轴猜测。
+
+### 9.3 使用方式与稳定默认
+
+当前稳定默认仍是旧贪心策略：
+
+```bash
+--extract-rollout-mode greedy
+```
+
+显式启用箱体位姿 RRT：
+
+```bash
+--extract-rollout-mode box_pose_rrt
+```
+
+保留的兼容模式还有 `moveit_rrt_legacy`、`top_lift_legacy`。新策略尚未替换生产默认，因为必须先证明典型任务存在碰撞合法路径，而不能靠忽略真实碰撞获得成功。
+
+### 9.4 2026-07-10 验证结论
+
+- `robot_motion_core` 与 `robot_motion_scene_service` 单测通过；工作区相关测试累计 29 项零失败。
+- L2/R3 侧吸中，左右单臂均能生成 2 条解析 IK 连续可达路径，证明箱体位姿 RRT 和解析 IK Adapter 已工作。
+- 4 组双臂路径组合全部在统一碰撞检查中被拒绝，主因是运动中 `front_sensor <-> rightjoint3` 碰撞；抓取 IK 起点已通过相同碰撞检查，因此不是零位基线假碰撞。
+- 增大每臂路径上限到 8 后，该任务仍只产生 2 条不同路径，说明当前 `retreat + pitch` 二维搜索空间没有形成更多绕开雷达的分支。下一阶段若继续推进，应显式增加允许的自由度，例如小幅 `lift` 或左右异步时序，而不是关闭雷达碰撞。
+- L17/R18 顶吸测试在进入抽离前即因 `left_analytic_no_solution` 失败，不能据此评价顶吸 RRT；需要先选取当前模型解析 IK 可达的顶吸任务做独立验证。

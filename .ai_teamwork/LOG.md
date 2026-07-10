@@ -1326,3 +1326,11 @@
 - 改了哪里：MoveIt 适配头文件和实现统一使用 `robot_motion::core` 类型；新增全体一方生产包的 benchmark 反向依赖护栏；把完整 URDF/FK/Rerun 实现迁入 `alfa_robot_rerun`，benchmark 旧脚本只保留兼容包装，实时 joint-state viewer 也从 runtime 迁到 Rerun 包；补齐 runtime 轨迹工具、唯一状态/场景源和 Rerun FK 单测，并修复显式 `set_state` 丢失请求 `frame_id` 的问题。
 - 验证结果：干净 ROS 环境下 `robot_motion_core`、`alfa_robot_rerun`、`robot_motion_runtime`、`alfa_robot_moveit_config`、`alfa_robot_benchmarks` 构建通过；本轮 23 个相关测试全部通过，工作区累计 28 个测试零失败；隔离 ROS domain 的完整 runtime dry-run 链成功，12 个进程均可干净退出；安装态 Rerun 实时节点可加载当前 URDF（26 links）并正常启动；Portal JavaScript、Python 编译和 `git diff --check` 通过。
 - 留给下个 AI：`robot_motion_core` 当前先承接公共数据模型，候选排序/去重、抽离 rollout 和轨迹评分仍在 MoveIt adapter 中；`dual_arm_planner_node` 与独立 planning service 的职责迁移尚未完成。`scripts/ik_benchmark` 仍是显式构建的实验包，但生产包已不能包含其头文件或动态导入其 helper。
+
+## 2026-07-10 运控 / Codex / 箱体位姿 RRT 抽离实验分支
+- 分支准备：将上一架构边界分支 squash merge 到 `v5_dev`，形成提交 `96a7600`；新建 `feature/extract-box-pose-rrt-20260710` 开发箱体位姿 RRT。
+- 核心调整：在 `robot_motion_core` 新增纯 C++ 箱体位姿 RRT Module，支持侧吸 `retreat + pitch`、顶吸 `retreat + lift`、解析可达边回调、shortcut 和按关节累计运动量排序；MoveIt 包新增解析 IK Adapter，最后才调用统一双臂/附着箱/箱墙/集装箱碰撞检查。
+- 场景调整：箱墙开洞几何后方增加 `_rear_guard`，防止搜索把箱子向货墙深处推进；该障碍由统一场景几何 Module 生成，MoveIt 场景和自定义检查共用。
+- 诊断修复：修正侧吸附着箱局部轴误用和旋转方向选择；补充左右路径数、组合数、主导碰撞原因日志；修复最终阶段失败回执为空；测试工具新增 `--extract-rollout-mode` 显式 A/B 参数。
+- 验证结果：相关构建通过，累计 29 项测试零失败。L2/R3 可生成左右各 2 条解析 IK 连续路径，但 4 个组合均被真实运动中碰撞 `front_sensor <-> rightjoint3` 拒绝；顶吸 L17/R18 在抽离前即解析 IK 无解。由于尚无典型全流程成功证据，稳定默认保持 `greedy`，新策略仅通过 `box_pose_rrt` 显式启用，不以忽略雷达碰撞换成功。
+- 后续方向：若继续侧吸 RRT，需要在明确评审后增加小幅 lift 或左右异步时序自由度；顶吸需先选解析 IK 可达任务验证。不要直接把实验模式改成生产默认。

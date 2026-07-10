@@ -5,6 +5,7 @@
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 #include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
+#include "robot_motion_core/box_pose_extract_rrt.hpp"
 #include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <Eigen/Geometry>
@@ -467,6 +468,55 @@ private:
     int right_box_id) const;
 
   ExtractRolloutPlannerConfig config_;
+};
+
+struct BoxPoseRrtExtractPlannerConfig
+{
+  ExtractCandidateSolver* candidate_solver = nullptr;
+  const moveit::core::JointModelGroup* joint_group = nullptr;
+  const moveit::core::JointModelGroup* left_arm_group = nullptr;
+  const moveit::core::JointModelGroup* right_arm_group = nullptr;
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
+  rclcpp::Logger logger = rclcpp::get_logger("box_pose_rrt_extract_planner");
+  robot_motion::core::BoxPoseExtractRrtConfig front_rrt;
+  robot_motion::core::BoxPoseExtractRrtConfig top_rrt;
+  size_t max_paths_per_arm = 8;
+  size_t max_path_pairs_to_validate = 64;
+  ExtractDualClearCallback dual_clear_callback;
+};
+
+class BoxPoseRrtExtractPlanner
+{
+public:
+  explicit BoxPoseRrtExtractPlanner(BoxPoseRrtExtractPlannerConfig config);
+
+  ExtractRolloutTiming rolloutDual(
+    const moveit::core::RobotState& start_state,
+    const AttachedBoxSpec& left_box,
+    int left_box_id,
+    const AttachedBoxSpec& right_box,
+    int right_box_id,
+    size_t candidate_order,
+    size_t h_index,
+    size_t seed_index,
+    double h,
+    double ik_score,
+    double ik_solve_ms,
+    bool left_top_suction,
+    bool right_top_suction,
+    const ExtractRecordStepCallback& record_step = {}) const;
+
+private:
+  struct ArmPath;
+
+  std::vector<ArmPath> planArm(
+    const std::string& side,
+    const moveit::core::RobotState& start_state,
+    const AttachedBoxSpec& carried_box,
+    bool top_suction) const;
+
+  BoxPoseRrtExtractPlannerConfig config_;
 };
 
 struct ExtractBenchmarkSummary

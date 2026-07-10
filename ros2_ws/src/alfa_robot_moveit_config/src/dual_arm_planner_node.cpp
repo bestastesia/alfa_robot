@@ -144,6 +144,8 @@ using alfa_robot::motion::AxisAlignedBox;
 using alfa_robot::motion::BoxStackFlowCallbacks;
 using alfa_robot::motion::BoxStackFlowConfig;
 using alfa_robot::motion::BoxStackFlowOrchestrator;
+using alfa_robot::motion::BoxPoseRrtExtractPlanner;
+using alfa_robot::motion::BoxPoseRrtExtractPlannerConfig;
 using alfa_robot::motion::BoxSpec;
 using alfa_robot::motion::BoxWallGeometryConfig;
 using alfa_robot::motion::CarriedBoxGeometryConfig;
@@ -418,7 +420,22 @@ public:
     extract_ik_dedup_joint_threshold_ =
       get_or_declare_parameter<double>("extract_ik_dedup_joint_threshold_deg", 1.0) * M_PI / 180.0;
     extract_ik_dedup_h_threshold_ = get_or_declare_parameter<double>("extract_ik_dedup_h_threshold", 0.005);
+    extract_rollout_mode_ = get_or_declare_parameter<std::string>("extract_rollout_mode", "greedy");
     extract_rrt_rollout_enabled_ = get_or_declare_parameter<bool>("extract_rrt_rollout_enabled", false);
+    extract_box_pose_rrt_max_iterations_ = static_cast<size_t>(
+      std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_max_iterations", 160)));
+    extract_box_pose_rrt_paths_per_arm_ = static_cast<size_t>(
+      std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_paths_per_arm", 8)));
+    extract_box_pose_rrt_path_pair_limit_ = static_cast<size_t>(
+      std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_path_pair_limit", 64)));
+    extract_box_pose_rrt_max_retreat_ =
+      get_or_declare_parameter<double>("extract_box_pose_rrt_max_retreat", 0.55);
+    extract_box_pose_rrt_max_lift_ =
+      get_or_declare_parameter<double>("extract_box_pose_rrt_max_lift", 0.55);
+    extract_box_pose_rrt_separation_margin_ =
+      get_or_declare_parameter<double>("extract_box_pose_rrt_separation_margin", 0.03);
+    extract_box_pose_rrt_analytic_root_samples_ = static_cast<size_t>(
+      std::max(8, get_or_declare_parameter<int>("extract_box_pose_rrt_analytic_root_samples", 12)));
     extract_rrt_planning_group_ = get_or_declare_parameter<std::string>("extract_rrt_planning_group", "dual_arm");
     extract_rrt_planning_time_ = get_or_declare_parameter<double>("extract_rrt_planning_time", 0.35);
     extract_rrt_planning_attempts_ = std::max(1, get_or_declare_parameter<int>("extract_rrt_planning_attempts", 1));
@@ -594,8 +611,16 @@ public:
     if (!extract_candidate_solver_->initialize(&extract_solver_error)) {
       throw std::runtime_error("Failed to initialize extract candidate solver: " + extract_solver_error);
     }
+    auto box_pose_solver_config = extract_candidate_solver_config();
+    box_pose_solver_config.analytic_root_samples = extract_box_pose_rrt_analytic_root_samples_;
+    box_pose_rrt_candidate_solver_ = std::make_unique<ExtractCandidateSolver>(box_pose_solver_config);
+    if (!box_pose_rrt_candidate_solver_->initialize(&extract_solver_error)) {
+      throw std::runtime_error("box-pose RRT analytic solver init failed: " + extract_solver_error);
+    }
     loaded_pose_planner_ = std::make_unique<LoadedPosePlanner>(loaded_pose_planner_config());
     extract_rollout_planner_ = std::make_unique<ExtractRolloutPlanner>(extract_rollout_planner_config());
+    box_pose_rrt_extract_planner_ =
+      std::make_unique<BoxPoseRrtExtractPlanner>(box_pose_rrt_extract_planner_config());
     ik_candidate_selector_ = std::make_unique<IkCandidateSelector>(ik_candidate_selector_config());
     apply_container_obstacles();
     set_static_box_wall_opening(extract_demo_left_box_id_, extract_demo_right_box_id_, "initial");
@@ -939,6 +964,52 @@ private:
         const std::vector<AttachedBoxSpec>& attached_boxes,
         std::string* reason) {
         return planned_trajectory_clear_in_full_scene(plan, start_state, attached_boxes, reason);
+      };
+    return config;
+  }
+
+  BoxPoseRrtExtractPlannerConfig box_pose_rrt_extract_planner_config()
+  {
+    BoxPoseRrtExtractPlannerConfig config;
+    config.logger = get_logger();
+    config.candidate_solver = box_pose_rrt_candidate_solver_.get();
+    config.joint_group = joint_group_;
+    config.left_arm_group = left_arm_group_;
+    config.right_arm_group = right_arm_group_;
+    config.left_tip = left_tip_;
+    config.right_tip = right_tip_;
+    config.max_paths_per_arm = extract_box_pose_rrt_paths_per_arm_;
+    config.max_path_pairs_to_validate = extract_box_pose_rrt_path_pair_limit_;
+    config.front_rrt.mode = robot_motion::core::BoxPoseExtractMode::FrontPivot;
+    config.front_rrt.box_depth = carried_box_depth_;
+    config.front_rrt.box_height = carried_box_height_;
+    config.front_rrt.separation_margin = extract_box_pose_rrt_separation_margin_;
+    config.front_rrt.max_retreat = extract_box_pose_rrt_max_retreat_;
+    config.front_rrt.max_lift = 0.0;
+    config.front_rrt.max_pitch = M_PI_2;
+    config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
+    config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
+    config.front_rrt.random_seed = 17;
+    config.top_rrt = config.front_rrt;
+    config.top_rrt.mode = robot_motion::core::BoxPoseExtractMode::TopTranslate;
+    config.top_rrt.max_pitch = 0.0;
+    config.top_rrt.max_lift = extract_box_pose_rrt_max_lift_;
+    config.top_rrt.min_top_retreat = extract_box_pose_rrt_separation_margin_;
+    config.top_rrt.min_top_lift = extract_box_pose_rrt_separation_margin_;
+    config.top_rrt.random_seed = 29;
+    config.dual_clear_callback =
+      [this](
+        const moveit::core::RobotState& state,
+        const AttachedBoxSpec& left_box,
+        int left_box_id,
+        const AttachedBoxSpec& right_box,
+        int right_box_id,
+        bool* left_detached,
+        bool* right_detached,
+        std::string* reason) {
+        return state_clear_for_dual_extract(
+          state, left_box, left_box_id, right_box, right_box_id,
+          left_detached, right_detached, reason);
       };
     return config;
   }
@@ -2730,6 +2801,34 @@ private:
     const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
+    if (extract_rollout_mode_ == "box_pose_rrt") {
+      if (!box_pose_rrt_extract_planner_) {
+        ExtractRolloutTiming timing;
+        timing.candidate_order = candidate_order;
+        timing.h_index = ik_candidate.h_index;
+        timing.seed_index = ik_candidate.seed_index;
+        timing.h = ik_candidate.h;
+        timing.ik_score = ik_candidate.score;
+        timing.ik_solve_ms = ik_candidate.solve_ms;
+        timing.failure_reason = "box_pose_rrt_planner_not_initialized";
+        return timing;
+      }
+      return box_pose_rrt_extract_planner_->rolloutDual(
+        start_state,
+        left_box,
+        left_box_id,
+        right_box,
+        right_box_id,
+        candidate_order,
+        ik_candidate.h_index,
+        ik_candidate.seed_index,
+        ik_candidate.h,
+        ik_candidate.score,
+        ik_candidate.solve_ms,
+        is_top_suction_box_spec(left_box),
+        is_top_suction_box_spec(right_box),
+        record_step);
+    }
     const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
     const auto left_it = boxes.find(left_box_id);
     const auto right_it = boxes.find(right_box_id);
@@ -3771,7 +3870,7 @@ private:
     const auto stage_start = std::chrono::steady_clock::now();
     const size_t count = extract_monitor_state_.legal_candidates.size();
     size_t worker_count = 1;
-    if (extract_monitor_both_top_suction()) {
+    if (extract_monitor_both_top_suction() && extract_rollout_mode_ == "top_lift_legacy") {
       extract_monitor_state_.timings.clear();
       extract_monitor_state_.timings.reserve(extract_monitor_state_.legal_candidates.size());
       worker_count = 1;
@@ -3801,7 +3900,7 @@ private:
           auto record_step = [&](size_t step, const moveit::core::RobotState& step_state, const nlohmann::json& extra) {
             record_monitor_extract_replay_step(step, index, step_state, extra, &rollout_records);
           };
-          auto timing = extract_rrt_rollout_enabled_
+          auto timing = extract_rollout_mode_ == "moveit_rrt_legacy"
             ? rollout_dual_extract_rrt_from_state(
                 state,
                 extract_monitor_state_.left_box,
@@ -4112,7 +4211,9 @@ private:
     const auto stage_start = std::chrono::steady_clock::now();
     ExtractRolloutTiming* selected = select_extract_monitor_final_timing();
     if (!selected || !selected->final_state || !loaded_pose_selector_) {
-      return fail("extract monitor final: no loaded-plan success to select");
+      const std::string reason = "extract monitor final: no loaded-plan success to select";
+      if (message) *message = reason;
+      return fail(reason);
     }
 
     moveit::core::RobotState goal_state = selected->loaded_goal_state
@@ -4416,7 +4517,15 @@ private:
   bool extract_ik_dedup_enabled_ = true;
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;
+  std::string extract_rollout_mode_ = "greedy";
   bool extract_rrt_rollout_enabled_ = false;
+  size_t extract_box_pose_rrt_max_iterations_ = 160;
+  size_t extract_box_pose_rrt_paths_per_arm_ = 8;
+  size_t extract_box_pose_rrt_path_pair_limit_ = 64;
+  double extract_box_pose_rrt_max_retreat_ = 0.55;
+  double extract_box_pose_rrt_max_lift_ = 0.55;
+  double extract_box_pose_rrt_separation_margin_ = 0.03;
+  size_t extract_box_pose_rrt_analytic_root_samples_ = 12;
   std::string extract_rrt_planning_group_ = "dual_arm";
   double extract_rrt_planning_time_ = 0.35;
   int extract_rrt_planning_attempts_ = 1;
@@ -4468,7 +4577,9 @@ private:
   std::unique_ptr<ExtractMotionPlanner> extract_motion_planner_;
   std::unique_ptr<ExtractCandidateScorer> extract_candidate_scorer_;
   std::unique_ptr<ExtractCandidateSolver> extract_candidate_solver_;
+  std::unique_ptr<ExtractCandidateSolver> box_pose_rrt_candidate_solver_;
   std::unique_ptr<ExtractRolloutPlanner> extract_rollout_planner_;
+  std::unique_ptr<BoxPoseRrtExtractPlanner> box_pose_rrt_extract_planner_;
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;

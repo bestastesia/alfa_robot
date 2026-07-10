@@ -63,6 +63,7 @@ target_link_libraries(alfa_robot_motion_core
 
 add_library(alfa_robot_motion_scene_adapter
   src/box_stack_flow_orchestrator.cpp
+  src/box_pose_rrt_extract_planner.cpp
   src/execution_trajectory_adapter.cpp
   src/extract_monitor_json.cpp
   src/extract_monitor_replay_builder.cpp

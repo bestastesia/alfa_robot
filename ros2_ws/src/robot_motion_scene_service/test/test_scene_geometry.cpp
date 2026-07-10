@@ -29,6 +29,15 @@ int main()
   wall.container_floor_z = 0.0;
   const auto obstacles = make_box_wall_obstacles_for_opening(6, 8, wall);
   assert(!obstacles.empty());
+  bool found_rear_guard = false;
+  for (const auto& obstacle : obstacles) {
+    if (obstacle.id.find("_rear_guard") != std::string::npos) {
+      found_rear_guard = true;
+      assert(obstacle.size[0] == wall.rear_guard_thickness);
+      assert(obstacle.size[2] == wall.container_height);
+    }
+  }
+  assert(found_rear_guard);
 
   const auto left_box = make_attached_box_spec("left", 6, false, CarriedBoxGeometryConfig{});
   assert(left_box.id == "carried_left_box_6");

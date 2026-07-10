@@ -187,6 +187,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
+        f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
         f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
         f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
@@ -205,7 +206,6 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_pre_lower_right_box_id:={args.pre_lower_right_box_id}",
         f"extract_loaded_pre_lower_updown_delta:={args.pre_lower_updown_delta}",
         f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.0)}",
-        f"extract_loaded_planner_id:={getattr(args, 'loaded_planner_id', '')}",
         f"extract_loaded_planning_time:={args.loaded_planning_time}",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
@@ -221,6 +221,9 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"record_jsonl_path:={run_dir / 'flow_unused.jsonl'}",
         f"extract_monitor_snapshot_path:={snapshot_path}",
     ]
+    loaded_planner_id = getattr(args, "loaded_planner_id", "")
+    if loaded_planner_id:
+        parts.append(f"extract_loaded_planner_id:={loaded_planner_id}")
     return " ".join(parts)
 
 
@@ -1006,6 +1009,12 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument(
+        "--extract-rollout-mode",
+        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        default="greedy",
+        help="抽离策略；box_pose_rrt 为箱体位姿 RRT，greedy 为稳定旧策略。",
+    )
     parser.add_argument("--extract-rrt", action="store_true")
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)

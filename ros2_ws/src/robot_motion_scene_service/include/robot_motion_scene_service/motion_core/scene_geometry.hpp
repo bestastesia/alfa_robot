@@ -32,6 +32,10 @@ struct BoxWallGeometryConfig
   double carried_box_height = 0.4;
   double carried_box_depth = 0.3;
   double static_box_obstacle_inset = 0.002;
+  bool rear_guard_enabled = true;
+  double rear_guard_thickness = 0.01;
+  double rear_guard_clearance = 0.002;
+  double container_height = 2.4;
 };
 
 struct CarriedBoxGeometryConfig
