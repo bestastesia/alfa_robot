@@ -66,6 +66,23 @@ int main()
   assert(!aabb_overlaps(a, c));
 
   std::string reason;
+  reason.clear();
+  const AxisAlignedBox source_box{{0.15, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  assert(!carried_box_detached_from_source_xz(
+    source_box, source_box, 0.03, "carried_box", &reason));
+  assert(reason.find("x-z projection still overlaps source box") != std::string::npos);
+
+  reason.clear();
+  const AxisAlignedBox retreated_box{{-0.18, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  assert(carried_box_detached_from_source_xz(
+    retreated_box, source_box, 0.03, "carried_box", &reason));
+  assert(reason.empty());
+
+  const AxisAlignedBox lifted_box{{0.15, 0.0, 0.63}, {0.3, 0.4, 0.4}};
+  assert(carried_box_detached_from_source_xz(
+    lifted_box, source_box, 0.03, "carried_box", &reason));
+
+  reason.clear();
   const StaticBoxObstacle static_obstacle{"box_wall", {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
   assert(!carried_box_clear_obstacles(a, "carried_box", {static_obstacle}, {}, &reason));
   assert(reason == "carried_box overlaps box_wall");

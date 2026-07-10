@@ -1653,19 +1653,21 @@ private:
       if (reason) *reason = "unknown_box_id_for_top_detachment";
       return false;
     }
-    const auto aabb = attached_box_world_aabb(state, carried_box);
-    const double carried_bottom_z = aabb.center[2] - 0.5 * aabb.size[2];
-    const double source_top_z = it->second.z + 0.5 * carried_box_height_;
-    if (carried_bottom_z >= source_top_z + extract_neighbor_margin_) {
-      return true;
-    }
-    if (reason) {
-      std::ostringstream oss;
-      oss << carried_box.id << " bottom still below source top bottom_z="
-          << carried_bottom_z << " source_top_z=" << source_top_z;
-      *reason = oss.str();
-    }
-    return false;
+    const AxisAlignedBox source_box{{
+      it->second.x + 0.5 * carried_box_depth_,
+      it->second.y,
+      it->second.z - world_to_base_z_,
+    }, {
+      carried_box_depth_,
+      carried_box_width_,
+      carried_box_height_,
+    }};
+    return alfa_robot::motion::carried_box_detached_from_source_xz(
+      attached_box_world_aabb(state, carried_box),
+      source_box,
+      extract_neighbor_margin_,
+      carried_box.id,
+      reason);
   }
 
   bool carried_boxes_clear_static_obstacles(
@@ -3601,8 +3603,14 @@ private:
 
   std::vector<robot_motion::core::UpdownAwareIkCandidate> selected_monitor_ik_candidates(
     const robot_motion::core::UpdownAwareIkResult& ik_result,
-    IkCandidateSelectionStats* stats) const
+    IkCandidateSelectionStats* stats,
+    bool defer_candidate_limit = false) const
   {
+    if (defer_candidate_limit) {
+      auto config = ik_candidate_selector_config();
+      config.candidate_limit = 0;
+      return IkCandidateSelector(config).selectLegalFromResult(ik_result, stats);
+    }
     if (ik_candidate_selector_) {
       return ik_candidate_selector_->selectLegalFromResult(ik_result, stats);
     }
@@ -3730,6 +3738,20 @@ private:
       extract_monitor_stage_callbacks(),
       [this] { return extract_monitor_last_stage_ms_; });
     if (!result.success) {
+      nlohmann::json failure_snapshot = alfa_robot::motion::extract_monitor_full_selected_snapshot(
+        extract_monitor_snapshot_writer_.readOrEmpty(),
+        box_front_x_,
+        scene_y_shift_,
+        result.total_elapsed_ms,
+        result.stage_elapsed_ms);
+      failure_snapshot["success"] = false;
+      failure_snapshot["failure_reason"] = result.message;
+      std::string snapshot_error;
+      if (!extract_monitor_snapshot_writer_.write(failure_snapshot, &snapshot_error)) {
+        RCLCPP_ERROR(
+          get_logger(), "%s",
+          extract_monitor_snapshot_writer_.writeError(snapshot_error).c_str());
+      }
       *message = result.message;
       return false;
     }
@@ -3805,13 +3827,15 @@ private:
 
     IkCandidateSelectionStats dedup_stats;
     extract_monitor_state_.ik_result = ik_result;
-    const auto selected_candidates = selected_monitor_ik_candidates(ik_result, &dedup_stats);
+    const auto selected_candidates = selected_monitor_ik_candidates(ik_result, &dedup_stats, true);
     extract_monitor_state_.legal_candidates.clear();
     extract_monitor_state_.candidate_states.clear();
     extract_monitor_state_.legal_candidates.reserve(selected_candidates.size());
     extract_monitor_state_.candidate_states.reserve(selected_candidates.size());
     std::map<std::string, size_t> scene_filter_rejections;
+    size_t scene_filter_input_count = 0;
     for (const auto& candidate : selected_candidates) {
+      ++scene_filter_input_count;
       auto state = std::make_shared<moveit::core::RobotState>(
         robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_));
       bool left_detached = false;
@@ -3833,7 +3857,12 @@ private:
       }
       extract_monitor_state_.legal_candidates.push_back(candidate);
       extract_monitor_state_.candidate_states.push_back(std::move(state));
+      if (extract_benchmark_candidate_limit_ > 0 &&
+          extract_monitor_state_.legal_candidates.size() >= extract_benchmark_candidate_limit_) {
+        break;
+      }
     }
+    dedup_stats.selected_count = extract_monitor_state_.legal_candidates.size();
 
     const nlohmann::json records = extract_monitor_candidate_records_json(
       extract_monitor_state_.legal_candidates,
@@ -3854,7 +3883,7 @@ private:
         dedup_stats,
         ik_candidate_rejection_counts_json(ik_result),
         records});
-    snapshot["scene_filter_input_count"] = selected_candidates.size();
+    snapshot["scene_filter_input_count"] = scene_filter_input_count;
     snapshot["scene_filter_accepted_count"] = extract_monitor_state_.legal_candidates.size();
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     return finish_extract_monitor_stage(
@@ -3873,6 +3902,7 @@ private:
   bool run_extract_monitor_extract_stage(std::string* message)
   {
     if (!extract_monitor_state_.seed_state || extract_monitor_state_.legal_candidates.empty()) {
+      extract_monitor_last_stage_ms_ = 0.0;
       const std::string reason = "extract monitor extract: IK stage has no candidates after scene filtering";
       if (message) *message = reason;
       return fail(reason);
@@ -3968,7 +3998,7 @@ private:
         worker_count,
         summary.failure_counts,
         records});
-    return finish_extract_monitor_stage(
+    const bool snapshot_written = finish_extract_monitor_stage(
       snapshot,
       "extract monitor extract",
       extract_monitor_extract_stage_message(
@@ -3979,11 +4009,28 @@ private:
         elapsed_ms,
         extract_monitor_snapshot_path_}),
       message);
+    if (!snapshot_written) {
+      return false;
+    }
+    if (summary.success_count == 0) {
+      const auto dominant = std::max_element(
+        summary.failure_counts.begin(), summary.failure_counts.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.second < rhs.second; });
+      std::ostringstream reason;
+      reason << "extract monitor extract: no successful rollout among " << count << " candidates";
+      if (dominant != summary.failure_counts.end()) {
+        reason << "; dominant=" << dominant->first << " count=" << dominant->second;
+      }
+      if (message) *message = reason.str();
+      return fail(reason.str());
+    }
+    return true;
   }
 
   bool run_extract_monitor_loaded_stage(std::string* message)
   {
     if (extract_monitor_state_.timings.empty()) {
+      extract_monitor_last_stage_ms_ = 0.0;
       return fail("extract monitor loaded: extract stage has no timings");
     }
 
@@ -4112,7 +4159,7 @@ private:
         options.candidate_limit,
         summary.failure_counts,
         records});
-    return finish_extract_monitor_stage(
+    const bool snapshot_written = finish_extract_monitor_stage(
       snapshot,
       "extract monitor loaded",
       extract_monitor_loaded_stage_message(
@@ -4123,6 +4170,23 @@ private:
         elapsed_ms,
         extract_monitor_snapshot_path_}),
       message);
+    if (!snapshot_written) {
+      return false;
+    }
+    if (summary.success_count == 0) {
+      const auto dominant = std::max_element(
+        summary.failure_counts.begin(), summary.failure_counts.end(),
+        [](const auto& lhs, const auto& rhs) { return lhs.second < rhs.second; });
+      std::ostringstream reason;
+      reason << "extract monitor loaded: no successful loaded plan among "
+             << summary.attempted_count << " attempts";
+      if (dominant != summary.failure_counts.end()) {
+        reason << "; dominant=" << dominant->first << " count=" << dominant->second;
+      }
+      if (message) *message = reason.str();
+      return fail(reason.str());
+    }
+    return true;
   }
 
   bool extract_monitor_pre_attach_transition_is_smooth(const ExtractRolloutTiming& timing)

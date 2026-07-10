@@ -214,6 +214,39 @@ AxisAlignedBox expanded_aabb(const AxisAlignedBox& box, double margin)
   }};
 }
 
+bool carried_box_detached_from_source_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason)
+{
+  const AxisAlignedBox protected_source = expanded_aabb(source_box, std::max(0.0, margin));
+  const double carried_min_x = carried_box.center[0] - 0.5 * carried_box.size[0];
+  const double carried_max_x = carried_box.center[0] + 0.5 * carried_box.size[0];
+  const double carried_min_z = carried_box.center[2] - 0.5 * carried_box.size[2];
+  const double carried_max_z = carried_box.center[2] + 0.5 * carried_box.size[2];
+  const double source_min_x = protected_source.center[0] - 0.5 * protected_source.size[0];
+  const double source_max_x = protected_source.center[0] + 0.5 * protected_source.size[0];
+  const double source_min_z = protected_source.center[2] - 0.5 * protected_source.size[2];
+  const double source_max_z = protected_source.center[2] + 0.5 * protected_source.size[2];
+  const bool x_overlaps = carried_min_x < source_max_x && carried_max_x > source_min_x;
+  const bool z_overlaps = carried_min_z < source_max_z && carried_max_z > source_min_z;
+  if (!x_overlaps || !z_overlaps) {
+    return true;
+  }
+  if (reason) {
+    std::ostringstream oss;
+    oss << carried_box_id << " x-z projection still overlaps source box"
+        << " carried_x=[" << carried_min_x << ',' << carried_max_x << ']'
+        << " carried_z=[" << carried_min_z << ',' << carried_max_z << ']'
+        << " source_x=[" << source_min_x << ',' << source_max_x << ']'
+        << " source_z=[" << source_min_z << ',' << source_max_z << ']';
+    *reason = oss.str();
+  }
+  return false;
+}
+
 bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,

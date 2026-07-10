@@ -70,6 +70,13 @@ bool aabb_overlaps(const AxisAlignedBox& lhs, const AxisAlignedBox& rhs);
 
 AxisAlignedBox expanded_aabb(const AxisAlignedBox& box, double margin);
 
+bool carried_box_detached_from_source_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason);
+
 bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,

@@ -32,7 +32,7 @@ BoxPoseExtractState interpolate(
 
 bool intervals_overlap(double lhs_min, double lhs_max, double rhs_min, double rhs_max)
 {
-  return lhs_min <= rhs_max && lhs_max >= rhs_min;
+  return lhs_min < rhs_max && lhs_max > rhs_min;
 }
 
 std::array<std::array<double, 2>, 4> rectangle_corners(

@@ -470,6 +470,9 @@ ExtractMonitorFullRunResult run_extract_monitor_full_sequence(
     std::string stage_message;
     double elapsed_ms = 0.0;
     if (!run_extract_monitor_stage(stage, callbacks, last_stage_ms, &elapsed_ms, &stage_message)) {
+      result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;
+      result.total_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - total_start).count();
       result.message = std::string("完整流程失败在") + extract_monitor_stage_failure_label(stage) + ": " + stage_message;
       result.success = false;
       return result;
@@ -523,8 +526,12 @@ ExtractMonitorFullRunResult ExtractMonitorController::runFull(
     std::string stage_message;
     double elapsed_ms = 0.0;
     if (!run_extract_monitor_stage(stage, callbacks, last_stage_ms, &elapsed_ms, &stage_message)) {
+      result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;
+      result.total_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - total_start).count();
       result.message = std::string("完整流程失败在") + extract_monitor_stage_failure_label(stage) + ": " + stage_message;
       result.success = false;
+      reset();
       return result;
     }
     result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;

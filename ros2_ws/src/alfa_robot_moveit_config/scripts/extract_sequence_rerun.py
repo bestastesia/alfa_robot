@@ -264,6 +264,7 @@ def make_pair_args(
         extract_rrt_planning_attempts=args.extract_rrt_planning_attempts,
         extract_rrt_endpoint_per_arm_limit=args.extract_rrt_endpoint_per_arm_limit,
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
+        extract_rollout_mode=args.extract_rollout_mode,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -646,6 +647,12 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument(
+        "--extract-rollout-mode",
+        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        default="box_pose_rrt",
+        help="抽离策略；该序列实验默认使用箱体位姿 RRT",
+    )
     parser.add_argument("--extract-rrt", action="store_true")
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
@@ -658,7 +665,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
-    parser.add_argument("--loaded-updown", type=float, default=0.0)
+    parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(
         "--loaded-left-pose-family-deg",

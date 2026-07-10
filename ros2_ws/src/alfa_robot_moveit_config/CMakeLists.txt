@@ -323,6 +323,11 @@ if(BUILD_TESTING)
   )
 
   add_test(
+    NAME test_extract_sequence_definition
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_extract_sequence_definition.py
+  )
+
+  add_test(
     NAME test_package_boundaries
     COMMAND /usr/bin/python3
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_package_boundaries.py

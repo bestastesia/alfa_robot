@@ -65,6 +65,7 @@
     <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
     <disable_collisions link1="updown" link2="front_sensor" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="lidar_front" reason="Adjacent"/>
+    <disable_collisions link1="front_sensor" link2="lidar_front" reason="Never"/>
     <disable_collisions link1="turn" link2="lidar_rear" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="cam_front" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="cam_rear" reason="Adjacent"/>
