@@ -364,6 +364,7 @@ install(DIRECTORY config/
 install(PROGRAMS
   scripts/benchmark.py
   scripts/demo.py
+  scripts/ik_csv_open3d_visualizer.py
   scripts/ik_range_grid.py
   scripts/run_parallel_ik_speed_limit_benchmark.py
   scripts/plot_parallel_ik_speed_limit.py

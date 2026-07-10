@@ -8,10 +8,7 @@
 - Git 操作工程师：`.ai_teamwork/engineers/git_ops.md`
 - 运控工程师：`.ai_teamwork/engineers/motion_control.md`
 - 机械工程师：`.ai_teamwork/engineers/mechanical.md`
-- 仿真学工程师：`.ai_teamwork/engineers/simulation.md`
-- 雷达 SLAM 导航工程师：`.ai_teamwork/engineers/slam_navigation.md`
 - 电控工程师：`.ai_teamwork/engineers/electrical.md`
-- 感知抓取工程师：`.ai_teamwork/engineers/perception_grasp.md`
 
 ## 项目经理
 
@@ -23,24 +20,16 @@
 
 ## 运控工程师
 
-主要看 `ros2_ws/src/alfa_robot_hardware/`、`ros2_ws/src/alfa_robot_bringup/`、`ros2_ws/src/alfa_robot_moveit_config/`，关注 ros2_control、controller、实机控制、安全停机、joint command/state、MoveIt/RViz 调试链路。
+主要看 `robot_motion_interfaces`、`robot_motion_runtime`、`robot_motion_scene_service`、运动算法与规划适配、执行桥和硬件包，关注唯一事实源、规划、执行、安全停机及 joint command/state 一致性。
 
 ## 机械工程师
 
-主要看 `ros2_ws/src/alfa_robot_description/`、`alfa_robot_v2_arm_v4_new/`、`scripts/dh_workspace/`，关注 URDF/Xacro、mesh、joint/link、关节轴、限位、DH 参数。
-
-## 仿真学工程师
-
-主要看 `simulation/`，以及和仿真相关的 URDF、MoveIt、RViz/Gazebo/MuJoCo 配置，关注实机前验证。
-
-## 雷达 SLAM 导航工程师
-
-主要看 `lidar_ws/src/`、`ros2_ws/src/fast_lio/`、`ros2_ws/src/livox_ros_driver2/`，关注 Livox、Fast-LIO、2D 建图、AMCL/Nav2、TF、地图。
+主要看 `ros2_ws/src/alfa_robot_description/`，关注 URDF/Xacro、mesh、joint/link、关节轴、限位和模型版本。
 
 ## 电控工程师
 
 主要关注电机协议、CAN/CANopen/ZeroErr/Cylinder、限位、急停、上电下电、安全策略；源码通常和运控工程师共同看 `alfa_robot_hardware`。
 
-## 感知抓取工程师
+## 外部系统协作
 
-主要看 `ros2_ws/src/box_perception/`、`ros2_ws/src/box_perception_msgs/`，关注箱体检测、目标位姿、坐标系、感知到 MoveIt 的桥接。
+感知、导航和高保真仿真不再由本仓库维护。它们必须通过 `robot_motion_interfaces` 的稳定契约接入，不能把实现代码重新塞回运控包。

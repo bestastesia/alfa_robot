@@ -32,10 +32,7 @@ find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/SemanticCargo.msg"
-  "msg/SemanticScene.msg"
   "srv/ConfigureExtractMonitor.srv"
-  DEPENDENCIES std_msgs geometry_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
 
@@ -342,12 +339,6 @@ install(PROGRAMS
   scripts/x_edge_refine_reachability.py
   scripts/rviz_dual_goal_pose_monitor.py
   scripts/set_joints.py
-  scripts/mujoco_joint_demo_commander.py
-  scripts/mujoco_digital_twin.py
-  scripts/mujoco_sync_bridge.py
-  scripts/mujoco_planning_scene_bridge.py
-  scripts/semantic_scene_to_planning_scene.py
-  scripts/semantic_scene_utils.py
   scripts/process_lifecycle.py
   scripts/extract_startup_stability_smoke.py
   scripts/extract_stage_monitor_console.py

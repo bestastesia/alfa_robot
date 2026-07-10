@@ -52,6 +52,7 @@
       ["index.html", "系统总览"],
       ["flows.html", "流程地图"],
       ["packages.html", "包职责"],
+      ["architecture.html", "目标架构"],
       ["status.html", "状态看板"]
     ];
     return `
@@ -369,11 +370,120 @@
     );
   }
 
+  function renderArchitecture() {
+    const architecture = data.architecture;
+    shell(
+      "目标架构",
+      "用单向依赖、唯一事实源和明确晋升门槛，阻止调试代码突破职责后逐渐变成生产系统。",
+      `
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Operating Rules</p>
+          <h2>四条不可破坏的规则</h2>
+        </div>
+        <div class="principle-grid">
+          ${architecture.principles.map((item) => `
+            <article class="principle-item">
+              <h3>${escapeHtml(item.title)}</h3>
+              <p>${escapeHtml(item.rule)}</p>
+              <small>${escapeHtml(item.prevents)}</small>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Dependency Direction</p>
+          <h2>目标依赖方向</h2>
+          <p>上层只能调用下层公开 interface。工具位于侧边，只能向内调用，生产代码不能反向依赖工具。</p>
+        </div>
+        <div class="architecture-stack">
+          ${architecture.layers.map((layer, index) => `
+            <article class="architecture-layer">
+              <span class="layer-index">${escapeHtml(layer.index)}</span>
+              <div class="layer-title">
+                <h3>${escapeHtml(layer.name)}</h3>
+                <code>${escapeHtml(layer.modules)}</code>
+              </div>
+              <div>
+                <strong>拥有</strong>
+                <p>${escapeHtml(layer.owns)}</p>
+              </div>
+              <div>
+                <strong>禁止</strong>
+                <p>${escapeHtml(layer.mustNot)}</p>
+              </div>
+              ${index < architecture.layers.length - 1 ? '<span class="layer-arrow">↓</span>' : ''}
+            </article>
+          `).join("")}
+        </div>
+        <div class="tool-lane">
+          <strong>侧向工具域</strong>
+          <span>robot_motion_tools / scripts/ik_benchmark / Rerun / system_tests</span>
+          <em>只调用公开服务，不得成为任何生产包的依赖</em>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Ownership Matrix</p>
+          <h2>一个概念只能有一个负责人</h2>
+        </div>
+        <div class="table-scroll">
+          <table class="ownership-table">
+            <thead><tr><th>概念</th><th>唯一负责人</th><th>公开 Interface</th><th>明确禁止</th></tr></thead>
+            <tbody>
+              ${architecture.ownership.map((row) => `
+                <tr>
+                  <th>${escapeHtml(row.concern)}</th>
+                  <td>${escapeHtml(row.owner)}</td>
+                  <td><code>${escapeHtml(row.interface)}</code></td>
+                  <td>${escapeHtml(row.forbidden)}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Promotion Path</p>
+          <h2>调试代码如何合法进入正式系统</h2>
+          <p>不是禁止快速脚本，而是禁止它跳过中间门槛直接成为生产依赖。</p>
+        </div>
+        <div class="promotion-flow">
+          ${architecture.promotion.map((item, index) => `
+            <article class="promotion-step">
+              <span>${index + 1}</span>
+              <h3>${escapeHtml(item.stage)}</h3>
+              <code>${escapeHtml(item.location)}</code>
+              <p>${escapeHtml(item.gate)}</p>
+            </article>
+          `).join('<b>→</b>')}
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Migration</p>
+          <h2>从当前仓库到目标架构</h2>
+        </div>
+        <div class="migration-list">
+          ${architecture.migration.map((item) => `
+            <article>
+              <strong>${escapeHtml(item.phase)}</strong>
+              <p>${escapeHtml(item.result)}</p>
+            </article>
+          `).join("")}
+        </div>
+      </section>`
+    );
+  }
+
   function boot() {
     const page = document.body.dataset.page;
     if (page === "flows") renderFlows();
     else if (page === "packages") renderPackages();
     else if (page === "package") renderPackageDetail();
+    else if (page === "architecture") renderArchitecture();
     else if (page === "status") renderStatus();
     else renderIndex();
   }

@@ -8,10 +8,9 @@ Dual-arm industrial robot platform based on ROS2.
 alfa_robot/
 ├── ros2_ws/         ROS2 workspace (colcon build here)
 │   └── src/         ROS2 packages
-├── scripts/         Standalone scripts & tools
-│   └── ik_benchmark/  IK benchmark tool
-├── simulation/      Simulation environments
-└── docs/            Documentation
+├── scripts/         Motion-control experiments and validation tools
+│   └── ik_benchmark/  IK benchmark and Rerun helpers
+└── docs/            Architecture, interfaces and validation records
 ```
 
 ## Build

@@ -15,11 +15,6 @@
 - 接手历史提交管理时，先查看近期提交署名风格，保持 AI 协作标记一致。
 - 后续提交信息统一使用中文书写；允许 `feat:`、`fix:`、`chore:`、`docs:` 等 conventional commit 类型前缀使用英文，但冒号后的标题和正文应使用中文；历史英文提交暂不处理，除非用户明确要求改写。
 
-## 当前特别注意
-
-- `.gitignore` 已有本地改动，未确认前不要覆盖或提交。
-- `.windsurfrules`、`lidar_ws/log/*` 当前也属于未归属改动，提交协作机制时不要带入。
-
 ## Linear issue 与 Git 分支对应规范
 
 详细规范见 `.ai_teamwork/LINEAR_WORKFLOW.md`；本文件只保留 Git 操作工程师必须记住的要点。

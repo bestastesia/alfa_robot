@@ -2,8 +2,8 @@ window.SYSTEM_PORTAL_DATA = {
   meta: {
     title: "ALFA Robot 运控系统地图",
     subtitle: "从外界交互到 ROS2 包职责的可点击流程导航",
-    updated: "2026-07-09",
-    branchHint: "当前整理基于 alfa_robot 工作区与当前分支源码；迁移到 robot_motion_control 时应同步更新本数据文件。",
+    updated: "2026-07-10",
+    branchHint: "当前整理基于 v5_dev 清扫后的运控/电控源码；后续迁移到 robot_motion_control 时沿用相同职责规则。",
     updateRule: "新增包、接口或流程时，优先更新 assets/data.js；页面会自动渲染卡片、流程和状态。"
   },
   externalActors: [
@@ -14,10 +14,10 @@ window.SYSTEM_PORTAL_DATA = {
       interfaces: ["ros2 launch", "ros2 service call", "Rerun .rrd", "RViz"]
     },
     {
-      id: "perception",
-      name: "感知系统",
-      role: "识别箱垛、输出箱子位置和任务目标；当前主流程中大量目标仍可由脚本/benchmark 注入。",
-      interfaces: ["box_perception 消息", "任务坐标", "箱子编号"]
+      id: "upstream",
+      name: "任务上游",
+      role: "通过稳定任务契约提供左右末端目标和抓取模式；上游可以是感知、整机任务系统或人工调试端。",
+      interfaces: ["RunDualGraspTask", "6D Pose", "front / top_suction"]
     },
     {
       id: "planner",
@@ -56,7 +56,7 @@ window.SYSTEM_PORTAL_DATA = {
       title: "任务到运动主链路",
       summary: "从箱子目标输入开始，经过场景建模、IK、抽离、负重规划，最终交给执行层。",
       stages: [
-        { name: "任务输入", owner: "box_perception / benchmark / operator", data: "箱子编号、左右目标、吸附模式 front/top_suction、箱墙位置", output: "任务上下文 MotionContext" },
+        { name: "任务输入", owner: "任务上游 / operator", data: "request_id、左右 6D Pose、吸附模式 front/top_suction", output: "稳定任务契约 MotionContext" },
         { name: "场景生成", owner: "robot_motion_scene_service", data: "箱垛几何、集装箱尺寸、抓取箱号", output: "CollisionObject / AttachedBox / 箱墙开洞障碍" },
         { name: "IK 候选", owner: "alfa_robot_moveit_config + alfa_robot_analytic_ik", data: "左右 TCP pose、h 候选、负重姿态先验", output: "去重后的 IK candidate 列表和 cost/rank" },
         { name: "抽离搜索", owner: "extract_planning_pipeline", data: "IK candidate + 携带箱碰撞", output: "抽离成功轨迹 / 失败原因" },
@@ -91,14 +91,15 @@ window.SYSTEM_PORTAL_DATA = {
     },
     {
       id: "digital-twin",
-      title: "数字孪生 / 可视化链路",
-      summary: "当前已有 Rerun、RViz 和 MuJoCo 相关入口，但权威状态源仍在建设中。",
+      title: "事实源 / 可视化链路",
+      summary: "硬件与仿真只提供观测，RobotMotionState/RobotMotionScene 是规划与任务状态机唯一读取的事实。",
       stages: [
         { name: "机器人模型", owner: "alfa_robot_description", data: "URDF/xacro、mesh、joint limits", output: "robot_description" },
-        { name: "状态输入", owner: "robot_motion_runtime / joint_state_broadcaster", data: "/joint_states 或 /robot_motion/set_state", output: "RobotMotionState 或 TF" },
+        { name: "观测输入", owner: "hardware / mock executor", data: "/joint_states 或一次性 /robot_motion/set_state", output: "带时间戳的关节观测" },
+        { name: "权威状态", owner: "robot_motion_runtime", data: "观测 + source + state_id", output: "唯一 /robot_motion/state" },
+        { name: "权威场景", owner: "robot_motion_runtime + robot_motion_scene_service", data: "任务场景更新 + scene_id", output: "唯一 /robot_motion/scene" },
         { name: "Rerun 回放", owner: "alfa_robot_rerun + scripts", data: "RobotState/trajectory/scene JSON", output: ".rrd 动态回放" },
-        { name: "RViz/MoveIt", owner: "alfa_robot_moveit_config", data: "PlanningScene + robot_description", output: "真实规划场景显示" },
-        { name: "MuJoCo", owner: "simulation/mujoco + bridge scripts", data: "仿真 XML / semantic scene", output: "未来可接入孪生状态源" }
+        { name: "RViz/MoveIt", owner: "alfa_robot_moveit_config", data: "PlanningScene + robot_description", output: "规划适配与真实场景显示" }
       ]
     }
   ],
@@ -121,23 +122,23 @@ window.SYSTEM_PORTAL_DATA = {
       layer: "运行时服务图",
       status: "服务化起点",
       maturity: "active",
-      responsibility: "提供权威 RobotMotionState/RobotMotionScene 源、箱号任务 adapter、PlanDualArmIk/PlanExtract/PlanLoaded/ExecuteTrajectory 服务、任务编排服务和运行时前端。",
+      responsibility: "维护权威 RobotMotionState/RobotMotionScene、任务状态机、能力服务编排和运行状态；不直接实现 IK、碰撞或硬件协议。",
       consumes: ["/joint_states 或 /robot_motion/set_state", "/robot_motion/set_scene 或显式 scene_objects", "箱号任务、左右目标 Pose 或 IK candidate states", "loaded goal family", "JointTrajectory action backend"],
       produces: ["/robot_motion/state", "/robot_motion/scene", "/robot_motion/set_scene", "/robot_motion/run_box_pair_task", "/robot_motion/run_dual_arm_pose_task", "/robot_motion/run_task", "/robot_motion/plan_dual_arm_ik", "/robot_motion/plan_extract", "/robot_motion/plan_loaded", "/robot_motion/execute_trajectory", "/robot_motion/runtime_status", "http://127.0.0.1:8766"],
       keyFiles: ["ros2_ws/src/robot_motion_runtime/README.md", "ros2_ws/src/robot_motion_runtime/launch/runtime_services.launch.py", "ros2_ws/src/robot_motion_runtime/robot_motion_runtime"],
-      statusNotes: ["这是从 dual_arm_planner_node 抽脱任务链路的第一层运行时骨架。", "`runtime_full_stack.launch.py` 会同时启动 runtime、解析 IK 和碰撞服务，并默认让 PlanExtract/PlanLoaded 调用碰撞服务过滤候选。", "箱号任务入口 `/robot_motion/run_box_pair_task` 已接入第一版 5×5 箱墙几何 adapter，内部转发 `/robot_motion/run_dual_arm_pose_task`。", "场景事实入口 `/robot_motion/set_scene` 已接入；PlanExtract/PlanLoaded 会把请求 scene 或 `/robot_motion/scene` 传给碰撞服务。", "当前 PlanExtract/PlanLoaded 仍是 shortcut 候选生成；完整 C++ 抽离 rollout 和 RRT/local-RRT 迁移还未完成。"]
+      statusNotes: ["这是从 dual_arm_planner_node 抽脱任务链路的运行时骨架。", "只有本包可以发布权威 `/robot_motion/state` 与 `/robot_motion/scene`。", "算法节点通过 robot_motion_interfaces 接入，不能反向依赖 runtime 私有实现。", "当前仍混有部分临时 Plan 节点；目标是迁入独立 planning service。"]
     },
     {
       id: "robot_motion_scene_service",
       name: "robot_motion_scene_service",
       layer: "场景与碰撞",
-      status: "核心库",
+      status: "场景能力",
       maturity: "active",
       responsibility: "生成集装箱、箱墙开洞、附着箱、AABB 等几何，并将其同步到 MoveIt PlanningScene。",
       consumes: ["箱子编号", "箱垛几何参数", "抓取 pair", "RobotState", "AttachedBoxSpec"],
       produces: ["CollisionObject", "AttachedCollisionObject", "PlanningScene 快照", "AABB/脱离判断"],
       keyFiles: ["ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_core/scene_geometry.hpp", "ros2_ws/src/robot_motion_scene_service/include/robot_motion_scene_service/motion_scene_adapter.hpp", "ros2_ws/src/robot_motion_scene_service/docs/responsibility.md"],
-      statusNotes: ["当前名字带 service，但本质是 C++ core + MoveIt adapter，不是 ROS service 节点。", "不负责 IK、RRT、抓取顺序或执行。"]
+      statusNotes: ["负责几何事实和碰撞适配，不负责 IK、RRT、抓取顺序或执行。", "场景 revision 必须由权威场景源管理，Rerun 与规划共用同一份数据。"]
     },
     {
       id: "alfa_robot_description",
@@ -154,14 +155,14 @@ window.SYSTEM_PORTAL_DATA = {
     {
       id: "alfa_robot_moveit_config",
       name: "alfa_robot_moveit_config",
-      layer: "规划与实验编排",
-      status: "过渡主包",
+      layer: "MoveIt 适配",
+      status: "待瘦身适配包",
       maturity: "transitional",
-      responsibility: "MoveIt 配置、dual_arm_planner、IK/抽离/负重流程装配、碰撞服务、Rerun 快照生成。",
+      responsibility: "维护 SRDF、规划组、控制器与 MoveIt/FCL adapter；现有全流程编排属于待迁出的历史职责。",
       consumes: ["robot_description", "robot_motion_scene_service", "robot_motion_interfaces", "MoveIt PlanningScene", "箱子目标"],
       produces: ["dual_arm_planner 服务", "motion_collision_service_node", "Rerun/JSON snapshot", "MoveIt planning result", "可执行 JointTrajectory"],
       keyFiles: ["ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/optimized_ik_pipeline.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/extract_planning_pipeline.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/loaded_pose_planning.cpp", "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"],
-      statusNotes: ["当前仍承担过多业务职责，后续应继续迁移到专门运控包。", "负重规划支持 rrt/shortcut；shortcut 已增加局部 RRT 修补分支。", "部分脚本仍是 benchmark/demo 性质，不应视作长期服务。"]
+      statusNotes: ["禁止继续新增任务状态机、业务顺序和调试入口。", "dual_arm_planner 现有能力按 core → planning service → runtime 顺序迁出。", "最终只保留 MoveIt 配置、碰撞/规划 adapter 和必要 launch。"]
     },
     {
       id: "alfa_robot_analytic_ik",
@@ -193,11 +194,11 @@ window.SYSTEM_PORTAL_DATA = {
       layer: "启动装配",
       status: "运行入口",
       maturity: "active",
-      responsibility: "装配 robot_state_publisher、ros2_control、controller spawner、实机/测试启动脚本。",
+      responsibility: "只装配 robot_state_publisher、ros2_control、controller、runtime 和选定执行 adapter；不包含任务或算法逻辑。",
       consumes: ["robot_description", "controller yaml", "hardware plugin 参数"],
       produces: ["controller_manager", "joint_state_broadcaster", "controller command topics"],
       keyFiles: ["ros2_ws/src/alfa_robot_bringup/launch/alfa_robot.launch.py", "ros2_ws/src/alfa_robot_bringup/launch/moveit_real_execute.launch.py", "ros2_ws/src/alfa_robot_bringup/config"],
-      statusNotes: ["启动顺序和 controller 名称是硬约束。", "部分 launch 是测试入口，不能全部视为生产入口。"]
+      statusNotes: ["启动顺序和 controller 名称是硬约束。", "正式入口与测试入口必须分离；launch 只能组合节点和参数，不能计算任务。"]
     },
     {
       id: "alfa_robot_hardware",
@@ -224,42 +225,6 @@ window.SYSTEM_PORTAL_DATA = {
       statusNotes: ["当前只读，不替代 RViz/MoveIt 交互。", "没有规划场景、碰撞和感知 overlay。"]
     },
     {
-      id: "alfa_robot_benchmarks",
-      name: "alfa_robot_benchmarks",
-      layer: "实验与回归",
-      status: "实验工具",
-      maturity: "lab",
-      responsibility: "运行 IK、并行求解、箱垛抓取、updown solver 等 benchmark 和分析脚本。",
-      consumes: ["MoveIt 配置", "IK 参数", "测试范围", "实验 JSON/CSV"],
-      produces: ["benchmark 可执行", "CSV/JSONL", "图表", "Rerun"],
-      keyFiles: ["ros2_ws/src/alfa_robot_benchmarks/src/updown_solver_comparison_benchmark.cpp", "ros2_ws/src/alfa_robot_benchmarks/scripts", "data/ik_benchmark"],
-      statusNotes: ["不应把 benchmark 代码直接当作生产状态机。", "很多历史数据位于 data/，提交时需区分验证产物和源码。"]
-    },
-    {
-      id: "box_perception",
-      name: "box_perception",
-      layer: "感知",
-      status: "感知入口",
-      maturity: "active",
-      responsibility: "面向箱子识别/卸货场景的视觉感知节点。",
-      consumes: ["相机/图像/点云输入", "感知配置"],
-      produces: ["箱子检测结果", "box_perception_msgs"],
-      keyFiles: ["ros2_ws/src/box_perception/launch/perception.launch.py", "ros2_ws/src/box_perception/box_perception"],
-      statusNotes: ["当前运控 benchmark 中常用脚本目标代替真实感知输出。", "与任务编排的稳定接口仍需收敛。"]
-    },
-    {
-      id: "box_perception_msgs",
-      name: "box_perception_msgs",
-      layer: "感知接口",
-      status: "消息包",
-      maturity: "active",
-      responsibility: "定义箱子感知自定义消息。",
-      consumes: ["无运行时输入"],
-      produces: ["感知消息类型"],
-      keyFiles: ["ros2_ws/src/box_perception_msgs/msg", "ros2_ws/src/box_perception_msgs/CMakeLists.txt"],
-      statusNotes: ["应与 robot_motion_interfaces 明确边界：感知输出 vs 运控任务契约。"]
-    },
-    {
       id: "bio_ik",
       name: "bio_ik",
       layer: "第三方 IK",
@@ -270,58 +235,15 @@ window.SYSTEM_PORTAL_DATA = {
       produces: ["IK solution"],
       keyFiles: ["ros2_ws/src/bio_ik/README.md", "ros2_ws/src/bio_ik"],
       statusNotes: ["随机性强，已不是当前稳定流程唯一能力来源。", "保留用于对照和历史实验。"]
-    },
-    {
-      id: "fast_lio",
-      name: "fast_lio",
-      layer: "雷达定位",
-      status: "导航/建图依赖",
-      maturity: "external",
-      responsibility: "LiDAR-Inertial odometry/mapping，提供雷达建图定位能力。",
-      consumes: ["Livox/点云/IMU"],
-      produces: ["里程计", "地图", "点云"],
-      keyFiles: ["ros2_ws/src/fast_lio/launch/mapping.launch.py", "ros2_ws/src/fast_lio/src"],
-      statusNotes: ["与当前抽箱运控链路相对独立。", "运行成本和参数标定需要导航侧维护。"]
-    },
-    {
-      id: "livox_ros_driver2",
-      name: "livox_ros_driver2",
-      layer: "雷达驱动",
-      status: "外部驱动",
-      maturity: "external",
-      responsibility: "Livox 3D LiDAR ROS2 驱动。",
-      consumes: ["Livox 硬件数据"],
-      produces: ["Livox 点云/IMU topic"],
-      keyFiles: ["ros2_ws/src/livox_ros_driver2", "ros2_ws/src/livox_ros_driver2/launch"],
-      statusNotes: ["属于外设驱动，不应混入运控算法职责。"]
-    },
-    {
-      id: "alfa_robot_twist_mux",
-      name: "alfa_robot_twist_mux",
-      layer: "底盘/急停辅助",
-      status: "待梳理",
-      maturity: "mock-or-early",
-      responsibility: "底盘 twist mux、teleop 和急停相关辅助入口。",
-      consumes: ["teleop/cmd_vel/estop 输入"],
-      produces: ["mux 后 twist / 安全辅助状态"],
-      keyFiles: ["ros2_ws/src/alfa_robot_twist_mux/launch/bringup.launch.py", "ros2_ws/src/alfa_robot_twist_mux/readme.md"],
-      statusNotes: ["package 描述仍为 TODO，职责需要进一步工程化确认。"]
     }
   ],
   nonRosAssets: [
     {
-      id: "simulation_mujoco",
-      name: "simulation/mujoco",
-      role: "MuJoCo 仿真资产、生成脚本和同步 bridge 的来源之一。",
-      status: "实验孪生资产",
-      notes: "当前还不是权威数字孪生服务；后续要和 RobotMotionState、MotionSceneService 对齐。"
-    },
-    {
       id: "scripts_ik_benchmark",
       name: "scripts/ik_benchmark",
-      role: "历史 IK demo、range grid、可达性与实验脚本集合。",
-      status: "历史/实验入口",
-      notes: "继续使用前要确认加载的是当前安装后的 MoveIt 配置和当前机械臂命名。"
+      role: "IK core 的历史来源、可达性工具和 Rerun helper；不再通过 ros2_ws symlink 暴露为正式包。",
+      status: "待迁移实验资产",
+      notes: "生产源码迁出后应进一步缩减；任何正式包不得依赖 benchmark 可执行入口。"
     },
     {
       id: "docs_motion",
@@ -331,6 +253,97 @@ window.SYSTEM_PORTAL_DATA = {
       notes: "本 portal 负责快速导航；详细解释仍引用这些 Markdown。"
     }
   ],
+  architecture: {
+    principles: [
+      {
+        title: "唯一事实源",
+        rule: "只有 robot_motion_runtime 发布权威 RobotMotionState 与 RobotMotionScene；硬件、mock 和回放只提交观测。",
+        prevents: "消除多个 /joint_states 或临时脚本互相覆盖导致的状态跳变。"
+      },
+      {
+        title: "算法与 ROS 分离",
+        rule: "IK、候选评分、抽离 rollout、轨迹评价进入纯 core；ROS service 只做消息转换、超时和状态上报。",
+        prevents: "避免为了测试算法而启动整套 ROS，也避免算法被锁死在某个 node。"
+      },
+      {
+        title: "适配器不掌管业务",
+        rule: "MoveIt、硬件、Rerun 都是 adapter；它们实现能力，不决定抓取顺序、阶段跳转和重试策略。",
+        prevents: "防止 alfa_robot_moveit_config 再次长成全流程主包。"
+      },
+      {
+        title: "调试代码单向依赖",
+        rule: "工具只能调用公开 interface；任何生产包都不得依赖 benchmark、Rerun helper 或临时脚本。",
+        prevents: "阻止一次性验证脚本被悄悄融入正式运行链路。"
+      }
+    ],
+    layers: [
+      {
+        index: "01",
+        name: "契约层",
+        modules: "robot_motion_interfaces",
+        owns: "跨包消息、服务、错误码、request/state/scene id",
+        mustNot: "依赖 MoveIt 实现、硬件协议或任务脚本"
+      },
+      {
+        index: "02",
+        name: "算法核心层",
+        modules: "robot_motion_core（目标） / alfa_robot_analytic_ik",
+        owns: "IK、多解排序、去重、抽离 rollout、轨迹评分",
+        mustNot: "创建 ROS node、读取环境变量、启动进程或写可视化"
+      },
+      {
+        index: "03",
+        name: "能力服务层",
+        modules: "robot_motion_planning_service（目标） / robot_motion_scene_service",
+        owns: "SolveIK、PlanExtract、PlanLoaded、CheckCollision",
+        mustNot: "决定任务阶段、直接执行轨迹或成为状态事实源"
+      },
+      {
+        index: "04",
+        name: "运行时层",
+        modules: "robot_motion_runtime",
+        owns: "唯一状态/场景事实、任务状态机、超时、取消、回执",
+        mustNot: "包含 IK/RRT/FCL 实现或直接访问电机总线"
+      },
+      {
+        index: "05",
+        name: "适配器层",
+        modules: "alfa_robot_moveit_config / alfa_robot_execution_bridge / alfa_robot_hardware / alfa_robot_rerun",
+        owns: "MoveIt/FCL、执行后端、真实硬件、只读可视化适配",
+        mustNot: "保存业务状态机或产生第二份事实状态"
+      },
+      {
+        index: "06",
+        name: "装配层",
+        modules: "alfa_robot_bringup",
+        owns: "选择 adapter、加载参数、启动顺序、生命周期",
+        mustNot: "计算任务、修改轨迹、包含业务判断"
+      }
+    ],
+    ownership: [
+      { concern: "机器人模型", owner: "alfa_robot_description", interface: "robot_description", forbidden: "在 planner/bringup 复制 joint、limit 或 TCP 常量" },
+      { concern: "当前机器人状态", owner: "robot_motion_runtime", interface: "/robot_motion/state", forbidden: "规划器直接把任意 /joint_states 当权威状态" },
+      { concern: "当前场景", owner: "robot_motion_runtime + robot_motion_scene_service", interface: "/robot_motion/scene + scene_id", forbidden: "Rerun、MoveIt 和算法各建一套障碍" },
+      { concern: "IK/抽离/负重规划", owner: "robot_motion_core + planning service", interface: "SolveIK / PlanExtract / PlanLoaded", forbidden: "写进 bringup、dashboard 或执行 bridge" },
+      { concern: "MoveIt/FCL 调用", owner: "alfa_robot_moveit_config adapter", interface: "规划与碰撞 adapter", forbidden: "在此包维护任务顺序和重试状态机" },
+      { concern: "任务状态机与回执", owner: "robot_motion_runtime", interface: "RunDualGraspTask / TaskReceipt", forbidden: "执行层猜测任务是否完成" },
+      { concern: "轨迹执行", owner: "alfa_robot_execution_bridge", interface: "FollowJointTrajectory", forbidden: "重新规划、修正 IK 或发布伪权威状态" },
+      { concern: "测试与审计", owner: "robot_motion_tools（目标） / scripts/ik_benchmark", interface: "只调用公开服务并订阅事件", forbidden: "被任何生产包编译或运行依赖" }
+    ],
+    promotion: [
+      { stage: "实验", location: "scripts/ik_benchmark 或 robot_motion_tools", gate: "可以快速迭代，但只能调用稳定 interface。" },
+      { stage: "算法候选", location: "独立 pure core + 单测", gate: "去掉 CLI、ROS、文件路径和可视化副作用。" },
+      { stage: "能力服务", location: "planning/scene service adapter", gate: "定义超时、取消、错误码、输入输出和回归测试。" },
+      { stage: "正式流程", location: "robot_motion_runtime", gate: "任务状态机只编排能力服务，不复制算法。" }
+    ],
+    migration: [
+      { phase: "A · 立即约束", result: "清理跨部门旧包；Bringup 只装配；门户记录唯一官方入口。" },
+      { phase: "B · 抽出规划能力", result: "把 dual_arm_planner 中已拆出的 core 迁入 robot_motion_core，ROS 节点迁入 planning service。" },
+      { phase: "C · 收窄 MoveIt 包", result: "alfa_robot_moveit_config 只保留 SRDF、规划器配置、MoveIt/FCL adapter。" },
+      { phase: "D · 建立系统测试", result: "独立 system_tests 通过服务启动、注入 state/scene、运行任务并验证回执，不导入私有实现。" },
+      { phase: "E · 迁移新仓库", result: "按上述依赖方向迁入 robot_motion_control，旧仓库只保留历史追溯。" }
+    ]
+  },
   statusLegend: [
     { key: "stable", label: "稳定接口", color: "green", meaning: "可以作为跨包或跨仓库引用的契约。" },
     { key: "active", label: "主线活跃", color: "blue", meaning: "当前流程正在使用，仍可能随实验调整。" },
@@ -354,6 +367,11 @@ window.SYSTEM_PORTAL_DATA = {
       title: "找包职责",
       href: "packages.html",
       hint: "搜索包名，进入包状态和输入输出页面。"
+    },
+    {
+      title: "看目标架构",
+      href: "architecture.html",
+      hint: "查看唯一事实源、依赖方向、职责矩阵和调试代码晋升规则。"
     }
   ]
 };

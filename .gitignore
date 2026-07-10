@@ -184,27 +184,6 @@ scripts/ik_benchmark/build/
 scripts/ik_benchmark/install/
 scripts/ik_benchmark/log/
 
-# MoveIt scripts (temporary)
-ros2_ws/src/alfa_robot_moveit_config/scripts/*
-!ros2_ws/src/alfa_robot_moveit_config/scripts/extract_stage_monitor_console.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/extract_sequence_rerun.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/extract_failed_attempts_rerun.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_real_live.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/run_extract_live_benchmark.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/visualize_moveit_box_stack_flow.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/reachability_tester.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/rviz_dual_goal_pose_monitor.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/nine_orient_reachability.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/robot_motion_state_source.py
-!ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/
-!ros2_ws/src/alfa_robot_moveit_config/scripts/motion_contracts/*.py
-
-# lidar workspace (nested git repos — ignore entirely)
-lidar_ws/src/FAST_LIO_LOCALIZATION2/
-lidar_ws/src/fast_lio/
-lidar_ws/src/livox_ros_driver2/
-
 # Random temp files
 **/[0-9]*.[0-9]*.[0-9]*
 
@@ -212,9 +191,6 @@ lidar_ws/src/livox_ros_driver2/
 ros2_ws/nine_orient_reachability*.csv
 ros2_ws/reachability_results.csv
 ros2_ws/RenderOption_*.json
-
-# External vendor snapshot used only during the canceled Pinocchio exploration.
-universal_robot-noetic-devel/
 
 .ai_teamwork/archive/
 .ai_teamwork/local/

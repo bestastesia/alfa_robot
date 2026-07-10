@@ -1312,3 +1312,11 @@
 - 改了哪里：`robot_motion_interfaces` 新增 `RunDualGraspTask.srv` 和 `TaskReceipt.msg`；`robot_motion_runtime` 新增 `dual_grasp_task_adapter_node.py`；`runtime_services.launch.py`、`runtime_full_stack.launch.py` 接入新节点；`execute_trajectory_service_node.py` 支持等待 FollowJointTrajectory action result，确保回执可以代表执行完成而不是仅代表命令已发送；README 增加简化任务调用和回执监听命令。
 - 验证结果：`colcon build --packages-select robot_motion_interfaces robot_motion_runtime --symlink-install` 通过；`/usr/bin/python3 -m py_compile src/robot_motion_runtime/robot_motion_runtime/*.py src/robot_motion_runtime/launch/*.py` 通过；隔离 `ROS_DOMAIN_ID=131` 启动 `sim_bringup.launch.py` 与 `runtime_full_stack.launch.py execute_wait_for_goal_acceptance:=true execute_wait_for_result:=true`，调用 `/robot_motion/run_dual_grasp_task` 的 L6/R8 等价末端任务成功，返回 `state=succeeded`，回执话题依次输出 `accepted`、`running`、`succeeded`，仿真执行器确认执行 2s 轨迹。
 - 留给下个 AI：外部接口已收敛为“左右末端点 + 侧吸/顶吸字段”；箱号入口 `/robot_motion/run_box_pair_task` 仍保留用于本地复现实验。若接真实执行层，需要确保执行后端能通过 action result 或等价完成信号让 `/robot_motion/task_receipt` 的 `succeeded/failed` 代表真实完成状态。
+
+## 2026-07-10 Codex / 主仓库职责收口与历史代码清理
+- 做了什么：主仓库只保留运控、电控、机器人模型和必要适配；删除感知、雷达导航、底盘 twist mux、旧 MuJoCo/受力仿真、DH/CuRobo 演示及其启动脚本。移除 MoveIt 配置包中的 MuJoCo/SemanticScene 链路和 Gazebo ros2_control 分支，保留 mock 与真实硬件两种后端。
+- 架构调整：新增 `docs/运控/系统架构与包职责边界.md` 和 `docs/system_portal/architecture.html`，明确 interfaces → core → capability services → runtime → adapters → bringup 的单向依赖；`robot_motion_runtime` 负责唯一机器人/场景/任务事实，工具只能调用公开接口。移除 `.gitignore` 对 MoveIt scripts 整目录隐藏的规则，避免未跟踪调试脚本悄悄进入运行链；仍有价值的 Open3D CSV 工具迁入 `scripts/ik_benchmark`，旧 joint/group 调试脚本直接删除。
+- 协作同步：当前角色与任务入口移除已退出仓库的仿真、导航、感知责任；可达性验证改归运控；归档历史不改。ROS 包索引只剩 11 个生产/兼容包和显式构建的 `alfa_robot_benchmarks`，已删除包不再出现在 overlay 中。
+- 验证结果：干净 ROS 环境下保留包和 benchmark 全部构建通过；Xacro 展开和 `check_urdf` 通过；MoveIt 配置只导出 `ConfigureExtractMonitor`，已删除 Semantic 消息不再存在；解析 IK 1/1、场景 2/2、MoveIt 适配 14/14、执行桥 2/2 测试通过；Portal JavaScript 语法和 Python 工具编译检查通过。
+- 构建注意：Conda `base` 会注入自己的 OpenSSL，造成 MoveIt C++ 链接失败；验证时已使用系统 PATH、清空 Conda/CMake/LD 环境后 source ROS。删除 rosidl 接口或移动包路径后必须清理对应 `build/<pkg>` 和 `install/<pkg>`，否则旧生成物会伪造失败。
+- 留给下个 AI：`alfa_robot_moveit_config` 仍直接编译 `scripts/ik_benchmark` 的 IK 源码，运行时/Rerun 也仍有少量实验工具路径依赖；应按架构文档迁入 `robot_motion_core`/`robot_motion_tools`。`robot_motion_runtime` 当前没有自动测试，唯一事实源和任务状态机需要补服务级集成测试后才算生产门槛闭环。

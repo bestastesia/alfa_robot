@@ -112,7 +112,7 @@ python3 scripts/ik_benchmark/scripts/ik_range_grid.py --help
 - 对每个位置，固定末端某个局部轴朝向基坐标某个方向。
 - 允许吸盘绕这个朝向轴旋转：通过 `--spin-samples` 枚举若干个绕轴角度。
 - 只要某个 spin 角 IK 成功，这个位置就记为可达。
-- CSV 兼容 `ros2_ws/src/alfa_robot_moveit_config/scripts/ik_csv_open3d_visualizer.py`。
+- CSV 可使用同包工具 `scripts/ik_csv_open3d_visualizer.py` 查看。
 
 示例：当前模型，左臂，末端局部 `+Y` 朝基坐标 `+Y`，绕 `+Y` 自由旋转：
 

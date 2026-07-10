@@ -1,4 +1,0 @@
-std_msgs/Header header
-geometry_msgs/Pose container_front_pose
-alfa_robot_moveit_config/SemanticCargo[] cargo
-geometry_msgs/Pose table_pose

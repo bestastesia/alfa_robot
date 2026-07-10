@@ -6,6 +6,7 @@
 - 内部有哪些主流程？
 - 每个 ROS2 包消费什么、产出什么、当前状态如何？
 - 哪些部分是稳定接口、过渡主包、实验工具、mock 或外部依赖？
+- 目标架构的依赖方向、唯一事实源和调试代码晋升规则是什么？
 
 ## 打开方式
 
@@ -32,6 +33,7 @@ docs/system_portal/
 ├── flows.html        # 业务/算法/碰撞/孪生流程
 ├── packages.html     # 包列表、搜索、过滤
 ├── package.html      # 单包详情页，通过 ?id=package_id 进入
+├── architecture.html # 目标架构、职责矩阵和迁移路径
 ├── status.html       # 包状态看板
 └── assets/
     ├── data.js       # 唯一主要数据源，新增包/流程时优先改这里
@@ -49,3 +51,5 @@ docs/system_portal/
 - 包状态变化：更新 `maturity`、`status` 和 `statusNotes`。
 
 页面会自动重新渲染卡片、流程、搜索和状态看板。
+
+架构规则的文字版见 `docs/运控/系统架构与包职责边界.md`。

@@ -195,7 +195,7 @@ def main() -> None:
     subprocess.run(command, check=True, env=env)
 
     if args.visualize == "open3d":
-        visualizer = project_root() / "ros2_ws" / "src" / "alfa_robot_moveit_config" / "scripts" / "ik_csv_open3d_visualizer.py"
+        visualizer = Path(__file__).resolve().with_name("ik_csv_open3d_visualizer.py")
         visualize_command = [sys.executable, str(visualizer), str(output)]
         if args.show_failed:
             visualize_command.append("--show-failed")
