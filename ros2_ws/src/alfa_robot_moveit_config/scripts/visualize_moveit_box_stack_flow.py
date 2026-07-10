@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
 import sys
@@ -14,24 +13,11 @@ from typing import Any
 
 import numpy as np
 import rerun as rr
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 
 def load_rerun_helpers():
-    candidates = [
-        Path(__file__).resolve().parents[4] / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py",
-        Path.cwd() / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py",
-        Path.cwd().parent / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py",
-    ]
-    for helper_path in candidates:
-        if helper_path.exists():
-            spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", helper_path)
-            if spec is None or spec.loader is None:
-                continue
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = module
-            spec.loader.exec_module(module)
-            return module
-    raise RuntimeError("cannot find scripts/ik_benchmark/scripts/visualize_rerun.py")
+    return rerun_helpers
 
 
 def read_jsonl(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:

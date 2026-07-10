@@ -2,26 +2,17 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import math
-import sys
 from pathlib import Path
 
 import numpy as np
 import rerun as rr
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-HELPER_PATH = REPO_ROOT / "scripts/ik_benchmark/scripts/visualize_rerun.py"
-
 
 def load_helpers():
-    spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", HELPER_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load helper: {HELPER_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return rerun_helpers
 
 
 def yaw_matrix(yaw_rad: float) -> np.ndarray:

@@ -190,7 +190,7 @@ size_t run_extract_monitor_candidate_tasks(
   return worker_count;
 }
 
-const ik_benchmark::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
+const robot_motion::core::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
   const ExtractMonitorState& state,
   const ExtractRolloutTiming& timing)
 {

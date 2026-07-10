@@ -1320,3 +1320,9 @@
 - 验证结果：干净 ROS 环境下保留包和 benchmark 全部构建通过；Xacro 展开和 `check_urdf` 通过；MoveIt 配置只导出 `ConfigureExtractMonitor`，已删除 Semantic 消息不再存在；解析 IK 1/1、场景 2/2、MoveIt 适配 14/14、执行桥 2/2 测试通过；Portal JavaScript 语法和 Python 工具编译检查通过。
 - 构建注意：Conda `base` 会注入自己的 OpenSSL，造成 MoveIt C++ 链接失败；验证时已使用系统 PATH、清空 Conda/CMake/LD 环境后 source ROS。删除 rosidl 接口或移动包路径后必须清理对应 `build/<pkg>` 和 `install/<pkg>`，否则旧生成物会伪造失败。
 - 留给下个 AI：`alfa_robot_moveit_config` 仍直接编译 `scripts/ik_benchmark` 的 IK 源码，运行时/Rerun 也仍有少量实验工具路径依赖；应按架构文档迁入 `robot_motion_core`/`robot_motion_tools`。`robot_motion_runtime` 当前没有自动测试，唯一事实源和任务状态机需要补服务级集成测试后才算生产门槛闭环。
+
+## 2026-07-10 运控 / Codex / 核心与实验边界收口
+- 做了什么：新建纯 C++ `robot_motion_core`，把 IK solver 配置、updown-aware 请求、候选、结果和代价函数 Interface 从 benchmark 迁入正式包；`alfa_robot_moveit_config` 与 `alfa_robot_benchmarks` 共同依赖该核心，不再互相复制类型或从生产 CMake 引用 `scripts/ik_benchmark`。
+- 改了哪里：MoveIt 适配头文件和实现统一使用 `robot_motion::core` 类型；新增全体一方生产包的 benchmark 反向依赖护栏；把完整 URDF/FK/Rerun 实现迁入 `alfa_robot_rerun`，benchmark 旧脚本只保留兼容包装，实时 joint-state viewer 也从 runtime 迁到 Rerun 包；补齐 runtime 轨迹工具、唯一状态/场景源和 Rerun FK 单测，并修复显式 `set_state` 丢失请求 `frame_id` 的问题。
+- 验证结果：干净 ROS 环境下 `robot_motion_core`、`alfa_robot_rerun`、`robot_motion_runtime`、`alfa_robot_moveit_config`、`alfa_robot_benchmarks` 构建通过；本轮 23 个相关测试全部通过，工作区累计 28 个测试零失败；隔离 ROS domain 的完整 runtime dry-run 链成功，12 个进程均可干净退出；安装态 Rerun 实时节点可加载当前 URDF（26 links）并正常启动；Portal JavaScript、Python 编译和 `git diff --check` 通过。
+- 留给下个 AI：`robot_motion_core` 当前先承接公共数据模型，候选排序/去重、抽离 rollout 和轨迹评分仍在 MoveIt adapter 中；`dual_arm_planner_node` 与独立 planning service 的职责迁移尚未完成。`scripts/ik_benchmark` 仍是显式构建的实验包，但生产包已不能包含其头文件或动态导入其 helper。

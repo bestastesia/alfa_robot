@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
 import os
@@ -17,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import rclpy
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
 from rclpy.node import Node
@@ -31,7 +31,7 @@ def find_repo_root() -> Path:
     if env_root:
         return Path(env_root).expanduser().resolve()
     for candidate in [SCRIPT_DIR, *SCRIPT_DIR.parents]:
-        if (candidate / "ros2_ws").is_dir() and (candidate / "scripts/ik_benchmark").is_dir():
+        if (candidate / "ros2_ws" / "src").is_dir():
             return candidate
         if candidate.name == "ros2_ws":
             return candidate.parent
@@ -235,14 +235,7 @@ def trajectory_from_snapshot(
 
 
 def load_rerun_helpers():
-    helper_path = REPO_ROOT / "scripts/ik_benchmark/scripts/visualize_rerun.py"
-    spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return rerun_helpers
 
 
 class LiveExecutionClient(Node):

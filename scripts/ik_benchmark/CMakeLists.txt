@@ -20,6 +20,7 @@ find_package(Eigen3 REQUIRED)
 find_package(srdfdom REQUIRED)
 find_package(urdf REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(robot_motion_core REQUIRED)
 
 # ── IkSolver library ───────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ ament_target_dependencies(ik_solver_lib PUBLIC
   srdfdom
   urdf
   nlohmann_json
+  robot_motion_core
 )
 
 # ── ParallelUpdownAwareIkSolver library ───────────────────────────────────
@@ -69,6 +71,7 @@ ament_target_dependencies(parallel_updown_aware_ik_solver_lib PUBLIC
   srdfdom
   urdf
   nlohmann_json
+  robot_motion_core
 )
 
 target_link_libraries(parallel_updown_aware_ik_solver_lib PUBLIC ik_solver_lib)

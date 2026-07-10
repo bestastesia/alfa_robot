@@ -4,26 +4,18 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
-import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import rerun as rr
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 
 def load_rerun_helpers():
-    helper_path = Path(__file__).with_name("visualize_rerun.py")
-    spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load helpers: {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return rerun_helpers
 
 
 def read_jsonl(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:

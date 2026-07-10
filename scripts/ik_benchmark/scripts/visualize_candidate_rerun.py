@@ -35,7 +35,7 @@ def load_rerun_helpers() -> None:
         import rerun as rerun_module
     except ModuleNotFoundError as exc:
         raise SystemExit("当前 Python 环境没有 rerun 包；请切到安装 rerun-sdk 的环境，或先执行 `python3 -m pip install rerun-sdk`。") from exc
-    from visualize_rerun import (
+    from alfa_robot_rerun.visualize_rerun import (
         UrdfRobot as UrdfRobotClass,
         log_pose as log_pose_fn,
         log_robot_state as log_robot_state_fn,

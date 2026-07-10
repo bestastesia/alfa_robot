@@ -2,7 +2,7 @@
 
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
-#include "ik_benchmark/parallel_updown_aware_ik_solver.h"
+#include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <moveit/robot_state/robot_state.h>
 
@@ -62,8 +62,8 @@ struct ExtractMonitorState
   AttachedBoxSpec right_box;
   moveit::core::RobotStatePtr seed_state;
   moveit::core::RobotStatePtr loaded_start_state;
-  ik_benchmark::UpdownAwareIkResult ik_result;
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
+  robot_motion::core::UpdownAwareIkResult ik_result;
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> legal_candidates;
   std::vector<moveit::core::RobotStatePtr> candidate_states;
   std::vector<ExtractRolloutTiming> timings;
   double loaded_plan_batch_wall_ms = 0.0;
@@ -94,14 +94,14 @@ moveit::core::RobotState make_extract_monitor_joint_state(
   const ExtractMonitorArmSeed& seed);
 
 using ExtractMonitorCandidateStateBuilder =
-  std::function<moveit::core::RobotStatePtr(const ik_benchmark::UpdownAwareIkCandidate&)>;
+  std::function<moveit::core::RobotStatePtr(const robot_motion::core::UpdownAwareIkCandidate&)>;
 
 void populate_extract_monitor_candidate_states(
   ExtractMonitorState& state,
   const ExtractMonitorCandidateStateBuilder& state_builder);
 
 using ExtractMonitorCandidateTask =
-  std::function<ExtractRolloutTiming(size_t, const ik_benchmark::UpdownAwareIkCandidate&)>;
+  std::function<ExtractRolloutTiming(size_t, const robot_motion::core::UpdownAwareIkCandidate&)>;
 
 size_t extract_monitor_worker_count(size_t candidate_count, size_t requested_worker_count);
 
@@ -110,7 +110,7 @@ size_t run_extract_monitor_candidate_tasks(
   size_t requested_worker_count,
   const ExtractMonitorCandidateTask& task);
 
-const ik_benchmark::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
+const robot_motion::core::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
   const ExtractMonitorState& state,
   const ExtractRolloutTiming& timing);
 

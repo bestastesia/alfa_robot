@@ -1,7 +1,7 @@
 #pragma once
 
 #include "alfa_robot_analytic_ik/analytic_ik.hpp"
-#include "ik_benchmark/parallel_updown_aware_ik_solver.h"
+#include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <geometry_msgs/msg/pose.hpp>
 #include <moveit/robot_model/robot_model.h>
@@ -32,14 +32,14 @@ struct OptimizedDualIkSolveResult
 {
   bool success = false;
   std::string failure_reason;
-  ik_benchmark::UpdownAwareIkResult ik_result;
+  robot_motion::core::UpdownAwareIkResult ik_result;
   moveit::core::RobotStatePtr goal_state;
   nlohmann::json extra;
 };
 
 struct OptimizedDualIkSolverConfig
 {
-  const ik_benchmark::UpdownAwareIkConfig* ik_config = nullptr;
+  const robot_motion::core::UpdownAwareIkConfig* ik_config = nullptr;
   const moveit::core::RobotModel* robot_model = nullptr;
   const moveit::core::JointModelGroup* enforce_bounds_group = nullptr;
   double fallback_updown = 0.0;
@@ -47,7 +47,7 @@ struct OptimizedDualIkSolverConfig
 };
 
 nlohmann::json ik_candidate_rejection_counts_json(
-  const ik_benchmark::UpdownAwareIkResult& result);
+  const robot_motion::core::UpdownAwareIkResult& result);
 
 class OptimizedDualIkSolver
 {
@@ -69,7 +69,7 @@ public:
   double currentUpdown(const moveit::core::RobotState& state) const;
 
   nlohmann::json resultJson(
-    const ik_benchmark::UpdownAwareIkResult& result,
+    const robot_motion::core::UpdownAwareIkResult& result,
     const std::string& grasp_mode) const;
 
 private:
@@ -99,7 +99,7 @@ struct IkCandidateSelectionStats
 
 moveit::core::RobotState robot_state_from_ik_candidate(
   const moveit::core::RobotState& seed_state,
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const moveit::core::JointModelGroup* enforce_bounds_group = nullptr);
 
 class IkCandidateSelector
@@ -109,18 +109,18 @@ public:
 
   const IkCandidateSelectorConfig& config() const { return config_; }
 
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> select(
-    const std::vector<ik_benchmark::UpdownAwareIkCandidate>& sorted_legal_candidates,
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> select(
+    const std::vector<robot_motion::core::UpdownAwareIkCandidate>& sorted_legal_candidates,
     IkCandidateSelectionStats* stats = nullptr) const;
 
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> selectLegalFromResult(
-    const ik_benchmark::UpdownAwareIkResult& result,
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> selectLegalFromResult(
+    const robot_motion::core::UpdownAwareIkResult& result,
     IkCandidateSelectionStats* stats = nullptr) const;
 
 private:
   bool similar(
-    const ik_benchmark::UpdownAwareIkCandidate& candidate,
-    const ik_benchmark::UpdownAwareIkCandidate& kept) const;
+    const robot_motion::core::UpdownAwareIkCandidate& candidate,
+    const robot_motion::core::UpdownAwareIkCandidate& kept) const;
 
   IkCandidateSelectorConfig config_;
 };

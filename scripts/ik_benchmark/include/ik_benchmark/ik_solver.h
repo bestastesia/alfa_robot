@@ -1,5 +1,7 @@
 #pragma once
 
+#include "robot_motion_core/ik_candidate_types.hpp"
+
 #include <Eigen/Geometry>
 #include <moveit/kinematics_base/kinematics_base.h>
 #include <moveit/robot_model/robot_model.h>
@@ -29,15 +31,7 @@ struct IkResult {
     double ori_error = 0.0;
 };
 
-struct IkSolverOptions {
-    std::string urdf_path;
-    std::string srdf_path;
-    std::string base_frame;
-    std::string tip_link;
-    std::string tip_link2;
-    bool reject_collisions = true;
-    bool enforce_arm_base_collisions = false;
-};
+using IkSolverOptions = robot_motion::core::IkSolverOptions;
 
 class IkSolver {
 public:

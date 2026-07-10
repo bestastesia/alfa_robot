@@ -48,7 +48,7 @@ def generate_launch_description():
                 ],
             ),
             Node(
-                package="robot_motion_runtime",
+                package="alfa_robot_rerun",
                 executable="rerun_joint_state_viewer_node",
                 name="rerun_joint_state_viewer",
                 output="screen",

@@ -13,7 +13,7 @@
 namespace
 {
 
-ik_benchmark::UpdownAwareIkCandidate make_candidate(
+robot_motion::core::UpdownAwareIkCandidate make_candidate(
   bool legal,
   double score,
   size_t h_index,
@@ -21,7 +21,7 @@ ik_benchmark::UpdownAwareIkCandidate make_candidate(
   double h,
   double joint1)
 {
-  ik_benchmark::UpdownAwareIkCandidate candidate;
+  robot_motion::core::UpdownAwareIkCandidate candidate;
   candidate.legal = legal;
   candidate.score = score;
   candidate.h_index = h_index;
@@ -91,7 +91,7 @@ int main()
   using alfa_robot::motion::ik_candidate_rejection_counts_json;
   using alfa_robot::motion::robot_state_from_ik_candidate;
 
-  ik_benchmark::UpdownAwareIkResult result;
+  robot_motion::core::UpdownAwareIkResult result;
   result.candidates.push_back(make_candidate(true, 3.0, 0, 2, 0.3, 0.20));
   result.candidates.push_back(make_candidate(false, 0.1, 0, 0, 0.3, 0.00));
   result.candidates.back().rejection_reason = "tip_error_too_large";
@@ -134,7 +134,7 @@ int main()
   seed.setVariablePosition("rightjoint6", -0.1);
   seed.update();
 
-  ik_benchmark::UpdownAwareIkCandidate state_candidate;
+  robot_motion::core::UpdownAwareIkCandidate state_candidate;
   state_candidate.full_joint_names = {
     "updown",
     "leftjoint1",

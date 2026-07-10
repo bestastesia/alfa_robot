@@ -157,7 +157,7 @@ nlohmann::json extract_monitor_stage_json(
 }
 
 nlohmann::json extract_monitor_candidate_json(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   size_t display_index,
   const moveit::core::RobotState& state)
 {
@@ -177,7 +177,7 @@ nlohmann::json extract_monitor_candidate_json(
 }
 
 nlohmann::json extract_monitor_candidate_records_json(
-  const std::vector<ik_benchmark::UpdownAwareIkCandidate>& candidates,
+  const std::vector<robot_motion::core::UpdownAwareIkCandidate>& candidates,
   const std::vector<moveit::core::RobotStatePtr>& candidate_states)
 {
   nlohmann::json records = nlohmann::json::array();
@@ -572,7 +572,7 @@ nlohmann::json extract_monitor_ik_snapshot(
   int right_box_id,
   double box_front_x,
   double scene_y_shift,
-  const ik_benchmark::UpdownAwareIkResult& ik_result,
+  const robot_motion::core::UpdownAwareIkResult& ik_result,
   const IkCandidateSelectionStats& dedup_stats,
   const nlohmann::json& rejection_counts,
   const nlohmann::json& records)

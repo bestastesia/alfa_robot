@@ -155,7 +155,7 @@ int main()
   assert(snapshot.at("right_box_id") == 8);
   assert(snapshot.at("box_front_x") == 0.925);
 
-  ik_benchmark::UpdownAwareIkResult ik_result;
+  robot_motion::core::UpdownAwareIkResult ik_result;
   ik_result.trial_count = 512;
   ik_result.legal_count = 128;
   ik_result.wall_ms = 42.5;
@@ -307,7 +307,7 @@ int main()
   start_state->setToDefaultValues();
   goal_state->setToDefaultValues();
 
-  ik_benchmark::UpdownAwareIkCandidate candidate;
+  robot_motion::core::UpdownAwareIkCandidate candidate;
   candidate.h = 0.3;
   candidate.h_index = 2;
   candidate.seed_index = 5;

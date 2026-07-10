@@ -12,7 +12,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
-- 当前分支：`v5_dev`。
+- 当前分支：`feature/motion-architecture-boundary-refactor-20260710`，基于 `v5_dev` 做架构边界收口。
 - 当前任务表只保留未完成/需确认事项：T-0030/T-0031/T-0032/T-0037。
 - 已完成/已同步 Linear 的长过程已归档到 `.ai_teamwork/archive/2026-05-18_v5_dev_collaboration_cleanup/`。
 - PM 必须持续把完成任务移出当前表，避免后续 AI 误认为仍需处理。
@@ -24,12 +24,14 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 - 不要删除 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_v2_arm_v5/`，当前 URDF 仍依赖 description 包内 mesh。
 - Linear/Git 关联提交标题优先使用 `Refs TIM-xx: ...`；只写 `TIM-xx:` 不稳定。
 - 一个 issue 只对创建时的验收目标负责；后续探索/测试应拆新 issue 或放 Backlog，不要让已达标 issue 永远开着。
-- `scripts/ik_benchmark/` 仍被 `alfa_robot_moveit_config` 编译引用，属于待迁移的实验算法资产，不能直接删除。
+- `alfa_robot_moveit_config` 已不再编译或包含 `scripts/ik_benchmark/` 的头文件；公共 IK 候选类型已迁入 `robot_motion_core`，Rerun 公共实现已迁入 `alfa_robot_rerun`。
+- `dual_arm_planner_node` 仍承载完整候选排序、抽离和负重规划适配；这些实现尚未全部迁入独立 core/planning service。
 - `bio_ik/` 仍服务于当前兼容流程；替代链路验证完成前保留。
 
 ## 当前主要模块速查
 
 - 接口契约：`ros2_ws/src/robot_motion_interfaces/`
+- 纯算法公共核心：`ros2_ws/src/robot_motion_core/`
 - 核心运行时：`ros2_ws/src/robot_motion_runtime/`
 - 场景能力：`ros2_ws/src/robot_motion_scene_service/`
 - 运动算法与 MoveIt 适配：`ros2_ws/src/alfa_robot_analytic_ik/`、`ros2_ws/src/alfa_robot_moveit_config/`、`ros2_ws/src/bio_ik/`

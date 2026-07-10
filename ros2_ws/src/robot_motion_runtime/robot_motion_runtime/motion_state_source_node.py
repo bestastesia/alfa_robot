@@ -96,6 +96,7 @@ class MotionStateSourceNode(Node):
         source: str,
         authoritative: bool,
         request_id: str = "",
+        frame_id: str = "",
         scene_id: str = "",
         state_id: str = "",
     ) -> RobotMotionState:
@@ -104,7 +105,7 @@ class MotionStateSourceNode(Node):
         out = RobotMotionState()
         out.context.request_id = request_id
         out.context.stamp = stamp
-        out.context.frame_id = self.frame_id
+        out.context.frame_id = frame_id or self.frame_id
         out.context.scene_id = scene_id or self.scene_id
         out.context.state_id = state_id or self.make_state_id(stamp, source)
         out.source = source
@@ -145,6 +146,7 @@ class MotionStateSourceNode(Node):
             source=source,
             authoritative=bool(request.authoritative),
             request_id=request.context.request_id,
+            frame_id=request.context.frame_id,
             scene_id=request.context.scene_id,
             state_id=request.context.state_id,
         )

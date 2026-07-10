@@ -36,7 +36,7 @@ double wrapped_angle_delta(double lhs, double rhs)
 }
 
 std::optional<double> candidate_joint_value(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const std::string& joint_name)
 {
   for (size_t i = 0; i < candidate.full_joint_names.size() && i < candidate.full_joint_values.size(); ++i) {
@@ -97,13 +97,13 @@ struct AnalyticHeightPlan
 
 std::pair<double, double> target_h_interval(
   const Eigen::Isometry3d& target,
-  ik_benchmark::UpdownAwareIkRequest::GraspMode grasp_mode,
-  const ik_benchmark::UpdownAwareIkConfig& config)
+  robot_motion::core::UpdownAwareIkRequest::GraspMode grasp_mode,
+  const robot_motion::core::UpdownAwareIkConfig& config)
 {
-  const double lower_reach = grasp_mode == ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+  const double lower_reach = grasp_mode == robot_motion::core::UpdownAwareIkRequest::GraspMode::TopSuction
     ? config.top_suction_z_reach_lower
     : config.gripper_z_reach_lower;
-  const double upper_reach = grasp_mode == ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
+  const double upper_reach = grasp_mode == robot_motion::core::UpdownAwareIkRequest::GraspMode::TopSuction
     ? config.top_suction_z_reach_upper
     : config.gripper_z_reach_upper;
   return {
@@ -124,10 +124,10 @@ void push_unique_h(std::vector<double>* values, double value)
 }
 
 AnalyticHeightPlan plan_height(
-  const ik_benchmark::UpdownAwareIkRequest& request,
-  ik_benchmark::UpdownAwareIkRequest::GraspMode left_grasp_mode,
-  ik_benchmark::UpdownAwareIkRequest::GraspMode right_grasp_mode,
-  const ik_benchmark::UpdownAwareIkConfig& config)
+  const robot_motion::core::UpdownAwareIkRequest& request,
+  robot_motion::core::UpdownAwareIkRequest::GraspMode left_grasp_mode,
+  robot_motion::core::UpdownAwareIkRequest::GraspMode right_grasp_mode,
+  const robot_motion::core::UpdownAwareIkConfig& config)
 {
   const auto left = target_h_interval(request.left_target, left_grasp_mode, config);
   const auto right = target_h_interval(request.right_target, right_grasp_mode, config);
@@ -168,7 +168,7 @@ AnalyticHeightPlan plan_height(
 }
 
 double loaded_pose_distance(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const std::string& side,
   const std::vector<double>& pose)
 {
@@ -183,7 +183,7 @@ double loaded_pose_distance(
 }
 
 double loaded_pose_family_distance(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const std::string& side,
   const std::vector<std::vector<double>>& family)
 {
@@ -196,7 +196,7 @@ double loaded_pose_family_distance(
 }
 
 double preferred_loaded_pose_distance(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const std::string& side,
   const std::vector<std::vector<double>>& family,
   size_t preferred_index)
@@ -207,7 +207,7 @@ double preferred_loaded_pose_distance(
 }
 
 double full_joint_delta(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const std::vector<double>& current_full_joints)
 {
   if (current_full_joints.size() < candidate.full_joint_values.size()) {
@@ -224,9 +224,9 @@ double full_joint_delta(
 }
 
 double score_analytic_candidate(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
-  const ik_benchmark::UpdownAwareIkRequest& request,
-  const ik_benchmark::UpdownAwareIkConfig& config)
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkRequest& request,
+  const robot_motion::core::UpdownAwareIkConfig& config)
 {
   double score = 0.0;
   const double updown_delta = std::abs(candidate.h - request.current_h);
@@ -250,7 +250,7 @@ double score_analytic_candidate(
   return score;
 }
 
-ik_benchmark::UpdownAwareIkCandidate make_rejected_candidate(
+robot_motion::core::UpdownAwareIkCandidate make_rejected_candidate(
   double h,
   double h_center,
   double h_lower,
@@ -258,7 +258,7 @@ ik_benchmark::UpdownAwareIkCandidate make_rejected_candidate(
   size_t h_index,
   const std::string& reason)
 {
-  ik_benchmark::UpdownAwareIkCandidate candidate;
+  robot_motion::core::UpdownAwareIkCandidate candidate;
   candidate.h = h;
   candidate.h_center = h_center;
   candidate.h_range_lower = h_lower;
@@ -309,19 +309,19 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
   const bool left_top_suction = request.top_suction || request.left_top_suction;
   const bool right_top_suction = request.top_suction || request.right_top_suction;
   const auto left_grasp_mode = left_top_suction
-    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
-    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+    ? robot_motion::core::UpdownAwareIkRequest::GraspMode::TopSuction
+    : robot_motion::core::UpdownAwareIkRequest::GraspMode::Front;
   const auto right_grasp_mode = right_top_suction
-    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
-    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+    ? robot_motion::core::UpdownAwareIkRequest::GraspMode::TopSuction
+    : robot_motion::core::UpdownAwareIkRequest::GraspMode::Front;
 
-  ik_benchmark::UpdownAwareIkRequest ik_request;
+  robot_motion::core::UpdownAwareIkRequest ik_request;
   ik_request.left_target = pose_to_eigen(request.left_pose);
   ik_request.right_target = pose_to_eigen(request.right_pose);
   ik_request.current_h = currentUpdown(*request.seed_state);
   ik_request.grasp_mode = (left_top_suction && right_top_suction)
-    ? ik_benchmark::UpdownAwareIkRequest::GraspMode::TopSuction
-    : ik_benchmark::UpdownAwareIkRequest::GraspMode::Front;
+    ? robot_motion::core::UpdownAwareIkRequest::GraspMode::TopSuction
+    : robot_motion::core::UpdownAwareIkRequest::GraspMode::Front;
   ik_request.current_arm_joints = stateValues(*request.seed_state, fixed_variable_names());
   ik_request.current_full_joints = stateValues(*request.seed_state, fixed_full_variable_names());
 
@@ -378,7 +378,7 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
       }
       for (const auto& left_solution : left_solutions) {
         for (const auto& right_solution : right_solutions) {
-          ik_benchmark::UpdownAwareIkCandidate candidate;
+          robot_motion::core::UpdownAwareIkCandidate candidate;
           candidate.legal = true;
           candidate.collision_free = true;
           candidate.solver_path = "analytic_fixed_h";
@@ -546,7 +546,7 @@ double OptimizedDualIkSolver::currentUpdown(const moveit::core::RobotState& stat
 }
 
 nlohmann::json ik_candidate_rejection_counts_json(
-  const ik_benchmark::UpdownAwareIkResult& result)
+  const robot_motion::core::UpdownAwareIkResult& result)
 {
   std::map<std::string, size_t> counts;
   for (const auto& candidate : result.candidates) {
@@ -566,7 +566,7 @@ nlohmann::json ik_candidate_rejection_counts_json(
 }
 
 nlohmann::json OptimizedDualIkSolver::resultJson(
-  const ik_benchmark::UpdownAwareIkResult& result,
+  const robot_motion::core::UpdownAwareIkResult& result,
   const std::string&) const
 {
   return {
@@ -612,7 +612,7 @@ bool OptimizedDualIkSolver::isRobotVariable(const std::string& name) const
 
 moveit::core::RobotState robot_state_from_ik_candidate(
   const moveit::core::RobotState& seed_state,
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   const moveit::core::JointModelGroup* enforce_bounds_group)
 {
   moveit::core::RobotState state(seed_state);
@@ -636,8 +636,8 @@ IkCandidateSelector::IkCandidateSelector(IkCandidateSelectorConfig config)
 {}
 
 bool IkCandidateSelector::similar(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
-  const ik_benchmark::UpdownAwareIkCandidate& kept) const
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& kept) const
 {
   if (config_.h_threshold >= 0.0 &&
       std::abs(candidate.h - kept.h) > config_.h_threshold) {
@@ -669,15 +669,15 @@ bool IkCandidateSelector::similar(
   return compared > 0;
 }
 
-std::vector<ik_benchmark::UpdownAwareIkCandidate> IkCandidateSelector::select(
-  const std::vector<ik_benchmark::UpdownAwareIkCandidate>& sorted_legal_candidates,
+std::vector<robot_motion::core::UpdownAwareIkCandidate> IkCandidateSelector::select(
+  const std::vector<robot_motion::core::UpdownAwareIkCandidate>& sorted_legal_candidates,
   IkCandidateSelectionStats* stats) const
 {
   IkCandidateSelectionStats local_stats;
   local_stats.enabled = config_.dedup_enabled && config_.joint_threshold > 0.0;
   local_stats.input_count = sorted_legal_candidates.size();
 
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> selected;
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> selected;
   if (local_stats.enabled) {
     const auto start = std::chrono::steady_clock::now();
     selected.reserve(sorted_legal_candidates.size());
@@ -713,11 +713,11 @@ std::vector<ik_benchmark::UpdownAwareIkCandidate> IkCandidateSelector::select(
   return selected;
 }
 
-std::vector<ik_benchmark::UpdownAwareIkCandidate> IkCandidateSelector::selectLegalFromResult(
-  const ik_benchmark::UpdownAwareIkResult& result,
+std::vector<robot_motion::core::UpdownAwareIkCandidate> IkCandidateSelector::selectLegalFromResult(
+  const robot_motion::core::UpdownAwareIkResult& result,
   IkCandidateSelectionStats* stats) const
 {
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> legal_candidates;
   legal_candidates.reserve(result.candidates.size());
   for (const auto& candidate : result.candidates) {
     if (candidate.legal) {

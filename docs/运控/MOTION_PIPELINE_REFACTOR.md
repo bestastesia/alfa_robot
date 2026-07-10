@@ -389,9 +389,19 @@ colcon build --packages-select robot_motion_interfaces alfa_robot_moveit_config 
 
 ## 4. 可复用库与迁移建议
 
-当前 CMake 导出两个层级：
+当前 CMake 导出三个层级：
 
-第一层是独立场景包 `robot_motion_scene_service`，负责场景几何和 MoveIt PlanningScene 适配：
+第一层是纯算法公共包 `robot_motion_core`。它当前统一 IK solver 配置、候选请求、候选结果和代价函数接口，不依赖 ROS node、MoveIt 或 benchmark：
+
+```cmake
+find_package(robot_motion_core REQUIRED)
+
+target_link_libraries(your_target
+  robot_motion_core::robot_motion_core
+)
+```
+
+第二层是独立场景包 `robot_motion_scene_service`，负责场景几何和 MoveIt PlanningScene 适配：
 
 ```cmake
 find_package(robot_motion_scene_service REQUIRED)
@@ -402,7 +412,7 @@ target_link_libraries(your_target
 )
 ```
 
-第二层是 `alfa_robot_moveit_config` 内的运控流程库：
+第三层是 `alfa_robot_moveit_config` 内的 MoveIt 流程适配库：
 
 ```cmake
 find_package(alfa_robot_moveit_config REQUIRED)
@@ -412,7 +422,7 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_core` 只包含姿态、角度、Pose/Eigen 转换和 JSON 辅助等轻量模块，并链接 `robot_motion_scene_service::robot_motion_scene_core` 复用 `task_geometry` 的箱垛/关节顺序结构。
+`alfa_robot_motion_core` 是历史名称，当前只包含姿态、角度、Pose/Eigen 转换和场景相关辅助，并链接 `robot_motion_scene_service::robot_motion_scene_core`。新代码不要把它误认为独立算法核心；纯算法公共接口应进入 `robot_motion_core`。
 
 ```cmake
 target_link_libraries(your_target
@@ -420,12 +430,12 @@ target_link_libraries(your_target
 )
 ```
 
-`alfa_robot_motion_scene_adapter` 包含 IK 选优、抽离规划、负重规划、benchmark runner 和 monitor 辅助模块。它依赖 MoveIt、KDL、`robot_motion_scene_service` 和 benchmark IK solver。
+`alfa_robot_motion_scene_adapter` 包含 IK 选优、抽离规划、负重规划、benchmark runner 和 monitor 辅助模块。它依赖 MoveIt、KDL、`robot_motion_scene_service` 和 `robot_motion_core`；不再包含或编译依赖 `scripts/ik_benchmark` 的公共头文件。
 
 迁移到新运控包时建议顺序：
 
 1. 先迁移 `robot_motion_scene_service`，让集装箱、箱墙、末端附着箱的碰撞口径先稳定下来。
-2. 再迁移 `motion_core/*` 和 `optimized_ik_pipeline`，作为独立 IK 服务的核心算法。
+2. 复用已建立的 `robot_motion_core`，继续迁移 `optimized_ik_pipeline` 中的候选排序、去重和评分算法。
 3. 再迁移 `extract_planning_pipeline`，作为抽箱子动作生成、单步 IK、评分和 rollout 的完整模块。
 4. 最后迁移 `loaded_pose_planning`，接入新 MoveIt/PlanningScene 后端。
 5. `DualArmPlannerNode` 不建议整文件复制；它只应作为 ROS 参数、MoveIt 后端和 service/action 包装参考。

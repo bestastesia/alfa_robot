@@ -28,6 +28,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(robot_motion_scene_service REQUIRED)
 find_package(robot_motion_interfaces REQUIRED)
+find_package(robot_motion_core REQUIRED)
 find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
 
@@ -37,7 +38,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 ament_export_dependencies(rosidl_default_runtime)
 
 # dual_arm_planner_node: 双末端全流程复现；抓取/抽离 IK 走当前三平行结构解析解。
-set(IK_BENCHMARK_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/ik_benchmark)
 
 add_library(alfa_robot_motion_core
   src/motion_core/pose_math.cpp
@@ -82,7 +82,6 @@ target_compile_features(alfa_robot_motion_scene_adapter PUBLIC cxx_std_17)
 
 target_include_directories(alfa_robot_motion_scene_adapter PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<BUILD_INTERFACE:${IK_BENCHMARK_ROOT}/include>
   $<INSTALL_INTERFACE:include>
 )
 
@@ -91,6 +90,7 @@ target_link_libraries(alfa_robot_motion_scene_adapter
   alfa_robot_analytic_ik::alfa_robot_analytic_ik
   robot_motion_scene_service::robot_motion_scene_core
   robot_motion_scene_service::robot_motion_scene_adapter
+  robot_motion_core::robot_motion_core
 )
 
 ament_target_dependencies(alfa_robot_motion_scene_adapter
@@ -109,6 +109,7 @@ ament_target_dependencies(alfa_robot_motion_scene_adapter
   trajectory_msgs
   shape_msgs
   robot_motion_scene_service
+  robot_motion_core
   srdfdom
   urdf
 )
@@ -121,7 +122,6 @@ target_compile_features(dual_arm_planner_node PUBLIC cxx_std_17)
 
 target_include_directories(dual_arm_planner_node PRIVATE
   include
-  ${IK_BENCHMARK_ROOT}/include
 )
 
 target_link_libraries(dual_arm_planner_node
@@ -157,6 +157,7 @@ ament_target_dependencies(dual_arm_planner_node
   tf2_geometry_msgs
   tf2_eigen
   alfa_robot_analytic_ik
+  robot_motion_core
 )
 
 add_executable(analytic_arm_ik_service_node
@@ -224,10 +225,10 @@ install(TARGETS
 )
 
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY ${IK_BENCHMARK_ROOT}/include/ DESTINATION include)
 
 ament_export_targets(export_alfa_robot_motion_core HAS_LIBRARY_TARGET)
 ament_export_include_directories(include)
+ament_export_dependencies(robot_motion_core)
 ament_export_dependencies(
   Eigen3
   alfa_robot_analytic_ik
@@ -318,6 +319,13 @@ if(BUILD_TESTING)
   add_test(
     NAME test_process_lifecycle
     COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_process_lifecycle.py
+  )
+
+  add_test(
+    NAME test_package_boundaries
+    COMMAND /usr/bin/python3
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_package_boundaries.py
+      ${CMAKE_CURRENT_SOURCE_DIR}/../../..
   )
 endif()
 

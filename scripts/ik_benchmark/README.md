@@ -2,6 +2,15 @@
 
 这个包用于离线、进程内调用 MoveIt kinematics plugin，避免 `/compute_ik` ROS service 逐点调用的通信开销。
 
+它是实验包。公共 IK 候选类型位于 `robot_motion_core`，URDF/FK 与 Rerun 公共实现位于 `alfa_robot_rerun`。构建外置 benchmark 包时使用：
+
+```bash
+cd ros2_ws
+colcon build --base-paths src ../scripts/ik_benchmark \
+  --packages-select robot_motion_core alfa_robot_rerun alfa_robot_benchmarks
+source install/setup.bash
+```
+
 ## Pick-Place Baseline
 
 核心可执行：
@@ -43,19 +52,19 @@ ros2 run alfa_robot_benchmarks pick_place_baseline --start 0 --rounds 1
 输出 JSONL 可以直接用现有 Rerun 回放脚本查看目标和实际末端位置：
 
 ```bash
-python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl
+ros2 run alfa_robot_rerun visualize_rerun /tmp/pick_place_baseline.jsonl
 ```
 
 默认会同时加载当前 `alfa_robot_description` 的 URDF visual mesh，并用每个 sample 的 `result.joint_values` 离线 FK 回放整机姿态。只看末端点位时可以加：
 
 ```bash
-python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl --no-robot
+ros2 run alfa_robot_rerun visualize_rerun /tmp/pick_place_baseline.jsonl --no-robot
 ```
 
 如果只想生成文件、不弹 Rerun 窗口：
 
 ```bash
-python3 ros2_ws/src/alfa_robot_benchmarks/scripts/visualize_rerun.py /tmp/pick_place_baseline.jsonl --save /tmp/pick_place_baseline_robot.rrd
+ros2 run alfa_robot_rerun visualize_rerun /tmp/pick_place_baseline.jsonl --save /tmp/pick_place_baseline_robot.rrd
 rerun /tmp/pick_place_baseline_robot.rrd
 ```
 

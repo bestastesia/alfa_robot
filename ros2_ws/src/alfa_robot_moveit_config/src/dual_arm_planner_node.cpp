@@ -322,7 +322,7 @@ public:
     ik_config_.top_suction_z_reach_upper = get_or_declare_parameter<double>("top_z_reach_upper", 0.45) - world_to_base_z_;
     ik_config_.h_lower = get_or_declare_parameter<double>("ik_h_lower", 0.0);
     ik_config_.h_upper = get_or_declare_parameter<double>("ik_h_upper", 0.99);
-    ik_config_.h_search_mode = ik_benchmark::UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
+    ik_config_.h_search_mode = robot_motion::core::UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
     ik_config_.h_search_margin = get_or_declare_parameter<double>("ik_h_search_margin", 0.2);
     ik_config_.h_step = get_or_declare_parameter<double>("ik_h_step", 0.1);
     ik_config_.h_candidate_count = static_cast<size_t>(std::max(1, get_or_declare_parameter<int>("ik_h_candidate_count", 64)));
@@ -1332,7 +1332,7 @@ private:
     ExtractBenchmarkRunnerCallbacks callbacks;
     callbacks.state_from_candidate = [this](
       const moveit::core::RobotState& seed_state,
-      const ik_benchmark::UpdownAwareIkCandidate& candidate) {
+      const robot_motion::core::UpdownAwareIkCandidate& candidate) {
       return robot_state_from_ik_candidate(seed_state, candidate, joint_group_);
     };
     callbacks.rollout_left = [this](
@@ -1340,7 +1340,7 @@ private:
       const AttachedBoxSpec& left_box,
       int left_box_id,
       size_t candidate_order,
-      const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
+      const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
       const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step) {
       return rollout_left_extract_from_state(start_state, left_box, left_box_id, candidate_order, ik_candidate, record_step);
     };
@@ -1351,7 +1351,7 @@ private:
       const AttachedBoxSpec& right_box,
       int right_box_id,
       size_t candidate_order,
-      const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
+      const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
       const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step) {
       return rollout_dual_extract_from_state(
         start_state, left_box, left_box_id, right_box, right_box_id,
@@ -1372,7 +1372,7 @@ private:
     callbacks.record_tip_errors = [this](
       const std::string& prefix,
       const moveit::core::RobotState& seed_state,
-      const ik_benchmark::UpdownAwareIkResult& ik_result,
+      const robot_motion::core::UpdownAwareIkResult& ik_result,
       const AttachedBoxSpec& left_box) {
       record_tip_error_ik_candidates(prefix, seed_state, ik_result, left_box);
     };
@@ -1381,7 +1381,7 @@ private:
         recorder_->write(summary);
       }
     };
-    callbacks.rejection_counts_json = [this](const ik_benchmark::UpdownAwareIkResult& result) {
+    callbacks.rejection_counts_json = [this](const robot_motion::core::UpdownAwareIkResult& result) {
       return ik_candidate_rejection_counts_json(result);
     };
     callbacks.fail = [this](const std::string& message) {
@@ -2282,7 +2282,7 @@ private:
     const moveit::core::RobotState& seed_state,
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
-    ik_benchmark::UpdownAwareIkResult* result_out = nullptr)
+    robot_motion::core::UpdownAwareIkResult* result_out = nullptr)
   {
     return solve_dual_tip_ik_state(
       stage_name,
@@ -2305,7 +2305,7 @@ private:
     const moveit::core::RobotState& seed_state,
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
-    ik_benchmark::UpdownAwareIkResult* result_out = nullptr)
+    robot_motion::core::UpdownAwareIkResult* result_out = nullptr)
   {
     if (!ensure_optimized_ik_solver()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
@@ -2466,7 +2466,7 @@ private:
     const AttachedBoxSpec& right_box,
     int right_box_id,
     size_t candidate_order,
-    const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
+    const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
     struct RrtGoalCandidate
@@ -2690,7 +2690,7 @@ private:
     const AttachedBoxSpec& left_box,
     int left_box_id,
     size_t candidate_order,
-    const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
+    const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
     const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
@@ -2727,7 +2727,7 @@ private:
     const AttachedBoxSpec& right_box,
     int right_box_id,
     size_t candidate_order,
-    const ik_benchmark::UpdownAwareIkCandidate& ik_candidate,
+    const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
     const auto boxes = make_boxes(box_front_x_, scene_y_shift_);
@@ -2823,7 +2823,7 @@ private:
     const AttachedBoxSpec& right_box,
     int right_box_id,
     size_t candidate_order,
-    const ik_benchmark::UpdownAwareIkCandidate& ik_candidate)
+    const robot_motion::core::UpdownAwareIkCandidate& ik_candidate)
   {
     ExtractRolloutTiming timing;
     timing.candidate_order = candidate_order;
@@ -2950,7 +2950,7 @@ private:
   bool benchmark_all_legal_ik_extract(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     const AttachedBoxSpec& left_box,
     int left_box_id)
   {
@@ -2961,7 +2961,7 @@ private:
   bool benchmark_all_legal_ik_dual_extract(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     const AttachedBoxSpec& left_box,
     int left_box_id,
     const AttachedBoxSpec& right_box,
@@ -3001,7 +3001,7 @@ private:
   void record_tip_error_ik_candidates(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     const AttachedBoxSpec& left_box)
   {
     if (!recording_enabled() || record_tip_error_ik_candidate_limit_ == 0) return;
@@ -3497,8 +3497,8 @@ private:
     return fail(result.message);
   }
 
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> selected_monitor_ik_candidates(
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> selected_monitor_ik_candidates(
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     IkCandidateSelectionStats* stats) const
   {
     if (ik_candidate_selector_) {
@@ -3680,7 +3680,7 @@ private:
 
     moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
     nlohmann::json ik_extra;
-    ik_benchmark::UpdownAwareIkResult ik_result;
+    robot_motion::core::UpdownAwareIkResult ik_result;
     const auto left_pose = extract_monitor_left_top_suction_
       ? make_top_suction_pose(left_it->second, world_to_base_z_, top_suction_x_offset_, top_suction_z_offset_)
       : make_front_grasp_pose(left_it->second, world_to_base_z_);
@@ -3795,7 +3795,7 @@ private:
       worker_count = run_extract_monitor_candidate_tasks(
         extract_monitor_state_,
         extract_benchmark_extract_workers_,
-        [&](size_t index, const ik_benchmark::UpdownAwareIkCandidate& candidate) {
+        [&](size_t index, const robot_motion::core::UpdownAwareIkCandidate& candidate) {
           const auto state = robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_);
           std::vector<nlohmann::json> rollout_records;
           auto record_step = [&](size_t step, const moveit::core::RobotState& step_state, const nlohmann::json& extra) {
@@ -4213,7 +4213,7 @@ private:
 
       moveit::core::RobotState grasp_state(*seed_state);
       nlohmann::json grasp_extra;
-      ik_benchmark::UpdownAwareIkResult direct_ik_result;
+      robot_motion::core::UpdownAwareIkResult direct_ik_result;
       if (!solve_dual_tip_ik_state(prefix + "/grasp_ik_direct_start", left_pose, right_pose, false,
                                    *seed_state, &grasp_state, &grasp_extra, &direct_ik_result)) {
         return false;
@@ -4458,7 +4458,7 @@ private:
   size_t left_preferred_loaded_pose_index_ = 0;
   size_t right_preferred_loaded_pose_index_ = 0;
   std::string last_error_;
-  ik_benchmark::UpdownAwareIkConfig ik_config_;
+  robot_motion::core::UpdownAwareIkConfig ik_config_;
   LoadedPoseSelectorConfig loaded_pose_selector_config_;
 
   std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;

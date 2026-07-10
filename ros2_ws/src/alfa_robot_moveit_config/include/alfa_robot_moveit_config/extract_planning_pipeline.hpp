@@ -5,7 +5,7 @@
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 #include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
-#include "ik_benchmark/parallel_updown_aware_ik_solver.h"
+#include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <Eigen/Geometry>
 #include <geometry_msgs/msg/pose.hpp>
@@ -517,13 +517,13 @@ struct ExtractBenchmarkRunnerCallbacks
 {
   std::function<moveit::core::RobotState(
     const moveit::core::RobotState&,
-    const ik_benchmark::UpdownAwareIkCandidate&)> state_from_candidate;
+    const robot_motion::core::UpdownAwareIkCandidate&)> state_from_candidate;
   std::function<ExtractRolloutTiming(
     const moveit::core::RobotState&,
     const AttachedBoxSpec&,
     int,
     size_t,
-    const ik_benchmark::UpdownAwareIkCandidate&,
+    const robot_motion::core::UpdownAwareIkCandidate&,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>&)> rollout_left;
   std::function<ExtractRolloutTiming(
     const moveit::core::RobotState&,
@@ -532,7 +532,7 @@ struct ExtractBenchmarkRunnerCallbacks
     const AttachedBoxSpec&,
     int,
     size_t,
-    const ik_benchmark::UpdownAwareIkCandidate&,
+    const robot_motion::core::UpdownAwareIkCandidate&,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>&)> rollout_dual;
   std::function<void(ExtractRolloutTiming&)> fill_loaded_metrics;
   std::function<void(
@@ -540,9 +540,9 @@ struct ExtractBenchmarkRunnerCallbacks
     const moveit::core::RobotState&,
     const std::vector<AttachedBoxSpec>&,
     const nlohmann::json&)> record_keyframe;
-  std::function<void(const std::string&, const moveit::core::RobotState&, const ik_benchmark::UpdownAwareIkResult&, const AttachedBoxSpec&)> record_tip_errors;
+  std::function<void(const std::string&, const moveit::core::RobotState&, const robot_motion::core::UpdownAwareIkResult&, const AttachedBoxSpec&)> record_tip_errors;
   std::function<void(const nlohmann::json&)> record_summary;
-  std::function<nlohmann::json(const ik_benchmark::UpdownAwareIkResult&)> rejection_counts_json;
+  std::function<nlohmann::json(const robot_motion::core::UpdownAwareIkResult&)> rejection_counts_json;
   std::function<bool(const std::string&)> fail;
   std::function<void(const std::string&)> set_last_error;
 };
@@ -557,22 +557,22 @@ public:
   bool runLeft(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     const AttachedBoxSpec& left_box,
     int left_box_id);
 
   bool runDual(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     const AttachedBoxSpec& left_box,
     int left_box_id,
     const AttachedBoxSpec& right_box,
     int right_box_id);
 
 private:
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> sortedLegalCandidates(
-    const ik_benchmark::UpdownAwareIkResult& ik_result,
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> sortedLegalCandidates(
+    const robot_motion::core::UpdownAwareIkResult& ik_result,
     size_t* original_legal_count,
     IkCandidateSelectionStats* dedup_stats) const;
 
@@ -581,7 +581,7 @@ private:
   ExtractRolloutTiming runDualCandidate(
     const std::string& prefix,
     const moveit::core::RobotState& seed_state,
-    const std::vector<ik_benchmark::UpdownAwareIkCandidate>& legal_candidates,
+    const std::vector<robot_motion::core::UpdownAwareIkCandidate>& legal_candidates,
     const AttachedBoxSpec& left_box,
     int left_box_id,
     const AttachedBoxSpec& right_box,

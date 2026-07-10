@@ -20,9 +20,11 @@
   <depend>ament_index_cpp</depend>
   <depend>random_numbers</depend>
   <depend>nlohmann_json</depend>
+  <depend>robot_motion_core</depend>
 
   <exec_depend>alfa_robot_description</exec_depend>
   <exec_depend>alfa_robot_moveit_config</exec_depend>
+  <exec_depend>alfa_robot_rerun</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

@@ -35,7 +35,6 @@ setup(
             "motion_task_orchestrator_node = robot_motion_runtime.motion_task_orchestrator_node:main",
             "motion_runtime_dashboard_node = robot_motion_runtime.motion_runtime_dashboard_node:main",
             "kinematic_sim_executor_node = robot_motion_runtime.kinematic_sim_executor_node:main",
-            "rerun_joint_state_viewer_node = robot_motion_runtime.rerun_joint_state_viewer_node:main",
         ],
     },
 )

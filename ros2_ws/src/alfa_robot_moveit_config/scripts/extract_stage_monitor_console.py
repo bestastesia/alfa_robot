@@ -13,7 +13,6 @@ The next stage is computed only after pressing Enter.
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import math
 import os
@@ -26,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 rr: Any | None = None
 
@@ -42,7 +42,7 @@ def find_repo_root() -> Path:
     if env_root:
         return Path(env_root).expanduser().resolve()
     for candidate in [SCRIPT_DIR, *SCRIPT_DIR.parents]:
-        if (candidate / "ros2_ws").is_dir() and (candidate / "scripts/ik_benchmark").is_dir():
+        if (candidate / "ros2_ws" / "src").is_dir():
             return candidate
         if candidate.name == "ros2_ws":
             return candidate.parent
@@ -68,21 +68,7 @@ def log_event(label: str, run_start: float | None = None) -> None:
 
 
 def load_rerun_helpers():
-    candidates = [
-        REPO_ROOT / "scripts/ik_benchmark/scripts/visualize_rerun.py",
-        Path.cwd() / "scripts/ik_benchmark/scripts/visualize_rerun.py",
-        Path.cwd().parent / "scripts/ik_benchmark/scripts/visualize_rerun.py",
-    ]
-    for helper_path in candidates:
-        if helper_path.exists():
-            spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", helper_path)
-            if spec is None or spec.loader is None:
-                continue
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[spec.name] = module
-            spec.loader.exec_module(module)
-            return module
-    raise RuntimeError("cannot find scripts/ik_benchmark/scripts/visualize_rerun.py")
+    return rerun_helpers
 
 
 def bash_source_command(command: str) -> list[str]:

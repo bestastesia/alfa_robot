@@ -3,7 +3,7 @@
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
-#include "ik_benchmark/parallel_updown_aware_ik_solver.h"
+#include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_state/robot_state.h>
@@ -64,12 +64,12 @@ nlohmann::json extract_monitor_stage_json(
   const nlohmann::json& extra);
 
 nlohmann::json extract_monitor_candidate_json(
-  const ik_benchmark::UpdownAwareIkCandidate& candidate,
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
   size_t display_index,
   const moveit::core::RobotState& state);
 
 nlohmann::json extract_monitor_candidate_records_json(
-  const std::vector<ik_benchmark::UpdownAwareIkCandidate>& candidates,
+  const std::vector<robot_motion::core::UpdownAwareIkCandidate>& candidates,
   const std::vector<moveit::core::RobotStatePtr>& candidate_states);
 
 nlohmann::json extract_monitor_timing_json(
@@ -217,7 +217,7 @@ nlohmann::json extract_monitor_ik_snapshot(
   int right_box_id,
   double box_front_x,
   double scene_y_shift,
-  const ik_benchmark::UpdownAwareIkResult& ik_result,
+  const robot_motion::core::UpdownAwareIkResult& ik_result,
   const IkCandidateSelectionStats& dedup_stats,
   const nlohmann::json& rejection_counts,
   const nlohmann::json& records);
@@ -230,7 +230,7 @@ struct ExtractMonitorIkSnapshotRequest
   int right_box_id = 0;
   double box_front_x = 0.0;
   double scene_y_shift = 0.0;
-  const ik_benchmark::UpdownAwareIkResult* ik_result = nullptr;
+  const robot_motion::core::UpdownAwareIkResult* ik_result = nullptr;
   IkCandidateSelectionStats dedup_stats;
   nlohmann::json rejection_counts = nlohmann::json::object();
   nlohmann::json records = nlohmann::json::array();

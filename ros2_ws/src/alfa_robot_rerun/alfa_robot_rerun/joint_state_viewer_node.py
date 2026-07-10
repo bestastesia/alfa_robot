@@ -1,38 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
-from typing import Any
-
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 
-
-def find_repo_root() -> Path:
-    starts = [Path.cwd().resolve(), Path(__file__).resolve()]
-    for start in list(starts):
-        starts.extend(start.parents)
-    for candidate in starts:
-        if (candidate / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py").exists():
-            return candidate
-        if (candidate.parent / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py").exists():
-            return candidate.parent
-    raise RuntimeError("cannot find alfa_robot repo root containing scripts/ik_benchmark/scripts/visualize_rerun.py")
-
-
-def load_rerun_helpers() -> Any:
-    helper_path = find_repo_root() / "scripts" / "ik_benchmark" / "scripts" / "visualize_rerun.py"
-    spec = importlib.util.spec_from_file_location("alfa_visualize_rerun_helpers", helper_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot load {helper_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 
 class RerunJointStateViewerNode(Node):
@@ -60,12 +34,15 @@ class RerunJointStateViewerNode(Node):
             raise RuntimeError("rerun-sdk is not installed; disable this node or install rerun-sdk") from exc
 
         self.rr = rerun_module
-        self.helpers = load_rerun_helpers()
-        self.robot = self.helpers.UrdfRobot(self.helpers.render_current_urdf())
+        self.robot = rerun_helpers.UrdfRobot(rerun_helpers.render_current_urdf())
         self.rr.init(self.app_id)
         if self.spawn_viewer:
             self.rr.spawn()
-        self.helpers.log_robot_static_model(self.robot, self.robot_path, log_meshes=self.log_meshes)
+        rerun_helpers.log_robot_static_model(
+            self.robot,
+            self.robot_path,
+            log_meshes=self.log_meshes,
+        )
 
         self.latest: dict[str, float] = {}
         self.sample = 0
@@ -87,9 +64,12 @@ class RerunJointStateViewerNode(Node):
     def on_timer(self) -> None:
         if not self.latest:
             return
-        self.helpers.set_sample_time(self.sample)
-        self.helpers.log_robot_state(self.robot, self.latest, self.robot_path)
-        self.rr.log(f"{self.robot_path}/status", self.rr.TextLog(f"sample={self.sample} joints={len(self.latest)}"))
+        rerun_helpers.set_sample_time(self.sample)
+        rerun_helpers.log_robot_state(self.robot, self.latest, self.robot_path)
+        self.rr.log(
+            f"{self.robot_path}/status",
+            self.rr.TextLog(f"sample={self.sample} joints={len(self.latest)}"),
+        )
         self.sample += 1
 
 

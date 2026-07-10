@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import rerun as rr
 
-from visualize_rerun import UrdfRobot, log_robot_static_model, log_robot_state, render_current_urdf
+from alfa_robot_rerun.visualize_rerun import UrdfRobot, log_robot_static_model, log_robot_state, render_current_urdf
 
 
 def point_key(row: dict[str, str]) -> tuple[float, float, float]:

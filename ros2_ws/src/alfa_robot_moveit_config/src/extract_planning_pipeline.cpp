@@ -1512,12 +1512,12 @@ ExtractBenchmarkRunner::ExtractBenchmarkRunner(
 : config_(std::move(config)), callbacks_(std::move(callbacks))
 {}
 
-std::vector<ik_benchmark::UpdownAwareIkCandidate> ExtractBenchmarkRunner::sortedLegalCandidates(
-  const ik_benchmark::UpdownAwareIkResult& ik_result,
+std::vector<robot_motion::core::UpdownAwareIkCandidate> ExtractBenchmarkRunner::sortedLegalCandidates(
+  const robot_motion::core::UpdownAwareIkResult& ik_result,
   size_t* original_legal_count,
   IkCandidateSelectionStats* dedup_stats) const
 {
-  std::vector<ik_benchmark::UpdownAwareIkCandidate> legal_candidates;
+  std::vector<robot_motion::core::UpdownAwareIkCandidate> legal_candidates;
   for (const auto& candidate : ik_result.candidates) {
     if (candidate.legal) {
       legal_candidates.push_back(candidate);
@@ -1546,7 +1546,7 @@ bool ExtractBenchmarkRunner::writeCsv(const std::vector<ExtractRolloutTiming>& t
 bool ExtractBenchmarkRunner::runLeft(
   const std::string& prefix,
   const moveit::core::RobotState& seed_state,
-  const ik_benchmark::UpdownAwareIkResult& ik_result,
+  const robot_motion::core::UpdownAwareIkResult& ik_result,
   const AttachedBoxSpec& left_box,
   int left_box_id)
 {
@@ -1645,7 +1645,7 @@ bool ExtractBenchmarkRunner::runLeft(
 ExtractRolloutTiming ExtractBenchmarkRunner::runDualCandidate(
   const std::string& prefix,
   const moveit::core::RobotState& seed_state,
-  const std::vector<ik_benchmark::UpdownAwareIkCandidate>& legal_candidates,
+  const std::vector<robot_motion::core::UpdownAwareIkCandidate>& legal_candidates,
   const AttachedBoxSpec& left_box,
   int left_box_id,
   const AttachedBoxSpec& right_box,
@@ -1677,7 +1677,7 @@ ExtractRolloutTiming ExtractBenchmarkRunner::runDualCandidate(
 bool ExtractBenchmarkRunner::runDual(
   const std::string& prefix,
   const moveit::core::RobotState& seed_state,
-  const ik_benchmark::UpdownAwareIkResult& ik_result,
+  const robot_motion::core::UpdownAwareIkResult& ik_result,
   const AttachedBoxSpec& left_box,
   int left_box_id,
   const AttachedBoxSpec& right_box,

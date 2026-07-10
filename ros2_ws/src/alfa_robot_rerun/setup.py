@@ -6,7 +6,7 @@ package_name = 'alfa_robot_rerun'
 
 setup(
     name=package_name,
-    version='0.1.0',
+    version='0.2.0',
     packages=[package_name],
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
@@ -17,12 +17,14 @@ setup(
     zip_safe=True,
     maintainer='developer',
     maintainer_email='dev@example.com',
-    description='Minimal Rerun viewer bridge for ALFA robot joint state visualization.',
+    description='Shared Rerun URDF/FK visualization module and ROS joint-state viewers for ALFA robot.',
     license='Apache-2.0',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'basic_robot_viewer = alfa_robot_rerun.basic_robot_viewer:main',
+            'rerun_joint_state_viewer_node = alfa_robot_rerun.joint_state_viewer_node:main',
+            'visualize_rerun = alfa_robot_rerun.visualize_rerun:main',
         ],
     },
 )

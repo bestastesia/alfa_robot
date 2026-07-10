@@ -117,6 +117,18 @@ window.SYSTEM_PORTAL_DATA = {
       statusNotes: ["应优先作为迁移到 robot_motion_control 后的稳定边界。", "接口一旦被外部包使用，字段变化需要版本化或兼容层。"]
     },
     {
+      id: "robot_motion_core",
+      name: "robot_motion_core",
+      layer: "算法核心",
+      status: "纯 C++ 公共核心",
+      maturity: "active",
+      responsibility: "承载不依赖 ROS node、MoveIt 和可视化的运控数据模型与算法接口；当前已统一 IK 候选配置、请求、结果和代价函数类型。",
+      consumes: ["Eigen", "纯数值输入"],
+      produces: ["IkSolverOptions", "UpdownAwareIkRequest", "UpdownAwareIkCandidate", "UpdownAwareIkResult", "UpdownAwareCostFn"],
+      keyFiles: ["ros2_ws/src/robot_motion_core/include/robot_motion_core/ik_candidate_types.hpp", "ros2_ws/src/robot_motion_core/test/test_ik_candidate_types.cpp"],
+      statusNotes: ["alfa_robot_moveit_config 与 alfa_robot_benchmarks 现在共同依赖此 Interface，不再互相复制类型。", "候选排序、去重、抽离 rollout 和轨迹评分仍需继续从 MoveIt adapter 迁入。"]
+    },
+    {
       id: "robot_motion_runtime",
       name: "robot_motion_runtime",
       layer: "运行时服务图",
@@ -216,13 +228,13 @@ window.SYSTEM_PORTAL_DATA = {
       id: "alfa_robot_rerun",
       name: "alfa_robot_rerun",
       layer: "可视化",
-      status: "轻量观察器",
+      status: "公共只读适配器",
       maturity: "utility",
-      responsibility: "订阅 /joint_states，用 URDF FK 在 Rerun 中显示机器人；也作为后续可视化基础。",
-      consumes: ["/joint_states", "alfa_robot_description xacro"],
-      produces: ["Rerun viewer", ".rrd recording"],
-      keyFiles: ["ros2_ws/src/alfa_robot_rerun/README.md", "ros2_ws/src/alfa_robot_rerun/launch/basic_robot_viewer.launch.py"],
-      statusNotes: ["当前只读，不替代 RViz/MoveIt 交互。", "没有规划场景、碰撞和感知 overlay。"]
+      responsibility: "集中维护 URDF 解析、FK、mesh 记录、实时关节状态和离线 JSONL 回放，避免各脚本复制机器人可视化实现。",
+      consumes: ["/joint_states", "alfa_robot_description xacro", "JSONL/关节状态序列"],
+      produces: ["Rerun viewer", ".rrd recording", "共享 UrdfRobot/FK API"],
+      keyFiles: ["ros2_ws/src/alfa_robot_rerun/alfa_robot_rerun/visualize_rerun.py", "ros2_ws/src/alfa_robot_rerun/alfa_robot_rerun/joint_state_viewer_node.py", "ros2_ws/src/alfa_robot_rerun/launch/basic_robot_viewer.launch.py"],
+      statusNotes: ["当前只读，不替代 RViz/MoveIt 交互，也不参与算法成功判定。", "benchmark 旧路径只保留兼容包装，不再保存第二份实现。"]
     },
     {
       id: "bio_ik",
@@ -241,9 +253,9 @@ window.SYSTEM_PORTAL_DATA = {
     {
       id: "scripts_ik_benchmark",
       name: "scripts/ik_benchmark",
-      role: "IK core 的历史来源、可达性工具和 Rerun helper；不再通过 ros2_ws symlink 暴露为正式包。",
-      status: "待迁移实验资产",
-      notes: "生产源码迁出后应进一步缩减；任何正式包不得依赖 benchmark 可执行入口。"
+      role: "IK、可达性和全流程性能实验入口；公共候选类型与 Rerun 实现已迁出。",
+      status: "隔离实验资产",
+      notes: "正式包不得包含此目录的头文件或动态导入脚本；兼容入口只允许转发到正式包。"
     },
     {
       id: "docs_motion",
@@ -272,7 +284,7 @@ window.SYSTEM_PORTAL_DATA = {
       },
       {
         title: "调试代码单向依赖",
-        rule: "工具只能调用公开 interface；任何生产包都不得依赖 benchmark、Rerun helper 或临时脚本。",
+        rule: "工具只能调用公开 interface；任何生产包都不得依赖 benchmark 内 helper 或临时脚本。正式可视化统一依赖 alfa_robot_rerun。",
         prevents: "阻止一次性验证脚本被悄悄融入正式运行链路。"
       }
     ],
@@ -287,7 +299,7 @@ window.SYSTEM_PORTAL_DATA = {
       {
         index: "02",
         name: "算法核心层",
-        modules: "robot_motion_core（目标） / alfa_robot_analytic_ik",
+        modules: "robot_motion_core / alfa_robot_analytic_ik",
         owns: "IK、多解排序、去重、抽离 rollout、轨迹评分",
         mustNot: "创建 ROS node、读取环境变量、启动进程或写可视化"
       },
@@ -338,7 +350,7 @@ window.SYSTEM_PORTAL_DATA = {
     ],
     migration: [
       { phase: "A · 立即约束", result: "清理跨部门旧包；Bringup 只装配；门户记录唯一官方入口。" },
-      { phase: "B · 抽出规划能力", result: "把 dual_arm_planner 中已拆出的 core 迁入 robot_motion_core，ROS 节点迁入 planning service。" },
+      { phase: "B · 抽出规划能力", result: "已建立 robot_motion_core 并迁入 IK 候选公共接口；继续迁移排序、去重、rollout 与评分，ROS 节点迁入 planning service。" },
       { phase: "C · 收窄 MoveIt 包", result: "alfa_robot_moveit_config 只保留 SRDF、规划器配置、MoveIt/FCL adapter。" },
       { phase: "D · 建立系统测试", result: "独立 system_tests 通过服务启动、注入 state/scene、运行任务并验证回执，不导入私有实现。" },
       { phase: "E · 迁移新仓库", result: "按上述依赖方向迁入 robot_motion_control，旧仓库只保留历史追溯。" }

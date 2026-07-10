@@ -257,7 +257,7 @@ int main()
   size_t built_count = 0;
   populate_extract_monitor_candidate_states(
     state,
-    [&](const ik_benchmark::UpdownAwareIkCandidate&) {
+    [&](const robot_motion::core::UpdownAwareIkCandidate&) {
       ++built_count;
       return moveit::core::RobotStatePtr{};
     });
@@ -274,7 +274,7 @@ int main()
   const size_t used_workers = run_extract_monitor_candidate_tasks(
     state,
     2,
-    [](size_t index, const ik_benchmark::UpdownAwareIkCandidate&) {
+    [](size_t index, const robot_motion::core::UpdownAwareIkCandidate&) {
       alfa_robot::motion::ExtractRolloutTiming timing;
       timing.candidate_order = index;
       timing.success = index != 1;
