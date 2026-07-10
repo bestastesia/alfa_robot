@@ -436,6 +436,8 @@ public:
       get_or_declare_parameter<double>("extract_box_pose_rrt_separation_margin", 0.03);
     extract_box_pose_rrt_analytic_root_samples_ = static_cast<size_t>(
       std::max(8, get_or_declare_parameter<int>("extract_box_pose_rrt_analytic_root_samples", 12)));
+    extract_box_pose_rrt_diagnostics_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_diagnostics", false);
     extract_rrt_planning_group_ = get_or_declare_parameter<std::string>("extract_rrt_planning_group", "dual_arm");
     extract_rrt_planning_time_ = get_or_declare_parameter<double>("extract_rrt_planning_time", 0.35);
     extract_rrt_planning_attempts_ = std::max(1, get_or_declare_parameter<int>("extract_rrt_planning_attempts", 1));
@@ -980,6 +982,7 @@ private:
     config.right_tip = right_tip_;
     config.max_paths_per_arm = extract_box_pose_rrt_paths_per_arm_;
     config.max_path_pairs_to_validate = extract_box_pose_rrt_path_pair_limit_;
+    config.diagnose_isolated_arm_paths = extract_box_pose_rrt_diagnostics_;
     config.front_rrt.mode = robot_motion::core::BoxPoseExtractMode::FrontPivot;
     config.front_rrt.box_depth = carried_box_depth_;
     config.front_rrt.box_height = carried_box_height_;
@@ -3807,6 +3810,7 @@ private:
     extract_monitor_state_.candidate_states.clear();
     extract_monitor_state_.legal_candidates.reserve(selected_candidates.size());
     extract_monitor_state_.candidate_states.reserve(selected_candidates.size());
+    std::map<std::string, size_t> scene_filter_rejections;
     for (const auto& candidate : selected_candidates) {
       auto state = std::make_shared<moveit::core::RobotState>(
         robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_));
@@ -3823,6 +3827,8 @@ private:
             &right_detached,
             &collision_reason))
       {
+        scene_filter_rejections[collision_reason.empty() ?
+          "ik_candidate_scene_rejected" : collision_reason]++;
         continue;
       }
       extract_monitor_state_.legal_candidates.push_back(candidate);
@@ -3836,7 +3842,7 @@ private:
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
     extract_monitor_last_stage_ms_ = elapsed_ms;
-    const nlohmann::json snapshot = extract_monitor_ik_snapshot(
+    nlohmann::json snapshot = extract_monitor_ik_snapshot(
       ExtractMonitorIkSnapshotRequest{
         extract_monitor_snapshot_path_,
         elapsed_ms,
@@ -3848,6 +3854,9 @@ private:
         dedup_stats,
         ik_candidate_rejection_counts_json(ik_result),
         records});
+    snapshot["scene_filter_input_count"] = selected_candidates.size();
+    snapshot["scene_filter_accepted_count"] = extract_monitor_state_.legal_candidates.size();
+    snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     return finish_extract_monitor_stage(
       snapshot,
       "extract monitor IK",
@@ -3864,7 +3873,9 @@ private:
   bool run_extract_monitor_extract_stage(std::string* message)
   {
     if (!extract_monitor_state_.seed_state || extract_monitor_state_.legal_candidates.empty()) {
-      return fail("extract monitor extract: IK stage has no candidates");
+      const std::string reason = "extract monitor extract: IK stage has no candidates after scene filtering";
+      if (message) *message = reason;
+      return fail(reason);
     }
 
     const auto stage_start = std::chrono::steady_clock::now();
@@ -4526,6 +4537,7 @@ private:
   double extract_box_pose_rrt_max_lift_ = 0.55;
   double extract_box_pose_rrt_separation_margin_ = 0.03;
   size_t extract_box_pose_rrt_analytic_root_samples_ = 12;
+  bool extract_box_pose_rrt_diagnostics_ = false;
   std::string extract_rrt_planning_group_ = "dual_arm";
   double extract_rrt_planning_time_ = 0.35;
   int extract_rrt_planning_attempts_ = 1;

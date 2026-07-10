@@ -157,6 +157,35 @@ double path_cost(
   return cost;
 }
 
+bool same_state(const BoxPoseExtractState& lhs, const BoxPoseExtractState& rhs)
+{
+  constexpr double tolerance = 1e-8;
+  return std::abs(lhs.retreat - rhs.retreat) <= tolerance &&
+         std::abs(lhs.lift - rhs.lift) <= tolerance &&
+         std::abs(lhs.pitch - rhs.pitch) <= tolerance;
+}
+
+bool same_path(const BoxPoseExtractPath& lhs, const BoxPoseExtractPath& rhs)
+{
+  if (lhs.states.size() != rhs.states.size()) return false;
+  for (size_t index = 0; index < lhs.states.size(); ++index) {
+    if (!same_state(lhs.states[index], rhs.states[index])) return false;
+  }
+  return true;
+}
+
+void append_unique_path(
+  std::vector<BoxPoseExtractPath>* paths,
+  BoxPoseExtractPath path,
+  size_t max_solution_count)
+{
+  if (!paths || paths->size() >= max_solution_count) return;
+  const bool duplicate = std::any_of(paths->begin(), paths->end(), [&](const auto& kept) {
+    return same_path(kept, path);
+  });
+  if (!duplicate) paths->push_back(std::move(path));
+}
+
 }  // namespace
 
 BoxPoseExtractRrt::BoxPoseExtractRrt(BoxPoseExtractRrtConfig config)
@@ -251,7 +280,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     direct_path.states = {start, goal};
     direct_path.joint_motion = direct_evaluation.joint_motion;
     direct_path.edge_evaluations = 1;
-    result.paths.push_back(std::move(direct_path));
+    append_unique_path(&result.paths, std::move(direct_path), config_.max_solution_count);
   }
 
   for (size_t iteration = 1; iteration <= config_.max_iterations; ++iteration) {
@@ -293,14 +322,33 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     }
 
     nodes.push_back({next, nearest_index});
-    const size_t next_index = nodes.size() - 1;
+    size_t next_index = nodes.size() - 1;
     if (!goalReached(next)) {
-      continue;
+      const size_t interval = std::max<size_t>(1, config_.goal_connection_interval);
+      if (iteration % interval != 0 || !monotonic_transition(next, goal, config_.mode)) {
+        continue;
+      }
+      const auto goal_evaluation = evaluator(next, goal);
+      ++result.edge_evaluations;
+      if (!goal_evaluation.valid || !std::isfinite(goal_evaluation.joint_motion)) {
+        continue;
+      }
+      nodes.push_back({goal, next_index});
+      next_index = nodes.size() - 1;
     }
 
-    BoxPoseExtractPath path;
-    path.states = reconstruct_path(nodes, next_index);
-    path.iterations = iteration;
+    BoxPoseExtractPath raw_path;
+    raw_path.states = reconstruct_path(nodes, next_index);
+    raw_path.iterations = iteration;
+    bool raw_path_valid = false;
+    raw_path.joint_motion = path_cost(
+      raw_path.states, evaluator, &result.edge_evaluations, &raw_path_valid);
+    raw_path.edge_evaluations = result.edge_evaluations;
+    if (raw_path_valid && config_.preserve_unshortcutted_paths) {
+      append_unique_path(&result.paths, raw_path, config_.max_solution_count);
+    }
+
+    BoxPoseExtractPath path = std::move(raw_path);
 
     for (size_t attempt = 0; attempt < config_.shortcut_attempts && path.states.size() > 2; ++attempt) {
       std::uniform_int_distribution<size_t> index_sample(0, path.states.size() - 1);
@@ -314,13 +362,14 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       if (!shortcut.valid || !std::isfinite(shortcut.joint_motion)) continue;
       path.states.erase(path.states.begin() + static_cast<std::ptrdiff_t>(first + 1),
                         path.states.begin() + static_cast<std::ptrdiff_t>(last));
+      path.shortcut_applied = true;
     }
 
     bool path_valid = false;
     path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
     path.edge_evaluations = result.edge_evaluations;
     if (path_valid) {
-      result.paths.push_back(std::move(path));
+      append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
     }
     if (result.paths.size() >= config_.max_solution_count) {
       break;

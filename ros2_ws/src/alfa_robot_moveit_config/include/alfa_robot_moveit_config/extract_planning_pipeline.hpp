@@ -483,6 +483,7 @@ struct BoxPoseRrtExtractPlannerConfig
   robot_motion::core::BoxPoseExtractRrtConfig top_rrt;
   size_t max_paths_per_arm = 8;
   size_t max_path_pairs_to_validate = 64;
+  bool diagnose_isolated_arm_paths = false;
   ExtractDualClearCallback dual_clear_callback;
 };
 

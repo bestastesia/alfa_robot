@@ -363,6 +363,54 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     return timing;
   }
 
+  const auto diagnose_arm_paths = [&](
+    const std::string& moving_side,
+    const std::vector<ArmPath>& arm_paths) {
+      size_t collision_free_paths = 0;
+      std::map<std::string, size_t> failures;
+      for (const auto& path : arm_paths) {
+        bool path_clear = true;
+        for (size_t step = 0; step < path.states.size(); ++step) {
+          auto combined = std::make_shared<moveit::core::RobotState>(start_state);
+          if (moving_side == "left") {
+            copy_arm_state(config_.left_arm_group, *path.states[step], combined.get());
+          } else {
+            copy_arm_state(config_.right_arm_group, *path.states[step], combined.get());
+          }
+          combined->enforceBounds(config_.joint_group);
+          combined->update(true);
+          bool left_detached = false;
+          bool right_detached = false;
+          std::string reason;
+          if (!config_.dual_clear_callback || !config_.dual_clear_callback(
+              *combined, left_box, left_box_id, right_box, right_box_id,
+              &left_detached, &right_detached, &reason)) {
+            path_clear = false;
+            failures[(reason.empty() ? "collision_rejected" : reason) +
+              " first_step=" + std::to_string(step)]++;
+            break;
+          }
+        }
+        if (path_clear) ++collision_free_paths;
+      }
+      std::string dominant = "none";
+      size_t dominant_count = 0;
+      for (const auto& [reason, count] : failures) {
+        if (count > dominant_count) {
+          dominant = reason;
+          dominant_count = count;
+        }
+      }
+      RCLCPP_INFO(
+        config_.logger,
+        "box-pose RRT isolated arm validation: side=%s clear=%zu/%zu dominant=%s count=%zu",
+        moving_side.c_str(), collision_free_paths, arm_paths.size(), dominant.c_str(), dominant_count);
+    };
+  if (config_.diagnose_isolated_arm_paths) {
+    diagnose_arm_paths("left", left_paths);
+    diagnose_arm_paths("right", right_paths);
+  }
+
   struct Pair { size_t left; size_t right; double cost; };
   std::vector<Pair> pairs;
   for (size_t left = 0; left < left_paths.size(); ++left) {
@@ -409,7 +457,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
           *combined, left_box, left_box_id, right_box, right_box_id,
           &left_detached, &right_detached, &reason)) {
         collision_free = false;
-        failure_reason = reason.empty() ? "box_pose_rrt_full_collision_rejected" : reason;
+        failure_reason = (reason.empty() ? "box_pose_rrt_full_collision_rejected" : reason) +
+          " first_step=" + std::to_string(step);
         break;
       }
       final_left_detached = left_detached;

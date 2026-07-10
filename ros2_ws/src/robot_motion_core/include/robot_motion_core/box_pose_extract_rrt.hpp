@@ -42,12 +42,14 @@ struct BoxPoseExtractRrtConfig
   double edge_resolution_pitch = 0.04363323129985824;
   double goal_pitch_tolerance = 0.03490658503988659;
   double goal_sample_rate = 0.2;
+  size_t goal_connection_interval = 4;
   double retreat_distance_weight = 1.0;
   double lift_distance_weight = 1.0;
   double pitch_distance_weight = 0.2;
   size_t max_iterations = 2000;
   size_t max_solution_count = 16;
   size_t shortcut_attempts = 80;
+  bool preserve_unshortcutted_paths = true;
   uint32_t random_seed = 7;
 };
 
@@ -68,6 +70,7 @@ struct BoxPoseExtractPath
   double joint_motion = std::numeric_limits<double>::infinity();
   size_t iterations = 0;
   size_t edge_evaluations = 0;
+  bool shortcut_applied = false;
 };
 
 struct BoxPoseExtractRrtResult
