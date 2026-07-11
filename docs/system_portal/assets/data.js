@@ -2,7 +2,7 @@ window.SYSTEM_PORTAL_DATA = {
   meta: {
     title: "ALFA Robot 运控系统地图",
     subtitle: "从外界交互到 ROS2 包职责的可点击流程导航",
-    updated: "2026-07-09",
+    updated: "2026-07-11",
     branchHint: "当前整理基于 alfa_robot 工作区与当前分支源码；迁移到 robot_motion_control 时应同步更新本数据文件。",
     updateRule: "新增包、接口或流程时，优先更新 assets/data.js；页面会自动渲染卡片、流程和状态。"
   },
@@ -344,6 +344,11 @@ window.SYSTEM_PORTAL_DATA = {
       title: "看系统全貌",
       href: "index.html",
       hint: "先看外界和系统的交互，以及主链路边界。"
+    },
+    {
+      title: "看架构评审与重构路线",
+      href: "architecture.html",
+      hint: "包边界问题全景、目标架构、依赖方向和增量迁移计划。"
     },
     {
       title: "看流程细节",

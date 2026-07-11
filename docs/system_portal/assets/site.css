@@ -593,3 +593,119 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---------- 架构评审页面 ---------- */
+
+.arch-graph-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.2rem;
+  overflow-x: auto;
+}
+
+.arch-graph {
+  width: 100%;
+  min-width: 40rem;
+  height: auto;
+  display: block;
+}
+
+.arch-node-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.arch-node-sub {
+  font-size: 10.5px;
+  fill: var(--muted);
+}
+
+.arch-edge-label {
+  font-size: 10.5px;
+  fill: var(--muted);
+  paint-order: stroke;
+  stroke: #0b1020;
+  stroke-width: 3px;
+}
+
+.arch-caption {
+  margin: 0.9rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.arch-legend {
+  margin-top: 0.7rem;
+}
+
+.finding-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(24rem, 1fr));
+  gap: 1rem;
+  margin-top: 1.1rem;
+}
+
+.finding-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  padding: 1.1rem 1.2rem;
+}
+
+.finding-card h3 {
+  margin: 0.65rem 0 0.4rem;
+  font-size: 1rem;
+}
+
+.finding-card .data-dl dd {
+  margin-bottom: 0.45rem;
+}
+
+.finding-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+  border: 1px solid rgba(125, 211, 252, 0.4);
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.4rem;
+  align-self: center;
+}
+
+.arch-table-wrap {
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+}
+
+.arch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  min-width: 46rem;
+}
+
+.arch-table th,
+.arch-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.arch-table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.arch-table tr:last-child td {
+  border-bottom: none;
+}
+
+.muted {
+  color: var(--muted);
+}
