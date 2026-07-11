@@ -1306,3 +1306,14 @@
 - 改了哪里：新增 `RobotMotionScene.msg`、`SetRobotMotionScene.srv`、`motion_scene_source_node.py`；`RunMotionTask`、`RunDualArmPoseTask`、`RunBoxPairTask`、`PlanExtract`、`PlanLoaded` 增加请求末尾的 scene fields；runtime dashboard 增加场景事实状态面板和 `/robot_motion/set_scene` 服务；README、系统 portal 和 `docs/运控/MOTION_PIPELINE_REFACTOR.md` 同步。
 - 验证结果：用去 conda 的干净环境删除并重建 `robot_motion_interfaces`、`alfa_robot_moveit_config`、`robot_motion_runtime`，构建通过；`py_compile` 和 `node --check docs/system_portal/assets/data.js` 通过；隔离 `ROS_DOMAIN_ID=228` 启动 `runtime_full_stack.launch.py subscribe_joint_states:=false execute_forward_action:=false dashboard_port:=8774 ik_root_samples:=360 ik_default_max_solutions:=4 plan_check_collision:=true`，依次调用 `set_state`、`set_scene`、`run_box_pair_task`，L1/R3 dry-run 成功，返回 `ik=4 extract=4 loaded=4`；dashboard `/api/status` 显示 `latest_scene.scene_object_count=1`，10 个关键服务均 available 且有 request_count。
 - 留给下个 AI：前端已经值得保留，不需要回滚；但它仍是观测面板，不是控制台。`PlanExtract/PlanLoaded` 仍是 Python shortcut baseline + collision check，完整 C++ 抽离 rollout、横向让位、RRT/local-RRT 和动态箱墙感知更新还没有迁入 runtime 服务背后。修改接口后必须干净重编译，避免旧 typesupport 造成字段错位。
+
+## 2026-07-11 架构评审 / ClaudeCode / ROS2 包架构评审与重构路线（docs-only）
+- 做了什么：对整个 ros2_ws + scripts/ + simulation/ 做了一次逐包+横切的架构评审（17 个映射代理逐文件核实，257 条原始发现去重为 171 条，40 条高危经独立对抗复核：30 确认 / 10 部分成立 / 0 驳回），并把结论落成 system portal 的三个新页面（现状问题全景 / 目标架构与依赖方向 / 重构路线）。
+- 改了哪里：只改 docs——`docs/system_portal/` 新增 `architecture.html`、`target_architecture.html`、`refactor_plan.html` 和 `assets/architecture_data.js`（评审数据源，问题关闭后在此更新条目）；`assets/app.js` 增加三页渲染与 SVG 依赖图，`assets/site.css` 补样式；`data.js` 更新日期并加入口卡片；README 同步。未改任何 ROS 包代码。
+- 验证结果：`node --check` 三个 JS 通过；headless Chromium 渲染四个页面无 JS 错误，截图核对版式正常。
+- 留给下个 AI（最要紧的事实，按优先级）：
+  1. 干净克隆当前编不过：`moveit_config` 的 CMake 安装了从未进过 git 的 `scripts/mujoco_digital_twin.py`（.gitignore 白名单漏了它；文件唯一踪迹在已删除的 ros2_tmp 树 commit cd82083）。
+  2. 当前没有任何一条端到端可用的执行链：v5 runtime 轨迹用 `leftjointN`、执行桥契约是 `left_jointN`（goal 被拒且 runtime_full_stack 不启动桥）；唯一跑过实机的 `execute_l6_r8` 链在 MOTION-59 改名后 `moveit_to_execution_name` 退化为恒等函数——任务段 12 个臂关节静默不动且能通过桥校验。`scripts/safety` 的 AST 安全门恰好不覆盖这个映射。
+  3. `ros2_control` 宏把 leftjoint1/rightjoint1 命令区间钳到 [-0.0,0.0]（URDF/MoveIt 是 ±2.356），MOTION-59 引入、无注释，需要判定是笔误还是有意锁轴。
+  4. 复核确认 moveit_config ↔ robot_motion_* 没有循环依赖，是单向倒置（两个 /robot_motion 服务节点住在配置包里），拆解在拓扑上无阻塞；完整迁移批次 P0-P6 见 portal 重构路线页。
+  5. `docs/REFACTOR_ARCHITECTURE_NOTES.md` 与 `docs/CONTROL_LAYER_HARDCODED_PARAMS.md` 描述的是已删除的 v2 架构（CanBus/3:1/四轮），追溯时勿当现状。
