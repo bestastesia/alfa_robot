@@ -1346,3 +1346,27 @@
 - 做了什么：箱体位姿 RRT 双臂路径组合被碰撞拒绝时，保留首个碰撞前状态和碰撞状态；抽离全失败时优先选择 `joint2 <-> updown` 候选写入失败快照，避免只留下文字原因。
 - 验证结果：`L1/R3` 稳定复现第 8 步 `leftjoint2 <-> updown`，Rerun 共两帧；两帧 `leftjoint2` 仅变化约 `1.685°`，说明碰撞来自连续路径逐步进入中心柱，而非关节突变。证据：`data/ik_benchmark/extract_sequence_rerun/L1_R3_joint2_updown_collision_frames.rrd`。
 - 留给下个 AI：诊断帧只用于失败分析，不进入成功轨迹选择；黄色为碰撞前一帧，红色为首次碰撞帧。
+
+## 2026-07-11 运控 / Codex / 代价函数前 IK 全量回放
+- 做了什么：在优化 IK 管线中增加可选诊断捕获点，保存通过解析求解与 FK 误差校验、但尚未计算代价的全部解；序列工具新增 `--ik-only-raw`，可把十三组任务的全部原始合法解写入同一个 Rerun。
+- 口径：原始解未评分、未排序去重、未做附着箱完整场景过滤；快照明确记录三项 false 标志，单条记录 `score=null`，按生成顺序编号。
+- 验证结果：两包构建通过，30 项测试零失败；十三组共捕获 6684 个原始合法解，Rerun 为 `data/ik_benchmark/extract_sequence_rerun/all_tasks_pre_cost_ik_solutions.rrd`，大小约 74 MB；统计目录为 `data/ik_benchmark/extract_sequence_rerun/sequence_20260711_025903/`。
+
+## 2026-07-11 运控 / Codex / IK 关节限位裕量代价实验
+- 做了什么：解析 IK 默认关闭 h 移动代价；新增从 MoveIt RobotModel 真实关节上下限计算的非线性限位裕量代价，左右权重为 `[0.5,3.0,0.7,0.5,1.5,1.2]`，并增加参数与日志诊断。
+- 验证结果：相关构建通过，30 项测试零失败；按基线相同的前 16 候选口径复跑十三组，成功率仍为 2/13，成功任务仍是 L11/R13、L16/R18。侧吸主因仍为 joint2 与 updown 的路径碰撞，证明单纯机械角限位代价不能描述中心柱几何净空。
+- 证据：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_joint_limit_cost_limit16_20260711.rrd`；`data/ik_benchmark/extract_sequence_rerun/sequence_20260711_050757/stats.csv`。
+- 留给下个 AI：下一步应离线验证 `(h,joint1,joint2,joint3)->中心柱净空` 查表与抽离成功率相关性，不要继续盲目放大 joint2 机械限位权重。
+
+## 2026-07-11 运控 / Codex / 系统架构驾驶舱表达升级
+- 做了什么：在不新建生产前端的前提下，重构 `docs/system_portal/architecture.html` 的静态表达；按甲方三分钟阅读顺序增加能力宣言、控制闭环、能力指标、唯一事实链、工程保障区，并保留工程职责矩阵和迁移路径。
+- 迭代：完成 10 轮有记录的内容/视觉/交互优化，包括交付与工程双视图、工业化视觉、响应式布局、打印版和静态资源验证。
+- 验证结果：六个页面和三项静态资源经本地 HTTP 服务全部返回 200；`app.js`、`data.js` 通过 Node 语法检查；门户静态断言与 `git diff --check` 通过。
+- 附带诊断结论：`all_tasks_pre_cost_ik_solutions.rrd` 是附着前运动学合法解，不代表附着箱场景合法。L11/R18 单独 IK 阶段有 296 个运动学合法解、去重后 136 个，但附着场景过滤全部拒绝：rightjoint2/updown 94、leftjoint2/updown 34、leftjoint2/turn 8。
+- 留给下个 AI：门户仍是只读项目说明，不应扩成任务控制前端；碰撞性能下一步优先验证中心柱净空查表，其后再评估自有碰撞后端，不要把机械角限位代价误当几何净空。
+
+## 2026-07-12 运控 / Codex / 箱体位姿 RRT 扩树碰撞检查
+- 做了什么：将机器人自碰撞、附着箱与机器人/底座/场景碰撞直接接入箱体位姿 RRT 的边扩展；任一插值点失败时该边不进入搜索树，并保留开关复现旧口径。
+- 改了哪里：`box_pose_rrt_extract_planner.cpp`、`dual_arm_planner_node.cpp`、抽离序列脚本、场景几何与 IK 候选诊断；基线说明见 `docs/运控/抽离策略实验/2026-07-12_RRT扩树碰撞口径基线.md`。
+- 验证结果：`robot_motion_core` 2/2、`robot_motion_scene_service` 2/2、`alfa_robot_moveit_config` 16/16 测试通过。
+- 留给下个 AI：下一实验方向应解除侧吸 `retreat`/`pitch` 单调和 `lift=0` 限制，目标改为箱体脱离区域，不再强制 90 度终态。

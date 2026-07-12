@@ -55,6 +55,7 @@ struct UpdownAwareIkConfig
   double top_suction_z_reach_upper = 0.45;
   double h_lower = 0.0;
   double h_upper = 0.99;
+  bool full_h_range_scan = false;
 
   HSearchMode h_search_mode = HSearchMode::FixedDiscrete;
   double h_search_margin = 0.1;
@@ -92,6 +93,10 @@ struct UpdownAwareIkConfig
   double cost_updown_static_bonus = 1.0;
   double cost_updown_within_0p1_bonus = 0.3;
   double cost_updown_over_0p1_distance = 1.0;
+  bool cost_updown_enabled = false;
+  double cost_joint_limit_margin = 1.0;
+  std::vector<double> joint_limit_weights = {0.5, 3.0, 0.7, 0.5, 1.5, 1.2};
+  double joint_limit_free_ratio = 0.6;
   double cost_joint2_torque = 2.0;
   double cost_joint3_torque = 0.5;
   double cost_loaded_family_distance = 0.0;
@@ -156,6 +161,7 @@ struct UpdownAwareIkCandidate
   double swapped_pos_error = 0.0;
   double updown_delta = 0.0;
   double joint_delta = 0.0;
+  double joint_limit_margin_cost = 0.0;
   std::size_t h_index = 0;
   std::size_t seed_index = 0;
 
@@ -188,6 +194,7 @@ struct UpdownAwareIkResult
 
   UpdownAwareIkCandidate selected;
   std::vector<UpdownAwareIkCandidate> candidates;
+  std::vector<UpdownAwareIkCandidate> pre_score_candidates;
 };
 
 using UpdownAwareCostFn =

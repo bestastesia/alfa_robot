@@ -183,7 +183,7 @@
     <parent link="leftjoint1" />
     <child link="leftjoint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
   <link name="leftjoint3">
@@ -384,7 +384,7 @@
     <parent link="rightjoint1" />
     <child link="rightjoint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
   <link name="rightjoint3">

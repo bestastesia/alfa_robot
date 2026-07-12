@@ -129,6 +129,25 @@ AnalyticHeightPlan plan_height(
   robot_motion::core::UpdownAwareIkRequest::GraspMode right_grasp_mode,
   const robot_motion::core::UpdownAwareIkConfig& config)
 {
+  if (config.full_h_range_scan) {
+    AnalyticHeightPlan plan;
+    plan.lower = config.h_lower;
+    plan.upper = config.h_upper;
+    plan.center = std::clamp(request.current_h, plan.lower, plan.upper);
+    plan.reachable = plan.lower <= plan.upper + 1e-9;
+    if (!plan.reachable) {
+      return plan;
+    }
+    const double step = std::max(1e-6, std::abs(config.h_step));
+    for (double h = plan.lower; h <= plan.upper + 1e-9; h += step) {
+      push_unique_h(&plan.candidates, std::min(h, plan.upper));
+    }
+    if (plan.candidates.empty() || std::abs(plan.candidates.back() - plan.upper) > 1e-9) {
+      push_unique_h(&plan.candidates, plan.upper);
+    }
+    return plan;
+  }
+
   const auto left = target_h_interval(request.left_target, left_grasp_mode, config);
   const auto right = target_h_interval(request.right_target, right_grasp_mode, config);
   AnalyticHeightPlan plan;
@@ -229,16 +248,19 @@ double score_analytic_candidate(
   const robot_motion::core::UpdownAwareIkConfig& config)
 {
   double score = 0.0;
-  const double updown_delta = std::abs(candidate.h - request.current_h);
-  if (updown_delta <= config.updown_static_epsilon) {
-    score -= config.cost_updown_static_bonus;
-  } else if (updown_delta <= config.updown_small_motion_threshold) {
-    score -= config.cost_updown_within_0p1_bonus;
-  } else {
-    score += config.cost_updown_over_0p1_distance *
-             (updown_delta - config.updown_small_motion_threshold);
+  if (config.cost_updown_enabled) {
+    const double updown_delta = std::abs(candidate.h - request.current_h);
+    if (updown_delta <= config.updown_static_epsilon) {
+      score -= config.cost_updown_static_bonus;
+    } else if (updown_delta <= config.updown_small_motion_threshold) {
+      score -= config.cost_updown_within_0p1_bonus;
+    } else {
+      score += config.cost_updown_over_0p1_distance *
+               (updown_delta - config.updown_small_motion_threshold);
+    }
   }
   score += 0.05 * candidate.joint_delta;
+  score += config.cost_joint_limit_margin * candidate.joint_limit_margin_cost;
   score += config.cost_loaded_family_distance * (
     loaded_pose_family_distance(candidate, "left", config.left_loaded_pose_family) +
     loaded_pose_family_distance(candidate, "right", config.right_loaded_pose_family));
@@ -280,6 +302,36 @@ Eigen::Isometry3d tip_pose_in_base_link(
 }
 
 }  // namespace
+
+double joint_limit_margin_cost(
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
+  const moveit::core::RobotModel& robot_model,
+  const std::vector<double>& joint_weights,
+  double free_ratio)
+{
+  const double clamped_free_ratio = std::clamp(free_ratio, 0.0, 0.95);
+  const auto& variable_names = robot_model.getVariableNames();
+  double cost = 0.0;
+  for (const auto side : {std::string("left"), std::string("right")}) {
+    for (size_t joint_index = 0; joint_index < 6; ++joint_index) {
+      const std::string name = arm_joint_name(side, joint_index);
+      const auto value = candidate_joint_value(candidate, name);
+      if (!value || std::find(variable_names.begin(), variable_names.end(), name) == variable_names.end()) continue;
+      const auto& bounds = robot_model.getVariableBounds(name);
+      if (!bounds.position_bounded_) continue;
+      const double half_range = 0.5 * (bounds.max_position_ - bounds.min_position_);
+      if (half_range <= 1e-9) continue;
+      const double center = 0.5 * (bounds.max_position_ + bounds.min_position_);
+      const double normalized = std::abs(*value - center) / half_range;
+      if (normalized <= clamped_free_ratio) continue;
+      const double excess = (normalized - clamped_free_ratio) / (1.0 - clamped_free_ratio);
+      const double barrier = excess * excess / std::max(1e-3, 1.0 - normalized);
+      const double weight = joint_index < joint_weights.size() ? joint_weights[joint_index] : 1.0;
+      cost += weight * barrier;
+    }
+  }
+  return cost;
+}
 
 OptimizedDualIkSolver::OptimizedDualIkSolver(OptimizedDualIkSolverConfig config)
 : config_(std::move(config))
@@ -425,6 +477,14 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
             candidate.rejection_reason = "right_analytic_moveit_fk_orientation_error";
           }
           candidate.joint_delta = full_joint_delta(candidate, ik_request.current_full_joints);
+          candidate.joint_limit_margin_cost = joint_limit_margin_cost(
+            candidate,
+            *config_.robot_model,
+            ik_config.joint_limit_weights,
+            ik_config.joint_limit_free_ratio);
+          if (request.capture_pre_score_candidates && candidate.legal) {
+            output.ik_result.pre_score_candidates.push_back(candidate);
+          }
           candidate.score = score_analytic_candidate(candidate, ik_request, ik_config);
           output.ik_result.candidates.push_back(std::move(candidate));
         }
@@ -593,6 +653,7 @@ nlohmann::json OptimizedDualIkSolver::resultJson(
       {"direct_ori_error", result.selected.direct_ori_error},
       {"updown_delta", result.selected.updown_delta},
       {"joint_delta", result.selected.joint_delta},
+      {"joint_limit_margin_cost", result.selected.joint_limit_margin_cost},
       {"collision_free", result.selected.collision_free},
       {"collision_pairs", result.selected.collision_pairs},
       {"joint_names", result.selected.full_joint_names},

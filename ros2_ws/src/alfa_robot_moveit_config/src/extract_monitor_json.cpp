@@ -172,6 +172,12 @@ nlohmann::json extract_monitor_candidate_json(
     {"target_order", candidate.target_order},
     {"updown_delta", candidate.updown_delta},
     {"joint_delta", candidate.joint_delta},
+    {"joint_limit_margin_cost", candidate.joint_limit_margin_cost},
+    {"legal", candidate.legal},
+    {"collision_free", candidate.collision_free},
+    {"rejection_reason", candidate.rejection_reason},
+    {"direct_pos_error", candidate.direct_pos_error},
+    {"direct_ori_error", candidate.direct_ori_error},
     {"state", robot_state_json(state)}
   };
 }

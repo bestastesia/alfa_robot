@@ -166,6 +166,10 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_top_position_tolerance:={getattr(args, 'ik_top_position_tolerance', 0.04)}",
         f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
+        f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
+        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.99)}",
+        f"ik_h_step:={getattr(args, 'ik_h_step', 0.1)}",
+        f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
         f"ik_workers:={args.ik_workers}",
         f"ik_candidate_timeout:={args.ik_candidate_timeout}",
@@ -187,7 +191,9 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
+        f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
+        f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
         f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
         f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
@@ -1016,6 +1022,12 @@ def main() -> int:
         help="抽离策略；box_pose_rrt 为箱体位姿 RRT，greedy 为稳定旧策略。",
     )
     parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument(
+        "--extract-box-pose-rrt-edge-scene-collision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
+    )
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)

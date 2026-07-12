@@ -247,6 +247,10 @@ def make_pair_args(
         ik_top_position_tolerance=args.ik_top_position_tolerance,
         ik_top_orientation_tolerance_deg=args.ik_top_orientation_tolerance_deg,
         ik_h_candidate_count=args.ik_h_candidate_count,
+        ik_h_lower=args.ik_h_lower,
+        ik_h_upper=args.ik_h_upper,
+        ik_h_step=args.ik_h_step,
+        ik_full_h_range_scan=args.ik_full_h_range_scan,
         ik_seed_count=args.ik_seed_count,
         ik_workers=args.ik_workers,
         ik_candidate_timeout=args.ik_candidate_timeout,
@@ -265,6 +269,7 @@ def make_pair_args(
         extract_rrt_endpoint_per_arm_limit=args.extract_rrt_endpoint_per_arm_limit,
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
         extract_rollout_mode=args.extract_rollout_mode,
+        extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -287,6 +292,8 @@ def make_pair_args(
         service_timeout=args.service_timeout,
         stride=args.stride,
         continue_on_failure=args.continue_on_failure,
+        ik_only_raw=args.ik_only_raw,
+        ik_scene_rejected=args.ik_scene_rejected,
     )
 
 
@@ -448,6 +455,101 @@ def log_sequence_replay(
     return sample - sample_start
 
 
+def log_raw_ik_records(
+    snapshot: dict[str, Any],
+    helpers: Any,
+    robot: Any,
+    args: argparse.Namespace,
+    task_index: int,
+    pair_count: int,
+    sample_start: int,
+) -> int:
+    records = [record for record in snapshot.get("records", []) if isinstance(record, dict)]
+    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
+    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
+    left_id = int(snapshot.get("left_box_id", 0))
+    right_id = int(snapshot.get("right_box_id", 0))
+    sample = sample_start
+    for record_index, record in enumerate(records):
+        joint_map = record.get("state", {}).get("joint_map", {})
+        if not isinstance(joint_map, dict) or not joint_map:
+            continue
+        helpers.set_sample_time(sample)
+        monitor.log_default_container(scene_y_shift)
+        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        log_robot_state_display(
+            helpers,
+            robot,
+            {str(name): float(value) for name, value in joint_map.items()},
+            "monitor/robot",
+            args,
+        )
+        monitor.rr.log("monitor/scene/attached_boxes", monitor.rr.Clear(recursive=True))
+        monitor.rr.log(
+            "monitor/info",
+            monitor.rr.TextLog(
+                f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} | "
+                f"代价函数前原始合法解 {record_index + 1}/{len(records)} | "
+                f"generation={record.get('generation_index', record_index)} "
+                f"h={float(record.get('h', 0.0)):.4f} "
+                f"h_index={record.get('h_index')} seed_index={record.get('seed_index')} | "
+                "未打分、未排序、未去重、未做附着箱场景过滤"
+            ),
+        )
+        sample += 1
+    return sample - sample_start
+
+
+def log_scene_rejected_ik_records(
+    snapshot: dict[str, Any],
+    helpers: Any,
+    robot: Any,
+    args: argparse.Namespace,
+    task_index: int,
+    pair_count: int,
+    sample_start: int,
+) -> int:
+    records = [record for record in snapshot.get("scene_rejected_records", []) if isinstance(record, dict)]
+    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
+    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
+    left_id = int(snapshot.get("left_box_id", 0))
+    right_id = int(snapshot.get("right_box_id", 0))
+    attached_boxes = snapshot.get("attached_boxes", [])
+    sample = sample_start
+    for record_index, record in enumerate(records):
+        joint_map = record.get("state", {}).get("joint_map", {})
+        if not isinstance(joint_map, dict) or not joint_map:
+            continue
+        joints = {str(name): float(value) for name, value in joint_map.items()}
+        reason = str(record.get("scene_rejection_reason", "ik_candidate_scene_rejected"))
+        helpers.set_sample_time(sample)
+        monitor.log_default_container(scene_y_shift)
+        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_static_box_obstacles(snapshot.get("static_box_obstacles"))
+        log_robot_state_display(helpers, robot, joints, "monitor/robot", args)
+        log_attached_boxes_display(robot, joints, attached_boxes, args)
+        monitor.rr.log(
+            "monitor/diagnostics/scene_rejection",
+            monitor.rr.Points3D(
+                positions=[[0.0, 0.0, 0.0]],
+                radii=[0.09],
+                colors=[[255, 35, 35, 255]],
+                labels=[reason],
+            ),
+        )
+        monitor.rr.log(
+            "monitor/info",
+            monitor.rr.TextLog(
+                f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} | "
+                f"附着场景拒绝 IK {record_index + 1}/{len(records)} | "
+                f"h={float(record.get('h', 0.0)):.4f} score={float(record.get('score', 0.0)):.4f} | "
+                f"原因：{reason}"
+            ),
+        )
+        sample += 1
+    return sample - sample_start
+
+
 def log_failure_marker(
     helpers: Any,
     robot: Any,
@@ -548,7 +650,10 @@ def run_one_pair(
             }
             return False, 1, summary
 
-        print("计算开始：IK → 抽离 → 横向让位 → 负重规划")
+        if args.ik_only_raw:
+            print("计算开始：仅生成代价函数前的全部合法 IK 解")
+        else:
+            print("计算开始：IK → 抽离 → 横向让位 → 负重规划")
         start = time.monotonic()
         success, output, elapsed_ms = service_client.trigger(args.service_timeout)
         wall_ms = (time.monotonic() - start) * 1000.0
@@ -575,7 +680,13 @@ def run_one_pair(
             snapshot = monitor.read_snapshot(snapshot_path)
             summary.update(summarize_snapshot_motion(snapshot))
             if helpers is not None and robot is not None:
-                sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                if args.ik_scene_rejected:
+                    sample_count = log_scene_rejected_ik_records(
+                        snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                elif args.ik_only_raw:
+                    sample_count = log_raw_ik_records(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                else:
+                    sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
         if not success and sample_count <= 0 and helpers is not None and robot is not None:
             sample_count = log_failure_marker(
                 helpers, robot, args, task_index, pair_count, left_id, right_id, sample_start, output
@@ -650,6 +761,10 @@ def main() -> int:
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
+    parser.add_argument("--ik-h-lower", type=float, default=0.0)
+    parser.add_argument("--ik-h-upper", type=float, default=0.99)
+    parser.add_argument("--ik-h-step", type=float, default=0.1)
+    parser.add_argument("--ik-full-h-range-scan", action="store_true")
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
@@ -666,6 +781,12 @@ def main() -> int:
         help="抽离策略；该序列实验默认使用箱体位姿 RRT",
     )
     parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument(
+        "--extract-box-pose-rrt-edge-scene-collision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
+    )
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
@@ -712,6 +833,16 @@ def main() -> int:
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--continue-on-failure", action="store_true")
+    parser.add_argument(
+        "--ik-only-raw",
+        action="store_true",
+        help="每组只运行 IK 阶段，并展示进入代价函数前的全部原始合法解",
+    )
+    parser.add_argument(
+        "--ik-scene-rejected",
+        action="store_true",
+        help="每组只运行正常 IK 阶段，并展示所有被附着场景碰撞过滤拒绝的去重候选",
+    )
     parser.add_argument(
         "--ros-domain-id",
         default="auto",
@@ -825,7 +956,11 @@ def main() -> int:
             )
             new_client = monitor.ExtractMonitorServiceClient(
                 configure_service="/dual_arm_planner/configure_extract_monitor",
-                trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
+                trigger_service=(
+                    "/dual_arm_planner/run_extract_monitor_next"
+                    if args.ik_only_raw or args.ik_scene_rejected
+                    else "/dual_arm_planner/run_extract_monitor_full_selected"
+                ),
                 timeout=args.service_timeout,
             )
             prewarm_ok, prewarm_output, prewarm_ms = new_client.configure(

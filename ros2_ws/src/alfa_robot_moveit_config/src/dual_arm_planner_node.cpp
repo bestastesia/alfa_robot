@@ -324,6 +324,7 @@ public:
     ik_config_.top_suction_z_reach_upper = get_or_declare_parameter<double>("top_z_reach_upper", 0.45) - world_to_base_z_;
     ik_config_.h_lower = get_or_declare_parameter<double>("ik_h_lower", 0.0);
     ik_config_.h_upper = get_or_declare_parameter<double>("ik_h_upper", 0.99);
+    ik_config_.full_h_range_scan = get_or_declare_parameter<bool>("ik_full_h_range_scan", false);
     ik_config_.h_search_mode = robot_motion::core::UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
     ik_config_.h_search_margin = get_or_declare_parameter<double>("ik_h_search_margin", 0.2);
     ik_config_.h_step = get_or_declare_parameter<double>("ik_h_step", 0.1);
@@ -333,6 +334,19 @@ public:
       get_or_declare_parameter<double>("ik_loaded_family_distance_weight", 0.2);
     ik_config_.cost_loaded_preferred_distance =
       get_or_declare_parameter<double>("ik_loaded_preferred_distance_weight", 0.1);
+    ik_config_.cost_updown_enabled = get_or_declare_parameter<bool>("ik_updown_cost_enabled", false);
+    ik_config_.cost_joint_limit_margin =
+      get_or_declare_parameter<double>("ik_joint_limit_margin_weight", 1.0);
+    ik_config_.joint_limit_weights = {
+      get_or_declare_parameter<double>("ik_joint1_limit_weight", 0.5),
+      get_or_declare_parameter<double>("ik_joint2_limit_weight", 3.0),
+      get_or_declare_parameter<double>("ik_joint3_limit_weight", 0.7),
+      get_or_declare_parameter<double>("ik_joint4_limit_weight", 0.5),
+      get_or_declare_parameter<double>("ik_joint5_limit_weight", 1.5),
+      get_or_declare_parameter<double>("ik_joint6_limit_weight", 1.2),
+    };
+    ik_config_.joint_limit_free_ratio =
+      get_or_declare_parameter<double>("ik_joint_limit_free_ratio", 0.6);
     ik_config_.workers = static_cast<size_t>(std::max(1, get_or_declare_parameter<int>("ik_workers", 1)));
     ik_analytic_root_samples_ = static_cast<size_t>(
       std::max(32, get_or_declare_parameter<int>("ik_analytic_root_samples", 360)));
@@ -420,6 +434,7 @@ public:
     extract_ik_dedup_joint_threshold_ =
       get_or_declare_parameter<double>("extract_ik_dedup_joint_threshold_deg", 1.0) * M_PI / 180.0;
     extract_ik_dedup_h_threshold_ = get_or_declare_parameter<double>("extract_ik_dedup_h_threshold", 0.005);
+    extract_monitor_capture_raw_ik_ = get_or_declare_parameter<bool>("extract_monitor_capture_raw_ik", false);
     extract_rollout_mode_ = get_or_declare_parameter<std::string>("extract_rollout_mode", "greedy");
     extract_rrt_rollout_enabled_ = get_or_declare_parameter<bool>("extract_rrt_rollout_enabled", false);
     extract_box_pose_rrt_max_iterations_ = static_cast<size_t>(
@@ -438,6 +453,8 @@ public:
       std::max(8, get_or_declare_parameter<int>("extract_box_pose_rrt_analytic_root_samples", 12)));
     extract_box_pose_rrt_diagnostics_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_diagnostics", false);
+    extract_box_pose_rrt_edge_scene_collision_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_edge_scene_collision", true);
     extract_rrt_planning_group_ = get_or_declare_parameter<std::string>("extract_rrt_planning_group", "dual_arm");
     extract_rrt_planning_time_ = get_or_declare_parameter<double>("extract_rrt_planning_time", 0.35);
     extract_rrt_planning_attempts_ = std::max(1, get_or_declare_parameter<int>("extract_rrt_planning_attempts", 1));
@@ -706,6 +723,17 @@ public:
                 left_loaded_pose_family_.size(), right_loaded_pose_family_.size(),
                 left_preferred_loaded_pose_index_, right_preferred_loaded_pose_index_,
                 ik_config_.cost_loaded_family_distance, ik_config_.cost_loaded_preferred_distance);
+    RCLCPP_INFO(get_logger(),
+                "  IK cost updown=%s joint_limit=(weight %.3f free_ratio %.2f weights=[%.2f %.2f %.2f %.2f %.2f %.2f])",
+                ik_config_.cost_updown_enabled ? "enabled" : "disabled",
+                ik_config_.cost_joint_limit_margin,
+                ik_config_.joint_limit_free_ratio,
+                ik_config_.joint_limit_weights.size() > 0 ? ik_config_.joint_limit_weights[0] : 1.0,
+                ik_config_.joint_limit_weights.size() > 1 ? ik_config_.joint_limit_weights[1] : 1.0,
+                ik_config_.joint_limit_weights.size() > 2 ? ik_config_.joint_limit_weights[2] : 1.0,
+                ik_config_.joint_limit_weights.size() > 3 ? ik_config_.joint_limit_weights[3] : 1.0,
+                ik_config_.joint_limit_weights.size() > 4 ? ik_config_.joint_limit_weights[4] : 1.0,
+                ik_config_.joint_limit_weights.size() > 5 ? ik_config_.joint_limit_weights[5] : 1.0);
     RCLCPP_INFO(get_logger(),
                 "  Extract primitive IK=analytic_three_parallel fixed-updown root_samples=%zu pos_tol=%.3fm ori_tol=%.3frad",
                 ik_analytic_root_samples_, extract_position_tolerance_, extract_orientation_tolerance_);
@@ -1000,6 +1028,17 @@ private:
     config.top_rrt.min_top_retreat = extract_box_pose_rrt_separation_margin_;
     config.top_rrt.min_top_lift = extract_box_pose_rrt_separation_margin_;
     config.top_rrt.random_seed = 29;
+    if (extract_box_pose_rrt_edge_scene_collision_) {
+      config.single_clear_callback =
+        [this](
+          const moveit::core::RobotState& state,
+          const AttachedBoxSpec& carried_box,
+          int box_id,
+          bool* detached,
+          std::string* reason) {
+          return state_clear_for_single_extract(state, carried_box, box_id, detached, reason);
+        };
+    }
     config.dual_clear_callback =
       [this](
         const moveit::core::RobotState& state,
@@ -2358,7 +2397,8 @@ private:
     const moveit::core::RobotState& seed_state,
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
-    robot_motion::core::UpdownAwareIkResult* result_out = nullptr)
+    robot_motion::core::UpdownAwareIkResult* result_out = nullptr,
+    bool capture_pre_score_candidates = false)
   {
     return solve_dual_tip_ik_state(
       stage_name,
@@ -2369,7 +2409,8 @@ private:
       seed_state,
       goal_state,
       extra_out,
-      result_out);
+      result_out,
+      capture_pre_score_candidates);
   }
 
   bool solve_dual_tip_ik_state(
@@ -2381,7 +2422,8 @@ private:
     const moveit::core::RobotState& seed_state,
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
-    robot_motion::core::UpdownAwareIkResult* result_out = nullptr)
+    robot_motion::core::UpdownAwareIkResult* result_out = nullptr,
+    bool capture_pre_score_candidates = false)
   {
     if (!ensure_optimized_ik_solver()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
@@ -2403,7 +2445,8 @@ private:
         left_top_suction && right_top_suction,
         &seed_state,
         left_top_suction,
-        right_top_suction},
+        right_top_suction,
+        capture_pre_score_candidates},
       "optimized_dual_tip_ik_direct_seed");
     const auto& result = solved.ik_result;
     if (result_out) {
@@ -2415,13 +2458,14 @@ private:
 
     *goal_state = *solved.goal_state;
 
-    if (!is_state_valid(*goal_state, check_goal_collision_)) {
+    if (!capture_pre_score_candidates && !is_state_valid(*goal_state, check_goal_collision_)) {
       return fail(stage_name + ": selected IK state out of bounds or colliding");
     }
 
     RCLCPP_INFO(get_logger(),
-                "[%s] direct IK selected h=%.3f score=%.3f path=%s h_index=%zu seed_index=%zu trials=%zu legal=%zu wall=%.1fms",
-                stage_name.c_str(), result.selected.h, result.selected.score, result.selected.solver_path.c_str(),
+                "[%s] direct IK selected h=%.3f score=%.3f limit_cost=%.3f path=%s h_index=%zu seed_index=%zu trials=%zu legal=%zu wall=%.1fms",
+                stage_name.c_str(), result.selected.h, result.selected.score,
+                result.selected.joint_limit_margin_cost, result.selected.solver_path.c_str(),
                 result.selected.h_index, result.selected.seed_index, result.trial_count, result.legal_count,
                 result.wall_ms);
 
@@ -3820,9 +3864,54 @@ private:
           *extract_monitor_state_.seed_state,
           &selected_state,
           &ik_extra,
-          &ik_result)) {
+          &ik_result,
+          extract_monitor_capture_raw_ik_)) {
       *message = "IK阶段失败: " + last_error_;
       return false;
+    }
+
+    if (extract_monitor_capture_raw_ik_) {
+      std::vector<moveit::core::RobotStatePtr> raw_states;
+      raw_states.reserve(ik_result.pre_score_candidates.size());
+      for (const auto& candidate : ik_result.pre_score_candidates) {
+        raw_states.push_back(std::make_shared<moveit::core::RobotState>(
+          robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_)));
+      }
+      nlohmann::json raw_records = extract_monitor_candidate_records_json(
+        ik_result.pre_score_candidates, raw_states);
+      for (size_t index = 0; index < raw_records.size(); ++index) {
+        raw_records[index]["generation_index"] = index;
+        raw_records[index]["pre_score"] = true;
+        raw_records[index]["score"] = nullptr;
+      }
+      const double elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - stage_start).count();
+      extract_monitor_last_stage_ms_ = elapsed_ms;
+      nlohmann::json snapshot = extract_monitor_ik_snapshot(
+        ExtractMonitorIkSnapshotRequest{
+          extract_monitor_snapshot_path_,
+          elapsed_ms,
+          left_box_id,
+          right_box_id,
+          box_front_x_,
+          scene_y_shift_,
+          &ik_result,
+          IkCandidateSelectionStats{},
+          ik_candidate_rejection_counts_json(ik_result),
+          raw_records});
+      snapshot["type"] = "ik_pre_score_candidates";
+      snapshot["phase"] = "ik_pre_score_candidates";
+      snapshot["phase_label"] = "代价函数前原始合法 IK 解";
+      snapshot["raw_legal_count"] = raw_records.size();
+      snapshot["cost_scored"] = false;
+      snapshot["deduplicated"] = false;
+      snapshot["scene_filtered"] = false;
+      return finish_extract_monitor_stage(
+        snapshot,
+        "extract monitor raw IK",
+        "原始 IK 阶段完成: raw_legal=" + std::to_string(raw_records.size()) +
+          " elapsed=" + std::to_string(elapsed_ms) + "ms snapshot=" + extract_monitor_snapshot_path_,
+        message);
     }
 
     IkCandidateSelectionStats dedup_stats;
@@ -3833,6 +3922,7 @@ private:
     extract_monitor_state_.legal_candidates.reserve(selected_candidates.size());
     extract_monitor_state_.candidate_states.reserve(selected_candidates.size());
     std::map<std::string, size_t> scene_filter_rejections;
+    nlohmann::json scene_rejected_records = nlohmann::json::array();
     size_t scene_filter_input_count = 0;
     for (const auto& candidate : selected_candidates) {
       ++scene_filter_input_count;
@@ -3851,8 +3941,14 @@ private:
             &right_detached,
             &collision_reason))
       {
-        scene_filter_rejections[collision_reason.empty() ?
-          "ik_candidate_scene_rejected" : collision_reason]++;
+        const std::string rejection_reason = collision_reason.empty() ?
+          "ik_candidate_scene_rejected" : collision_reason;
+        scene_filter_rejections[rejection_reason]++;
+        auto rejected_record = alfa_robot::motion::extract_monitor_candidate_json(
+          candidate, scene_rejected_records.size(), *state);
+        rejected_record["scene_rejection_reason"] = rejection_reason;
+        rejected_record["scene_rejected"] = true;
+        scene_rejected_records.push_back(std::move(rejected_record));
         continue;
       }
       extract_monitor_state_.legal_candidates.push_back(candidate);
@@ -3883,9 +3979,21 @@ private:
         dedup_stats,
         ik_candidate_rejection_counts_json(ik_result),
         records});
+    nlohmann::json all_ik_candidate_records = nlohmann::json::array();
+    for (const auto& candidate : ik_result.candidates) {
+      const auto candidate_state = robot_state_from_ik_candidate(
+        *extract_monitor_state_.seed_state, candidate, joint_group_);
+      all_ik_candidate_records.push_back(alfa_robot::motion::extract_monitor_candidate_json(
+        candidate, all_ik_candidate_records.size(), candidate_state));
+    }
+    snapshot["all_ik_candidate_records"] = std::move(all_ik_candidate_records);
     snapshot["scene_filter_input_count"] = scene_filter_input_count;
     snapshot["scene_filter_accepted_count"] = extract_monitor_state_.legal_candidates.size();
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
+    snapshot["scene_rejected_records"] = std::move(scene_rejected_records);
+    snapshot["attached_boxes"] = attached_boxes_json(
+      {extract_monitor_state_.left_box, extract_monitor_state_.right_box});
+    snapshot["static_box_obstacles"] = static_box_obstacles_json();
     return finish_extract_monitor_stage(
       snapshot,
       "extract monitor IK",
@@ -4615,6 +4723,7 @@ private:
   bool extract_ik_dedup_enabled_ = true;
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;
+  bool extract_monitor_capture_raw_ik_ = false;
   std::string extract_rollout_mode_ = "greedy";
   bool extract_rrt_rollout_enabled_ = false;
   size_t extract_box_pose_rrt_max_iterations_ = 160;
@@ -4625,6 +4734,7 @@ private:
   double extract_box_pose_rrt_separation_margin_ = 0.03;
   size_t extract_box_pose_rrt_analytic_root_samples_ = 12;
   bool extract_box_pose_rrt_diagnostics_ = false;
+  bool extract_box_pose_rrt_edge_scene_collision_ = true;
   std::string extract_rrt_planning_group_ = "dual_arm";
   double extract_rrt_planning_time_ = 0.35;
   int extract_rrt_planning_attempts_ = 1;

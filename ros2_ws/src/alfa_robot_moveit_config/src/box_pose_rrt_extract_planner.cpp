@@ -186,6 +186,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
   const std::string& side,
   const moveit::core::RobotState& start_state,
   const AttachedBoxSpec& carried_box,
+  int box_id,
   bool top_suction) const
 {
   std::vector<ArmPath> paths;
@@ -246,6 +247,18 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
               side + "_box_pose_rrt_analytic_no_solution" : candidate.rejection_reason;
           }
           return false;
+        }
+        if (config_.single_clear_callback) {
+          bool detached = false;
+          std::string clear_reason;
+          if (!config_.single_clear_callback(
+              *candidate.state, carried_box, box_id, &detached, &clear_reason)) {
+            if (reason) {
+              *reason = clear_reason.empty() ?
+                side + "_box_pose_rrt_carried_collision" : clear_reason;
+            }
+            return false;
+          }
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
         current = *candidate.state;
@@ -348,8 +361,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   timing.ik_score = ik_score;
   timing.ik_solve_ms = ik_solve_ms;
 
-  const auto left_paths = planArm("left", start_state, left_box, left_top_suction);
-  const auto right_paths = planArm("right", start_state, right_box, right_top_suction);
+  const auto left_paths = planArm("left", start_state, left_box, left_box_id, left_top_suction);
+  const auto right_paths = planArm("right", start_state, right_box, right_box_id, right_top_suction);
   RCLCPP_INFO(
     config_.logger,
     "box-pose RRT arm paths: candidate=%zu left=%zu right=%zu modes=(%s,%s)",

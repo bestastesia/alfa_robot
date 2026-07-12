@@ -1,6 +1,7 @@
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <iostream>
 
 int main()
@@ -28,12 +29,22 @@ int main()
   wall.container_width = 2.2;
   wall.container_floor_z = 0.0;
   const auto obstacles = make_box_wall_obstacles_for_opening(6, 8, wall);
+  for (const auto& obstacle : obstacles) {
+    if (obstacle.id.find("_below") != std::string::npos) {
+      std::cerr << "unexpected below-wall obstacle: " << obstacle.id << std::endl;
+      return 1;
+    }
+  }
   assert(!obstacles.empty());
   bool found_rear_guard = false;
   for (const auto& obstacle : obstacles) {
     if (obstacle.id.find("_rear_guard") != std::string::npos) {
       found_rear_guard = true;
       assert(obstacle.size[0] == wall.rear_guard_thickness);
+      const double expected_center_x =
+        wall.box_front_x + wall.carried_box_depth + wall.rear_guard_clearance +
+        0.5 * wall.rear_guard_thickness;
+      assert(std::abs(obstacle.center[0] - expected_center_x) < 1e-9);
       assert(obstacle.size[2] == wall.container_height);
     }
   }

@@ -113,11 +113,6 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
     x_min, x_max,
     inner_y_min, negative_hole_y_min - inset,
     z_min, z_max);
-  add_static_wall_piece(
-    obstacles, prefix + "_below",
-    x_min, x_max,
-    inner_y_min, inner_y_max,
-    config.container_floor_z, z_min - inset);
   if (config.rear_guard_enabled) {
     const double thickness = std::max(1e-4, config.rear_guard_thickness);
     const double clearance = std::max(0.0, config.rear_guard_clearance);

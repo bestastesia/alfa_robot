@@ -89,6 +89,7 @@ int main()
   using alfa_robot::motion::IkCandidateSelector;
   using alfa_robot::motion::IkCandidateSelectorConfig;
   using alfa_robot::motion::ik_candidate_rejection_counts_json;
+  using alfa_robot::motion::joint_limit_margin_cost;
   using alfa_robot::motion::robot_state_from_ik_candidate;
 
   robot_motion::core::UpdownAwareIkResult result;
@@ -127,6 +128,18 @@ int main()
   assert(stats.removed_count == 2);
 
   const auto model = ik_candidate_test_model();
+  const std::vector<double> limit_weights = {0.5, 3.0, 0.7, 0.5, 1.5, 1.2};
+  auto centered = make_candidate(true, 0.0, 0, 0, 0.3, 0.0);
+  assert(std::abs(joint_limit_margin_cost(centered, *model, limit_weights, 0.6)) < 1e-12);
+  auto joint2_near_limit = centered;
+  joint2_near_limit.full_joint_values[1] = 0.9 * M_PI;
+  auto joint5_near_limit = centered;
+  joint5_near_limit.full_joint_values[4] = 0.9 * M_PI;
+  const double joint2_cost = joint_limit_margin_cost(joint2_near_limit, *model, limit_weights, 0.6);
+  const double joint5_cost = joint_limit_margin_cost(joint5_near_limit, *model, limit_weights, 0.6);
+  assert(joint2_cost > joint5_cost);
+  assert(joint5_cost > 0.0);
+
   moveit::core::RobotState seed(model);
   seed.setToDefaultValues();
   seed.setVariablePosition("updown", 0.2);

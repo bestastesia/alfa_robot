@@ -484,6 +484,7 @@ struct BoxPoseRrtExtractPlannerConfig
   size_t max_paths_per_arm = 8;
   size_t max_path_pairs_to_validate = 64;
   bool diagnose_isolated_arm_paths = false;
+  ExtractSingleClearCallback single_clear_callback;
   ExtractDualClearCallback dual_clear_callback;
 };
 
@@ -515,6 +516,7 @@ private:
     const std::string& side,
     const moveit::core::RobotState& start_state,
     const AttachedBoxSpec& carried_box,
+    int box_id,
     bool top_suction) const;
 
   BoxPoseRrtExtractPlannerConfig config_;

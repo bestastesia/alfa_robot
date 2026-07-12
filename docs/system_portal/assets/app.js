@@ -52,7 +52,7 @@
       ["index.html", "系统总览"],
       ["flows.html", "流程地图"],
       ["packages.html", "包职责"],
-      ["architecture.html", "目标架构"],
+      ["architecture.html", "架构驾驶舱"],
       ["status.html", "状态看板"]
     ];
     return `
@@ -373,29 +373,90 @@
   function renderArchitecture() {
     const architecture = data.architecture;
     shell(
-      "目标架构",
-      "用单向依赖、唯一事实源和明确晋升门槛，阻止调试代码突破职责后逐渐变成生产系统。",
+      "系统架构驾驶舱",
+      "面向项目交付、跨部门协作和长期维护的双臂运控能力地图。",
       `
-      <section class="section">
-        <div class="section-head">
-          <p class="eyebrow">Operating Rules</p>
-          <h2>四条不可破坏的规则</h2>
+      <section class="architecture-command">
+        <div class="architecture-command-copy">
+          <p class="eyebrow">${escapeHtml(architecture.headline.kicker)}</p>
+          <h2>${escapeHtml(architecture.headline.title)}</h2>
+          <p>${escapeHtml(architecture.headline.summary)}</p>
+          <div class="tag-row architecture-badges">${architecture.headline.badges.map((item) => pill(item, "cyan")).join("")}</div>
         </div>
-        <div class="principle-grid">
-          ${architecture.principles.map((item) => `
-            <article class="principle-item">
-              <h3>${escapeHtml(item.title)}</h3>
-              <p>${escapeHtml(item.rule)}</p>
-              <small>${escapeHtml(item.prevents)}</small>
+        <div class="architecture-metrics">
+          ${architecture.capabilityMetrics.map((item) => `
+            <article>
+              <strong>${escapeHtml(item.value)}</strong>
+              <span>${escapeHtml(item.label)}</span>
+              <small>${escapeHtml(item.note)}</small>
             </article>
           `).join("")}
         </div>
       </section>
+      <div class="architecture-viewbar" role="toolbar" aria-label="架构视图切换">
+        <div>
+          <button class="architecture-view active" type="button" data-view="executive">交付视角</button>
+          <button class="architecture-view" type="button" data-view="engineering">工程视角</button>
+        </div>
+        <span id="architecture-view-hint">突出能力闭环、事实源和保障边界</span>
+      </div>
+      <div class="architecture-view-scope" data-scope="executive">
+      <section class="section architecture-overview-section">
+        <div class="section-head architecture-section-head">
+          <div>
+            <p class="eyebrow">Operational Loop</p>
+            <h2>一条闭环解释系统如何工作</h2>
+          </div>
+          <p>任务只向前流动，状态与证据闭环返回；任何实现都不能绕过契约直接控制下一层。</p>
+        </div>
+        <div class="control-loop">
+          ${architecture.controlLoop.map((item, index) => `
+            <article class="control-node" data-node="${escapeHtml(item.id)}">
+              <span class="control-node-index">${String(index + 1).padStart(2, "0")}</span>
+              <div class="control-node-icon">${escapeHtml(item.label.slice(0, 1))}</div>
+              <h3>${escapeHtml(item.label)}</h3>
+              <strong>${escapeHtml(item.owner)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+              <code>${escapeHtml(item.contract)}</code>
+              ${index < architecture.controlLoop.length - 1 ? '<i class="control-arrow">→</i>' : '<i class="control-arrow feedback-arrow">↺</i>'}
+            </article>
+          `).join("")}
+        </div>
+      </section>
+      <section class="architecture-dual-grid">
+        <article class="section truth-panel">
+          <div class="section-head">
+            <p class="eyebrow">Single Source of Truth</p>
+            <h2>四类事实，只有一个权威出口</h2>
+          </div>
+          <div class="truth-chain">
+            ${architecture.truthChain.map((item, index) => `
+              <div class="truth-item">
+                <span>${String(index + 1).padStart(2, "0")}</span>
+                <div><h3>${escapeHtml(item.title)}</h3><strong>${escapeHtml(item.owner)}</strong><p>${escapeHtml(item.content)}</p></div>
+              </div>
+            `).join("")}
+          </div>
+        </article>
+        <article class="section assurance-panel">
+          <div class="section-head">
+            <p class="eyebrow">Engineering Assurance</p>
+            <h2>甲方关心的不只是“能动”</h2>
+          </div>
+          <div class="guardrail-grid">
+            ${architecture.guardrails.map((item) => `
+              <div class="guardrail-item"><span>${escapeHtml(item.icon)}</span><div><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.text)}</p></div></div>
+            `).join("")}
+          </div>
+        </article>
+      </section>
+      </div>
+      <div class="architecture-view-scope" data-scope="engineering">
       <section class="section">
         <div class="section-head">
-          <p class="eyebrow">Dependency Direction</p>
-          <h2>目标依赖方向</h2>
-          <p>上层只能调用下层公开 interface。工具位于侧边，只能向内调用，生产代码不能反向依赖工具。</p>
+          <p class="eyebrow">System Boundaries</p>
+          <h2>六层能力栈与不可跨越的边界</h2>
+          <p>每层只拥有一种核心责任；向下调用能力，向上报告结果。</p>
         </div>
         <div class="architecture-stack">
           ${architecture.layers.map((layer, index) => `
@@ -421,6 +482,21 @@
           <strong>侧向工具域</strong>
           <span>robot_motion_tools / scripts/ik_benchmark / Rerun / system_tests</span>
           <em>只调用公开服务，不得成为任何生产包的依赖</em>
+        </div>
+      </section>
+      <section class="section">
+        <div class="section-head">
+          <p class="eyebrow">Operating Rules</p>
+          <h2>四条不可破坏的工程规则</h2>
+        </div>
+        <div class="principle-grid">
+          ${architecture.principles.map((item) => `
+            <article class="principle-item">
+              <h3>${escapeHtml(item.title)}</h3>
+              <p>${escapeHtml(item.rule)}</p>
+              <small>${escapeHtml(item.prevents)}</small>
+            </article>
+          `).join("")}
         </div>
       </section>
       <section class="section">
@@ -474,8 +550,24 @@
             </article>
           `).join("")}
         </div>
-      </section>`
+      </section>
+      </div>`
     );
+
+    const viewButtons = $all(".architecture-view");
+    const scopes = $all(".architecture-view-scope");
+    const hint = $("#architecture-view-hint");
+    viewButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const view = button.dataset.view;
+        viewButtons.forEach((item) => item.classList.toggle("active", item === button));
+        scopes.forEach((scope) => scope.classList.toggle("view-muted", scope.dataset.scope !== view));
+        hint.textContent = view === "executive"
+          ? "突出能力闭环、事实源和保障边界"
+          : "突出依赖方向、唯一负责人和代码晋升门槛";
+        scopes.find((scope) => scope.dataset.scope === view)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   }
 
   function boot() {

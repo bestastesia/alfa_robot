@@ -53,6 +53,7 @@ def main() -> int:
     parser_source = SCRIPT.read_text()
     assert 'parser.add_argument("--loaded-updown", type=float, default=0.3)' in parser_source
     assert 'default="box_pose_rrt"' in parser_source
+    assert '"--ik-only-raw"' in parser_source
     print("extract sequence definition passed: 13 pairs, 4 front vehicle tasks, 9 top/mixed tasks")
     return 0
 

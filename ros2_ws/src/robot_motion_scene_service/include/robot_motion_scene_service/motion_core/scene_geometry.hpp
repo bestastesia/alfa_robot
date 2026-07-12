@@ -34,7 +34,7 @@ struct BoxWallGeometryConfig
   double static_box_obstacle_inset = 0.002;
   bool rear_guard_enabled = true;
   double rear_guard_thickness = 0.01;
-  double rear_guard_clearance = 0.002;
+  double rear_guard_clearance = 0.012;
   double container_height = 2.4;
 };
 
