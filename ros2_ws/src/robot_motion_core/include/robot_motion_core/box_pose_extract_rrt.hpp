@@ -41,6 +41,8 @@ struct BoxPoseExtractRrtConfig
   double edge_resolution_lift = 0.01;
   double edge_resolution_pitch = 0.04363323129985824;
   double goal_pitch_tolerance = 0.03490658503988659;
+  bool front_free_motion = false;
+  bool front_goal_requires_max_pitch = true;
   double goal_sample_rate = 0.2;
   size_t goal_connection_interval = 4;
   double retreat_distance_weight = 1.0;
@@ -58,6 +60,8 @@ struct BoxPoseExtractEdgeEvaluation
   bool valid = false;
   double joint_motion = std::numeric_limits<double>::infinity();
   std::string rejection_reason;
+  bool goal_evaluated = false;
+  bool goal_reached = false;
 };
 
 using BoxPoseExtractEdgeEvaluator = std::function<BoxPoseExtractEdgeEvaluation(

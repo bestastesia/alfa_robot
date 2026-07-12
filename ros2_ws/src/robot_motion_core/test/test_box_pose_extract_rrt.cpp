@@ -19,6 +19,16 @@ robot_motion::core::BoxPoseExtractEdgeEvaluation free_edge(
   return {true, std::sqrt(retreat * retreat + lift * lift + pitch * pitch), ""};
 }
 
+robot_motion::core::BoxPoseExtractEdgeEvaluation bidirectional_free_edge(
+  const robot_motion::core::BoxPoseExtractState& from,
+  const robot_motion::core::BoxPoseExtractState& to)
+{
+  const double retreat = to.retreat - from.retreat;
+  const double lift = to.lift - from.lift;
+  const double pitch = 0.2 * (to.pitch - from.pitch);
+  return {true, std::sqrt(retreat * retreat + lift * lift + pitch * pitch), ""};
+}
+
 }  // namespace
 
 int main()
@@ -61,6 +71,22 @@ int main()
   }
   assert(has_unshortcutted);
   assert(has_short_path);
+
+  BoxPoseExtractRrtConfig free_front_config = front_config;
+  free_front_config.front_free_motion = true;
+  free_front_config.front_goal_requires_max_pitch = false;
+  free_front_config.max_lift = 0.5;
+  free_front_config.max_solution_count = 4;
+  free_front_config.random_seed = 23;
+  BoxPoseExtractRrt free_front(free_front_config);
+  assert(free_front.goalReached({free_front_config.box_depth + 0.04, 0.0, 0.0}));
+  assert(free_front.goalReached({0.0, free_front_config.box_height + 0.04, 0.0}));
+  assert(!free_front.goalReached({0.01, 0.01, 0.0}));
+  const auto free_front_result = free_front.plan(BoxPoseExtractState{}, bidirectional_free_edge);
+  assert(free_front_result.success);
+  assert(!free_front_result.paths.empty());
+  assert(free_front.goalReached(free_front_result.paths.front().states.back()));
+  assert(free_front_result.paths.front().states.back().pitch < 0.2);
 
   BoxPoseExtractRrtConfig top_config;
   top_config.mode = BoxPoseExtractMode::TopTranslate;

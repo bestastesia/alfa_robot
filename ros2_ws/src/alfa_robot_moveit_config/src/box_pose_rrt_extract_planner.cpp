@@ -167,7 +167,7 @@ geometry_msgs::msg::Pose target_pose_for_box_state(
     Eigen::Isometry3d target_box = Eigen::Isometry3d::Identity();
     target_box.linear() = box_rotation;
     target_box.translation() = start_pivot - Eigen::Vector3d(state.retreat, 0.0, 0.0) -
-      box_rotation * pivot_in_box;
+      box_rotation * pivot_in_box + Eigen::Vector3d(0.0, 0.0, state.lift);
     target_tip = target_box * tool_to_box.inverse();
   }
   Eigen::Quaterniond orientation(target_tip.linear());
@@ -214,10 +214,14 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     const moveit::core::RobotState& edge_start,
     std::vector<moveit::core::RobotStatePtr>* dense_states,
     double* joint_motion,
+    bool* goal_evaluated,
+    bool* goal_reached,
     std::string* reason) -> bool {
       moveit::core::RobotState current(edge_start);
       double motion = 0.0;
       const size_t sample_count = edge_sample_count(from, to, rrt_config);
+      bool final_detached = false;
+      bool final_detached_evaluated = false;
       for (size_t sample_index = 1; sample_index <= sample_count; ++sample_index) {
         const double ratio = static_cast<double>(sample_index) / static_cast<double>(sample_count);
         const BoxState sample = interpolate_box_state(from, to, ratio);
@@ -257,8 +261,10 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
               *reason = clear_reason.empty() ?
                 side + "_box_pose_rrt_carried_collision" : clear_reason;
             }
-            return false;
+              return false;
           }
+          final_detached = detached;
+          final_detached_evaluated = true;
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
         current = *candidate.state;
@@ -266,6 +272,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       }
       state_cache[box_state_key(to)] = std::make_shared<moveit::core::RobotState>(current);
       if (joint_motion) *joint_motion = motion;
+      if (goal_evaluated) *goal_evaluated = final_detached_evaluated;
+      if (goal_reached) *goal_reached = final_detached;
       return true;
     };
 
@@ -277,7 +285,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       return evaluation;
     }
     evaluation.valid = solve_edge(
-      from, to, *found->second, nullptr, &evaluation.joint_motion, &evaluation.rejection_reason);
+      from, to, *found->second, nullptr, &evaluation.joint_motion,
+      &evaluation.goal_evaluated, &evaluation.goal_reached, &evaluation.rejection_reason);
     if (!evaluation.valid) {
       rejection_counts[evaluation.rejection_reason.empty() ?
         side + "_box_pose_rrt_edge_rejected" : evaluation.rejection_reason]++;
@@ -314,7 +323,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       std::string reason;
       if (!solve_edge(
           rrt_path.states[index - 1], rrt_path.states[index], current,
-          &edge_states, &edge_motion, &reason)) {
+          &edge_states, &edge_motion, nullptr, nullptr, &reason)) {
         valid = false;
         break;
       }

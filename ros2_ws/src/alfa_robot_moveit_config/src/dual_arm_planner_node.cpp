@@ -1016,8 +1016,10 @@ private:
     config.front_rrt.box_height = carried_box_height_;
     config.front_rrt.separation_margin = extract_box_pose_rrt_separation_margin_;
     config.front_rrt.max_retreat = extract_box_pose_rrt_max_retreat_;
-    config.front_rrt.max_lift = 0.0;
+    config.front_rrt.max_lift = extract_box_pose_rrt_max_lift_;
     config.front_rrt.max_pitch = M_PI_2;
+    config.front_rrt.front_free_motion = true;
+    config.front_rrt.front_goal_requires_max_pitch = false;
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
     config.front_rrt.random_seed = 17;

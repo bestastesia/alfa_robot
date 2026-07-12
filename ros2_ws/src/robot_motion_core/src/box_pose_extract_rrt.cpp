@@ -112,11 +112,14 @@ BoxPoseExtractState steer(
 bool monotonic_transition(
   const BoxPoseExtractState& from,
   const BoxPoseExtractState& to,
-  BoxPoseExtractMode mode)
+  const BoxPoseExtractRrtConfig& config)
 {
   constexpr double tolerance = 1e-9;
+  if (config.mode == BoxPoseExtractMode::FrontPivot && config.front_free_motion) {
+    return true;
+  }
   if (to.retreat + tolerance < from.retreat) return false;
-  if (mode == BoxPoseExtractMode::FrontPivot) {
+  if (config.mode == BoxPoseExtractMode::FrontPivot) {
     return std::abs(to.lift - from.lift) <= tolerance &&
            to.pitch + tolerance >= from.pitch;
   }
@@ -198,7 +201,8 @@ bool BoxPoseExtractRrt::stateWithinBounds(const BoxPoseExtractState& state) cons
   if (state.retreat < -epsilon || state.retreat > config_.max_retreat + epsilon) return false;
   if (state.lift < -epsilon || state.lift > config_.max_lift + epsilon) return false;
   if (state.pitch < -epsilon || state.pitch > config_.max_pitch + epsilon) return false;
-  if (config_.mode == BoxPoseExtractMode::FrontPivot && std::abs(state.lift) > epsilon) return false;
+  if (config_.mode == BoxPoseExtractMode::FrontPivot &&
+      !config_.front_free_motion && std::abs(state.lift) > epsilon) return false;
   if (config_.mode == BoxPoseExtractMode::TopTranslate && std::abs(state.pitch) > epsilon) return false;
   return true;
 }
@@ -212,7 +216,8 @@ bool BoxPoseExtractRrt::goalReached(const BoxPoseExtractState& state) const
 {
   if (!stateWithinBounds(state) || !detachedFromSource(state)) return false;
   if (config_.mode == BoxPoseExtractMode::FrontPivot) {
-    return state.pitch + config_.goal_pitch_tolerance >= config_.max_pitch;
+    return !config_.front_goal_requires_max_pitch ||
+           state.pitch + config_.goal_pitch_tolerance >= config_.max_pitch;
   }
   return state.retreat >= config_.min_top_retreat && state.lift >= config_.min_top_lift;
 }
@@ -220,6 +225,15 @@ bool BoxPoseExtractRrt::goalReached(const BoxPoseExtractState& state) const
 BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
 {
   if (config_.mode == BoxPoseExtractMode::FrontPivot) {
+    if (config_.front_free_motion && !config_.front_goal_requires_max_pitch) {
+      return {
+        std::min(
+          config_.max_retreat,
+          config_.box_depth + config_.separation_margin + 1e-4),
+        0.0,
+        0.0,
+      };
+    }
     return {
       std::min(
         config_.max_retreat,
@@ -273,9 +287,11 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
 
   const auto direct_evaluation = evaluator(start, goal);
   ++result.edge_evaluations;
+  const bool direct_goal_reached = direct_evaluation.goal_evaluated ?
+    direct_evaluation.goal_reached : goalReached(goal);
   if (direct_evaluation.valid &&
       std::isfinite(direct_evaluation.joint_motion) &&
-      goalReached(goal)) {
+      direct_goal_reached) {
     BoxPoseExtractPath direct_path;
     direct_path.states = {start, goal};
     direct_path.joint_motion = direct_evaluation.joint_motion;
@@ -289,7 +305,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     if (unit(generator) >= std::clamp(config_.goal_sample_rate, 0.0, 1.0)) {
       sample.retreat = retreat_sample(generator);
       if (config_.mode == BoxPoseExtractMode::FrontPivot) {
-        sample.lift = 0.0;
+        sample.lift = config_.front_free_motion ? lift_sample(generator) : 0.0;
         sample.pitch = pitch_sample(generator);
       } else {
         sample.lift = lift_sample(generator);
@@ -300,7 +316,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     size_t nearest_index = 0;
     double nearest_distance = std::numeric_limits<double>::infinity();
     for (size_t index = 0; index < nodes.size(); ++index) {
-      if (!monotonic_transition(nodes[index].state, sample, config_.mode)) continue;
+      if (!monotonic_transition(nodes[index].state, sample, config_)) continue;
       const double distance = stateDistance(nodes[index].state, sample);
       if (distance < nearest_distance) {
         nearest_distance = distance;
@@ -311,7 +327,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
 
     const BoxPoseExtractState next = steer(nodes[nearest_index].state, sample, config_);
     if (!stateWithinBounds(next) ||
-        !monotonic_transition(nodes[nearest_index].state, next, config_.mode) ||
+        !monotonic_transition(nodes[nearest_index].state, next, config_) ||
         stateDistance(nodes[nearest_index].state, next) < 1e-9) {
       continue;
     }
@@ -323,14 +339,19 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
 
     nodes.push_back({next, nearest_index});
     size_t next_index = nodes.size() - 1;
-    if (!goalReached(next)) {
+    const bool next_goal_reached = evaluation.goal_evaluated ?
+      evaluation.goal_reached : goalReached(next);
+    if (!next_goal_reached) {
       const size_t interval = std::max<size_t>(1, config_.goal_connection_interval);
-      if (iteration % interval != 0 || !monotonic_transition(next, goal, config_.mode)) {
+      if (iteration % interval != 0 || !monotonic_transition(next, goal, config_)) {
         continue;
       }
       const auto goal_evaluation = evaluator(next, goal);
       ++result.edge_evaluations;
-      if (!goal_evaluation.valid || !std::isfinite(goal_evaluation.joint_motion)) {
+      const bool connected_goal_reached = goal_evaluation.goal_evaluated ?
+        goal_evaluation.goal_reached : goalReached(goal);
+      if (!goal_evaluation.valid || !std::isfinite(goal_evaluation.joint_motion) ||
+          !connected_goal_reached) {
         continue;
       }
       nodes.push_back({goal, next_index});
@@ -356,7 +377,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       size_t last = index_sample(generator);
       if (first > last) std::swap(first, last);
       if (last <= first + 1) continue;
-      if (!monotonic_transition(path.states[first], path.states[last], config_.mode)) continue;
+      if (!monotonic_transition(path.states[first], path.states[last], config_)) continue;
       const auto shortcut = evaluator(path.states[first], path.states[last]);
       ++result.edge_evaluations;
       if (!shortcut.valid || !std::isfinite(shortcut.joint_motion)) continue;
