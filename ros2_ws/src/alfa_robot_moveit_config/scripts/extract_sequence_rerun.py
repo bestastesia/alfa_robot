@@ -262,6 +262,7 @@ def make_pair_args(
         extract_workers=args.extract_workers,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
+        extract_max_joint_delta=args.extract_max_joint_delta,
         extract_rrt=args.extract_rrt,
         extract_rrt_planning_group=args.extract_rrt_planning_group,
         extract_rrt_planning_time=args.extract_rrt_planning_time,
@@ -270,6 +271,12 @@ def make_pair_args(
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
         extract_rollout_mode=args.extract_rollout_mode,
         extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
+        extract_box_pose_rrt_max_iterations=args.extract_box_pose_rrt_max_iterations,
+        extract_box_pose_rrt_parent_candidates=args.extract_box_pose_rrt_parent_candidates,
+        extract_box_pose_rrt_max_lateral=args.extract_box_pose_rrt_max_lateral,
+        extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
+        extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
+        extract_box_pose_rrt_front_goal_requires_max_pitch=args.extract_box_pose_rrt_front_goal_requires_max_pitch,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -774,6 +781,7 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(
         "--extract-rollout-mode",
         choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
@@ -787,6 +795,12 @@ def main() -> int:
         default=True,
         help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
     )
+    parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
+    parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
+    parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)

@@ -459,6 +459,14 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_edge_scene_collision", true);
     extract_box_pose_rrt_parent_candidates_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_parent_candidates", 8)));
+    extract_box_pose_rrt_max_lateral_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_max_lateral", 0.0));
+    extract_box_pose_rrt_step_lateral_ =
+      std::max(1e-4, get_or_declare_parameter<double>("extract_box_pose_rrt_step_lateral", 0.02));
+    extract_box_pose_rrt_front_free_motion_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_front_free_motion", true);
+    extract_box_pose_rrt_front_goal_requires_max_pitch_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_front_goal_requires_max_pitch", false);
     extract_rrt_planning_group_ = get_or_declare_parameter<std::string>("extract_rrt_planning_group", "dual_arm");
     extract_rrt_planning_time_ = get_or_declare_parameter<double>("extract_rrt_planning_time", 0.35);
     extract_rrt_planning_attempts_ = std::max(1, get_or_declare_parameter<int>("extract_rrt_planning_attempts", 1));
@@ -1032,8 +1040,11 @@ private:
     config.front_rrt.max_retreat = extract_box_pose_rrt_max_retreat_;
     config.front_rrt.max_lift = extract_box_pose_rrt_max_lift_;
     config.front_rrt.max_pitch = M_PI_2;
-    config.front_rrt.front_free_motion = true;
-    config.front_rrt.front_goal_requires_max_pitch = false;
+    config.front_rrt.max_lateral = extract_box_pose_rrt_max_lateral_;
+    config.front_rrt.step_lateral = extract_box_pose_rrt_step_lateral_;
+    config.front_rrt.edge_resolution_lateral = extract_box_pose_rrt_step_lateral_;
+    config.front_rrt.front_free_motion = extract_box_pose_rrt_front_free_motion_;
+    config.front_rrt.front_goal_requires_max_pitch = extract_box_pose_rrt_front_goal_requires_max_pitch_;
     config.front_rrt.endpoint_only_edges = true;
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
@@ -4768,6 +4779,10 @@ private:
   bool extract_box_pose_rrt_diagnostics_ = false;
   bool extract_box_pose_rrt_edge_scene_collision_ = true;
   size_t extract_box_pose_rrt_parent_candidates_ = 8;
+  double extract_box_pose_rrt_max_lateral_ = 0.0;
+  double extract_box_pose_rrt_step_lateral_ = 0.02;
+  bool extract_box_pose_rrt_front_free_motion_ = true;
+  bool extract_box_pose_rrt_front_goal_requires_max_pitch_ = false;
   std::string extract_rrt_planning_group_ = "dual_arm";
   double extract_rrt_planning_time_ = 0.35;
   int extract_rrt_planning_attempts_ = 1;

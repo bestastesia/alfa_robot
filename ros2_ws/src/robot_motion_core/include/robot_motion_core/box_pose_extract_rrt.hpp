@@ -21,6 +21,7 @@ struct BoxPoseExtractState
   double retreat = 0.0;
   double lift = 0.0;
   double pitch = 0.0;
+  double lateral = 0.0;
 };
 
 struct BoxPoseExtractRrtConfig
@@ -32,14 +33,17 @@ struct BoxPoseExtractRrtConfig
   double max_retreat = 0.45;
   double max_lift = 0.5;
   double max_pitch = 1.5707963267948966;
+  double max_lateral = 0.0;
   double min_top_retreat = 0.03;
   double min_top_lift = 0.03;
   double step_retreat = 0.02;
   double step_lift = 0.02;
   double step_pitch = 0.08726646259971647;
+  double step_lateral = 0.02;
   double edge_resolution_retreat = 0.01;
   double edge_resolution_lift = 0.01;
   double edge_resolution_pitch = 0.04363323129985824;
+  double edge_resolution_lateral = 0.02;
   double goal_pitch_tolerance = 0.03490658503988659;
   bool front_free_motion = false;
   bool front_goal_requires_max_pitch = true;
@@ -49,6 +53,7 @@ struct BoxPoseExtractRrtConfig
   double retreat_distance_weight = 1.0;
   double lift_distance_weight = 1.0;
   double pitch_distance_weight = 0.2;
+  double lateral_distance_weight = 1.0;
   size_t max_iterations = 2000;
   size_t max_solution_count = 16;
   size_t shortcut_attempts = 80;

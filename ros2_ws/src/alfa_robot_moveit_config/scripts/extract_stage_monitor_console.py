@@ -188,12 +188,19 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_benchmark_extract_workers:={args.extract_workers}",
         f"extract_benchmark_candidate_limit:={args.candidate_limit}",
         f"extract_step_x:={args.extract_step_x}",
+        f"extract_max_joint_delta:={getattr(args, 'extract_max_joint_delta', 10.0 * math.pi / 180.0)}",
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
+        f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
+        f"extract_box_pose_rrt_parent_candidates:={getattr(args, 'extract_box_pose_rrt_parent_candidates', 8)}",
+        f"extract_box_pose_rrt_max_lateral:={getattr(args, 'extract_box_pose_rrt_max_lateral', 0.0)}",
+        f"extract_box_pose_rrt_step_lateral:={getattr(args, 'extract_box_pose_rrt_step_lateral', 0.02)}",
+        f"extract_box_pose_rrt_front_free_motion:={str(getattr(args, 'extract_box_pose_rrt_front_free_motion', True)).lower()}",
+        f"extract_box_pose_rrt_front_goal_requires_max_pitch:={str(getattr(args, 'extract_box_pose_rrt_front_goal_requires_max_pitch', False)).lower()}",
         f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
         f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
         f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
@@ -1015,6 +1022,7 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(
         "--extract-rollout-mode",
         choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
@@ -1028,6 +1036,12 @@ def main() -> int:
         default=True,
         help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
     )
+    parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
+    parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
+    parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)

@@ -28,6 +28,7 @@ BoxPoseExtractState interpolate(
     from.retreat + (to.retreat - from.retreat) * ratio,
     from.lift + (to.lift - from.lift) * ratio,
     from.pitch + (to.pitch - from.pitch) * ratio,
+    from.lateral + (to.lateral - from.lateral) * ratio,
   };
 }
 
@@ -97,6 +98,7 @@ BoxPoseExtractState steer(
   const double retreat_delta = to.retreat - from.retreat;
   const double lift_delta = to.lift - from.lift;
   const double pitch_delta = to.pitch - from.pitch;
+  const double lateral_delta = to.lateral - from.lateral;
   double ratio = 1.0;
   if (std::abs(retreat_delta) > config.step_retreat) {
     ratio = std::min(ratio, config.step_retreat / std::abs(retreat_delta));
@@ -106,6 +108,9 @@ BoxPoseExtractState steer(
   }
   if (std::abs(pitch_delta) > config.step_pitch) {
     ratio = std::min(ratio, config.step_pitch / std::abs(pitch_delta));
+  }
+  if (std::abs(lateral_delta) > config.step_lateral) {
+    ratio = std::min(ratio, config.step_lateral / std::abs(lateral_delta));
   }
   return interpolate(from, to, ratio);
 }
@@ -166,7 +171,8 @@ bool same_state(const BoxPoseExtractState& lhs, const BoxPoseExtractState& rhs)
   constexpr double tolerance = 1e-8;
   return std::abs(lhs.retreat - rhs.retreat) <= tolerance &&
          std::abs(lhs.lift - rhs.lift) <= tolerance &&
-         std::abs(lhs.pitch - rhs.pitch) <= tolerance;
+         std::abs(lhs.pitch - rhs.pitch) <= tolerance &&
+         std::abs(lhs.lateral - rhs.lateral) <= tolerance;
 }
 
 bool same_path(const BoxPoseExtractPath& lhs, const BoxPoseExtractPath& rhs)
@@ -202,6 +208,7 @@ bool BoxPoseExtractRrt::stateWithinBounds(const BoxPoseExtractState& state) cons
   if (state.retreat < -epsilon || state.retreat > config_.max_retreat + epsilon) return false;
   if (state.lift < -epsilon || state.lift > config_.max_lift + epsilon) return false;
   if (state.pitch < -epsilon || state.pitch > config_.max_pitch + epsilon) return false;
+  if (std::abs(state.lateral) > config_.max_lateral + epsilon) return false;
   if (config_.mode == BoxPoseExtractMode::FrontPivot &&
       !config_.front_free_motion && std::abs(state.lift) > epsilon) return false;
   if (config_.mode == BoxPoseExtractMode::TopTranslate && std::abs(state.pitch) > epsilon) return false;
@@ -233,6 +240,7 @@ BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
           config_.box_depth + config_.separation_margin + 1e-4),
         0.0,
         0.0,
+        0.0,
       };
     }
     return {
@@ -241,6 +249,7 @@ BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
         std::max(config_.step_retreat, config_.separation_margin + 1e-4)),
       0.0,
       config_.max_pitch,
+      0.0,
     };
   }
   return {
@@ -250,6 +259,7 @@ BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
     std::min(
       config_.max_lift,
       std::max(config_.step_lift, config_.min_top_lift)),
+    0.0,
     0.0,
   };
 }
@@ -261,7 +271,8 @@ double BoxPoseExtractRrt::stateDistance(
   const double retreat = config_.retreat_distance_weight * (lhs.retreat - rhs.retreat);
   const double lift = config_.lift_distance_weight * (lhs.lift - rhs.lift);
   const double pitch = config_.pitch_distance_weight * (lhs.pitch - rhs.pitch);
-  return std::sqrt(retreat * retreat + lift * lift + pitch * pitch);
+  const double lateral = config_.lateral_distance_weight * (lhs.lateral - rhs.lateral);
+  return std::sqrt(retreat * retreat + lift * lift + pitch * pitch + lateral * lateral);
 }
 
 BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
@@ -283,6 +294,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   std::uniform_real_distribution<double> retreat_sample(0.0, config_.max_retreat);
   std::uniform_real_distribution<double> lift_sample(0.0, config_.max_lift);
   std::uniform_real_distribution<double> pitch_sample(0.0, config_.max_pitch);
+  std::uniform_real_distribution<double> lateral_sample(-config_.max_lateral, config_.max_lateral);
   std::vector<TreeNode> nodes{{start, 0, 0.0}};
   const BoxPoseExtractState goal = nominalGoal();
   size_t best_effort_index = 0;
@@ -315,6 +327,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     BoxPoseExtractState sample = goal;
     if (unit(generator) >= std::clamp(config_.goal_sample_rate, 0.0, 1.0)) {
       sample.retreat = retreat_sample(generator);
+      sample.lateral = lateral_sample(generator);
       if (config_.mode == BoxPoseExtractMode::FrontPivot) {
         sample.lift = config_.front_free_motion ? lift_sample(generator) : 0.0;
         sample.pitch = pitch_sample(generator);

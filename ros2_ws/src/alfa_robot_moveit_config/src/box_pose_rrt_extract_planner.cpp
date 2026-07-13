@@ -33,7 +33,8 @@ std::string box_state_key(const BoxState& state)
   std::ostringstream stream;
   stream << std::llround(state.retreat * 1e7) << ':'
          << std::llround(state.lift * 1e7) << ':'
-         << std::llround(state.pitch * 1e7);
+         << std::llround(state.pitch * 1e7) << ':'
+         << std::llround(state.lateral * 1e7);
   return stream.str();
 }
 
@@ -55,6 +56,10 @@ size_t edge_sample_count(
     count = std::max(count, static_cast<size_t>(std::ceil(
       std::abs(to.pitch - from.pitch) / config.edge_resolution_pitch)));
   }
+  if (config.edge_resolution_lateral > 0.0) {
+    count = std::max(count, static_cast<size_t>(std::ceil(
+      std::abs(to.lateral - from.lateral) / config.edge_resolution_lateral)));
+  }
   return count;
 }
 
@@ -64,6 +69,7 @@ BoxState interpolate_box_state(const BoxState& from, const BoxState& to, double 
     from.retreat + (to.retreat - from.retreat) * ratio,
     from.lift + (to.lift - from.lift) * ratio,
     from.pitch + (to.pitch - from.pitch) * ratio,
+    from.lateral + (to.lateral - from.lateral) * ratio,
   };
 }
 
@@ -101,6 +107,7 @@ geometry_msgs::msg::Pose target_pose_for_box_state(
   Eigen::Isometry3d target_tip = start_tip;
   if (mode == BoxMode::TopTranslate) {
     target_tip.translation().x() -= state.retreat;
+    target_tip.translation().y() += state.lateral;
     target_tip.translation().z() += state.lift;
   } else {
     Eigen::Isometry3d tool_to_box = Eigen::Isometry3d::Identity();
@@ -165,7 +172,7 @@ geometry_msgs::msg::Pose target_pose_for_box_state(
     Eigen::Isometry3d target_box = Eigen::Isometry3d::Identity();
     target_box.linear() = box_rotation;
     target_box.translation() = start_pivot - Eigen::Vector3d(state.retreat, 0.0, 0.0) -
-      box_rotation * pivot_in_box + Eigen::Vector3d(0.0, 0.0, state.lift);
+      box_rotation * pivot_in_box + Eigen::Vector3d(0.0, state.lateral, state.lift);
     target_tip = target_box * tool_to_box.inverse();
   }
   Eigen::Quaterniond orientation(target_tip.linear());
@@ -233,7 +240,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
         request.side = side;
         request.current_state = &current;
         const auto target_started = std::chrono::steady_clock::now();
-        request.target_pose = target_pose_for_box_state(start_tip, carried_box, sample, rrt_config.mode);
+        request.target_pose = target_pose_for_box_state(
+          start_tip, carried_box, sample, rrt_config.mode);
         if (config_.profile) {
           config_.profile->target_pose_ns.fetch_add(
             static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -463,7 +471,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
             extra.update({
               {"retreat_x", box_state.retreat},
               {"lift_z", box_state.lift},
-              {"pitch_up_deg", box_state.pitch * 180.0 / M_PI}
+              {"pitch_up_deg", box_state.pitch * 180.0 / M_PI},
+              {"lateral_y", box_state.lateral}
             });
           }
           record_step(step, *combined, extra);
