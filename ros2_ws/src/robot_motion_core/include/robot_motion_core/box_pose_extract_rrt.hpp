@@ -43,6 +43,7 @@ struct BoxPoseExtractRrtConfig
   double goal_pitch_tolerance = 0.03490658503988659;
   bool front_free_motion = false;
   bool front_goal_requires_max_pitch = true;
+  bool endpoint_only_edges = false;
   double goal_sample_rate = 0.2;
   size_t goal_connection_interval = 4;
   double retreat_distance_weight = 1.0;

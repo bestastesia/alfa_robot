@@ -78,6 +78,18 @@ double shortest_angular_distance(double a, double b)
   return std::abs(std::atan2(std::sin(a - b), std::cos(a - b)));
 }
 
+double max_absolute_difference(
+  const std::vector<double>& from,
+  const std::vector<double>& to)
+{
+  const size_t count = std::min(from.size(), to.size());
+  double maximum = 0.0;
+  for (size_t index = 0; index < count; ++index) {
+    maximum = std::max(maximum, std::abs(from[index] - to[index]));
+  }
+  return maximum;
+}
+
 std::string format_degrees(
   const std::vector<std::string>& names,
   const std::vector<double>& values)

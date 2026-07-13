@@ -24,6 +24,10 @@ nlohmann::json pose_degrees_json(const std::vector<double>& pose);
 
 double shortest_angular_distance(double a, double b);
 
+double max_absolute_difference(
+  const std::vector<double>& from,
+  const std::vector<double>& to);
+
 std::string format_degrees(
   const std::vector<std::string>& names,
   const std::vector<double>& values);

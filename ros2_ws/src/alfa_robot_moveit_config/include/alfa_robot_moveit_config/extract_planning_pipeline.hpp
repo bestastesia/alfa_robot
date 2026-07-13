@@ -18,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -184,6 +185,23 @@ private:
 
 struct ExtractCandidateSolverConfig
 {
+  struct Profile
+  {
+    std::atomic<uint64_t> state_copy_ns{0};
+    std::atomic<uint64_t> pre_analytic_state_ns{0};
+    std::atomic<uint64_t> analytic_core_ns{0};
+    std::atomic<uint64_t> post_state_update_ns{0};
+    std::atomic<uint64_t> validation_ns{0};
+
+    void reset()
+    {
+      state_copy_ns.store(0, std::memory_order_relaxed);
+      pre_analytic_state_ns.store(0, std::memory_order_relaxed);
+      analytic_core_ns.store(0, std::memory_order_relaxed);
+      post_state_update_ns.store(0, std::memory_order_relaxed);
+      validation_ns.store(0, std::memory_order_relaxed);
+    }
+  };
   moveit::core::RobotModelConstPtr robot_model;
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
@@ -199,6 +217,7 @@ struct ExtractCandidateSolverConfig
   double top_suction_orientation_tolerance = 0.12217304763960307;
   double max_joint_delta = 0.0;
   size_t analytic_root_samples = 360;
+  std::shared_ptr<Profile> profile;
 };
 
 struct ExtractCandidateSolveRequest
@@ -242,6 +261,10 @@ private:
   const moveit::core::JointModelGroup* groupForSide(const std::string& side) const;
   const std::string& tipForSide(const std::string& side) const;
   double armJointDelta(
+    const std::string& side,
+    const moveit::core::RobotState& from,
+    const moveit::core::RobotState& to) const;
+  double armMaxJointDelta(
     const std::string& side,
     const moveit::core::RobotState& from,
     const moveit::core::RobotState& to) const;
@@ -472,6 +495,26 @@ private:
 
 struct BoxPoseRrtExtractPlannerConfig
 {
+  struct Profile
+  {
+    std::atomic<uint64_t> target_pose_ns{0};
+    std::atomic<uint64_t> ik_ns{0};
+    std::atomic<uint64_t> clear_ns{0};
+    std::atomic<uint64_t> rrt_plan_ns{0};
+    std::atomic<uint64_t> pair_validation_ns{0};
+    std::atomic<uint64_t> node_evaluations{0};
+
+    void reset()
+    {
+      target_pose_ns.store(0, std::memory_order_relaxed);
+      ik_ns.store(0, std::memory_order_relaxed);
+      clear_ns.store(0, std::memory_order_relaxed);
+      rrt_plan_ns.store(0, std::memory_order_relaxed);
+      pair_validation_ns.store(0, std::memory_order_relaxed);
+      node_evaluations.store(0, std::memory_order_relaxed);
+    }
+  };
+
   ExtractCandidateSolver* candidate_solver = nullptr;
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
@@ -486,6 +529,7 @@ struct BoxPoseRrtExtractPlannerConfig
   bool diagnose_isolated_arm_paths = false;
   ExtractSingleClearCallback single_clear_callback;
   ExtractDualClearCallback dual_clear_callback;
+  std::shared_ptr<Profile> profile;
 };
 
 class BoxPoseRrtExtractPlanner

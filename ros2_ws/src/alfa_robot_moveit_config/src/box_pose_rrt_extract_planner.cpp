@@ -75,9 +75,7 @@ double arm_joint_motion(
   if (!group) return std::numeric_limits<double>::infinity();
   double total = 0.0;
   for (const auto& name : group->getVariableNames()) {
-    const double delta = std::atan2(
-      std::sin(to.getVariablePosition(name) - from.getVariablePosition(name)),
-      std::cos(to.getVariablePosition(name) - from.getVariablePosition(name)));
+    const double delta = to.getVariablePosition(name) - from.getVariablePosition(name);
     total += std::abs(delta);
   }
   return total;
@@ -219,18 +217,25 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     std::string* reason) -> bool {
       moveit::core::RobotState current(edge_start);
       double motion = 0.0;
-      const size_t sample_count = edge_sample_count(from, to, rrt_config);
+      const size_t sample_count = rrt_config.endpoint_only_edges ? 1 : edge_sample_count(from, to, rrt_config);
       bool final_detached = false;
       bool final_detached_evaluated = false;
       for (size_t sample_index = 1; sample_index <= sample_count; ++sample_index) {
+        if (config_.profile) config_.profile->node_evaluations.fetch_add(1, std::memory_order_relaxed);
         const double ratio = static_cast<double>(sample_index) / static_cast<double>(sample_count);
         const BoxState sample = interpolate_box_state(from, to, ratio);
         ExtractCandidate candidate;
         ExtractCandidateSolveRequest request;
         request.side = side;
         request.current_state = &current;
-        request.target_pose = target_pose_for_box_state(
-          start_tip, carried_box, sample, rrt_config.mode);
+        const auto target_started = std::chrono::steady_clock::now();
+        request.target_pose = target_pose_for_box_state(start_tip, carried_box, sample, rrt_config.mode);
+        if (config_.profile) {
+          config_.profile->target_pose_ns.fetch_add(
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - target_started).count()),
+            std::memory_order_relaxed);
+        }
         request.step_index = sample_index;
         request.candidate_index = sample_index;
         request.retreat_x = sample.retreat;
@@ -245,7 +250,15 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
         request.fixed_updown = fixed_updown;
         request.min_tool_normal_z = -1.0;
         request.top_suction = top_suction;
-        if (!config_.candidate_solver->solve(request, &candidate) || !candidate.state) {
+        const auto ik_started = std::chrono::steady_clock::now();
+        const bool solved = config_.candidate_solver->solve(request, &candidate) && candidate.state;
+        if (config_.profile) {
+          config_.profile->ik_ns.fetch_add(
+            static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+              std::chrono::steady_clock::now() - ik_started).count()),
+            std::memory_order_relaxed);
+        }
+        if (!solved) {
           if (reason) {
             *reason = candidate.rejection_reason.empty() ?
               side + "_box_pose_rrt_analytic_no_solution" : candidate.rejection_reason;
@@ -253,10 +266,18 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
           return false;
         }
         if (config_.single_clear_callback) {
+          const auto clear_started = std::chrono::steady_clock::now();
           bool detached = false;
           std::string clear_reason;
-          if (!config_.single_clear_callback(
-              *candidate.state, carried_box, box_id, &detached, &clear_reason)) {
+          const bool clear = config_.single_clear_callback(
+            *candidate.state, carried_box, box_id, &detached, &clear_reason);
+          if (config_.profile) {
+            config_.profile->clear_ns.fetch_add(
+              static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now() - clear_started).count()),
+              std::memory_order_relaxed);
+          }
+          if (!clear) {
             if (reason) {
               *reason = clear_reason.empty() ?
                 side + "_box_pose_rrt_carried_collision" : clear_reason;
@@ -294,7 +315,14 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     return evaluation;
   };
 
+  const auto rrt_started = std::chrono::steady_clock::now();
   const auto result = rrt.plan(BoxState{}, evaluator);
+  if (config_.profile) {
+    config_.profile->rrt_plan_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - rrt_started).count()),
+      std::memory_order_relaxed);
+  }
   if (!result.success) {
     std::string dominant_reason = result.failure_reason;
     size_t dominant_count = 0;
@@ -314,24 +342,15 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     ArmPath path;
     path.box_states = rrt_path.states;
     path.states.push_back(std::make_shared<moveit::core::RobotState>(start_state));
-    moveit::core::RobotState current(start_state);
-    double total_motion = 0.0;
+    double total_motion = rrt_path.joint_motion;
     bool valid = true;
     for (size_t index = 1; index < rrt_path.states.size(); ++index) {
-      std::vector<moveit::core::RobotStatePtr> edge_states;
-      double edge_motion = 0.0;
-      std::string reason;
-      if (!solve_edge(
-          rrt_path.states[index - 1], rrt_path.states[index], current,
-          &edge_states, &edge_motion, nullptr, nullptr, &reason)) {
+      const auto found = state_cache.find(box_state_key(rrt_path.states[index]));
+      if (found == state_cache.end() || !found->second) {
         valid = false;
         break;
       }
-      total_motion += edge_motion;
-      for (const auto& state : edge_states) {
-        path.states.push_back(state);
-        current = *state;
-      }
+      path.states.push_back(found->second);
     }
     if (valid && !path.states.empty()) {
       path.joint_motion = total_motion;
@@ -449,6 +468,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
 
   std::map<std::string, size_t> failure_counts;
   bool collision_diagnostic_recorded = false;
+  const auto pair_validation_started = std::chrono::steady_clock::now();
   for (size_t pair_rank = 0; pair_rank < pairs.size(); ++pair_rank) {
     const auto& left = left_paths[pairs[pair_rank].left];
     const auto& right = right_paths[pairs[pair_rank].right];
@@ -561,6 +581,12 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       config_.logger,
       "box-pose RRT pair validation failed: candidate=%zu pairs=%zu dominant=%s count=%zu",
       candidate_order, pairs.size(), timing.failure_reason.c_str(), largest_count);
+  }
+  if (config_.profile) {
+    config_.profile->pair_validation_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - pair_validation_started).count()),
+      std::memory_order_relaxed);
   }
   timing.rollout_ms = std::chrono::duration<double, std::milli>(
     std::chrono::steady_clock::now() - started).count();

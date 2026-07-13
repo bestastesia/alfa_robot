@@ -357,6 +357,7 @@ install(PROGRAMS
   scripts/extract_startup_stability_smoke.py
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
+  scripts/verify_extract_sequence_snapshot.py
   scripts/extract_failed_attempts_rerun.py
   scripts/execute_l6_r8_mock_live.py
   scripts/execute_l6_r8_real_live.py

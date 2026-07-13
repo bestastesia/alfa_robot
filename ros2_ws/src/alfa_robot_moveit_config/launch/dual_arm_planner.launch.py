@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-ZERO_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+ZERO_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 
 
 def generate_launch_description():
@@ -121,7 +121,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_score_joint_delta_weight", default_value="0.6"),
         DeclareLaunchArgument("extract_score_tip_position_delta_weight", default_value="2.0"),
         DeclareLaunchArgument("extract_score_tip_orientation_delta_weight", default_value="0.05"),
-        DeclareLaunchArgument("extract_max_joint_delta", default_value="0.0"),
+        DeclareLaunchArgument("extract_max_joint_delta", default_value="0.17453292519943295"),
         DeclareLaunchArgument("extract_demo_direct_grasp_start", default_value="false"),
         DeclareLaunchArgument("extract_grasp_ik_home_updown", default_value="0.3"),
         DeclareLaunchArgument("extract_monitor_turn", default_value="0.0"),

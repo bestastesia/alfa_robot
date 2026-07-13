@@ -45,7 +45,8 @@ int main()
         wall.box_front_x + wall.carried_box_depth + wall.rear_guard_clearance +
         0.5 * wall.rear_guard_thickness;
       assert(std::abs(obstacle.center[0] - expected_center_x) < 1e-9);
-      assert(obstacle.size[2] == wall.container_height);
+      assert(std::abs(obstacle.center[2] - 1.0) < 1e-9);
+      assert(std::abs(obstacle.size[2] - 2.0) < 1e-9);
     }
   }
   assert(found_rear_guard);
@@ -61,6 +62,13 @@ int main()
   assert(top_box.link_name == "left_tool0");
   assert(top_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_height);
   assert(top_box.center_in_link[2] > 0.0);
+
+  Eigen::Isometry3d rotated_box_transform = Eigen::Isometry3d::Identity();
+  rotated_box_transform.linear() =
+    Eigen::AngleAxisd(M_PI_2, Eigen::Vector3d::UnitY()).toRotationMatrix();
+  const auto rotated_top_box = aabb_from_attached_box_transform(rotated_box_transform, top_box);
+  assert(std::abs(rotated_top_box.size[0] - top_box.size[2]) < 1e-9);
+  assert(std::abs(rotated_top_box.size[2] - top_box.size[0]) < 1e-9);
 
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
@@ -105,6 +113,20 @@ int main()
 
   reason.clear();
   assert(carried_box_clear_obstacles(c, "carried_box", {static_obstacle}, {ceiling}, &reason));
+  assert(reason.empty());
+
+  const StaticBoxObstacle rear_guard{
+    "box_wall_L6_R8_rear_guard", {0.5, 0.0, 0.0}, {0.02, 2.2, 2.4}};
+  reason.clear();
+  assert(!carried_box_clear_rear_guards(a, "carried_box", {static_obstacle, rear_guard}, &reason));
+  assert(reason == "carried_box overlaps box_wall_L6_R8_rear_guard");
+
+  reason.clear();
+  assert(carried_box_clear_rear_guards(c, "carried_box", {static_obstacle, rear_guard}, &reason));
+  assert(reason.empty());
+
+  reason.clear();
+  assert(carried_box_clear_rear_guards(a, "carried_box", {static_obstacle}, &reason));
   assert(reason.empty());
 
   std::cout << "scene geometry smoke passed\n";

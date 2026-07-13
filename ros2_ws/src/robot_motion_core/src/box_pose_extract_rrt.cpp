@@ -16,6 +16,7 @@ struct TreeNode
 {
   BoxPoseExtractState state;
   size_t parent = 0;
+  double cumulative_joint_motion = 0.0;
 };
 
 BoxPoseExtractState interpolate(
@@ -282,21 +283,23 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   std::uniform_real_distribution<double> retreat_sample(0.0, config_.max_retreat);
   std::uniform_real_distribution<double> lift_sample(0.0, config_.max_lift);
   std::uniform_real_distribution<double> pitch_sample(0.0, config_.max_pitch);
-  std::vector<TreeNode> nodes{{start, 0}};
+  std::vector<TreeNode> nodes{{start, 0, 0.0}};
   const BoxPoseExtractState goal = nominalGoal();
 
-  const auto direct_evaluation = evaluator(start, goal);
-  ++result.edge_evaluations;
-  const bool direct_goal_reached = direct_evaluation.goal_evaluated ?
-    direct_evaluation.goal_reached : goalReached(goal);
-  if (direct_evaluation.valid &&
-      std::isfinite(direct_evaluation.joint_motion) &&
-      direct_goal_reached) {
-    BoxPoseExtractPath direct_path;
-    direct_path.states = {start, goal};
-    direct_path.joint_motion = direct_evaluation.joint_motion;
-    direct_path.edge_evaluations = 1;
-    append_unique_path(&result.paths, std::move(direct_path), config_.max_solution_count);
+  if (!config_.endpoint_only_edges) {
+    const auto direct_evaluation = evaluator(start, goal);
+    ++result.edge_evaluations;
+    const bool direct_goal_reached = direct_evaluation.goal_evaluated ?
+      direct_evaluation.goal_reached : goalReached(goal);
+    if (direct_evaluation.valid &&
+        std::isfinite(direct_evaluation.joint_motion) &&
+        direct_goal_reached) {
+      BoxPoseExtractPath direct_path;
+      direct_path.states = {start, goal};
+      direct_path.joint_motion = direct_evaluation.joint_motion;
+      direct_path.edge_evaluations = 1;
+      append_unique_path(&result.paths, std::move(direct_path), config_.max_solution_count);
+    }
   }
 
   for (size_t iteration = 1; iteration <= config_.max_iterations; ++iteration) {
@@ -337,11 +340,15 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       continue;
     }
 
-    nodes.push_back({next, nearest_index});
+    nodes.push_back({
+      next,
+      nearest_index,
+      nodes[nearest_index].cumulative_joint_motion + evaluation.joint_motion});
     size_t next_index = nodes.size() - 1;
     const bool next_goal_reached = evaluation.goal_evaluated ?
       evaluation.goal_reached : goalReached(next);
     if (!next_goal_reached) {
+      if (config_.endpoint_only_edges) continue;
       const size_t interval = std::max<size_t>(1, config_.goal_connection_interval);
       if (iteration % interval != 0 || !monotonic_transition(next, goal, config_)) {
         continue;
@@ -354,16 +361,18 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
           !connected_goal_reached) {
         continue;
       }
-      nodes.push_back({goal, next_index});
+      nodes.push_back({
+        goal,
+        next_index,
+        nodes[next_index].cumulative_joint_motion + goal_evaluation.joint_motion});
       next_index = nodes.size() - 1;
     }
 
     BoxPoseExtractPath raw_path;
     raw_path.states = reconstruct_path(nodes, next_index);
     raw_path.iterations = iteration;
-    bool raw_path_valid = false;
-    raw_path.joint_motion = path_cost(
-      raw_path.states, evaluator, &result.edge_evaluations, &raw_path_valid);
+    const bool raw_path_valid = true;
+    raw_path.joint_motion = nodes[next_index].cumulative_joint_motion;
     raw_path.edge_evaluations = result.edge_evaluations;
     if (raw_path_valid && config_.preserve_unshortcutted_paths) {
       append_unique_path(&result.paths, raw_path, config_.max_solution_count);
@@ -371,7 +380,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
 
     BoxPoseExtractPath path = std::move(raw_path);
 
-    for (size_t attempt = 0; attempt < config_.shortcut_attempts && path.states.size() > 2; ++attempt) {
+    const size_t shortcut_attempts = config_.endpoint_only_edges ? 0 : config_.shortcut_attempts;
+    for (size_t attempt = 0; attempt < shortcut_attempts && path.states.size() > 2; ++attempt) {
       std::uniform_int_distribution<size_t> index_sample(0, path.states.size() - 1);
       size_t first = index_sample(generator);
       size_t last = index_sample(generator);

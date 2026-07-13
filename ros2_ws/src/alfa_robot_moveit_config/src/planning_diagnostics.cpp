@@ -85,6 +85,12 @@ std::string direct_pipeline_failure_diagnostic(
     out << label << "_bounds=" << (bounds.empty() ? "ok" : bounds);
     const std::string collision = scene_collision_reason(scene, state, group);
     out << "," << label << "_collision=" << (collision.empty() ? "clear" : collision);
+    const std::string full_collision = scene_collision_reason(scene, state, nullptr);
+    out << "," << label << "_full_collision="
+        << (full_collision.empty() ? "clear" : full_collision);
+    std::vector<const moveit::core::AttachedBody*> attached_bodies;
+    state.getAttachedBodies(attached_bodies);
+    out << "," << label << "_attached=" << attached_bodies.size();
     return out.str();
   };
 

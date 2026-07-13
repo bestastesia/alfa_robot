@@ -53,7 +53,7 @@ REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 
 
 def wall_stamp() -> str:

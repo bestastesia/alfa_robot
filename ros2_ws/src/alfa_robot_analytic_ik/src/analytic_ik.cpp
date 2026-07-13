@@ -75,7 +75,7 @@ double solutionSeedDistance(
 {
   double sum = 0.0;
   for (size_t i = 0; i < solution.size(); ++i) {
-    const double delta = shortestAngularDistance(solution[i], seed[i]);
+    const double delta = solution[i] - seed[i];
     sum += delta * delta;
   }
   return std::sqrt(sum);
@@ -103,7 +103,8 @@ struct OrientationBranch
 std::optional<OrientationBranch> orientationBranchForQ1(
   const Eigen::Matrix3d& target_rotation,
   double q1,
-  double cos_sign)
+  double cos_sign,
+  double q6_seed)
 {
   const Eigen::Matrix3d basis = rotZ(q1) * rotX(-kPi / 2.0);
   const Eigen::Matrix3d local = basis.transpose() * target_rotation;
@@ -114,7 +115,17 @@ std::optional<OrientationBranch> orientationBranchForQ1(
   }
   const double c5 = std::cos(q5);
   if (std::abs(c5) < 1e-8) {
-    return std::nullopt;
+    OrientationBranch branch;
+    branch.q5 = s5 >= 0.0 ? kPi / 2.0 : -kPi / 2.0;
+    branch.q6 = normalizeAngle(q6_seed);
+    if (s5 >= 0.0) {
+      const double coupled_angle = std::atan2(local(0, 0), -local(0, 1));
+      branch.a = normalizeAngle(coupled_angle + branch.q6);
+    } else {
+      const double coupled_angle = std::atan2(local(0, 0), local(0, 1));
+      branch.a = normalizeAngle(coupled_angle - branch.q6);
+    }
+    return branch;
   }
 
   OrientationBranch branch;
@@ -165,91 +176,28 @@ Eigen::Vector3d joint4TargetPosition(
          joint4ToToolOffsetInJoint4Frame(side, branch.q5, branch.q6);
 }
 
-std::optional<double> q1ConstraintValue(
+std::vector<double> solveQ1ClosedForm(
   ArmSide side,
-  const Eigen::Isometry3d& target,
-  double q1,
-  double cos_sign)
+  const Eigen::Isometry3d& target)
 {
-  const auto branch = orientationBranchForQ1(target.linear(), q1, cos_sign);
-  if (!branch) {
-    return std::nullopt;
-  }
-  const Eigen::Vector3d joint4 = joint4TargetPosition(side, target, q1, *branch);
-  const Eigen::Vector3d local = rotZ(-q1) * joint4;
-  return local.y() - sideSign(side) * kParallelPlaneOffsetYAbs;
-}
-
-std::vector<double> findQ1Roots(
-  ArmSide side,
-  const Eigen::Isometry3d& target,
-  double cos_sign,
-  size_t root_samples)
-{
-  const size_t samples = std::max<size_t>(32, root_samples);
-  const double lower = -kJoint1Limit;
-  const double upper = kJoint1Limit;
-  const double step = (upper - lower) / static_cast<double>(samples);
   std::vector<double> roots;
-  std::vector<std::optional<double>> values(samples + 1);
-
-  for (size_t i = 0; i <= samples; ++i) {
-    const double q1 = lower + step * static_cast<double>(i);
-    values[i] = q1ConstraintValue(side, target, q1, cos_sign);
-    if (values[i] && std::abs(*values[i]) < 1e-7) {
-      roots.push_back(q1);
-    }
+  const Eigen::Vector3d& position = target.translation();
+  const Eigen::Vector3d tool_normal = target.linear().col(2);
+  const double tool_reach = kJoint6X + kTool0Z;
+  const double coefficient_sin = -position.x() + tool_reach * tool_normal.x();
+  const double coefficient_cos = position.y() - tool_reach * tool_normal.y();
+  const double constraint =
+    sideSign(side) * (kParallelPlaneOffsetYAbs + kJoint5ZAbs);
+  const double radius = std::hypot(coefficient_sin, coefficient_cos);
+  if (radius < 1e-12 || std::abs(constraint) > radius + 1e-10) {
+    return roots;
   }
 
-  for (size_t i = 0; i < samples; ++i) {
-    if (!values[i] || !values[i + 1]) {
-      continue;
-    }
-    double left = lower + step * static_cast<double>(i);
-    double right = lower + step * static_cast<double>(i + 1);
-    double f_left = *values[i];
-    double f_right = *values[i + 1];
-    if (f_left * f_right > 0.0) {
-      continue;
-    }
-    for (size_t iteration = 0; iteration < 60; ++iteration) {
-      const double mid = 0.5 * (left + right);
-      const auto f_mid_opt = q1ConstraintValue(side, target, mid, cos_sign);
-      if (!f_mid_opt) {
-        break;
-      }
-      const double f_mid = *f_mid_opt;
-      if (std::abs(f_mid) < 1e-10) {
-        left = right = mid;
-        break;
-      }
-      if (f_left * f_mid <= 0.0) {
-        right = mid;
-        f_right = f_mid;
-      } else {
-        left = mid;
-        f_left = f_mid;
-      }
-    }
-    roots.push_back(0.5 * (left + right));
-    (void)f_right;
-  }
-
-  double best_abs = std::numeric_limits<double>::infinity();
-  double best_q1 = 0.0;
-  for (size_t i = 0; i <= samples; ++i) {
-    if (!values[i]) {
-      continue;
-    }
-    const double abs_value = std::abs(*values[i]);
-    if (abs_value < best_abs) {
-      best_abs = abs_value;
-      best_q1 = lower + step * static_cast<double>(i);
-    }
-  }
-  if (best_abs < 1e-5) {
-    roots.push_back(best_q1);
-  }
+  const double ratio = std::clamp(constraint / radius, -1.0, 1.0);
+  const double phase = std::atan2(coefficient_cos, coefficient_sin);
+  const double principal = std::asin(ratio);
+  roots.push_back(normalizeAngle(principal - phase));
+  roots.push_back(normalizeAngle(kPi - principal - phase));
 
   std::sort(roots.begin(), roots.end());
   roots.erase(
@@ -388,12 +336,12 @@ std::vector<ArmAnalyticIkSolution> ThreeParallelArmAnalyticIk::solveInArmBase(
   const ArmAnalyticIkRequest& request) const
 {
   std::vector<ArmAnalyticIkSolution> solutions;
-  const size_t root_samples = std::max<size_t>(32, request.root_samples);
+  const auto q1_roots = solveQ1ClosedForm(request.side, request.target_in_arm_base);
 
   for (double cos_sign : {1.0, -1.0}) {
-    const auto roots = findQ1Roots(request.side, request.target_in_arm_base, cos_sign, root_samples);
-    for (double q1 : roots) {
-      const auto branch = orientationBranchForQ1(request.target_in_arm_base.linear(), q1, cos_sign);
+    for (double q1 : q1_roots) {
+      const auto branch = orientationBranchForQ1(
+        request.target_in_arm_base.linear(), q1, cos_sign, request.seed[5]);
       if (!branch) {
         continue;
       }

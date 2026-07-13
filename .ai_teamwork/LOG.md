@@ -1370,3 +1370,39 @@
 - 改了哪里：`box_pose_rrt_extract_planner.cpp`、`dual_arm_planner_node.cpp`、抽离序列脚本、场景几何与 IK 候选诊断；基线说明见 `docs/运控/抽离策略实验/2026-07-12_RRT扩树碰撞口径基线.md`。
 - 验证结果：`robot_motion_core` 2/2、`robot_motion_scene_service` 2/2、`alfa_robot_moveit_config` 16/16 测试通过。
 - 留给下个 AI：下一实验方向应解除侧吸 `retreat`/`pitch` 单调和 `lift=0` 限制，目标改为箱体脱离区域，不再强制 90 度终态。
+
+## 2026-07-13 运控 / Codex / 顶吸严格脱离与真实负重规划修复
+- 做了什么：修复顶吸抽离成功口径，附着箱统一按末端真实旋转后的世界 AABB 判断；原箱位统一使用 world 坐标，消除重复减去 `world_to_base_z=0.202094m`；最终脱离余量统一为 3cm；删除顶吸负重阶段原地保持假成功，改为真实 `shortcut + 局部 RRT` 规划到负重位。
+- 改了哪里：`alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`；新增验收工具 `alfa_robot_moveit_config/scripts/verify_extract_sequence_snapshot.py` 并纳入安装；场景几何旋转 AABB 测试补在 `robot_motion_scene_service/test/test_scene_geometry.cpp`。
+- 验证结果：四包构建通过，30 项测试零失败；新 13 组运行中 6 个成功样本全部通过“真实箱体 X-Z 投影完全脱离 + 非零负重轨迹”自动验证；旧基线准确检出 7 个顶吸假成功。最终 Rerun：`data/ik_benchmark/free_space_front_rrt/strict_detach_loaded_full_13_selected.rrd`。
+- 留给下个 AI：严格口径后 13 组成功率为 6/13；混合吸附任务主要失败在抽离，部分顶吸任务失败在解析 IK 与 MoveIt FK 校验，不要为了恢复旧成功率放松脱离验收或恢复原地负重假成功。
+
+## 2026-07-13 运控 / Codex / 抽离相邻帧十度硬约束
+- 做了什么：将抽离 RRT 每条边的连续性定义为“左右任一机械臂单关节真实指令差不得超过 10°”；超过时该边在扩树阶段直接拒绝。评分仍保留原六关节 L2 运动量，硬门槛单独计算，且不对有限位关节做 ±π 环绕短路，避免 360° 假连续。
+- 改了哪里：`extract_planning_pipeline` 增加单关节最大差检查；`dual_arm_planner` 与 launch 默认 `extract_max_joint_delta=10°`；`pose_math` 增加向量最大绝对差函数和回归测试。
+- 验证结果：定向构建和测试通过；十三组复跑 12/13 成功，所有成功任务相邻帧最大关节变化均不超过 10°，全局最大约 9.973°。L6/R13 失败在抽离阶段，64 个候选均无合法双臂 rollout，主因仍是左臂自碰撞/附着箱碰撞，另有少量 18.4° 的右臂边被新门槛拒绝。Rerun：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_absolute_selected.rrd`；结果目录：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_absolute/sequence_20260713_194221/`。
+- 留给下个 AI：若要恢复 L6/R13，不应放宽 10°门槛；优先增加 RRT 中间节点/缩短单边步幅，或让解析 IK 分支选择显式延续上一状态。
+
+## 2026-07-13 运控 / Codex / 负重 Shortcut 吸附箱后挡墙硬约束
+- 做了什么：修复负重阶段 `shortcut + 局部 RRT` 对吸附箱后挡墙约束不完整的问题；后挡墙继续作为 MoveIt 场景障碍，同时增加吸附箱旋转世界 AABB 与 `_rear_guard` 的逐状态硬约束，任何相交轨迹点都不得被选为成功方案。其他保守 AABB 规则仍保持可选，避免扩大历史误判。
+- 改了哪里：`robot_motion_scene_service/motion_core/scene_geometry` 新增后挡墙专用检查；`dual_arm_planner_node` 的完整场景状态检查无条件调用；`verify_extract_sequence_snapshot.py` 增加成功快照逐帧后挡墙验收；场景几何单测覆盖相交、分离和非后挡墙忽略。
+- 验证结果：两包构建通过，30 项测试零失败。旧基线准确检出 5 组穿墙成功（L11/R18、L16/R13、L16/R23、L21/R18、L21/R23）；新 13 组复跑保留 7 组合法成功，成功负重轨迹共 200 帧，后挡墙相交 0。Rerun：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_rear_guard_hard_selected.rrd`；结果目录：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_rear_guard_hard/sequence_20260713_201011/`。
+- 留给下个 AI：成功率从旧基线 12/13 降到 7/13 是剔除错误穿墙成功后的真实结果，不应通过关闭后挡墙硬约束恢复；后续应优化负重目标姿态或局部 RRT 搜索，而不是放松碰撞口径。
+
+## 2026-07-13 运控 / Codex / 后挡墙局部修补与顶吸上抬中间态
+- 做了什么：修正上一轮“后挡墙硬约束后直接失败”的处理方式；`shortcut` 失败后继续进入局部修补链路，同时把 `_rear_guard` 从整高墙改为只覆盖当前箱洞高度，避免顶吸箱体抬升后仍被整高后墙永久封死；顶吸负重规划在后挡墙碰撞时先尝试上抬中间态，再进入原有 `shortcut + 局部 RRT`。
+- 改了哪里：`robot_motion_scene_service/motion_core/scene_geometry` 的 rear guard 高度与箱墙开洞高度统一；`loaded_pose_planning` 增加顶吸后挡墙上抬中间态；`extract_monitor_transition_planning` 增加自研局部 joint-space RRT 兜底，但当前主要成功来自上抬中间态而非该兜底。
+- 验证结果：两包定向构建通过，`robot_motion_scene_service` 2/2 与 `alfa_robot_moveit_config` 16/16 测试通过。完整 13 组按 `loaded_candidate_limit=3` 复跑为 12/13 成功，12 个成功快照全部通过后挡墙验收。Rerun：`data/ik_benchmark/rear_guard_top_lift_all13_limit3.rrd`；结果目录：`data/ik_benchmark/rear_guard_top_lift_all13_limit3/sequence_20260713_225159/`。
+- 留给下个 AI：唯一失败仍是 L6/R13，失败在抽离阶段 `box_pose_rrt_left_no_reachable_path`，不是负重后挡墙问题。L16/R23 和 L21/R18 虽恢复成功，但负重阶段仍很慢，分别约 18.9s 和 55.6s；后续应优化顶吸上抬后到负重位的中间姿态/目标姿态，而不是再放宽后挡墙碰撞。
+
+## 2026-07-13 运控 / Codex / 整面后挡墙与 PP 轴约束修正
+- 做了什么：按新评审意见把 `_rear_guard` 从“当前抓取箱洞后方”改成“整面箱墙后方”，x 固定在箱体后侧，y 覆盖集装箱内宽，z 覆盖完整 5 排箱堆高度；负重阶段顶吸后挡墙修补不再搜索 `updown`，改为确定性 PP 分段：`updown` 单调上抬、左右臂分别过渡、`updown` 单调回目标高度。
+- 改了哪里：`robot_motion_scene_service/src/motion_core/scene_geometry.cpp` 与单测更新整面后挡墙几何；`loaded_pose_planning.cpp` 改顶吸后挡墙修补流程；`extract_monitor_transition_planning.cpp` 的自研局部 RRT 只允许单臂 6 轴进入采样，拒绝 `updown/pitch/turn` 和双臂 13 轴混合搜索，并在找到路径后用合法 shortcut 压缩平滑。
+- 验证结果：两包构建通过，`robot_motion_scene_service` 与 `alfa_robot_moveit_config` 共 30 项测试零失败。13 组按 `--loaded-planning-mode shortcut --loaded-candidate-limit 3 --ik-full-h-range-scan` 复跑：8/13 成功，所有成功快照通过后验验证；Rerun：`data/ik_benchmark/fix_rearwall_pp_rrt_all13_rerun/full_sequence.rrd`；结果目录：`data/ik_benchmark/fix_rearwall_pp_rrt_all13_rerun/sequence_20260713_233042/`。
+- 留给下个 AI：成功率低于上一版 12/13 是因为后挡墙按整面箱墙恢复后，混合/底部任务主要在抽离阶段无合法路径；当前失败为 L6/R13、L11/R8、L16/R23、L21/R18、L21/R23，主因是对应单臂 `box_pose_rrt_*_no_reachable_path`，不是负重后墙穿透。负重阶段慢任务仍集中在顶吸后 PP 上抬后的单臂过渡，需要继续优化中间姿态或目标负重姿态。
+
+## 2026-07-14 运控 / Codex / PP 轴分段与双臂并行负重规划
+- 做了什么：按 PP 运动约束重新定义负重阶段执行顺序：从初始/负重到 IK 仍允许 12 轴与 `updown` 同步；抽离阶段 `updown` 固定；抽离完成后先固定 `updown`，左右臂分别独立规划到负重姿态并合成为同一条并行轨迹执行，最后才单独移动 `updown` 到目标高度。默认负重姿态改为双臂 `[0,-45,120,-75,0,0]`。
+- 改了哪里：`loaded_pose_planning.cpp` 新增单臂计划按时间合并函数和固定 h 的并行负重规划主路径；`extract_monitor_transition_planning.cpp` 保持局部 RRT 只处理单臂 6 轴；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`、`execute_l6_r8_mock_live.py` 同步新默认负重姿态。
+- 验证结果：两包构建通过，30 项测试零失败。13 组按 `--loaded-planning-mode shortcut --loaded-candidate-limit 3 --ik-full-h-range-scan` 复跑：8/13 成功，成功快照全部通过；Rerun：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/full_sequence.rrd`；统计目录：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/sequence_20260713_235719/`。
+- 留给下个 AI：失败任务为 L6/R13、L11/R8、L16/R23、L21/R18、L21/R23，均失败在抽离阶段 `box_pose_rrt_*_no_reachable_path`，负重阶段没有新增失败。慢任务主要是 L11/R13、L16/R18 的负重局部修补仍在秒级，需要优化单臂局部 RRT 或负重姿态族。

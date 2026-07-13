@@ -26,7 +26,7 @@ import numpy as np
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
 DEFAULT_SEQUENCE = "1,3;1,8;6,3;6,8;6,13;11,8;11,13;11,18;16,13;16,18;16,23;21,18;21,23"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
 
 

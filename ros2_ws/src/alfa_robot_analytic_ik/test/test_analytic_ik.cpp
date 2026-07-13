@@ -31,11 +31,25 @@ bool contains_close_solution(
   return false;
 }
 
+void assert_solutions_reach_target(
+  const alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk& solver,
+  alfa_robot::analytic_ik::ArmSide side,
+  const Eigen::Isometry3d& target,
+  const std::vector<alfa_robot::analytic_ik::ArmAnalyticIkSolution>& solutions)
+{
+  assert(!solutions.empty());
+  for (const auto& solution : solutions) {
+    const auto actual = solver.forwardInArmBase(side, solution.joints);
+    assert((actual.translation() - target.translation()).norm() < 1e-5);
+    assert(Eigen::AngleAxisd(target.linear().transpose() * actual.linear()).angle() < 1e-5);
+  }
+}
+
 void check_side(alfa_robot::analytic_ik::ArmSide side)
 {
   alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk solver;
   std::mt19937 rng(side == alfa_robot::analytic_ik::ArmSide::Left ? 42 : 84);
-  for (size_t i = 0; i < 100; ++i) {
+  for (size_t i = 0; i < 5000; ++i) {
     std::array<double, 6> joints = {
       random_between(rng, -1.8, 1.8),
       random_between(rng, -2.4, 2.4),
@@ -54,6 +68,28 @@ void check_side(alfa_robot::analytic_ik::ArmSide side)
     const auto solutions = solver.solveInArmBase(request);
     assert(!solutions.empty());
     assert(contains_close_solution(solutions, joints));
+    assert_solutions_reach_target(solver, side, target, solutions);
+    for (const auto& solution : solutions) {
+      double raw_seed_distance_squared = 0.0;
+      for (size_t joint_index = 0; joint_index < joints.size(); ++joint_index) {
+        const double delta = solution.joints[joint_index] - request.seed[joint_index];
+        raw_seed_distance_squared += delta * delta;
+      }
+      assert(std::abs(solution.seed_distance - std::sqrt(raw_seed_distance_squared)) < 1e-12);
+    }
+  }
+
+
+  for (double q5 : {-M_PI / 2.0, M_PI / 2.0}) {
+    const std::array<double, 6> singular_joints = {0.4, -0.7, 1.1, -0.5, q5, 0.3};
+    const auto target = solver.forwardInArmBase(side, singular_joints);
+    alfa_robot::analytic_ik::ArmAnalyticIkRequest request;
+    request.side = side;
+    request.target_in_arm_base = target;
+    request.seed = singular_joints;
+    request.position_tolerance = 1e-5;
+    request.orientation_tolerance = 1e-5;
+    assert_solutions_reach_target(solver, side, target, solver.solveInArmBase(request));
   }
 }
 

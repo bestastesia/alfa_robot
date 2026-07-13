@@ -86,6 +86,12 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   const double inner_y_max = config.container_center_y + config.container_width * 0.5;
   const double z_min = std::min(first.z, second.z) - half_height;
   const double z_max = std::max(first.z, second.z) + half_height;
+  double stack_z_min = std::numeric_limits<double>::infinity();
+  double stack_z_max = -std::numeric_limits<double>::infinity();
+  for (const auto& [_, box] : boxes) {
+    stack_z_min = std::min(stack_z_min, box.z - half_height);
+    stack_z_max = std::max(stack_z_max, box.z + half_height);
+  }
 
   const double positive_hole_y_min = positive_y_box.y - half_width;
   const double positive_hole_y_max = positive_y_box.y + half_width;
@@ -116,12 +122,12 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   if (config.rear_guard_enabled) {
     const double thickness = std::max(1e-4, config.rear_guard_thickness);
     const double clearance = std::max(0.0, config.rear_guard_clearance);
-    const double guard_x_min = x_max + clearance;
+    const double guard_x_min = config.box_front_x + config.carried_box_depth + clearance;
     add_static_wall_piece(
       obstacles, prefix + "_rear_guard",
       guard_x_min, guard_x_min + thickness,
       inner_y_min, inner_y_max,
-      config.container_floor_z, config.container_floor_z + config.container_height);
+      stack_z_min, stack_z_max);
   }
 
   return obstacles;
@@ -320,6 +326,28 @@ bool carried_box_clear_obstacles(
     }
   }
 
+  return true;
+}
+
+bool carried_box_clear_rear_guards(
+  const AxisAlignedBox& carried_box,
+  const std::string& carried_box_id,
+  const std::vector<StaticBoxObstacle>& static_obstacles,
+  std::string* reason)
+{
+  constexpr const char* suffix = "_rear_guard";
+  constexpr size_t suffix_size = 11;
+  for (const auto& obstacle : static_obstacles) {
+    if (obstacle.id.size() < suffix_size ||
+        obstacle.id.compare(obstacle.id.size() - suffix_size, suffix_size, suffix) != 0) {
+      continue;
+    }
+    const AxisAlignedBox obstacle_aabb{obstacle.center, obstacle.size};
+    if (aabb_overlaps(carried_box, obstacle_aabb)) {
+      if (reason) *reason = carried_box_id + " overlaps " + obstacle.id;
+      return false;
+    }
+  }
   return true;
 }
 
