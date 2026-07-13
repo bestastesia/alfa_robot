@@ -128,7 +128,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_benchmark_dual_arm", default_value="false"),
         DeclareLaunchArgument("extract_benchmark_dual_async", default_value="false"),
         DeclareLaunchArgument("extract_benchmark_record_rollouts", default_value="false"),
-        DeclareLaunchArgument("extract_benchmark_candidate_limit", default_value="32"),
+        DeclareLaunchArgument("extract_benchmark_candidate_limit", default_value="25"),
         DeclareLaunchArgument("extract_benchmark_extract_workers", default_value="1"),
         DeclareLaunchArgument("extract_ik_dedup_enabled", default_value="true"),
         DeclareLaunchArgument("extract_ik_dedup_joint_threshold_deg", default_value="1.0"),

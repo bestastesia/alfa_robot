@@ -781,7 +781,7 @@ def main() -> int:
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--candidate-limit", type=int, default=32)
+    parser.add_argument("--candidate-limit", type=int, default=25)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
