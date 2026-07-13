@@ -53,6 +53,9 @@ struct BoxPoseExtractRrtConfig
   size_t max_solution_count = 16;
   size_t shortcut_attempts = 80;
   bool preserve_unshortcutted_paths = true;
+  size_t parent_candidate_count = 1;
+  double parent_path_cost_weight = 0.05;
+  double parent_sample_distance_weight = 0.1;
   uint32_t random_seed = 7;
 };
 

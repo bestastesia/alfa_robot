@@ -304,6 +304,12 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     }
   }
 
+  struct ParentCandidate
+  {
+    size_t index = 0;
+    double distance = std::numeric_limits<double>::infinity();
+  };
+
   for (size_t iteration = 1; iteration <= config_.max_iterations; ++iteration) {
     result.iterations = iteration;
     BoxPoseExtractState sample = goal;
@@ -318,49 +324,78 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       }
     }
 
-    size_t nearest_index = 0;
-    double nearest_distance = std::numeric_limits<double>::infinity();
+    std::vector<ParentCandidate> parent_candidates;
+    parent_candidates.reserve(nodes.size());
     for (size_t index = 0; index < nodes.size(); ++index) {
       if (!monotonic_transition(nodes[index].state, sample, config_)) continue;
       const double distance = stateDistance(nodes[index].state, sample);
-      if (distance < nearest_distance) {
-        nearest_distance = distance;
-        nearest_index = index;
+      parent_candidates.push_back({index, distance});
+    }
+    if (parent_candidates.empty()) continue;
+    std::sort(parent_candidates.begin(), parent_candidates.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs.distance < rhs.distance;
+    });
+    const size_t parent_limit = std::max<size_t>(1, config_.parent_candidate_count);
+    if (parent_candidates.size() > parent_limit) {
+      parent_candidates.resize(parent_limit);
+    }
+
+    struct ExtensionCandidate
+    {
+      size_t parent_index = 0;
+      BoxPoseExtractState next;
+      BoxPoseExtractEdgeEvaluation evaluation;
+      double score = std::numeric_limits<double>::infinity();
+    };
+    ExtensionCandidate selected_extension;
+    bool selected = false;
+    for (const auto& parent : parent_candidates) {
+      const BoxPoseExtractState next = steer(nodes[parent.index].state, sample, config_);
+      if (!stateWithinBounds(next) ||
+          !monotonic_transition(nodes[parent.index].state, next, config_) ||
+          stateDistance(nodes[parent.index].state, next) < 1e-9) {
+        continue;
+      }
+      const auto evaluation = evaluator(nodes[parent.index].state, next);
+      ++result.edge_evaluations;
+      if (!evaluation.valid || !std::isfinite(evaluation.joint_motion)) {
+        continue;
+      }
+      const double next_goal_distance = stateDistance(next, goal);
+      const double sample_distance = stateDistance(next, sample);
+      const double cumulative_cost = nodes[parent.index].cumulative_joint_motion + evaluation.joint_motion;
+      const double score =
+        next_goal_distance +
+        config_.parent_path_cost_weight * cumulative_cost +
+        config_.parent_sample_distance_weight * sample_distance;
+      if (!selected || score < selected_extension.score) {
+        selected = true;
+        selected_extension = {parent.index, next, evaluation, score};
       }
     }
-    if (!std::isfinite(nearest_distance)) continue;
-
-    const BoxPoseExtractState next = steer(nodes[nearest_index].state, sample, config_);
-    if (!stateWithinBounds(next) ||
-        !monotonic_transition(nodes[nearest_index].state, next, config_) ||
-        stateDistance(nodes[nearest_index].state, next) < 1e-9) {
-      continue;
-    }
-    const auto evaluation = evaluator(nodes[nearest_index].state, next);
-    ++result.edge_evaluations;
-    if (!evaluation.valid || !std::isfinite(evaluation.joint_motion)) {
+    if (!selected) {
       continue;
     }
 
     nodes.push_back({
-      next,
-      nearest_index,
-      nodes[nearest_index].cumulative_joint_motion + evaluation.joint_motion});
+      selected_extension.next,
+      selected_extension.parent_index,
+      nodes[selected_extension.parent_index].cumulative_joint_motion + selected_extension.evaluation.joint_motion});
     size_t next_index = nodes.size() - 1;
-    const double next_goal_distance = stateDistance(next, goal);
+    const double next_goal_distance = stateDistance(selected_extension.next, goal);
     if (next_goal_distance < best_effort_distance) {
       best_effort_distance = next_goal_distance;
       best_effort_index = next_index;
     }
-    const bool next_goal_reached = evaluation.goal_evaluated ?
-      evaluation.goal_reached : goalReached(next);
+    const bool next_goal_reached = selected_extension.evaluation.goal_evaluated ?
+      selected_extension.evaluation.goal_reached : goalReached(selected_extension.next);
     if (!next_goal_reached) {
       if (config_.endpoint_only_edges) continue;
       const size_t interval = std::max<size_t>(1, config_.goal_connection_interval);
-      if (iteration % interval != 0 || !monotonic_transition(next, goal, config_)) {
+      if (iteration % interval != 0 || !monotonic_transition(selected_extension.next, goal, config_)) {
         continue;
       }
-      const auto goal_evaluation = evaluator(next, goal);
+      const auto goal_evaluation = evaluator(selected_extension.next, goal);
       ++result.edge_evaluations;
       const bool connected_goal_reached = goal_evaluation.goal_evaluated ?
         goal_evaluation.goal_reached : goalReached(goal);

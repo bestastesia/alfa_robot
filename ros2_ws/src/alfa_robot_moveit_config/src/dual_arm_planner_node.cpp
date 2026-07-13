@@ -457,6 +457,8 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_diagnostics", false);
     extract_box_pose_rrt_edge_scene_collision_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_edge_scene_collision", true);
+    extract_box_pose_rrt_parent_candidates_ = static_cast<size_t>(
+      std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_parent_candidates", 8)));
     extract_rrt_planning_group_ = get_or_declare_parameter<std::string>("extract_rrt_planning_group", "dual_arm");
     extract_rrt_planning_time_ = get_or_declare_parameter<double>("extract_rrt_planning_time", 0.35);
     extract_rrt_planning_attempts_ = std::max(1, get_or_declare_parameter<int>("extract_rrt_planning_attempts", 1));
@@ -1035,6 +1037,7 @@ private:
     config.front_rrt.endpoint_only_edges = true;
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
+    config.front_rrt.parent_candidate_count = extract_box_pose_rrt_parent_candidates_;
     config.front_rrt.random_seed = 17;
     config.top_rrt = config.front_rrt;
     config.top_rrt.mode = robot_motion::core::BoxPoseExtractMode::TopTranslate;
@@ -4764,6 +4767,7 @@ private:
   size_t extract_box_pose_rrt_analytic_root_samples_ = 12;
   bool extract_box_pose_rrt_diagnostics_ = false;
   bool extract_box_pose_rrt_edge_scene_collision_ = true;
+  size_t extract_box_pose_rrt_parent_candidates_ = 8;
   std::string extract_rrt_planning_group_ = "dual_arm";
   double extract_rrt_planning_time_ = 0.35;
   int extract_rrt_planning_attempts_ = 1;

@@ -168,7 +168,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
         f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
         f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.99)}",
-        f"ik_h_step:={getattr(args, 'ik_h_step', 0.1)}",
+        f"ik_h_step:={getattr(args, 'ik_h_step', 0.01)}",
         f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
         f"ik_workers:={args.ik_workers}",
