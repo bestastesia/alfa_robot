@@ -185,9 +185,13 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
   const moveit::core::RobotState& start_state,
   const AttachedBoxSpec& carried_box,
   int box_id,
-  bool top_suction) const
+  bool top_suction,
+  ArmPath* diagnostic_path) const
 {
   std::vector<ArmPath> paths;
+  if (diagnostic_path) {
+    *diagnostic_path = ArmPath{};
+  }
   if (!config_.candidate_solver) return paths;
   const auto* arm_group = side == "left" ? config_.left_arm_group : config_.right_arm_group;
   const std::string& tip = side == "left" ? config_.left_tip : config_.right_tip;
@@ -323,6 +327,26 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
         std::chrono::steady_clock::now() - rrt_started).count()),
       std::memory_order_relaxed);
   }
+  const auto make_arm_path = [&](const robot_motion::core::BoxPoseExtractPath& rrt_path) {
+    ArmPath path;
+    path.box_states = rrt_path.states;
+    path.states.push_back(std::make_shared<moveit::core::RobotState>(start_state));
+    path.joint_motion = rrt_path.joint_motion;
+    bool valid = true;
+    for (size_t index = 1; index < rrt_path.states.size(); ++index) {
+      const auto found = state_cache.find(box_state_key(rrt_path.states[index]));
+      if (found == state_cache.end() || !found->second) {
+        valid = false;
+        break;
+      }
+      path.states.push_back(found->second);
+    }
+    if (!valid || path.states.empty()) {
+      path.states.clear();
+    }
+    return path;
+  };
+
   if (!result.success) {
     std::string dominant_reason = result.failure_reason;
     size_t dominant_count = 0;
@@ -337,23 +361,13 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       "%s box-pose RRT failed: mode=%s iterations=%zu edges=%zu dominant=%s count=%zu",
       side.c_str(), top_suction ? "top" : "front", result.iterations,
       result.edge_evaluations, dominant_reason.c_str(), dominant_count);
+    if (diagnostic_path && !result.best_effort_path.states.empty()) {
+      *diagnostic_path = make_arm_path(result.best_effort_path);
+    }
   }
   for (const auto& rrt_path : result.paths) {
-    ArmPath path;
-    path.box_states = rrt_path.states;
-    path.states.push_back(std::make_shared<moveit::core::RobotState>(start_state));
-    double total_motion = rrt_path.joint_motion;
-    bool valid = true;
-    for (size_t index = 1; index < rrt_path.states.size(); ++index) {
-      const auto found = state_cache.find(box_state_key(rrt_path.states[index]));
-      if (found == state_cache.end() || !found->second) {
-        valid = false;
-        break;
-      }
-      path.states.push_back(found->second);
-    }
-    if (valid && !path.states.empty()) {
-      path.joint_motion = total_motion;
+    ArmPath path = make_arm_path(rrt_path);
+    if (!path.states.empty()) {
       paths.push_back(std::move(path));
     }
   }
@@ -389,16 +403,73 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   timing.ik_score = ik_score;
   timing.ik_solve_ms = ik_solve_ms;
 
-  const auto left_paths = planArm("left", start_state, left_box, left_box_id, left_top_suction);
-  const auto right_paths = planArm("right", start_state, right_box, right_box_id, right_top_suction);
+  ArmPath left_diagnostic;
+  ArmPath right_diagnostic;
+  const auto left_paths = planArm(
+    "left", start_state, left_box, left_box_id, left_top_suction, &left_diagnostic);
+  const auto right_paths = planArm(
+    "right", start_state, right_box, right_box_id, right_top_suction, &right_diagnostic);
   RCLCPP_INFO(
     config_.logger,
     "box-pose RRT arm paths: candidate=%zu left=%zu right=%zu modes=(%s,%s)",
     candidate_order, left_paths.size(), right_paths.size(),
     left_top_suction ? "top" : "front", right_top_suction ? "top" : "front");
   if (left_paths.empty() || right_paths.empty()) {
-    timing.failure_reason = left_paths.empty() ?
+    const bool left_failed = left_paths.empty();
+    timing.failure_reason = left_failed ?
       "box_pose_rrt_left_no_reachable_path" : "box_pose_rrt_right_no_reachable_path";
+    const auto& diagnostic = left_failed ? left_diagnostic : right_diagnostic;
+    const std::string failed_side = left_failed ? "left" : "right";
+    if (!diagnostic.states.empty()) {
+      timing.failed_steps = diagnostic.states.size();
+      for (size_t step = 0; step < diagnostic.states.size(); ++step) {
+        auto combined = std::make_shared<moveit::core::RobotState>(start_state);
+        if (left_failed) {
+          copy_arm_state(config_.left_arm_group, *diagnostic.states[step], combined.get());
+        } else {
+          copy_arm_state(config_.right_arm_group, *diagnostic.states[step], combined.get());
+        }
+        combined->enforceBounds(config_.joint_group);
+        combined->update(true);
+        const bool terminal = step + 1 == diagnostic.states.size();
+        if (terminal) {
+          timing.final_state = combined;
+          if (!diagnostic.box_states.empty()) {
+            const auto& final_box_state = diagnostic.box_states.back();
+            if (left_failed) {
+              timing.final_retreat_x = final_box_state.retreat;
+              timing.final_lift_z = final_box_state.lift;
+              timing.final_pitch_deg = final_box_state.pitch * 180.0 / M_PI;
+            } else {
+              timing.right_final_retreat_x = final_box_state.retreat;
+              timing.right_final_lift_z = final_box_state.lift;
+              timing.right_final_pitch_deg = final_box_state.pitch * 180.0 / M_PI;
+            }
+          }
+        }
+        if (record_step) {
+          nlohmann::json extra{
+            {"stage_kind", "box_pose_rrt_no_reachable_best_effort"},
+            {"accepted", false},
+            {"diagnostic", true},
+            {"failed_side", failed_side},
+            {"failure_reason", timing.failure_reason},
+            {"terminal", terminal},
+            {"left_top_suction", left_top_suction},
+            {"right_top_suction", right_top_suction}
+          };
+          if (step < diagnostic.box_states.size()) {
+            const auto& box_state = diagnostic.box_states[step];
+            extra.update({
+              {"retreat_x", box_state.retreat},
+              {"lift_z", box_state.lift},
+              {"pitch_up_deg", box_state.pitch * 180.0 / M_PI}
+            });
+          }
+          record_step(step, *combined, extra);
+        }
+      }
+    }
     timing.rollout_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - started).count();
     return timing;

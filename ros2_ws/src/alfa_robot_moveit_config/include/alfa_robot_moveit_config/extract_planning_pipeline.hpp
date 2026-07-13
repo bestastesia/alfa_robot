@@ -561,7 +561,8 @@ private:
     const moveit::core::RobotState& start_state,
     const AttachedBoxSpec& carried_box,
     int box_id,
-    bool top_suction) const;
+    bool top_suction,
+    ArmPath* diagnostic_path = nullptr) const;
 
   BoxPoseRrtExtractPlannerConfig config_;
 };

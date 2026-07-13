@@ -285,6 +285,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   std::uniform_real_distribution<double> pitch_sample(0.0, config_.max_pitch);
   std::vector<TreeNode> nodes{{start, 0, 0.0}};
   const BoxPoseExtractState goal = nominalGoal();
+  size_t best_effort_index = 0;
+  double best_effort_distance = stateDistance(start, goal);
 
   if (!config_.endpoint_only_edges) {
     const auto direct_evaluation = evaluator(start, goal);
@@ -345,6 +347,11 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       nearest_index,
       nodes[nearest_index].cumulative_joint_motion + evaluation.joint_motion});
     size_t next_index = nodes.size() - 1;
+    const double next_goal_distance = stateDistance(next, goal);
+    if (next_goal_distance < best_effort_distance) {
+      best_effort_distance = next_goal_distance;
+      best_effort_index = next_index;
+    }
     const bool next_goal_reached = evaluation.goal_evaluated ?
       evaluation.goal_reached : goalReached(next);
     if (!next_goal_reached) {
@@ -366,6 +373,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
         next_index,
         nodes[next_index].cumulative_joint_motion + goal_evaluation.joint_motion});
       next_index = nodes.size() - 1;
+      best_effort_distance = 0.0;
+      best_effort_index = next_index;
     }
 
     BoxPoseExtractPath raw_path;
@@ -413,6 +422,11 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   result.success = !result.paths.empty();
   if (!result.success) {
     result.failure_reason = "box_pose_rrt_no_reachable_path";
+    result.best_effort_path.states = reconstruct_path(nodes, best_effort_index);
+    result.best_effort_path.joint_motion = nodes[best_effort_index].cumulative_joint_motion;
+    result.best_effort_path.iterations = result.iterations;
+    result.best_effort_path.edge_evaluations = result.edge_evaluations;
+    result.best_effort_distance = best_effort_distance;
   }
   return result;
 }

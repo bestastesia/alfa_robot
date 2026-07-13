@@ -85,6 +85,8 @@ struct BoxPoseExtractRrtResult
   size_t iterations = 0;
   size_t edge_evaluations = 0;
   std::vector<BoxPoseExtractPath> paths;
+  BoxPoseExtractPath best_effort_path;
+  double best_effort_distance = std::numeric_limits<double>::infinity();
 };
 
 class BoxPoseExtractRrt
