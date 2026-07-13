@@ -260,6 +260,7 @@ def make_pair_args(
         left_box_id=left_id,
         right_box_id=right_id,
         extract_workers=args.extract_workers,
+        extract_success_quorum=args.extract_success_quorum,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
         extract_max_joint_delta=args.extract_max_joint_delta,
@@ -783,6 +784,12 @@ def main() -> int:
     parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=25)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument(
+        "--extract-success-quorum",
+        type=int,
+        default=3,
+        help="抽离阶段达到 N 个成功候选后停止分发后续 IK 候选；0 表示跑完全部候选。",
+    )
     parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(
@@ -1084,9 +1091,12 @@ def main() -> int:
             "ik_ms",
             "extract_ms",
             "loaded_ms",
+            "final_ms",
             "loaded_plan_batch_wall_ms",
+            "loaded_plan_candidate_count",
             "loaded_plan_attempted_count",
             "loaded_plan_success_count",
+            "loaded_parallel_workers",
             "motion_total_joint_rad",
             "motion_total_joint_deg",
             "motion_total_axis_mixed",

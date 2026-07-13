@@ -1406,3 +1406,9 @@
 - 改了哪里：`loaded_pose_planning.cpp` 新增单臂计划按时间合并函数和固定 h 的并行负重规划主路径；`extract_monitor_transition_planning.cpp` 保持局部 RRT 只处理单臂 6 轴；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`、`execute_l6_r8_mock_live.py` 同步新默认负重姿态。
 - 验证结果：两包构建通过，30 项测试零失败。13 组按 `--loaded-planning-mode shortcut --loaded-candidate-limit 3 --ik-full-h-range-scan` 复跑：8/13 成功，成功快照全部通过；Rerun：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/full_sequence.rrd`；统计目录：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/sequence_20260713_235719/`。
 - 留给下个 AI：失败任务为 L6/R13、L11/R8、L16/R23、L21/R18、L21/R23，均失败在抽离阶段 `box_pose_rrt_*_no_reachable_path`，负重阶段没有新增失败。慢任务主要是 L11/R13、L16/R18 的负重局部修补仍在秒级，需要优化单臂局部 RRT 或负重姿态族。
+
+## 2026-07-14 运控 / Codex / MOTION-52 抽离RRT并行稳定与候选早停
+- 做了什么：修复抽离阶段16线程候选并行时共享 PlanningScene/FCL 缓存导致的假失败；新增抽离成功候选 quorum，达到指定成功数后停止分发后续候选。
+- 改了哪里：`dual_arm_planner_node.cpp` 增加每线程 PlanningScene 快照和场景 epoch；`extract_monitor_state.*` 支持 success quorum；`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 和 launch 暴露 `extract_success_quorum` / `extract_benchmark_extract_success_quorum` 参数。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；L6/R13 16线程复现成功，总耗时 2748.3ms；13组全流程成功 13/13，Rerun 为 `data/ik_benchmark/threadlocal_scene_full13_20260714/full13.rrd`。
+- 留给下个 AI：当前 RRT 已有 parent_candidates + best-first fallback；候选不足主要由带箱场景过滤和低位顶吸可达性决定。后续若继续优化，应优先记录每阶段 accepted/filtered 统计到最终 snapshot，并评估 loaded 阶段 2.3s 案例。

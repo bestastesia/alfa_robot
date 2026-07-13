@@ -160,7 +160,8 @@ size_t extract_monitor_worker_count(size_t candidate_count, size_t requested_wor
 size_t run_extract_monitor_candidate_tasks(
   ExtractMonitorState& state,
   size_t requested_worker_count,
-  const ExtractMonitorCandidateTask& task)
+  const ExtractMonitorCandidateTask& task,
+  size_t success_quorum)
 {
   const size_t count = state.legal_candidates.size();
   state.timings.clear();
@@ -168,19 +169,40 @@ size_t run_extract_monitor_candidate_tasks(
   if (count == 0 || !task) {
     return 0;
   }
+  for (size_t index = 0; index < count; ++index) {
+    state.timings[index].candidate_order = index;
+    state.timings[index].h_index = state.legal_candidates[index].h_index;
+    state.timings[index].seed_index = state.legal_candidates[index].seed_index;
+    state.timings[index].h = state.legal_candidates[index].h;
+    state.timings[index].ik_score = state.legal_candidates[index].score;
+    state.timings[index].ik_solve_ms = state.legal_candidates[index].solve_ms;
+    state.timings[index].failure_reason = "extract_skipped_after_success_quorum";
+  }
 
   const size_t worker_count = extract_monitor_worker_count(count, requested_worker_count);
   std::atomic<size_t> next_index{0};
+  std::atomic<size_t> success_count{0};
+  std::atomic<bool> stop_requested{false};
   std::vector<std::thread> workers;
   workers.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {
     workers.emplace_back([&]() {
       while (true) {
+        if (stop_requested.load(std::memory_order_relaxed)) {
+          break;
+        }
         const size_t index = next_index.fetch_add(1);
         if (index >= count) {
           break;
         }
-        state.timings[index] = task(index, state.legal_candidates[index]);
+        auto timing = task(index, state.legal_candidates[index]);
+        if (timing.success && timing.final_state && success_quorum > 0) {
+          const size_t reached = success_count.fetch_add(1, std::memory_order_relaxed) + 1;
+          if (reached >= success_quorum) {
+            stop_requested.store(true, std::memory_order_relaxed);
+          }
+        }
+        state.timings[index] = std::move(timing);
       }
     });
   }

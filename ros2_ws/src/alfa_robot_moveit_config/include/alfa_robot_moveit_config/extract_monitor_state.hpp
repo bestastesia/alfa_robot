@@ -108,7 +108,8 @@ size_t extract_monitor_worker_count(size_t candidate_count, size_t requested_wor
 size_t run_extract_monitor_candidate_tasks(
   ExtractMonitorState& state,
   size_t requested_worker_count,
-  const ExtractMonitorCandidateTask& task);
+  const ExtractMonitorCandidateTask& task,
+  size_t success_quorum = 0);
 
 const robot_motion::core::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
   const ExtractMonitorState& state,

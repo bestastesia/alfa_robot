@@ -432,6 +432,8 @@ public:
       std::max(0, get_or_declare_parameter<int>("extract_benchmark_candidate_limit", 0)));
     extract_benchmark_extract_workers_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_benchmark_extract_workers", 1)));
+    extract_benchmark_extract_success_quorum_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_benchmark_extract_success_quorum", 3)));
     extract_ik_dedup_enabled_ = get_or_declare_parameter<bool>("extract_ik_dedup_enabled", true);
     extract_ik_dedup_joint_threshold_ =
       get_or_declare_parameter<double>("extract_ik_dedup_joint_threshold_deg", 1.0) * M_PI / 180.0;
@@ -863,7 +865,11 @@ private:
     }
     collision_state.update(true);
 
-    planning_scene_monitor::LockedPlanningSceneRO scene(planning_scene_monitor_);
+    auto scene = extract_collision_scene_for_thread();
+    if (!scene) {
+      if (reason) *reason = "extract_collision_scene_unavailable";
+      return false;
+    }
     collision_detection::CollisionRequest request;
     collision_detection::CollisionResult result;
     request.contacts = true;
@@ -888,6 +894,42 @@ private:
       }
     }
     return false;
+  }
+
+  planning_scene::PlanningScenePtr make_extract_collision_scene_snapshot() const
+  {
+    if (!planning_scene_monitor_ || !planning_scene_monitor_->getPlanningScene()) {
+      return nullptr;
+    }
+    planning_scene::PlanningScenePtr scene_snapshot;
+    {
+      planning_scene_monitor::LockedPlanningSceneRO locked_scene(planning_scene_monitor_);
+      if (!locked_scene) return nullptr;
+      scene_snapshot = planning_scene::PlanningScene::clone(
+        static_cast<const planning_scene::PlanningSceneConstPtr&>(locked_scene));
+    }
+    if (scene_adapter_) {
+      scene_adapter_->applyToPlanningSceneSnapshot(*scene_snapshot, {});
+    }
+    return scene_snapshot;
+  }
+
+  planning_scene::PlanningScenePtr extract_collision_scene_for_thread() const
+  {
+    struct ThreadLocalScene
+    {
+      const void* owner = nullptr;
+      uint64_t epoch = 0;
+      planning_scene::PlanningScenePtr scene;
+    };
+    thread_local ThreadLocalScene cache;
+    const uint64_t epoch = extract_collision_scene_epoch_.load(std::memory_order_acquire);
+    if (cache.owner != this || cache.epoch != epoch || !cache.scene) {
+      cache.owner = this;
+      cache.epoch = epoch;
+      cache.scene = make_extract_collision_scene_snapshot();
+    }
+    return cache.scene;
   }
 
   ContainerGeometryConfig container_geometry_config() const
@@ -1571,6 +1613,7 @@ private:
     if (!scene_adapter_) return;
 
     if (scene_adapter_->applyContainerObstacles()) {
+      extract_collision_scene_epoch_.fetch_add(1, std::memory_order_acq_rel);
       RCLCPP_INFO(get_logger(),
                   "Applied container obstacle: frame=%s length=%.2f width=%.2f height=%.2f panels=%zu",
                   container_frame_.c_str(), container_length_, container_width_, container_height_,
@@ -1607,6 +1650,7 @@ private:
     }
 
     const bool applied = scene_adapter_ && scene_adapter_->setStaticBoxWallOpening(left_box_id, right_box_id);
+    extract_collision_scene_epoch_.fetch_add(1, std::memory_order_acq_rel);
     if (!applied || static_box_obstacles().empty()) {
       RCLCPP_WARN(get_logger(), "No dynamic box wall for opening L%d/R%d (%s)",
                   left_box_id, right_box_id, reason.c_str());
@@ -4094,6 +4138,7 @@ private:
     }
 
     const auto stage_start = std::chrono::steady_clock::now();
+    extract_collision_scene_epoch_.fetch_add(1, std::memory_order_acq_rel);
     extract_collision_check_count_.store(0, std::memory_order_relaxed);
     extract_collision_check_total_ns_.store(0, std::memory_order_relaxed);
     extract_collision_check_max_ns_.store(0, std::memory_order_relaxed);
@@ -4157,7 +4202,8 @@ private:
             loaded_pose_selector_->fillTimingDistanceMetrics(timing);
           }
           return timing;
-        });
+        },
+        extract_benchmark_extract_success_quorum_);
     }
 
     const auto summary = summarize_extract_monitor_timings(extract_monitor_state_.timings);
@@ -4772,6 +4818,7 @@ private:
   bool extract_benchmark_record_rollouts_ = false;
   size_t extract_benchmark_candidate_limit_ = 0;
   size_t extract_benchmark_extract_workers_ = 1;
+  size_t extract_benchmark_extract_success_quorum_ = 3;
   bool extract_ik_dedup_enabled_ = true;
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;
@@ -4852,6 +4899,7 @@ private:
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
+  mutable std::atomic<uint64_t> extract_collision_scene_epoch_{1};
   planning_pipeline::PlanningPipelinePtr loaded_planning_pipeline_;
   moveit::core::RobotModelConstPtr robot_model_;
   const moveit::core::JointModelGroup* joint_group_ = nullptr;
