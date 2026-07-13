@@ -1921,6 +1921,27 @@ private:
     return true;
   }
 
+  bool state_clear_for_dual_grasp_start(
+    const moveit::core::RobotState& state,
+    const AttachedBoxSpec& left_box,
+    const AttachedBoxSpec& right_box,
+    std::string* reason) const
+  {
+    if (!is_state_valid_with_attached_boxes(state, {left_box, right_box}, true, reason)) {
+      if (reason && reason->empty()) *reason = "robot/carried box grasp state colliding or out of bounds";
+      return false;
+    }
+
+    for (const auto& box : {left_box, right_box}) {
+      std::string carried_reason;
+      if (!carried_box_clear_scene_obstacles(state, box, &carried_reason)) {
+        if (reason) *reason = carried_reason;
+        return false;
+      }
+    }
+    return true;
+  }
+
   planning_scene::PlanningScenePtr make_full_scene_snapshot(
     const moveit::core::RobotState& start_state,
     const std::vector<AttachedBoxSpec>& attached_boxes) const
@@ -4049,17 +4070,11 @@ private:
       ++scene_filter_input_count;
       auto state = std::make_shared<moveit::core::RobotState>(
         robot_state_from_ik_candidate(*extract_monitor_state_.seed_state, candidate, joint_group_));
-      bool left_detached = false;
-      bool right_detached = false;
       std::string collision_reason;
-      if (!state_clear_for_dual_extract(
+      if (!state_clear_for_dual_grasp_start(
             *state,
             extract_monitor_state_.left_box,
-            extract_monitor_state_.left_box_id,
             extract_monitor_state_.right_box,
-            extract_monitor_state_.right_box_id,
-            &left_detached,
-            &right_detached,
             &collision_reason))
       {
         const std::string rejection_reason = collision_reason.empty() ?
