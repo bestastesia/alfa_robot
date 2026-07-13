@@ -201,6 +201,9 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_box_pose_rrt_step_lateral:={getattr(args, 'extract_box_pose_rrt_step_lateral', 0.02)}",
         f"extract_box_pose_rrt_front_free_motion:={str(getattr(args, 'extract_box_pose_rrt_front_free_motion', True)).lower()}",
         f"extract_box_pose_rrt_front_goal_requires_max_pitch:={str(getattr(args, 'extract_box_pose_rrt_front_goal_requires_max_pitch', False)).lower()}",
+        f"extract_box_pose_rrt_best_first_fallback:={str(getattr(args, 'extract_box_pose_rrt_best_first_fallback', True)).lower()}",
+        f"extract_box_pose_rrt_best_first_max_expansions:={getattr(args, 'extract_box_pose_rrt_best_first_max_expansions', 800)}",
+        f"extract_box_pose_rrt_best_first_heuristic_weight:={getattr(args, 'extract_box_pose_rrt_best_first_heuristic_weight', 1.0)}",
         f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
         f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
         f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
@@ -1042,6 +1045,9 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
+    parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)

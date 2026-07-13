@@ -61,6 +61,9 @@ struct BoxPoseExtractRrtConfig
   size_t parent_candidate_count = 1;
   double parent_path_cost_weight = 0.05;
   double parent_sample_distance_weight = 0.1;
+  bool best_first_fallback = true;
+  size_t best_first_max_expansions = 800;
+  double best_first_heuristic_weight = 1.0;
   uint32_t random_seed = 7;
 };
 

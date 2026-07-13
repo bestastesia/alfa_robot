@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <queue>
 #include <random>
 #include <utility>
 
@@ -194,6 +195,77 @@ void append_unique_path(
     return same_path(kept, path);
   });
   if (!duplicate) paths->push_back(std::move(path));
+}
+
+int quantized_index(double value, double step)
+{
+  return static_cast<int>(std::llround(value / std::max(1e-9, std::abs(step))));
+}
+
+using LatticeKey = std::array<int, 4>;
+
+LatticeKey lattice_key(const BoxPoseExtractState& state, const BoxPoseExtractRrtConfig& config)
+{
+  return {
+    quantized_index(state.retreat, config.step_retreat),
+    quantized_index(state.lift, config.step_lift),
+    quantized_index(state.pitch, config.step_pitch),
+    quantized_index(state.lateral, config.step_lateral),
+  };
+}
+
+std::vector<BoxPoseExtractState> lattice_neighbors(
+  const BoxPoseExtractState& state,
+  const BoxPoseExtractRrtConfig& config)
+{
+  std::vector<int> retreat_steps{0, 1};
+  std::vector<int> lift_steps{0, 1};
+  std::vector<int> pitch_steps{0};
+  std::vector<int> lateral_steps{0};
+
+  if (config.mode == BoxPoseExtractMode::FrontPivot) {
+    if (config.front_free_motion) {
+      lift_steps = {-1, 0, 1};
+      pitch_steps = {-1, 0, 1};
+    } else {
+      lift_steps = {0};
+      pitch_steps = {0, 1};
+    }
+  }
+  if (config.mode == BoxPoseExtractMode::TopTranslate) {
+    pitch_steps = {0};
+  }
+  if (config.max_lateral > 1e-9) {
+    lateral_steps = {-1, 0, 1};
+  }
+
+  std::vector<BoxPoseExtractState> neighbors;
+  for (const int dr : retreat_steps) {
+    for (const int dl : lift_steps) {
+      for (const int dp : pitch_steps) {
+        for (const int dy : lateral_steps) {
+          if (dr == 0 && dl == 0 && dp == 0 && dy == 0) continue;
+          BoxPoseExtractState next{
+            state.retreat + static_cast<double>(dr) * config.step_retreat,
+            state.lift + static_cast<double>(dl) * config.step_lift,
+            state.pitch + static_cast<double>(dp) * config.step_pitch,
+            state.lateral + static_cast<double>(dy) * config.step_lateral,
+          };
+          neighbors.push_back(next);
+        }
+      }
+    }
+  }
+  return neighbors;
+}
+
+std::vector<std::pair<LatticeKey, double>>::iterator find_lattice_cost(
+  std::vector<std::pair<LatticeKey, double>>* costs,
+  const LatticeKey& key)
+{
+  return std::find_if(costs->begin(), costs->end(), [&](const auto& item) {
+    return item.first == key;
+  });
 }
 
 }  // namespace
@@ -464,16 +536,118 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     }
   }
 
+  if (result.paths.empty() && config_.best_first_fallback) {
+    struct QueueEntry
+    {
+      double priority = std::numeric_limits<double>::infinity();
+      size_t node_index = 0;
+    };
+    struct QueueGreater
+    {
+      bool operator()(const QueueEntry& lhs, const QueueEntry& rhs) const
+      {
+        return lhs.priority > rhs.priority;
+      }
+    };
+
+    std::vector<TreeNode> lattice_nodes{{start, 0, 0.0}};
+    std::vector<std::pair<LatticeKey, double>> best_cost;
+    best_cost.push_back({lattice_key(start, config_), 0.0});
+    std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> queue;
+    queue.push({config_.best_first_heuristic_weight * stateDistance(start, goal), 0});
+
+    size_t lattice_best_index = 0;
+    double lattice_best_distance = stateDistance(start, goal);
+    const size_t expansion_limit = std::max<size_t>(1, config_.best_first_max_expansions);
+    for (size_t expansion = 0; expansion < expansion_limit && !queue.empty(); ++expansion) {
+      const QueueEntry entry = queue.top();
+      queue.pop();
+      if (entry.node_index >= lattice_nodes.size()) continue;
+      const TreeNode& parent_node = lattice_nodes[entry.node_index];
+      if (goalReached(parent_node.state) && entry.node_index != 0) {
+        BoxPoseExtractPath path;
+        path.states = reconstruct_path(lattice_nodes, entry.node_index);
+        bool path_valid = false;
+        path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
+        path.edge_evaluations = result.edge_evaluations;
+        path.iterations = result.iterations + expansion;
+        if (path_valid) {
+          append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
+          if (result.paths.size() >= config_.max_solution_count) break;
+        }
+      }
+
+      for (const auto& next : lattice_neighbors(parent_node.state, config_)) {
+        if (!stateWithinBounds(next) ||
+            !monotonic_transition(parent_node.state, next, config_)) {
+          continue;
+        }
+        const auto evaluation = evaluator(parent_node.state, next);
+        ++result.edge_evaluations;
+        if (!evaluation.valid || !std::isfinite(evaluation.joint_motion)) {
+          continue;
+        }
+        const double next_cost = parent_node.cumulative_joint_motion + evaluation.joint_motion;
+        const LatticeKey key = lattice_key(next, config_);
+        const auto previous = find_lattice_cost(&best_cost, key);
+        if (previous != best_cost.end() && previous->second <= next_cost + 1e-9) {
+          continue;
+        }
+        if (previous != best_cost.end()) {
+          previous->second = next_cost;
+        } else {
+          best_cost.push_back({key, next_cost});
+        }
+        lattice_nodes.push_back({next, entry.node_index, next_cost});
+        const size_t next_index = lattice_nodes.size() - 1;
+        const double next_goal_distance = stateDistance(next, goal);
+        if (next_goal_distance < lattice_best_distance) {
+          lattice_best_distance = next_goal_distance;
+          lattice_best_index = next_index;
+        }
+        const bool next_goal_reached = evaluation.goal_evaluated ?
+          evaluation.goal_reached : goalReached(next);
+        if (next_goal_reached) {
+          BoxPoseExtractPath path;
+          path.states = reconstruct_path(lattice_nodes, next_index);
+          bool path_valid = false;
+          path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
+          path.edge_evaluations = result.edge_evaluations;
+          path.iterations = result.iterations + expansion + 1;
+          if (path_valid) {
+            append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
+            if (result.paths.size() >= config_.max_solution_count) break;
+          }
+        }
+        const double priority =
+          next_cost + config_.best_first_heuristic_weight * next_goal_distance;
+        queue.push({priority, next_index});
+      }
+    }
+
+    if (result.paths.empty() && lattice_nodes.size() > 1 &&
+        lattice_best_distance < best_effort_distance) {
+      best_effort_distance = lattice_best_distance;
+      best_effort_index = 0;
+      result.best_effort_path.states = reconstruct_path(lattice_nodes, lattice_best_index);
+      result.best_effort_path.joint_motion = lattice_nodes[lattice_best_index].cumulative_joint_motion;
+      result.best_effort_path.iterations = result.iterations + expansion_limit;
+      result.best_effort_path.edge_evaluations = result.edge_evaluations;
+    }
+  }
+
   std::sort(result.paths.begin(), result.paths.end(), [](const auto& lhs, const auto& rhs) {
     return lhs.joint_motion < rhs.joint_motion;
   });
   result.success = !result.paths.empty();
   if (!result.success) {
     result.failure_reason = "box_pose_rrt_no_reachable_path";
-    result.best_effort_path.states = reconstruct_path(nodes, best_effort_index);
-    result.best_effort_path.joint_motion = nodes[best_effort_index].cumulative_joint_motion;
-    result.best_effort_path.iterations = result.iterations;
-    result.best_effort_path.edge_evaluations = result.edge_evaluations;
+    if (result.best_effort_path.states.empty()) {
+      result.best_effort_path.states = reconstruct_path(nodes, best_effort_index);
+      result.best_effort_path.joint_motion = nodes[best_effort_index].cumulative_joint_motion;
+      result.best_effort_path.iterations = result.iterations;
+      result.best_effort_path.edge_evaluations = result.edge_evaluations;
+    }
     result.best_effort_distance = best_effort_distance;
   }
   return result;

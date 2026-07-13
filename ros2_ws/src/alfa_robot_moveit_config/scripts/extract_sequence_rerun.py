@@ -277,6 +277,9 @@ def make_pair_args(
         extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
         extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
         extract_box_pose_rrt_front_goal_requires_max_pitch=args.extract_box_pose_rrt_front_goal_requires_max_pitch,
+        extract_box_pose_rrt_best_first_fallback=args.extract_box_pose_rrt_best_first_fallback,
+        extract_box_pose_rrt_best_first_max_expansions=args.extract_box_pose_rrt_best_first_max_expansions,
+        extract_box_pose_rrt_best_first_heuristic_weight=args.extract_box_pose_rrt_best_first_heuristic_weight,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
         loaded_candidate_limit=args.loaded_candidate_limit,
@@ -801,6 +804,9 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
+    parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
