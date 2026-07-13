@@ -4140,20 +4140,11 @@ private:
     const auto summary = summarize_extract_monitor_timings(extract_monitor_state_.timings);
     std::vector<size_t> record_indices = summary.success_indices;
     if (record_indices.empty()) {
-      auto diagnostic = std::find_if(
-        extract_monitor_state_.timings.begin(), extract_monitor_state_.timings.end(),
-        [](const ExtractRolloutTiming& timing) {
-          return !timing.rollout_records.empty() &&
-                 timing.failure_reason.find("joint2 <-> updown") != std::string::npos;
-        });
-      if (diagnostic == extract_monitor_state_.timings.end()) {
-        diagnostic = std::find_if(
-          extract_monitor_state_.timings.begin(), extract_monitor_state_.timings.end(),
-          [](const ExtractRolloutTiming& timing) { return !timing.rollout_records.empty(); });
-      }
-      if (diagnostic != extract_monitor_state_.timings.end()) {
-        record_indices.push_back(static_cast<size_t>(
-          std::distance(extract_monitor_state_.timings.begin(), diagnostic)));
+      for (size_t index = 0; index < extract_monitor_state_.timings.size(); ++index) {
+        const auto& timing = extract_monitor_state_.timings[index];
+        if (!timing.rollout_records.empty()) {
+          record_indices.push_back(index);
+        }
       }
     }
     const nlohmann::json records = extract_monitor_timing_records_json(
