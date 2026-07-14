@@ -200,6 +200,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_ik_candidate_reserve_stratified:={str(getattr(args, 'extract_ik_candidate_reserve_stratified', True)).lower()}",
         f"extract_ik_candidate_reserve_interleave_stride:={getattr(args, 'extract_ik_candidate_reserve_interleave_stride', 4)}",
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
+        f"extract_monitor_build_final_replay:={str(getattr(args, 'extract_monitor_build_final_replay', True)).lower()}",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
@@ -1085,6 +1086,7 @@ def main() -> int:
     parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
     parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
+    parser.add_argument("--extract-monitor-build-final-replay", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument(
         "--mode",

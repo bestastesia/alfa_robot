@@ -451,6 +451,8 @@ public:
     extract_ik_candidate_reserve_interleave_stride_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_ik_candidate_reserve_interleave_stride", 4)));
     extract_monitor_capture_raw_ik_ = get_or_declare_parameter<bool>("extract_monitor_capture_raw_ik", false);
+    extract_monitor_build_final_replay_ =
+      get_or_declare_parameter<bool>("extract_monitor_build_final_replay", true);
     extract_rollout_mode_ = get_or_declare_parameter<std::string>("extract_rollout_mode", "greedy");
     extract_rrt_rollout_enabled_ = get_or_declare_parameter<bool>("extract_rrt_rollout_enabled", false);
     extract_box_pose_rrt_max_iterations_ = static_cast<size_t>(
@@ -4662,7 +4664,9 @@ private:
     const auto ik_candidate_state = extract_monitor_candidate_state_for_timing(extract_monitor_state_, *selected);
     moveit::core::RobotState ik_goal_state = ik_candidate_state ? *ik_candidate_state : *selected->final_state;
 
-    const nlohmann::json replay_stages = build_final_replay_stages(*selected, ik_goal_state);
+    const nlohmann::json replay_stages = extract_monitor_build_final_replay_
+      ? build_final_replay_stages(*selected, ik_goal_state)
+      : nlohmann::json::array();
 
     const double elapsed_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - stage_start).count();
@@ -4965,6 +4969,7 @@ private:
   bool extract_ik_candidate_reserve_stratified_ = true;
   size_t extract_ik_candidate_reserve_interleave_stride_ = 4;
   bool extract_monitor_capture_raw_ik_ = false;
+  bool extract_monitor_build_final_replay_ = true;
   std::string extract_rollout_mode_ = "greedy";
   bool extract_rrt_rollout_enabled_ = false;
   size_t extract_box_pose_rrt_max_iterations_ = 160;

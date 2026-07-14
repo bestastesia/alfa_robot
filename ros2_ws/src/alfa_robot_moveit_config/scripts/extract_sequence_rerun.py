@@ -290,6 +290,7 @@ def make_pair_args(
         extract_ik_candidate_reserve_limit=args.extract_ik_candidate_reserve_limit,
         extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
         extract_ik_candidate_reserve_interleave_stride=args.extract_ik_candidate_reserve_interleave_stride,
+        extract_monitor_build_final_replay=not args.no_rerun,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
