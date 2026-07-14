@@ -261,6 +261,8 @@ def make_pair_args(
         right_box_id=right_id,
         extract_workers=args.extract_workers,
         extract_success_quorum=args.extract_success_quorum,
+        extract_quality_success_quorum=args.extract_quality_success_quorum,
+        extract_quality_loaded_distance_sum=args.extract_quality_loaded_distance_sum,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
         extract_max_joint_delta=args.extract_max_joint_delta,
@@ -802,6 +804,8 @@ def main() -> int:
         default=3,
         help="抽离阶段达到 N 个成功候选后停止分发后续 IK 候选；0 表示跑完全部候选。",
     )
+    parser.add_argument("--extract-quality-success-quorum", type=int, default=0)
+    parser.add_argument("--extract-quality-loaded-distance-sum", type=float, default=0.0)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(

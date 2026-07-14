@@ -103,13 +103,17 @@ void populate_extract_monitor_candidate_states(
 using ExtractMonitorCandidateTask =
   std::function<ExtractRolloutTiming(size_t, const robot_motion::core::UpdownAwareIkCandidate&)>;
 
+using ExtractMonitorCandidateTaskStopCondition =
+  std::function<bool(size_t success_count, const ExtractRolloutTiming& latest_timing)>;
+
 size_t extract_monitor_worker_count(size_t candidate_count, size_t requested_worker_count);
 
 size_t run_extract_monitor_candidate_tasks(
   ExtractMonitorState& state,
   size_t requested_worker_count,
   const ExtractMonitorCandidateTask& task,
-  size_t success_quorum = 0);
+  size_t success_quorum = 0,
+  const ExtractMonitorCandidateTaskStopCondition& stop_condition = {});
 
 const robot_motion::core::UpdownAwareIkCandidate* extract_monitor_candidate_for_timing(
   const ExtractMonitorState& state,

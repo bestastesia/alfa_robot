@@ -434,6 +434,10 @@ public:
       std::max(1, get_or_declare_parameter<int>("extract_benchmark_extract_workers", 1)));
     extract_benchmark_extract_success_quorum_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_benchmark_extract_success_quorum", 3)));
+    extract_benchmark_extract_quality_success_quorum_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_benchmark_extract_quality_success_quorum", 0)));
+    extract_benchmark_extract_quality_loaded_distance_sum_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_benchmark_extract_quality_loaded_distance_sum", 0.0));
     extract_ik_dedup_enabled_ = get_or_declare_parameter<bool>("extract_ik_dedup_enabled", true);
     extract_ik_dedup_joint_threshold_ =
       get_or_declare_parameter<double>("extract_ik_dedup_joint_threshold_deg", 1.0) * M_PI / 180.0;
@@ -4365,6 +4369,23 @@ private:
         extract_monitor_state_.timings.push_back(std::move(timing));
       }
     } else {
+      auto quality_stop_condition = [this](
+        size_t success_count,
+        const ExtractRolloutTiming& timing)
+      {
+        if (extract_benchmark_extract_quality_success_quorum_ == 0 ||
+            extract_benchmark_extract_quality_loaded_distance_sum_ <= 0.0) {
+          return success_count >= extract_benchmark_extract_success_quorum_;
+        }
+        if (success_count < extract_benchmark_extract_quality_success_quorum_) {
+          return false;
+        }
+        if (timing.loaded_pose_distance_sum <= extract_benchmark_extract_quality_loaded_distance_sum_) {
+          return true;
+        }
+        return extract_benchmark_extract_success_quorum_ > 0 &&
+               success_count >= extract_benchmark_extract_success_quorum_;
+      };
       worker_count = run_extract_monitor_candidate_tasks(
         extract_monitor_state_,
         extract_benchmark_extract_workers_,
@@ -4401,7 +4422,8 @@ private:
           }
           return timing;
         },
-        extract_benchmark_extract_success_quorum_);
+        extract_benchmark_extract_success_quorum_,
+        quality_stop_condition);
     }
 
     const auto summary = summarize_extract_monitor_timings(extract_monitor_state_.timings);
@@ -4476,7 +4498,7 @@ private:
         static_cast<double>(box_pose_solver_profile_->post_state_update_ns.load(std::memory_order_relaxed)) / 1.0e6,
         static_cast<double>(box_pose_solver_profile_->validation_ns.load(std::memory_order_relaxed)) / 1.0e6);
     }
-    const nlohmann::json snapshot = extract_monitor_extract_snapshot(
+    nlohmann::json snapshot = extract_monitor_extract_snapshot(
       ExtractMonitorExtractSnapshotRequest{
         elapsed_ms,
         extract_monitor_state_.left_box_id,
@@ -4488,6 +4510,9 @@ private:
         worker_count,
         summary.failure_counts,
         records});
+    snapshot["extract_quality_success_quorum"] = extract_benchmark_extract_quality_success_quorum_;
+    snapshot["extract_quality_loaded_distance_sum"] =
+      extract_benchmark_extract_quality_loaded_distance_sum_;
     const bool snapshot_written = finish_extract_monitor_stage(
       snapshot,
       "extract monitor extract",
@@ -5019,6 +5044,8 @@ private:
   size_t extract_benchmark_candidate_limit_ = 0;
   size_t extract_benchmark_extract_workers_ = 1;
   size_t extract_benchmark_extract_success_quorum_ = 3;
+  size_t extract_benchmark_extract_quality_success_quorum_ = 0;
+  double extract_benchmark_extract_quality_loaded_distance_sum_ = 0.0;
   bool extract_ik_dedup_enabled_ = true;
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;

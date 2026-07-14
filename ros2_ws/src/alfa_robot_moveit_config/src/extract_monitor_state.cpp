@@ -161,7 +161,8 @@ size_t run_extract_monitor_candidate_tasks(
   ExtractMonitorState& state,
   size_t requested_worker_count,
   const ExtractMonitorCandidateTask& task,
-  size_t success_quorum)
+  size_t success_quorum,
+  const ExtractMonitorCandidateTaskStopCondition& stop_condition)
 {
   const size_t count = state.legal_candidates.size();
   state.timings.clear();
@@ -198,7 +199,10 @@ size_t run_extract_monitor_candidate_tasks(
         auto timing = task(index, state.legal_candidates[index]);
         if (timing.success && timing.final_state && success_quorum > 0) {
           const size_t reached = success_count.fetch_add(1, std::memory_order_relaxed) + 1;
-          if (reached >= success_quorum) {
+          const bool should_stop = stop_condition
+            ? stop_condition(reached, timing)
+            : reached >= success_quorum;
+          if (should_stop) {
             stop_requested.store(true, std::memory_order_relaxed);
           }
         }

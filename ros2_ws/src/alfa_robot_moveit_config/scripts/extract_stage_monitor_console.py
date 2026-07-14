@@ -188,6 +188,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_benchmark_extract_workers:={args.extract_workers}",
         f"extract_benchmark_candidate_limit:={args.candidate_limit}",
         f"extract_benchmark_extract_success_quorum:={getattr(args, 'extract_success_quorum', 0)}",
+        f"extract_benchmark_extract_quality_success_quorum:={getattr(args, 'extract_quality_success_quorum', 0)}",
+        f"extract_benchmark_extract_quality_loaded_distance_sum:={getattr(args, 'extract_quality_loaded_distance_sum', 0.0)}",
         f"extract_step_x:={args.extract_step_x}",
         f"extract_max_joint_delta:={getattr(args, 'extract_max_joint_delta', 10.0 * math.pi / 180.0)}",
         "extract_ik_dedup_enabled:=true",
@@ -1038,6 +1040,8 @@ def main() -> int:
     parser.add_argument("--candidate-limit", type=int, default=25)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--extract-success-quorum", type=int, default=3)
+    parser.add_argument("--extract-quality-success-quorum", type=int, default=0)
+    parser.add_argument("--extract-quality-loaded-distance-sum", type=float, default=0.0)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
     parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(
