@@ -5,6 +5,7 @@
 #include <moveit/robot_model/joint_model_group.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <map>
@@ -85,6 +86,32 @@ double arm_joint_motion(
     total += std::abs(delta);
   }
   return total;
+}
+
+double arm_joint_limit_margin_cost(
+  const moveit::core::JointModelGroup* group,
+  const moveit::core::RobotState& state)
+{
+  if (!group) return 0.0;
+  constexpr double free_ratio = 0.6;
+  constexpr double min_denominator = 1e-3;
+  const std::array<double, 6> weights{{0.5, 3.0, 0.7, 0.5, 1.5, 1.2}};
+  double cost = 0.0;
+  const auto& names = group->getVariableNames();
+  for (size_t index = 0; index < names.size(); ++index) {
+    const auto& bounds = state.getRobotModel()->getVariableBounds(names[index]);
+    if (!bounds.position_bounded_) continue;
+    const double half_range = 0.5 * (bounds.max_position_ - bounds.min_position_);
+    if (half_range <= 1e-9) continue;
+    const double center = 0.5 * (bounds.max_position_ + bounds.min_position_);
+    const double normalized = std::abs(state.getVariablePosition(names[index]) - center) / half_range;
+    if (normalized <= free_ratio) continue;
+    const double excess = (normalized - free_ratio) / (1.0 - free_ratio);
+    const double barrier = excess * excess / std::max(min_denominator, 1.0 - normalized);
+    const double weight = index < weights.size() ? weights[index] : 1.0;
+    cost += weight * barrier;
+  }
+  return cost;
 }
 
 void copy_arm_state(
@@ -223,6 +250,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     const moveit::core::RobotState& edge_start,
     std::vector<moveit::core::RobotStatePtr>* dense_states,
     double* joint_motion,
+    double* endpoint_score,
     bool* goal_evaluated,
     bool* goal_reached,
     std::string* reason) -> bool {
@@ -231,6 +259,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       const size_t sample_count = rrt_config.endpoint_only_edges ? 1 : edge_sample_count(from, to, rrt_config);
       bool final_detached = false;
       bool final_detached_evaluated = false;
+      ExtractCandidate final_candidate;
+      bool has_final_candidate = false;
       for (size_t sample_index = 1; sample_index <= sample_count; ++sample_index) {
         if (config_.profile) config_.profile->node_evaluations.fetch_add(1, std::memory_order_relaxed);
         const double ratio = static_cast<double>(sample_index) / static_cast<double>(sample_count);
@@ -300,11 +330,19 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
           final_detached_evaluated = true;
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
+        final_candidate = candidate;
+        has_final_candidate = true;
         current = *candidate.state;
         if (dense_states) dense_states->push_back(candidate.state);
       }
       state_cache[box_state_key(to)] = std::make_shared<moveit::core::RobotState>(current);
       if (joint_motion) *joint_motion = motion;
+      if (endpoint_score) {
+        *endpoint_score = motion + 0.5 * arm_joint_limit_margin_cost(arm_group, current);
+        if (has_final_candidate && config_.candidate_scorer) {
+          *endpoint_score = config_.candidate_scorer->score(side, final_candidate, edge_start, from.retreat);
+        }
+      }
       if (goal_evaluated) *goal_evaluated = final_detached_evaluated;
       if (goal_reached) *goal_reached = final_detached;
       return true;
@@ -318,7 +356,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       return evaluation;
     }
     evaluation.valid = solve_edge(
-      from, to, *found->second, nullptr, &evaluation.joint_motion,
+      from, to, *found->second, nullptr, &evaluation.joint_motion, &evaluation.endpoint_score,
       &evaluation.goal_evaluated, &evaluation.goal_reached, &evaluation.rejection_reason);
     if (!evaluation.valid) {
       rejection_counts[evaluation.rejection_reason.empty() ?

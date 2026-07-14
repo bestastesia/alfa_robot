@@ -516,6 +516,7 @@ struct BoxPoseRrtExtractPlannerConfig
   };
 
   ExtractCandidateSolver* candidate_solver = nullptr;
+  ExtractCandidateScorer* candidate_scorer = nullptr;
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
   const moveit::core::JointModelGroup* right_arm_group = nullptr;

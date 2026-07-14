@@ -193,11 +193,17 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
+        f"extract_ik_stratified_limit_enabled:={str(getattr(args, 'extract_ik_stratified_limit_enabled', False)).lower()}",
+        f"extract_ik_stratified_h_bucket:={getattr(args, 'extract_ik_stratified_h_bucket', 0.05)}",
+        f"extract_ik_stratified_top_score_count:={getattr(args, 'extract_ik_stratified_top_score_count', 12)}",
+        f"extract_ik_candidate_reserve_limit:={getattr(args, 'extract_ik_candidate_reserve_limit', 64)}",
+        f"extract_ik_candidate_reserve_stratified:={str(getattr(args, 'extract_ik_candidate_reserve_stratified', True)).lower()}",
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
         f"extract_box_pose_rrt_parent_candidates:={getattr(args, 'extract_box_pose_rrt_parent_candidates', 8)}",
+        f"extract_box_pose_rrt_parent_endpoint_score_weight:={getattr(args, 'extract_box_pose_rrt_parent_endpoint_score_weight', 0.05)}",
         f"extract_box_pose_rrt_max_lateral:={getattr(args, 'extract_box_pose_rrt_max_lateral', 0.0)}",
         f"extract_box_pose_rrt_step_lateral:={getattr(args, 'extract_box_pose_rrt_step_lateral', 0.02)}",
         f"extract_box_pose_rrt_front_free_motion:={str(getattr(args, 'extract_box_pose_rrt_front_free_motion', True)).lower()}",
@@ -1043,6 +1049,7 @@ def main() -> int:
     )
     parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
     parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
     parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
@@ -1071,6 +1078,11 @@ def main() -> int:
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
+    parser.add_argument("--extract-ik-stratified-limit-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-ik-stratified-h-bucket", type=float, default=0.05)
+    parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
+    parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
+    parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument(
         "--mode",

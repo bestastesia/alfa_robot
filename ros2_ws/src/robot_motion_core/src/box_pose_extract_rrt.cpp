@@ -20,6 +20,11 @@ struct TreeNode
   double cumulative_joint_motion = 0.0;
 };
 
+double finite_or_zero(double value)
+{
+  return std::isfinite(value) ? value : 0.0;
+}
+
 BoxPoseExtractState interpolate(
   const BoxPoseExtractState& from,
   const BoxPoseExtractState& to,
@@ -452,7 +457,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       const double score =
         next_goal_distance +
         config_.parent_path_cost_weight * cumulative_cost +
-        config_.parent_sample_distance_weight * sample_distance;
+        config_.parent_sample_distance_weight * sample_distance +
+        config_.parent_endpoint_score_weight * finite_or_zero(evaluation.endpoint_score);
       if (!selected || score < selected_extension.score) {
         selected = true;
         selected_extension = {parent.index, next, evaluation, score};
@@ -620,7 +626,9 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
           }
         }
         const double priority =
-          next_cost + config_.best_first_heuristic_weight * next_goal_distance;
+          next_cost +
+          config_.parent_endpoint_score_weight * finite_or_zero(evaluation.endpoint_score) +
+          config_.best_first_heuristic_weight * next_goal_distance;
         queue.push({priority, next_index});
       }
     }

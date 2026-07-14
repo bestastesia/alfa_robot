@@ -1418,3 +1418,9 @@
 - 改了哪里：`dual_arm_planner_node.cpp` 新增 `state_clear_for_dual_grasp_start`，IK 候选场景过滤改用抓取起点过滤；真正抽离阶段仍使用 `state_clear_for_dual_extract` 判断 detachment。
 - 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；13组全流程 13/13 成功，Rerun 为 `data/ik_benchmark/grasp_start_filter_full13_retry_20260714/full13.rrd`。
 - 留给下个 AI：本轮困难任务实际参与抽离的候选数已提高到 18～25 个量级；速度瓶颈仍集中在部分顶吸任务的 loaded/最终阶段，而不是 IK 或抓取起点过滤。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离RRT分界点与IK后备候选优化
+- 做了什么：为箱体位姿 RRT 增加 endpoint 质量评分，使 parent/best-first 搜索不只按低维距离选点；为抽离入口 IK 增加“主候选 + h 分层后备候选”机制，默认保留低代价主候选并追加后备候选，配合抽离成功 quorum 早停。
+- 改了哪里：`robot_motion_core` 的 `box_pose_extract_rrt`；`alfa_robot_moveit_config` 的 `box_pose_rrt_extract_planner`、`dual_arm_planner_node`、`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；13组全流程在全 h 扫描 + shortcut 负重规划下全部成功，RRD：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/full13_endpoint_reserve.rrd`，统计：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/stats.csv`。
+- 留给下个 AI：后备候选会提升鲁棒性，但 L6/R13、L11/R8 等任务抽离耗时仍在 2.8～3.1s，后续可继续优化 RRT 采样/goal bias/任务特化先验。

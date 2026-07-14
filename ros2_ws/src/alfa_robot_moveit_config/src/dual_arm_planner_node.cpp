@@ -438,6 +438,16 @@ public:
     extract_ik_dedup_joint_threshold_ =
       get_or_declare_parameter<double>("extract_ik_dedup_joint_threshold_deg", 1.0) * M_PI / 180.0;
     extract_ik_dedup_h_threshold_ = get_or_declare_parameter<double>("extract_ik_dedup_h_threshold", 0.005);
+    extract_ik_stratified_limit_enabled_ =
+      get_or_declare_parameter<bool>("extract_ik_stratified_limit_enabled", false);
+    extract_ik_stratified_h_bucket_ =
+      std::max(1e-4, get_or_declare_parameter<double>("extract_ik_stratified_h_bucket", 0.05));
+    extract_ik_stratified_top_score_count_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_ik_stratified_top_score_count", 12)));
+    extract_ik_candidate_reserve_limit_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_ik_candidate_reserve_limit", 64)));
+    extract_ik_candidate_reserve_stratified_ =
+      get_or_declare_parameter<bool>("extract_ik_candidate_reserve_stratified", true);
     extract_monitor_capture_raw_ik_ = get_or_declare_parameter<bool>("extract_monitor_capture_raw_ik", false);
     extract_rollout_mode_ = get_or_declare_parameter<std::string>("extract_rollout_mode", "greedy");
     extract_rrt_rollout_enabled_ = get_or_declare_parameter<bool>("extract_rrt_rollout_enabled", false);
@@ -461,6 +471,8 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_edge_scene_collision", true);
     extract_box_pose_rrt_parent_candidates_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_parent_candidates", 8)));
+    extract_box_pose_rrt_parent_endpoint_score_weight_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_parent_endpoint_score_weight", 0.05));
     extract_box_pose_rrt_max_lateral_ =
       std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_max_lateral", 0.0));
     extract_box_pose_rrt_step_lateral_ =
@@ -1073,6 +1085,7 @@ private:
     BoxPoseRrtExtractPlannerConfig config;
     config.logger = get_logger();
     config.candidate_solver = box_pose_rrt_candidate_solver_.get();
+    config.candidate_scorer = extract_candidate_scorer_.get();
     config.joint_group = joint_group_;
     config.left_arm_group = left_arm_group_;
     config.right_arm_group = right_arm_group_;
@@ -1097,6 +1110,7 @@ private:
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
     config.front_rrt.parent_candidate_count = extract_box_pose_rrt_parent_candidates_;
+    config.front_rrt.parent_endpoint_score_weight = extract_box_pose_rrt_parent_endpoint_score_weight_;
     config.front_rrt.best_first_fallback = extract_box_pose_rrt_best_first_fallback_;
     config.front_rrt.best_first_max_expansions = extract_box_pose_rrt_best_first_max_expansions_;
     config.front_rrt.best_first_heuristic_weight = extract_box_pose_rrt_best_first_heuristic_weight_;
@@ -3806,6 +3820,72 @@ private:
     return {};
   }
 
+  void apply_extract_ik_candidate_limit(
+    std::vector<robot_motion::core::UpdownAwareIkCandidate>* candidates,
+    std::vector<moveit::core::RobotStatePtr>* states) const
+  {
+    if (!candidates || !states || candidates->size() != states->size()) return;
+    const size_t primary_limit = extract_benchmark_candidate_limit_;
+    if (primary_limit == 0) return;
+    const size_t total_limit = std::min(
+      candidates->size(),
+      primary_limit + extract_ik_candidate_reserve_limit_);
+    if (candidates->size() <= total_limit && !extract_ik_stratified_limit_enabled_) return;
+    if (extract_ik_candidate_reserve_limit_ == 0 && !extract_ik_stratified_limit_enabled_) {
+      candidates->resize(std::min(primary_limit, candidates->size()));
+      states->resize(std::min(primary_limit, states->size()));
+      return;
+    }
+
+    std::vector<size_t> selected_indices;
+    selected_indices.reserve(total_limit);
+    std::vector<bool> selected(candidates->size(), false);
+    std::vector<long long> used_h_buckets;
+    used_h_buckets.reserve(total_limit);
+    const auto h_bucket = [this](double h) {
+      return static_cast<long long>(std::llround(h / extract_ik_stratified_h_bucket_));
+    };
+    const auto h_bucket_used = [&](long long bucket) {
+      return std::find(used_h_buckets.begin(), used_h_buckets.end(), bucket) != used_h_buckets.end();
+    };
+
+    const size_t top_score_count = extract_ik_stratified_limit_enabled_
+      ? std::min(total_limit, extract_ik_stratified_top_score_count_)
+      : std::min(total_limit, primary_limit);
+    for (size_t index = 0; index < candidates->size() && selected_indices.size() < top_score_count; ++index) {
+      selected[index] = true;
+      selected_indices.push_back(index);
+      used_h_buckets.push_back(h_bucket((*candidates)[index].h));
+    }
+
+    if (extract_ik_stratified_limit_enabled_ || extract_ik_candidate_reserve_stratified_) {
+      for (size_t index = top_score_count; index < candidates->size() && selected_indices.size() < total_limit; ++index) {
+        const auto bucket = h_bucket((*candidates)[index].h);
+        if (h_bucket_used(bucket)) continue;
+        selected[index] = true;
+        selected_indices.push_back(index);
+        used_h_buckets.push_back(bucket);
+      }
+    }
+    for (size_t index = 0; index < candidates->size() && selected_indices.size() < total_limit; ++index) {
+      if (selected[index]) continue;
+      selected[index] = true;
+      selected_indices.push_back(index);
+    }
+    std::sort(selected_indices.begin(), selected_indices.end());
+
+    std::vector<robot_motion::core::UpdownAwareIkCandidate> limited_candidates;
+    std::vector<moveit::core::RobotStatePtr> limited_states;
+    limited_candidates.reserve(selected_indices.size());
+    limited_states.reserve(selected_indices.size());
+    for (const auto index : selected_indices) {
+      limited_candidates.push_back((*candidates)[index]);
+      limited_states.push_back((*states)[index]);
+    }
+    *candidates = std::move(limited_candidates);
+    *states = std::move(limited_states);
+  }
+
   void record_stage(
     const std::string& stage_name,
     const moveit::planning_interface::MoveGroupInterface::Plan& plan,
@@ -4089,11 +4169,19 @@ private:
       }
       extract_monitor_state_.legal_candidates.push_back(candidate);
       extract_monitor_state_.candidate_states.push_back(std::move(state));
-      if (extract_benchmark_candidate_limit_ > 0 &&
-          extract_monitor_state_.legal_candidates.size() >= extract_benchmark_candidate_limit_) {
+      const size_t accepted_limit = extract_benchmark_candidate_limit_ == 0
+        ? 0
+        : extract_benchmark_candidate_limit_ + extract_ik_candidate_reserve_limit_;
+      if (!extract_ik_stratified_limit_enabled_ &&
+          accepted_limit > 0 &&
+          extract_monitor_state_.legal_candidates.size() >= accepted_limit) {
         break;
       }
     }
+    const size_t scene_filter_accepted_before_limit = extract_monitor_state_.legal_candidates.size();
+    apply_extract_ik_candidate_limit(
+      &extract_monitor_state_.legal_candidates,
+      &extract_monitor_state_.candidate_states);
     dedup_stats.selected_count = extract_monitor_state_.legal_candidates.size();
 
     const nlohmann::json records = extract_monitor_candidate_records_json(
@@ -4124,7 +4212,11 @@ private:
     }
     snapshot["all_ik_candidate_records"] = std::move(all_ik_candidate_records);
     snapshot["scene_filter_input_count"] = scene_filter_input_count;
+    snapshot["scene_filter_accepted_before_limit_count"] = scene_filter_accepted_before_limit;
     snapshot["scene_filter_accepted_count"] = extract_monitor_state_.legal_candidates.size();
+    snapshot["extract_ik_primary_candidate_limit"] = extract_benchmark_candidate_limit_;
+    snapshot["extract_ik_candidate_reserve_limit"] = extract_ik_candidate_reserve_limit_;
+    snapshot["extract_ik_candidate_reserve_stratified"] = extract_ik_candidate_reserve_stratified_;
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     snapshot["scene_rejected_records"] = std::move(scene_rejected_records);
     snapshot["attached_boxes"] = attached_boxes_json(
@@ -4837,6 +4929,11 @@ private:
   bool extract_ik_dedup_enabled_ = true;
   double extract_ik_dedup_joint_threshold_ = 1.0 * M_PI / 180.0;
   double extract_ik_dedup_h_threshold_ = 0.005;
+  bool extract_ik_stratified_limit_enabled_ = false;
+  double extract_ik_stratified_h_bucket_ = 0.05;
+  size_t extract_ik_stratified_top_score_count_ = 12;
+  size_t extract_ik_candidate_reserve_limit_ = 64;
+  bool extract_ik_candidate_reserve_stratified_ = true;
   bool extract_monitor_capture_raw_ik_ = false;
   std::string extract_rollout_mode_ = "greedy";
   bool extract_rrt_rollout_enabled_ = false;
@@ -4850,6 +4947,7 @@ private:
   bool extract_box_pose_rrt_diagnostics_ = false;
   bool extract_box_pose_rrt_edge_scene_collision_ = true;
   size_t extract_box_pose_rrt_parent_candidates_ = 8;
+  double extract_box_pose_rrt_parent_endpoint_score_weight_ = 0.05;
   double extract_box_pose_rrt_max_lateral_ = 0.0;
   double extract_box_pose_rrt_step_lateral_ = 0.02;
   bool extract_box_pose_rrt_front_free_motion_ = true;

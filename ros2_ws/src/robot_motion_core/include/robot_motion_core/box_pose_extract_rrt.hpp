@@ -61,6 +61,7 @@ struct BoxPoseExtractRrtConfig
   size_t parent_candidate_count = 1;
   double parent_path_cost_weight = 0.05;
   double parent_sample_distance_weight = 0.1;
+  double parent_endpoint_score_weight = 0.05;
   bool best_first_fallback = true;
   size_t best_first_max_expansions = 800;
   double best_first_heuristic_weight = 1.0;
@@ -72,6 +73,7 @@ struct BoxPoseExtractEdgeEvaluation
   bool valid = false;
   double joint_motion = std::numeric_limits<double>::infinity();
   std::string rejection_reason;
+  double endpoint_score = 0.0;
   bool goal_evaluated = false;
   bool goal_reached = false;
 };

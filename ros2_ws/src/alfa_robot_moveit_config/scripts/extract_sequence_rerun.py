@@ -274,6 +274,7 @@ def make_pair_args(
         extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
         extract_box_pose_rrt_max_iterations=args.extract_box_pose_rrt_max_iterations,
         extract_box_pose_rrt_parent_candidates=args.extract_box_pose_rrt_parent_candidates,
+        extract_box_pose_rrt_parent_endpoint_score_weight=args.extract_box_pose_rrt_parent_endpoint_score_weight,
         extract_box_pose_rrt_max_lateral=args.extract_box_pose_rrt_max_lateral,
         extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
         extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
@@ -283,6 +284,11 @@ def make_pair_args(
         extract_box_pose_rrt_best_first_heuristic_weight=args.extract_box_pose_rrt_best_first_heuristic_weight,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
+        extract_ik_stratified_limit_enabled=args.extract_ik_stratified_limit_enabled,
+        extract_ik_stratified_h_bucket=args.extract_ik_stratified_h_bucket,
+        extract_ik_stratified_top_score_count=args.extract_ik_stratified_top_score_count,
+        extract_ik_candidate_reserve_limit=args.extract_ik_candidate_reserve_limit,
+        extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
@@ -807,6 +813,7 @@ def main() -> int:
     )
     parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
     parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
     parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
@@ -856,6 +863,11 @@ def main() -> int:
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
+    parser.add_argument("--extract-ik-stratified-limit-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-ik-stratified-h-bucket", type=float, default=0.05)
+    parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
+    parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
+    parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)
