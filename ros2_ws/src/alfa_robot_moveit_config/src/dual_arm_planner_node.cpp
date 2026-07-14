@@ -499,6 +499,10 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_front_goal_requires_max_pitch", false);
     extract_box_pose_rrt_best_first_fallback_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_best_first_fallback", true);
+    extract_box_pose_rrt_best_first_first_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_best_first_first", false);
+    extract_box_pose_rrt_top_best_first_first_ =
+      get_or_declare_parameter<bool>("extract_box_pose_rrt_top_best_first_first", false);
     extract_box_pose_rrt_best_first_max_expansions_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_best_first_max_expansions", 800)));
     extract_box_pose_rrt_best_first_heuristic_weight_ =
@@ -1131,11 +1135,13 @@ private:
     config.front_rrt.parent_node_score_weight = extract_box_pose_rrt_parent_node_score_weight_;
     config.front_rrt.parent_density_weight = extract_box_pose_rrt_parent_density_weight_;
     config.front_rrt.best_first_fallback = extract_box_pose_rrt_best_first_fallback_;
+    config.front_rrt.best_first_first = extract_box_pose_rrt_best_first_first_;
     config.front_rrt.best_first_max_expansions = extract_box_pose_rrt_best_first_max_expansions_;
     config.front_rrt.best_first_heuristic_weight = extract_box_pose_rrt_best_first_heuristic_weight_;
     config.front_rrt.random_seed = 17;
     config.top_rrt = config.front_rrt;
     config.top_rrt.mode = robot_motion::core::BoxPoseExtractMode::TopTranslate;
+    config.top_rrt.best_first_first = extract_box_pose_rrt_top_best_first_first_;
     config.top_rrt.max_pitch = 0.0;
     config.top_rrt.endpoint_only_edges = true;
     config.top_rrt.max_lift = extract_box_pose_rrt_max_lift_;
@@ -5079,6 +5085,8 @@ private:
   bool extract_box_pose_rrt_front_free_motion_ = true;
   bool extract_box_pose_rrt_front_goal_requires_max_pitch_ = false;
   bool extract_box_pose_rrt_best_first_fallback_ = true;
+  bool extract_box_pose_rrt_best_first_first_ = false;
+  bool extract_box_pose_rrt_top_best_first_first_ = false;
   size_t extract_box_pose_rrt_best_first_max_expansions_ = 800;
   double extract_box_pose_rrt_best_first_heuristic_weight_ = 1.0;
   std::string extract_rrt_planning_group_ = "dual_arm";

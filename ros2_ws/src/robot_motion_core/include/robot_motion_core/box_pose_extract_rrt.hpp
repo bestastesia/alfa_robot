@@ -66,6 +66,7 @@ struct BoxPoseExtractRrtConfig
   double parent_node_score_weight = 0.0;
   double parent_density_weight = 0.0;
   bool best_first_fallback = true;
+  bool best_first_first = false;
   size_t best_first_max_expansions = 800;
   double best_first_heuristic_weight = 1.0;
   uint32_t random_seed = 7;

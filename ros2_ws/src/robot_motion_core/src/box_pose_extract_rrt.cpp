@@ -408,6 +408,121 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     }
   }
 
+  auto run_best_first_search = [&]() {
+    struct QueueEntry
+    {
+      double priority = std::numeric_limits<double>::infinity();
+      size_t node_index = 0;
+    };
+    struct QueueGreater
+    {
+      bool operator()(const QueueEntry& lhs, const QueueEntry& rhs) const
+      {
+        return lhs.priority > rhs.priority;
+      }
+    };
+
+    std::vector<TreeNode> lattice_nodes{{start, 0, 0.0, 0.0}};
+    std::vector<std::pair<LatticeKey, double>> best_cost;
+    best_cost.push_back({lattice_key(start, config_), 0.0});
+    std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> queue;
+    queue.push({config_.best_first_heuristic_weight * stateDistance(start, goal), 0});
+
+    size_t lattice_best_index = 0;
+    double lattice_best_distance = stateDistance(start, goal);
+    const size_t expansion_limit = std::max<size_t>(1, config_.best_first_max_expansions);
+    for (size_t expansion = 0; expansion < expansion_limit && !queue.empty(); ++expansion) {
+      const QueueEntry entry = queue.top();
+      queue.pop();
+      if (entry.node_index >= lattice_nodes.size()) continue;
+      const TreeNode& parent_node = lattice_nodes[entry.node_index];
+      if (goalReached(parent_node.state) && entry.node_index != 0) {
+        BoxPoseExtractPath path;
+        path.states = reconstruct_path(lattice_nodes, entry.node_index);
+        bool path_valid = false;
+        path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
+        path.edge_evaluations = result.edge_evaluations;
+        path.iterations = result.iterations + expansion;
+        if (path_valid) {
+          append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
+          if (result.paths.size() >= config_.max_solution_count) break;
+        }
+      }
+
+      for (const auto& next : lattice_neighbors(parent_node.state, config_)) {
+        if (!stateWithinBounds(next) ||
+            !monotonic_transition(parent_node.state, next, config_)) {
+          continue;
+        }
+        const auto evaluation = evaluator(parent_node.state, next);
+        ++result.edge_evaluations;
+        if (!evaluation.valid || !std::isfinite(evaluation.joint_motion)) {
+          continue;
+        }
+        const double next_cost = parent_node.cumulative_joint_motion + evaluation.joint_motion;
+        const LatticeKey key = lattice_key(next, config_);
+        const auto previous = find_lattice_cost(&best_cost, key);
+        if (previous != best_cost.end() && previous->second <= next_cost + 1e-9) {
+          continue;
+        }
+        if (previous != best_cost.end()) {
+          previous->second = next_cost;
+        } else {
+          best_cost.push_back({key, next_cost});
+        }
+        lattice_nodes.push_back({next, entry.node_index, next_cost, evaluation.endpoint_score});
+        const size_t next_index = lattice_nodes.size() - 1;
+        const double next_goal_distance = stateDistance(next, goal);
+        if (next_goal_distance < lattice_best_distance) {
+          lattice_best_distance = next_goal_distance;
+          lattice_best_index = next_index;
+        }
+        const bool next_goal_reached = evaluation.goal_evaluated ?
+          evaluation.goal_reached : goalReached(next);
+        if (next_goal_reached) {
+          BoxPoseExtractPath path;
+          path.states = reconstruct_path(lattice_nodes, next_index);
+          bool path_valid = false;
+          path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
+          path.edge_evaluations = result.edge_evaluations;
+          path.iterations = result.iterations + expansion + 1;
+          if (path_valid) {
+            append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
+            if (result.paths.size() >= config_.max_solution_count) break;
+          }
+        }
+        const double priority =
+          next_cost +
+          config_.parent_endpoint_score_weight * finite_or_zero(evaluation.endpoint_score) +
+          config_.best_first_heuristic_weight * next_goal_distance;
+        queue.push({priority, next_index});
+      }
+    }
+
+    if (result.paths.empty() && lattice_nodes.size() > 1 &&
+        lattice_best_distance < best_effort_distance) {
+      best_effort_distance = lattice_best_distance;
+      best_effort_index = 0;
+      result.best_effort_path.states = reconstruct_path(lattice_nodes, lattice_best_index);
+      result.best_effort_path.joint_motion = lattice_nodes[lattice_best_index].cumulative_joint_motion;
+      result.best_effort_path.iterations = result.iterations + expansion_limit;
+      result.best_effort_path.edge_evaluations = result.edge_evaluations;
+    }
+  };
+
+  bool best_first_tried = false;
+  if (config_.best_first_fallback && config_.best_first_first && result.paths.empty()) {
+    best_first_tried = true;
+    run_best_first_search();
+    if (!result.paths.empty()) {
+      std::sort(result.paths.begin(), result.paths.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.joint_motion < rhs.joint_motion;
+      });
+      result.success = true;
+      return result;
+    }
+  }
+
   struct ParentCandidate
   {
     size_t index = 0;
@@ -588,106 +703,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     }
   }
 
-  if (result.paths.empty() && config_.best_first_fallback) {
-    struct QueueEntry
-    {
-      double priority = std::numeric_limits<double>::infinity();
-      size_t node_index = 0;
-    };
-    struct QueueGreater
-    {
-      bool operator()(const QueueEntry& lhs, const QueueEntry& rhs) const
-      {
-        return lhs.priority > rhs.priority;
-      }
-    };
-
-    std::vector<TreeNode> lattice_nodes{{start, 0, 0.0, 0.0}};
-    std::vector<std::pair<LatticeKey, double>> best_cost;
-    best_cost.push_back({lattice_key(start, config_), 0.0});
-    std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> queue;
-    queue.push({config_.best_first_heuristic_weight * stateDistance(start, goal), 0});
-
-    size_t lattice_best_index = 0;
-    double lattice_best_distance = stateDistance(start, goal);
-    const size_t expansion_limit = std::max<size_t>(1, config_.best_first_max_expansions);
-    for (size_t expansion = 0; expansion < expansion_limit && !queue.empty(); ++expansion) {
-      const QueueEntry entry = queue.top();
-      queue.pop();
-      if (entry.node_index >= lattice_nodes.size()) continue;
-      const TreeNode& parent_node = lattice_nodes[entry.node_index];
-      if (goalReached(parent_node.state) && entry.node_index != 0) {
-        BoxPoseExtractPath path;
-        path.states = reconstruct_path(lattice_nodes, entry.node_index);
-        bool path_valid = false;
-        path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
-        path.edge_evaluations = result.edge_evaluations;
-        path.iterations = result.iterations + expansion;
-        if (path_valid) {
-          append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
-          if (result.paths.size() >= config_.max_solution_count) break;
-        }
-      }
-
-      for (const auto& next : lattice_neighbors(parent_node.state, config_)) {
-        if (!stateWithinBounds(next) ||
-            !monotonic_transition(parent_node.state, next, config_)) {
-          continue;
-        }
-        const auto evaluation = evaluator(parent_node.state, next);
-        ++result.edge_evaluations;
-        if (!evaluation.valid || !std::isfinite(evaluation.joint_motion)) {
-          continue;
-        }
-        const double next_cost = parent_node.cumulative_joint_motion + evaluation.joint_motion;
-        const LatticeKey key = lattice_key(next, config_);
-        const auto previous = find_lattice_cost(&best_cost, key);
-        if (previous != best_cost.end() && previous->second <= next_cost + 1e-9) {
-          continue;
-        }
-        if (previous != best_cost.end()) {
-          previous->second = next_cost;
-        } else {
-          best_cost.push_back({key, next_cost});
-        }
-        lattice_nodes.push_back({next, entry.node_index, next_cost, evaluation.endpoint_score});
-        const size_t next_index = lattice_nodes.size() - 1;
-        const double next_goal_distance = stateDistance(next, goal);
-        if (next_goal_distance < lattice_best_distance) {
-          lattice_best_distance = next_goal_distance;
-          lattice_best_index = next_index;
-        }
-        const bool next_goal_reached = evaluation.goal_evaluated ?
-          evaluation.goal_reached : goalReached(next);
-        if (next_goal_reached) {
-          BoxPoseExtractPath path;
-          path.states = reconstruct_path(lattice_nodes, next_index);
-          bool path_valid = false;
-          path.joint_motion = path_cost(path.states, evaluator, &result.edge_evaluations, &path_valid);
-          path.edge_evaluations = result.edge_evaluations;
-          path.iterations = result.iterations + expansion + 1;
-          if (path_valid) {
-            append_unique_path(&result.paths, std::move(path), config_.max_solution_count);
-            if (result.paths.size() >= config_.max_solution_count) break;
-          }
-        }
-        const double priority =
-          next_cost +
-          config_.parent_endpoint_score_weight * finite_or_zero(evaluation.endpoint_score) +
-          config_.best_first_heuristic_weight * next_goal_distance;
-        queue.push({priority, next_index});
-      }
-    }
-
-    if (result.paths.empty() && lattice_nodes.size() > 1 &&
-        lattice_best_distance < best_effort_distance) {
-      best_effort_distance = lattice_best_distance;
-      best_effort_index = 0;
-      result.best_effort_path.states = reconstruct_path(lattice_nodes, lattice_best_index);
-      result.best_effort_path.joint_motion = lattice_nodes[lattice_best_index].cumulative_joint_motion;
-      result.best_effort_path.iterations = result.iterations + expansion_limit;
-      result.best_effort_path.edge_evaluations = result.edge_evaluations;
-    }
+  if (result.paths.empty() && config_.best_first_fallback && !best_first_tried) {
+    run_best_first_search();
   }
 
   std::sort(result.paths.begin(), result.paths.end(), [](const auto& lhs, const auto& rhs) {

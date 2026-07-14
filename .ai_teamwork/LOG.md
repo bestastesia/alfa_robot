@@ -1448,3 +1448,9 @@
 - 改了哪里：`extract_monitor_state.*` 支持自定义候选停止条件；`dual_arm_planner_node.cpp` 增加 `extract_benchmark_extract_quality_success_quorum` 与 `extract_benchmark_extract_quality_loaded_distance_sum`；launch 与 `extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 同步参数。默认关闭，不改变既有行为。
 - 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；13 组全流程按 `quality_success_quorum=1`、`quality_loaded_distance_sum=5.0` 复跑 `13/13` 成功，总耗时 `26086.8ms`、平均 `2006.7ms`，优于当前 q=3 基线 `27589.6ms`、平均 `2122.3ms`；证据：`data/ik_benchmark/quality_stop_1of3_d5_full13_20260714/stats.csv`。
 - 留给下个 AI：`distance<=4.0` 过保守，总耗时 `29817.5ms`，不应采用；`distance<=5.0` 有整体收益但仍受 RRT 随机波动影响，建议作为实验/验收参数显式打开，而不是直接替代默认 q=3。
+
+## 2026-07-14 Codex / MOTION-52 / 箱体RRT边验证缓存与启发式实验
+- 做了什么：定位抽离慢点为箱体 RRT 大量重复边验证；在单臂箱体 RRT evaluator 层增加 from/to 边缓存，避免 shortcut、path_cost 和重复候选边反复执行解析 IK + 碰撞检测。同时增加 `best_first_first` / `top_best_first_first` 实验开关验证启发式格点搜索先行策略。
+- 改了哪里：`box_pose_rrt_extract_planner.cpp` 增加边验证缓存；`robot_motion_core/box_pose_extract_rrt` 增加 best-first 先行配置；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 暴露 `paths_per_arm/path_pair_limit/best_first_first/top_best_first_first` 参数。
+- 验证结果：两包构建与定向测试通过。13 组全流程在边缓存 + `quality_success_quorum=1` + `quality_loaded_distance_sum=5.0` 下 `13/13` 成功，总耗时 `22869.4ms`、平均 `1759.2ms`，优于无缓存 d5 的 `26086.8ms`、当前 q=3 基线的 `27589.6ms`；证据：`data/ik_benchmark/edge_cache_q1d5_full13_20260714/stats.csv`。
+- 留给下个 AI：`paths_per_arm=2`、全局 best-first 先行、top-only best-first 先行均实测变慢，不要默认启用；保留为实验参数。当前慢项转移到 loaded 阶段，L21/R23 仍约 `3.36s`，其中 loaded 约 `2.36s`。

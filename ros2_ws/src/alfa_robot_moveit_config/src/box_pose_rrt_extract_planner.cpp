@@ -241,6 +241,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
     std::find(variable_names.begin(), variable_names.end(), "updown") != variable_names.end() ?
     start_state.getVariablePosition("updown") : 0.0;
   std::map<std::string, moveit::core::RobotStatePtr> state_cache;
+  std::map<std::string, robot_motion::core::BoxPoseExtractEdgeEvaluation> edge_cache;
   std::map<std::string, size_t> rejection_counts;
   state_cache.emplace(box_state_key(BoxState{}), std::make_shared<moveit::core::RobotState>(start_state));
 
@@ -350,9 +351,23 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
 
   const auto evaluator = [&](const BoxState& from, const BoxState& to) {
     robot_motion::core::BoxPoseExtractEdgeEvaluation evaluation;
+    const std::string from_key = box_state_key(from);
+    const std::string to_key = box_state_key(to);
+    const std::string edge_key = from_key + "->" + to_key;
+    const auto cached = edge_cache.find(edge_key);
+    if (cached != edge_cache.end()) {
+      if (!cached->second.valid || state_cache.find(to_key) != state_cache.end()) {
+        if (!cached->second.valid) {
+          rejection_counts[cached->second.rejection_reason.empty() ?
+            side + "_box_pose_rrt_edge_rejected" : cached->second.rejection_reason]++;
+        }
+        return cached->second;
+      }
+    }
     const auto found = state_cache.find(box_state_key(from));
     if (found == state_cache.end() || !found->second) {
       evaluation.rejection_reason = side + "_box_pose_rrt_missing_parent_state";
+      edge_cache[edge_key] = evaluation;
       return evaluation;
     }
     evaluation.valid = solve_edge(
@@ -362,6 +377,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       rejection_counts[evaluation.rejection_reason.empty() ?
         side + "_box_pose_rrt_edge_rejected" : evaluation.rejection_reason]++;
     }
+    edge_cache[edge_key] = evaluation;
     return evaluation;
   };
 
