@@ -18,6 +18,7 @@ struct TreeNode
   BoxPoseExtractState state;
   size_t parent = 0;
   double cumulative_joint_motion = 0.0;
+  double endpoint_score = 0.0;
 };
 
 double finite_or_zero(double value)
@@ -273,6 +274,20 @@ std::vector<std::pair<LatticeKey, double>>::iterator find_lattice_cost(
   });
 }
 
+size_t node_cell_density(
+  const std::vector<TreeNode>& nodes,
+  const LatticeKey& key,
+  const BoxPoseExtractRrtConfig& config)
+{
+  size_t density = 0;
+  for (const auto& node : nodes) {
+    if (lattice_key(node.state, config) == key) {
+      ++density;
+    }
+  }
+  return density;
+}
+
 }  // namespace
 
 BoxPoseExtractRrt::BoxPoseExtractRrt(BoxPoseExtractRrtConfig config)
@@ -372,7 +387,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   std::uniform_real_distribution<double> lift_sample(0.0, config_.max_lift);
   std::uniform_real_distribution<double> pitch_sample(0.0, config_.max_pitch);
   std::uniform_real_distribution<double> lateral_sample(-config_.max_lateral, config_.max_lateral);
-  std::vector<TreeNode> nodes{{start, 0, 0.0}};
+  std::vector<TreeNode> nodes{{start, 0, 0.0, 0.0}};
   const BoxPoseExtractState goal = nominalGoal();
   size_t best_effort_index = 0;
   double best_effort_distance = stateDistance(start, goal);
@@ -397,6 +412,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
   {
     size_t index = 0;
     double distance = std::numeric_limits<double>::infinity();
+    double rank = std::numeric_limits<double>::infinity();
   };
 
   for (size_t iteration = 1; iteration <= config_.max_iterations; ++iteration) {
@@ -419,16 +435,44 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     for (size_t index = 0; index < nodes.size(); ++index) {
       if (!monotonic_transition(nodes[index].state, sample, config_)) continue;
       const double distance = stateDistance(nodes[index].state, sample);
-      parent_candidates.push_back({index, distance});
+      const size_t density = node_cell_density(nodes, lattice_key(nodes[index].state, config_), config_);
+      const double density_penalty = std::log1p(static_cast<double>(density));
+      const double goal_distance = stateDistance(nodes[index].state, goal);
+      const double rank =
+        goal_distance +
+        config_.parent_path_cost_weight * nodes[index].cumulative_joint_motion +
+        config_.parent_node_score_weight * finite_or_zero(nodes[index].endpoint_score) +
+        config_.parent_density_weight * density_penalty;
+      parent_candidates.push_back({index, distance, rank});
     }
     if (parent_candidates.empty()) continue;
     std::sort(parent_candidates.begin(), parent_candidates.end(), [](const auto& lhs, const auto& rhs) {
       return lhs.distance < rhs.distance;
     });
     const size_t parent_limit = std::max<size_t>(1, config_.parent_candidate_count);
-    if (parent_candidates.size() > parent_limit) {
-      parent_candidates.resize(parent_limit);
+    std::vector<ParentCandidate> nearest_candidates = parent_candidates;
+    if (nearest_candidates.size() > parent_limit) {
+      nearest_candidates.resize(parent_limit);
     }
+    const size_t diverse_limit = config_.parent_diverse_candidate_count;
+    if (diverse_limit > 0 && parent_candidates.size() > nearest_candidates.size()) {
+      std::vector<ParentCandidate> diverse_candidates = parent_candidates;
+      std::sort(diverse_candidates.begin(), diverse_candidates.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs.rank < rhs.rank;
+      });
+      for (const auto& candidate : diverse_candidates) {
+        if (nearest_candidates.size() >= parent_limit + diverse_limit) {
+          break;
+        }
+        const bool duplicate = std::any_of(nearest_candidates.begin(), nearest_candidates.end(), [&](const auto& kept) {
+          return kept.index == candidate.index;
+        });
+        if (!duplicate) {
+          nearest_candidates.push_back(candidate);
+        }
+      }
+    }
+    parent_candidates = std::move(nearest_candidates);
 
     struct ExtensionCandidate
     {
@@ -471,7 +515,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
     nodes.push_back({
       selected_extension.next,
       selected_extension.parent_index,
-      nodes[selected_extension.parent_index].cumulative_joint_motion + selected_extension.evaluation.joint_motion});
+      nodes[selected_extension.parent_index].cumulative_joint_motion + selected_extension.evaluation.joint_motion,
+      selected_extension.evaluation.endpoint_score});
     size_t next_index = nodes.size() - 1;
     const double next_goal_distance = stateDistance(selected_extension.next, goal);
     if (next_goal_distance < best_effort_distance) {
@@ -497,7 +542,8 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       nodes.push_back({
         goal,
         next_index,
-        nodes[next_index].cumulative_joint_motion + goal_evaluation.joint_motion});
+        nodes[next_index].cumulative_joint_motion + goal_evaluation.joint_motion,
+        goal_evaluation.endpoint_score});
       next_index = nodes.size() - 1;
       best_effort_distance = 0.0;
       best_effort_index = next_index;
@@ -556,7 +602,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
       }
     };
 
-    std::vector<TreeNode> lattice_nodes{{start, 0, 0.0}};
+    std::vector<TreeNode> lattice_nodes{{start, 0, 0.0, 0.0}};
     std::vector<std::pair<LatticeKey, double>> best_cost;
     best_cost.push_back({lattice_key(start, config_), 0.0});
     std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueGreater> queue;
@@ -604,7 +650,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
         } else {
           best_cost.push_back({key, next_cost});
         }
-        lattice_nodes.push_back({next, entry.node_index, next_cost});
+        lattice_nodes.push_back({next, entry.node_index, next_cost, evaluation.endpoint_score});
         const size_t next_index = lattice_nodes.size() - 1;
         const double next_goal_distance = stateDistance(next, goal);
         if (next_goal_distance < lattice_best_distance) {

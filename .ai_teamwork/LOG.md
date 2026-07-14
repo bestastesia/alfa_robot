@@ -1436,3 +1436,9 @@
 - 改了哪里：`dual_arm_planner_node.cpp` 新增 `extract_monitor_build_final_replay` 开关；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 同步参数，`extract_sequence_rerun.py --no-rerun` 默认关闭最终回放构建。
 - 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；13 组全流程 `13/13` 成功。交错候选方案在关闭回放构建后总耗时 `28083.3ms`、平均 `2160.3ms`，`final_ms` 总和从 `4483.5ms` 降到 `44.0ms`；证据：`data/ik_benchmark/no_replay_interleave_full13_20260714/stats.csv`。
 - 留给下个 AI：该修改只影响无 Rerun 统计口径，不影响需要生成 Rerun 时的最终方案回放；剩余瓶颈仍是抽离 RRT（L6/R13、L11/R8 约 2.8～3.1s）和部分 loaded 规划（最高约 2.38s）。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离RRT候选扩展实验参数化
+- 做了什么：尝试将箱体 RRT parent 选择从纯 nearest 扩展为 nearest + 低密度/低代价父节点补充，并尝试按“IK 代价 + 负重姿态距离”重排抽离入口候选；两类策略均保留为可调参数，但实测不作为默认启用。同步复测抽离成功 quorum=1/2/3 的速度与成功率。
+- 改了哪里：`robot_motion_core/box_pose_extract_rrt` 增加 `parent_diverse_candidate_count`、`parent_node_score_weight`、`parent_density_weight`；`dual_arm_planner_node` 增加 `extract_ik_loaded_distance_order_weight` 并透传到 launch 与两个实验脚本。默认仍为保守 q=3，新增策略默认关闭。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过。13 组全流程均为 13/13 成功。当前 q=3 复测统计：`data/ik_benchmark/current_q3_full13_20260714/stats.csv`，总耗时 `27589.6ms`、平均 `2122.3ms`。q=1 可降低抽离耗时和最大任务耗时，但会提高 loaded 阶段耗时，默认暂不采用；证据：`data/ik_benchmark/default_q1_full13_20260714/stats.csv`。
+- 留给下个 AI：RRT parent density/diverse 与 loaded-distance IK 重排在本轮权重下未带来整体收益，不能默认开启。真正有效但有副作用的是降低 extract success quorum；后续若继续优化，应做“抽离候选早停 + loaded 质量阈值”的闭环，而不是单独改 parent 选择或单独改 IK 排序。

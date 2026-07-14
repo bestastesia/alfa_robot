@@ -59,9 +59,12 @@ struct BoxPoseExtractRrtConfig
   size_t shortcut_attempts = 80;
   bool preserve_unshortcutted_paths = true;
   size_t parent_candidate_count = 1;
+  size_t parent_diverse_candidate_count = 0;
   double parent_path_cost_weight = 0.05;
   double parent_sample_distance_weight = 0.1;
   double parent_endpoint_score_weight = 0.05;
+  double parent_node_score_weight = 0.0;
+  double parent_density_weight = 0.0;
   bool best_first_fallback = true;
   size_t best_first_max_expansions = 800;
   double best_first_heuristic_weight = 1.0;

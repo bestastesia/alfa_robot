@@ -274,7 +274,10 @@ def make_pair_args(
         extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
         extract_box_pose_rrt_max_iterations=args.extract_box_pose_rrt_max_iterations,
         extract_box_pose_rrt_parent_candidates=args.extract_box_pose_rrt_parent_candidates,
+        extract_box_pose_rrt_parent_diverse_candidates=args.extract_box_pose_rrt_parent_diverse_candidates,
         extract_box_pose_rrt_parent_endpoint_score_weight=args.extract_box_pose_rrt_parent_endpoint_score_weight,
+        extract_box_pose_rrt_parent_node_score_weight=args.extract_box_pose_rrt_parent_node_score_weight,
+        extract_box_pose_rrt_parent_density_weight=args.extract_box_pose_rrt_parent_density_weight,
         extract_box_pose_rrt_max_lateral=args.extract_box_pose_rrt_max_lateral,
         extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
         extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
@@ -290,6 +293,7 @@ def make_pair_args(
         extract_ik_candidate_reserve_limit=args.extract_ik_candidate_reserve_limit,
         extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
         extract_ik_candidate_reserve_interleave_stride=args.extract_ik_candidate_reserve_interleave_stride,
+        extract_ik_loaded_distance_order_weight=args.extract_ik_loaded_distance_order_weight,
         extract_monitor_build_final_replay=not args.no_rerun,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
@@ -815,7 +819,10 @@ def main() -> int:
     )
     parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
     parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
     parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
+    parser.add_argument("--extract-box-pose-rrt-parent-node-score-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-parent-density-weight", type=float, default=0.0)
     parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
@@ -871,6 +878,7 @@ def main() -> int:
     parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
     parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
+    parser.add_argument("--extract-ik-loaded-distance-order-weight", type=float, default=0.0)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)

@@ -450,6 +450,8 @@ public:
       get_or_declare_parameter<bool>("extract_ik_candidate_reserve_stratified", true);
     extract_ik_candidate_reserve_interleave_stride_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_ik_candidate_reserve_interleave_stride", 4)));
+    extract_ik_loaded_distance_order_weight_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_ik_loaded_distance_order_weight", 0.0));
     extract_monitor_capture_raw_ik_ = get_or_declare_parameter<bool>("extract_monitor_capture_raw_ik", false);
     extract_monitor_build_final_replay_ =
       get_or_declare_parameter<bool>("extract_monitor_build_final_replay", true);
@@ -475,8 +477,14 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_edge_scene_collision", true);
     extract_box_pose_rrt_parent_candidates_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_parent_candidates", 8)));
+    extract_box_pose_rrt_parent_diverse_candidates_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_box_pose_rrt_parent_diverse_candidates", 0)));
     extract_box_pose_rrt_parent_endpoint_score_weight_ =
       std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_parent_endpoint_score_weight", 0.05));
+    extract_box_pose_rrt_parent_node_score_weight_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_parent_node_score_weight", 0.0));
+    extract_box_pose_rrt_parent_density_weight_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_parent_density_weight", 0.0));
     extract_box_pose_rrt_max_lateral_ =
       std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_max_lateral", 0.0));
     extract_box_pose_rrt_step_lateral_ =
@@ -1114,7 +1122,10 @@ private:
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
     config.front_rrt.parent_candidate_count = extract_box_pose_rrt_parent_candidates_;
+    config.front_rrt.parent_diverse_candidate_count = extract_box_pose_rrt_parent_diverse_candidates_;
     config.front_rrt.parent_endpoint_score_weight = extract_box_pose_rrt_parent_endpoint_score_weight_;
+    config.front_rrt.parent_node_score_weight = extract_box_pose_rrt_parent_node_score_weight_;
+    config.front_rrt.parent_density_weight = extract_box_pose_rrt_parent_density_weight_;
     config.front_rrt.best_first_fallback = extract_box_pose_rrt_best_first_fallback_;
     config.front_rrt.best_first_max_expansions = extract_box_pose_rrt_best_first_max_expansions_;
     config.front_rrt.best_first_heuristic_weight = extract_box_pose_rrt_best_first_heuristic_weight_;
@@ -3916,6 +3927,51 @@ private:
     *states = std::move(limited_states);
   }
 
+  void reorder_extract_ik_candidates_by_loaded_distance(
+    std::vector<robot_motion::core::UpdownAwareIkCandidate>* candidates,
+    std::vector<moveit::core::RobotStatePtr>* states) const
+  {
+    if (!candidates || !states || candidates->size() != states->size() ||
+        candidates->empty() || !loaded_pose_selector_ ||
+        extract_ik_loaded_distance_order_weight_ <= 0.0) {
+      return;
+    }
+
+    struct RankedIndex
+    {
+      size_t index = 0;
+      double rank = 0.0;
+      double loaded_distance = 0.0;
+    };
+    std::vector<RankedIndex> order;
+    order.reserve(candidates->size());
+    for (size_t index = 0; index < candidates->size(); ++index) {
+      const auto& state = (*states)[index];
+      const double loaded_distance = state
+        ? loaded_pose_selector_->select(*state).distance_sum
+        : std::numeric_limits<double>::infinity();
+      order.push_back({
+        index,
+        (*candidates)[index].score + extract_ik_loaded_distance_order_weight_ * loaded_distance,
+        loaded_distance});
+    }
+    std::stable_sort(order.begin(), order.end(), [](const auto& lhs, const auto& rhs) {
+      if (lhs.rank != rhs.rank) return lhs.rank < rhs.rank;
+      return lhs.loaded_distance < rhs.loaded_distance;
+    });
+
+    auto old_candidates = std::move(*candidates);
+    auto old_states = std::move(*states);
+    candidates->clear();
+    states->clear();
+    candidates->reserve(order.size());
+    states->reserve(order.size());
+    for (const auto& item : order) {
+      candidates->push_back(std::move(old_candidates[item.index]));
+      states->push_back(std::move(old_states[item.index]));
+    }
+  }
+
   void record_stage(
     const std::string& stage_name,
     const moveit::planning_interface::MoveGroupInterface::Plan& plan,
@@ -4212,6 +4268,9 @@ private:
     apply_extract_ik_candidate_limit(
       &extract_monitor_state_.legal_candidates,
       &extract_monitor_state_.candidate_states);
+    reorder_extract_ik_candidates_by_loaded_distance(
+      &extract_monitor_state_.legal_candidates,
+      &extract_monitor_state_.candidate_states);
     dedup_stats.selected_count = extract_monitor_state_.legal_candidates.size();
 
     const nlohmann::json records = extract_monitor_candidate_records_json(
@@ -4248,6 +4307,7 @@ private:
     snapshot["extract_ik_candidate_reserve_limit"] = extract_ik_candidate_reserve_limit_;
     snapshot["extract_ik_candidate_reserve_stratified"] = extract_ik_candidate_reserve_stratified_;
     snapshot["extract_ik_candidate_reserve_interleave_stride"] = extract_ik_candidate_reserve_interleave_stride_;
+    snapshot["extract_ik_loaded_distance_order_weight"] = extract_ik_loaded_distance_order_weight_;
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     snapshot["scene_rejected_records"] = std::move(scene_rejected_records);
     snapshot["attached_boxes"] = attached_boxes_json(
@@ -4968,6 +5028,7 @@ private:
   size_t extract_ik_candidate_reserve_limit_ = 64;
   bool extract_ik_candidate_reserve_stratified_ = true;
   size_t extract_ik_candidate_reserve_interleave_stride_ = 4;
+  double extract_ik_loaded_distance_order_weight_ = 0.0;
   bool extract_monitor_capture_raw_ik_ = false;
   bool extract_monitor_build_final_replay_ = true;
   std::string extract_rollout_mode_ = "greedy";
@@ -4982,7 +5043,10 @@ private:
   bool extract_box_pose_rrt_diagnostics_ = false;
   bool extract_box_pose_rrt_edge_scene_collision_ = true;
   size_t extract_box_pose_rrt_parent_candidates_ = 8;
+  size_t extract_box_pose_rrt_parent_diverse_candidates_ = 0;
   double extract_box_pose_rrt_parent_endpoint_score_weight_ = 0.05;
+  double extract_box_pose_rrt_parent_node_score_weight_ = 0.0;
+  double extract_box_pose_rrt_parent_density_weight_ = 0.0;
   double extract_box_pose_rrt_max_lateral_ = 0.0;
   double extract_box_pose_rrt_step_lateral_ = 0.02;
   bool extract_box_pose_rrt_front_free_motion_ = true;
