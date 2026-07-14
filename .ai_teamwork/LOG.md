@@ -1424,3 +1424,9 @@
 - 改了哪里：`robot_motion_core` 的 `box_pose_extract_rrt`；`alfa_robot_moveit_config` 的 `box_pose_rrt_extract_planner`、`dual_arm_planner_node`、`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`。
 - 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；13组全流程在全 h 扫描 + shortcut 负重规划下全部成功，RRD：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/full13_endpoint_reserve.rrd`，统计：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/stats.csv`。
 - 留给下个 AI：后备候选会提升鲁棒性，但 L6/R13、L11/R8 等任务抽离耗时仍在 2.8～3.1s，后续可继续优化 RRT 采样/goal bias/任务特化先验。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离候选后备池交错调度
+- 做了什么：在“主候选 + h 分层后备候选”的基础上新增交错派发顺序，默认每 4 个低代价主候选插入 1 个后备候选，避免困难任务必须等前 25 个候选全部消耗后才尝试多样化 h 候选。
+- 改了哪里：`dual_arm_planner_node.cpp` 的 `apply_extract_ik_candidate_limit`；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 增加 `extract_ik_candidate_reserve_interleave_stride` 参数。
+- 验证结果：编译通过；13 组全流程 `13/13` 成功。对比 `rrt_endpoint_reserve_rerun_20260714`，交错 stride=4 的总耗时从 `33100.2ms` 降到 `31520.1ms`，平均从 `2546.2ms` 降到 `2424.6ms`；证据：`data/ik_benchmark/rrt_reserve_interleave_full13_20260714/stats.csv`。
+- 留给下个 AI：stride=2 也 `13/13` 成功且最大单任务略低，但总耗时 `32299.5ms`，默认暂不采用；后续若更关注最坏耗时而不是总耗时，可重新评估默认值。

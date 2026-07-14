@@ -289,6 +289,7 @@ def make_pair_args(
         extract_ik_stratified_top_score_count=args.extract_ik_stratified_top_score_count,
         extract_ik_candidate_reserve_limit=args.extract_ik_candidate_reserve_limit,
         extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
+        extract_ik_candidate_reserve_interleave_stride=args.extract_ik_candidate_reserve_interleave_stride,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
@@ -868,6 +869,7 @@ def main() -> int:
     parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
     parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
     parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)

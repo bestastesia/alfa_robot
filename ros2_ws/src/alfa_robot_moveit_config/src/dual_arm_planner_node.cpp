@@ -448,6 +448,8 @@ public:
       std::max(0, get_or_declare_parameter<int>("extract_ik_candidate_reserve_limit", 64)));
     extract_ik_candidate_reserve_stratified_ =
       get_or_declare_parameter<bool>("extract_ik_candidate_reserve_stratified", true);
+    extract_ik_candidate_reserve_interleave_stride_ = static_cast<size_t>(
+      std::max(0, get_or_declare_parameter<int>("extract_ik_candidate_reserve_interleave_stride", 4)));
     extract_monitor_capture_raw_ik_ = get_or_declare_parameter<bool>("extract_monitor_capture_raw_ik", false);
     extract_rollout_mode_ = get_or_declare_parameter<std::string>("extract_rollout_mode", "greedy");
     extract_rrt_rollout_enabled_ = get_or_declare_parameter<bool>("extract_rrt_rollout_enabled", false);
@@ -3837,8 +3839,12 @@ private:
       return;
     }
 
-    std::vector<size_t> selected_indices;
-    selected_indices.reserve(total_limit);
+    std::vector<size_t> primary_indices;
+    primary_indices.reserve(std::min(primary_limit, total_limit));
+    std::vector<size_t> reserve_indices;
+    reserve_indices.reserve(extract_ik_candidate_reserve_limit_);
+    std::vector<size_t> filler_indices;
+    filler_indices.reserve(total_limit);
     std::vector<bool> selected(candidates->size(), false);
     std::vector<long long> used_h_buckets;
     used_h_buckets.reserve(total_limit);
@@ -3852,27 +3858,49 @@ private:
     const size_t top_score_count = extract_ik_stratified_limit_enabled_
       ? std::min(total_limit, extract_ik_stratified_top_score_count_)
       : std::min(total_limit, primary_limit);
-    for (size_t index = 0; index < candidates->size() && selected_indices.size() < top_score_count; ++index) {
+    for (size_t index = 0; index < candidates->size() && primary_indices.size() < top_score_count; ++index) {
       selected[index] = true;
-      selected_indices.push_back(index);
+      primary_indices.push_back(index);
       used_h_buckets.push_back(h_bucket((*candidates)[index].h));
     }
 
     if (extract_ik_stratified_limit_enabled_ || extract_ik_candidate_reserve_stratified_) {
-      for (size_t index = top_score_count; index < candidates->size() && selected_indices.size() < total_limit; ++index) {
+      for (size_t index = top_score_count; index < candidates->size() &&
+           primary_indices.size() + reserve_indices.size() < total_limit; ++index) {
         const auto bucket = h_bucket((*candidates)[index].h);
         if (h_bucket_used(bucket)) continue;
         selected[index] = true;
-        selected_indices.push_back(index);
+        reserve_indices.push_back(index);
         used_h_buckets.push_back(bucket);
       }
     }
-    for (size_t index = 0; index < candidates->size() && selected_indices.size() < total_limit; ++index) {
+    for (size_t index = 0; index < candidates->size() &&
+         primary_indices.size() + reserve_indices.size() + filler_indices.size() < total_limit; ++index) {
       if (selected[index]) continue;
       selected[index] = true;
-      selected_indices.push_back(index);
+      filler_indices.push_back(index);
     }
-    std::sort(selected_indices.begin(), selected_indices.end());
+
+    std::vector<size_t> selected_indices;
+    selected_indices.reserve(primary_indices.size() + reserve_indices.size() + filler_indices.size());
+    if (extract_ik_candidate_reserve_interleave_stride_ == 0 || reserve_indices.empty()) {
+      selected_indices.insert(selected_indices.end(), primary_indices.begin(), primary_indices.end());
+      selected_indices.insert(selected_indices.end(), reserve_indices.begin(), reserve_indices.end());
+    } else {
+      size_t primary_cursor = 0;
+      size_t reserve_cursor = 0;
+      while (primary_cursor < primary_indices.size() || reserve_cursor < reserve_indices.size()) {
+        for (size_t i = 0;
+             i < extract_ik_candidate_reserve_interleave_stride_ && primary_cursor < primary_indices.size();
+             ++i) {
+          selected_indices.push_back(primary_indices[primary_cursor++]);
+        }
+        if (reserve_cursor < reserve_indices.size()) {
+          selected_indices.push_back(reserve_indices[reserve_cursor++]);
+        }
+      }
+    }
+    selected_indices.insert(selected_indices.end(), filler_indices.begin(), filler_indices.end());
 
     std::vector<robot_motion::core::UpdownAwareIkCandidate> limited_candidates;
     std::vector<moveit::core::RobotStatePtr> limited_states;
@@ -4217,6 +4245,7 @@ private:
     snapshot["extract_ik_primary_candidate_limit"] = extract_benchmark_candidate_limit_;
     snapshot["extract_ik_candidate_reserve_limit"] = extract_ik_candidate_reserve_limit_;
     snapshot["extract_ik_candidate_reserve_stratified"] = extract_ik_candidate_reserve_stratified_;
+    snapshot["extract_ik_candidate_reserve_interleave_stride"] = extract_ik_candidate_reserve_interleave_stride_;
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     snapshot["scene_rejected_records"] = std::move(scene_rejected_records);
     snapshot["attached_boxes"] = attached_boxes_json(
@@ -4934,6 +4963,7 @@ private:
   size_t extract_ik_stratified_top_score_count_ = 12;
   size_t extract_ik_candidate_reserve_limit_ = 64;
   bool extract_ik_candidate_reserve_stratified_ = true;
+  size_t extract_ik_candidate_reserve_interleave_stride_ = 4;
   bool extract_monitor_capture_raw_ik_ = false;
   std::string extract_rollout_mode_ = "greedy";
   bool extract_rrt_rollout_enabled_ = false;
