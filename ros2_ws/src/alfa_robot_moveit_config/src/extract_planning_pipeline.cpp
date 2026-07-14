@@ -98,6 +98,7 @@ namespace alfa_robot::motion
 namespace
 {
 
+
 double pose_tool_axis_error(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual)
 {
   const Eigen::Vector3d target_axis = target.linear() * Eigen::Vector3d::UnitZ();
@@ -602,38 +603,30 @@ std::vector<ExtractCandidate> ExtractRolloutPlanner::makeCandidatesForSide(
   if (!config_.motion_planner) return candidates;
   const double current_pitch = currentPitchUpRad(side, current_state);
 
-  if (topSuctionForSide(side)) {
-    const double lift_delta = std::max(1e-6, config_.motion_planner->config().step_x);
-    const double lift_z = current_lift_z + lift_delta;
-    const auto target_pose = link_pose(
-      current_state,
-      tipForSide(side),
-      Eigen::Vector3d(0.0, 0.0, lift_delta));
-
-    ExtractCandidate candidate;
-    solveCandidate(side, current_state, target_pose, step, 0,
-                   last_retreat_x, 0.0,
-                   lift_z, lift_delta,
-                   current_pitch, 0.0,
-                   min_allowed_tip_z, carried_box, box_id, &candidate);
-    candidates.push_back(candidate);
-    return candidates;
-  }
-
   for (const auto& layer : config_.motion_planner->layers(
          source_box, box_id, current_pitch, last_retreat_x, current_lift_z)) {
     std::vector<ExtractCandidate> layer_candidates;
     for (const auto& command : layer.commands) {
       Eigen::Quaterniond target_orientation;
+      geometry_msgs::msg::Pose target_pose;
       if (topSuctionForSide(side)) {
-        target_orientation = Eigen::Quaterniond(current_state.getGlobalLinkTransform(tipForSide(side)).linear());
+        const Eigen::Isometry3d& tip = current_state.getGlobalLinkTransform(tipForSide(side));
+        const Eigen::Matrix3d target_rotation =
+          Eigen::AngleAxisd(-command.pitch_delta_rad, Eigen::Vector3d::UnitY()).toRotationMatrix() *
+          tip.linear();
+        target_orientation = Eigen::Quaterniond(target_rotation);
         target_orientation.normalize();
+        target_pose = make_pose(
+          tip.translation().x() - command.retreat_delta_x,
+          tip.translation().y(),
+          tip.translation().z() + command.lift_delta_z,
+          target_orientation);
       } else {
         target_orientation = pitch_up_orientation(command.pitch_up_rad);
+        target_pose = make_pose(
+          command.shifted_box.x, command.shifted_box.y, command.shifted_box.z,
+          target_orientation);
       }
-      const auto target_pose = make_pose(
-        command.shifted_box.x, command.shifted_box.y, command.shifted_box.z,
-        target_orientation);
 
       ExtractCandidate candidate;
       solveCandidate(side, current_state, target_pose, step, command.candidate_index,

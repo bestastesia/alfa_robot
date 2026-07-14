@@ -114,6 +114,133 @@ double arm_joint_limit_margin_cost(
   return cost;
 }
 
+double max_group_joint_delta(
+  const moveit::core::JointModelGroup* group,
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to)
+{
+  if (!group) return 0.0;
+  double max_delta = 0.0;
+  for (const auto& name : group->getVariableNames()) {
+    max_delta = std::max(max_delta, std::abs(to.getVariablePosition(name) - from.getVariablePosition(name)));
+  }
+  return max_delta;
+}
+
+moveit::core::RobotStatePtr interpolate_group_state(
+  const moveit::core::JointModelGroup* group,
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to,
+  double ratio)
+{
+  auto state = std::make_shared<moveit::core::RobotState>(from);
+  if (!group) return state;
+  for (const auto& name : group->getVariableNames()) {
+    const double position =
+      from.getVariablePosition(name) +
+      (to.getVariablePosition(name) - from.getVariablePosition(name)) * ratio;
+    state->setVariablePosition(name, position);
+  }
+  state->enforceBounds(group);
+  state->update(true);
+  return state;
+}
+
+bool extract_segment_clear(
+  const BoxPoseRrtExtractPlannerConfig& config,
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to,
+  const AttachedBoxSpec& left_box,
+  int left_box_id,
+  const AttachedBoxSpec& right_box,
+  int right_box_id,
+  std::string* reason)
+{
+  if (!config.joint_group || !config.dual_clear_callback) {
+    if (reason) *reason = "extract_smooth_missing_collision_callback";
+    return false;
+  }
+  constexpr double max_step_rad = 5.0 * M_PI / 180.0;
+  const size_t sample_count = std::max<size_t>(
+    1, static_cast<size_t>(std::ceil(max_group_joint_delta(config.joint_group, from, to) / max_step_rad)));
+  for (size_t sample = 1; sample <= sample_count; ++sample) {
+    const double ratio = static_cast<double>(sample) / static_cast<double>(sample_count);
+    const auto state = interpolate_group_state(config.joint_group, from, to, ratio);
+    bool left_detached = false;
+    bool right_detached = false;
+    std::string clear_reason;
+    if (!config.dual_clear_callback(
+        *state, left_box, left_box_id, right_box, right_box_id,
+        &left_detached, &right_detached, &clear_reason)) {
+      if (reason) *reason = clear_reason.empty() ? "extract_smooth_collision_rejected" : clear_reason;
+      return false;
+    }
+  }
+  return true;
+}
+
+struct SmoothedCombinedPath
+{
+  std::vector<moveit::core::RobotStatePtr> states;
+  std::vector<double> progresses;
+  size_t removed_reference_points = 0;
+};
+
+SmoothedCombinedPath smooth_combined_extract_path(
+  const BoxPoseRrtExtractPlannerConfig& config,
+  const std::vector<moveit::core::RobotStatePtr>& reference_states,
+  const std::vector<double>& reference_progresses,
+  const AttachedBoxSpec& left_box,
+  int left_box_id,
+  const AttachedBoxSpec& right_box,
+  int right_box_id)
+{
+  SmoothedCombinedPath smoothed;
+  if (reference_states.size() < 3 || reference_states.size() != reference_progresses.size()) {
+    smoothed.states = reference_states;
+    smoothed.progresses = reference_progresses;
+    return smoothed;
+  }
+
+  smoothed.states.push_back(reference_states.front());
+  smoothed.progresses.push_back(reference_progresses.front());
+
+  size_t from = 0;
+  while (from + 1 < reference_states.size()) {
+    size_t best = from + 1;
+    for (size_t target = reference_states.size() - 1; target > from + 1; --target) {
+      std::string reason;
+      if (extract_segment_clear(
+          config, *reference_states[from], *reference_states[target],
+          left_box, left_box_id, right_box, right_box_id, &reason)) {
+        best = target;
+        break;
+      }
+    }
+
+    constexpr double max_step_rad = 5.0 * M_PI / 180.0;
+    const size_t sample_count = std::max<size_t>(
+      1,
+      static_cast<size_t>(std::ceil(
+        max_group_joint_delta(config.joint_group, *reference_states[from], *reference_states[best]) /
+        max_step_rad)));
+    for (size_t sample = 1; sample <= sample_count; ++sample) {
+      const double ratio = static_cast<double>(sample) / static_cast<double>(sample_count);
+      smoothed.states.push_back(interpolate_group_state(
+        config.joint_group, *reference_states[from], *reference_states[best], ratio));
+      smoothed.progresses.push_back(
+        reference_progresses[from] +
+        (reference_progresses[best] - reference_progresses[from]) * ratio);
+    }
+    from = best;
+  }
+
+  smoothed.removed_reference_points =
+    reference_states.size() > smoothed.states.size() ?
+    reference_states.size() - smoothed.states.size() : 0;
+  return smoothed;
+}
+
 void copy_arm_state(
   const moveit::core::JointModelGroup* group,
   const moveit::core::RobotState& source,
@@ -136,6 +263,9 @@ geometry_msgs::msg::Pose target_pose_for_box_state(
     target_tip.translation().x() -= state.retreat;
     target_tip.translation().y() += state.lateral;
     target_tip.translation().z() += state.lift;
+    target_tip.linear() =
+      Eigen::AngleAxisd(-state.pitch, Eigen::Vector3d::UnitY()).toRotationMatrix() *
+      start_tip.linear();
   } else {
     Eigen::Isometry3d tool_to_box = Eigen::Isometry3d::Identity();
     tool_to_box.translation() = Eigen::Vector3d(
@@ -327,7 +457,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
             }
               return false;
           }
-          final_detached = detached;
+          final_detached = detached &&
+            (!top_suction || sample.pitch + rrt_config.goal_pitch_tolerance >= rrt_config.top_goal_min_pitch);
           final_detached_evaluated = true;
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
@@ -433,8 +564,40 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       paths.push_back(std::move(path));
     }
   }
-  std::sort(paths.begin(), paths.end(), [](const ArmPath& lhs, const ArmPath& rhs) {
-    return lhs.joint_motion < rhs.joint_motion;
+  const auto arm_path_score = [&](const ArmPath& path) {
+    double score = path.joint_motion;
+    if (top_suction && !path.box_states.empty()) {
+      constexpr double pitch_deficit_weight = 2.0;
+      const double preferred_pitch = std::max(rrt_config.top_goal_min_pitch, 0.25 * rrt_config.max_pitch);
+      const double pitch_deficit = std::max(0.0, preferred_pitch - path.box_states.back().pitch);
+      score += pitch_deficit_weight * pitch_deficit;
+    }
+    return score;
+  };
+  if (top_suction && !paths.empty()) {
+    const double preferred_pitch = std::max(rrt_config.top_goal_min_pitch, 0.25 * rrt_config.max_pitch);
+    constexpr double pitch_epsilon = 1e-6;
+    const double best_pitch = std::max_element(
+      paths.begin(), paths.end(),
+      [](const ArmPath& lhs, const ArmPath& rhs) {
+        const double lhs_pitch = lhs.box_states.empty() ? 0.0 : lhs.box_states.back().pitch;
+        const double rhs_pitch = rhs.box_states.empty() ? 0.0 : rhs.box_states.back().pitch;
+        return lhs_pitch < rhs_pitch;
+      })->box_states.back().pitch;
+    if (best_pitch >= preferred_pitch - pitch_epsilon) {
+      std::vector<ArmPath> preferred;
+      for (const auto& path : paths) {
+        if (!path.box_states.empty() && path.box_states.back().pitch + pitch_epsilon >= preferred_pitch) {
+          preferred.push_back(path);
+        }
+      }
+      if (!preferred.empty()) {
+        paths = std::move(preferred);
+      }
+    }
+  }
+  std::sort(paths.begin(), paths.end(), [&](const ArmPath& lhs, const ArmPath& rhs) {
+    return arm_path_score(lhs) < arm_path_score(rhs);
   });
   if (paths.size() > config_.max_paths_per_arm) paths.resize(config_.max_paths_per_arm);
   return paths;
@@ -608,7 +771,9 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     const auto& right = right_paths[pairs[pair_rank].right];
     const size_t step_count = std::max(left.states.size(), right.states.size());
     std::vector<moveit::core::RobotStatePtr> combined_states;
+    std::vector<double> combined_progresses;
     combined_states.reserve(step_count);
+    combined_progresses.reserve(step_count);
     bool collision_free = true;
     bool final_left_detached = false;
     bool final_right_detached = false;
@@ -667,6 +832,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       final_left_detached = left_detached;
       final_right_detached = right_detached;
       combined_states.push_back(std::move(combined));
+      combined_progresses.push_back(progress);
     }
     if (!collision_free) {
       failure_counts[failure_reason]++;
@@ -675,6 +841,22 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     if (!final_left_detached || !final_right_detached) {
       failure_counts["box_pose_rrt_final_not_detached"]++;
       continue;
+    }
+
+    const auto smoothed = smooth_combined_extract_path(
+      config_, combined_states, combined_progresses, left_box, left_box_id, right_box, right_box_id);
+    if (!smoothed.states.empty()) {
+      combined_states = smoothed.states;
+      combined_progresses = smoothed.progresses;
+      if (smoothed.removed_reference_points > 0) {
+        RCLCPP_INFO(
+          config_.logger,
+          "box-pose RRT shortcut smoothing: pair_rank=%zu points %zu -> %zu removed=%zu",
+          pair_rank + 1,
+          step_count,
+          combined_states.size(),
+          smoothed.removed_reference_points);
+      }
     }
 
     timing.success = true;
@@ -688,11 +870,29 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     timing.right_final_pitch_deg = right.box_states.back().pitch * 180.0 / M_PI;
     if (record_step) {
       for (size_t step = 0; step < combined_states.size(); ++step) {
+        const double progress = step < combined_progresses.size() ? combined_progresses[step] :
+          (combined_states.size() <= 1 ? 1.0 :
+            static_cast<double>(step) / static_cast<double>(combined_states.size() - 1));
+        const size_t left_index = std::min(
+          left.box_states.size() - 1,
+          static_cast<size_t>(std::llround(progress * static_cast<double>(left.box_states.size() - 1))));
+        const size_t right_index = std::min(
+          right.box_states.size() - 1,
+          static_cast<size_t>(std::llround(progress * static_cast<double>(right.box_states.size() - 1))));
         record_step(step, *combined_states[step], {
           {"stage_kind", "box_pose_rrt_extract_step"},
           {"path_pair_rank", pair_rank + 1},
           {"path_pair_joint_motion", pairs[pair_rank].cost},
           {"accepted", true},
+          {"left_retreat_x", left.box_states[left_index].retreat},
+          {"left_lift_z", left.box_states[left_index].lift},
+          {"left_pitch_up_deg", left.box_states[left_index].pitch * 180.0 / M_PI},
+          {"left_lateral_y", left.box_states[left_index].lateral},
+          {"right_retreat_x", right.box_states[right_index].retreat},
+          {"right_lift_z", right.box_states[right_index].lift},
+          {"right_pitch_up_deg", right.box_states[right_index].pitch * 180.0 / M_PI},
+          {"right_lateral_y", right.box_states[right_index].lateral},
+          {"extract_smoothing_applied", true},
           {"left_top_suction", left_top_suction},
           {"right_top_suction", right_top_suction}
         });

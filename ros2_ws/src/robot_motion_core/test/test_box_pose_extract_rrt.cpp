@@ -90,6 +90,7 @@ int main()
 
   BoxPoseExtractRrtConfig top_config;
   top_config.mode = BoxPoseExtractMode::TopTranslate;
+  top_config.top_goal_min_pitch = 5.0 * M_PI / 180.0;
   top_config.max_iterations = 4000;
   top_config.max_solution_count = 4;
   top_config.random_seed = 17;
@@ -98,14 +99,18 @@ int main()
   assert(top_result.success);
   assert(!top_result.paths.empty());
   assert(top.goalReached(top_result.paths.front().states.back()));
-  assert(top_result.paths.front().states.back().retreat >= top_config.min_top_retreat);
-  assert(top_result.paths.front().states.back().lift >= top_config.min_top_lift);
-  assert(top_result.paths.front().states.back().retreat > top_config.box_depth);
+  assert(top_result.paths.front().states.back().pitch >=
+         top_config.top_goal_min_pitch - top_config.goal_pitch_tolerance);
+  assert(top_result.paths.front().states.back().lift >= top_config.box_height + top_config.separation_margin);
+  assert(top_result.paths.front().states.back().retreat <= top_config.step_retreat + 1e-9);
+  assert(top_result.paths.front().states.back().pitch > 1.4);
   for (size_t index = 1; index < top_result.paths.front().states.size(); ++index) {
     assert(top_result.paths.front().states[index].retreat + 1e-9 >=
            top_result.paths.front().states[index - 1].retreat);
     assert(top_result.paths.front().states[index].lift + 1e-9 >=
            top_result.paths.front().states[index - 1].lift);
+    assert(top_result.paths.front().states[index].pitch + 1e-9 >=
+           top_result.paths.front().states[index - 1].pitch);
   }
 
   return 0;

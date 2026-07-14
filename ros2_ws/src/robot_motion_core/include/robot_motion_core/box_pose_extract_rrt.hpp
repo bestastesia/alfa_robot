@@ -36,6 +36,9 @@ struct BoxPoseExtractRrtConfig
   double max_lateral = 0.0;
   double min_top_retreat = 0.03;
   double min_top_lift = 0.03;
+  double top_goal_min_pitch = 0.0;
+  bool top_goal_requires_retreat = false;
+  bool top_goal_requires_max_pitch = false;
   double step_retreat = 0.02;
   double step_lift = 0.02;
   double step_pitch = 0.08726646259971647;

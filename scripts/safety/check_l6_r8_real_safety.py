@@ -13,8 +13,8 @@ PLANNER = ROOT / "ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node
 LAUNCH = ROOT / "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"
 DOC = ROOT / "docs/ethercat/REAL_DIRECTION_SAFETY.md"
 
-EXPECTED_LEFT0 = [0.0, 59.04, -135.16, 0.0, -76.13, 0.0]
-EXPECTED_RIGHT0 = [0.0, 58.88, -134.84, 0.0, -75.96, 0.0]
+EXPECTED_LEFT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
+EXPECTED_RIGHT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_SIGNS = {
     "left_joint1": 1.0,
     "left_joint2": 1.0,

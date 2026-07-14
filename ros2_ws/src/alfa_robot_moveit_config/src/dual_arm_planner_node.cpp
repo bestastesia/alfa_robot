@@ -503,6 +503,8 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_best_first_first", false);
     extract_box_pose_rrt_top_best_first_first_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_top_best_first_first", false);
+    extract_box_pose_rrt_top_goal_min_pitch_deg_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_top_goal_min_pitch_deg", 5.0));
     extract_box_pose_rrt_best_first_max_expansions_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_box_pose_rrt_best_first_max_expansions", 800)));
     extract_box_pose_rrt_best_first_heuristic_weight_ =
@@ -552,6 +554,8 @@ public:
       get_or_declare_parameter<double>("extract_loaded_pre_lower_updown_delta", 0.0);
     enforce_loaded_plan_aabb_clearance_ =
       get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
+    enforce_loaded_static_box_wall_aabb_clearance_ =
+      get_or_declare_parameter<bool>("enforce_loaded_static_box_wall_aabb_clearance", true);
     record_tip_error_ik_candidates_ = get_or_declare_parameter<bool>("record_tip_error_ik_candidates", false);
     record_tip_error_ik_candidate_limit_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("record_tip_error_ik_candidate_limit", 80)));
@@ -688,6 +692,12 @@ public:
     box_pose_rrt_candidate_solver_ = std::make_unique<ExtractCandidateSolver>(box_pose_solver_config);
     if (!box_pose_rrt_candidate_solver_->initialize(&extract_solver_error)) {
       throw std::runtime_error("box-pose RRT analytic solver init failed: " + extract_solver_error);
+    }
+    auto pre_contact_solver_config = extract_candidate_solver_config();
+    pre_contact_solver_config.max_joint_delta = 0.0;
+    pre_contact_candidate_solver_ = std::make_unique<ExtractCandidateSolver>(pre_contact_solver_config);
+    if (!pre_contact_candidate_solver_->initialize(&extract_solver_error)) {
+      throw std::runtime_error("pre-contact analytic solver init failed: " + extract_solver_error);
     }
     loaded_pose_planner_ = std::make_unique<LoadedPosePlanner>(loaded_pose_planner_config());
     extract_rollout_planner_ = std::make_unique<ExtractRolloutPlanner>(extract_rollout_planner_config());
@@ -1142,11 +1152,16 @@ private:
     config.top_rrt = config.front_rrt;
     config.top_rrt.mode = robot_motion::core::BoxPoseExtractMode::TopTranslate;
     config.top_rrt.best_first_first = extract_box_pose_rrt_top_best_first_first_;
-    config.top_rrt.max_pitch = 0.0;
+    config.top_rrt.max_pitch = M_PI_2;
     config.top_rrt.endpoint_only_edges = true;
     config.top_rrt.max_lift = extract_box_pose_rrt_max_lift_;
     config.top_rrt.min_top_retreat = extract_box_pose_rrt_separation_margin_;
     config.top_rrt.min_top_lift = extract_box_pose_rrt_separation_margin_;
+    config.top_rrt.top_goal_min_pitch = extract_box_pose_rrt_top_goal_min_pitch_deg_ * M_PI / 180.0;
+    config.top_rrt.top_goal_requires_retreat = false;
+    config.top_rrt.top_goal_requires_max_pitch = false;
+    config.top_rrt.retreat_distance_weight = 2.0;
+    config.top_rrt.lift_distance_weight = 0.5;
     config.top_rrt.random_seed = 29;
     if (extract_box_pose_rrt_edge_scene_collision_) {
       config.single_clear_callback =
@@ -1256,16 +1271,18 @@ private:
         const std::string& stage_name,
         const moveit::core::RobotState& start_state,
         const moveit::core::RobotState& goal_state,
+        const std::vector<AttachedBoxSpec>& carried_boxes,
         moveit::planning_interface::MoveGroupInterface::Plan* plan,
         std::string* reason) {
-        return plan_loaded_pose_with_direct_pipeline(stage_name, start_state, goal_state, plan, reason);
+        return plan_loaded_pose_with_direct_pipeline(stage_name, start_state, goal_state, carried_boxes, plan, reason);
       };
     }
     config.clearance_callback = [this](
       const moveit::planning_interface::MoveGroupInterface::Plan& plan,
       const moveit::core::RobotState& start_state,
+      const std::vector<AttachedBoxSpec>& carried_boxes,
       std::string* reason) {
-      return planned_trajectory_clear_in_full_scene(plan, start_state, active_attached_boxes(), reason);
+      return planned_trajectory_clear_in_full_scene(plan, start_state, carried_boxes, reason);
     };
     config.record_callback = [this](
       const std::string& stage_name,
@@ -1336,6 +1353,7 @@ private:
     const std::string& stage_name,
     const moveit::core::RobotState& start_state,
     const moveit::core::RobotState& goal_state,
+    const std::vector<AttachedBoxSpec>& carried_boxes,
     moveit::planning_interface::MoveGroupInterface::Plan* plan,
     std::string* reason) const
   {
@@ -1357,7 +1375,6 @@ private:
       return false;
     }
 
-    const auto carried_boxes = active_attached_boxes();
     moveit::core::RobotState planning_start_state(start_state);
     moveit::core::RobotState planning_goal_state(goal_state);
     if (enable_attached_box_collision_) {
@@ -1875,6 +1892,21 @@ private:
       reason);
   }
 
+  bool carried_box_clear_static_box_wall_obstacles(
+    const moveit::core::RobotState& state,
+    const AttachedBoxSpec& carried_box,
+    std::string* reason) const
+  {
+    if (!enable_attached_box_collision_ || !enable_static_box_obstacles_) return true;
+    const auto carried_aabb = attached_box_world_aabb(state, carried_box);
+    return carried_box_clear_obstacles(
+      carried_aabb,
+      carried_box.id,
+      static_box_obstacles(),
+      {},
+      reason);
+  }
+
   bool state_clear_for_extract(
     const moveit::core::RobotState& state,
     const AttachedBoxSpec& left_carried_box,
@@ -2042,6 +2074,15 @@ private:
       if (!carried_box_clear_rear_guard(collision_state, box, &rear_guard_reason)) {
         if (reason) *reason = "rear guard check failed (" + rear_guard_reason + ")";
         return false;
+      }
+    }
+    if (enforce_loaded_static_box_wall_aabb_clearance_) {
+      for (const auto& box : attached_boxes) {
+        std::string static_wall_reason;
+        if (!carried_box_clear_static_box_wall_obstacles(collision_state, box, &static_wall_reason)) {
+          if (reason) *reason = "static box-wall AABB check failed (" + static_wall_reason + ")";
+          return false;
+        }
       }
     }
     if (enforce_loaded_plan_aabb_clearance_) {
@@ -4657,9 +4698,95 @@ private:
     if (!ik_state) {
       return false;
     }
+    std::string pre_contact_reason;
+    const auto pre_contact_state = build_extract_monitor_pre_contact_state(
+      *extract_monitor_state_.loaded_start_state, *ik_state, &pre_contact_reason);
+    const auto transition_clear = [this](
+      const moveit::core::RobotState& start,
+      const moveit::core::RobotState& goal) {
+      auto plan = make_interpolated_joint_plan(start, goal, 1.0);
+      std::string reason;
+      return planned_trajectory_clear_in_full_scene(plan, start, {}, &reason);
+    };
+    if (pre_contact_state) {
+      return transition_clear(*extract_monitor_state_.loaded_start_state, *pre_contact_state) &&
+        transition_clear(*pre_contact_state, *ik_state);
+    }
+
     auto plan = make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, *ik_state, 1.0);
     std::string reason;
     return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.loaded_start_state, {}, &reason);
+  }
+
+  moveit::core::RobotStatePtr build_extract_monitor_pre_contact_state(
+    const moveit::core::RobotState& loaded_start_state,
+    const moveit::core::RobotState& ik_goal_state,
+    std::string* reason) const
+  {
+    (void)loaded_start_state;
+    if (!pre_contact_candidate_solver_) {
+      if (reason) *reason = "pre_contact_solver_not_initialized";
+      return nullptr;
+    }
+    constexpr double pre_contact_offset = 0.05;
+    auto pre_contact_state = std::make_shared<moveit::core::RobotState>(ik_goal_state);
+    const double fixed_updown = current_updown(ik_goal_state);
+
+    const auto solve_side = [&](const std::string& side, const std::string& tip, bool top_suction) {
+      const Eigen::Isometry3d ik_tip = ik_goal_state.getGlobalLinkTransform(tip);
+      Eigen::Isometry3d pre_contact_tip = ik_tip;
+      pre_contact_tip.translation() -= ik_tip.linear() * Eigen::Vector3d::UnitZ() * pre_contact_offset;
+      Eigen::Quaterniond orientation(pre_contact_tip.linear());
+      orientation.normalize();
+
+      ExtractCandidateSolveRequest request;
+      request.side = side;
+      request.current_state = &ik_goal_state;
+      request.target_pose = make_pose(
+        pre_contact_tip.translation().x(),
+        pre_contact_tip.translation().y(),
+        pre_contact_tip.translation().z(),
+        orientation);
+      request.step_index = 0;
+      request.candidate_index = 0;
+      request.min_allowed_tip_z = -std::numeric_limits<double>::infinity();
+      request.fixed_updown = fixed_updown;
+      request.min_tool_normal_z = -1.1;
+      request.top_suction = top_suction;
+
+      ExtractCandidate candidate;
+      if (!pre_contact_candidate_solver_->solve(request, &candidate) || !candidate.state) {
+        if (reason) {
+          *reason = candidate.rejection_reason.empty()
+            ? side + "_pre_contact_ik_failed"
+            : candidate.rejection_reason;
+        }
+        return false;
+      }
+
+      const auto* group = side == "left" ? left_arm_group_ : right_arm_group_;
+      if (!group) {
+        if (reason) *reason = side + "_pre_contact_missing_group";
+        return false;
+      }
+      for (const auto& name : group->getVariableNames()) {
+        pre_contact_state->setVariablePosition(name, candidate.state->getVariablePosition(name));
+      }
+      return true;
+    };
+
+    if (!solve_side("left", left_tip_, extract_monitor_left_top_suction_)) {
+      return nullptr;
+    }
+    if (!solve_side("right", right_tip_, extract_monitor_right_top_suction_)) {
+      return nullptr;
+    }
+
+    pre_contact_state->setVariablePosition("updown", fixed_updown);
+    pre_contact_state->enforceBounds(joint_group_);
+    pre_contact_state->update(true);
+    if (reason) reason->clear();
+    return pre_contact_state;
   }
 
   ExtractRolloutTiming* select_extract_monitor_final_timing()
@@ -4731,6 +4858,13 @@ private:
     builder.ensure_extract_replay = [this](ExtractRolloutTiming& timing) {
       ensure_selected_extract_replay_records(timing);
     };
+    builder.build_pre_contact_state =
+      [this](
+        const moveit::core::RobotState& loaded_start_state,
+        const moveit::core::RobotState& ik_goal_state,
+        std::string* reason) {
+        return build_extract_monitor_pre_contact_state(loaded_start_state, ik_goal_state, reason);
+      };
 
     return builder.build(selected, make_extract_monitor_replay_request(
       extract_monitor_state_,
@@ -5012,6 +5146,7 @@ private:
   double carried_box_height_ = 0.4;
   double attached_box_collision_padding_ = -0.002;
   bool enforce_loaded_plan_aabb_clearance_ = false;
+  bool enforce_loaded_static_box_wall_aabb_clearance_ = true;
   bool enable_static_box_obstacles_ = true;
   double static_box_obstacle_inset_ = 0.002;
   int extract_demo_left_box_id_ = 2;
@@ -5087,6 +5222,7 @@ private:
   bool extract_box_pose_rrt_best_first_fallback_ = true;
   bool extract_box_pose_rrt_best_first_first_ = false;
   bool extract_box_pose_rrt_top_best_first_first_ = false;
+  double extract_box_pose_rrt_top_goal_min_pitch_deg_ = 5.0;
   size_t extract_box_pose_rrt_best_first_max_expansions_ = 800;
   double extract_box_pose_rrt_best_first_heuristic_weight_ = 1.0;
   std::string extract_rrt_planning_group_ = "dual_arm";
@@ -5141,6 +5277,7 @@ private:
   std::unique_ptr<ExtractCandidateScorer> extract_candidate_scorer_;
   std::unique_ptr<ExtractCandidateSolver> extract_candidate_solver_;
   std::unique_ptr<ExtractCandidateSolver> box_pose_rrt_candidate_solver_;
+  std::unique_ptr<ExtractCandidateSolver> pre_contact_candidate_solver_;
   std::unique_ptr<ExtractRolloutPlanner> extract_rollout_planner_;
   std::unique_ptr<BoxPoseRrtExtractPlanner> box_pose_rrt_extract_planner_;
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;

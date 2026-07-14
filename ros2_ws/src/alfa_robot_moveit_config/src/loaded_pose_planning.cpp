@@ -539,7 +539,8 @@ moveit::planning_interface::MoveGroupInterface::Plan merge_parallel_arm_plans(
 
 ExtractMonitorTransitionPlanner make_loaded_transition_planner(
   const LoadedPosePlannerConfig& config,
-  const std::string& stage_name)
+  const std::string& stage_name,
+  const std::vector<AttachedBoxSpec>& carried_boxes)
 {
   ExtractMonitorTransitionPlanner repair_planner;
   repair_planner.make_interpolated_plan =
@@ -550,13 +551,18 @@ ExtractMonitorTransitionPlanner make_loaded_transition_planner(
   repair_planner.densify_plan = [](const auto& candidate) {
     return candidate;
   };
-  repair_planner.validate_plan = [&config](const auto& candidate, const auto& start, std::string* reason) {
+  repair_planner.validate_plan =
+    [&config, &carried_boxes](const auto& candidate, const auto& start, std::string* reason) {
     return config.clearance_callback
-      ? config.clearance_callback(candidate, start, reason)
+      ? config.clearance_callback(candidate, start, carried_boxes, reason)
       : true;
   };
   repair_planner.direct_plan =
-    [&config, &stage_name](const auto& start, const auto& goal, auto* repaired, std::string* reason) {
+    [&config, &stage_name, &carried_boxes](
+      const auto& start,
+      const auto& goal,
+      auto* repaired,
+      std::string* reason) {
       if (!config.direct_plan_callback) {
         if (reason) {
           *reason = "loaded_direct_plan_callback_not_available";
@@ -564,7 +570,7 @@ ExtractMonitorTransitionPlanner make_loaded_transition_planner(
         return false;
       }
       return config.direct_plan_callback(
-        stage_name + "/shortcut_local_rrt_patch", start, goal, repaired, reason);
+        stage_name + "/shortcut_local_rrt_patch", start, goal, carried_boxes, repaired, reason);
     };
   return repair_planner;
 }
@@ -574,6 +580,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
   const moveit::core::RobotState& goal_state,
   const LoadedPosePlannerConfig& config,
   ExtractMonitorTransitionPlanner& repair_planner,
+  const std::vector<AttachedBoxSpec>& carried_boxes,
   moveit::planning_interface::MoveGroupInterface::Plan* plan,
   std::string* reason)
 {
@@ -607,7 +614,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
     config.target_joint_names);
   std::string arm_clearance_reason;
   if (config.clearance_callback &&
-      !config.clearance_callback(combined, loaded_start_state, &arm_clearance_reason)) {
+      !config.clearance_callback(combined, loaded_start_state, carried_boxes, &arm_clearance_reason)) {
     if (reason) *reason = "parallel_loaded_arm_transition_collision: " + arm_clearance_reason;
     return false;
   }
@@ -619,7 +626,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
       arm_goal_state, goal_state, config.target_joint_names, 0.4);
     std::string updown_reason;
     if (config.clearance_callback &&
-        !config.clearance_callback(updown_segment, arm_goal_state, &updown_reason)) {
+        !config.clearance_callback(updown_segment, arm_goal_state, carried_boxes, &updown_reason)) {
       if (reason) *reason = "loaded_final_updown_transition_failed: " + updown_reason;
       return false;
     }
@@ -628,7 +635,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
 
   std::string combined_reason;
   if (config.clearance_callback &&
-      !config.clearance_callback(combined, loaded_start_state, &combined_reason)) {
+      !config.clearance_callback(combined, loaded_start_state, carried_boxes, &combined_reason)) {
     if (reason) *reason = "parallel_loaded_plan_validation_failed: " + combined_reason;
     return false;
   }
@@ -808,7 +815,7 @@ bool LoadedPosePlanner::planLateralShift(
 
     std::string clearance_reason;
     const bool clear = config_.clearance_callback
-      ? config_.clearance_callback(plan, planning_start, &clearance_reason)
+      ? config_.clearance_callback(plan, planning_start, carried_boxes, &clearance_reason)
       : true;
     if (!clear) {
       result->failure_reason =
@@ -990,22 +997,102 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     carried_boxes,
     config_.attached_box_collision_padding);
   loaded_start_state = shifted_state;
+  const moveit::core::RobotState validation_start_state(loaded_start_state);
+
+  moveit::planning_interface::MoveGroupInterface::Plan pre_loaded_top_lift_prefix;
+  bool has_pre_loaded_top_lift_prefix = false;
+  double pre_loaded_top_lift_start_updown = currentUpdown(loaded_start_state);
+  double pre_loaded_top_lift_target_updown = pre_loaded_top_lift_start_updown;
+  const bool both_top_suction =
+    carried_boxes.size() == 2 &&
+    std::all_of(carried_boxes.begin(), carried_boxes.end(), box_uses_top_suction);
+  const auto box_layer = [&](const AttachedBoxSpec& box) {
+    const int id = boxId(box);
+    return id > 0 ? (id - 1) / 5 : -1;
+  };
+  const bool top_suction_height_mismatch =
+    both_top_suction &&
+    box_layer(carried_boxes[0]) >= 0 &&
+    box_layer(carried_boxes[1]) >= 0 &&
+    box_layer(carried_boxes[0]) != box_layer(carried_boxes[1]);
+  const auto& loaded_variable_names = loaded_start_state.getRobotModel()->getVariableNames();
+  const bool has_updown_variable = std::find(
+    loaded_variable_names.begin(), loaded_variable_names.end(), "updown") != loaded_variable_names.end();
+  if (top_suction_height_mismatch && has_updown_variable) {
+    std::vector<double> lift_deltas{0.4, 0.5, 0.6, 0.7};
+    lift_deltas.push_back(0.99 - pre_loaded_top_lift_start_updown);
+    std::string last_lift_reason;
+    for (const double lift_delta : lift_deltas) {
+      if (lift_delta <= 1e-6) continue;
+      const double lifted_updown = std::min(
+        0.99, pre_loaded_top_lift_start_updown + lift_delta);
+      if (lifted_updown <= pre_loaded_top_lift_start_updown + 1e-6) continue;
+
+      moveit::core::RobotState lifted_state(loaded_start_state);
+      lifted_state.setVariablePosition("updown", lifted_updown);
+      lifted_state.enforceBounds();
+      lifted_state.update(true);
+
+      auto lift_segment = make_interpolated_joint_plan(
+        loaded_start_state, lifted_state, config_.target_joint_names, 0.4);
+      std::string lift_reason;
+      if (config_.clearance_callback &&
+          !config_.clearance_callback(lift_segment, loaded_start_state, carried_boxes, &lift_reason)) {
+        last_lift_reason = lift_reason;
+        continue;
+      }
+
+      pre_loaded_top_lift_prefix = std::move(lift_segment);
+      has_pre_loaded_top_lift_prefix = true;
+      pre_loaded_top_lift_target_updown = currentUpdown(lifted_state);
+      loaded_start_state = std::move(lifted_state);
+      break;
+    }
+    if (!has_pre_loaded_top_lift_prefix) {
+      result.failure_reason = "pre_loaded_top_suction_updown_lift_failed";
+      if (!last_lift_reason.empty()) {
+        result.failure_reason += ": " + last_lift_reason;
+      }
+      restore_boxes();
+      return result;
+    }
+  }
+
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  auto prepend_pre_loaded_top_lift =
+    [&](const moveit::planning_interface::MoveGroupInterface::Plan& segment) {
+      if (!has_pre_loaded_top_lift_prefix) {
+        return segment;
+      }
+      auto combined = pre_loaded_top_lift_prefix;
+      append_plan_segment(combined, segment);
+      return combined;
+    };
+
+  auto set_result_plan = [&](const moveit::planning_interface::MoveGroupInterface::Plan& segment) {
+    plan = prepend_pre_loaded_top_lift(segment);
+    result.plan = plan;
+    result.plan_points = plan.trajectory_.joint_trajectory.points.size();
+    result.trajectory_joint_distance = trajectory_joint_distance(
+      plan.trajectory_, config_.target_joint_names);
+    result.start_state = std::make_shared<moveit::core::RobotState>(validation_start_state);
+  };
 
   moveit::core::RobotState goal_state = config_.selector->makeGoalState(
     loaded_start_state, &result.selection);
 
-  moveit::planning_interface::MoveGroupInterface::Plan plan;
   const auto t0 = std::chrono::steady_clock::now();
   moveit::core::MoveItErrorCode plan_result = moveit::core::MoveItErrorCode::FAILURE;
   std::string direct_failure_reason;
   if (config_.planning_mode == "shortcut") {
     ExtractMonitorTransitionPlanner repair_planner =
-      make_loaded_transition_planner(config_, stage_name);
+      make_loaded_transition_planner(config_, stage_name, carried_boxes);
     const bool shortcut_ok = plan_loaded_fixed_updown_parallel_arms(
       loaded_start_state,
       goal_state,
       config_,
       repair_planner,
+      carried_boxes,
       &plan,
       &direct_failure_reason);
     plan_result = shortcut_ok
@@ -1013,7 +1100,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
       : moveit::core::MoveItErrorCode::FAILURE;
   } else if (config_.direct_plan_callback) {
     const bool direct_ok = config_.direct_plan_callback(
-      stage_name, loaded_start_state, goal_state, &plan, &direct_failure_reason);
+      stage_name, loaded_start_state, goal_state, carried_boxes, &plan, &direct_failure_reason);
     plan_result = direct_ok
       ? moveit::core::MoveItErrorCode::SUCCESS
       : moveit::core::MoveItErrorCode::FAILURE;
@@ -1029,8 +1116,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   result.plan_points = plan.trajectory_.joint_trajectory.points.size();
   result.trajectory_joint_distance = trajectory_joint_distance(
     plan.trajectory_, config_.target_joint_names);
-  result.plan = plan;
-  result.start_state = std::make_shared<moveit::core::RobotState>(loaded_start_state);
+  set_result_plan(plan);
   result.goal_state = std::make_shared<moveit::core::RobotState>(goal_state);
 
   if (plan_result != moveit::core::MoveItErrorCode::SUCCESS) {
@@ -1043,25 +1129,21 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
 
   std::string carried_collision_reason;
   result.carried_clear = config_.clearance_callback
-    ? config_.clearance_callback(plan, loaded_start_state, &carried_collision_reason)
+    ? config_.clearance_callback(plan, validation_start_state, carried_boxes, &carried_collision_reason)
     : true;
   if (!result.carried_clear) {
     result.failure_reason = carried_collision_reason;
     if (config_.planning_mode == "shortcut" && config_.direct_plan_callback) {
       const auto repair_start = std::chrono::steady_clock::now();
       ExtractMonitorTransitionPlanner repair_planner =
-        make_loaded_transition_planner(config_, stage_name);
+        make_loaded_transition_planner(config_, stage_name, carried_boxes);
 
       const bool rear_guard_collision =
         carried_collision_reason.find("rear guard") != std::string::npos;
       const ExtractMonitorTransitionPlanResult repaired =
         repair_planner.plan(loaded_start_state, goal_state);
       if (repaired.valid) {
-        plan = repaired.plan;
-        result.plan = plan;
-        result.plan_points = plan.trajectory_.joint_trajectory.points.size();
-        result.trajectory_joint_distance = trajectory_joint_distance(
-          plan.trajectory_, config_.target_joint_names);
+        set_result_plan(repaired.plan);
         result.carried_clear = true;
         carried_collision_reason.clear();
         result.failure_reason.clear();
@@ -1096,7 +1178,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
             loaded_start_state, lifted_state, config_.target_joint_names, 0.4);
           std::string lift_reason;
           if (config_.clearance_callback &&
-              !config_.clearance_callback(lift_segment, loaded_start_state, &lift_reason)) {
+              !config_.clearance_callback(lift_segment, loaded_start_state, carried_boxes, &lift_reason)) {
             rear_guard_failure = "rear_guard_top_lift_failed: " + lift_reason;
           } else {
             auto plan_side_order =
@@ -1152,7 +1234,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 lifted_goal_state, goal_state, config_.target_joint_names, 0.4);
               std::string lower_reason;
               if (config_.clearance_callback &&
-                  !config_.clearance_callback(lower_segment, lifted_goal_state, &lower_reason)) {
+                  !config_.clearance_callback(lower_segment, lifted_goal_state, carried_boxes, &lower_reason)) {
                 rear_guard_failure = "rear_guard_top_lift_lower_failed: " + lower_reason;
               } else {
                 auto lifted_plan = lift_segment;
@@ -1160,14 +1242,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 append_plan_segment(lifted_plan, lower_segment);
                 std::string lifted_reason;
                 if (config_.clearance_callback &&
-                    !config_.clearance_callback(lifted_plan, loaded_start_state, &lifted_reason)) {
+                    !config_.clearance_callback(lifted_plan, loaded_start_state, carried_boxes, &lifted_reason)) {
                   rear_guard_failure = "rear_guard_top_lift_validation_failed: " + lifted_reason;
                 } else {
-                  plan = std::move(lifted_plan);
-                  result.plan = plan;
-                  result.plan_points = plan.trajectory_.joint_trajectory.points.size();
-                  result.trajectory_joint_distance = trajectory_joint_distance(
-                    plan.trajectory_, config_.target_joint_names);
+                  set_result_plan(lifted_plan);
                   result.carried_clear = true;
                   carried_collision_reason.clear();
                   result.failure_reason.clear();
@@ -1220,7 +1298,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
             std::string retreat_clearance_reason;
             if (config_.clearance_callback &&
                 !config_.clearance_callback(
-                  retreat_segment, retreat_state, &retreat_clearance_reason)) {
+                  retreat_segment, retreat_state, carried_boxes, &retreat_clearance_reason)) {
               rear_guard_failure = "rear_guard_retreat_collision_step_" +
                 std::to_string(retreat_step) + ": " + retreat_clearance_reason;
               break;
@@ -1260,8 +1338,8 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 posture_state, goal_state, config_.target_joint_names, 0.5);
               std::string posture_reason;
               const bool posture_clear = !config_.clearance_callback ||
-                (config_.clearance_callback(posture_segment, retreat_state, &posture_reason) &&
-                 config_.clearance_callback(final_segment, posture_state, &posture_reason));
+                (config_.clearance_callback(posture_segment, retreat_state, carried_boxes, &posture_reason) &&
+                 config_.clearance_callback(final_segment, posture_state, carried_boxes, &posture_reason));
               if (posture_clear) {
                 append_plan_segment(retreat_prefix, posture_segment);
                 append_plan_segment(retreat_prefix, final_segment);
@@ -1275,7 +1353,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
               retreat_state, goal_state, config_.target_joint_names, 1.0);
             std::string remaining_reason;
             if (!config_.clearance_callback ||
-                config_.clearance_callback(remaining_shortcut, retreat_state, &remaining_reason)) {
+                config_.clearance_callback(remaining_shortcut, retreat_state, carried_boxes, &remaining_reason)) {
               append_plan_segment(retreat_prefix, remaining_shortcut);
               retreat_ready = true;
               break;
@@ -1320,7 +1398,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 std::string sequential_reason;
                 if (config_.clearance_callback &&
                     !config_.clearance_callback(
-                      sequential_plan, loaded_start_state, &sequential_reason)) {
+                      sequential_plan, loaded_start_state, carried_boxes, &sequential_reason)) {
                   if (failure_reason) {
                     *failure_reason = "sequential_transition_validation_failed: " +
                       sequential_reason;
@@ -1356,14 +1434,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
             std::string combined_reason;
             if (config_.clearance_callback &&
                 !config_.clearance_callback(
-                  combined, loaded_start_state, &combined_reason)) {
+                  combined, loaded_start_state, carried_boxes, &combined_reason)) {
               rear_guard_failure = combined_reason;
             } else {
-              plan = std::move(combined);
-              result.plan = plan;
-              result.plan_points = plan.trajectory_.joint_trajectory.points.size();
-              result.trajectory_joint_distance = trajectory_joint_distance(
-                plan.trajectory_, config_.target_joint_names);
+              set_result_plan(combined);
               result.carried_clear = true;
               carried_collision_reason.clear();
               result.failure_reason.clear();
@@ -1403,8 +1477,13 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
       {"loaded_plan_ms", result.plan_ms},
       {"loaded_plan_points", result.plan_points},
       {"loaded_plan_trajectory_distance", result.trajectory_joint_distance},
-      {"start_updown", currentUpdown(loaded_start_state)},
+      {"start_updown", currentUpdown(validation_start_state)},
+      {"planning_start_updown", currentUpdown(loaded_start_state)},
       {"target_updown", currentUpdown(goal_state)},
+      {"pre_loaded_top_lift_applied", has_pre_loaded_top_lift_prefix},
+      {"pre_loaded_top_lift_height_mismatch", top_suction_height_mismatch},
+      {"pre_loaded_top_lift_start_updown", pre_loaded_top_lift_start_updown},
+      {"pre_loaded_top_lift_target_updown", pre_loaded_top_lift_target_updown},
       {"carried_box_count", carried_boxes.size()},
       {"moveit_attached_box_count", carried_boxes.size()},
       {"loaded_plan_rank", loaded_plan_rank},
@@ -1422,7 +1501,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     };
     std::lock_guard<std::mutex> lock(record_mutex_);
     config_.record_callback(
-      stage_name, plan, loaded_start_state, goal_state, config_.target_joint_names, extra);
+      stage_name, plan, validation_start_state, goal_state, config_.target_joint_names, extra);
   }
 
   if (!result.carried_clear) {

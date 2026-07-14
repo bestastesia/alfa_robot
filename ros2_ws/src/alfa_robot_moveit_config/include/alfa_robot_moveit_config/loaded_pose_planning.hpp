@@ -139,6 +139,7 @@ struct LoadedPoseBatchPlanResult
 using LoadedPlanClearanceCallback = std::function<bool(
   const moveit::planning_interface::MoveGroupInterface::Plan&,
   const moveit::core::RobotState&,
+  const std::vector<AttachedBoxSpec>&,
   std::string*)>;
 
 using LoadedPlanRecordCallback = std::function<void(
@@ -153,6 +154,7 @@ using LoadedDirectPlanCallback = std::function<bool(
   const std::string&,
   const moveit::core::RobotState&,
   const moveit::core::RobotState&,
+  const std::vector<AttachedBoxSpec>&,
   moveit::planning_interface::MoveGroupInterface::Plan*,
   std::string*)>;
 

@@ -36,6 +36,12 @@ ExtractMonitorReplayBuildRequest make_extract_monitor_replay_request(
 using ExtractMonitorEnsureExtractReplay =
   std::function<void(ExtractRolloutTiming& selected)>;
 
+using ExtractMonitorPreContactStateBuilder =
+  std::function<moveit::core::RobotStatePtr(
+    const moveit::core::RobotState& loaded_start_state,
+    const moveit::core::RobotState& ik_goal_state,
+    std::string* reason)>;
+
 using ExtractMonitorTransitionClock =
   std::function<std::chrono::steady_clock::time_point()>;
 
@@ -43,6 +49,7 @@ struct ExtractMonitorReplayBuilder
 {
   ExtractMonitorTransitionPlanner transition_planner;
   ExtractMonitorEnsureExtractReplay ensure_extract_replay;
+  ExtractMonitorPreContactStateBuilder build_pre_contact_state;
   ExtractMonitorTransitionClock now = [] { return std::chrono::steady_clock::now(); };
 
   nlohmann::json build(

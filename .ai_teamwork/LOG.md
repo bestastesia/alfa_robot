@@ -1460,3 +1460,15 @@
 - 改了哪里：`extract_monitor_transition_planning.cpp` 的 `repair_with_local_rrt`；`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 的 loaded 策略参数。
 - 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；三轮 13 组全流程共 `39/39` 成功，统计：`data/ik_benchmark/custom_first_limit8_repeat3_20260714/stats.csv`。平均任务耗时 `1138.5ms`，最大 `2742.8ms`；loaded 阶段平均 `263.1ms`、最大 `362.4ms`，按 13 组折算约 `3420.4ms`，相比 `edge_cache_q1d5_full13_20260714` 的 `11631.5ms` 明显下降，尾部慢点已从 loaded 转移回抽离阶段。
 - 留给下个 AI：当前主要慢项是 L6/R13、L11/R8 的抽离阶段，三轮平均分别约 `2297.2ms`、`2133.5ms`；继续优化应聚焦箱体抽离 RRT 的采样/目标偏置/任务先验，而不是 loaded 规划。
+
+## 2026-07-14 运控 / Codex / 顶吸抽离允许并优先微旋转
+- 做了什么：修复顶吸箱体位姿 RRT 在 pitch=0 仅 lift 脱离后提前成功的问题，新增 top_goal_min_pitch 软阈值，默认 5°；顶吸目标姿态现在会随 box-state pitch 旋转，并在候选评分中优先更接近侧吸姿态的 top 路径。
+- 改了哪里：`robot_motion_core/box_pose_extract_rrt.*`、`alfa_robot_moveit_config/src/box_pose_rrt_extract_planner.cpp`、`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test --packages-select robot_motion_core` 通过；13 组任务复跑 13/13 成功，Rerun 保存到 `data/ik_benchmark/top_pitch_min5_20260714/full13_top_pitch_min5.rrd`。
+- 留给下个 AI：如需要更激进顶吸旋转，可通过 `extract_box_pose_rrt_top_goal_min_pitch_deg` 或脚本参数 `--extract-box-pose-rrt-top-goal-min-pitch-deg` 调整；默认 5°只是防止 0°提前收敛，不是要求转到 90°。
+
+## 2026-07-14 运控 / Codex / 吸附前预接触与抽离平滑
+- 做了什么：吸附前回放从“初始/负重→吸附 IK”拆成“初始/负重→预接触→吸附 IK”；预接触点按左右末端本地 -Z 方向后退 5cm 重新求 IK。抽离 RRT 输出后增加 shortcut 平滑，平滑段按 5° 密采样并复用双臂附着箱/场景碰撞检查。
+- 改了哪里：`extract_monitor_replay_builder.*`、`dual_arm_planner_node.cpp`、`box_pose_rrt_extract_planner.cpp`，并同步 `check_l6_r8_real_safety.py` 的当前负重姿态期望。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；13 组全流程 `13/13` 成功，Rerun：`data/ik_benchmark/extract_pre_contact_full13_v2/full13_pre_contact_20260714.rrd`，统计：`data/ik_benchmark/extract_pre_contact_full13_v2/stats_20260714.csv`。
+- 留给下个 AI：当前顶吸任务尾部耗时波动仍主要来自 loaded 规划和 final replay 构建；若继续优化，优先看 `L11/R13`、`L16/R18` 的 loaded/final 阶段，而不是 IK。

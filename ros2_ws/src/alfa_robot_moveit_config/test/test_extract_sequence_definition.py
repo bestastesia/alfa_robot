@@ -28,16 +28,34 @@ def main() -> int:
 
     left_modes = MODULE.parse_arm_grasp_mode_sequence("", pairs, "left")
     right_modes = MODULE.parse_arm_grasp_mode_sequence("", pairs, "right")
-    assert left_modes == [
+    raw_left_modes = [
         "front", "front",
         "front", "front", "front",
         "top_suction", "top_suction", "top_suction",
         "top_suction", "top_suction", "top_suction",
         "top_suction", "top_suction",
+    ]
+    raw_right_modes = [
+        "front", "front",
+        "front", "front", "top_suction",
+        "front", "top_suction", "top_suction",
+        "top_suction", "top_suction", "top_suction",
+        "top_suction", "top_suction",
+    ]
+    assert left_modes == raw_left_modes, left_modes
+    assert right_modes == raw_right_modes, right_modes
+
+    left_modes, right_modes = MODULE.convert_mixed_grasp_modes_to_front(left_modes, right_modes)
+    assert left_modes == [
+        "front", "front",
+        "front", "front", "front",
+        "front", "top_suction", "top_suction",
+        "top_suction", "top_suction", "top_suction",
+        "top_suction", "top_suction",
     ], left_modes
     assert right_modes == [
         "front", "front",
-        "front", "front", "top_suction",
+        "front", "front", "front",
         "front", "top_suction", "top_suction",
         "top_suction", "top_suction", "top_suction",
         "top_suction", "top_suction",
@@ -47,14 +65,14 @@ def main() -> int:
         MODULE.pair_vehicle_mode(left_mode, right_mode)
         for left_mode, right_mode in zip(left_modes, right_modes)
     ]
-    assert vehicle_modes.count("front") == 4, vehicle_modes
-    assert vehicle_modes.count("top_suction") == 9, vehicle_modes
+    assert vehicle_modes.count("front") == 6, vehicle_modes
+    assert vehicle_modes.count("top_suction") == 7, vehicle_modes
 
     parser_source = SCRIPT.read_text()
     assert 'parser.add_argument("--loaded-updown", type=float, default=0.3)' in parser_source
     assert 'default="box_pose_rrt"' in parser_source
     assert '"--ik-only-raw"' in parser_source
-    print("extract sequence definition passed: 13 pairs, 4 front vehicle tasks, 9 top/mixed tasks")
+    print("extract sequence definition passed: 13 pairs, mixed tasks converted to dual front")
     return 0
 
 

@@ -51,12 +51,22 @@ std::array<std::array<double, 2>, 4> rectangle_corners(
   if (config.mode == BoxPoseExtractMode::TopTranslate) {
     const double center_x = 0.5 * config.box_depth - state.retreat;
     const double center_z = 0.5 * config.box_height + state.lift;
-    return {{
-      {center_x - 0.5 * config.box_depth, center_z - 0.5 * config.box_height},
-      {center_x + 0.5 * config.box_depth, center_z - 0.5 * config.box_height},
-      {center_x + 0.5 * config.box_depth, center_z + 0.5 * config.box_height},
-      {center_x - 0.5 * config.box_depth, center_z + 0.5 * config.box_height},
+    const double cosine = std::cos(state.pitch);
+    const double sine = std::sin(state.pitch);
+    const std::array<std::array<double, 2>, 4> local{{
+      {-0.5 * config.box_depth, -0.5 * config.box_height},
+      {0.5 * config.box_depth, -0.5 * config.box_height},
+      {0.5 * config.box_depth, 0.5 * config.box_height},
+      {-0.5 * config.box_depth, 0.5 * config.box_height},
     }};
+    std::array<std::array<double, 2>, 4> out{};
+    for (size_t index = 0; index < local.size(); ++index) {
+      out[index] = {
+        center_x + cosine * local[index][0] - sine * local[index][1],
+        center_z + sine * local[index][0] + cosine * local[index][1],
+      };
+    }
+    return out;
   }
 
   const double cosine = std::cos(state.pitch);
@@ -137,7 +147,7 @@ bool monotonic_transition(
            to.pitch + tolerance >= from.pitch;
   }
   return to.lift + tolerance >= from.lift &&
-         std::abs(to.pitch - from.pitch) <= tolerance;
+         to.pitch + tolerance >= from.pitch;
 }
 
 std::vector<BoxPoseExtractState> reconstruct_path(
@@ -239,7 +249,7 @@ std::vector<BoxPoseExtractState> lattice_neighbors(
     }
   }
   if (config.mode == BoxPoseExtractMode::TopTranslate) {
-    pitch_steps = {0};
+    pitch_steps = {0, 1};
   }
   if (config.max_lateral > 1e-9) {
     lateral_steps = {-1, 0, 1};
@@ -303,7 +313,6 @@ bool BoxPoseExtractRrt::stateWithinBounds(const BoxPoseExtractState& state) cons
   if (std::abs(state.lateral) > config_.max_lateral + epsilon) return false;
   if (config_.mode == BoxPoseExtractMode::FrontPivot &&
       !config_.front_free_motion && std::abs(state.lift) > epsilon) return false;
-  if (config_.mode == BoxPoseExtractMode::TopTranslate && std::abs(state.pitch) > epsilon) return false;
   return true;
 }
 
@@ -319,7 +328,15 @@ bool BoxPoseExtractRrt::goalReached(const BoxPoseExtractState& state) const
     return !config_.front_goal_requires_max_pitch ||
            state.pitch + config_.goal_pitch_tolerance >= config_.max_pitch;
   }
-  return state.retreat >= config_.min_top_retreat && state.lift >= config_.min_top_lift;
+  if (state.lift < config_.min_top_lift) return false;
+  if (state.pitch + config_.goal_pitch_tolerance < config_.top_goal_min_pitch) {
+    return false;
+  }
+  if (config_.top_goal_requires_max_pitch &&
+      state.pitch + config_.goal_pitch_tolerance < config_.max_pitch) {
+    return false;
+  }
+  return !config_.top_goal_requires_retreat || state.retreat >= config_.min_top_retreat;
 }
 
 BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
@@ -345,13 +362,16 @@ BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
     };
   }
   return {
-    std::min(
-      config_.max_retreat,
-      config_.box_depth + config_.separation_margin + 1e-4),
+    config_.top_goal_requires_retreat ?
+      std::min(
+        config_.max_retreat,
+        config_.box_depth + config_.separation_margin + 1e-4) :
+      0.0,
     std::min(
       config_.max_lift,
-      std::max(config_.step_lift, config_.min_top_lift)),
-    0.0,
+      std::max(
+        {config_.step_lift, config_.min_top_lift, config_.box_height + config_.separation_margin + 1e-4})),
+    config_.max_pitch,
     0.0,
   };
 }
@@ -541,7 +561,7 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
         sample.pitch = pitch_sample(generator);
       } else {
         sample.lift = lift_sample(generator);
-        sample.pitch = 0.0;
+        sample.pitch = pitch_sample(generator);
       }
     }
 

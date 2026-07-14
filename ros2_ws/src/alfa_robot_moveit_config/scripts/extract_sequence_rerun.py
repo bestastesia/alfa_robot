@@ -191,6 +191,19 @@ def pair_vehicle_mode(left_mode: str, right_mode: str) -> str:
     return "top_suction" if "top_suction" in (left_mode, right_mode) else "front"
 
 
+def convert_mixed_grasp_modes_to_front(
+    left_modes: list[str],
+    right_modes: list[str],
+) -> tuple[list[str], list[str]]:
+    converted_left = list(left_modes)
+    converted_right = list(right_modes)
+    for index, (left_mode, right_mode) in enumerate(zip(converted_left, converted_right)):
+        if left_mode != right_mode and "top_suction" in (left_mode, right_mode):
+            converted_left[index] = "front"
+            converted_right[index] = "front"
+    return converted_left, converted_right
+
+
 def parse_arm_grasp_mode_sequence(value: str, pairs: list[tuple[int, int]], side: str) -> list[str]:
     if not value.strip():
         index = 0 if side == "left" else 1
@@ -289,6 +302,7 @@ def make_pair_args(
         extract_box_pose_rrt_best_first_fallback=args.extract_box_pose_rrt_best_first_fallback,
         extract_box_pose_rrt_best_first_first=args.extract_box_pose_rrt_best_first_first,
         extract_box_pose_rrt_top_best_first_first=args.extract_box_pose_rrt_top_best_first_first,
+        extract_box_pose_rrt_top_goal_min_pitch_deg=args.extract_box_pose_rrt_top_goal_min_pitch_deg,
         extract_box_pose_rrt_best_first_max_expansions=args.extract_box_pose_rrt_best_first_max_expansions,
         extract_box_pose_rrt_best_first_heuristic_weight=args.extract_box_pose_rrt_best_first_heuristic_weight,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
@@ -842,6 +856,7 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-top-goal-min-pitch-deg", type=float, default=5.0)
     parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
     parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
@@ -923,6 +938,9 @@ def main() -> int:
     pairs = parse_pair_sequence(args.pair_sequence)
     left_grasp_modes = parse_arm_grasp_mode_sequence(args.left_grasp_mode_sequence, pairs, "left")
     right_grasp_modes = parse_arm_grasp_mode_sequence(args.right_grasp_mode_sequence, pairs, "right")
+    left_grasp_modes, right_grasp_modes = convert_mixed_grasp_modes_to_front(
+        left_grasp_modes, right_grasp_modes
+    )
     if args.grasp_mode_sequence.strip():
         vehicle_modes = parse_grasp_mode_sequence(args.grasp_mode_sequence, len(pairs), args.grasp_mode)
     else:
