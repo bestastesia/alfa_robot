@@ -315,6 +315,8 @@ def make_pair_args(
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
+        loaded_sort_by_pose_distance=args.loaded_sort_by_pose_distance,
+        loaded_stop_on_first_success=args.loaded_stop_on_first_success,
         loaded_preferred_pose_index=loaded_preferred_pose_index,
         loaded_left_pose_family_deg=loaded_left_pose_family_deg,
         loaded_right_pose_family_deg=loaded_right_pose_family_deg,
@@ -853,6 +855,8 @@ def main() -> int:
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(

@@ -537,16 +537,7 @@ bool repair_with_local_rrt(
     for (const size_t target : safe_targets) {
       Plan segment;
       std::string segment_reason;
-      if (make_valid_local_rrt(
-          planner, states[current], states[target], &segment, &segment_reason)) {
-        append_segment(combined, segment);
-        ++patched_segments;
-        current = target;
-        advanced = true;
-        patch_notes.push_back(
-          std::to_string(current) + "/" + std::to_string(states.size() - 1));
-        break;
-      } else if (custom_local_rrt_bridge(
+      if (custom_local_rrt_bridge(
           planner,
           states[current],
           states[target],
@@ -560,6 +551,15 @@ bool repair_with_local_rrt(
         patch_notes.push_back(
           "custom:" + std::to_string(current) + "/" +
           std::to_string(states.size() - 1));
+        break;
+      } else if (make_valid_local_rrt(
+          planner, states[current], states[target], &segment, &segment_reason)) {
+        append_segment(combined, segment);
+        ++patched_segments;
+        current = target;
+        advanced = true;
+        patch_notes.push_back(
+          std::to_string(current) + "/" + std::to_string(states.size() - 1));
         break;
       } else {
         last_rrt_reason = segment_reason;

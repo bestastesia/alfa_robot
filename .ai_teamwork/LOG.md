@@ -1454,3 +1454,9 @@
 - 改了哪里：`box_pose_rrt_extract_planner.cpp` 增加边验证缓存；`robot_motion_core/box_pose_extract_rrt` 增加 best-first 先行配置；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 暴露 `paths_per_arm/path_pair_limit/best_first_first/top_best_first_first` 参数。
 - 验证结果：两包构建与定向测试通过。13 组全流程在边缓存 + `quality_success_quorum=1` + `quality_loaded_distance_sum=5.0` 下 `13/13` 成功，总耗时 `22869.4ms`、平均 `1759.2ms`，优于无缓存 d5 的 `26086.8ms`、当前 q=3 基线的 `27589.6ms`；证据：`data/ik_benchmark/edge_cache_q1d5_full13_20260714/stats.csv`。
 - 留给下个 AI：`paths_per_arm=2`、全局 best-first 先行、top-only best-first 先行均实测变慢，不要默认启用；保留为实验参数。当前慢项转移到 loaded 阶段，L21/R23 仍约 `3.36s`，其中 loaded 约 `2.36s`。
+
+## 2026-07-14 Codex / MOTION-52 / 优先使用自研局部RRT修补负重段
+- 做了什么：将负重段 shortcut 局部修补顺序改为先尝试自研关节空间局部 RRT，再回退 MoveIt/direct local planner；同时把 loaded 候选排序与“首个成功即停”参数从实验脚本透传到 planner，避免脚本参数被硬编码吞掉。
+- 改了哪里：`extract_monitor_transition_planning.cpp` 的 `repair_with_local_rrt`；`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 的 loaded 策略参数。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；三轮 13 组全流程共 `39/39` 成功，统计：`data/ik_benchmark/custom_first_limit8_repeat3_20260714/stats.csv`。平均任务耗时 `1138.5ms`，最大 `2742.8ms`；loaded 阶段平均 `263.1ms`、最大 `362.4ms`，按 13 组折算约 `3420.4ms`，相比 `edge_cache_q1d5_full13_20260714` 的 `11631.5ms` 明显下降，尾部慢点已从 loaded 转移回抽离阶段。
+- 留给下个 AI：当前主要慢项是 L6/R13、L11/R8 的抽离阶段，三轮平均分别约 `2297.2ms`、`2133.5ms`；继续优化应聚焦箱体抽离 RRT 的采样/目标偏置/任务先验，而不是 loaded 规划。

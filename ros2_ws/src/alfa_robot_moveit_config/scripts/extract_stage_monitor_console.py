@@ -231,8 +231,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_rrt_goal_limit:={getattr(args, 'extract_rrt_goal_limit', 8)}",
         "extract_benchmark_plan_loaded_after_success:=true",
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
-        "extract_loaded_sort_by_pose_distance:=true",
-        "extract_loaded_stop_on_first_success:=false",
+        f"extract_loaded_sort_by_pose_distance:={str(getattr(args, 'loaded_sort_by_pose_distance', True)).lower()}",
+        f"extract_loaded_stop_on_first_success:={str(getattr(args, 'loaded_stop_on_first_success', False)).lower()}",
         f"extract_loaded_lateral_shift_enabled:={str(args.lateral_shift_enabled).lower()}",
         f"extract_loaded_lateral_shift_distance:={args.lateral_shift_distance}",
         f"extract_loaded_lateral_shift_step:={args.lateral_shift_step}",
@@ -1089,6 +1089,8 @@ def main() -> int:
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--loaded-updown", type=float, default=0.0)
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
