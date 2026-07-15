@@ -54,7 +54,7 @@ struct UpdownAwareIkConfig
   double top_suction_z_reach_lower = 0.3;
   double top_suction_z_reach_upper = 0.45;
   double h_lower = 0.0;
-  double h_upper = 0.99;
+  double h_upper = 0.7;
   bool full_h_range_scan = false;
 
   HSearchMode h_search_mode = HSearchMode::FixedDiscrete;

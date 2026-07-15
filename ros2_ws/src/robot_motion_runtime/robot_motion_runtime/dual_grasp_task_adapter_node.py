@@ -86,7 +86,7 @@ class DualGraspTaskAdapterNode(Node):
         self.declare_parameter("state_topic", "/robot_motion/state")
         self.declare_parameter("service_timeout_s", 60.0)
         self.declare_parameter("default_frame_id", "base_link")
-        self.declare_parameter("default_fixed_updown", 0.3)
+        self.declare_parameter("default_fixed_updown", 0.0)
         self.declare_parameter("default_candidate_limit", 8)
         self.declare_parameter("default_planning_mode", "shortcut")
         self.declare_parameter("default_velocity_scale", 1.0)
@@ -184,6 +184,17 @@ class DualGraspTaskAdapterNode(Node):
             return self.latest_state.joint_state
         return seed_or_default(JointState(), self.default_fixed_updown)
 
+    def fixed_updown(self) -> float:
+        if self.latest_state is None:
+            return self.default_fixed_updown
+        joint_state = self.latest_state.joint_state
+        if "updown" not in joint_state.name:
+            return self.default_fixed_updown
+        index = joint_state.name.index("updown")
+        if index >= len(joint_state.position):
+            return self.default_fixed_updown
+        return float(joint_state.position[index])
+
     def on_run_dual_grasp_task(self, request, response):
         started = time.monotonic()
         task_id = (
@@ -210,6 +221,7 @@ class DualGraspTaskAdapterNode(Node):
             pose_request.context.frame_id = frame_id
             pose_request.context.stamp = self.get_clock().now().to_msg()
             pose_request.seed_state = self.seed_state()
+            fixed_updown = self.fixed_updown()
             pose_request.left_target = self.pose_stamped(
                 frame_id,
                 request.left_position.x,
@@ -228,8 +240,8 @@ class DualGraspTaskAdapterNode(Node):
                 make_attached_box_for_task("left", task_id, left_mode),
                 make_attached_box_for_task("right", task_id, right_mode),
             ]
-            pose_request.loaded_goal_family = [default_loaded_goal(self.default_fixed_updown)]
-            pose_request.fixed_updown = self.default_fixed_updown
+            pose_request.loaded_goal_family = [default_loaded_goal(fixed_updown)]
+            pose_request.fixed_updown = fixed_updown
             pose_request.left_top_suction = left_mode == "top_suction"
             pose_request.right_top_suction = right_mode == "top_suction"
             pose_request.candidate_limit = self.default_candidate_limit

@@ -53,10 +53,10 @@ int main()
   assert(ok);
   assert(reason.empty());
   assert(goal.trajectory.joint_names.size() == 13);
-  assert(goal.trajectory.joint_names.front() == "left_joint1");
+  assert(goal.trajectory.joint_names.front() == "right_joint1");
   assert(goal.trajectory.joint_names.back() == "turn");
   assert(goal.trajectory.points.size() == 1);
-  assert(std::abs(goal.trajectory.points.front().positions.front() - 1.0) < 1e-12);
+  assert(std::abs(goal.trajectory.points.front().positions.front() - 7.0) < 1e-12);
   assert(std::abs(goal.trajectory.points.front().positions.back() - 0.42) < 1e-12);
 
   source.joint_names.push_back("updown");

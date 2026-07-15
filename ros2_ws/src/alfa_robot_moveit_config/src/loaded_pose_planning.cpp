@@ -2,6 +2,7 @@
 
 #include "alfa_robot_moveit_config/extract_monitor_transition_planning.hpp"
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
+#include "alfa_robot_moveit_config/trajectory_plan_utils.hpp"
 
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
 
@@ -199,6 +200,8 @@ namespace alfa_robot::motion
 
 namespace
 {
+
+constexpr double kMaxStageJointSpeedRadS = 20.0 * M_PI / 180.0;
 
 double trajectory_joint_distance(
   const moveit_msgs::msg::RobotTrajectory& trajectory,
@@ -809,6 +812,10 @@ bool LoadedPosePlanner::planLateralShift(
     }
     trajectory.points.push_back(start_point);
     trajectory.points.push_back(goal_point);
+    plan = retime_plan_by_max_joint_speed(
+      plan,
+      current_state.getRobotModel(),
+      kMaxStageJointSpeedRadS);
 
     result->lateral_shift_attempted = true;
     result->lateral_shift_points += trajectory.points.size();
@@ -966,6 +973,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
       }
       trajectory.points.push_back(start_point);
       trajectory.points.push_back(goal_point);
+      plan = retime_plan_by_max_joint_speed(
+        plan,
+        pre_lower_start.getRobotModel(),
+        kMaxStageJointSpeedRadS);
 
       nlohmann::json extra = {
         {"stage_kind", "pre_loaded_lower_updown"},
@@ -1070,7 +1081,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     };
 
   auto set_result_plan = [&](const moveit::planning_interface::MoveGroupInterface::Plan& segment) {
-    plan = prepend_pre_loaded_top_lift(segment);
+    plan = retime_plan_by_max_joint_speed(
+      prepend_pre_loaded_top_lift(segment),
+      validation_start_state.getRobotModel(),
+      kMaxStageJointSpeedRadS);
     result.plan = plan;
     result.plan_points = plan.trajectory_.joint_trajectory.points.size();
     result.trajectory_joint_distance = trajectory_joint_distance(

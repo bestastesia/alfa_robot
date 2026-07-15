@@ -1472,3 +1472,15 @@
 - 改了哪里：`extract_monitor_replay_builder.*`、`dual_arm_planner_node.cpp`、`box_pose_rrt_extract_planner.cpp`，并同步 `check_l6_r8_real_safety.py` 的当前负重姿态期望。
 - 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；13 组全流程 `13/13` 成功，Rerun：`data/ik_benchmark/extract_pre_contact_full13_v2/full13_pre_contact_20260714.rrd`，统计：`data/ik_benchmark/extract_pre_contact_full13_v2/stats_20260714.csv`。
 - 留给下个 AI：当前顶吸任务尾部耗时波动仍主要来自 loaded 规划和 final replay 构建；若继续优化，优先看 `L11/R13`、`L16/R18` 的 loaded/final 阶段，而不是 IK。
+
+## 2026-07-15 运控 / Codex / 生产执行接口与孪生消费者对齐
+- 做了什么：将本地仿真孪生执行入口对齐工控机生产接口：机械臂/turn 使用 `/dual_arm_trajectory_controller/follow_joint_trajectory` action 与 `/dual_arm_trajectory_controller/joint_trajectory` topic，updown 使用 `/canopen/updown_position_controller/commands`；孪生内部按 250Hz 插值、`/joint_states` 默认 50Hz 发布，并保留旧 `/alfa_execution/execute_joint_trajectory` 兼容 action。
+- 改了哪里：`robot_motion_runtime/kinematic_sim_executor_node.py` 新增真实接口消费、真实/模型关节名 alias、250Hz 控制循环；`execute_trajectory_service_node.py` 默认转发生产 action、10Hz 重采样，并把 `rightjoint*/leftjoint*` 转为生产 13 轴顺序 `right_joint1..6,left_joint1..6,turn`；`sim_bringup.launch.py`、`runtime_services.launch.py`、`runtime_full_stack.launch.py`、`dual_arm_planner` 默认 action 同步；`execution_trajectory_adapter.cpp` 与测试同步修正右臂在前顺序。
+- 验证结果：`python3 -m py_compile` 通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config --symlink-install` 通过；`alfa_robot_moveit_config` 16/16 测试通过；`robot_motion_runtime` 6/6 测试在 `ROS_LOG_DIR=/tmp/alfa_robot_ros_logs` 下通过。
+- 留给下个 AI：真实 13 轴 action 不能承载 `updown` 轨迹；当前执行 service 若发现输入轨迹里 `updown` 变化会拒绝转发，避免静默丢掉 updown。后续若要同步执行 updown，需要单独设计“13轴 action + updown topic”的多执行器协调层。
+
+## 2026-07-15 运控 / Codex / 工控机13任务正式接口测试入口
+- 做了什么：将工控机 `/home/ar/lhy_dev` 清理为最小测试工作区并同步当前算法/运行时包；修正测试入口，不再使用旧 `run_l6_r8_task.sh` 单任务 wrapper 或旧 box-id smoke 作为主入口，改为完整 13 组 `RunDualGraspTask` 端点任务序列。
+- 改了哪里：远端 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh` 调用 `/robot_motion/run_dual_grasp_task`，发送左右末端 `position` 与 `grasp_mode` 字段；远端 `/home/ar/lhy_dev/run_l6_r8_task.sh` 改为弃用提示；远端 README 已说明算法进程、任务进程和 13 组序列。同步 `dual_grasp_task_adapter_node.py`，使 `fixed_updown` 从当前 `/joint_states` 读取，不再硬编码 0.3。
+- 验证结果：远端 `/home/ar/lhy_dev/build_lhy_dev.sh` 构建 9 个包通过；`/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --list` 正确打印 13 组端点任务；`run_l6_r8_task.sh` 退出并提示改用 13 任务入口。
+- 留给下个 AI：测试时先启动 `/home/ar/robot_driver` 硬件 bringup，再开 `/home/ar/lhy_dev/run_algorithm_stack.sh`，最后用 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --dry-run` 或 `--execute --yes-execute`。当前没有独立障碍发布者，默认场景为空；若要真实碰撞环境，需要补 `/robot_motion/set_scene` 或 world-model 发布。

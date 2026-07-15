@@ -167,7 +167,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
         f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
-        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.99)}",
+        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.7)}",
         f"ik_h_step:={getattr(args, 'ik_h_step', 0.01)}",
         f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
@@ -240,7 +240,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_pre_lower_left_box_id:={args.pre_lower_left_box_id}",
         f"extract_loaded_pre_lower_right_box_id:={args.pre_lower_right_box_id}",
         f"extract_loaded_pre_lower_updown_delta:={args.pre_lower_updown_delta}",
-        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.0)}",
+        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.3)}",
         f"extract_loaded_planning_time:={args.loaded_planning_time}",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
@@ -1091,7 +1091,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--loaded-updown", type=float, default=0.0)
+    parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)

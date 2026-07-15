@@ -38,7 +38,7 @@
         <link name="right_tool0"/>
     </group>
     <group_state name="home" group="dual_arm_with_base">
-        <joint name="updown" value="0.0"/>
+        <joint name="updown" value="0"/>
         <joint name="leftjoint1" value="0"/>
         <joint name="leftjoint2" value="0.0"/>
         <joint name="leftjoint3" value="0.0"/>

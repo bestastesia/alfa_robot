@@ -15,18 +15,18 @@ ExecutionTrajectoryAdapter::ExecutionTrajectoryAdapter(ExecutionTrajectoryAdapte
 std::vector<std::string> ExecutionTrajectoryAdapter::targetJointNames() const
 {
   std::vector<std::string> names = {
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
     "right_joint1",
     "right_joint2",
     "right_joint3",
     "right_joint4",
     "right_joint5",
     "right_joint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
   };
   if (config_.include_turn) {
     names.push_back("turn");

@@ -13,19 +13,24 @@ def generate_launch_description():
             DeclareLaunchArgument("subscribe_joint_states", default_value="true"),
             DeclareLaunchArgument("state_publish_period_s", default_value="0.2"),
             DeclareLaunchArgument("execute_forward_action", default_value="true"),
-            DeclareLaunchArgument("execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
+            DeclareLaunchArgument(
+                "execution_action_name",
+                default_value="/dual_arm_trajectory_controller/follow_joint_trajectory",
+            ),
             DeclareLaunchArgument("execute_wait_for_action_timeout_s", default_value="10.0"),
             DeclareLaunchArgument("execute_wait_for_goal_acceptance", default_value="false"),
             DeclareLaunchArgument("execute_wait_for_result", default_value="false"),
             DeclareLaunchArgument("execute_wait_for_result_timeout_s", default_value="120.0"),
             DeclareLaunchArgument("execute_resample_before_forward", default_value="true"),
-            DeclareLaunchArgument("execute_resample_rate_hz", default_value="20.0"),
+            DeclareLaunchArgument("execute_resample_rate_hz", default_value="10.0"),
+            DeclareLaunchArgument("execute_adapt_to_hardware_joint_order", default_value="true"),
+            DeclareLaunchArgument("execute_hold_missing_from_joint_states", default_value="true"),
             DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
             DeclareLaunchArgument("solve_arm_ik_service_name", default_value="/robot_motion/solve_arm_ik"),
             DeclareLaunchArgument("run_dual_arm_pose_task_service_name", default_value="/robot_motion/run_dual_arm_pose_task"),
             DeclareLaunchArgument("run_dual_grasp_task_service_name", default_value="/robot_motion/run_dual_grasp_task"),
             DeclareLaunchArgument("task_receipt_topic", default_value="/robot_motion/task_receipt"),
-            DeclareLaunchArgument("default_fixed_updown", default_value="0.3"),
+            DeclareLaunchArgument("default_fixed_updown", default_value="0.0"),
             DeclareLaunchArgument("default_candidate_limit", default_value="8"),
             DeclareLaunchArgument("default_planning_mode", default_value="shortcut"),
             DeclareLaunchArgument("publish_empty_scene_on_start", default_value="true"),
@@ -164,6 +169,12 @@ def generate_launch_description():
                         ),
                         "resample_rate_hz": ParameterValue(
                             LaunchConfiguration("execute_resample_rate_hz"), value_type=float
+                        ),
+                        "adapt_to_hardware_joint_order": ParameterValue(
+                            LaunchConfiguration("execute_adapt_to_hardware_joint_order"), value_type=bool
+                        ),
+                        "hold_missing_from_joint_states": ParameterValue(
+                            LaunchConfiguration("execute_hold_missing_from_joint_states"), value_type=bool
                         ),
                     }
                 ],

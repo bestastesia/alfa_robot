@@ -43,9 +43,9 @@ std::string make_test_urdf()
   <joint name="updown" type="prismatic">
     <parent link="turn"/>
     <child link="updown"/>
-    <origin xyz="-0.081156 0 0.127" rpy="0 0 0"/>
+    <origin xyz="-0.081156 0 0.207" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="0.92" effort="1" velocity="1"/>
+    <limit lower="0" upper="0.7" effort="1" velocity="1"/>
   </joint>
 )";
 

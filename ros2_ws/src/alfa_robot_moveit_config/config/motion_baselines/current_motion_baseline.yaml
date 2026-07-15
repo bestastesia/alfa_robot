@@ -25,8 +25,11 @@ frames:
   world_to_base_z_m: 0.202094
 
 updown:
-  physical_lower_m: 0.0
-  physical_upper_m: 0.99
+  logical_lower_m: 0.0
+  logical_upper_m: 0.7
+  physical_zero_offset_m: 0.08
+  physical_lower_m: 0.08
+  physical_upper_m: 0.78
   default_home_m: 0.3
   front_grasp_z_reach_world_m: [0.45, 1.25]
   top_suction_z_reach_world_m: [0.3, 0.45]
@@ -66,7 +69,7 @@ extract_strategy:
 
 loaded_planning:
   planner: moveit_ompl_or_direct_pipeline
-  target_updown_m: 0.0
+  target_updown_m: 0.3
   candidate_limit: 8
   parallel_workers: 8
   aabb_clearance_mode: diagnostic_only

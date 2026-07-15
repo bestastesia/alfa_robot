@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -11,9 +12,11 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64MultiArray
+from trajectory_msgs.msg import JointTrajectory
 
 
-DEFAULT_JOINT_NAMES = [
+MODEL_JOINT_NAMES = [
     "updown",
     "turn",
     "pitch",
@@ -31,80 +34,182 @@ DEFAULT_JOINT_NAMES = [
     "rightjoint6",
 ]
 
+REAL_ARM_JOINT_NAMES = [
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "turn",
+]
+
+REAL_TO_MODEL = {
+    **{f"right_joint{i}": f"rightjoint{i}" for i in range(1, 7)},
+    **{f"left_joint{i}": f"leftjoint{i}" for i in range(1, 7)},
+}
+MODEL_TO_REAL = {model: real for real, model in REAL_TO_MODEL.items()}
+
+
+@dataclass(frozen=True)
+class TrajectorySample:
+    time_s: float
+    positions: list[float]
+
 
 @dataclass
-class ActiveSegment:
+class ActiveTrajectory:
+    token: int
     joint_names: list[str]
-    start_positions: list[float]
-    target_positions: list[float]
+    requested_joint_names: list[str]
+    samples: list[TrajectorySample]
     start_time: float
-    duration_s: float
+
+
+def canonical_joint_name(name: str) -> str:
+    return REAL_TO_MODEL.get(name, name)
+
+
+def duration_s(duration) -> float:
+    return float(duration.sec) + float(duration.nanosec) * 1e-9
 
 
 class KinematicSimExecutorNode(Node):
-    """Kinematic simulated execution backend for manual full-flow tests."""
+    """Kinematic digital-twin execution backend.
+
+    The node intentionally exposes the same high-level ROS contract as the
+    current real hardware stack for arms/turn/updown:
+
+    - FollowJointTrajectory action:
+      /dual_arm_trajectory_controller/follow_joint_trajectory
+    - JointTrajectory topic:
+      /dual_arm_trajectory_controller/joint_trajectory
+    - Updown absolute-position topic:
+      /canopen/updown_position_controller/commands
+
+    Internally it keeps the repository model joint names (leftjoint1...) so
+    robot_state_publisher and Rerun remain compatible, while also publishing
+    hardware aliases (left_joint1...) on /joint_states for client-side tests.
+    """
 
     def __init__(self) -> None:
         super().__init__("kinematic_sim_executor")
         self.declare_parameter("joint_state_topic", "/joint_states")
-        self.declare_parameter("action_name", "/alfa_execution/execute_joint_trajectory")
+        self.declare_parameter(
+            "action_name",
+            "/dual_arm_trajectory_controller/follow_joint_trajectory",
+        )
+        self.declare_parameter("legacy_action_name", "/alfa_execution/execute_joint_trajectory")
+        self.declare_parameter(
+            "trajectory_topic",
+            "/dual_arm_trajectory_controller/joint_trajectory",
+        )
+        self.declare_parameter(
+            "updown_command_topic",
+            "/canopen/updown_position_controller/commands",
+        )
         self.declare_parameter("publish_rate_hz", 50.0)
+        self.declare_parameter("control_rate_hz", 250.0)
+        self.declare_parameter("publish_alias_joint_states", True)
         self.declare_parameter("initial_updown", 0.0)
 
         self.joint_state_topic = str(self.get_parameter("joint_state_topic").value)
         self.action_name = str(self.get_parameter("action_name").value)
+        self.legacy_action_name = str(self.get_parameter("legacy_action_name").value)
+        self.trajectory_topic = str(self.get_parameter("trajectory_topic").value)
+        self.updown_command_topic = str(self.get_parameter("updown_command_topic").value)
         self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
+        self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
+        self.publish_alias_joint_states = bool(
+            self.get_parameter("publish_alias_joint_states").value
+        )
         self.initial_updown = float(self.get_parameter("initial_updown").value)
 
-        self.joint_names = list(DEFAULT_JOINT_NAMES)
+        self.joint_names = list(MODEL_JOINT_NAMES)
         self.positions = {name: 0.0 for name in self.joint_names}
         self.positions["updown"] = self.initial_updown
         self.lock = threading.RLock()
-        self.active_segment: ActiveSegment | None = None
-        self.cancel_requested = False
+        self.active_trajectory: ActiveTrajectory | None = None
+        self.active_token = 0
+        self.cancel_requested_tokens: set[int] = set()
 
         self.callback_group = ReentrantCallbackGroup()
         self.publisher = self.create_publisher(JointState, self.joint_state_topic, 10)
-        self.action_server = ActionServer(
-            self,
-            FollowJointTrajectory,
-            self.action_name,
-            execute_callback=self.execute_goal,
-            goal_callback=self.accept_goal,
-            cancel_callback=self.cancel_goal,
+        self.trajectory_sub = self.create_subscription(
+            JointTrajectory,
+            self.trajectory_topic,
+            self.on_trajectory_topic,
+            10,
             callback_group=self.callback_group,
         )
-        self.timer = self.create_timer(
+        self.updown_sub = self.create_subscription(
+            Float64MultiArray,
+            self.updown_command_topic,
+            self.on_updown_command,
+            10,
+            callback_group=self.callback_group,
+        )
+        self.action_servers: list[ActionServer] = []
+        for name in self.unique_action_names():
+            self.action_servers.append(
+                ActionServer(
+                    self,
+                    FollowJointTrajectory,
+                    name,
+                    execute_callback=self.execute_goal,
+                    goal_callback=self.accept_goal,
+                    cancel_callback=self.cancel_goal,
+                    callback_group=self.callback_group,
+                )
+            )
+        self.control_timer = self.create_timer(
+            1.0 / max(self.control_rate_hz, 1.0),
+            self.on_control_timer,
+            callback_group=self.callback_group,
+        )
+        self.publish_timer = self.create_timer(
             1.0 / max(self.publish_rate_hz, 1.0),
             self.on_publish_timer,
             callback_group=self.callback_group,
         )
         self.get_logger().info(
             "Kinematic sim executor ready: "
-            f"joint_states={self.joint_state_topic}, action={self.action_name}, "
-            f"rate={self.publish_rate_hz:.1f}Hz, initial_updown={self.initial_updown:.3f}"
+            f"joint_states={self.joint_state_topic}, "
+            f"actions={self.unique_action_names()}, "
+            f"trajectory_topic={self.trajectory_topic}, "
+            f"updown_topic={self.updown_command_topic}, "
+            f"control={self.control_rate_hz:.1f}Hz, "
+            f"joint_state={self.publish_rate_hz:.1f}Hz, "
+            f"initial_updown={self.initial_updown:.3f}"
         )
 
+    def unique_action_names(self) -> list[str]:
+        names: list[str] = []
+        for name in [self.action_name, self.legacy_action_name]:
+            if name and name not in names:
+                names.append(name)
+        return names
+
     def accept_goal(self, goal_request):
-        trajectory = goal_request.trajectory
-        unknown = [name for name in trajectory.joint_names if name not in self.positions]
-        if unknown:
-            self.get_logger().error(f"Rejecting trajectory with unknown joints: {unknown}")
-            return GoalResponse.REJECT
-        if not trajectory.points:
-            self.get_logger().error("Rejecting empty trajectory")
+        try:
+            self.normalize_trajectory(goal_request.trajectory)
+        except ValueError as exc:
+            self.get_logger().error(f"Rejecting trajectory: {exc}")
             return GoalResponse.REJECT
         return GoalResponse.ACCEPT
 
     def cancel_goal(self, goal_handle):
         with self.lock:
-            self.cancel_requested = True
-            self.active_segment = None
+            if self.active_trajectory is not None:
+                self.cancel_requested_tokens.add(self.active_trajectory.token)
+                self.active_trajectory = None
         return CancelResponse.ACCEPT
-
-    @staticmethod
-    def point_time_s(point) -> float:
-        return float(point.time_from_start.sec) + float(point.time_from_start.nanosec) * 1e-9
 
     def current_positions_for(self, joint_names: list[str]) -> list[float]:
         return [float(self.positions.get(name, 0.0)) for name in joint_names]
@@ -124,105 +229,209 @@ class KinematicSimExecutorNode(Node):
             return float("inf")
         return max((abs(float(a) - float(b)) for a, b in zip(lhs, rhs)), default=0.0)
 
+    def normalize_trajectory(self, trajectory: JointTrajectory) -> tuple[list[str], list[str], list[TrajectorySample]]:
+        if not trajectory.joint_names:
+            raise ValueError("trajectory.joint_names is empty")
+        if not trajectory.points:
+            raise ValueError("trajectory.points is empty")
+
+        requested_names = [str(name) for name in trajectory.joint_names]
+        joint_names = [canonical_joint_name(name) for name in requested_names]
+        unknown = [name for name in joint_names if name not in self.positions]
+        if unknown:
+            raise ValueError(f"unknown joints after alias mapping: {unknown}")
+        duplicates = sorted({name for name in joint_names if joint_names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate joints after alias mapping: {duplicates}")
+
+        samples: list[TrajectorySample] = []
+        previous_time = -1e-9
+        for index, point in enumerate(trajectory.points):
+            if len(point.positions) != len(joint_names):
+                raise ValueError(
+                    f"point {index} has {len(point.positions)} positions for "
+                    f"{len(joint_names)} joints"
+                )
+            point_time = duration_s(point.time_from_start)
+            if point_time <= previous_time:
+                raise ValueError(
+                    f"point {index} time_from_start={point_time:.9f}s is not strictly increasing"
+                )
+            previous_time = point_time
+            samples.append(
+                TrajectorySample(
+                    time_s=point_time,
+                    positions=[float(value) for value in point.positions],
+                )
+            )
+
+        if samples[0].time_s > 1e-9:
+            samples.insert(
+                0,
+                TrajectorySample(
+                    time_s=0.0,
+                    positions=self.current_positions_for(joint_names),
+                ),
+            )
+        return joint_names, requested_names, samples
+
+    def start_trajectory(self, trajectory: JointTrajectory, source: str) -> tuple[int, float, float]:
+        joint_names, requested_names, samples = self.normalize_trajectory(trajectory)
+        first_positions = samples[0].positions
+        last_positions = samples[-1].positions
+        current_positions = self.current_positions_for(joint_names)
+        initial_delta = self.max_abs_delta(current_positions, first_positions)
+        if initial_delta > 1e-3:
+            self.get_logger().warning(
+                f"{source} first point differs from simulated state by {initial_delta:.6f} rad/m; "
+                "real hardware should normally start from fresh /joint_states"
+            )
+
+        with self.lock:
+            self.active_token += 1
+            token = self.active_token
+            self.cancel_requested_tokens.discard(token)
+            self.active_trajectory = ActiveTrajectory(
+                token=token,
+                joint_names=joint_names,
+                requested_joint_names=requested_names,
+                samples=samples,
+                start_time=time.monotonic(),
+            )
+        self.get_logger().info(
+            f"Started simulated trajectory from {source}: "
+            f"joints={len(joint_names)} points={len(samples)} "
+            f"duration={samples[-1].time_s:.3f}s initial_delta={initial_delta:.6f} "
+            f"first={self.brief_positions(requested_names, first_positions)} "
+            f"last={self.brief_positions(requested_names, last_positions)}"
+        )
+        return token, samples[-1].time_s, initial_delta
+
+    @staticmethod
+    def brief_positions(joint_names: list[str], positions: list[float]) -> str:
+        pairs = list(zip(joint_names, positions))
+        if len(pairs) > 4:
+            pairs = pairs[:3] + pairs[-1:]
+        return "{" + ", ".join(f"{name}={value:.3f}" for name, value in pairs) + "}"
+
+    @staticmethod
+    def sample_positions(samples: list[TrajectorySample], elapsed_s: float) -> list[float]:
+        if elapsed_s <= samples[0].time_s:
+            return list(samples[0].positions)
+        previous = samples[0]
+        for current in samples[1:]:
+            if elapsed_s <= current.time_s:
+                if current.time_s <= previous.time_s:
+                    return list(current.positions)
+                alpha = (elapsed_s - previous.time_s) / (current.time_s - previous.time_s)
+                return KinematicSimExecutorNode.interpolate(previous.positions, current.positions, alpha)
+            previous = current
+        return list(samples[-1].positions)
+
+    def on_control_timer(self) -> None:
+        now = time.monotonic()
+        with self.lock:
+            active = self.active_trajectory
+            if active is None:
+                return
+            elapsed = now - active.start_time
+            positions = self.sample_positions(active.samples, elapsed)
+            self.set_positions_for(active.joint_names, positions)
+            if elapsed >= active.samples[-1].time_s:
+                self.set_positions_for(active.joint_names, active.samples[-1].positions)
+                self.active_trajectory = None
+
     def publish_joint_state(self) -> None:
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.name = list(self.joint_names)
-        msg.position = [float(self.positions[name]) for name in self.joint_names]
+        names = list(self.joint_names)
+        if self.publish_alias_joint_states:
+            names.extend(real for model, real in MODEL_TO_REAL.items() if model in self.positions)
+        msg.name = names
+        msg.position = [
+            float(self.positions[canonical_joint_name(name)])
+            if canonical_joint_name(name) in self.positions
+            else 0.0
+            for name in names
+        ]
         msg.velocity = [0.0] * len(msg.name)
         self.publisher.publish(msg)
 
     def on_publish_timer(self) -> None:
-        now = time.monotonic()
         with self.lock:
-            if self.active_segment is not None:
-                segment = self.active_segment
-                elapsed = now - segment.start_time
-                alpha = 1.0 if segment.duration_s <= 1e-6 else elapsed / segment.duration_s
-                self.set_positions_for(
-                    segment.joint_names,
-                    self.interpolate(segment.start_positions, segment.target_positions, alpha),
-                )
-                if alpha >= 1.0:
-                    self.active_segment = None
             self.publish_joint_state()
+
+    def on_trajectory_topic(self, msg: JointTrajectory) -> None:
+        try:
+            self.start_trajectory(msg, self.trajectory_topic)
+        except ValueError as exc:
+            self.get_logger().error(f"Rejecting trajectory topic message: {exc}")
+
+    def on_updown_command(self, msg: Float64MultiArray) -> None:
+        if len(msg.data) != 1:
+            self.get_logger().error(
+                f"Rejecting updown command with length {len(msg.data)}; expected 1"
+            )
+            return
+        target = float(msg.data[0])
+        if not math.isfinite(target):
+            self.get_logger().error(f"Rejecting non-finite updown command: {target}")
+            return
+        with self.lock:
+            self.positions["updown"] = target
+        self.get_logger().info(f"Simulated updown absolute target accepted: {target:.4f}m")
 
     def execute_goal(self, goal_handle):
         trajectory = goal_handle.request.trajectory
-        joint_names = list(trajectory.joint_names)
-        points = list(trajectory.points)
-        current_at_accept = self.current_positions_for(joint_names)
-        first_positions = list(points[0].positions)
-        last_positions = list(points[-1].positions)
-        initial_delta = self.max_abs_delta(current_at_accept, first_positions)
-        self.get_logger().info(
-            f"Executing simulated trajectory: joints={len(joint_names)} "
-            f"points={len(points)} duration={self.point_time_s(points[-1]):.3f}s "
-            f"initial_delta={initial_delta:.6f} "
-            f"first_updown={first_positions[joint_names.index('updown')] if 'updown' in joint_names else 0.0:.3f} "
-            f"last_updown={last_positions[joint_names.index('updown')] if 'updown' in joint_names else 0.0:.3f}"
-        )
-        with self.lock:
-            self.cancel_requested = False
+        try:
+            token, duration, _ = self.start_trajectory(trajectory, "FollowJointTrajectory action")
+        except ValueError as exc:
+            goal_handle.abort()
+            result = FollowJointTrajectory.Result()
+            result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+            result.error_string = str(exc)
+            return result
 
-        previous_time = 0.0
-        previous_positions = self.current_positions_for(joint_names)
-        for point_index, point in enumerate(points):
+        deadline = time.monotonic() + duration
+        feedback_period_s = 0.05
+        next_feedback = time.monotonic()
+        while rclpy.ok():
+            now = time.monotonic()
             if goal_handle.is_cancel_requested:
                 with self.lock:
-                    self.cancel_requested = True
-                    self.active_segment = None
+                    self.cancel_requested_tokens.add(token)
+                    if self.active_trajectory is not None and self.active_trajectory.token == token:
+                        self.active_trajectory = None
                 goal_handle.canceled()
                 result = FollowJointTrajectory.Result()
                 result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                result.error_string = "simulated trajectory canceled"
                 return result
 
-            target_positions = list(point.positions)
-            if len(target_positions) != len(joint_names):
-                goal_handle.abort()
+            with self.lock:
+                canceled = token in self.cancel_requested_tokens
+                active = self.active_trajectory
+                finished = active is None or active.token != token
+                current_joint_names = list(trajectory.joint_names)
+                current_positions = [
+                    self.positions.get(canonical_joint_name(name), 0.0)
+                    for name in current_joint_names
+                ]
+            if canceled:
+                goal_handle.canceled()
                 result = FollowJointTrajectory.Result()
-                result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
-                result.error_string = (
-                    f"point {point_index} has {len(target_positions)} positions "
-                    f"for {len(joint_names)} joints"
-                )
+                result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                result.error_string = "simulated trajectory canceled"
                 return result
-
-            point_time = self.point_time_s(point)
-            if point_index == 0 and point_time <= 1e-9:
-                if self.max_abs_delta(previous_positions, target_positions) > 1e-6:
-                    self.get_logger().warning(
-                        "trajectory first point differs from current state; "
-                        "skipping zero-time point to avoid simulated jump"
-                    )
-                    previous_time = 0.0
-                    previous_positions = self.current_positions_for(joint_names)
-                    continue
-            segment_duration = max(0.0, point_time - previous_time)
-            with self.lock:
-                self.active_segment = ActiveSegment(
-                    joint_names=joint_names,
-                    start_positions=list(previous_positions),
-                    target_positions=list(target_positions),
-                    start_time=time.monotonic(),
-                    duration_s=segment_duration,
-                )
-
-            deadline = time.monotonic() + segment_duration
-            while time.monotonic() < deadline and rclpy.ok():
-                with self.lock:
-                    if self.cancel_requested:
-                        goal_handle.canceled()
-                        result = FollowJointTrajectory.Result()
-                        result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
-                        return result
-                time.sleep(0.002)
-
-            with self.lock:
-                self.set_positions_for(joint_names, target_positions)
-                self.active_segment = None
-            previous_time = point_time
-            previous_positions = list(target_positions)
+            if finished and now >= deadline:
+                break
+            if now >= next_feedback:
+                feedback = FollowJointTrajectory.Feedback()
+                feedback.joint_names = current_joint_names
+                feedback.actual.positions = [float(value) for value in current_positions]
+                goal_handle.publish_feedback(feedback)
+                next_feedback = now + feedback_period_s
+            time.sleep(0.002)
 
         with self.lock:
             self.publish_joint_state()
@@ -236,7 +445,7 @@ class KinematicSimExecutorNode(Node):
 def main() -> None:
     rclpy.init()
     node = KinematicSimExecutorNode()
-    executor = MultiThreadedExecutor(num_threads=3)
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
     try:
         executor.spin()

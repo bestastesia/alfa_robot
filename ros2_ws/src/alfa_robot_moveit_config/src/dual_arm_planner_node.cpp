@@ -274,7 +274,7 @@ public:
     execute_ = get_or_declare_parameter<bool>("execute", true);
     execution_backend_ = get_or_declare_parameter<std::string>("execution_backend", "moveit");
     execution_action_name_ = get_or_declare_parameter<std::string>(
-      "execution_action_name", "/alfa_execution/execute_joint_trajectory");
+      "execution_action_name", "/dual_arm_trajectory_controller/follow_joint_trajectory");
     execution_action_wait_timeout_s_ = get_or_declare_parameter<double>("execution_action_wait_timeout_s", 5.0);
     execution_result_timeout_s_ = get_or_declare_parameter<double>("execution_result_timeout_s", 0.0);
     execution_include_turn_ = get_or_declare_parameter<bool>("execution_include_turn", true);
@@ -325,7 +325,7 @@ public:
     ik_config_.top_suction_z_reach_lower = get_or_declare_parameter<double>("top_z_reach_lower", 0.0) - world_to_base_z_;
     ik_config_.top_suction_z_reach_upper = get_or_declare_parameter<double>("top_z_reach_upper", 0.45) - world_to_base_z_;
     ik_config_.h_lower = get_or_declare_parameter<double>("ik_h_lower", 0.0);
-    ik_config_.h_upper = get_or_declare_parameter<double>("ik_h_upper", 0.99);
+    ik_config_.h_upper = get_or_declare_parameter<double>("ik_h_upper", 0.7);
     ik_config_.full_h_range_scan = get_or_declare_parameter<bool>("ik_full_h_range_scan", false);
     ik_config_.h_search_mode = robot_motion::core::UpdownAwareIkConfig::HSearchMode::FixedDiscrete;
     ik_config_.h_search_margin = get_or_declare_parameter<double>("ik_h_search_margin", 0.2);
@@ -537,7 +537,7 @@ public:
       get_or_declare_parameter<bool>("extract_loaded_sort_by_pose_distance", false);
     extract_loaded_stop_on_first_success_ =
       get_or_declare_parameter<bool>("extract_loaded_stop_on_first_success", false);
-    extract_loaded_target_updown_ = get_or_declare_parameter<double>("extract_loaded_target_updown", 0.0);
+    extract_loaded_target_updown_ = get_or_declare_parameter<double>("extract_loaded_target_updown", 0.3);
     extract_loaded_lateral_shift_enabled_ =
       get_or_declare_parameter<bool>("extract_loaded_lateral_shift_enabled", false);
     extract_loaded_lateral_shift_distance_ =
@@ -5108,7 +5108,7 @@ private:
   std::string right_tip_;
   bool execute_ = true;
   std::string execution_backend_ = "moveit";
-  std::string execution_action_name_ = "/alfa_execution/execute_joint_trajectory";
+  std::string execution_action_name_ = "/dual_arm_trajectory_controller/follow_joint_trajectory";
   double execution_action_wait_timeout_s_ = 5.0;
   double execution_result_timeout_s_ = 0.0;
   bool execution_include_turn_ = true;
@@ -5241,7 +5241,7 @@ private:
   size_t extract_loaded_candidate_limit_ = 0;
   bool extract_loaded_sort_by_pose_distance_ = false;
   bool extract_loaded_stop_on_first_success_ = false;
-  double extract_loaded_target_updown_ = 0.0;
+  double extract_loaded_target_updown_ = 0.3;
   bool extract_loaded_lateral_shift_enabled_ = false;
   double extract_loaded_lateral_shift_distance_ = 0.4;
   double extract_loaded_lateral_shift_step_ = 0.0;

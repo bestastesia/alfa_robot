@@ -1,5 +1,7 @@
 #include "alfa_robot_moveit_config/extract_monitor_transition_planning.hpp"
 
+#include "alfa_robot_moveit_config/trajectory_plan_utils.hpp"
+
 #include <moveit/robot_state/conversions.h>
 #include <rclcpp/duration.hpp>
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
@@ -20,6 +22,8 @@ namespace
 {
 
 using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
+
+constexpr double kMaxStageJointSpeedRadS = 20.0 * M_PI / 180.0;
 
 double point_time_s(const trajectory_msgs::msg::JointTrajectoryPoint& point)
 {
@@ -97,8 +101,10 @@ bool make_valid_interpolation(
     return false;
   }
 
-  Plan candidate = planner.densify_plan(
-    planner.make_interpolated_plan(start_state, goal_state, 1.0));
+  Plan candidate = retime_plan_by_max_joint_speed(
+    planner.densify_plan(planner.make_interpolated_plan(start_state, goal_state, 1.0)),
+    start_state.getRobotModel(),
+    kMaxStageJointSpeedRadS);
   std::string validation_reason;
   if (!planner.validate_plan(candidate, start_state, &validation_reason)) {
     if (reason) {
@@ -142,7 +148,10 @@ bool make_valid_local_rrt(
     std::string shortcut_reason;
     candidate = planner.shortcut_plan(candidate, start_state, &shortcut_reason);
   }
-  candidate = planner.densify_plan(candidate);
+  candidate = retime_plan_by_max_joint_speed(
+    planner.densify_plan(candidate),
+    start_state.getRobotModel(),
+    kMaxStageJointSpeedRadS);
 
   std::string validation_reason;
   if (!planner.validate_plan(candidate, start_state, &validation_reason)) {
@@ -491,13 +500,30 @@ bool repair_with_local_rrt(
   }
 
   constexpr size_t kLocalWindow = 8;
-  Plan combined;
-  moveit::core::robotStateToRobotStateMsg(start_state, combined.start_state_, true);
+  constexpr size_t kPatchBacktrack = 5;
+  constexpr size_t kPatchForward = 5;
 
   size_t patched_segments = 0;
-  size_t current = 0;
+  std::vector<Plan> accepted_segments;
+  std::vector<size_t> accepted_ends{0};
   std::vector<std::string> patch_notes;
-  while (current + 1 < states.size()) {
+  auto current_index = [&]() {
+    return accepted_ends.back();
+  };
+  auto append_accepted = [&](Plan segment, size_t end_index) {
+    accepted_segments.push_back(std::move(segment));
+    accepted_ends.push_back(end_index);
+  };
+  auto rollback_prefix_count = [&](size_t patch_start) {
+    size_t keep_count = accepted_ends.size();
+    while (keep_count > 1 && accepted_ends[keep_count - 1] > patch_start) {
+      --keep_count;
+    }
+    return keep_count;
+  };
+
+  while (current_index() + 1 < states.size()) {
+    const size_t current = current_index();
     const size_t max_to = std::min(states.size() - 1, current + kLocalWindow);
 
     bool advanced = false;
@@ -505,8 +531,7 @@ bool repair_with_local_rrt(
       Plan segment;
       std::string segment_reason;
       if (make_valid_interpolation(planner, states[current], states[to], &segment, &segment_reason)) {
-        append_segment(combined, segment);
-        current = to;
+        append_accepted(std::move(segment), to);
         advanced = true;
         break;
       }
@@ -516,54 +541,103 @@ bool repair_with_local_rrt(
     }
 
     std::string last_rrt_reason;
-    std::vector<size_t> safe_targets;
-    constexpr size_t kPatchLookahead = 8;
     size_t first_safe_target = states.size();
     for (size_t to = current + 1; to < states.size(); ++to) {
       std::string state_reason;
       if (state_is_valid(planner, states[to], &state_reason)) {
-        if (first_safe_target == states.size()) {
-          first_safe_target = to;
-        }
-        safe_targets.push_back(to);
-        if (to >= first_safe_target + kPatchLookahead) {
-          break;
-        }
+        first_safe_target = to;
+        break;
       } else {
         last_rrt_reason = state_reason;
       }
     }
-
-    for (const size_t target : safe_targets) {
-      Plan segment;
-      std::string segment_reason;
-      if (custom_local_rrt_bridge(
-          planner,
-          states[current],
-          states[target],
-          reference_plan.trajectory_.joint_trajectory.joint_names,
-          &segment,
-          &segment_reason)) {
-        append_segment(combined, segment);
-        ++patched_segments;
-        current = target;
-        advanced = true;
-        patch_notes.push_back(
-          "custom:" + std::to_string(current) + "/" +
-          std::to_string(states.size() - 1));
-        break;
-      } else if (make_valid_local_rrt(
-          planner, states[current], states[target], &segment, &segment_reason)) {
-        append_segment(combined, segment);
-        ++patched_segments;
-        current = target;
-        advanced = true;
-        patch_notes.push_back(
-          std::to_string(current) + "/" + std::to_string(states.size() - 1));
-        break;
-      } else {
-        last_rrt_reason = segment_reason;
+    if (first_safe_target == states.size()) {
+      if (reason) {
+        std::ostringstream stream;
+        stream << "local_rrt_failed_at_waypoint_" << current
+               << ": no_safe_target_after_collision";
+        if (!last_rrt_reason.empty()) {
+          stream << "; " << last_rrt_reason;
+        }
+        *reason = stream.str();
       }
+      return false;
+    }
+
+    const size_t patch_start = current > kPatchBacktrack ? current - kPatchBacktrack : 0;
+    size_t patch_target = std::min(states.size() - 1, first_safe_target + kPatchForward);
+    while (patch_target > first_safe_target) {
+      std::string target_reason;
+      if (state_is_valid(planner, states[patch_target], &target_reason)) {
+        break;
+      }
+      last_rrt_reason = target_reason;
+      --patch_target;
+    }
+    if (patch_target <= patch_start) {
+      if (reason) {
+        std::ostringstream stream;
+        stream << "local_rrt_failed_at_waypoint_" << current
+               << ": patch_target_not_after_patch_start "
+               << patch_start << "->" << patch_target;
+        *reason = stream.str();
+      }
+      return false;
+    }
+
+    const size_t keep_count = rollback_prefix_count(patch_start);
+    if (keep_count == 0 || accepted_ends[keep_count - 1] > patch_start) {
+      if (reason) {
+        *reason = "local_rrt_failed_invalid_patch_prefix";
+      }
+      return false;
+    }
+    Plan prefix_segment;
+    const bool needs_prefix = accepted_ends[keep_count - 1] < patch_start;
+    if (needs_prefix) {
+      std::string prefix_reason;
+      if (!make_valid_interpolation(
+          planner,
+          states[accepted_ends[keep_count - 1]],
+          states[patch_start],
+          &prefix_segment,
+          &prefix_reason)) {
+        if (reason) {
+          *reason = "local_rrt_failed_patch_prefix: " + prefix_reason;
+        }
+        return false;
+      }
+    }
+
+    Plan segment;
+    std::string segment_reason;
+    bool solved = custom_local_rrt_bridge(
+      planner,
+      states[patch_start],
+      states[patch_target],
+      reference_plan.trajectory_.joint_trajectory.joint_names,
+      &segment,
+      &segment_reason);
+    std::string solver_tag = "custom";
+    if (!solved) {
+      solved = make_valid_local_rrt(
+        planner, states[patch_start], states[patch_target], &segment, &segment_reason);
+      solver_tag = "moveit";
+    }
+    if (solved) {
+      accepted_segments.resize(keep_count - 1);
+      accepted_ends.resize(keep_count);
+      if (needs_prefix) {
+        append_accepted(std::move(prefix_segment), patch_start);
+      }
+      append_accepted(std::move(segment), patch_target);
+      ++patched_segments;
+      advanced = true;
+      patch_notes.push_back(
+        solver_tag + ":" + std::to_string(patch_start) + "->" +
+        std::to_string(patch_target) + "/" + std::to_string(states.size() - 1));
+    } else {
+      last_rrt_reason = segment_reason;
     }
 
     if (!advanced) {
@@ -579,6 +653,11 @@ bool repair_with_local_rrt(
     }
   }
 
+  Plan combined;
+  moveit::core::robotStateToRobotStateMsg(start_state, combined.start_state_, true);
+  for (const auto& segment : accepted_segments) {
+    append_segment(combined, segment);
+  }
   combined.planning_time_ = 0.0;
   if (repaired_plan) {
     *repaired_plan = std::move(combined);
@@ -616,7 +695,10 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   }
 
   result.method = "joint_interpolation";
-  result.plan = densify_plan(make_interpolated_plan(start_state, goal_state, 1.0));
+  result.plan = retime_plan_by_max_joint_speed(
+    densify_plan(make_interpolated_plan(start_state, goal_state, 1.0)),
+    start_state.getRobotModel(),
+    kMaxStageJointSpeedRadS);
   result.valid = validate_plan(result.plan, start_state, &result.failure_reason);
   if (result.valid) {
     result.failure_reason.clear();
@@ -637,7 +719,10 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
           &result.plan, &local_rrt_segments, &local_rrt_reason)) {
       result.method = local_rrt_segments > 0 ? "shortcut_local_rrt" : "joint_interpolation";
       result.failure_reason = local_rrt_reason;
-      result.plan = densify_plan(result.plan);
+      result.plan = retime_plan_by_max_joint_speed(
+        densify_plan(result.plan),
+        start_state.getRobotModel(),
+        kMaxStageJointSpeedRadS);
       std::string validation_reason;
       result.valid = validate_plan(result.plan, start_state, &validation_reason);
       if (!validation_reason.empty()) {
@@ -677,7 +762,10 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   } else {
     result.failure_reason.clear();
   }
-  result.plan = densify_plan(result.plan);
+  result.plan = retime_plan_by_max_joint_speed(
+    densify_plan(result.plan),
+    start_state.getRobotModel(),
+    kMaxStageJointSpeedRadS);
 
   std::string validation_reason;
   result.valid = validate_plan(result.plan, start_state, &validation_reason);

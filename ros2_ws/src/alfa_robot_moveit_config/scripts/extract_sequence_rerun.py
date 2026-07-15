@@ -807,7 +807,7 @@ def main() -> int:
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
     parser.add_argument("--ik-h-lower", type=float, default=0.0)
-    parser.add_argument("--ik-h-upper", type=float, default=0.99)
+    parser.add_argument("--ik-h-upper", type=float, default=0.7)
     parser.add_argument("--ik-h-step", type=float, default=0.01)
     parser.add_argument("--ik-full-h-range-scan", action="store_true")
     parser.add_argument("--ik-seed-count", type=int, default=32)

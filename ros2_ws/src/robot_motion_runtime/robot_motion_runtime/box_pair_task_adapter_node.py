@@ -216,7 +216,7 @@ class BoxPairTaskAdapterNode(Node):
         self.declare_parameter("default_box_front_x", 0.925)
         self.declare_parameter("default_scene_y_shift", -0.4)
         self.declare_parameter("default_world_to_base_z", 0.202094)
-        self.declare_parameter("default_fixed_updown", 0.3)
+        self.declare_parameter("default_fixed_updown", 0.0)
         self.declare_parameter("default_top_suction_x_offset", 0.15)
         self.declare_parameter("default_top_suction_z_offset", 0.2)
         self.declare_parameter("default_candidate_limit", 8)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+from copy import deepcopy
 
 import rclpy
 from control_msgs.action import FollowJointTrajectory
@@ -8,9 +9,34 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from robot_motion_interfaces.srv import ExecuteTrajectory
 from robot_motion_runtime.common import RuntimeStatusPublisher, resample_trajectory
+
+
+REAL_ARM_JOINT_NAMES = [
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "turn",
+]
+
+REAL_TO_MODEL = {
+    **{f"right_joint{i}": f"rightjoint{i}" for i in range(1, 7)},
+    **{f"left_joint{i}": f"leftjoint{i}" for i in range(1, 7)},
+}
+MODEL_TO_REAL = {model: real for real, model in REAL_TO_MODEL.items()}
 
 
 class ExecuteTrajectoryServiceNode(Node):
@@ -23,14 +49,20 @@ class ExecuteTrajectoryServiceNode(Node):
     def __init__(self) -> None:
         super().__init__("execute_trajectory_service")
         self.declare_parameter("service_name", "/robot_motion/execute_trajectory")
-        self.declare_parameter("action_name", "/alfa_execution/execute_joint_trajectory")
+        self.declare_parameter(
+            "action_name",
+            "/dual_arm_trajectory_controller/follow_joint_trajectory",
+        )
         self.declare_parameter("forward_action", True)
         self.declare_parameter("wait_for_action_timeout_s", 2.0)
         self.declare_parameter("wait_for_goal_acceptance", False)
         self.declare_parameter("wait_for_result", False)
         self.declare_parameter("wait_for_result_timeout_s", 120.0)
         self.declare_parameter("resample_before_forward", True)
-        self.declare_parameter("resample_rate_hz", 20.0)
+        self.declare_parameter("resample_rate_hz", 10.0)
+        self.declare_parameter("adapt_to_hardware_joint_order", True)
+        self.declare_parameter("joint_state_topic", "/joint_states")
+        self.declare_parameter("hold_missing_from_joint_states", True)
 
         self.service_name = str(self.get_parameter("service_name").value)
         self.action_name = str(self.get_parameter("action_name").value)
@@ -41,8 +73,24 @@ class ExecuteTrajectoryServiceNode(Node):
         self.wait_for_result_timeout_s = float(self.get_parameter("wait_for_result_timeout_s").value)
         self.resample_before_forward = bool(self.get_parameter("resample_before_forward").value)
         self.resample_rate_hz = float(self.get_parameter("resample_rate_hz").value)
+        self.adapt_to_hardware_joint_order = bool(
+            self.get_parameter("adapt_to_hardware_joint_order").value
+        )
+        self.joint_state_topic = str(self.get_parameter("joint_state_topic").value)
+        self.hold_missing_from_joint_states = bool(
+            self.get_parameter("hold_missing_from_joint_states").value
+        )
 
         self.callback_group = ReentrantCallbackGroup()
+        self.latest_joint_positions: dict[str, float] = {}
+        self.joint_state_lock = threading.RLock()
+        self.joint_state_sub = self.create_subscription(
+            JointState,
+            self.joint_state_topic,
+            self.on_joint_state,
+            10,
+            callback_group=self.callback_group,
+        )
         self.action_client = ActionClient(
             self,
             FollowJointTrajectory,
@@ -66,8 +114,121 @@ class ExecuteTrajectoryServiceNode(Node):
             f"action={self.action_name} forward={self.forward_action} "
             f"wait_for_goal_acceptance={self.wait_for_goal_acceptance} "
             f"wait_for_result={self.wait_for_result} "
-            f"resample={self.resample_before_forward}@{self.resample_rate_hz:.1f}Hz"
+            f"resample={self.resample_before_forward}@{self.resample_rate_hz:.1f}Hz "
+            f"hardware_order={self.adapt_to_hardware_joint_order}"
         )
+
+    def on_joint_state(self, msg: JointState) -> None:
+        values = {}
+        for index, name in enumerate(msg.name):
+            if index >= len(msg.position):
+                continue
+            values[str(name)] = float(msg.position[index])
+        with self.joint_state_lock:
+            self.latest_joint_positions = values
+
+    @staticmethod
+    def canonical_source_names(trajectory: JointTrajectory) -> list[str]:
+        return [MODEL_TO_REAL.get(str(name), str(name)) for name in trajectory.joint_names]
+
+    @staticmethod
+    def joint_changes(trajectory: JointTrajectory, index: int, tolerance: float = 1e-9) -> bool:
+        first_value = None
+        for point in trajectory.points:
+            if index >= len(point.positions):
+                continue
+            value = float(point.positions[index])
+            if first_value is None:
+                first_value = value
+                continue
+            if abs(value - first_value) > tolerance:
+                return True
+        return False
+
+    def hold_value_for(self, real_name: str) -> float | None:
+        model_name = REAL_TO_MODEL.get(real_name, real_name)
+        with self.joint_state_lock:
+            if real_name in self.latest_joint_positions:
+                return self.latest_joint_positions[real_name]
+            if model_name in self.latest_joint_positions:
+                return self.latest_joint_positions[model_name]
+        return None
+
+    def adapt_trajectory_for_hardware(self, trajectory: JointTrajectory) -> JointTrajectory:
+        if not self.adapt_to_hardware_joint_order:
+            return trajectory
+
+        canonical_names = self.canonical_source_names(trajectory)
+        duplicates = sorted({name for name in canonical_names if canonical_names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"duplicate joints after alias mapping: {duplicates}")
+        name_to_index = {name: index for index, name in enumerate(canonical_names)}
+        target_indices: list[int | None] = []
+        hold_values: list[float] = []
+        for real_name in REAL_ARM_JOINT_NAMES:
+            index = name_to_index.get(real_name)
+            target_indices.append(index)
+            if index is None:
+                hold_value = self.hold_value_for(real_name)
+                if hold_value is None or not self.hold_missing_from_joint_states:
+                    raise ValueError(
+                        f"missing required hardware joint {real_name}; "
+                        f"trajectory names={list(trajectory.joint_names)}"
+                    )
+                hold_values.append(float(hold_value))
+            else:
+                hold_values.append(0.0)
+
+        mapped_targets = set(REAL_ARM_JOINT_NAMES)
+        for source_index, canonical_name in enumerate(canonical_names):
+            if canonical_name in mapped_targets:
+                continue
+            if self.joint_changes(trajectory, source_index):
+                raise ValueError(
+                    f"planned joint {trajectory.joint_names[source_index]} changes but cannot be "
+                    "forwarded to the 13-axis arm action; updown must use "
+                    "/canopen/updown_position_controller/commands"
+                )
+
+        out = JointTrajectory()
+        out.header = trajectory.header
+        out.joint_names = list(REAL_ARM_JOINT_NAMES)
+        for point_index, source_point in enumerate(trajectory.points):
+            if len(source_point.positions) != len(trajectory.joint_names):
+                raise ValueError(
+                    f"point {point_index} has {len(source_point.positions)} positions for "
+                    f"{len(trajectory.joint_names)} joints"
+                )
+            point = JointTrajectoryPoint()
+            point.time_from_start = source_point.time_from_start
+            for target_index, hold_value in zip(target_indices, hold_values):
+                if target_index is None:
+                    point.positions.append(float(hold_value))
+                else:
+                    point.positions.append(float(source_point.positions[target_index]))
+            if source_point.velocities:
+                for target_index, _ in zip(target_indices, hold_values):
+                    point.velocities.append(
+                        float(source_point.velocities[target_index])
+                        if target_index is not None and target_index < len(source_point.velocities)
+                        else 0.0
+                    )
+            if source_point.accelerations:
+                for target_index, _ in zip(target_indices, hold_values):
+                    point.accelerations.append(
+                        float(source_point.accelerations[target_index])
+                        if target_index is not None and target_index < len(source_point.accelerations)
+                        else 0.0
+                    )
+            if source_point.effort:
+                for target_index, _ in zip(target_indices, hold_values):
+                    point.effort.append(
+                        float(source_point.effort[target_index])
+                        if target_index is not None and target_index < len(source_point.effort)
+                        else 0.0
+                    )
+            out.points.append(point)
+        return out
 
     def on_execute(self, request, response):
         self.status.mark_running(
@@ -98,12 +259,21 @@ class ExecuteTrajectoryServiceNode(Node):
             self.status.mark_done(False, response.message)
             return response
 
+        try:
+            outgoing_trajectory = (
+                resample_trajectory(request.trajectory, self.resample_rate_hz)
+                if self.resample_before_forward
+                else deepcopy(request.trajectory)
+            )
+            outgoing_trajectory = self.adapt_trajectory_for_hardware(outgoing_trajectory)
+        except ValueError as exc:
+            response.accepted = False
+            response.message = f"trajectory adaptation failed: {exc}"
+            self.status.mark_done(False, response.message)
+            return response
+
         goal = FollowJointTrajectory.Goal()
-        goal.trajectory = (
-            resample_trajectory(request.trajectory, self.resample_rate_hz)
-            if self.resample_before_forward
-            else request.trajectory
-        )
+        goal.trajectory = outgoing_trajectory
         future = self.action_client.send_goal_async(goal)
         if not self.wait_for_goal_acceptance and not self.wait_for_result:
             response.accepted = True
