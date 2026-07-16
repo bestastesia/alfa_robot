@@ -1,5 +1,6 @@
 import rclpy
 import pytest
+from sensor_msgs.msg import JointState
 
 from robot_motion_interfaces.srv import SetRobotMotionScene, SetRobotMotionState
 from robot_motion_runtime.motion_scene_source_node import MotionSceneSourceNode
@@ -53,6 +54,34 @@ def test_set_state_publishes_single_authoritative_fact_with_context():
         assert response.state.source == "test_fixture"
         assert response.state.authoritative
         assert list(response.state.joint_state.position) == [0.3, 0.2]
+    finally:
+        node.destroy_node()
+
+
+def test_joint_state_subscription_normalizes_hardware_names_to_model_names():
+    node = MotionStateSourceNode()
+    try:
+        msg = JointState()
+        msg.name = [
+            "right_joint1",
+            "left_joint2",
+            "turn",
+            "left_track_joint",
+            "updown",
+        ]
+        msg.position = [0.1, 0.2, 0.3, 99.0, 0.4]
+
+        node.on_joint_state(msg)
+
+        assert node.latest_state is not None
+        assert list(node.latest_state.joint_state.name) == [
+            "updown",
+            "turn",
+            "pitch",
+            "leftjoint2",
+            "rightjoint1",
+        ]
+        assert list(node.latest_state.joint_state.position) == [0.4, 0.3, 0.0, 0.2, 0.1]
     finally:
         node.destroy_node()
 

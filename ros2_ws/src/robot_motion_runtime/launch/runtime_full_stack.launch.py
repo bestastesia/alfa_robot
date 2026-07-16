@@ -37,10 +37,15 @@ def generate_launch_description():
             DeclareLaunchArgument("default_fixed_updown", default_value="0.0"),
             DeclareLaunchArgument("default_candidate_limit", default_value="8"),
             DeclareLaunchArgument("default_planning_mode", default_value="shortcut"),
+            DeclareLaunchArgument("plan_trajectory_duration_s", default_value="0.0"),
+            DeclareLaunchArgument("plan_trajectory_rate_hz", default_value="10.0"),
+            DeclareLaunchArgument("plan_max_joint_step_deg", default_value="4.5"),
+            DeclareLaunchArgument("plan_max_updown_step_m", default_value="0.01"),
             DeclareLaunchArgument("plan_check_collision", default_value="true"),
             DeclareLaunchArgument("ik_root_samples", default_value="720"),
             DeclareLaunchArgument("ik_default_max_solutions", default_value="8"),
             DeclareLaunchArgument("collision_joint_group", default_value="dual_arm_with_base"),
+            DeclareLaunchArgument("model_joint_states_topic", default_value="/robot_motion/model_joint_states"),
             IncludeLaunchDescription(
                 package_launch("robot_motion_runtime", "runtime_services.launch.py"),
                 launch_arguments={
@@ -64,8 +69,13 @@ def generate_launch_description():
                     "default_fixed_updown": LaunchConfiguration("default_fixed_updown"),
                     "default_candidate_limit": LaunchConfiguration("default_candidate_limit"),
                     "default_planning_mode": LaunchConfiguration("default_planning_mode"),
+                    "plan_trajectory_duration_s": LaunchConfiguration("plan_trajectory_duration_s"),
+                    "plan_trajectory_rate_hz": LaunchConfiguration("plan_trajectory_rate_hz"),
+                    "plan_max_joint_step_deg": LaunchConfiguration("plan_max_joint_step_deg"),
+                    "plan_max_updown_step_m": LaunchConfiguration("plan_max_updown_step_m"),
                     "plan_check_collision": LaunchConfiguration("plan_check_collision"),
                     "collision_service_name": "/robot_motion/check_collision",
+                    "model_joint_states_topic": LaunchConfiguration("model_joint_states_topic"),
                 }.items(),
             ),
             IncludeLaunchDescription(
@@ -81,6 +91,7 @@ def generate_launch_description():
                 launch_arguments={
                     "service_name": "/robot_motion/check_collision",
                     "joint_group": LaunchConfiguration("collision_joint_group"),
+                    "joint_state_topic": LaunchConfiguration("model_joint_states_topic"),
                 }.items(),
             ),
         ]

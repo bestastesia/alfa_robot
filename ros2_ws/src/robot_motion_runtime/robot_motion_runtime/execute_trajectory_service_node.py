@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import threading
 from copy import deepcopy
 
@@ -9,6 +10,7 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
@@ -17,6 +19,7 @@ from robot_motion_runtime.common import (
     REAL_ARM_JOINT_NAMES,
     RuntimeStatusPublisher,
     canonical_joint_name,
+    duration_seconds,
     hardware_joint_name,
     resample_trajectory,
 )
@@ -84,7 +87,7 @@ class ExecuteTrajectoryServiceNode(Node):
             JointState,
             self.joint_state_topic,
             self.on_joint_state,
-            10,
+            qos_profile_sensor_data,
             callback_group=self.callback_group,
         )
         self.action_client = ActionClient(
@@ -122,6 +125,53 @@ class ExecuteTrajectoryServiceNode(Node):
             values[str(name)] = float(msg.position[index])
         with self.joint_state_lock:
             self.latest_joint_positions = values
+
+    @staticmethod
+    def trajectory_summary(trajectory: JointTrajectory) -> str:
+        points = list(trajectory.points)
+        if not points:
+            return "points=0 duration=0.000s"
+
+        times = [duration_seconds(point.time_from_start) for point in points]
+        duration_s = times[-1]
+        min_dt = math.inf
+        max_dt = 0.0
+        max_step_rad = 0.0
+        max_step_joint = ""
+        max_speed_rad_s = 0.0
+        max_speed_joint = ""
+
+        for point_index in range(1, len(points)):
+            dt = max(0.0, times[point_index] - times[point_index - 1])
+            min_dt = min(min_dt, dt)
+            max_dt = max(max_dt, dt)
+            previous = points[point_index - 1]
+            current = points[point_index]
+            joint_count = min(
+                len(trajectory.joint_names),
+                len(previous.positions),
+                len(current.positions),
+            )
+            for joint_index in range(joint_count):
+                delta = abs(float(current.positions[joint_index]) - float(previous.positions[joint_index]))
+                joint_name = str(trajectory.joint_names[joint_index])
+                if delta > max_step_rad:
+                    max_step_rad = delta
+                    max_step_joint = joint_name
+                if dt > 1e-9:
+                    speed = delta / dt
+                    if speed > max_speed_rad_s:
+                        max_speed_rad_s = speed
+                        max_speed_joint = joint_name
+
+        if not math.isfinite(min_dt):
+            min_dt = 0.0
+        return (
+            f"points={len(points)} duration={duration_s:.3f}s "
+            f"dt=[{min_dt:.3f},{max_dt:.3f}]s "
+            f"max_step={math.degrees(max_step_rad):.2f}deg@{max_step_joint or '-'} "
+            f"max_speed={math.degrees(max_speed_rad_s):.2f}deg/s@{max_speed_joint or '-'}"
+        )
 
     @staticmethod
     def canonical_source_names(trajectory: JointTrajectory) -> list[str]:
@@ -289,6 +339,11 @@ class ExecuteTrajectoryServiceNode(Node):
             response.message = f"trajectory adaptation failed: {exc}"
             self.status.mark_done(False, response.message)
             return response
+
+        self.get_logger().info(
+            "Forwarding trajectory to FollowJointTrajectory: "
+            + self.trajectory_summary(outgoing_trajectory)
+        )
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = outgoing_trajectory

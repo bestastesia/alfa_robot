@@ -11,7 +11,12 @@ from sensor_msgs.msg import JointState
 
 from robot_motion_interfaces.msg import RobotMotionState
 from robot_motion_interfaces.srv import SetRobotMotionState
-from robot_motion_runtime.common import RuntimeStatusPublisher, stamp_is_zero
+from robot_motion_runtime.common import (
+    DEFAULT_MOTION_JOINTS,
+    RuntimeStatusPublisher,
+    normalize_joint_state_for_model,
+    stamp_is_zero,
+)
 
 
 class MotionStateSourceNode(Node):
@@ -24,22 +29,28 @@ class MotionStateSourceNode(Node):
     def __init__(self) -> None:
         super().__init__("motion_state_source")
         self.declare_parameter("input_joint_states", "/joint_states")
+        self.declare_parameter("model_joint_states_topic", "/robot_motion/model_joint_states")
         self.declare_parameter("output_state_topic", "/robot_motion/state")
         self.declare_parameter("set_state_service", "/robot_motion/set_state")
         self.declare_parameter("source", "joint_states")
         self.declare_parameter("authoritative", True)
         self.declare_parameter("subscribe_joint_states", True)
+        self.declare_parameter("publish_model_joint_states", True)
+        self.declare_parameter("default_pitch", 0.0)
         self.declare_parameter("frame_id", "world")
         self.declare_parameter("scene_id", "")
         self.declare_parameter("state_id_prefix", "")
         self.declare_parameter("publish_period_s", 0.2)
 
         self.input_topic = str(self.get_parameter("input_joint_states").value)
+        self.model_joint_states_topic = str(self.get_parameter("model_joint_states_topic").value)
         self.output_topic = str(self.get_parameter("output_state_topic").value)
         self.set_state_service = str(self.get_parameter("set_state_service").value)
         self.source = str(self.get_parameter("source").value)
         self.authoritative = bool(self.get_parameter("authoritative").value)
         self.subscribe_joint_states = bool(self.get_parameter("subscribe_joint_states").value)
+        self.publish_model_joint_states = bool(self.get_parameter("publish_model_joint_states").value)
+        self.default_pitch = float(self.get_parameter("default_pitch").value)
         self.frame_id = str(self.get_parameter("frame_id").value)
         self.scene_id = str(self.get_parameter("scene_id").value)
         self.state_id_prefix = str(self.get_parameter("state_id_prefix").value)
@@ -52,6 +63,13 @@ class MotionStateSourceNode(Node):
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.publisher = self.create_publisher(RobotMotionState, self.output_topic, qos)
+        self.model_joint_state_pub = None
+        if self.publish_model_joint_states:
+            self.model_joint_state_pub = self.create_publisher(
+                JointState,
+                self.model_joint_states_topic,
+                qos_profile_sensor_data,
+            )
         self.latest_state: Optional[RobotMotionState] = None
 
         self.status = RuntimeStatusPublisher(
@@ -83,7 +101,8 @@ class MotionStateSourceNode(Node):
         self.get_logger().info(
             "Motion state source ready: "
             f"output={self.output_topic}, set_state={self.set_state_service}, "
-            f"input={self.input_topic if self.subscribe_joint_states else 'disabled'}"
+            f"input={self.input_topic if self.subscribe_joint_states else 'disabled'}, "
+            f"model_joint_states={self.model_joint_states_topic if self.publish_model_joint_states else 'disabled'}"
         )
 
     def make_state_id(self, stamp, source: str) -> str:
@@ -119,13 +138,51 @@ class MotionStateSourceNode(Node):
         self.publisher.publish(state)
 
     def on_joint_state(self, joint_state: JointState) -> None:
+        model_joint_state = normalize_joint_state_for_model(joint_state)
+        if "pitch" not in model_joint_state.name:
+            model_joint_state.name.append("pitch")
+            model_joint_state.position.append(self.default_pitch)
+            if model_joint_state.velocity:
+                model_joint_state.velocity.append(0.0)
+            if model_joint_state.effort:
+                model_joint_state.effort.append(0.0)
+        model_joint_state = self.order_model_joint_state(model_joint_state)
+        if self.model_joint_state_pub is not None:
+            self.model_joint_state_pub.publish(model_joint_state)
         self.publish_state(
             self.make_state(
-                joint_state,
+                model_joint_state,
                 source=self.source,
                 authoritative=self.authoritative,
             )
         )
+
+    @staticmethod
+    def order_model_joint_state(joint_state: JointState) -> JointState:
+        positions = {
+            str(name): float(joint_state.position[index])
+            for index, name in enumerate(joint_state.name)
+            if index < len(joint_state.position)
+        }
+        velocities = {
+            str(name): float(joint_state.velocity[index])
+            for index, name in enumerate(joint_state.name)
+            if index < len(joint_state.velocity)
+        }
+        efforts = {
+            str(name): float(joint_state.effort[index])
+            for index, name in enumerate(joint_state.name)
+            if index < len(joint_state.effort)
+        }
+        out = JointState()
+        out.header = joint_state.header
+        out.name = [name for name in DEFAULT_MOTION_JOINTS if name in positions]
+        out.position = [positions[name] for name in out.name]
+        if joint_state.velocity:
+            out.velocity = [velocities.get(name, 0.0) for name in out.name]
+        if joint_state.effort:
+            out.effort = [efforts.get(name, 0.0) for name in out.name]
+        return out
 
     def on_set_state(self, request, response):
         self.status.mark_running("set_state request")

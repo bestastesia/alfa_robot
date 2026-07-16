@@ -69,6 +69,13 @@ REAL_ARM_JOINT_NAMES = [
     "turn",
 ]
 
+MODEL_JOINT_SET = set(DEFAULT_MOTION_JOINTS)
+
+
+def model_joint_name(name: str) -> str | None:
+    normalized = HARDWARE_TO_MODEL_JOINT_ALIASES.get(str(name), str(name))
+    return normalized if normalized in MODEL_JOINT_SET else None
+
 
 def canonical_joint_name(name: str) -> str:
     """Map a hardware-aliased joint name (left_joint1...) to its model name.
@@ -83,6 +90,43 @@ def canonical_joint_name(name: str) -> str:
 def hardware_joint_name(name: str) -> str:
     """Map a model joint name (leftjoint1...) to its hardware alias."""
     return MODEL_TO_HARDWARE_JOINT_ALIASES.get(str(name), str(name))
+
+
+def normalize_joint_state_for_model(joint_state: JointState) -> JointState:
+    values: dict[str, float] = {}
+    velocities: dict[str, float] = {}
+    efforts: dict[str, float] = {}
+
+    def record(index: int, prefer_existing: bool) -> None:
+        if index >= len(joint_state.name) or index >= len(joint_state.position):
+            return
+        model_name = model_joint_name(str(joint_state.name[index]))
+        if model_name is None:
+            return
+        if prefer_existing and model_name in values:
+            return
+        values[model_name] = float(joint_state.position[index])
+        if index < len(joint_state.velocity):
+            velocities[model_name] = float(joint_state.velocity[index])
+        if index < len(joint_state.effort):
+            efforts[model_name] = float(joint_state.effort[index])
+
+    for index, name in enumerate(joint_state.name):
+        if str(name) in MODEL_JOINT_SET:
+            record(index, prefer_existing=False)
+    for index, name in enumerate(joint_state.name):
+        if str(name) not in MODEL_JOINT_SET:
+            record(index, prefer_existing=True)
+
+    out = JointState()
+    out.header = joint_state.header
+    out.name = [name for name in DEFAULT_MOTION_JOINTS if name in values]
+    out.position = [values[name] for name in out.name]
+    if joint_state.velocity:
+        out.velocity = [velocities.get(name, 0.0) for name in out.name]
+    if joint_state.effort:
+        out.effort = [efforts.get(name, 0.0) for name in out.name]
+    return out
 
 
 def clamp_motion_scale(requested: float, default: float = 1.0) -> float:
@@ -182,6 +226,38 @@ def make_interpolated_trajectory(
         ratio = 0.0 if steps <= 1 else float(step_index) / float(steps - 1)
         point = JointTrajectoryPoint()
         point.time_from_start = make_duration(duration_s * ratio)
+        for name in names:
+            start_value = start_values.get(name, 0.0)
+            goal_value = goal_values.get(name, start_value)
+            point.positions.append(start_value + (goal_value - start_value) * ratio)
+        trajectory.points.append(point)
+    return trajectory
+
+
+def make_fixed_rate_interpolated_trajectory(
+    start: JointState,
+    goal: JointState,
+    rate_hz: float = 10.0,
+    max_joint_step_rad: float = math.radians(4.5),
+    max_linear_step_m: float = 0.01,
+) -> JointTrajectory:
+    names = canonical_joint_names([start, goal])
+    start_values = joint_state_positions(start)
+    goal_values = joint_state_positions(goal)
+    max_ratio = 1.0
+    for name in names:
+        delta = abs(goal_values.get(name, start_values.get(name, 0.0)) - start_values.get(name, 0.0))
+        step = max_linear_step_m if name == "updown" else max_joint_step_rad
+        max_ratio = max(max_ratio, delta / max(step, 1e-9))
+    segment_count = max(1, int(math.ceil(max_ratio)))
+    period_s = 1.0 / max(rate_hz, 1e-9)
+
+    trajectory = JointTrajectory()
+    trajectory.joint_names = names
+    for step_index in range(segment_count + 1):
+        ratio = float(step_index) / float(segment_count)
+        point = JointTrajectoryPoint()
+        point.time_from_start = make_duration(step_index * period_s)
         for name in names:
             start_value = start_values.get(name, 0.0)
             goal_value = goal_values.get(name, start_value)

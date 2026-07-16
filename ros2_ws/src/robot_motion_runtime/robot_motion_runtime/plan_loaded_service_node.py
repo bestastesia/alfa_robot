@@ -16,6 +16,7 @@ from robot_motion_interfaces.srv import CheckCollision, PlanLoaded
 from robot_motion_runtime.common import (
     RuntimeStatusPublisher,
     joint_distance,
+    make_fixed_rate_interpolated_trajectory,
     make_interpolated_trajectory,
     merge_joint_state,
 )
@@ -34,8 +35,9 @@ class PlanLoadedServiceNode(Node):
         self.declare_parameter("state_topic", "/robot_motion/state")
         self.declare_parameter("scene_topic", "/robot_motion/scene")
         self.declare_parameter("default_candidate_limit", 8)
-        self.declare_parameter("trajectory_duration_s", 1.0)
-        self.declare_parameter("max_joint_step_deg", 5.0)
+        self.declare_parameter("trajectory_duration_s", 0.0)
+        self.declare_parameter("trajectory_rate_hz", 10.0)
+        self.declare_parameter("max_joint_step_deg", 4.5)
         self.declare_parameter("max_updown_step_m", 0.01)
         self.declare_parameter("check_collision", False)
         self.declare_parameter("collision_service_name", "/robot_motion/check_collision")
@@ -48,6 +50,7 @@ class PlanLoadedServiceNode(Node):
         self.scene_topic = str(self.get_parameter("scene_topic").value)
         self.default_candidate_limit = int(self.get_parameter("default_candidate_limit").value)
         self.trajectory_duration_s = float(self.get_parameter("trajectory_duration_s").value)
+        self.trajectory_rate_hz = float(self.get_parameter("trajectory_rate_hz").value)
         self.max_joint_step_rad = math.radians(float(self.get_parameter("max_joint_step_deg").value))
         self.max_updown_step_m = float(self.get_parameter("max_updown_step_m").value)
         self.check_collision = bool(self.get_parameter("check_collision").value)
@@ -80,8 +83,16 @@ class PlanLoadedServiceNode(Node):
             "PlanLoaded service; selects loaded pose family and returns transport trajectories",
         )
         mode = "collision-aware shortcut" if self.check_collision else "shortcut baseline"
-        self.status.mark_ready(f"{mode} waiting for PlanLoaded requests")
-        self.get_logger().info(f"PlanLoaded service ready: {self.service_name}")
+        timing_mode = (
+            f"legacy_fixed_duration={self.trajectory_duration_s:.3f}s"
+            if self.trajectory_duration_s > 0.0
+            else f"fixed_rate={self.trajectory_rate_hz:.1f}Hz"
+        )
+        self.status.mark_ready(f"{mode} {timing_mode} waiting for PlanLoaded requests")
+        self.get_logger().info(
+            f"PlanLoaded service ready: {self.service_name}; {timing_mode}, "
+            f"max_joint_step={math.degrees(self.max_joint_step_rad):.3f}deg"
+        )
 
     def on_state(self, state: RobotMotionState) -> None:
         if state.authoritative:
@@ -166,13 +177,22 @@ class PlanLoadedServiceNode(Node):
             family = list(request.loaded_goal_family) or self.default_goal_family(start_state)
             partial_goal = self.nearest_goal(start_state, family)
             goal_state = merge_joint_state(start_state, partial_goal)
-            trajectory = make_interpolated_trajectory(
-                start_state,
-                goal_state,
-                duration_s=self.trajectory_duration_s,
-                max_joint_step_rad=self.max_joint_step_rad,
-                max_linear_step_m=self.max_updown_step_m,
-            )
+            if self.trajectory_duration_s > 0.0:
+                trajectory = make_interpolated_trajectory(
+                    start_state,
+                    goal_state,
+                    duration_s=self.trajectory_duration_s,
+                    max_joint_step_rad=self.max_joint_step_rad,
+                    max_linear_step_m=self.max_updown_step_m,
+                )
+            else:
+                trajectory = make_fixed_rate_interpolated_trajectory(
+                    start_state,
+                    goal_state,
+                    rate_hz=self.trajectory_rate_hz,
+                    max_joint_step_rad=self.max_joint_step_rad,
+                    max_linear_step_m=self.max_updown_step_m,
+                )
             candidate = MotionPlanCandidate()
             candidate.source_candidate_index = source_index
             collision_ok, collision_reason = self.check_candidate_collision(
