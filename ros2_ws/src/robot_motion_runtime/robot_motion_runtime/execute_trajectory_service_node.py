@@ -73,6 +73,19 @@ class ExecuteTrajectoryServiceNode(Node):
         self.wait_for_result_timeout_s = float(self.get_parameter("wait_for_result_timeout_s").value)
         self.resample_before_forward = bool(self.get_parameter("resample_before_forward").value)
         self.resample_rate_hz = float(self.get_parameter("resample_rate_hz").value)
+        if self.resample_before_forward and self.resample_rate_hz <= 0.0:
+            raise ValueError(
+                f"resample_rate_hz must be > 0 when resample_before_forward=True, "
+                f"got {self.resample_rate_hz}"
+            )
+        # 10Hz 契约：real-direct 路径（execute_l6_r8_mock_live.py 的 --hz 硬上限）
+        # 与本服务的重采样频率必须口径一致，否则轨迹在两条路径上的实际执行节奏会不一致。
+        if self.resample_before_forward and abs(self.resample_rate_hz - 10.0) > 1e-6:
+            self.get_logger().warn(
+                f"resample_rate_hz={self.resample_rate_hz:.2f} deviates from the 10Hz contract "
+                "shared with execute_l6_r8_mock_live.py's --hz safety cap. Confirm this is "
+                "intentional before running against real hardware."
+            )
         self.adapt_to_hardware_joint_order = bool(
             self.get_parameter("adapt_to_hardware_joint_order").value
         )
@@ -244,6 +257,28 @@ class ExecuteTrajectoryServiceNode(Node):
             response.message = "trajectory.points is empty"
             self.status.mark_done(False, response.message)
             return response
+        if request.velocity_scale < 0.0 or request.velocity_scale > 1.0:
+            response.accepted = False
+            response.message = (
+                f"velocity_scale out of range [0.0,1.0]: {request.velocity_scale}"
+            )
+            self.status.mark_done(False, response.message)
+            return response
+        if request.acceleration_scale < 0.0 or request.acceleration_scale > 1.0:
+            response.accepted = False
+            response.message = (
+                f"acceleration_scale out of range [0.0,1.0]: {request.acceleration_scale}"
+            )
+            self.status.mark_done(False, response.message)
+            return response
+        if request.velocity_scale != 0.0 or request.acceleration_scale != 0.0:
+            self.get_logger().warn(
+                "ExecuteTrajectory received velocity_scale="
+                f"{request.velocity_scale} acceleration_scale={request.acceleration_scale}, "
+                "but this node's forward path does not apply either field to the outgoing "
+                "trajectory (only resample_rate_hz reshapes timing). These values are "
+                "currently accepted but silently ignored downstream."
+            )
         if request.dry_run or not self.forward_action:
             response.accepted = True
             response.message = (

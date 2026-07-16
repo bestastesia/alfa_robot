@@ -32,6 +32,18 @@ DEFAULT_MOTION_JOINTS = [
 ]
 
 
+def clamp_motion_scale(requested: float, default: float = 1.0) -> float:
+    """Resolve a velocity/acceleration scale field and clamp it to [0.0, 1.0].
+
+    Callers treat <= 0.0 as "unset" and fall back to ``default`` (the existing
+    convention in the adapter nodes). Anything above 1.0 previously passed
+    through unclamped and was silently ignored by the execution layer, which
+    let callers believe an out-of-range speedup was honored.
+    """
+    value = requested if requested > 0.0 else default
+    return max(0.0, min(1.0, value))
+
+
 def now_ms() -> int:
     return int(time.time() * 1000)
 

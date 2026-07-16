@@ -21,7 +21,7 @@ from robot_motion_runtime.box_pair_task_adapter_node import (
     seed_or_default,
     top_suction_orientation,
 )
-from robot_motion_runtime.common import RuntimeStatusPublisher
+from robot_motion_runtime.common import RuntimeStatusPublisher, clamp_motion_scale
 
 
 def normalize_grasp_mode(value: str) -> str:
@@ -248,13 +248,11 @@ class DualGraspTaskAdapterNode(Node):
             pose_request.planning_mode = self.default_planning_mode
             pose_request.execute = bool(request.execute)
             pose_request.dry_run = bool(request.dry_run)
-            pose_request.velocity_scale = (
-                request.velocity_scale if request.velocity_scale > 0.0 else self.default_velocity_scale
+            pose_request.velocity_scale = clamp_motion_scale(
+                request.velocity_scale, self.default_velocity_scale
             )
-            pose_request.acceleration_scale = (
-                request.acceleration_scale
-                if request.acceleration_scale > 0.0
-                else self.default_acceleration_scale
+            pose_request.acceleration_scale = clamp_motion_scale(
+                request.acceleration_scale, self.default_acceleration_scale
             )
 
             self.publish_receipt(task_id, "running", "task planning/execution started")

@@ -15,7 +15,7 @@ from sensor_msgs.msg import JointState
 
 from robot_motion_interfaces.msg import AttachedBox, RobotMotionState
 from robot_motion_interfaces.srv import RunBoxPairTask, RunDualArmPoseTask
-from robot_motion_runtime.common import RuntimeStatusPublisher
+from robot_motion_runtime.common import RuntimeStatusPublisher, clamp_motion_scale
 
 
 DEFAULT_JOINT_NAMES = [
@@ -383,8 +383,8 @@ class BoxPairTaskAdapterNode(Node):
             pose_request.planning_mode = request.planning_mode or self.default_planning_mode
             pose_request.execute = bool(request.execute)
             pose_request.dry_run = bool(request.dry_run)
-            pose_request.velocity_scale = request.velocity_scale if request.velocity_scale > 0.0 else 1.0
-            pose_request.acceleration_scale = request.acceleration_scale if request.acceleration_scale > 0.0 else 1.0
+            pose_request.velocity_scale = clamp_motion_scale(request.velocity_scale, 1.0)
+            pose_request.acceleration_scale = clamp_motion_scale(request.acceleration_scale, 1.0)
 
             pose_response = self.call_pose_task(pose_request)
             self.fill_response_from_pose_task(response, pose_response)
