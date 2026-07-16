@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -184,6 +186,13 @@ size_t run_extract_monitor_candidate_tasks(
   std::atomic<size_t> next_index{0};
   std::atomic<size_t> success_count{0};
   std::atomic<bool> stop_requested{false};
+  double best_ik_score = std::numeric_limits<double>::infinity();
+  for (const auto& candidate : state.legal_candidates) {
+    if (std::isfinite(candidate.score)) {
+      best_ik_score = std::min(best_ik_score, candidate.score);
+    }
+  }
+  constexpr double kEarlyStopIkScoreWindow = 100.0;
   std::vector<std::thread> workers;
   workers.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {
@@ -197,7 +206,11 @@ size_t run_extract_monitor_candidate_tasks(
           break;
         }
         auto timing = task(index, state.legal_candidates[index]);
-        if (timing.success && timing.final_state && success_quorum > 0) {
+        const bool close_to_best_ik =
+          !std::isfinite(best_ik_score) ||
+          !std::isfinite(timing.ik_score) ||
+          timing.ik_score <= best_ik_score + kEarlyStopIkScoreWindow;
+        if (timing.success && timing.final_state && success_quorum > 0 && close_to_best_ik) {
           const size_t reached = success_count.fetch_add(1, std::memory_order_relaxed) + 1;
           const bool should_stop = stop_condition
             ? stop_condition(reached, timing)

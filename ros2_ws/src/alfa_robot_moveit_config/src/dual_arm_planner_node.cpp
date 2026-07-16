@@ -1907,6 +1907,21 @@ private:
       reason);
   }
 
+  bool carried_box_clear_container_obstacles(
+    const moveit::core::RobotState& state,
+    const AttachedBoxSpec& carried_box,
+    std::string* reason) const
+  {
+    if (!enable_attached_box_collision_ || !enable_container_obstacle_) return true;
+    const auto carried_aabb = attached_box_world_aabb(state, carried_box);
+    return carried_box_clear_obstacles(
+      carried_aabb,
+      carried_box.id,
+      {},
+      container_panels(),
+      reason);
+  }
+
   bool state_clear_for_extract(
     const moveit::core::RobotState& state,
     const AttachedBoxSpec& left_carried_box,
@@ -2083,6 +2098,13 @@ private:
           if (reason) *reason = "static box-wall AABB check failed (" + static_wall_reason + ")";
           return false;
         }
+      }
+    }
+    for (const auto& box : attached_boxes) {
+      std::string container_reason;
+      if (!carried_box_clear_container_obstacles(collision_state, box, &container_reason)) {
+        if (reason) *reason = "container AABB check failed (" + container_reason + ")";
+        return false;
       }
     }
     if (enforce_loaded_plan_aabb_clearance_) {
@@ -3965,6 +3987,16 @@ private:
       }
     }
     selected_indices.insert(selected_indices.end(), filler_indices.begin(), filler_indices.end());
+    std::stable_sort(selected_indices.begin(), selected_indices.end(), [&](size_t lhs, size_t rhs) {
+      const double lhs_score = std::isfinite((*candidates)[lhs].score)
+        ? (*candidates)[lhs].score
+        : std::numeric_limits<double>::infinity();
+      const double rhs_score = std::isfinite((*candidates)[rhs].score)
+        ? (*candidates)[rhs].score
+        : std::numeric_limits<double>::infinity();
+      if (lhs_score != rhs_score) return lhs_score < rhs_score;
+      return lhs < rhs;
+    });
 
     std::vector<robot_motion::core::UpdownAwareIkCandidate> limited_candidates;
     std::vector<moveit::core::RobotStatePtr> limited_states;

@@ -1551,6 +1551,20 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
               [&](const size_t a, const size_t b) {
                 const auto& lhs = timings[a];
                 const auto& rhs = timings[b];
+                const double lhs_rank =
+                  (std::isfinite(lhs.ik_score) ? lhs.ik_score : 0.0) +
+                  (std::isfinite(lhs.loaded_pose_distance_sum) ? lhs.loaded_pose_distance_sum :
+                    std::numeric_limits<double>::infinity());
+                const double rhs_rank =
+                  (std::isfinite(rhs.ik_score) ? rhs.ik_score : 0.0) +
+                  (std::isfinite(rhs.loaded_pose_distance_sum) ? rhs.loaded_pose_distance_sum :
+                    std::numeric_limits<double>::infinity());
+                if (lhs_rank != rhs_rank) {
+                  return lhs_rank < rhs_rank;
+                }
+                if (lhs.ik_score != rhs.ik_score) {
+                  return lhs.ik_score < rhs.ik_score;
+                }
                 if (lhs.loaded_pose_distance_sum != rhs.loaded_pose_distance_sum) {
                   return lhs.loaded_pose_distance_sum < rhs.loaded_pose_distance_sum;
                 }
@@ -1560,7 +1574,7 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
                 if (lhs.loaded_pose_max_joint_delta != rhs.loaded_pose_max_joint_delta) {
                   return lhs.loaded_pose_max_joint_delta < rhs.loaded_pose_max_joint_delta;
                 }
-                return lhs.ik_score < rhs.ik_score;
+                return lhs.candidate_order < rhs.candidate_order;
               });
   }
 
@@ -1611,18 +1625,24 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
 
   const auto choose_best_success = [&]() {
     size_t best_index = timings.size();
-    double best_distance = std::numeric_limits<double>::infinity();
+    double best_score = std::numeric_limits<double>::infinity();
     for (const size_t timing_index : batch_result.plan_indices) {
       auto& timing = timings[timing_index];
       timing.loaded_plan_selected = false;
       if (!timing.loaded_plan_success) {
         continue;
       }
-      const double distance = timing.loaded_plan_trajectory_distance;
-      if (distance < best_distance ||
-          (distance == best_distance &&
+      const double trajectory_distance = std::isfinite(timing.loaded_plan_trajectory_distance)
+        ? timing.loaded_plan_trajectory_distance
+        : std::numeric_limits<double>::infinity();
+      const double ik_score = std::isfinite(timing.ik_score)
+        ? timing.ik_score
+        : 0.0;
+      const double score = ik_score + trajectory_distance;
+      if (score < best_score ||
+          (score == best_score &&
            (best_index >= timings.size() || timing.loaded_plan_rank < timings[best_index].loaded_plan_rank))) {
-        best_distance = distance;
+        best_score = score;
         best_index = timing_index;
       }
     }
