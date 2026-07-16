@@ -13,30 +13,13 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from robot_motion_interfaces.srv import ExecuteTrajectory
-from robot_motion_runtime.common import RuntimeStatusPublisher, resample_trajectory
-
-
-REAL_ARM_JOINT_NAMES = [
-    "right_joint1",
-    "right_joint2",
-    "right_joint3",
-    "right_joint4",
-    "right_joint5",
-    "right_joint6",
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
-    "turn",
-]
-
-REAL_TO_MODEL = {
-    **{f"right_joint{i}": f"rightjoint{i}" for i in range(1, 7)},
-    **{f"left_joint{i}": f"leftjoint{i}" for i in range(1, 7)},
-}
-MODEL_TO_REAL = {model: real for real, model in REAL_TO_MODEL.items()}
+from robot_motion_runtime.common import (
+    REAL_ARM_JOINT_NAMES,
+    RuntimeStatusPublisher,
+    canonical_joint_name,
+    hardware_joint_name,
+    resample_trajectory,
+)
 
 
 class ExecuteTrajectoryServiceNode(Node):
@@ -142,7 +125,7 @@ class ExecuteTrajectoryServiceNode(Node):
 
     @staticmethod
     def canonical_source_names(trajectory: JointTrajectory) -> list[str]:
-        return [MODEL_TO_REAL.get(str(name), str(name)) for name in trajectory.joint_names]
+        return [hardware_joint_name(str(name)) for name in trajectory.joint_names]
 
     @staticmethod
     def joint_changes(trajectory: JointTrajectory, index: int, tolerance: float = 1e-9) -> bool:
@@ -159,7 +142,7 @@ class ExecuteTrajectoryServiceNode(Node):
         return False
 
     def hold_value_for(self, real_name: str) -> float | None:
-        model_name = REAL_TO_MODEL.get(real_name, real_name)
+        model_name = canonical_joint_name(real_name)
         with self.joint_state_lock:
             if real_name in self.latest_joint_positions:
                 return self.latest_joint_positions[real_name]

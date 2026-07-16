@@ -15,46 +15,11 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory
 
-
-MODEL_JOINT_NAMES = [
-    "updown",
-    "turn",
-    "pitch",
-    "leftjoint1",
-    "leftjoint2",
-    "leftjoint3",
-    "leftjoint4",
-    "leftjoint5",
-    "leftjoint6",
-    "rightjoint1",
-    "rightjoint2",
-    "rightjoint3",
-    "rightjoint4",
-    "rightjoint5",
-    "rightjoint6",
-]
-
-REAL_ARM_JOINT_NAMES = [
-    "right_joint1",
-    "right_joint2",
-    "right_joint3",
-    "right_joint4",
-    "right_joint5",
-    "right_joint6",
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
-    "turn",
-]
-
-REAL_TO_MODEL = {
-    **{f"right_joint{i}": f"rightjoint{i}" for i in range(1, 7)},
-    **{f"left_joint{i}": f"leftjoint{i}" for i in range(1, 7)},
-}
-MODEL_TO_REAL = {model: real for real, model in REAL_TO_MODEL.items()}
+from robot_motion_runtime.common import (
+    DEFAULT_MOTION_JOINTS,
+    MODEL_TO_HARDWARE_JOINT_ALIASES,
+    canonical_joint_name,
+)
 
 
 @dataclass(frozen=True)
@@ -70,10 +35,6 @@ class ActiveTrajectory:
     requested_joint_names: list[str]
     samples: list[TrajectorySample]
     start_time: float
-
-
-def canonical_joint_name(name: str) -> str:
-    return REAL_TO_MODEL.get(name, name)
 
 
 def duration_s(duration) -> float:
@@ -131,7 +92,7 @@ class KinematicSimExecutorNode(Node):
         )
         self.initial_updown = float(self.get_parameter("initial_updown").value)
 
-        self.joint_names = list(MODEL_JOINT_NAMES)
+        self.joint_names = list(DEFAULT_MOTION_JOINTS)
         self.positions = {name: 0.0 for name in self.joint_names}
         self.positions["updown"] = self.initial_updown
         self.lock = threading.RLock()
@@ -346,7 +307,9 @@ class KinematicSimExecutorNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         names = list(self.joint_names)
         if self.publish_alias_joint_states:
-            names.extend(real for model, real in MODEL_TO_REAL.items() if model in self.positions)
+            names.extend(
+                real for model, real in MODEL_TO_HARDWARE_JOINT_ALIASES.items() if model in self.positions
+            )
         msg.name = names
         msg.position = [
             float(self.positions[canonical_joint_name(name)])

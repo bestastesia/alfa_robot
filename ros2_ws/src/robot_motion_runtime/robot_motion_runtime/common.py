@@ -31,6 +31,59 @@ DEFAULT_MOTION_JOINTS = [
     "rightjoint6",
 ]
 
+HARDWARE_TO_MODEL_JOINT_ALIASES = {
+    "left_joint1": "leftjoint1",
+    "left_joint2": "leftjoint2",
+    "left_joint3": "leftjoint3",
+    "left_joint4": "leftjoint4",
+    "left_joint5": "leftjoint5",
+    "left_joint6": "leftjoint6",
+    "right_joint1": "rightjoint1",
+    "right_joint2": "rightjoint2",
+    "right_joint3": "rightjoint3",
+    "right_joint4": "rightjoint4",
+    "right_joint5": "rightjoint5",
+    "right_joint6": "rightjoint6",
+}
+
+MODEL_TO_HARDWARE_JOINT_ALIASES = {
+    model: hardware for hardware, model in HARDWARE_TO_MODEL_JOINT_ALIASES.items()
+}
+
+# 13 轴 EtherCAT 硬件 action 期望的 joint 名字与顺序（右臂在前，含 turn）。
+# 唯一权威方向/顺序定义在 alfa_robot_execution_bridge.joints；这里只复用命名别名做
+# model<->hardware 转换，不重新定义方向表。
+REAL_ARM_JOINT_NAMES = [
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "turn",
+]
+
+
+def canonical_joint_name(name: str) -> str:
+    """Map a hardware-aliased joint name (left_joint1...) to its model name.
+
+    Unlike ``model_joint_name``, this returns the input unchanged when it is
+    not a recognized hardware alias (e.g. it is already a model name), rather
+    than returning ``None``.
+    """
+    return HARDWARE_TO_MODEL_JOINT_ALIASES.get(str(name), str(name))
+
+
+def hardware_joint_name(name: str) -> str:
+    """Map a model joint name (leftjoint1...) to its hardware alias."""
+    return MODEL_TO_HARDWARE_JOINT_ALIASES.get(str(name), str(name))
+
 
 def clamp_motion_scale(requested: float, default: float = 1.0) -> float:
     """Resolve a velocity/acceleration scale field and clamp it to [0.0, 1.0].
