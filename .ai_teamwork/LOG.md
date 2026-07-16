@@ -1484,3 +1484,33 @@
 - 改了哪里：远端 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh` 调用 `/robot_motion/run_dual_grasp_task`，发送左右末端 `position` 与 `grasp_mode` 字段；远端 `/home/ar/lhy_dev/run_l6_r8_task.sh` 改为弃用提示；远端 README 已说明算法进程、任务进程和 13 组序列。同步 `dual_grasp_task_adapter_node.py`，使 `fixed_updown` 从当前 `/joint_states` 读取，不再硬编码 0.3。
 - 验证结果：远端 `/home/ar/lhy_dev/build_lhy_dev.sh` 构建 9 个包通过；`/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --list` 正确打印 13 组端点任务；`run_l6_r8_task.sh` 退出并提示改用 13 任务入口。
 - 留给下个 AI：测试时先启动 `/home/ar/robot_driver` 硬件 bringup，再开 `/home/ar/lhy_dev/run_algorithm_stack.sh`，最后用 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --dry-run` 或 `--execute --yes-execute`。当前没有独立障碍发布者，默认场景为空；若要真实碰撞环境，需要补 `/robot_motion/set_scene` 或 world-model 发布。
+
+## 2026-07-15 电控/运控接口 / Codex / 13任务实机执行入口修正
+- 做了什么：定位 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --execute` 实际仍走 `robot_motion_runtime` 的 Python placeholder service，导致 `PlanExtract collision_checked_shortcut` 失败且不是 C++ 全流程算法；将工控机执行入口改为 planner-live 后端，执行时直接调用 `execute_l6_r8_real_live.py` 启动 C++ `dual_arm_planner` 生成 snapshot 再发真实控制器 action。
+- 改了哪里：本地 `ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py`；远端 `/home/ar/lhy_dev/scripts/send_dual_grasp_sequence.py`、`/home/ar/lhy_dev/ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py`；远端补齐 `/home/ar/lhy_dev/ros2_ws/src/alfa_robot_execution_bridge/` 作为方向映射来源。
+- 验证结果：本地 py_compile 与 L6/R8 快照离线 flatten 通过，保留 C++ 时间戳并对零时长抽离 keyframe 按 10Hz、20deg/s、0.05m/s 补时间；远端 py_compile、`--help`、`--only 4 --list` 和假 planner execute 分支通过，未触发真实运动。
+- 留给下个 AI：真实执行入口现在默认保留 planner 的 `time_from_start`，不再二次压成固定短时长；updown 可通过 `/canopen/updown_position_controller/commands` 同步发布，但仍是”13轴 action + updown topic”的协调执行，不是单一硬实时多轴控制器。
+
+## 2026-07-16 运控/电控 / Claude / planner-live 实机执行路径安全加固（Refs MOTION-52，commit d962212）
+- 做了什么：接替前运控/电控工程师后系统性核查 `execute_l6_r8_mock_live.py`/`send_dual_grasp_sequence.py` 的实机安全护栏，发现硬上限（`--max-joint-speed-deg-s`/`--hz`/`--max-updown-speed-m-s`/`--loaded-preferred-pose-index`/方向映射）此前依赖 wrapper 层把关，脚本本身可被绕过；`require_explicit_confirmation()` 在非 tty 环境下可能被 `EOFError` 静默穿透当作已确认；`execute_trajectory_service_node.py` 的 `velocity_scale`/`acceleration_scale` 越界值被静默接受、不生效但调用方无感知。
+- 改了哪里：`execute_l6_r8_mock_live.py` 五项硬上限改为脚本级 `SystemExit` 拒绝启动 + `ALFA_ALLOW_UNSAFE_*_OVERRIDE` 环境变量护栏；`require_explicit_confirmation()` 非 tty 直接拒绝；`execute_trajectory_service_node.py` 增加 `velocity_scale`/`acceleration_scale` 范围校验及不生效告警、`resample_rate_hz` 校验及与 10Hz 契约不一致告警；`box_pair_task_adapter_node.py`/`dual_grasp_task_adapter_node.py` 改用新增的 `common.py::clamp_motion_scale()`；`check_l6_r8_real_safety.py` 补充对 `send_dual_grasp_sequence.py` 的静态扫描；重写 `docs/ethercat/REAL_DIRECTION_SAFETY.md` 反映 planner-live 是当前默认实机执行路径。
+- 验证结果：`python3 scripts/safety/check_l6_r8_real_safety.py` 通过；`py_compile` 全部改动文件通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config robot_motion_interfaces robot_motion_core alfa_robot_execution_bridge` 通过。全程只改本地仓库，未做任何真机操作。
+- 留给下个 AI：这些硬上限只在本地仓库 `execute_l6_r8_mock_live.py` 里生效；工控机 `~/lhy_dev` 上的副本若要同步这批改动，需要单独确认后再做，不要自动同步。
+
+## 2026-07-16 运控 / Claude / model<->hardware joint 命名转换收敛到 common.py（Refs MOTION-52，commit deb30d0）
+- 做了什么：全仓库扫描发现 `execute_trajectory_service_node.py`、`kinematic_sim_executor_node.py` 各自维护了一份 model 命名（`leftjoint1`...）↔硬件命名（`left_joint1`...）转换字典，写法不完全一致，存在”改一处漏改另一处”的隐患。
+- 改了哪里：`common.py` 新增 `HARDWARE_TO_MODEL_JOINT_ALIASES`/`MODEL_TO_HARDWARE_JOINT_ALIASES`/`REAL_ARM_JOINT_NAMES`/`canonical_joint_name()`/`hardware_joint_name()` 作为唯一实现；两个下游节点删除各自的重复字典，改为从 `common.py` 导入。方向/顺序的唯一权威源仍是 `alfa_robot_execution_bridge.joints`，本次不涉及方向值改动。
+- 验证结果：`py_compile` 通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config` 通过；手动 import 烟雾测试确认新增符号可被两个下游节点正确导入使用。
+- 留给下个 AI：以后如果还有节点需要 model/hardware joint 命名转换，直接从 `common.py` 导入，不要再新建本地字典。
+
+## 2026-07-16 运控 / Claude / 收紧附着箱侧壁校验并稳定候选选择（Refs MOTION-52，commit 9a016fd）
+- 做了什么：确认此前遗留在工作区、尚未写入日志的 L6/R13、L11/R8 末端诡异旋转/侧壁碰撞修复（详见交接文档记录的排查过程），补写日志条目并正式提交。根因是负重轨迹完整校验里集装箱侧壁/顶板 AABB 只走可选开关，默认未强制失败，而动态箱墙默认强制，两者口径不一致。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增 `carried_box_clear_container_obstacles()`，`state_clear_in_full_scene()` 无条件检查所有 `attached_boxes` 的集装箱侧壁/顶/底 AABB；`loaded_pose_planning.cpp` 候选排序与最终样本选择改为综合 `ik_score + distance`；`extract_monitor_state.cpp` 并行抽离早停增加 `best_ik_score` 跟踪，只有代价接近最优的成功样本才能触发 quorum 早停。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test` 16/16 通过；`L6/R13`/`L11/R8` 复跑（`data/ik_benchmark/sidewall_fix_20260715/L6R13_L11R8_final/`）均成功选中低腕分支（约 4.7°/0°，不再是 175°/180°），container collisions = 0。
+- 留给下个 AI：这批改动在写入本条日志之前已经在工作区停留过一段时间，是通过交接文档 `/tmp/handoff-alfa-motion-20260716-*.md` 补记的，不是当天新做的修复；今后修复完成后应尽量当场写日志，避免依赖临时交接文档补记。
+
+## 2026-07-16 运控 / Claude / model joint state 归一化与固定频率轨迹重采样（来源不明确，commit fd2e2d7）
+- 做了什么：提交前系统性核查工作区未提交改动时，发现 `common.py`/`motion_state_source_node.py`/`plan_extract_service_node.py`/`plan_loaded_service_node.py`/两个 launch 文件/`motion_collision_service_node.cpp` 等一批改动，既不属于当天的安全加固/命名收敛工作，也不属于最近一次侧壁修复，日志里也没有对应条目，来源不明确。已重新验证通过后按既定原则一并提交，不再单独溯源。
+- 改了哪里：`common.py` 新增 `model_joint_name()`/`normalize_joint_state_for_model()`（硬件 joint state 归一化为 model 命名+固定顺序）、`make_fixed_rate_interpolated_trajectory()`（按固定频率而非固定总时长插值）；`motion_state_source_node.py` 发布归一化后的 `/robot_motion/model_joint_states`；`plan_extract_service_node.py`/`plan_loaded_service_node.py` 默认路径切到固定频率插值（`trajectory_rate_hz` 默认 10.0，与执行链路节奏一致）；`motion_collision_service_node.cpp` 的 `joint_state_topic` 改为可配置参数。
+- 验证结果：`colcon build`/`colcon test` 全部通过（moveit_config 16/16，robot_motion_runtime 8/8）；手动 `rclpy` 实例化 `MotionStateSourceNode`/`PlanExtractServiceNode`/`PlanLoadedServiceNode`/`ExecuteTrajectoryServiceNode` 四个节点均正常启动。
+- 留给下个 AI：这批改动来源不明确，如果后续发现行为异常，优先怀疑这里；`trajectory_duration_s`/`trajectory_rate_hz` 两套插值路径同时存在（`duration_s > 0` 走旧路径，否则走新路径），注意不要重复实现第三套。
