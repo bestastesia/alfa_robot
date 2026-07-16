@@ -53,7 +53,7 @@ REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 
 
 def wall_stamp() -> str:
@@ -166,6 +166,10 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_top_position_tolerance:={getattr(args, 'ik_top_position_tolerance', 0.04)}",
         f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
+        f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
+        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.7)}",
+        f"ik_h_step:={getattr(args, 'ik_h_step', 0.01)}",
+        f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
         f"ik_workers:={args.ik_workers}",
         f"ik_candidate_timeout:={args.ik_candidate_timeout}",
@@ -183,10 +187,42 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "extract_benchmark_dual_async:=true",
         f"extract_benchmark_extract_workers:={args.extract_workers}",
         f"extract_benchmark_candidate_limit:={args.candidate_limit}",
+        f"extract_benchmark_extract_success_quorum:={getattr(args, 'extract_success_quorum', 0)}",
+        f"extract_benchmark_extract_quality_success_quorum:={getattr(args, 'extract_quality_success_quorum', 0)}",
+        f"extract_benchmark_extract_quality_loaded_distance_sum:={getattr(args, 'extract_quality_loaded_distance_sum', 0.0)}",
         f"extract_step_x:={args.extract_step_x}",
+        f"extract_max_joint_delta:={getattr(args, 'extract_max_joint_delta', 10.0 * math.pi / 180.0)}",
         "extract_ik_dedup_enabled:=true",
         f"extract_ik_dedup_joint_threshold_deg:={args.dedup_joint_threshold_deg}",
         f"extract_ik_dedup_h_threshold:={args.dedup_h_threshold}",
+        f"extract_ik_stratified_limit_enabled:={str(getattr(args, 'extract_ik_stratified_limit_enabled', False)).lower()}",
+        f"extract_ik_stratified_h_bucket:={getattr(args, 'extract_ik_stratified_h_bucket', 0.05)}",
+        f"extract_ik_stratified_top_score_count:={getattr(args, 'extract_ik_stratified_top_score_count', 12)}",
+        f"extract_ik_candidate_reserve_limit:={getattr(args, 'extract_ik_candidate_reserve_limit', 64)}",
+        f"extract_ik_candidate_reserve_stratified:={str(getattr(args, 'extract_ik_candidate_reserve_stratified', True)).lower()}",
+        f"extract_ik_candidate_reserve_interleave_stride:={getattr(args, 'extract_ik_candidate_reserve_interleave_stride', 4)}",
+        f"extract_ik_loaded_distance_order_weight:={getattr(args, 'extract_ik_loaded_distance_order_weight', 0.0)}",
+        f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
+        f"extract_monitor_build_final_replay:={str(getattr(args, 'extract_monitor_build_final_replay', True)).lower()}",
+        f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
+        f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
+        f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
+        f"extract_box_pose_rrt_paths_per_arm:={getattr(args, 'extract_box_pose_rrt_paths_per_arm', 8)}",
+        f"extract_box_pose_rrt_path_pair_limit:={getattr(args, 'extract_box_pose_rrt_path_pair_limit', 64)}",
+        f"extract_box_pose_rrt_parent_candidates:={getattr(args, 'extract_box_pose_rrt_parent_candidates', 8)}",
+        f"extract_box_pose_rrt_parent_diverse_candidates:={getattr(args, 'extract_box_pose_rrt_parent_diverse_candidates', 0)}",
+        f"extract_box_pose_rrt_parent_endpoint_score_weight:={getattr(args, 'extract_box_pose_rrt_parent_endpoint_score_weight', 0.05)}",
+        f"extract_box_pose_rrt_parent_node_score_weight:={getattr(args, 'extract_box_pose_rrt_parent_node_score_weight', 0.0)}",
+        f"extract_box_pose_rrt_parent_density_weight:={getattr(args, 'extract_box_pose_rrt_parent_density_weight', 0.0)}",
+        f"extract_box_pose_rrt_max_lateral:={getattr(args, 'extract_box_pose_rrt_max_lateral', 0.0)}",
+        f"extract_box_pose_rrt_step_lateral:={getattr(args, 'extract_box_pose_rrt_step_lateral', 0.02)}",
+        f"extract_box_pose_rrt_front_free_motion:={str(getattr(args, 'extract_box_pose_rrt_front_free_motion', True)).lower()}",
+        f"extract_box_pose_rrt_front_goal_requires_max_pitch:={str(getattr(args, 'extract_box_pose_rrt_front_goal_requires_max_pitch', False)).lower()}",
+        f"extract_box_pose_rrt_best_first_fallback:={str(getattr(args, 'extract_box_pose_rrt_best_first_fallback', True)).lower()}",
+        f"extract_box_pose_rrt_best_first_first:={str(getattr(args, 'extract_box_pose_rrt_best_first_first', False)).lower()}",
+        f"extract_box_pose_rrt_top_best_first_first:={str(getattr(args, 'extract_box_pose_rrt_top_best_first_first', False)).lower()}",
+        f"extract_box_pose_rrt_best_first_max_expansions:={getattr(args, 'extract_box_pose_rrt_best_first_max_expansions', 800)}",
+        f"extract_box_pose_rrt_best_first_heuristic_weight:={getattr(args, 'extract_box_pose_rrt_best_first_heuristic_weight', 1.0)}",
         f"extract_rrt_rollout_enabled:={str(getattr(args, 'extract_rrt', False)).lower()}",
         f"extract_rrt_planning_group:={getattr(args, 'extract_rrt_planning_group', 'dual_arm')}",
         f"extract_rrt_planning_time:={getattr(args, 'extract_rrt_planning_time', 0.35)}",
@@ -195,8 +231,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_rrt_goal_limit:={getattr(args, 'extract_rrt_goal_limit', 8)}",
         "extract_benchmark_plan_loaded_after_success:=true",
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
-        "extract_loaded_sort_by_pose_distance:=true",
-        "extract_loaded_stop_on_first_success:=false",
+        f"extract_loaded_sort_by_pose_distance:={str(getattr(args, 'loaded_sort_by_pose_distance', True)).lower()}",
+        f"extract_loaded_stop_on_first_success:={str(getattr(args, 'loaded_stop_on_first_success', False)).lower()}",
         f"extract_loaded_lateral_shift_enabled:={str(args.lateral_shift_enabled).lower()}",
         f"extract_loaded_lateral_shift_distance:={args.lateral_shift_distance}",
         f"extract_loaded_lateral_shift_step:={args.lateral_shift_step}",
@@ -204,8 +240,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_pre_lower_left_box_id:={args.pre_lower_left_box_id}",
         f"extract_loaded_pre_lower_right_box_id:={args.pre_lower_right_box_id}",
         f"extract_loaded_pre_lower_updown_delta:={args.pre_lower_updown_delta}",
-        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.0)}",
-        f"extract_loaded_planner_id:={getattr(args, 'loaded_planner_id', '')}",
+        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.3)}",
         f"extract_loaded_planning_time:={args.loaded_planning_time}",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
@@ -221,6 +256,9 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"record_jsonl_path:={run_dir / 'flow_unused.jsonl'}",
         f"extract_monitor_snapshot_path:={snapshot_path}",
     ]
+    loaded_planner_id = getattr(args, "loaded_planner_id", "")
+    if loaded_planner_id:
+        parts.append(f"extract_loaded_planner_id:={loaded_planner_id}")
     return " ".join(parts)
 
 
@@ -1003,10 +1041,43 @@ def main() -> int:
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--candidate-limit", type=int, default=64)
+    parser.add_argument("--candidate-limit", type=int, default=25)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument("--extract-success-quorum", type=int, default=3)
+    parser.add_argument("--extract-quality-success-quorum", type=int, default=0)
+    parser.add_argument("--extract-quality-loaded-distance-sum", type=float, default=0.0)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
+    parser.add_argument(
+        "--extract-rollout-mode",
+        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        default="greedy",
+        help="抽离策略；box_pose_rrt 为箱体位姿 RRT，greedy 为稳定旧策略。",
+    )
     parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument(
+        "--extract-box-pose-rrt-edge-scene-collision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
+    )
+    parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
+    parser.add_argument("--extract-box-pose-rrt-paths-per-arm", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-path-pair-limit", type=int, default=64)
+    parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
+    parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
+    parser.add_argument("--extract-box-pose-rrt-parent-node-score-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-parent-density-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
+    parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
+    parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
@@ -1018,7 +1089,9 @@ def main() -> int:
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
-    parser.add_argument("--loaded-updown", type=float, default=0.0)
+    parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
@@ -1028,6 +1101,14 @@ def main() -> int:
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
+    parser.add_argument("--extract-ik-stratified-limit-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-ik-stratified-h-bucket", type=float, default=0.05)
+    parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
+    parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
+    parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
+    parser.add_argument("--extract-ik-loaded-distance-order-weight", type=float, default=0.0)
+    parser.add_argument("--extract-monitor-build-final-replay", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument(
         "--mode",

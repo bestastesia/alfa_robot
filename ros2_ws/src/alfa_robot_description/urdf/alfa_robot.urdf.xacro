@@ -183,7 +183,7 @@
     <parent link="leftjoint1" />
     <child link="leftjoint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
   <link name="leftjoint3">
@@ -384,7 +384,7 @@
     <parent link="rightjoint1" />
     <child link="rightjoint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="120" velocity="1.2" />
+    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
   <link name="rightjoint3">
@@ -642,11 +642,11 @@
   </joint>
 
   <joint name="updown" type="prismatic">
-    <origin xyz="-0.081156 0 0.127" rpy="0 0 0" />
+    <origin xyz="-0.081156 0 0.207" rpy="0 0 0" />
     <parent link="turn" />
     <child link="updown" />
     <axis xyz="0 0 1" />
-    <limit lower="0" upper="0.92" effort="0" velocity="0" />
+    <limit lower="0" upper="0.7" effort="0" velocity="0" />
   </joint>
 
   <joint name="front_sensor" type="fixed">

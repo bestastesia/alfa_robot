@@ -172,6 +172,9 @@ int main()
   const auto failed = run_extract_monitor_full_sequence(callbacks, [&] { return last_elapsed; });
   assert(!failed.success);
   assert(failed.message.find("完整流程失败在抽离阶段") != std::string::npos);
+  assert(failed.stage_elapsed_ms[0] == 1.0);
+  assert(failed.stage_elapsed_ms[1] == 20.0);
+  assert(failed.total_elapsed_ms >= 0.0);
 
   ExtractMonitorController controller;
   calls.clear();
@@ -196,6 +199,19 @@ int main()
   controller.reset();
   const auto full_from_controller = controller.runFull(callbacks, [&] { return last_elapsed; });
   assert(full_from_controller.success);
+  assert(controller.phase() == ExtractMonitorPhase::ReadyForIk);
+
+  controller.reset();
+  callbacks.extract = [&](std::string* fail_message) {
+    calls.push_back("extract_fail");
+    last_elapsed = 20.0;
+    if (fail_message) *fail_message = "bad extract";
+    return false;
+  };
+  const auto failed_from_controller = controller.runFull(callbacks, [&] { return last_elapsed; });
+  assert(!failed_from_controller.success);
+  assert(failed_from_controller.stage_elapsed_ms[0] == 1.0);
+  assert(failed_from_controller.stage_elapsed_ms[1] == 20.0);
   assert(controller.phase() == ExtractMonitorPhase::ReadyForIk);
 
   AttachedBoxSpec left_box;

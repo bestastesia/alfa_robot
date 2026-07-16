@@ -32,6 +32,10 @@ struct BoxWallGeometryConfig
   double carried_box_height = 0.4;
   double carried_box_depth = 0.3;
   double static_box_obstacle_inset = 0.002;
+  bool rear_guard_enabled = true;
+  double rear_guard_thickness = 0.01;
+  double rear_guard_clearance = 0.012;
+  double container_height = 2.4;
 };
 
 struct CarriedBoxGeometryConfig
@@ -66,6 +70,13 @@ bool aabb_overlaps(const AxisAlignedBox& lhs, const AxisAlignedBox& rhs);
 
 AxisAlignedBox expanded_aabb(const AxisAlignedBox& box, double margin);
 
+bool carried_box_detached_from_source_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason);
+
 bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,
@@ -83,6 +94,12 @@ bool carried_box_clear_obstacles(
   const std::string& carried_box_id,
   const std::vector<StaticBoxObstacle>& static_obstacles,
   const std::vector<ContainerPanel>& container_panels,
+  std::string* reason);
+
+bool carried_box_clear_rear_guards(
+  const AxisAlignedBox& carried_box,
+  const std::string& carried_box_id,
+  const std::vector<StaticBoxObstacle>& static_obstacles,
   std::string* reason);
 
 }  // namespace alfa_robot::motion

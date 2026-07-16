@@ -98,6 +98,7 @@ namespace alfa_robot::motion
 namespace
 {
 
+
 double pose_tool_axis_error(const Eigen::Isometry3d& target, const Eigen::Isometry3d& actual)
 {
   const Eigen::Vector3d target_axis = target.linear() * Eigen::Vector3d::UnitZ();
@@ -147,6 +148,21 @@ double ExtractCandidateSolver::armJointDelta(
   return std::sqrt(sum);
 }
 
+double ExtractCandidateSolver::armMaxJointDelta(
+  const std::string& side,
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to) const
+{
+  const auto* group = groupForSide(side);
+  if (!group) return 0.0;
+
+  std::vector<double> from_positions;
+  std::vector<double> to_positions;
+  from.copyJointGroupPositions(group, from_positions);
+  to.copyJointGroupPositions(group, to_positions);
+  return max_absolute_difference(from_positions, to_positions);
+}
+
 bool ExtractCandidateSolver::solveAnalytic(
   const std::string& side,
   const moveit::core::RobotState& current_state,
@@ -158,12 +174,18 @@ bool ExtractCandidateSolver::solveAnalytic(
   if (!analytic_solver_) return false;
 
   state = current_state;
+  const auto pre_state_started = std::chrono::steady_clock::now();
   state.setVariablePosition("updown", fixed_updown);
   state.update();
 
   const std::string base_link = side == "left" ? "left_arm_base" : "right_arm_base";
   const Eigen::Isometry3d& base_world = state.getGlobalLinkTransform(base_link);
   const Eigen::Isometry3d target_in_base = base_world.inverse() * target_world;
+  if (config_.profile) {
+    config_.profile->pre_analytic_state_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - pre_state_started).count()), std::memory_order_relaxed);
+  }
 
   std::array<double, 6> seed{};
   for (size_t i = 0; i < seed.size(); ++i) {
@@ -181,7 +203,13 @@ bool ExtractCandidateSolver::solveAnalytic(
     1e-5,
     top_suction ? config_.top_suction_orientation_tolerance : config_.orientation_tolerance);
   request.root_samples = config_.analytic_root_samples;
+  const auto analytic_started = std::chrono::steady_clock::now();
   const auto solutions = analytic_solver_->solveInArmBase(request);
+  if (config_.profile) {
+    config_.profile->analytic_core_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - analytic_started).count()), std::memory_order_relaxed);
+  }
   if (solutions.empty()) {
     return false;
   }
@@ -214,7 +242,13 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
   out->target_pose = request.target_pose;
 
   const Eigen::Isometry3d target = pose_to_eigen(request.target_pose);
+  const auto copy_started = std::chrono::steady_clock::now();
   auto state = std::make_shared<moveit::core::RobotState>(*request.current_state);
+  if (config_.profile) {
+    config_.profile->state_copy_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - copy_started).count()), std::memory_order_relaxed);
+  }
   const bool ik_ok = solveAnalytic(
     request.side,
     *request.current_state,
@@ -236,10 +270,28 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
     return false;
   }
 
+  const auto post_update_started = std::chrono::steady_clock::now();
   state->setVariablePosition("updown", request.fixed_updown);
   state->enforceBounds(config_.joint_group);
   state->update();
+  if (config_.profile) {
+    config_.profile->post_state_update_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - post_update_started).count()), std::memory_order_relaxed);
+  }
 
+  const auto validation_started = std::chrono::steady_clock::now();
+  for (const auto& name : arm_group->getVariableNames()) {
+    const double bounded_delta =
+      state->getVariablePosition(name) - request.current_state->getVariablePosition(name);
+    if (std::abs(bounded_delta) > M_PI) {
+      std::ostringstream oss;
+      oss << request.side << "_bounded_joint_wrap_rejected joint=" << name
+          << " delta=" << bounded_delta;
+      out->rejection_reason = oss.str();
+      return false;
+    }
+  }
   const Eigen::Isometry3d& actual = state->getGlobalLinkTransform(tip);
   const double pos_error = pose_position_error(target, actual);
   const double ori_error = request.top_suction ?
@@ -275,7 +327,7 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
   }
 
   if (config_.max_joint_delta > 0.0) {
-    const double joint_delta = armJointDelta(request.side, *request.current_state, *state);
+    const double joint_delta = armMaxJointDelta(request.side, *request.current_state, *state);
     if (joint_delta > config_.max_joint_delta) {
       std::ostringstream oss;
       oss << request.side << "_joint_delta_too_large delta=" << joint_delta
@@ -287,6 +339,11 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
 
   out->ik_success = true;
   out->state = state;
+  if (config_.profile) {
+    config_.profile->validation_ns.fetch_add(
+      static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - validation_started).count()), std::memory_order_relaxed);
+  }
   return true;
 }
 
@@ -546,38 +603,30 @@ std::vector<ExtractCandidate> ExtractRolloutPlanner::makeCandidatesForSide(
   if (!config_.motion_planner) return candidates;
   const double current_pitch = currentPitchUpRad(side, current_state);
 
-  if (topSuctionForSide(side)) {
-    const double lift_delta = std::max(1e-6, config_.motion_planner->config().step_x);
-    const double lift_z = current_lift_z + lift_delta;
-    const auto target_pose = link_pose(
-      current_state,
-      tipForSide(side),
-      Eigen::Vector3d(0.0, 0.0, lift_delta));
-
-    ExtractCandidate candidate;
-    solveCandidate(side, current_state, target_pose, step, 0,
-                   last_retreat_x, 0.0,
-                   lift_z, lift_delta,
-                   current_pitch, 0.0,
-                   min_allowed_tip_z, carried_box, box_id, &candidate);
-    candidates.push_back(candidate);
-    return candidates;
-  }
-
   for (const auto& layer : config_.motion_planner->layers(
          source_box, box_id, current_pitch, last_retreat_x, current_lift_z)) {
     std::vector<ExtractCandidate> layer_candidates;
     for (const auto& command : layer.commands) {
       Eigen::Quaterniond target_orientation;
+      geometry_msgs::msg::Pose target_pose;
       if (topSuctionForSide(side)) {
-        target_orientation = Eigen::Quaterniond(current_state.getGlobalLinkTransform(tipForSide(side)).linear());
+        const Eigen::Isometry3d& tip = current_state.getGlobalLinkTransform(tipForSide(side));
+        const Eigen::Matrix3d target_rotation =
+          Eigen::AngleAxisd(-command.pitch_delta_rad, Eigen::Vector3d::UnitY()).toRotationMatrix() *
+          tip.linear();
+        target_orientation = Eigen::Quaterniond(target_rotation);
         target_orientation.normalize();
+        target_pose = make_pose(
+          tip.translation().x() - command.retreat_delta_x,
+          tip.translation().y(),
+          tip.translation().z() + command.lift_delta_z,
+          target_orientation);
       } else {
         target_orientation = pitch_up_orientation(command.pitch_up_rad);
+        target_pose = make_pose(
+          command.shifted_box.x, command.shifted_box.y, command.shifted_box.z,
+          target_orientation);
       }
-      const auto target_pose = make_pose(
-        command.shifted_box.x, command.shifted_box.y, command.shifted_box.z,
-        target_orientation);
 
       ExtractCandidate candidate;
       solveCandidate(side, current_state, target_pose, step, command.candidate_index,

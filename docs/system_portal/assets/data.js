@@ -2,7 +2,7 @@ window.SYSTEM_PORTAL_DATA = {
   meta: {
     title: "ALFA Robot 运控系统地图",
     subtitle: "从外界交互到 ROS2 包职责的可点击流程导航",
-    updated: "2026-07-10",
+    updated: "2026-07-11",
     branchHint: "当前整理基于 v5_dev 清扫后的运控/电控源码；后续迁移到 robot_motion_control 时沿用相同职责规则。",
     updateRule: "新增包、接口或流程时，优先更新 assets/data.js；页面会自动渲染卡片、流程和状态。"
   },
@@ -266,6 +266,37 @@ window.SYSTEM_PORTAL_DATA = {
     }
   ],
   architecture: {
+    headline: {
+      kicker: "Motion Intelligence Platform",
+      title: "从任务意图到可信执行的双臂运控闭环",
+      summary: "以唯一状态与场景事实为基础，把多解 IK、碰撞感知抽离、负重规划、轨迹执行和可观测性组织成可替换、可验证、可迁移的能力链。",
+      badges: ["双臂协同", "确定性解析 IK", "阶段化碰撞场景", "统一执行接口", "实时 / 离线可视化"]
+    },
+    capabilityMetrics: [
+      { value: "6", label: "职责层级", note: "契约到装配，依赖单向" },
+      { value: "1", label: "状态事实源", note: "硬件、Mock、回放统一汇聚" },
+      { value: "5", label: "规划阶段", note: "IK、进场、抽离、让位、负重" },
+      { value: "3", label: "可替换适配器", note: "MoveIt、执行后端、可视化" }
+    ],
+    controlLoop: [
+      { id: "intent", label: "任务意图", owner: "上游 / 操作端", detail: "左右 6D Pose、抓取模式、执行策略", contract: "RunDualGraspTask" },
+      { id: "runtime", label: "运行时编排", owner: "robot_motion_runtime", detail: "固定状态与场景版本，管理阶段、超时、取消和回执", contract: "request_id / state_id / scene_id" },
+      { id: "planning", label: "运动能力服务", owner: "planning + scene service", detail: "多解 IK、候选评分、抽离、负重轨迹、碰撞查询", contract: "SolveIK / PlanExtract / PlanLoaded" },
+      { id: "execution", label: "轨迹执行", owner: "execution bridge", detail: "统一 FollowJointTrajectory，适配 Mock、ros2_control 和实机", contract: "/alfa_execution/execute_joint_trajectory" },
+      { id: "feedback", label: "状态反馈", owner: "hardware / twin", detail: "关节反馈、执行结果、安全状态回到唯一事实源", contract: "RobotMotionState / TaskReceipt" }
+    ],
+    truthChain: [
+      { title: "模型事实", owner: "alfa_robot_description", content: "URDF、SRDF、TCP、关节限位与碰撞几何" },
+      { title: "状态事实", owner: "robot_motion_runtime", content: "当前关节、执行阶段、来源与时间戳" },
+      { title: "场景事实", owner: "runtime + scene service", content: "集装箱、箱墙、附着箱与 scene_id" },
+      { title: "结果证据", owner: "runtime events + Rerun", content: "候选、拒绝原因、轨迹、耗时与回执" }
+    ],
+    guardrails: [
+      { icon: "01", title: "碰撞一致性", text: "MoveIt/FCL、抽离验证和回放共享同一阶段场景语义。" },
+      { icon: "02", title: "接口稳定性", text: "上游只依赖任务契约，不感知 IK、RRT 或硬件实现。" },
+      { icon: "03", title: "执行安全", text: "规划不直接碰电机；执行层统一处理取消、超时和后端。" },
+      { icon: "04", title: "全链可观测", text: "每阶段保留输入版本、候选数量、失败原因和时间预算。" }
+    ],
     principles: [
       {
         title: "唯一事实源",

@@ -1,6 +1,7 @@
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 
 #include <cassert>
+#include <cmath>
 #include <iostream>
 
 int main()
@@ -28,7 +29,27 @@ int main()
   wall.container_width = 2.2;
   wall.container_floor_z = 0.0;
   const auto obstacles = make_box_wall_obstacles_for_opening(6, 8, wall);
+  for (const auto& obstacle : obstacles) {
+    if (obstacle.id.find("_below") != std::string::npos) {
+      std::cerr << "unexpected below-wall obstacle: " << obstacle.id << std::endl;
+      return 1;
+    }
+  }
   assert(!obstacles.empty());
+  bool found_rear_guard = false;
+  for (const auto& obstacle : obstacles) {
+    if (obstacle.id.find("_rear_guard") != std::string::npos) {
+      found_rear_guard = true;
+      assert(obstacle.size[0] == wall.rear_guard_thickness);
+      const double expected_center_x =
+        wall.box_front_x + wall.carried_box_depth + wall.rear_guard_clearance +
+        0.5 * wall.rear_guard_thickness;
+      assert(std::abs(obstacle.center[0] - expected_center_x) < 1e-9);
+      assert(std::abs(obstacle.center[2] - 1.0) < 1e-9);
+      assert(std::abs(obstacle.size[2] - 2.0) < 1e-9);
+    }
+  }
+  assert(found_rear_guard);
 
   const auto left_box = make_attached_box_spec("left", 6, false, CarriedBoxGeometryConfig{});
   assert(left_box.id == "carried_left_box_6");
@@ -41,6 +62,13 @@ int main()
   assert(top_box.link_name == "left_tool0");
   assert(top_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_height);
   assert(top_box.center_in_link[2] > 0.0);
+
+  Eigen::Isometry3d rotated_box_transform = Eigen::Isometry3d::Identity();
+  rotated_box_transform.linear() =
+    Eigen::AngleAxisd(M_PI_2, Eigen::Vector3d::UnitY()).toRotationMatrix();
+  const auto rotated_top_box = aabb_from_attached_box_transform(rotated_box_transform, top_box);
+  assert(std::abs(rotated_top_box.size[0] - top_box.size[2]) < 1e-9);
+  assert(std::abs(rotated_top_box.size[2] - top_box.size[0]) < 1e-9);
 
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
@@ -57,6 +85,23 @@ int main()
   assert(!aabb_overlaps(a, c));
 
   std::string reason;
+  reason.clear();
+  const AxisAlignedBox source_box{{0.15, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  assert(!carried_box_detached_from_source_xz(
+    source_box, source_box, 0.03, "carried_box", &reason));
+  assert(reason.find("x-z projection still overlaps source box") != std::string::npos);
+
+  reason.clear();
+  const AxisAlignedBox retreated_box{{-0.18, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  assert(carried_box_detached_from_source_xz(
+    retreated_box, source_box, 0.03, "carried_box", &reason));
+  assert(reason.empty());
+
+  const AxisAlignedBox lifted_box{{0.15, 0.0, 0.63}, {0.3, 0.4, 0.4}};
+  assert(carried_box_detached_from_source_xz(
+    lifted_box, source_box, 0.03, "carried_box", &reason));
+
+  reason.clear();
   const StaticBoxObstacle static_obstacle{"box_wall", {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
   assert(!carried_box_clear_obstacles(a, "carried_box", {static_obstacle}, {}, &reason));
   assert(reason == "carried_box overlaps box_wall");
@@ -68,6 +113,20 @@ int main()
 
   reason.clear();
   assert(carried_box_clear_obstacles(c, "carried_box", {static_obstacle}, {ceiling}, &reason));
+  assert(reason.empty());
+
+  const StaticBoxObstacle rear_guard{
+    "box_wall_L6_R8_rear_guard", {0.5, 0.0, 0.0}, {0.02, 2.2, 2.4}};
+  reason.clear();
+  assert(!carried_box_clear_rear_guards(a, "carried_box", {static_obstacle, rear_guard}, &reason));
+  assert(reason == "carried_box overlaps box_wall_L6_R8_rear_guard");
+
+  reason.clear();
+  assert(carried_box_clear_rear_guards(c, "carried_box", {static_obstacle, rear_guard}, &reason));
+  assert(reason.empty());
+
+  reason.clear();
+  assert(carried_box_clear_rear_guards(a, "carried_box", {static_obstacle}, &reason));
   assert(reason.empty());
 
   std::cout << "scene geometry smoke passed\n";

@@ -4,7 +4,7 @@
 initial_positions:
   pitch: 0
   turn: 0
-  updown: 0.0
+  updown: 0
   leftjoint1: 0
   leftjoint2: 0.0
   leftjoint3: 0.0

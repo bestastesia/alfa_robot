@@ -86,6 +86,12 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   const double inner_y_max = config.container_center_y + config.container_width * 0.5;
   const double z_min = std::min(first.z, second.z) - half_height;
   const double z_max = std::max(first.z, second.z) + half_height;
+  double stack_z_min = std::numeric_limits<double>::infinity();
+  double stack_z_max = -std::numeric_limits<double>::infinity();
+  for (const auto& [_, box] : boxes) {
+    stack_z_min = std::min(stack_z_min, box.z - half_height);
+    stack_z_max = std::max(stack_z_max, box.z + half_height);
+  }
 
   const double positive_hole_y_min = positive_y_box.y - half_width;
   const double positive_hole_y_max = positive_y_box.y + half_width;
@@ -113,11 +119,16 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
     x_min, x_max,
     inner_y_min, negative_hole_y_min - inset,
     z_min, z_max);
-  add_static_wall_piece(
-    obstacles, prefix + "_below",
-    x_min, x_max,
-    inner_y_min, inner_y_max,
-    config.container_floor_z, z_min - inset);
+  if (config.rear_guard_enabled) {
+    const double thickness = std::max(1e-4, config.rear_guard_thickness);
+    const double clearance = std::max(0.0, config.rear_guard_clearance);
+    const double guard_x_min = config.box_front_x + config.carried_box_depth + clearance;
+    add_static_wall_piece(
+      obstacles, prefix + "_rear_guard",
+      guard_x_min, guard_x_min + thickness,
+      inner_y_min, inner_y_max,
+      stack_z_min, stack_z_max);
+  }
 
   return obstacles;
 }
@@ -204,6 +215,39 @@ AxisAlignedBox expanded_aabb(const AxisAlignedBox& box, double margin)
   }};
 }
 
+bool carried_box_detached_from_source_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason)
+{
+  const AxisAlignedBox protected_source = expanded_aabb(source_box, std::max(0.0, margin));
+  const double carried_min_x = carried_box.center[0] - 0.5 * carried_box.size[0];
+  const double carried_max_x = carried_box.center[0] + 0.5 * carried_box.size[0];
+  const double carried_min_z = carried_box.center[2] - 0.5 * carried_box.size[2];
+  const double carried_max_z = carried_box.center[2] + 0.5 * carried_box.size[2];
+  const double source_min_x = protected_source.center[0] - 0.5 * protected_source.size[0];
+  const double source_max_x = protected_source.center[0] + 0.5 * protected_source.size[0];
+  const double source_min_z = protected_source.center[2] - 0.5 * protected_source.size[2];
+  const double source_max_z = protected_source.center[2] + 0.5 * protected_source.size[2];
+  const bool x_overlaps = carried_min_x < source_max_x && carried_max_x > source_min_x;
+  const bool z_overlaps = carried_min_z < source_max_z && carried_max_z > source_min_z;
+  if (!x_overlaps || !z_overlaps) {
+    return true;
+  }
+  if (reason) {
+    std::ostringstream oss;
+    oss << carried_box_id << " x-z projection still overlaps source box"
+        << " carried_x=[" << carried_min_x << ',' << carried_max_x << ']'
+        << " carried_z=[" << carried_min_z << ',' << carried_max_z << ']'
+        << " source_x=[" << source_min_x << ',' << source_max_x << ']'
+        << " source_z=[" << source_min_z << ',' << source_max_z << ']';
+    *reason = oss.str();
+  }
+  return false;
+}
+
 bool carried_box_detached_from_neighbors(
   const AxisAlignedBox& carried_box,
   int box_id,
@@ -282,6 +326,28 @@ bool carried_box_clear_obstacles(
     }
   }
 
+  return true;
+}
+
+bool carried_box_clear_rear_guards(
+  const AxisAlignedBox& carried_box,
+  const std::string& carried_box_id,
+  const std::vector<StaticBoxObstacle>& static_obstacles,
+  std::string* reason)
+{
+  constexpr const char* suffix = "_rear_guard";
+  constexpr size_t suffix_size = 11;
+  for (const auto& obstacle : static_obstacles) {
+    if (obstacle.id.size() < suffix_size ||
+        obstacle.id.compare(obstacle.id.size() - suffix_size, suffix_size, suffix) != 0) {
+      continue;
+    }
+    const AxisAlignedBox obstacle_aabb{obstacle.center, obstacle.size};
+    if (aabb_overlaps(carried_box, obstacle_aabb)) {
+      if (reason) *reason = carried_box_id + " overlaps " + obstacle.id;
+      return false;
+    }
+  }
   return true;
 }
 

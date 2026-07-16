@@ -98,6 +98,7 @@ public:
   {
     service_name_ = declare_parameter<std::string>("service_name", "/robot_motion/check_collision");
     joint_group_name_ = declare_parameter<std::string>("joint_group", "dual_arm_with_base");
+    joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/joint_states");
   }
 
   void initialize()
@@ -108,7 +109,7 @@ public:
     if (planning_scene_monitor_->getPlanningScene()) {
       planning_scene_monitor_->startSceneMonitor();
       planning_scene_monitor_->startWorldGeometryMonitor();
-      planning_scene_monitor_->startStateMonitor("/joint_states");
+      planning_scene_monitor_->startStateMonitor(joint_state_topic_);
       planning_scene_monitor_->requestPlanningSceneState();
       robot_model_ = planning_scene_monitor_->getRobotModel();
       joint_group_ = robot_model_ ? robot_model_->getJointModelGroup(joint_group_name_) : nullptr;
@@ -128,9 +129,10 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "Motion collision service ready: service=%s joint_group=%s",
+      "Motion collision service ready: service=%s joint_group=%s joint_state_topic=%s",
       service_name_.c_str(),
-      joint_group_name_.c_str());
+      joint_group_name_.c_str(),
+      joint_state_topic_.c_str());
     status_->mark_ready("joint_group=" + joint_group_name_);
   }
 
@@ -258,6 +260,7 @@ private:
 
   std::string service_name_;
   std::string joint_group_name_;
+  std::string joint_state_topic_;
   moveit::core::RobotModelConstPtr robot_model_;
   const moveit::core::JointModelGroup* joint_group_ = nullptr;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;

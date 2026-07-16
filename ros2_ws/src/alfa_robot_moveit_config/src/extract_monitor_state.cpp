@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
+#include <limits>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -160,7 +162,9 @@ size_t extract_monitor_worker_count(size_t candidate_count, size_t requested_wor
 size_t run_extract_monitor_candidate_tasks(
   ExtractMonitorState& state,
   size_t requested_worker_count,
-  const ExtractMonitorCandidateTask& task)
+  const ExtractMonitorCandidateTask& task,
+  size_t success_quorum,
+  const ExtractMonitorCandidateTaskStopCondition& stop_condition)
 {
   const size_t count = state.legal_candidates.size();
   state.timings.clear();
@@ -168,19 +172,54 @@ size_t run_extract_monitor_candidate_tasks(
   if (count == 0 || !task) {
     return 0;
   }
+  for (size_t index = 0; index < count; ++index) {
+    state.timings[index].candidate_order = index;
+    state.timings[index].h_index = state.legal_candidates[index].h_index;
+    state.timings[index].seed_index = state.legal_candidates[index].seed_index;
+    state.timings[index].h = state.legal_candidates[index].h;
+    state.timings[index].ik_score = state.legal_candidates[index].score;
+    state.timings[index].ik_solve_ms = state.legal_candidates[index].solve_ms;
+    state.timings[index].failure_reason = "extract_skipped_after_success_quorum";
+  }
 
   const size_t worker_count = extract_monitor_worker_count(count, requested_worker_count);
   std::atomic<size_t> next_index{0};
+  std::atomic<size_t> success_count{0};
+  std::atomic<bool> stop_requested{false};
+  double best_ik_score = std::numeric_limits<double>::infinity();
+  for (const auto& candidate : state.legal_candidates) {
+    if (std::isfinite(candidate.score)) {
+      best_ik_score = std::min(best_ik_score, candidate.score);
+    }
+  }
+  constexpr double kEarlyStopIkScoreWindow = 100.0;
   std::vector<std::thread> workers;
   workers.reserve(worker_count);
   for (size_t worker = 0; worker < worker_count; ++worker) {
     workers.emplace_back([&]() {
       while (true) {
+        if (stop_requested.load(std::memory_order_relaxed)) {
+          break;
+        }
         const size_t index = next_index.fetch_add(1);
         if (index >= count) {
           break;
         }
-        state.timings[index] = task(index, state.legal_candidates[index]);
+        auto timing = task(index, state.legal_candidates[index]);
+        const bool close_to_best_ik =
+          !std::isfinite(best_ik_score) ||
+          !std::isfinite(timing.ik_score) ||
+          timing.ik_score <= best_ik_score + kEarlyStopIkScoreWindow;
+        if (timing.success && timing.final_state && success_quorum > 0 && close_to_best_ik) {
+          const size_t reached = success_count.fetch_add(1, std::memory_order_relaxed) + 1;
+          const bool should_stop = stop_condition
+            ? stop_condition(reached, timing)
+            : reached >= success_quorum;
+          if (should_stop) {
+            stop_requested.store(true, std::memory_order_relaxed);
+          }
+        }
+        state.timings[index] = std::move(timing);
       }
     });
   }
@@ -470,6 +509,9 @@ ExtractMonitorFullRunResult run_extract_monitor_full_sequence(
     std::string stage_message;
     double elapsed_ms = 0.0;
     if (!run_extract_monitor_stage(stage, callbacks, last_stage_ms, &elapsed_ms, &stage_message)) {
+      result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;
+      result.total_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - total_start).count();
       result.message = std::string("完整流程失败在") + extract_monitor_stage_failure_label(stage) + ": " + stage_message;
       result.success = false;
       return result;
@@ -523,8 +565,12 @@ ExtractMonitorFullRunResult ExtractMonitorController::runFull(
     std::string stage_message;
     double elapsed_ms = 0.0;
     if (!run_extract_monitor_stage(stage, callbacks, last_stage_ms, &elapsed_ms, &stage_message)) {
+      result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;
+      result.total_elapsed_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - total_start).count();
       result.message = std::string("完整流程失败在") + extract_monitor_stage_failure_label(stage) + ": " + stage_message;
       result.success = false;
+      reset();
       return result;
     }
     result.stage_elapsed_ms[stage_index(stage)] = elapsed_ms;

@@ -18,6 +18,7 @@ int main()
   using alfa_robot::motion::BoxSpec;
   using alfa_robot::motion::make_front_grasp_pose;
   using alfa_robot::motion::make_top_suction_pose;
+  using alfa_robot::motion::max_absolute_difference;
 
   BoxSpec box;
   box.id = 8;
@@ -42,6 +43,22 @@ int main()
   assert_near(top.orientation.x, 1.0);
   assert_near(top.orientation.y, 0.0);
   assert_near(top.orientation.z, 0.0);
+
+  assert_near(
+    max_absolute_difference(
+      {0.0, 0.0},
+      {5.0 * M_PI / 180.0, 9.0 * M_PI / 180.0}),
+    9.0 * M_PI / 180.0);
+  assert(
+    max_absolute_difference(
+      {0.0, 0.0},
+      {9.0 * M_PI / 180.0, 11.0 * M_PI / 180.0}) >
+    10.0 * M_PI / 180.0);
+  assert(
+    max_absolute_difference(
+      {179.0 * M_PI / 180.0},
+      {-179.0 * M_PI / 180.0}) >
+    350.0 * M_PI / 180.0);
 
   return 0;
 }

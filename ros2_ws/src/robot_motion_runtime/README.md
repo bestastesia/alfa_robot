@@ -26,8 +26,14 @@
 
 这个流程用于模拟“实体机器已经 bringup，算法只负责接任务并发执行”的状态。
 
-终端 1：启动仿真 bringup。它会发布 `/joint_states`，并提供执行 action
-`/alfa_execution/execute_joint_trajectory`：
+终端 1：启动仿真 bringup。它会发布 `/joint_states`，并提供与生产执行层一致的执行接口：
+
+- action：`/dual_arm_trajectory_controller/follow_joint_trajectory`
+- topic：`/dual_arm_trajectory_controller/joint_trajectory`
+- updown：`/canopen/updown_position_controller/commands`
+- 兼容旧 action：`/alfa_execution/execute_joint_trajectory`
+
+仿真执行器按 250Hz 内部控制周期插值，`/joint_states` 默认按 50Hz 发布。
 
 ```bash
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
@@ -47,11 +53,11 @@ source install/setup.bash
 ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
   subscribe_joint_states:=true \
   execute_forward_action:=true \
-  execution_action_name:=/alfa_execution/execute_joint_trajectory \
+  execution_action_name:=/dual_arm_trajectory_controller/follow_joint_trajectory \
   execute_wait_for_goal_acceptance:=true \
   execute_wait_for_result:=true \
   execute_resample_before_forward:=true \
-  execute_resample_rate_hz:=20.0 \
+  execute_resample_rate_hz:=10.0 \
   task_service_timeout_s:=60.0 \
   plan_check_collision:=true
 ```
@@ -123,9 +129,13 @@ ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/Ru
 xdg-open http://127.0.0.1:8766
 ```
 
-如果要换真实执行层，保留终端 2 的算法栈，只把 `execution_action_name` 改成真实电控提供的
-`FollowJointTrajectory` action；如果真实执行层不使用 action，则需要替换
-`execute_trajectory_service_node` 的后端适配。
+如果要换真实执行层，终端 2 的算法栈默认已经指向生产 action
+`/dual_arm_trajectory_controller/follow_joint_trajectory`。真实执行层要求 13 轴顺序固定为
+`right_joint1..right_joint6,left_joint1..left_joint6,turn`，单位为 rad；updown 仍通过
+`/canopen/updown_position_controller/commands` 单独发送绝对位置 m。
+`execute_trajectory_service_node` 会把仓库模型名 `rightjoint*/leftjoint*` 适配成生产名
+`right_joint*/left_joint*`，并按 10Hz 重采样后发给生产 action；如果输入轨迹里 `updown` 发生变化，
+会拒绝转发，避免把无法同步的 updown 运动静默丢掉。
 
 只启动运行时骨架：
 

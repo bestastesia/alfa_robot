@@ -334,7 +334,7 @@ def main() -> None:
     parser.add_argument("--pair-sequence", default="2,3;7,4;8,9;12,13;17,14;18,19")
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
-    parser.add_argument("--loaded-updown", type=float, default=0.0)
+    parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)

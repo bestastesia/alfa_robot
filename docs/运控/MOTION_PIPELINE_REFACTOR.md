@@ -557,3 +557,88 @@ ros2 service call /dual_arm_planner/run_left_extract_demo std_srvs/srv/Trigger {
 - `robot_motion_scene_service` 虽然名字里有 service，但当前不是独立运行节点；它是场景几何与 PlanningScene Adapter 包。后续若要做真正场景服务，应在新仓库里另建 ROS node/action/service 包装层。
 - 负重规划依赖 MoveIt；如果 `start_move_group=false`，必须外部已有可用 move_group、robot state publisher 和 controller/joint state 相关支持节点，否则 `DualArmPlannerNode` 可能在 MoveGroupInterface 初始化阶段等待。
 - 当前 `alfa_robot_motion_scene_adapter` 名字偏窄，实际已经包含 IK、抽离和负重规划模块；后续迁移到新包时可以重命名为更准确的 motion pipeline/runtime 库。
+
+## 9. 箱体位姿 RRT 抽离实验模式
+
+### 9.1 Module 与调用关系
+
+新抽离策略拆成两层，避免把 MoveIt、解析 IK 和搜索树重新揉回主节点：
+
+| Module | Interface | Implementation / Adapter |
+| --- | --- | --- |
+| 箱体位姿 RRT 核心 | `BoxPoseExtractState`、`BoxPoseExtractRrtConfig`、边可达性回调、候选路径结果 | `robot_motion_core/include/robot_motion_core/box_pose_extract_rrt.hpp`、`robot_motion_core/src/box_pose_extract_rrt.cpp`；只负责箱体搜索空间、单调约束、RRT、shortcut 和路径排序，不依赖 ROS/MoveIt |
+| 运控抽离 Adapter | 输入抓取 IK 状态、左右附着箱和抓取模式，输出 `ExtractRolloutTiming` | `alfa_robot_moveit_config/src/box_pose_rrt_extract_planner.cpp`；把箱体路径离散成末端 Pose，调用三平行解析 IK，再用统一双臂碰撞检查筛选路径组合 |
+| 场景几何 Module | 箱墙、集装箱、附着箱、后侧封闭板 | `robot_motion_scene_service/motion_core/scene_geometry`；箱墙开洞后方新增 `_rear_guard`，防止抽离搜索把箱子重新推入货墙 |
+
+这一 Seam 的价值是：RRT 核心可以用纯单测验证；解析 IK 和碰撞是两个 Adapter，后续迁移到标准运控仓库时不需要搬运 `dual_arm_planner_node` 的全部实现。
+
+### 9.2 搜索与碰撞顺序
+
+```text
+抓取 IK 候选
+  -> 左右臂分别在箱体位姿空间生成多条 RRT 路径
+  -> 每条边只做解析 IK 连续可达检查，不做碰撞
+  -> shortcut 去除冗余节点
+  -> 按累计关节运动量排序
+  -> 左右路径交叉组合
+  -> 从低代价到高代价逐条做统一全场景碰撞检查
+  -> 选择第一条双臂、附着箱、箱墙、集装箱均合法且完成脱离的组合
+```
+
+侧吸搜索状态为 `retreat + pitch`，顶吸搜索状态为 `retreat + lift`。侧吸末端运动方向由世界坐标中的“远离货墙”约束确定，不再从附着碰撞盒重排后的局部尺寸轴猜测。
+
+### 9.3 使用方式与稳定默认
+
+当前稳定默认仍是旧贪心策略：
+
+```bash
+--extract-rollout-mode greedy
+```
+
+显式启用箱体位姿 RRT：
+
+```bash
+--extract-rollout-mode box_pose_rrt
+```
+
+保留的兼容模式还有 `moveit_rrt_legacy`、`top_lift_legacy`。新策略尚未替换生产默认，因为必须先证明典型任务存在碰撞合法路径，而不能靠忽略真实碰撞获得成功。
+
+### 9.4 2026-07-10 验证结论
+
+- `robot_motion_core`、`robot_motion_scene_service`、`alfa_robot_moveit_config` 构建通过；相关测试累计 30 项零失败。
+- 固定实验序列为 `1/3, 1/8, 6/3, 6/8, 6/13, 11/8, 11/13, 11/18, 16/13, 16/18, 16/23, 21/18, 21/23`。左右臂分别按箱号决定吸附模式：左侧 `1/6`、右侧 `3/8` 使用侧吸，其余使用顶吸；测试覆盖 4 组纯侧吸和 9 组混合/纯顶吸任务。
+- IK 选择顺序改为“全部合法解代价排序与去重 -> 附着箱完整场景过滤 -> 截取候选上限”，避免低代价前 64 个全部碰撞时错误丢弃后续合法解。当前十三组实验使用场景过滤后前 8 个候选。
+- 顶吸最终脱离判定已与 RRT 核心统一：附着箱与原箱位的 X-Z 投影只要在水平或竖直方向留出 `extract_neighbor_margin` 即完成脱离，不再要求整箱完全抬到原箱顶面以上。修复后 `L11/R13`、`L16/R18` 均能完成 IK、双臂箱体位姿 RRT 抽离和负重阶段。
+- 侧吸 `L1/R3`、`L1/R8`、`L6/R3`、`L6/R8` 以及混合任务 `L6/R13`、`L11/R8` 的主要失败发生在箱体 RRT 抽离阶段：候选通常在第 4～8 个离散步发生 `joint2 <-> updown` 或其他单臂碰撞。该结果说明严格二维侧吸空间当前仍不足，而不是负重规划或最终选择器失败。
+- `L11/R18`、`L16/R13`、`L16/R23`、`L21/R18`、`L21/R23` 在附着箱场景过滤后没有合法抓取 IK 起点，主要是 `joint2 <-> updown`，最低一组还包含携带箱与下方箱墙重叠。搜索器不会绕过非法起点。
+- 抽离和负重阶段现在在 `0/N` 成功时立即失败，并回传主导原因；不再继续运行到最终选择后统一误报 `no loaded-plan success to select`。失败快照保留实际 IK/抽离/负重耗时。
+- `extract_box_pose_rrt_diagnostics` 默认关闭；仅在定位问题时启用单臂隔离碰撞统计，避免正式实验额外重复碰撞检查。
+- 最终十三组 Rerun：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_final_20260710.rrd`；统计：`data/ik_benchmark/extract_sequence_rerun/sequence_20260710_234401/stats.csv`。该轮 13 组中 2 组完整成功，成功任务均为纯顶吸；完整运行约 4 分钟，单个有效 RRT 抽离阶段约 20 秒，当前实现仍属于实验验证而非实时生产算法。
+- 顶吸已获得真实碰撞合法样本，但侧吸和底部任务尚未达到替换条件，所以稳定默认仍保持 `greedy`。后续应分别优化侧吸自由度/终点设计和附着起点选择，不能静默忽略立柱、附着箱、箱墙或集装箱碰撞。
+
+## 10. 代价函数前原始 IK 解诊断
+
+`extract_sequence_rerun.py --ik-only-raw` 用于观察解析 IK 在进入代价函数前产生的全部合法解。这里的“合法”仅表示通过解析求解及 FK 位置/姿态误差校验；这些解尚未计算代价、尚未排序去重，也尚未经过附着箱完整场景碰撞筛选，因此不能当作可直接执行候选。
+
+数据在 `OptimizedDualIkSolver` 的合法性校验之后、`score_analytic_candidate()` 之前按生成顺序捕获。快照使用 `phase=ik_pre_score_candidates`，并明确记录 `cost_scored=false`、`deduplicated=false`、`scene_filtered=false`；每条记录的 `score=null`。
+
+十三组默认任务可使用：
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+/usr/bin/python3 src/alfa_robot_moveit_config/scripts/extract_sequence_rerun.py \
+  --ik-only-raw \
+  --continue-on-failure \
+  --service-timeout 120 \
+  --save /mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun/all_tasks_pre_cost_ik_solutions.rrd
+```
+
+Rerun 沿时间轴依次显示任务和生成序号，每个时间点只显示一个完整双臂机器人状态，避免数千个机器人模型叠加后不可读。
+
+## 11. IK 关节限位裕量代价实验
+
+2026-07-11 起，解析 IK 评分默认暂时关闭 updown 移动奖励/惩罚，但保留 `ik_updown_cost_enabled` 参数供后续恢复。新增基于 RobotModel 真实上下限的关节裕量代价：关节位于中心 60% 范围内不惩罚，超过后使用非线性 barrier；左右臂权重均为 `joint1~6=[0.5, 3.0, 0.7, 0.5, 1.5, 1.2]`，joint2 最高，joint5/6 次之。
+
+在与 2026-07-10 基线相同的前 16 个候选抽离口径下，十三组成功率仍为 `2/13`，成功任务仍是 `L11/R13`、`L16/R18`。侧吸主导失败仍为 `joint2 <-> updown`，说明机械角限位裕量和中心柱几何净空不是同一指标；该代价可改善关节边界舒适性，但不能替代后续中心柱净空查表先验。结果：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_joint_limit_cost_limit16_20260711.rrd`，统计：`data/ik_benchmark/extract_sequence_rerun/sequence_20260711_050757/stats.csv`。

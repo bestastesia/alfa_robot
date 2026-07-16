@@ -26,7 +26,7 @@ import numpy as np
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
 DEFAULT_SEQUENCE = "1,3;1,8;6,3;6,8;6,13;11,8;11,13;11,18;16,13;16,18;16,23;21,18;21,23"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,0.0,0.0,0.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
 
 
@@ -191,6 +191,19 @@ def pair_vehicle_mode(left_mode: str, right_mode: str) -> str:
     return "top_suction" if "top_suction" in (left_mode, right_mode) else "front"
 
 
+def convert_mixed_grasp_modes_to_front(
+    left_modes: list[str],
+    right_modes: list[str],
+) -> tuple[list[str], list[str]]:
+    converted_left = list(left_modes)
+    converted_right = list(right_modes)
+    for index, (left_mode, right_mode) in enumerate(zip(converted_left, converted_right)):
+        if left_mode != right_mode and "top_suction" in (left_mode, right_mode):
+            converted_left[index] = "front"
+            converted_right[index] = "front"
+    return converted_left, converted_right
+
+
 def parse_arm_grasp_mode_sequence(value: str, pairs: list[tuple[int, int]], side: str) -> list[str]:
     if not value.strip():
         index = 0 if side == "left" else 1
@@ -247,6 +260,10 @@ def make_pair_args(
         ik_top_position_tolerance=args.ik_top_position_tolerance,
         ik_top_orientation_tolerance_deg=args.ik_top_orientation_tolerance_deg,
         ik_h_candidate_count=args.ik_h_candidate_count,
+        ik_h_lower=args.ik_h_lower,
+        ik_h_upper=args.ik_h_upper,
+        ik_h_step=args.ik_h_step,
+        ik_full_h_range_scan=args.ik_full_h_range_scan,
         ik_seed_count=args.ik_seed_count,
         ik_workers=args.ik_workers,
         ik_candidate_timeout=args.ik_candidate_timeout,
@@ -256,16 +273,48 @@ def make_pair_args(
         left_box_id=left_id,
         right_box_id=right_id,
         extract_workers=args.extract_workers,
+        extract_success_quorum=args.extract_success_quorum,
+        extract_quality_success_quorum=args.extract_quality_success_quorum,
+        extract_quality_loaded_distance_sum=args.extract_quality_loaded_distance_sum,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
+        extract_max_joint_delta=args.extract_max_joint_delta,
         extract_rrt=args.extract_rrt,
         extract_rrt_planning_group=args.extract_rrt_planning_group,
         extract_rrt_planning_time=args.extract_rrt_planning_time,
         extract_rrt_planning_attempts=args.extract_rrt_planning_attempts,
         extract_rrt_endpoint_per_arm_limit=args.extract_rrt_endpoint_per_arm_limit,
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
+        extract_rollout_mode=args.extract_rollout_mode,
+        extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
+        extract_box_pose_rrt_max_iterations=args.extract_box_pose_rrt_max_iterations,
+        extract_box_pose_rrt_paths_per_arm=args.extract_box_pose_rrt_paths_per_arm,
+        extract_box_pose_rrt_path_pair_limit=args.extract_box_pose_rrt_path_pair_limit,
+        extract_box_pose_rrt_parent_candidates=args.extract_box_pose_rrt_parent_candidates,
+        extract_box_pose_rrt_parent_diverse_candidates=args.extract_box_pose_rrt_parent_diverse_candidates,
+        extract_box_pose_rrt_parent_endpoint_score_weight=args.extract_box_pose_rrt_parent_endpoint_score_weight,
+        extract_box_pose_rrt_parent_node_score_weight=args.extract_box_pose_rrt_parent_node_score_weight,
+        extract_box_pose_rrt_parent_density_weight=args.extract_box_pose_rrt_parent_density_weight,
+        extract_box_pose_rrt_max_lateral=args.extract_box_pose_rrt_max_lateral,
+        extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
+        extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
+        extract_box_pose_rrt_front_goal_requires_max_pitch=args.extract_box_pose_rrt_front_goal_requires_max_pitch,
+        extract_box_pose_rrt_best_first_fallback=args.extract_box_pose_rrt_best_first_fallback,
+        extract_box_pose_rrt_best_first_first=args.extract_box_pose_rrt_best_first_first,
+        extract_box_pose_rrt_top_best_first_first=args.extract_box_pose_rrt_top_best_first_first,
+        extract_box_pose_rrt_top_goal_min_pitch_deg=args.extract_box_pose_rrt_top_goal_min_pitch_deg,
+        extract_box_pose_rrt_best_first_max_expansions=args.extract_box_pose_rrt_best_first_max_expansions,
+        extract_box_pose_rrt_best_first_heuristic_weight=args.extract_box_pose_rrt_best_first_heuristic_weight,
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
+        extract_ik_stratified_limit_enabled=args.extract_ik_stratified_limit_enabled,
+        extract_ik_stratified_h_bucket=args.extract_ik_stratified_h_bucket,
+        extract_ik_stratified_top_score_count=args.extract_ik_stratified_top_score_count,
+        extract_ik_candidate_reserve_limit=args.extract_ik_candidate_reserve_limit,
+        extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
+        extract_ik_candidate_reserve_interleave_stride=args.extract_ik_candidate_reserve_interleave_stride,
+        extract_ik_loaded_distance_order_weight=args.extract_ik_loaded_distance_order_weight,
+        extract_monitor_build_final_replay=not args.no_rerun,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
@@ -280,12 +329,16 @@ def make_pair_args(
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
+        loaded_sort_by_pose_distance=args.loaded_sort_by_pose_distance,
+        loaded_stop_on_first_success=args.loaded_stop_on_first_success,
         loaded_preferred_pose_index=loaded_preferred_pose_index,
         loaded_left_pose_family_deg=loaded_left_pose_family_deg,
         loaded_right_pose_family_deg=loaded_right_pose_family_deg,
         service_timeout=args.service_timeout,
         stride=args.stride,
         continue_on_failure=args.continue_on_failure,
+        ik_only_raw=args.ik_only_raw,
+        ik_scene_rejected=args.ik_scene_rejected,
     )
 
 
@@ -429,9 +482,116 @@ def log_sequence_replay(
                     f"point {point_index + 1}/{len(points)}"
                 ),
             )
+            extra = stage.get("extra", {})
+            if isinstance(extra, dict) and extra.get("collision_diagnostic"):
+                collision_frame = not bool(extra.get("accepted", True))
+                monitor.rr.log(
+                    "monitor/diagnostics/collision_frame",
+                    monitor.rr.Points3D(
+                        positions=[[0.0, 0.0, 0.0]],
+                        radii=[0.08],
+                        colors=[[255, 30, 30, 255] if collision_frame else [255, 210, 30, 255]],
+                        labels=[str(extra.get("collision_reason", "collision diagnostic"))],
+                    ),
+                )
             sample += 1
         previous_positions = [float(value) for value in points[-1].get("positions", [])]
         previous_joint_names = joint_names
+    return sample - sample_start
+
+
+def log_raw_ik_records(
+    snapshot: dict[str, Any],
+    helpers: Any,
+    robot: Any,
+    args: argparse.Namespace,
+    task_index: int,
+    pair_count: int,
+    sample_start: int,
+) -> int:
+    records = [record for record in snapshot.get("records", []) if isinstance(record, dict)]
+    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
+    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
+    left_id = int(snapshot.get("left_box_id", 0))
+    right_id = int(snapshot.get("right_box_id", 0))
+    sample = sample_start
+    for record_index, record in enumerate(records):
+        joint_map = record.get("state", {}).get("joint_map", {})
+        if not isinstance(joint_map, dict) or not joint_map:
+            continue
+        helpers.set_sample_time(sample)
+        monitor.log_default_container(scene_y_shift)
+        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        log_robot_state_display(
+            helpers,
+            robot,
+            {str(name): float(value) for name, value in joint_map.items()},
+            "monitor/robot",
+            args,
+        )
+        monitor.rr.log("monitor/scene/attached_boxes", monitor.rr.Clear(recursive=True))
+        monitor.rr.log(
+            "monitor/info",
+            monitor.rr.TextLog(
+                f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} | "
+                f"代价函数前原始合法解 {record_index + 1}/{len(records)} | "
+                f"generation={record.get('generation_index', record_index)} "
+                f"h={float(record.get('h', 0.0)):.4f} "
+                f"h_index={record.get('h_index')} seed_index={record.get('seed_index')} | "
+                "未打分、未排序、未去重、未做附着箱场景过滤"
+            ),
+        )
+        sample += 1
+    return sample - sample_start
+
+
+def log_scene_rejected_ik_records(
+    snapshot: dict[str, Any],
+    helpers: Any,
+    robot: Any,
+    args: argparse.Namespace,
+    task_index: int,
+    pair_count: int,
+    sample_start: int,
+) -> int:
+    records = [record for record in snapshot.get("scene_rejected_records", []) if isinstance(record, dict)]
+    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
+    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
+    left_id = int(snapshot.get("left_box_id", 0))
+    right_id = int(snapshot.get("right_box_id", 0))
+    attached_boxes = snapshot.get("attached_boxes", [])
+    sample = sample_start
+    for record_index, record in enumerate(records):
+        joint_map = record.get("state", {}).get("joint_map", {})
+        if not isinstance(joint_map, dict) or not joint_map:
+            continue
+        joints = {str(name): float(value) for name, value in joint_map.items()}
+        reason = str(record.get("scene_rejection_reason", "ik_candidate_scene_rejected"))
+        helpers.set_sample_time(sample)
+        monitor.log_default_container(scene_y_shift)
+        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_static_box_obstacles(snapshot.get("static_box_obstacles"))
+        log_robot_state_display(helpers, robot, joints, "monitor/robot", args)
+        log_attached_boxes_display(robot, joints, attached_boxes, args)
+        monitor.rr.log(
+            "monitor/diagnostics/scene_rejection",
+            monitor.rr.Points3D(
+                positions=[[0.0, 0.0, 0.0]],
+                radii=[0.09],
+                colors=[[255, 35, 35, 255]],
+                labels=[reason],
+            ),
+        )
+        monitor.rr.log(
+            "monitor/info",
+            monitor.rr.TextLog(
+                f"任务 {task_index}/{pair_count}: L{left_id}/R{right_id} | "
+                f"附着场景拒绝 IK {record_index + 1}/{len(records)} | "
+                f"h={float(record.get('h', 0.0)):.4f} score={float(record.get('score', 0.0)):.4f} | "
+                f"原因：{reason}"
+            ),
+        )
+        sample += 1
     return sample - sample_start
 
 
@@ -535,7 +695,10 @@ def run_one_pair(
             }
             return False, 1, summary
 
-        print("计算开始：IK → 抽离 → 横向让位 → 负重规划")
+        if args.ik_only_raw:
+            print("计算开始：仅生成代价函数前的全部合法 IK 解")
+        else:
+            print("计算开始：IK → 抽离 → 横向让位 → 负重规划")
         start = time.monotonic()
         success, output, elapsed_ms = service_client.trigger(args.service_timeout)
         wall_ms = (time.monotonic() - start) * 1000.0
@@ -562,7 +725,13 @@ def run_one_pair(
             snapshot = monitor.read_snapshot(snapshot_path)
             summary.update(summarize_snapshot_motion(snapshot))
             if helpers is not None and robot is not None:
-                sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                if args.ik_scene_rejected:
+                    sample_count = log_scene_rejected_ik_records(
+                        snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                elif args.ik_only_raw:
+                    sample_count = log_raw_ik_records(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
+                else:
+                    sample_count = log_sequence_replay(snapshot, helpers, robot, args, task_index, pair_count, sample_start)
         if not success and sample_count <= 0 and helpers is not None and robot is not None:
             sample_count = log_failure_marker(
                 helpers, robot, args, task_index, pair_count, left_id, right_id, sample_start, output
@@ -637,16 +806,59 @@ def main() -> int:
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
+    parser.add_argument("--ik-h-lower", type=float, default=0.0)
+    parser.add_argument("--ik-h-upper", type=float, default=0.7)
+    parser.add_argument("--ik-h-step", type=float, default=0.01)
+    parser.add_argument("--ik-full-h-range-scan", action="store_true")
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
     parser.add_argument("--ik-try-target-orders", action="store_true")
     parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--candidate-limit", type=int, default=64)
+    parser.add_argument("--candidate-limit", type=int, default=25)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument(
+        "--extract-success-quorum",
+        type=int,
+        default=3,
+        help="抽离阶段达到 N 个成功候选后停止分发后续 IK 候选；0 表示跑完全部候选。",
+    )
+    parser.add_argument("--extract-quality-success-quorum", type=int, default=0)
+    parser.add_argument("--extract-quality-loaded-distance-sum", type=float, default=0.0)
     parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
+    parser.add_argument(
+        "--extract-rollout-mode",
+        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        default="box_pose_rrt",
+        help="抽离策略；该序列实验默认使用箱体位姿 RRT",
+    )
     parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument(
+        "--extract-box-pose-rrt-edge-scene-collision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="箱体位姿 RRT 每条插值边同时检查机器人、附着箱和场景碰撞；关闭用于复现旧方案。",
+    )
+    parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
+    parser.add_argument("--extract-box-pose-rrt-paths-per-arm", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-path-pair-limit", type=int, default=64)
+    parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
+    parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
+    parser.add_argument("--extract-box-pose-rrt-parent-node-score-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-parent-density-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
+    parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-top-goal-min-pitch-deg", type=float, default=5.0)
+    parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
+    parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
     parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
@@ -658,7 +870,9 @@ def main() -> int:
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
-    parser.add_argument("--loaded-updown", type=float, default=0.0)
+    parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(
         "--loaded-left-pose-family-deg",
@@ -689,10 +903,27 @@ def main() -> int:
     parser.add_argument("--pre-lower-updown-delta", type=float, default=0.0)
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
+    parser.add_argument("--extract-ik-stratified-limit-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-ik-stratified-h-bucket", type=float, default=0.05)
+    parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
+    parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
+    parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
+    parser.add_argument("--extract-ik-loaded-distance-order-weight", type=float, default=0.0)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--continue-on-failure", action="store_true")
+    parser.add_argument(
+        "--ik-only-raw",
+        action="store_true",
+        help="每组只运行 IK 阶段，并展示进入代价函数前的全部原始合法解",
+    )
+    parser.add_argument(
+        "--ik-scene-rejected",
+        action="store_true",
+        help="每组只运行正常 IK 阶段，并展示所有被附着场景碰撞过滤拒绝的去重候选",
+    )
     parser.add_argument(
         "--ros-domain-id",
         default="auto",
@@ -707,6 +938,9 @@ def main() -> int:
     pairs = parse_pair_sequence(args.pair_sequence)
     left_grasp_modes = parse_arm_grasp_mode_sequence(args.left_grasp_mode_sequence, pairs, "left")
     right_grasp_modes = parse_arm_grasp_mode_sequence(args.right_grasp_mode_sequence, pairs, "right")
+    left_grasp_modes, right_grasp_modes = convert_mixed_grasp_modes_to_front(
+        left_grasp_modes, right_grasp_modes
+    )
     if args.grasp_mode_sequence.strip():
         vehicle_modes = parse_grasp_mode_sequence(args.grasp_mode_sequence, len(pairs), args.grasp_mode)
     else:
@@ -806,7 +1040,11 @@ def main() -> int:
             )
             new_client = monitor.ExtractMonitorServiceClient(
                 configure_service="/dual_arm_planner/configure_extract_monitor",
-                trigger_service="/dual_arm_planner/run_extract_monitor_full_selected",
+                trigger_service=(
+                    "/dual_arm_planner/run_extract_monitor_next"
+                    if args.ik_only_raw or args.ik_scene_rejected
+                    else "/dual_arm_planner/run_extract_monitor_full_selected"
+                ),
                 timeout=args.service_timeout,
             )
             prewarm_ok, prewarm_output, prewarm_ms = new_client.configure(
@@ -910,9 +1148,12 @@ def main() -> int:
             "ik_ms",
             "extract_ms",
             "loaded_ms",
+            "final_ms",
             "loaded_plan_batch_wall_ms",
+            "loaded_plan_candidate_count",
             "loaded_plan_attempted_count",
             "loaded_plan_success_count",
+            "loaded_parallel_workers",
             "motion_total_joint_rad",
             "motion_total_joint_deg",
             "motion_total_axis_mixed",

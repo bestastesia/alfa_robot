@@ -26,6 +26,7 @@ struct OptimizedDualIkSolveRequest
   const moveit::core::RobotState* seed_state = nullptr;
   bool left_top_suction = false;
   bool right_top_suction = false;
+  bool capture_pre_score_candidates = false;
 };
 
 struct OptimizedDualIkSolveResult
@@ -48,6 +49,12 @@ struct OptimizedDualIkSolverConfig
 
 nlohmann::json ik_candidate_rejection_counts_json(
   const robot_motion::core::UpdownAwareIkResult& result);
+
+double joint_limit_margin_cost(
+  const robot_motion::core::UpdownAwareIkCandidate& candidate,
+  const moveit::core::RobotModel& robot_model,
+  const std::vector<double>& joint_weights,
+  double free_ratio);
 
 class OptimizedDualIkSolver
 {

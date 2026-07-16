@@ -12,9 +12,10 @@ JOINTS = ROOT / "ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_br
 PLANNER = ROOT / "ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp"
 LAUNCH = ROOT / "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"
 DOC = ROOT / "docs/ethercat/REAL_DIRECTION_SAFETY.md"
+SEND_SEQUENCE = ROOT / "scripts/lhy_dev/send_dual_grasp_sequence.py"
 
-EXPECTED_LEFT0 = [0.0, 59.04, -135.16, 0.0, -76.13, 0.0]
-EXPECTED_RIGHT0 = [0.0, 58.88, -134.84, 0.0, -75.96, 0.0]
+EXPECTED_LEFT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
+EXPECTED_RIGHT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_SIGNS = {
     "left_joint1": 1.0,
     "left_joint2": 1.0,
@@ -131,6 +132,30 @@ def main() -> int:
     ]:
         if required not in doc_text:
             fail(f"safety doc missing {required}")
+
+    sequence_text = SEND_SEQUENCE.read_text()
+    if "'--execute-backend', choices=['planner-live', 'service'], default='planner-live'" not in sequence_text:
+        fail("send_dual_grasp_sequence.py must default --execute-backend to planner-live")
+    if "'--yes-execute'" not in sequence_text:
+        fail("send_dual_grasp_sequence.py lacks --yes-execute confirmation guard")
+    if "Refusing real execution: add --yes-execute" not in sequence_text:
+        fail("send_dual_grasp_sequence.py must refuse execution without --yes-execute")
+    if "'--max-joint-speed-deg-s', type=float, default=20.0" not in sequence_text:
+        fail("send_dual_grasp_sequence.py --max-joint-speed-deg-s default changed unexpectedly")
+    if "'--max-updown-speed-m-s', type=float, default=0.05" not in sequence_text:
+        fail("send_dual_grasp_sequence.py --max-updown-speed-m-s default changed unexpectedly")
+    if "'--hz', type=float, default=10.0" not in sequence_text:
+        fail("send_dual_grasp_sequence.py --hz default changed unexpectedly")
+    sequence_tree = ast.parse(sequence_text, filename=str(SEND_SEQUENCE))
+    for node in ast.walk(sequence_tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "run_planner_live_task":
+            source = ast.get_source_segment(sequence_text, node) or ""
+            for forwarded in ["args.hz", "args.max_joint_speed_deg_s", "args.max_updown_speed_m_s"]:
+                if forwarded not in source:
+                    fail(f"run_planner_live_task must forward {forwarded} to the real-direct planner script")
+            break
+    else:
+        fail("send_dual_grasp_sequence.py missing run_planner_live_task")
 
     print("OK: L6/R8 real direction safety defaults are locked in repo.")
     return 0

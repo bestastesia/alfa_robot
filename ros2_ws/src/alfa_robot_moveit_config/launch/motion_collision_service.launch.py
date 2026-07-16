@@ -15,6 +15,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("service_name", default_value="/robot_motion/check_collision"),
             DeclareLaunchArgument("joint_group", default_value="dual_arm_with_base"),
+            DeclareLaunchArgument("joint_state_topic", default_value="/joint_states"),
             Node(
                 package="alfa_robot_moveit_config",
                 executable="motion_collision_service_node",
@@ -26,6 +27,7 @@ def generate_launch_description():
                     {
                         "service_name": LaunchConfiguration("service_name"),
                         "joint_group": LaunchConfiguration("joint_group"),
+                        "joint_state_topic": LaunchConfiguration("joint_state_topic"),
                     }
                 ],
             ),

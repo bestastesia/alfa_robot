@@ -20,6 +20,8 @@ from alfa_robot_rerun import visualize_rerun as rerun_helpers
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
@@ -42,6 +44,12 @@ REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
 DEFAULT_MOCK_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_mock_execution"
 DEFAULT_REAL_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_real_execution"
+
+# real direct（不经 execution_bridge 转发，直接发真实控制器 action）流程的运行时安全上限。
+# 超过这些值需要显式设置对应的 ALFA_ALLOW_UNSAFE_*_OVERRIDE 环境变量才能绕过。
+MAX_SAFE_REAL_HZ = 10.0
+MAX_SAFE_REAL_JOINT_SPEED_DEG_S = 20.0
+MAX_SAFE_REAL_UPDOWN_SPEED_M_S = 0.05
 
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -73,6 +81,22 @@ def terminate_process(process: subprocess.Popen[str] | None, timeout: float = 5.
     process_lifecycle.terminate_process_tree(process, interrupt_timeout=timeout)
 
 
+def require_explicit_confirmation(prompt: str, token: str = "YES") -> None:
+    """real direct 流程的人工确认关卡。
+
+    非交互环境（无 tty，如被 subprocess/cron/CI 调起）下直接拒绝执行，
+    不能让 EOFError 静默穿透；交互环境下必须手动输入指定 token，回车不算确认。
+    """
+    if not sys.stdin.isatty():
+        raise SystemExit(
+            f"拒绝执行：{prompt} 需要交互式人工确认（输入 '{token}'），"
+            "但当前标准输入不是 tty，无法确认人员/设备安全状态。"
+        )
+    reply = input(f"{prompt}\n输入 '{token}' 并回车以确认；其它任意输入或 Ctrl+C 取消：").strip()
+    if reply != token:
+        raise SystemExit(f"未确认（收到 {reply!r}，需要 {token!r}），拒绝执行。")
+
+
 def seconds_to_duration(seconds: float):
     msg = JointTrajectoryPoint().time_from_start
     seconds = max(0.0, float(seconds))
@@ -90,10 +114,14 @@ def duration_to_seconds(duration: Any) -> float:
 
 
 def moveit_to_execution_name(name: str) -> str | None:
+    if name.startswith("leftjoint"):
+        return "left_joint" + name.removeprefix("leftjoint")
+    if name.startswith("rightjoint"):
+        return "right_joint" + name.removeprefix("rightjoint")
     if name.startswith("left_joint"):
-        return "left_joint" + name.removeprefix("left_joint")
+        return name
     if name.startswith("right_joint"):
-        return "right_joint" + name.removeprefix("right_joint")
+        return name
     if name == "turn":
         return "turn"
     return None
@@ -101,9 +129,9 @@ def moveit_to_execution_name(name: str) -> str | None:
 
 def execution_to_moveit_name(name: str) -> str:
     if name.startswith("left_joint"):
-        return "left_joint" + name.removeprefix("left_joint")
+        return "leftjoint" + name.removeprefix("left_joint")
     if name.startswith("right_joint"):
-        return "right_joint" + name.removeprefix("right_joint")
+        return "rightjoint" + name.removeprefix("right_joint")
     return name
 
 
@@ -124,6 +152,15 @@ def extract_position_from_stage_point(stage: dict[str, Any], point: dict[str, An
             joints[target] = float(value)
     joints["turn"] = 0.0
     return joints
+
+
+def extract_updown_from_stage_point(stage: dict[str, Any], point: dict[str, Any], previous: float) -> float:
+    names = list(stage.get("trajectory", {}).get("joint_names", []))
+    positions = list(point.get("positions", []))
+    for name, value in zip(names, positions):
+        if name == "updown":
+            return float(value)
+    return float(previous)
 
 
 def resample_segment(
@@ -177,15 +214,49 @@ def make_trajectory(
 
 
 LOADED_LEFT_POSE_FAMILY_DEG = [
-    [0.0, 59.04, -135.16, 0.0, -76.13, 0.0],
+    [0.0, -45.0, 120.0, -75.0, 0.0, 0.0],
     [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
     [33.87, 75.82, -135.08, 0.0, -59.25, -33.87],
 ]
 LOADED_RIGHT_POSE_FAMILY_DEG = [
-    [0.0, 58.88, -134.84, 0.0, -75.96, 0.0],
+    [0.0, -45.0, 120.0, -75.0, 0.0, 0.0],
     [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
     [-30.93, 74.17, -134.92, 0.0, -60.74, 30.93],
 ]
+FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
+
+
+def normalize_grasp_mode(value: str) -> str:
+    aliases = {
+        "": "auto",
+        "auto": "auto",
+        "front": "front",
+        "side": "front",
+        "side_suction": "front",
+        "top": "top_suction",
+        "top_suction": "top_suction",
+        "down": "top_suction",
+    }
+    key = str(value).strip().lower()
+    if key not in aliases:
+        raise ValueError(f"invalid grasp mode: {value}")
+    return aliases[key]
+
+
+def grasp_mode_for_box(box_id: int) -> str:
+    return "front" if int(box_id) in FRONT_SUCTION_BOX_IDS else "top_suction"
+
+
+def pair_vehicle_mode(left_mode: str, right_mode: str) -> str:
+    return "top_suction" if "top_suction" in (left_mode, right_mode) else "front"
+
+
+def effective_box_front_x(args: argparse.Namespace, mode: str) -> float:
+    if mode != "top_suction":
+        return float(args.box_front_x)
+    if args.top_box_front_x is not None:
+        return float(args.top_box_front_x)
+    return float(args.box_front_x) - float(args.top_approach_forward)
 
 
 def loaded_joint_map(index: int = 0) -> dict[str, float]:
@@ -234,6 +305,145 @@ def trajectory_from_snapshot(
     return samples
 
 
+def _same_execution_sample(
+    lhs: dict[str, float],
+    lhs_updown: float,
+    rhs: dict[str, float],
+    rhs_updown: float,
+    tolerance: float = 1e-9,
+) -> bool:
+    return (
+        all(abs(float(lhs.get(name, 0.0)) - float(rhs.get(name, 0.0))) <= tolerance for name in EXECUTION_JOINT_NAMES)
+        and abs(float(lhs_updown) - float(rhs_updown)) <= tolerance
+    )
+
+
+def resample_state_segment(
+    start: dict[str, float],
+    start_updown: float,
+    goal: dict[str, float],
+    goal_updown: float,
+    *,
+    start_time: float,
+    hz: float,
+    max_joint_speed_deg_s: float,
+    max_updown_speed_m_s: float,
+    context: dict[str, Any],
+) -> list[tuple[float, dict[str, float], dict[str, Any]]]:
+    max_joint_delta = max(abs(goal[name] - start[name]) for name in EXECUTION_JOINT_NAMES)
+    joint_duration_s = max_joint_delta / math.radians(max_joint_speed_deg_s) if max_joint_speed_deg_s > 0.0 else 0.0
+    updown_duration_s = (
+        abs(float(goal_updown) - float(start_updown)) / max_updown_speed_m_s
+        if max_updown_speed_m_s > 0.0
+        else 0.0
+    )
+    duration_s = max(1.0 / max(hz, 1e-9), joint_duration_s, updown_duration_s)
+    steps = max(1, int(math.ceil(duration_s * hz)))
+    out: list[tuple[float, dict[str, float], dict[str, Any]]] = []
+    for step in range(1, steps + 1):
+        ratio = step / steps
+        sample = {
+            name: start[name] + (goal[name] - start[name]) * ratio
+            for name in EXECUTION_JOINT_NAMES
+        }
+        sample_context = dict(context)
+        sample_context["updown"] = float(start_updown) + (float(goal_updown) - float(start_updown)) * ratio
+        out.append((start_time + step / hz, sample, sample_context))
+    return out
+
+
+def trajectory_from_snapshot_preserve_timing(
+    snapshot: dict[str, Any],
+    *,
+    initial: dict[str, float] | None = None,
+    initial_updown: float = 0.3,
+    hz: float = 10.0,
+    max_joint_speed_deg_s: float = 20.0,
+    max_updown_speed_m_s: float = 0.05,
+) -> list[tuple[float, dict[str, float], dict[str, Any]]]:
+    """Flatten planner replay stages without destroying planner timing.
+
+    Timed C++ plan segments keep their original time_from_start. Zero-duration
+    keyframe stages, mainly extraction rollout records, are expanded at the requested
+    rate with explicit joint/updown speed limits.
+    """
+    current = dict(initial) if initial is not None else {name: 0.0 for name in EXECUTION_JOINT_NAMES}
+    current_updown = float(initial_updown)
+    samples: list[tuple[float, dict[str, float], dict[str, Any]]] = []
+    stage_offset_s = 0.0
+
+    for stage_index, stage in enumerate(snapshot.get("replay_stages", [])):
+        points = monitor.ensure_points_start_at_stage_start(stage, list(stage.get("trajectory", {}).get("points", [])))
+        if not points:
+            continue
+        local_zero_s = float(points[0].get("time_from_start_sec", 0.0))
+        local_times = [max(0.0, float(point.get("time_from_start_sec", 0.0)) - local_zero_s) for point in points]
+        stage_duration_s = max(local_times) if local_times else 0.0
+
+        if stage_duration_s <= 1e-9:
+            for point_index, point in enumerate(points):
+                sample = extract_position_from_stage_point(stage, point, current)
+                updown = extract_updown_from_stage_point(stage, point, current_updown)
+                context = {
+                    "stage_index": stage_index,
+                    "stage": stage.get("stage", ""),
+                    "point_index": point_index,
+                    "attached_boxes": stage.get("attached_boxes", []),
+                    "static_box_obstacles": stage.get("static_box_obstacles", []),
+                    "updown": updown,
+                }
+                if _same_execution_sample(current, current_updown, sample, updown):
+                    continue
+                generated = resample_state_segment(
+                    current,
+                    current_updown,
+                    sample,
+                    updown,
+                    start_time=stage_offset_s,
+                    hz=hz,
+                    max_joint_speed_deg_s=max_joint_speed_deg_s,
+                    max_updown_speed_m_s=max_updown_speed_m_s,
+                    context=context,
+                )
+                samples.extend(generated)
+                stage_offset_s = generated[-1][0]
+                current = sample
+                current_updown = updown
+            continue
+
+        for point_index, point in enumerate(points):
+            local_s = local_times[point_index]
+            sample_time_s = stage_offset_s + local_s
+            sample = extract_position_from_stage_point(stage, point, current)
+            updown = extract_updown_from_stage_point(stage, point, current_updown)
+            context = {
+                "stage_index": stage_index,
+                "stage": stage.get("stage", ""),
+                "point_index": point_index,
+                "attached_boxes": stage.get("attached_boxes", []),
+                "static_box_obstacles": stage.get("static_box_obstacles", []),
+                "updown": updown,
+            }
+            if samples:
+                previous_time_s, previous_sample, previous_context = samples[-1]
+                previous_updown = float(previous_context.get("updown", current_updown))
+                if sample_time_s <= previous_time_s + 1e-9:
+                    if _same_execution_sample(previous_sample, previous_updown, sample, updown):
+                        current = sample
+                        current_updown = updown
+                        continue
+                    raise RuntimeError(
+                        "snapshot timing is non-increasing at a discontinuous stage boundary: "
+                        f"stage={stage.get('stage', '')!r} point={point_index} "
+                        f"time={sample_time_s:.6f}s previous={previous_time_s:.6f}s"
+                    )
+            samples.append((sample_time_s, sample, context))
+            current = sample
+            current_updown = updown
+        stage_offset_s += stage_duration_s
+    return samples
+
+
 def load_rerun_helpers():
     return rerun_helpers
 
@@ -250,9 +460,11 @@ class LiveExecutionClient(Node):
         box_front_x: float,
         scene_y_shift: float,
         hz: float,
+        updown_topic: str,
     ) -> None:
         super().__init__("alfa_l6_r8_live_executor")
         self.client = ActionClient(self, FollowJointTrajectory, action_name)
+        self.updown_pub = self.create_publisher(Float64MultiArray, updown_topic, 10) if updown_topic else None
         self.helpers = helpers
         self.robot = robot
         self.snapshot = snapshot
@@ -260,6 +472,7 @@ class LiveExecutionClient(Node):
         self.box_front_x = box_front_x
         self.scene_y_shift = scene_y_shift
         self.hz = hz
+        self.updown_topic = updown_topic
         self.sample = 0
         self.last_context: dict[str, Any] = {}
         self.feedback_count = 0
@@ -303,7 +516,7 @@ class LiveExecutionClient(Node):
                 self.scene_y_shift,
             )
             monitor.log_static_box_obstacles(context.get("static_box_obstacles"))
-            joint_map = execution_to_rerun_joint_map(positions, updown=0.3)
+            joint_map = execution_to_rerun_joint_map(positions, updown=float(context.get("updown", 0.3)))
             self.helpers.log_robot_state(self.robot, joint_map, "monitor/robot")
             monitor.log_attached_boxes(self.robot, joint_map, context.get("attached_boxes", []))
             monitor.rr.log(
@@ -323,6 +536,7 @@ class LiveExecutionClient(Node):
         label: str,
         *,
         feedback_uses_ethercat_signs: bool = False,
+        updown_samples: list[tuple[float, float]] | None = None,
     ) -> bool:
         if not self.client.wait_for_server(timeout_sec=10.0):
             self.get_logger().error("execution action server is not available")
@@ -358,45 +572,154 @@ class LiveExecutionClient(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
+        updown_stop = threading.Event()
+        updown_thread: threading.Thread | None = None
+        if self.updown_pub is not None and updown_samples:
+            updown_thread = threading.Thread(
+                target=self._publish_updown_samples,
+                args=(list(updown_samples), updown_stop),
+                daemon=True,
+            )
+            updown_thread.start()
         future = self.client.send_goal_async(goal, feedback_callback=feedback_callback)
         rclpy.spin_until_future_complete(self, future)
         goal_handle = future.result()
         if goal_handle is None or not goal_handle.accepted:
+            updown_stop.set()
             self.get_logger().error(f"{label}: goal rejected")
             return False
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
+        updown_stop.set()
+        if updown_thread is not None:
+            updown_thread.join(timeout=1.0)
         result = result_future.result().result
         ok = result.error_code == FollowJointTrajectory.Result.SUCCESSFUL
         if not ok:
             self.get_logger().error(f"{label}: failed {result.error_code} {result.error_string}")
         return ok
 
+    def _publish_updown_samples(self, samples: list[tuple[float, float]], stop: threading.Event) -> None:
+        if self.updown_pub is None or not samples:
+            return
+        start = time.monotonic()
+        for sample_time_s, updown_m in samples:
+            while not stop.is_set():
+                remaining = start + sample_time_s - time.monotonic()
+                if remaining <= 0.0:
+                    break
+                time.sleep(min(remaining, 0.01))
+            if stop.is_set():
+                return
+            msg = Float64MultiArray()
+            msg.data = [float(updown_m)]
+            self.updown_pub.publish(msg)
+
 
 def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: Path) -> SimpleNamespace:
+    left_mode = normalize_grasp_mode(getattr(args, "left_grasp_mode", "auto"))
+    right_mode = normalize_grasp_mode(getattr(args, "right_grasp_mode", "auto"))
+    if left_mode == "auto":
+        left_mode = grasp_mode_for_box(args.left_box_id)
+    if right_mode == "auto":
+        right_mode = grasp_mode_for_box(args.right_box_id)
+    mode = pair_vehicle_mode(left_mode, right_mode)
+    box_front_x = effective_box_front_x(args, mode)
+    lateral_shift_enabled = left_mode == "front" or right_mode == "front"
+
     return SimpleNamespace(
-        box_front_x=args.box_front_x,
+        box_front_x=box_front_x,
+        top_box_front_x=box_front_x,
+        top_approach_forward=0.0,
         scene_y_shift=args.scene_y_shift,
         fixed_updown=args.fixed_updown,
+        turn_rad=0.0,
+        grasp_mode=mode,
+        left_grasp_mode=left_mode,
+        right_grasp_mode=right_mode,
         front_z_reach_lower=args.front_z_reach_lower,
         front_z_reach_upper=args.front_z_reach_upper,
+        top_z_reach_lower=getattr(args, "top_z_reach_lower", 0.0),
+        top_z_reach_upper=getattr(args, "top_z_reach_upper", 0.45),
+        top_suction_x_offset=getattr(args, "top_suction_x_offset", 0.15),
+        top_suction_z_offset=getattr(args, "top_suction_z_offset", 0.2),
+        ik_top_position_tolerance=getattr(args, "ik_top_position_tolerance", 0.04),
+        ik_top_orientation_tolerance_deg=getattr(args, "ik_top_orientation_tolerance_deg", 7.0),
+        ik_h_candidate_count=getattr(args, "ik_h_candidate_count", 64),
+        ik_h_lower=getattr(args, "ik_h_lower", 0.0),
+        ik_h_upper=getattr(args, "ik_h_upper", 0.7),
+        ik_h_step=getattr(args, "ik_h_step", 0.01),
+        ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", True),
+        ik_seed_count=getattr(args, "ik_seed_count", 32),
+        ik_workers=getattr(args, "ik_workers", 1),
+        ik_candidate_timeout=getattr(args, "ik_candidate_timeout", 0.01),
+        ik_try_target_orders=getattr(args, "ik_try_target_orders", False),
+        ik_use_reversed_target_order=getattr(args, "ik_use_reversed_target_order", True),
+        optimized_ik_check_collision=getattr(args, "optimized_ik_check_collision", True),
         left_box_id=args.left_box_id,
         right_box_id=args.right_box_id,
         extract_workers=args.extract_workers,
+        extract_success_quorum=getattr(args, "extract_success_quorum", 3),
+        extract_quality_success_quorum=getattr(args, "extract_quality_success_quorum", 1),
+        extract_quality_loaded_distance_sum=getattr(args, "extract_quality_loaded_distance_sum", 5.0),
         candidate_limit=args.candidate_limit,
+        extract_step_x=getattr(args, "extract_step_x", 0.03),
+        extract_max_joint_delta=getattr(args, "extract_max_joint_delta", 10.0 * math.pi / 180.0),
+        extract_rrt=getattr(args, "extract_rrt", False),
+        extract_rrt_planning_group=getattr(args, "extract_rrt_planning_group", "dual_arm"),
+        extract_rrt_planning_time=getattr(args, "extract_rrt_planning_time", 0.35),
+        extract_rrt_planning_attempts=getattr(args, "extract_rrt_planning_attempts", 1),
+        extract_rrt_endpoint_per_arm_limit=getattr(args, "extract_rrt_endpoint_per_arm_limit", 8),
+        extract_rrt_goal_limit=getattr(args, "extract_rrt_goal_limit", 8),
+        extract_rollout_mode=getattr(args, "extract_rollout_mode", "box_pose_rrt"),
+        extract_box_pose_rrt_edge_scene_collision=getattr(args, "extract_box_pose_rrt_edge_scene_collision", True),
+        extract_box_pose_rrt_max_iterations=getattr(args, "extract_box_pose_rrt_max_iterations", 160),
+        extract_box_pose_rrt_paths_per_arm=getattr(args, "extract_box_pose_rrt_paths_per_arm", 8),
+        extract_box_pose_rrt_path_pair_limit=getattr(args, "extract_box_pose_rrt_path_pair_limit", 64),
+        extract_box_pose_rrt_parent_candidates=getattr(args, "extract_box_pose_rrt_parent_candidates", 8),
+        extract_box_pose_rrt_parent_diverse_candidates=getattr(args, "extract_box_pose_rrt_parent_diverse_candidates", 0),
+        extract_box_pose_rrt_parent_endpoint_score_weight=getattr(args, "extract_box_pose_rrt_parent_endpoint_score_weight", 0.05),
+        extract_box_pose_rrt_parent_node_score_weight=getattr(args, "extract_box_pose_rrt_parent_node_score_weight", 0.0),
+        extract_box_pose_rrt_parent_density_weight=getattr(args, "extract_box_pose_rrt_parent_density_weight", 0.0),
+        extract_box_pose_rrt_max_lateral=getattr(args, "extract_box_pose_rrt_max_lateral", 0.0),
+        extract_box_pose_rrt_step_lateral=getattr(args, "extract_box_pose_rrt_step_lateral", 0.02),
+        extract_box_pose_rrt_front_free_motion=getattr(args, "extract_box_pose_rrt_front_free_motion", True),
+        extract_box_pose_rrt_front_goal_requires_max_pitch=getattr(args, "extract_box_pose_rrt_front_goal_requires_max_pitch", False),
+        extract_box_pose_rrt_best_first_fallback=getattr(args, "extract_box_pose_rrt_best_first_fallback", True),
+        extract_box_pose_rrt_best_first_first=getattr(args, "extract_box_pose_rrt_best_first_first", False),
+        extract_box_pose_rrt_top_best_first_first=getattr(args, "extract_box_pose_rrt_top_best_first_first", False),
+        extract_box_pose_rrt_best_first_max_expansions=getattr(args, "extract_box_pose_rrt_best_first_max_expansions", 800),
+        extract_box_pose_rrt_best_first_heuristic_weight=getattr(args, "extract_box_pose_rrt_best_first_heuristic_weight", 1.0),
         dedup_joint_threshold_deg=args.dedup_joint_threshold_deg,
         dedup_h_threshold=args.dedup_h_threshold,
+        extract_ik_stratified_limit_enabled=getattr(args, "extract_ik_stratified_limit_enabled", False),
+        extract_ik_stratified_h_bucket=getattr(args, "extract_ik_stratified_h_bucket", 0.05),
+        extract_ik_stratified_top_score_count=getattr(args, "extract_ik_stratified_top_score_count", 12),
+        extract_ik_candidate_reserve_limit=getattr(args, "extract_ik_candidate_reserve_limit", 64),
+        extract_ik_candidate_reserve_stratified=getattr(args, "extract_ik_candidate_reserve_stratified", True),
+        extract_ik_candidate_reserve_interleave_stride=getattr(args, "extract_ik_candidate_reserve_interleave_stride", 4),
+        extract_ik_loaded_distance_order_weight=getattr(args, "extract_ik_loaded_distance_order_weight", 0.0),
+        ik_only_raw=False,
+        extract_monitor_build_final_replay=True,
         loaded_candidate_limit=args.loaded_candidate_limit,
+        lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
         lateral_shift_step=args.lateral_shift_step,
         lateral_shift_column=args.lateral_shift_column,
         pre_lower_left_box_id=args.pre_lower_left_box_id,
         pre_lower_right_box_id=args.pre_lower_right_box_id,
         pre_lower_updown_delta=args.pre_lower_updown_delta,
+        loaded_updown=args.fixed_updown,
+        loaded_planner_id=getattr(args, "loaded_planner_id", ""),
+        loaded_planning_mode=getattr(args, "loaded_planning_mode", "shortcut"),
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
+        loaded_sort_by_pose_distance=getattr(args, "loaded_sort_by_pose_distance", True),
+        loaded_stop_on_first_success=getattr(args, "loaded_stop_on_first_success", False),
         loaded_preferred_pose_index=args.loaded_preferred_pose_index,
+        loaded_left_pose_family_deg="[0.0,-45.0,120.0,-75.0,0.0,0.0]",
+        loaded_right_pose_family_deg="[0.0,-45.0,120.0,-75.0,0.0,0.0]",
     )
 
 
@@ -426,6 +749,10 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
             args.right_box_id,
             snapshot_path,
             args.service_timeout,
+            normalize_grasp_mode(args.left_grasp_mode) == "top_suction"
+            or (normalize_grasp_mode(args.left_grasp_mode) == "auto" and grasp_mode_for_box(args.left_box_id) == "top_suction"),
+            normalize_grasp_mode(args.right_grasp_mode) == "top_suction"
+            or (normalize_grasp_mode(args.right_grasp_mode) == "auto" and grasp_mode_for_box(args.right_box_id) == "top_suction"),
         )
         print(prewarm_output, flush=True)
         if not prewarm_ok:
@@ -484,6 +811,72 @@ def wait_for_action_server(action_name: str, timeout_s: float) -> None:
     raise TimeoutError(f"action {action_name} not available")
 
 
+def read_joint_position_once(topic: str, joint_name: str, timeout_s: float) -> float:
+    holder: dict[str, float] = {}
+    if not rclpy.ok():
+        rclpy.init()
+        owns_context = True
+    else:
+        owns_context = False
+    node = rclpy.create_node("alfa_read_joint_position_once")
+
+    def on_msg(msg: JointState) -> None:
+        if joint_name not in msg.name:
+            return
+        index = list(msg.name).index(joint_name)
+        if index < len(msg.position):
+            holder["value"] = float(msg.position[index])
+
+    subscription = node.create_subscription(JointState, topic, on_msg, 10)
+    try:
+        deadline = time.monotonic() + timeout_s
+        while rclpy.ok() and time.monotonic() < deadline and "value" not in holder:
+            rclpy.spin_once(node, timeout_sec=0.1)
+        if "value" not in holder:
+            raise TimeoutError(f"timed out waiting for {joint_name!r} on {topic}")
+        return holder["value"]
+    finally:
+        node.destroy_subscription(subscription)
+        node.destroy_node()
+        if owns_context and rclpy.ok():
+            rclpy.shutdown()
+
+
+def read_current_execution_joint_map(topic: str, timeout_s: float) -> dict[str, float]:
+    holder: dict[str, dict[str, float]] = {}
+    if not rclpy.ok():
+        rclpy.init()
+        owns_context = True
+    else:
+        owns_context = False
+    node = rclpy.create_node("alfa_read_execution_joints_once")
+
+    def on_msg(msg: JointState) -> None:
+        values: dict[str, float] = {}
+        for index, name in enumerate(msg.name):
+            if index >= len(msg.position):
+                continue
+            execution_name = moveit_to_execution_name(str(name))
+            if execution_name in EXECUTION_JOINT_NAMES:
+                values[execution_name] = float(msg.position[index])
+        if all(name in values for name in EXECUTION_JOINT_NAMES):
+            holder["values"] = values
+
+    subscription = node.create_subscription(JointState, topic, on_msg, 10)
+    try:
+        deadline = time.monotonic() + timeout_s
+        while rclpy.ok() and time.monotonic() < deadline and "values" not in holder:
+            rclpy.spin_once(node, timeout_sec=0.1)
+        if "values" not in holder:
+            raise TimeoutError(f"timed out waiting for {len(EXECUTION_JOINT_NAMES)} execution joints on {topic}")
+        return holder["values"]
+    finally:
+        node.destroy_subscription(subscription)
+        node.destroy_node()
+        if owns_context and rclpy.ok():
+            rclpy.shutdown()
+
+
 def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compute L6/R8 then execute it with live Rerun feedback.")
     parser.add_argument("--executor-mode", choices=["mock", "real"], default=default_executor_mode)
@@ -495,15 +888,79 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument("--left-box-id", type=int, default=6)
     parser.add_argument("--right-box-id", type=int, default=8)
+    parser.add_argument("--left-grasp-mode", default="auto", choices=["auto", "front", "top_suction", "top", "side"])
+    parser.add_argument("--right-grasp-mode", default="auto", choices=["auto", "front", "top_suction", "top", "side"])
     parser.add_argument("--box-front-x", type=float, default=0.925)
+    parser.add_argument("--top-approach-forward", type=float, default=0.30)
+    parser.add_argument("--top-box-front-x", type=float, default=None)
     parser.add_argument("--scene-y-shift", type=float, default=-0.4)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
+    parser.add_argument("--top-z-reach-lower", type=float, default=0.0)
+    parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--top-suction-x-offset", type=float, default=0.15)
+    parser.add_argument("--top-suction-z-offset", type=float, default=0.2)
+    parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
+    parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
+    parser.add_argument("--ik-h-candidate-count", type=int, default=64)
+    parser.add_argument("--ik-h-lower", type=float, default=0.0)
+    parser.add_argument("--ik-h-upper", type=float, default=0.7)
+    parser.add_argument("--ik-h-step", type=float, default=0.01)
+    parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--ik-seed-count", type=int, default=32)
+    parser.add_argument("--ik-workers", type=int, default=1)
+    parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
+    parser.add_argument("--ik-try-target-orders", action="store_true")
+    parser.add_argument("--ik-use-reversed-target-order", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--optimized-ik-check-collision", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--candidate-limit", type=int, default=64)
     parser.add_argument("--extract-workers", type=int, default=16)
+    parser.add_argument("--extract-success-quorum", type=int, default=3)
+    parser.add_argument("--extract-quality-success-quorum", type=int, default=1)
+    parser.add_argument("--extract-quality-loaded-distance-sum", type=float, default=5.0)
+    parser.add_argument("--extract-step-x", type=float, default=0.03)
+    parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
+    parser.add_argument(
+        "--extract-rollout-mode",
+        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        default="box_pose_rrt",
+    )
+    parser.add_argument("--extract-rrt", action="store_true")
+    parser.add_argument("--extract-box-pose-rrt-edge-scene-collision", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
+    parser.add_argument("--extract-box-pose-rrt-paths-per-arm", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-path-pair-limit", type=int, default=64)
+    parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
+    parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
+    parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
+    parser.add_argument("--extract-box-pose-rrt-parent-node-score-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-parent-density-weight", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-max-lateral", type=float, default=0.0)
+    parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
+    parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
+    parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
+    parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
+    parser.add_argument("--extract-rrt-planning-time", type=float, default=0.35)
+    parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
+    parser.add_argument("--extract-rrt-endpoint-per-arm-limit", type=int, default=8)
+    parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
+    parser.add_argument("--extract-ik-stratified-limit-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-ik-stratified-h-bucket", type=float, default=0.05)
+    parser.add_argument("--extract-ik-stratified-top-score-count", type=int, default=12)
+    parser.add_argument("--extract-ik-candidate-reserve-limit", type=int, default=64)
+    parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
+    parser.add_argument("--extract-ik-loaded-distance-order-weight", type=float, default=0.0)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
+    parser.add_argument("--loaded-planner-id", default="")
+    parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="shortcut")
     parser.add_argument(
         "--loaded-preferred-pose-index",
         type=int,
@@ -512,6 +969,8 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     )
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
+    parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
     parser.add_argument("--lateral-shift-column", type=int, default=2)
@@ -522,7 +981,38 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--hz", type=float, default=10.0)
-    parser.add_argument("--max-joint-speed-deg-s", type=float, default=45.0)
+    parser.add_argument("--max-joint-speed-deg-s", type=float, default=20.0)
+    parser.add_argument("--max-updown-speed-m-s", type=float, default=0.05)
+    parser.add_argument(
+        "--trajectory-timing-source",
+        choices=["snapshot", "python"],
+        default="snapshot",
+        help="snapshot=保留 C++ planner 写入的 time_from_start；python=旧逻辑按最大关节速度二次重采样",
+    )
+    parser.add_argument(
+        "--fixed-updown-from-joint-states",
+        action="store_true",
+        help="规划前从 --updown-joint-state-topic 读取 updown，并覆盖 --fixed-updown",
+    )
+    parser.add_argument("--joint-state-topic", default="/joint_states")
+    parser.add_argument(
+        "--updown-joint-state-topic",
+        default="/canopen/joint_states",
+        help="updown 由 CANopen 控制栈独立发布，与 --joint-state-topic（12臂+turn）不是同一个 topic",
+    )
+    parser.add_argument("--joint-state-timeout-s", type=float, default=3.0)
+    parser.add_argument(
+        "--home-start",
+        choices=["current", "zero"],
+        default="current",
+        help="负重姿态过渡的起点；实机默认 current，避免旧逻辑强行全0起步",
+    )
+    parser.add_argument(
+        "--send-updown",
+        action="store_true",
+        help="real 直连时按同一时间轴向 updown topic 发布位置命令",
+    )
+    parser.add_argument("--updown-command-topic", default="/canopen/updown_position_controller/commands")
     parser.add_argument(
         "--action-name",
         default=None,
@@ -555,9 +1045,9 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
         help="本次 ROS_DOMAIN_ID；auto 隔离自启动测试，inherit 表示沿用当前终端。",
     )
     args = parser.parse_args()
+    real_direct = args.executor_mode == "real" and not args.start_execution_bridge
     if (
-        args.executor_mode == "real"
-        and not args.start_execution_bridge
+        real_direct
         and not args.real_apply_direction_signs
         and os.environ.get("ALFA_ALLOW_UNSAFE_DIRECTION_OVERRIDE") != "I_UNDERSTAND_DIRECTION_RISK"
     ):
@@ -565,6 +1055,51 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
             "禁止 real direct L6/R8 流程关闭方向映射：这会导致实机方向反。"
             "如需诊断，必须使用独立小角度脚本；若确需绕过，显式设置 "
             "ALFA_ALLOW_UNSAFE_DIRECTION_OVERRIDE=I_UNDERSTAND_DIRECTION_RISK。"
+        )
+    if (
+        real_direct
+        and args.max_joint_speed_deg_s > MAX_SAFE_REAL_JOINT_SPEED_DEG_S
+        and os.environ.get("ALFA_ALLOW_UNSAFE_SPEED_OVERRIDE") != "I_UNDERSTAND_SPEED_RISK"
+    ):
+        raise SystemExit(
+            f"禁止 real direct L6/R8 流程使用 --max-joint-speed-deg-s > {MAX_SAFE_REAL_JOINT_SPEED_DEG_S}："
+            f"当前值 {args.max_joint_speed_deg_s}。"
+            "若确需更高速度，先在仿真/mock模式验证，再显式设置 "
+            "ALFA_ALLOW_UNSAFE_SPEED_OVERRIDE=I_UNDERSTAND_SPEED_RISK。"
+        )
+    if (
+        real_direct
+        and args.hz > MAX_SAFE_REAL_HZ
+        and os.environ.get("ALFA_ALLOW_UNSAFE_HZ_OVERRIDE") != "I_UNDERSTAND_HZ_RISK"
+    ):
+        raise SystemExit(
+            f"禁止 real direct L6/R8 流程使用 --hz > {MAX_SAFE_REAL_HZ}："
+            f"当前值 {args.hz}。"
+            "若确需更高频率，先在仿真/mock模式验证，再显式设置 "
+            "ALFA_ALLOW_UNSAFE_HZ_OVERRIDE=I_UNDERSTAND_HZ_RISK。"
+        )
+    if (
+        real_direct
+        and args.send_updown
+        and args.max_updown_speed_m_s > MAX_SAFE_REAL_UPDOWN_SPEED_M_S
+        and os.environ.get("ALFA_ALLOW_UNSAFE_UPDOWN_SPEED_OVERRIDE") != "I_UNDERSTAND_UPDOWN_SPEED_RISK"
+    ):
+        raise SystemExit(
+            f"禁止 real direct L6/R8 流程使用 --max-updown-speed-m-s > {MAX_SAFE_REAL_UPDOWN_SPEED_M_S}："
+            f"当前值 {args.max_updown_speed_m_s}。"
+            "若确需更高速度，先在仿真/mock模式验证，再显式设置 "
+            "ALFA_ALLOW_UNSAFE_UPDOWN_SPEED_OVERRIDE=I_UNDERSTAND_UPDOWN_SPEED_RISK。"
+        )
+    if (
+        real_direct
+        and args.loaded_preferred_pose_index != 0
+        and os.environ.get("ALFA_ALLOW_UNSAFE_LOADED_POSE_OVERRIDE") != "I_UNDERSTAND_LOADED_POSE_RISK"
+    ):
+        raise SystemExit(
+            "禁止 real direct L6/R8 流程使用非 0 的 --loaded-preferred-pose-index："
+            f"当前值 {args.loaded_preferred_pose_index}。"
+            "index=0 是当前唯一在实机上确认过方向的负重姿态族。若确需切换，先离机验证，再显式设置 "
+            "ALFA_ALLOW_UNSAFE_LOADED_POSE_OVERRIDE=I_UNDERSTAND_LOADED_POSE_RISK。"
         )
     if args.output_root is None:
         args.output_root = DEFAULT_REAL_OUTPUT_ROOT if args.executor_mode == "real" else DEFAULT_MOCK_OUTPUT_ROOT
@@ -594,6 +1129,13 @@ def main(default_executor_mode: str = "mock") -> int:
     bridge = None
     try:
         print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}", flush=True)
+        if args.fixed_updown_from_joint_states:
+            args.fixed_updown = read_joint_position_once(
+                args.updown_joint_state_topic,
+                "updown",
+                args.joint_state_timeout_s,
+            )
+            print(f"从 {args.updown_joint_state_topic} 读取 fixed_updown={args.fixed_updown:.6f}m", flush=True)
         if args.executor_mode == "mock":
             bridge = start_execution_bridge(run_dir, args.hz, "execution_bridge.yaml")
             print("mock执行桥启动中。", flush=True)
@@ -635,10 +1177,20 @@ def main(default_executor_mode: str = "mock") -> int:
             box_front_x=args.box_front_x,
             scene_y_shift=args.scene_y_shift,
             hz=args.hz,
+            updown_topic=(
+                args.updown_command_topic
+                if args.executor_mode == "real" and args.send_updown
+                else ""
+            ),
         )
         try:
             client.log_static_scene()
-            zero = {name: 0.0 for name in EXECUTION_JOINT_NAMES}
+            if args.home_start == "current":
+                zero = read_current_execution_joint_map(args.joint_state_topic, args.joint_state_timeout_s)
+                print("负重过渡起点：当前 /joint_states 姿态", flush=True)
+            else:
+                zero = {name: 0.0 for name in EXECUTION_JOINT_NAMES}
+                print("负重过渡起点：全0姿态", flush=True)
             loaded = loaded_joint_map(args.loaded_preferred_pose_index)
             command_joint_names = (
                 REAL_CONTROLLER_JOINT_NAMES
@@ -663,16 +1215,26 @@ def main(default_executor_mode: str = "mock") -> int:
                 ),
             ]
             home_contexts = [
-                {"label": "home_to_loaded", "stage": "zero_to_loaded", "attached_boxes": [], "static_box_obstacles": []}
+                {
+                    "label": "home_to_loaded",
+                    "stage": "zero_to_loaded",
+                    "attached_boxes": [],
+                    "static_box_obstacles": [],
+                    "updown": args.fixed_updown,
+                }
                 for _ in home_samples
             ]
             if args.executor_mode == "real":
-                print("实机将发送 12 个手臂关节 + turn=0；不发送 updown。", flush=True)
+                print("实机手臂 action 将发送 12 个手臂关节 + turn=0。", flush=True)
+                if args.send_updown:
+                    print(f"updown 将同步发布到 topic：{args.updown_command_topic}", flush=True)
+                else:
+                    print("updown 发送关闭：仅按 fixed_updown 规划，不控制升降轴。", flush=True)
                 print(f"负重姿态族索引：{args.loaded_preferred_pose_index}（0 为当前实机确认方向）", flush=True)
                 print(f"实机方向映射：{'开启' if apply_ethercat_signs else '关闭'}", flush=True)
                 print("实机 joint_names 顺序：" + ", ".join(command_joint_names), flush=True)
-                input("确认真实机器人当前接近全0起点、人员远离、可运动后按回车开始 全0→负重姿态；Ctrl+C 取消...")
-            print("开始执行：全0 → 负重姿态", flush=True)
+                require_explicit_confirmation("确认真实机器人当前状态安全、人员远离、可运动后再继续：当前姿态→负重姿态")
+            print("开始执行：当前姿态 → 负重姿态", flush=True)
             home_start = time.monotonic()
             if not client.send_and_wait(
                 make_trajectory(
@@ -685,21 +1247,41 @@ def main(default_executor_mode: str = "mock") -> int:
                 feedback_uses_ethercat_signs=apply_ethercat_signs,
             ):
                 return 1
-            print(f"完成执行：全0 → 负重姿态，用时 {(time.monotonic() - home_start):.3f}s", flush=True)
+            print(f"完成执行：当前姿态 → 负重姿态，用时 {(time.monotonic() - home_start):.3f}s", flush=True)
 
-            input("已到负重姿态。按回车开始 L6/R8 任务执行...")
+            if args.executor_mode == "real":
+                require_explicit_confirmation("已到负重姿态，确认可以开始 L6/R8 任务执行")
 
-            task_samples_raw = trajectory_from_snapshot(
-                snapshot,
-                args.hz,
-                args.max_joint_speed_deg_s,
-                initial=loaded,
-            )
+            if args.trajectory_timing_source == "python":
+                task_samples_raw = trajectory_from_snapshot(
+                    snapshot,
+                    args.hz,
+                    args.max_joint_speed_deg_s,
+                    initial=loaded,
+                )
+            else:
+                task_samples_raw = trajectory_from_snapshot_preserve_timing(
+                    snapshot,
+                    initial=loaded,
+                    initial_updown=args.fixed_updown,
+                    hz=args.hz,
+                    max_joint_speed_deg_s=args.max_joint_speed_deg_s,
+                    max_updown_speed_m_s=args.max_updown_speed_m_s,
+                )
             task_samples = [(time_s, joint_map) for time_s, joint_map, _ in task_samples_raw]
             task_contexts = [context for _, _, context in task_samples_raw]
             if not task_samples:
                 raise RuntimeError("snapshot produced empty execution trajectory")
-            print(f"开始执行：L6/R8 任务轨迹，轨迹点 {len(task_samples)}，频率 {args.hz:.1f}Hz", flush=True)
+            updown_samples = [
+                (time_s - task_samples[0][0], float(context["updown"]))
+                for time_s, _, context in task_samples_raw
+                if "updown" in context
+            ]
+            print(
+                f"开始执行：L{args.left_box_id}/R{args.right_box_id} 任务轨迹，"
+                f"轨迹点 {len(task_samples)}，timing={args.trajectory_timing_source}",
+                flush=True,
+            )
             task_start = time.monotonic()
             if not client.send_and_wait(
                 make_trajectory(
@@ -710,6 +1292,7 @@ def main(default_executor_mode: str = "mock") -> int:
                 task_contexts,
                 "L6_R8_task",
                 feedback_uses_ethercat_signs=apply_ethercat_signs,
+                updown_samples=updown_samples if args.send_updown else None,
             ):
                 return 1
             print(f"完成执行：L6/R8 任务轨迹，用时 {(time.monotonic() - task_start):.3f}s", flush=True)

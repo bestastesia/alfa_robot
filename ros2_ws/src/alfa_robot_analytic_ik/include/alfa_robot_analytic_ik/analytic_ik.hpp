@@ -31,7 +31,7 @@ struct ArmAnalyticIkRequest
   std::array<double, 6> seed{};
   double position_tolerance = 1e-4;
   double orientation_tolerance = 1e-4;
-  size_t root_samples = 720;
+  size_t root_samples = 720;  // Retained for API compatibility; closed-form solver ignores it.
 };
 
 class ThreeParallelArmAnalyticIk

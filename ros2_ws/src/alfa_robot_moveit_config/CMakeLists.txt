@@ -63,6 +63,7 @@ target_link_libraries(alfa_robot_motion_core
 
 add_library(alfa_robot_motion_scene_adapter
   src/box_stack_flow_orchestrator.cpp
+  src/box_pose_rrt_extract_planner.cpp
   src/execution_trajectory_adapter.cpp
   src/extract_monitor_json.cpp
   src/extract_monitor_replay_builder.cpp
@@ -322,6 +323,11 @@ if(BUILD_TESTING)
   )
 
   add_test(
+    NAME test_extract_sequence_definition
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_extract_sequence_definition.py
+  )
+
+  add_test(
     NAME test_package_boundaries
     COMMAND /usr/bin/python3
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_package_boundaries.py
@@ -351,6 +357,7 @@ install(PROGRAMS
   scripts/extract_startup_stability_smoke.py
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
+  scripts/verify_extract_sequence_snapshot.py
   scripts/extract_failed_attempts_rerun.py
   scripts/execute_l6_r8_mock_live.py
   scripts/execute_l6_r8_real_live.py

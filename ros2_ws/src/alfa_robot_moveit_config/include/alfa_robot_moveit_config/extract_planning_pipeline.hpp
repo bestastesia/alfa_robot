@@ -5,6 +5,7 @@
 #include "robot_motion_scene_service/motion_core/scene_geometry.hpp"
 #include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 #include "alfa_robot_moveit_config/optimized_ik_pipeline.hpp"
+#include "robot_motion_core/box_pose_extract_rrt.hpp"
 #include "robot_motion_core/ik_candidate_types.hpp"
 
 #include <Eigen/Geometry>
@@ -17,6 +18,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include <cstddef>
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -183,6 +185,23 @@ private:
 
 struct ExtractCandidateSolverConfig
 {
+  struct Profile
+  {
+    std::atomic<uint64_t> state_copy_ns{0};
+    std::atomic<uint64_t> pre_analytic_state_ns{0};
+    std::atomic<uint64_t> analytic_core_ns{0};
+    std::atomic<uint64_t> post_state_update_ns{0};
+    std::atomic<uint64_t> validation_ns{0};
+
+    void reset()
+    {
+      state_copy_ns.store(0, std::memory_order_relaxed);
+      pre_analytic_state_ns.store(0, std::memory_order_relaxed);
+      analytic_core_ns.store(0, std::memory_order_relaxed);
+      post_state_update_ns.store(0, std::memory_order_relaxed);
+      validation_ns.store(0, std::memory_order_relaxed);
+    }
+  };
   moveit::core::RobotModelConstPtr robot_model;
   const moveit::core::JointModelGroup* joint_group = nullptr;
   const moveit::core::JointModelGroup* left_arm_group = nullptr;
@@ -198,6 +217,7 @@ struct ExtractCandidateSolverConfig
   double top_suction_orientation_tolerance = 0.12217304763960307;
   double max_joint_delta = 0.0;
   size_t analytic_root_samples = 360;
+  std::shared_ptr<Profile> profile;
 };
 
 struct ExtractCandidateSolveRequest
@@ -241,6 +261,10 @@ private:
   const moveit::core::JointModelGroup* groupForSide(const std::string& side) const;
   const std::string& tipForSide(const std::string& side) const;
   double armJointDelta(
+    const std::string& side,
+    const moveit::core::RobotState& from,
+    const moveit::core::RobotState& to) const;
+  double armMaxJointDelta(
     const std::string& side,
     const moveit::core::RobotState& from,
     const moveit::core::RobotState& to) const;
@@ -467,6 +491,81 @@ private:
     int right_box_id) const;
 
   ExtractRolloutPlannerConfig config_;
+};
+
+struct BoxPoseRrtExtractPlannerConfig
+{
+  struct Profile
+  {
+    std::atomic<uint64_t> target_pose_ns{0};
+    std::atomic<uint64_t> ik_ns{0};
+    std::atomic<uint64_t> clear_ns{0};
+    std::atomic<uint64_t> rrt_plan_ns{0};
+    std::atomic<uint64_t> pair_validation_ns{0};
+    std::atomic<uint64_t> node_evaluations{0};
+
+    void reset()
+    {
+      target_pose_ns.store(0, std::memory_order_relaxed);
+      ik_ns.store(0, std::memory_order_relaxed);
+      clear_ns.store(0, std::memory_order_relaxed);
+      rrt_plan_ns.store(0, std::memory_order_relaxed);
+      pair_validation_ns.store(0, std::memory_order_relaxed);
+      node_evaluations.store(0, std::memory_order_relaxed);
+    }
+  };
+
+  ExtractCandidateSolver* candidate_solver = nullptr;
+  ExtractCandidateScorer* candidate_scorer = nullptr;
+  const moveit::core::JointModelGroup* joint_group = nullptr;
+  const moveit::core::JointModelGroup* left_arm_group = nullptr;
+  const moveit::core::JointModelGroup* right_arm_group = nullptr;
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
+  rclcpp::Logger logger = rclcpp::get_logger("box_pose_rrt_extract_planner");
+  robot_motion::core::BoxPoseExtractRrtConfig front_rrt;
+  robot_motion::core::BoxPoseExtractRrtConfig top_rrt;
+  size_t max_paths_per_arm = 8;
+  size_t max_path_pairs_to_validate = 64;
+  bool diagnose_isolated_arm_paths = false;
+  ExtractSingleClearCallback single_clear_callback;
+  ExtractDualClearCallback dual_clear_callback;
+  std::shared_ptr<Profile> profile;
+};
+
+class BoxPoseRrtExtractPlanner
+{
+public:
+  explicit BoxPoseRrtExtractPlanner(BoxPoseRrtExtractPlannerConfig config);
+
+  ExtractRolloutTiming rolloutDual(
+    const moveit::core::RobotState& start_state,
+    const AttachedBoxSpec& left_box,
+    int left_box_id,
+    const AttachedBoxSpec& right_box,
+    int right_box_id,
+    size_t candidate_order,
+    size_t h_index,
+    size_t seed_index,
+    double h,
+    double ik_score,
+    double ik_solve_ms,
+    bool left_top_suction,
+    bool right_top_suction,
+    const ExtractRecordStepCallback& record_step = {}) const;
+
+private:
+  struct ArmPath;
+
+  std::vector<ArmPath> planArm(
+    const std::string& side,
+    const moveit::core::RobotState& start_state,
+    const AttachedBoxSpec& carried_box,
+    int box_id,
+    bool top_suction,
+    ArmPath* diagnostic_path = nullptr) const;
+
+  BoxPoseRrtExtractPlannerConfig config_;
 };
 
 struct ExtractBenchmarkSummary

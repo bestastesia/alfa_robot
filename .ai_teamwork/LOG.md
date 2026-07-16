@@ -1326,3 +1326,191 @@
 - 改了哪里：MoveIt 适配头文件和实现统一使用 `robot_motion::core` 类型；新增全体一方生产包的 benchmark 反向依赖护栏；把完整 URDF/FK/Rerun 实现迁入 `alfa_robot_rerun`，benchmark 旧脚本只保留兼容包装，实时 joint-state viewer 也从 runtime 迁到 Rerun 包；补齐 runtime 轨迹工具、唯一状态/场景源和 Rerun FK 单测，并修复显式 `set_state` 丢失请求 `frame_id` 的问题。
 - 验证结果：干净 ROS 环境下 `robot_motion_core`、`alfa_robot_rerun`、`robot_motion_runtime`、`alfa_robot_moveit_config`、`alfa_robot_benchmarks` 构建通过；本轮 23 个相关测试全部通过，工作区累计 28 个测试零失败；隔离 ROS domain 的完整 runtime dry-run 链成功，12 个进程均可干净退出；安装态 Rerun 实时节点可加载当前 URDF（26 links）并正常启动；Portal JavaScript、Python 编译和 `git diff --check` 通过。
 - 留给下个 AI：`robot_motion_core` 当前先承接公共数据模型，候选排序/去重、抽离 rollout 和轨迹评分仍在 MoveIt adapter 中；`dual_arm_planner_node` 与独立 planning service 的职责迁移尚未完成。`scripts/ik_benchmark` 仍是显式构建的实验包，但生产包已不能包含其头文件或动态导入其 helper。
+
+## 2026-07-10 运控 / Codex / 箱体位姿 RRT 抽离实验分支
+- 分支准备：将上一架构边界分支 squash merge 到 `v5_dev`，形成提交 `96a7600`；新建 `feature/extract-box-pose-rrt-20260710` 开发箱体位姿 RRT。
+- 核心调整：在 `robot_motion_core` 新增纯 C++ 箱体位姿 RRT Module，支持侧吸 `retreat + pitch`、顶吸 `retreat + lift`、解析可达边回调、shortcut 和按关节累计运动量排序；MoveIt 包新增解析 IK Adapter，最后才调用统一双臂/附着箱/箱墙/集装箱碰撞检查。
+- 场景调整：箱墙开洞几何后方增加 `_rear_guard`，防止搜索把箱子向货墙深处推进；该障碍由统一场景几何 Module 生成，MoveIt 场景和自定义检查共用。
+- 诊断修复：修正侧吸附着箱局部轴误用和旋转方向选择；RRT 同时保留原始树路径与 shortcut 路径，定期从不同树节点主动连终点，并按完整状态序列去重；补充左右路径数、组合数、首个碰撞步和可选单臂隔离诊断；IK 快照新增场景过滤输入、通过数与拒绝原因；修复最终阶段失败回执为空；测试工具新增 `--extract-rollout-mode` 显式 A/B 参数。
+- 验证结果：相关构建通过，累计 29 项测试零失败。L2/R3、L7/R4 均生成左右各 8 条路径并检查 64 组组合；隔离检查证明每只单臂自身已分别碰撞雷达/中心柱，并非双臂同步造成。已知可达顶吸 L22/R24 有 256 个合法解析解，但前 8 个候选在附着箱统一场景过滤时全部因箱墙或中心柱碰撞被拒绝，尚不能进入顶吸 RRT。
+- 约束结论：当前严格侧吸 `retreat + pitch` 与顶吸现有附着场景下没有真实合法样本；未通过关闭碰撞、偷偷增加 lift 或改变箱墙来制造成功。稳定默认继续保持 `greedy`，新策略仅通过 `box_pose_rrt` 显式启用。
+- 后续方向：继续推进前需明确评审新的允许自由度、机械避让或场景几何修正；当前实验已把失败边界定位到单臂碰撞和顶吸起点碰撞，而不是 RRT 路径数量不足。
+
+## 2026-07-10 运控 / Codex / 十三组混合抓取与顶吸脱离口径修复
+- 做了什么：固定 `2+3+3+3+2` 共十三组左右箱组合及逐臂侧吸/顶吸模式；序列工具默认显式启用 `box_pose_rrt`。IK 候选改为先对全部合法解排序去重，再做附着箱完整场景过滤并截取前 8 个，避免先截断造成假性无解。
+- 改了哪里：在 `robot_motion_scene_service` 增加箱体相对原箱位的 X-Z 投影脱离判断；顶吸最终验收与箱体 RRT 核心统一。抽离/负重阶段 `0/N` 时立即失败并回传主导原因，失败快照保留真实阶段耗时；补十三组序列自动测试和固定传感器基线 SRDF 允许碰撞对。
+- 验证结果：三包构建通过，30 项测试零失败。完整十三组真实流程中 `L11/R13`、`L16/R18` 成功；侧吸/混合任务主要在 RRT 第 4～8 步发生 `joint2 <-> updown`，底部任务主要没有附着场景合法 IK 起点。Rerun：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_final_20260710.rrd`；统计：`data/ik_benchmark/extract_sequence_rerun/sequence_20260710_234401/stats.csv`。
+- 留给下个 AI：顶吸箱体位姿 RRT 已证明几何与集成可行，但约 20 秒/任务；侧吸需要增加合理自由度或重设终点，底部任务需要先解决附着起点自碰撞/箱墙重叠。稳定默认不要直接改成 RRT。
+
+## 2026-07-11 运控 / Codex / 抽离首碰撞帧诊断
+- 做了什么：箱体位姿 RRT 双臂路径组合被碰撞拒绝时，保留首个碰撞前状态和碰撞状态；抽离全失败时优先选择 `joint2 <-> updown` 候选写入失败快照，避免只留下文字原因。
+- 验证结果：`L1/R3` 稳定复现第 8 步 `leftjoint2 <-> updown`，Rerun 共两帧；两帧 `leftjoint2` 仅变化约 `1.685°`，说明碰撞来自连续路径逐步进入中心柱，而非关节突变。证据：`data/ik_benchmark/extract_sequence_rerun/L1_R3_joint2_updown_collision_frames.rrd`。
+- 留给下个 AI：诊断帧只用于失败分析，不进入成功轨迹选择；黄色为碰撞前一帧，红色为首次碰撞帧。
+
+## 2026-07-11 运控 / Codex / 代价函数前 IK 全量回放
+- 做了什么：在优化 IK 管线中增加可选诊断捕获点，保存通过解析求解与 FK 误差校验、但尚未计算代价的全部解；序列工具新增 `--ik-only-raw`，可把十三组任务的全部原始合法解写入同一个 Rerun。
+- 口径：原始解未评分、未排序去重、未做附着箱完整场景过滤；快照明确记录三项 false 标志，单条记录 `score=null`，按生成顺序编号。
+- 验证结果：两包构建通过，30 项测试零失败；十三组共捕获 6684 个原始合法解，Rerun 为 `data/ik_benchmark/extract_sequence_rerun/all_tasks_pre_cost_ik_solutions.rrd`，大小约 74 MB；统计目录为 `data/ik_benchmark/extract_sequence_rerun/sequence_20260711_025903/`。
+
+## 2026-07-11 运控 / Codex / IK 关节限位裕量代价实验
+- 做了什么：解析 IK 默认关闭 h 移动代价；新增从 MoveIt RobotModel 真实关节上下限计算的非线性限位裕量代价，左右权重为 `[0.5,3.0,0.7,0.5,1.5,1.2]`，并增加参数与日志诊断。
+- 验证结果：相关构建通过，30 项测试零失败；按基线相同的前 16 候选口径复跑十三组，成功率仍为 2/13，成功任务仍是 L11/R13、L16/R18。侧吸主因仍为 joint2 与 updown 的路径碰撞，证明单纯机械角限位代价不能描述中心柱几何净空。
+- 证据：`data/ik_benchmark/extract_sequence_rerun/box_pose_rrt_13_pairs_joint_limit_cost_limit16_20260711.rrd`；`data/ik_benchmark/extract_sequence_rerun/sequence_20260711_050757/stats.csv`。
+- 留给下个 AI：下一步应离线验证 `(h,joint1,joint2,joint3)->中心柱净空` 查表与抽离成功率相关性，不要继续盲目放大 joint2 机械限位权重。
+
+## 2026-07-11 运控 / Codex / 系统架构驾驶舱表达升级
+- 做了什么：在不新建生产前端的前提下，重构 `docs/system_portal/architecture.html` 的静态表达；按甲方三分钟阅读顺序增加能力宣言、控制闭环、能力指标、唯一事实链、工程保障区，并保留工程职责矩阵和迁移路径。
+- 迭代：完成 10 轮有记录的内容/视觉/交互优化，包括交付与工程双视图、工业化视觉、响应式布局、打印版和静态资源验证。
+- 验证结果：六个页面和三项静态资源经本地 HTTP 服务全部返回 200；`app.js`、`data.js` 通过 Node 语法检查；门户静态断言与 `git diff --check` 通过。
+- 附带诊断结论：`all_tasks_pre_cost_ik_solutions.rrd` 是附着前运动学合法解，不代表附着箱场景合法。L11/R18 单独 IK 阶段有 296 个运动学合法解、去重后 136 个，但附着场景过滤全部拒绝：rightjoint2/updown 94、leftjoint2/updown 34、leftjoint2/turn 8。
+- 留给下个 AI：门户仍是只读项目说明，不应扩成任务控制前端；碰撞性能下一步优先验证中心柱净空查表，其后再评估自有碰撞后端，不要把机械角限位代价误当几何净空。
+
+## 2026-07-12 运控 / Codex / 箱体位姿 RRT 扩树碰撞检查
+- 做了什么：将机器人自碰撞、附着箱与机器人/底座/场景碰撞直接接入箱体位姿 RRT 的边扩展；任一插值点失败时该边不进入搜索树，并保留开关复现旧口径。
+- 改了哪里：`box_pose_rrt_extract_planner.cpp`、`dual_arm_planner_node.cpp`、抽离序列脚本、场景几何与 IK 候选诊断；基线说明见 `docs/运控/抽离策略实验/2026-07-12_RRT扩树碰撞口径基线.md`。
+- 验证结果：`robot_motion_core` 2/2、`robot_motion_scene_service` 2/2、`alfa_robot_moveit_config` 16/16 测试通过。
+- 留给下个 AI：下一实验方向应解除侧吸 `retreat`/`pitch` 单调和 `lift=0` 限制，目标改为箱体脱离区域，不再强制 90 度终态。
+
+## 2026-07-13 运控 / Codex / 顶吸严格脱离与真实负重规划修复
+- 做了什么：修复顶吸抽离成功口径，附着箱统一按末端真实旋转后的世界 AABB 判断；原箱位统一使用 world 坐标，消除重复减去 `world_to_base_z=0.202094m`；最终脱离余量统一为 3cm；删除顶吸负重阶段原地保持假成功，改为真实 `shortcut + 局部 RRT` 规划到负重位。
+- 改了哪里：`alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`；新增验收工具 `alfa_robot_moveit_config/scripts/verify_extract_sequence_snapshot.py` 并纳入安装；场景几何旋转 AABB 测试补在 `robot_motion_scene_service/test/test_scene_geometry.cpp`。
+- 验证结果：四包构建通过，30 项测试零失败；新 13 组运行中 6 个成功样本全部通过“真实箱体 X-Z 投影完全脱离 + 非零负重轨迹”自动验证；旧基线准确检出 7 个顶吸假成功。最终 Rerun：`data/ik_benchmark/free_space_front_rrt/strict_detach_loaded_full_13_selected.rrd`。
+- 留给下个 AI：严格口径后 13 组成功率为 6/13；混合吸附任务主要失败在抽离，部分顶吸任务失败在解析 IK 与 MoveIt FK 校验，不要为了恢复旧成功率放松脱离验收或恢复原地负重假成功。
+
+## 2026-07-13 运控 / Codex / 抽离相邻帧十度硬约束
+- 做了什么：将抽离 RRT 每条边的连续性定义为“左右任一机械臂单关节真实指令差不得超过 10°”；超过时该边在扩树阶段直接拒绝。评分仍保留原六关节 L2 运动量，硬门槛单独计算，且不对有限位关节做 ±π 环绕短路，避免 360° 假连续。
+- 改了哪里：`extract_planning_pipeline` 增加单关节最大差检查；`dual_arm_planner` 与 launch 默认 `extract_max_joint_delta=10°`；`pose_math` 增加向量最大绝对差函数和回归测试。
+- 验证结果：定向构建和测试通过；十三组复跑 12/13 成功，所有成功任务相邻帧最大关节变化均不超过 10°，全局最大约 9.973°。L6/R13 失败在抽离阶段，64 个候选均无合法双臂 rollout，主因仍是左臂自碰撞/附着箱碰撞，另有少量 18.4° 的右臂边被新门槛拒绝。Rerun：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_absolute_selected.rrd`；结果目录：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_absolute/sequence_20260713_194221/`。
+- 留给下个 AI：若要恢复 L6/R13，不应放宽 10°门槛；优先增加 RRT 中间节点/缩短单边步幅，或让解析 IK 分支选择显式延续上一状态。
+
+## 2026-07-13 运控 / Codex / 负重 Shortcut 吸附箱后挡墙硬约束
+- 做了什么：修复负重阶段 `shortcut + 局部 RRT` 对吸附箱后挡墙约束不完整的问题；后挡墙继续作为 MoveIt 场景障碍，同时增加吸附箱旋转世界 AABB 与 `_rear_guard` 的逐状态硬约束，任何相交轨迹点都不得被选为成功方案。其他保守 AABB 规则仍保持可选，避免扩大历史误判。
+- 改了哪里：`robot_motion_scene_service/motion_core/scene_geometry` 新增后挡墙专用检查；`dual_arm_planner_node` 的完整场景状态检查无条件调用；`verify_extract_sequence_snapshot.py` 增加成功快照逐帧后挡墙验收；场景几何单测覆盖相交、分离和非后挡墙忽略。
+- 验证结果：两包构建通过，30 项测试零失败。旧基线准确检出 5 组穿墙成功（L11/R18、L16/R13、L16/R23、L21/R18、L21/R23）；新 13 组复跑保留 7 组合法成功，成功负重轨迹共 200 帧，后挡墙相交 0。Rerun：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_rear_guard_hard_selected.rrd`；结果目录：`data/ik_benchmark/free_space_front_rrt/all_13_joint_delta_10deg_rear_guard_hard/sequence_20260713_201011/`。
+- 留给下个 AI：成功率从旧基线 12/13 降到 7/13 是剔除错误穿墙成功后的真实结果，不应通过关闭后挡墙硬约束恢复；后续应优化负重目标姿态或局部 RRT 搜索，而不是放松碰撞口径。
+
+## 2026-07-13 运控 / Codex / 后挡墙局部修补与顶吸上抬中间态
+- 做了什么：修正上一轮“后挡墙硬约束后直接失败”的处理方式；`shortcut` 失败后继续进入局部修补链路，同时把 `_rear_guard` 从整高墙改为只覆盖当前箱洞高度，避免顶吸箱体抬升后仍被整高后墙永久封死；顶吸负重规划在后挡墙碰撞时先尝试上抬中间态，再进入原有 `shortcut + 局部 RRT`。
+- 改了哪里：`robot_motion_scene_service/motion_core/scene_geometry` 的 rear guard 高度与箱墙开洞高度统一；`loaded_pose_planning` 增加顶吸后挡墙上抬中间态；`extract_monitor_transition_planning` 增加自研局部 joint-space RRT 兜底，但当前主要成功来自上抬中间态而非该兜底。
+- 验证结果：两包定向构建通过，`robot_motion_scene_service` 2/2 与 `alfa_robot_moveit_config` 16/16 测试通过。完整 13 组按 `loaded_candidate_limit=3` 复跑为 12/13 成功，12 个成功快照全部通过后挡墙验收。Rerun：`data/ik_benchmark/rear_guard_top_lift_all13_limit3.rrd`；结果目录：`data/ik_benchmark/rear_guard_top_lift_all13_limit3/sequence_20260713_225159/`。
+- 留给下个 AI：唯一失败仍是 L6/R13，失败在抽离阶段 `box_pose_rrt_left_no_reachable_path`，不是负重后挡墙问题。L16/R23 和 L21/R18 虽恢复成功，但负重阶段仍很慢，分别约 18.9s 和 55.6s；后续应优化顶吸上抬后到负重位的中间姿态/目标姿态，而不是再放宽后挡墙碰撞。
+
+## 2026-07-13 运控 / Codex / 整面后挡墙与 PP 轴约束修正
+- 做了什么：按新评审意见把 `_rear_guard` 从“当前抓取箱洞后方”改成“整面箱墙后方”，x 固定在箱体后侧，y 覆盖集装箱内宽，z 覆盖完整 5 排箱堆高度；负重阶段顶吸后挡墙修补不再搜索 `updown`，改为确定性 PP 分段：`updown` 单调上抬、左右臂分别过渡、`updown` 单调回目标高度。
+- 改了哪里：`robot_motion_scene_service/src/motion_core/scene_geometry.cpp` 与单测更新整面后挡墙几何；`loaded_pose_planning.cpp` 改顶吸后挡墙修补流程；`extract_monitor_transition_planning.cpp` 的自研局部 RRT 只允许单臂 6 轴进入采样，拒绝 `updown/pitch/turn` 和双臂 13 轴混合搜索，并在找到路径后用合法 shortcut 压缩平滑。
+- 验证结果：两包构建通过，`robot_motion_scene_service` 与 `alfa_robot_moveit_config` 共 30 项测试零失败。13 组按 `--loaded-planning-mode shortcut --loaded-candidate-limit 3 --ik-full-h-range-scan` 复跑：8/13 成功，所有成功快照通过后验验证；Rerun：`data/ik_benchmark/fix_rearwall_pp_rrt_all13_rerun/full_sequence.rrd`；结果目录：`data/ik_benchmark/fix_rearwall_pp_rrt_all13_rerun/sequence_20260713_233042/`。
+- 留给下个 AI：成功率低于上一版 12/13 是因为后挡墙按整面箱墙恢复后，混合/底部任务主要在抽离阶段无合法路径；当前失败为 L6/R13、L11/R8、L16/R23、L21/R18、L21/R23，主因是对应单臂 `box_pose_rrt_*_no_reachable_path`，不是负重后墙穿透。负重阶段慢任务仍集中在顶吸后 PP 上抬后的单臂过渡，需要继续优化中间姿态或目标负重姿态。
+
+## 2026-07-14 运控 / Codex / PP 轴分段与双臂并行负重规划
+- 做了什么：按 PP 运动约束重新定义负重阶段执行顺序：从初始/负重到 IK 仍允许 12 轴与 `updown` 同步；抽离阶段 `updown` 固定；抽离完成后先固定 `updown`，左右臂分别独立规划到负重姿态并合成为同一条并行轨迹执行，最后才单独移动 `updown` 到目标高度。默认负重姿态改为双臂 `[0,-45,120,-75,0,0]`。
+- 改了哪里：`loaded_pose_planning.cpp` 新增单臂计划按时间合并函数和固定 h 的并行负重规划主路径；`extract_monitor_transition_planning.cpp` 保持局部 RRT 只处理单臂 6 轴；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`、`execute_l6_r8_mock_live.py` 同步新默认负重姿态。
+- 验证结果：两包构建通过，30 项测试零失败。13 组按 `--loaded-planning-mode shortcut --loaded-candidate-limit 3 --ik-full-h-range-scan` 复跑：8/13 成功，成功快照全部通过；Rerun：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/full_sequence.rrd`；统计目录：`data/ik_benchmark/pp_split_loaded_parallel_all13_rerun/sequence_20260713_235719/`。
+- 留给下个 AI：失败任务为 L6/R13、L11/R8、L16/R23、L21/R18、L21/R23，均失败在抽离阶段 `box_pose_rrt_*_no_reachable_path`，负重阶段没有新增失败。慢任务主要是 L11/R13、L16/R18 的负重局部修补仍在秒级，需要优化单臂局部 RRT 或负重姿态族。
+
+## 2026-07-14 运控 / Codex / MOTION-52 抽离RRT并行稳定与候选早停
+- 做了什么：修复抽离阶段16线程候选并行时共享 PlanningScene/FCL 缓存导致的假失败；新增抽离成功候选 quorum，达到指定成功数后停止分发后续候选。
+- 改了哪里：`dual_arm_planner_node.cpp` 增加每线程 PlanningScene 快照和场景 epoch；`extract_monitor_state.*` 支持 success quorum；`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 和 launch 暴露 `extract_success_quorum` / `extract_benchmark_extract_success_quorum` 参数。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；L6/R13 16线程复现成功，总耗时 2748.3ms；13组全流程成功 13/13，Rerun 为 `data/ik_benchmark/threadlocal_scene_full13_20260714/full13.rrd`。
+- 留给下个 AI：当前 RRT 已有 parent_candidates + best-first fallback；候选不足主要由带箱场景过滤和低位顶吸可达性决定。后续若继续优化，应优先记录每阶段 accepted/filtered 统计到最终 snapshot，并评估 loaded 阶段 2.3s 案例。
+
+## 2026-07-14 运控 / Codex / MOTION-52 扩展抽离入口 IK 候选
+- 做了什么：修正 IK 阶段候选过滤口径；抓取起点只检查机器人/携带箱与场景碰撞，不再要求携带箱已经完成抽离，从而避免过早删除可用于后续 RRT 的姿态。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增 `state_clear_for_dual_grasp_start`，IK 候选场景过滤改用抓取起点过滤；真正抽离阶段仍使用 `state_clear_for_dual_extract` 判断 detachment。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；13组全流程 13/13 成功，Rerun 为 `data/ik_benchmark/grasp_start_filter_full13_retry_20260714/full13.rrd`。
+- 留给下个 AI：本轮困难任务实际参与抽离的候选数已提高到 18～25 个量级；速度瓶颈仍集中在部分顶吸任务的 loaded/最终阶段，而不是 IK 或抓取起点过滤。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离RRT分界点与IK后备候选优化
+- 做了什么：为箱体位姿 RRT 增加 endpoint 质量评分，使 parent/best-first 搜索不只按低维距离选点；为抽离入口 IK 增加“主候选 + h 分层后备候选”机制，默认保留低代价主候选并追加后备候选，配合抽离成功 quorum 早停。
+- 改了哪里：`robot_motion_core` 的 `box_pose_extract_rrt`；`alfa_robot_moveit_config` 的 `box_pose_rrt_extract_planner`、`dual_arm_planner_node`、`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py`。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过；13组全流程在全 h 扫描 + shortcut 负重规划下全部成功，RRD：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/full13_endpoint_reserve.rrd`，统计：`data/ik_benchmark/rrt_endpoint_reserve_rerun_20260714/stats.csv`。
+- 留给下个 AI：后备候选会提升鲁棒性，但 L6/R13、L11/R8 等任务抽离耗时仍在 2.8～3.1s，后续可继续优化 RRT 采样/goal bias/任务特化先验。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离候选后备池交错调度
+- 做了什么：在“主候选 + h 分层后备候选”的基础上新增交错派发顺序，默认每 4 个低代价主候选插入 1 个后备候选，避免困难任务必须等前 25 个候选全部消耗后才尝试多样化 h 候选。
+- 改了哪里：`dual_arm_planner_node.cpp` 的 `apply_extract_ik_candidate_limit`；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 增加 `extract_ik_candidate_reserve_interleave_stride` 参数。
+- 验证结果：编译通过；13 组全流程 `13/13` 成功。对比 `rrt_endpoint_reserve_rerun_20260714`，交错 stride=4 的总耗时从 `33100.2ms` 降到 `31520.1ms`，平均从 `2546.2ms` 降到 `2424.6ms`；证据：`data/ik_benchmark/rrt_reserve_interleave_full13_20260714/stats.csv`。
+- 留给下个 AI：stride=2 也 `13/13` 成功且最大单任务略低，但总耗时 `32299.5ms`，默认暂不采用；后续若更关注最坏耗时而不是总耗时，可重新评估默认值。
+
+## 2026-07-14 Codex / MOTION-52 / 最终回放构建与算法计时拆分
+- 做了什么：将 `extract_monitor` 最终阶段的 Rerun 回放轨迹构建从算法耗时中拆出；无 Rerun 统计时不再重算最终回放记录，避免把可视化重建时间误计为任务规划时间。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增 `extract_monitor_build_final_replay` 开关；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 同步参数，`extract_sequence_rerun.py --no-rerun` 默认关闭最终回放构建。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；13 组全流程 `13/13` 成功。交错候选方案在关闭回放构建后总耗时 `28083.3ms`、平均 `2160.3ms`，`final_ms` 总和从 `4483.5ms` 降到 `44.0ms`；证据：`data/ik_benchmark/no_replay_interleave_full13_20260714/stats.csv`。
+- 留给下个 AI：该修改只影响无 Rerun 统计口径，不影响需要生成 Rerun 时的最终方案回放；剩余瓶颈仍是抽离 RRT（L6/R13、L11/R8 约 2.8～3.1s）和部分 loaded 规划（最高约 2.38s）。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离RRT候选扩展实验参数化
+- 做了什么：尝试将箱体 RRT parent 选择从纯 nearest 扩展为 nearest + 低密度/低代价父节点补充，并尝试按“IK 代价 + 负重姿态距离”重排抽离入口候选；两类策略均保留为可调参数，但实测不作为默认启用。同步复测抽离成功 quorum=1/2/3 的速度与成功率。
+- 改了哪里：`robot_motion_core/box_pose_extract_rrt` 增加 `parent_diverse_candidate_count`、`parent_node_score_weight`、`parent_density_weight`；`dual_arm_planner_node` 增加 `extract_ik_loaded_distance_order_weight` 并透传到 launch 与两个实验脚本。默认仍为保守 q=3，新增策略默认关闭。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core` 通过。13 组全流程均为 13/13 成功。当前 q=3 复测统计：`data/ik_benchmark/current_q3_full13_20260714/stats.csv`，总耗时 `27589.6ms`、平均 `2122.3ms`。q=1 可降低抽离耗时和最大任务耗时，但会提高 loaded 阶段耗时，默认暂不采用；证据：`data/ik_benchmark/default_q1_full13_20260714/stats.csv`。
+- 留给下个 AI：RRT parent density/diverse 与 loaded-distance IK 重排在本轮权重下未带来整体收益，不能默认开启。真正有效但有副作用的是降低 extract success quorum；后续若继续优化，应做“抽离候选早停 + loaded 质量阈值”的闭环，而不是单独改 parent 选择或单独改 IK 排序。
+
+## 2026-07-14 Codex / MOTION-52 / 抽离候选质量阈值早停
+- 做了什么：在抽离候选并行阶段增加“成功数量 + 负重距离质量”双条件早停；达到最小成功数后，如果该候选到负重姿态的关节距离足够小则提前停止，否则继续到原成功 quorum，避免固定 q=1 带来的负重规划变慢风险。
+- 改了哪里：`extract_monitor_state.*` 支持自定义候选停止条件；`dual_arm_planner_node.cpp` 增加 `extract_benchmark_extract_quality_success_quorum` 与 `extract_benchmark_extract_quality_loaded_distance_sum`；launch 与 `extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 同步参数。默认关闭，不改变既有行为。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；13 组全流程按 `quality_success_quorum=1`、`quality_loaded_distance_sum=5.0` 复跑 `13/13` 成功，总耗时 `26086.8ms`、平均 `2006.7ms`，优于当前 q=3 基线 `27589.6ms`、平均 `2122.3ms`；证据：`data/ik_benchmark/quality_stop_1of3_d5_full13_20260714/stats.csv`。
+- 留给下个 AI：`distance<=4.0` 过保守，总耗时 `29817.5ms`，不应采用；`distance<=5.0` 有整体收益但仍受 RRT 随机波动影响，建议作为实验/验收参数显式打开，而不是直接替代默认 q=3。
+
+## 2026-07-14 Codex / MOTION-52 / 箱体RRT边验证缓存与启发式实验
+- 做了什么：定位抽离慢点为箱体 RRT 大量重复边验证；在单臂箱体 RRT evaluator 层增加 from/to 边缓存，避免 shortcut、path_cost 和重复候选边反复执行解析 IK + 碰撞检测。同时增加 `best_first_first` / `top_best_first_first` 实验开关验证启发式格点搜索先行策略。
+- 改了哪里：`box_pose_rrt_extract_planner.cpp` 增加边验证缓存；`robot_motion_core/box_pose_extract_rrt` 增加 best-first 先行配置；`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 暴露 `paths_per_arm/path_pair_limit/best_first_first/top_best_first_first` 参数。
+- 验证结果：两包构建与定向测试通过。13 组全流程在边缓存 + `quality_success_quorum=1` + `quality_loaded_distance_sum=5.0` 下 `13/13` 成功，总耗时 `22869.4ms`、平均 `1759.2ms`，优于无缓存 d5 的 `26086.8ms`、当前 q=3 基线的 `27589.6ms`；证据：`data/ik_benchmark/edge_cache_q1d5_full13_20260714/stats.csv`。
+- 留给下个 AI：`paths_per_arm=2`、全局 best-first 先行、top-only best-first 先行均实测变慢，不要默认启用；保留为实验参数。当前慢项转移到 loaded 阶段，L21/R23 仍约 `3.36s`，其中 loaded 约 `2.36s`。
+
+## 2026-07-14 Codex / MOTION-52 / 优先使用自研局部RRT修补负重段
+- 做了什么：将负重段 shortcut 局部修补顺序改为先尝试自研关节空间局部 RRT，再回退 MoveIt/direct local planner；同时把 loaded 候选排序与“首个成功即停”参数从实验脚本透传到 planner，避免脚本参数被硬编码吞掉。
+- 改了哪里：`extract_monitor_transition_planning.cpp` 的 `repair_with_local_rrt`；`extract_sequence_rerun.py`、`extract_stage_monitor_console.py` 的 loaded 策略参数。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config robot_motion_core --symlink-install --cmake-args -DBUILD_TESTING=OFF` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；三轮 13 组全流程共 `39/39` 成功，统计：`data/ik_benchmark/custom_first_limit8_repeat3_20260714/stats.csv`。平均任务耗时 `1138.5ms`，最大 `2742.8ms`；loaded 阶段平均 `263.1ms`、最大 `362.4ms`，按 13 组折算约 `3420.4ms`，相比 `edge_cache_q1d5_full13_20260714` 的 `11631.5ms` 明显下降，尾部慢点已从 loaded 转移回抽离阶段。
+- 留给下个 AI：当前主要慢项是 L6/R13、L11/R8 的抽离阶段，三轮平均分别约 `2297.2ms`、`2133.5ms`；继续优化应聚焦箱体抽离 RRT 的采样/目标偏置/任务先验，而不是 loaded 规划。
+
+## 2026-07-14 运控 / Codex / 顶吸抽离允许并优先微旋转
+- 做了什么：修复顶吸箱体位姿 RRT 在 pitch=0 仅 lift 脱离后提前成功的问题，新增 top_goal_min_pitch 软阈值，默认 5°；顶吸目标姿态现在会随 box-state pitch 旋转，并在候选评分中优先更接近侧吸姿态的 top 路径。
+- 改了哪里：`robot_motion_core/box_pose_extract_rrt.*`、`alfa_robot_moveit_config/src/box_pose_rrt_extract_planner.cpp`、`dual_arm_planner.launch.py`、`extract_sequence_rerun.py`。
+- 验证结果：`colcon build --packages-select robot_motion_core alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test --packages-select robot_motion_core` 通过；13 组任务复跑 13/13 成功，Rerun 保存到 `data/ik_benchmark/top_pitch_min5_20260714/full13_top_pitch_min5.rrd`。
+- 留给下个 AI：如需要更激进顶吸旋转，可通过 `extract_box_pose_rrt_top_goal_min_pitch_deg` 或脚本参数 `--extract-box-pose-rrt-top-goal-min-pitch-deg` 调整；默认 5°只是防止 0°提前收敛，不是要求转到 90°。
+
+## 2026-07-14 运控 / Codex / 吸附前预接触与抽离平滑
+- 做了什么：吸附前回放从“初始/负重→吸附 IK”拆成“初始/负重→预接触→吸附 IK”；预接触点按左右末端本地 -Z 方向后退 5cm 重新求 IK。抽离 RRT 输出后增加 shortcut 平滑，平滑段按 5° 密采样并复用双臂附着箱/场景碰撞检查。
+- 改了哪里：`extract_monitor_replay_builder.*`、`dual_arm_planner_node.cpp`、`box_pose_rrt_extract_planner.cpp`，并同步 `check_l6_r8_real_safety.py` 的当前负重姿态期望。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --symlink-install --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test --packages-select robot_motion_core alfa_robot_moveit_config --event-handlers console_direct+ --return-code-on-test-failure` 通过；13 组全流程 `13/13` 成功，Rerun：`data/ik_benchmark/extract_pre_contact_full13_v2/full13_pre_contact_20260714.rrd`，统计：`data/ik_benchmark/extract_pre_contact_full13_v2/stats_20260714.csv`。
+- 留给下个 AI：当前顶吸任务尾部耗时波动仍主要来自 loaded 规划和 final replay 构建；若继续优化，优先看 `L11/R13`、`L16/R18` 的 loaded/final 阶段，而不是 IK。
+
+## 2026-07-15 运控 / Codex / 生产执行接口与孪生消费者对齐
+- 做了什么：将本地仿真孪生执行入口对齐工控机生产接口：机械臂/turn 使用 `/dual_arm_trajectory_controller/follow_joint_trajectory` action 与 `/dual_arm_trajectory_controller/joint_trajectory` topic，updown 使用 `/canopen/updown_position_controller/commands`；孪生内部按 250Hz 插值、`/joint_states` 默认 50Hz 发布，并保留旧 `/alfa_execution/execute_joint_trajectory` 兼容 action。
+- 改了哪里：`robot_motion_runtime/kinematic_sim_executor_node.py` 新增真实接口消费、真实/模型关节名 alias、250Hz 控制循环；`execute_trajectory_service_node.py` 默认转发生产 action、10Hz 重采样，并把 `rightjoint*/leftjoint*` 转为生产 13 轴顺序 `right_joint1..6,left_joint1..6,turn`；`sim_bringup.launch.py`、`runtime_services.launch.py`、`runtime_full_stack.launch.py`、`dual_arm_planner` 默认 action 同步；`execution_trajectory_adapter.cpp` 与测试同步修正右臂在前顺序。
+- 验证结果：`python3 -m py_compile` 通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config --symlink-install` 通过；`alfa_robot_moveit_config` 16/16 测试通过；`robot_motion_runtime` 6/6 测试在 `ROS_LOG_DIR=/tmp/alfa_robot_ros_logs` 下通过。
+- 留给下个 AI：真实 13 轴 action 不能承载 `updown` 轨迹；当前执行 service 若发现输入轨迹里 `updown` 变化会拒绝转发，避免静默丢掉 updown。后续若要同步执行 updown，需要单独设计“13轴 action + updown topic”的多执行器协调层。
+
+## 2026-07-15 运控 / Codex / 工控机13任务正式接口测试入口
+- 做了什么：将工控机 `/home/ar/lhy_dev` 清理为最小测试工作区并同步当前算法/运行时包；修正测试入口，不再使用旧 `run_l6_r8_task.sh` 单任务 wrapper 或旧 box-id smoke 作为主入口，改为完整 13 组 `RunDualGraspTask` 端点任务序列。
+- 改了哪里：远端 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh` 调用 `/robot_motion/run_dual_grasp_task`，发送左右末端 `position` 与 `grasp_mode` 字段；远端 `/home/ar/lhy_dev/run_l6_r8_task.sh` 改为弃用提示；远端 README 已说明算法进程、任务进程和 13 组序列。同步 `dual_grasp_task_adapter_node.py`，使 `fixed_updown` 从当前 `/joint_states` 读取，不再硬编码 0.3。
+- 验证结果：远端 `/home/ar/lhy_dev/build_lhy_dev.sh` 构建 9 个包通过；`/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --list` 正确打印 13 组端点任务；`run_l6_r8_task.sh` 退出并提示改用 13 任务入口。
+- 留给下个 AI：测试时先启动 `/home/ar/robot_driver` 硬件 bringup，再开 `/home/ar/lhy_dev/run_algorithm_stack.sh`，最后用 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --dry-run` 或 `--execute --yes-execute`。当前没有独立障碍发布者，默认场景为空；若要真实碰撞环境，需要补 `/robot_motion/set_scene` 或 world-model 发布。
+
+## 2026-07-15 电控/运控接口 / Codex / 13任务实机执行入口修正
+- 做了什么：定位 `/home/ar/lhy_dev/run_13_dual_grasp_tasks.sh --execute` 实际仍走 `robot_motion_runtime` 的 Python placeholder service，导致 `PlanExtract collision_checked_shortcut` 失败且不是 C++ 全流程算法；将工控机执行入口改为 planner-live 后端，执行时直接调用 `execute_l6_r8_real_live.py` 启动 C++ `dual_arm_planner` 生成 snapshot 再发真实控制器 action。
+- 改了哪里：本地 `ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py`；远端 `/home/ar/lhy_dev/scripts/send_dual_grasp_sequence.py`、`/home/ar/lhy_dev/ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py`；远端补齐 `/home/ar/lhy_dev/ros2_ws/src/alfa_robot_execution_bridge/` 作为方向映射来源。
+- 验证结果：本地 py_compile 与 L6/R8 快照离线 flatten 通过，保留 C++ 时间戳并对零时长抽离 keyframe 按 10Hz、20deg/s、0.05m/s 补时间；远端 py_compile、`--help`、`--only 4 --list` 和假 planner execute 分支通过，未触发真实运动。
+- 留给下个 AI：真实执行入口现在默认保留 planner 的 `time_from_start`，不再二次压成固定短时长；updown 可通过 `/canopen/updown_position_controller/commands` 同步发布，但仍是”13轴 action + updown topic”的协调执行，不是单一硬实时多轴控制器。
+
+## 2026-07-16 运控/电控 / Claude / planner-live 实机执行路径安全加固（Refs MOTION-52，commit d962212）
+- 做了什么：接替前运控/电控工程师后系统性核查 `execute_l6_r8_mock_live.py`/`send_dual_grasp_sequence.py` 的实机安全护栏，发现硬上限（`--max-joint-speed-deg-s`/`--hz`/`--max-updown-speed-m-s`/`--loaded-preferred-pose-index`/方向映射）此前依赖 wrapper 层把关，脚本本身可被绕过；`require_explicit_confirmation()` 在非 tty 环境下可能被 `EOFError` 静默穿透当作已确认；`execute_trajectory_service_node.py` 的 `velocity_scale`/`acceleration_scale` 越界值被静默接受、不生效但调用方无感知。
+- 改了哪里：`execute_l6_r8_mock_live.py` 五项硬上限改为脚本级 `SystemExit` 拒绝启动 + `ALFA_ALLOW_UNSAFE_*_OVERRIDE` 环境变量护栏；`require_explicit_confirmation()` 非 tty 直接拒绝；`execute_trajectory_service_node.py` 增加 `velocity_scale`/`acceleration_scale` 范围校验及不生效告警、`resample_rate_hz` 校验及与 10Hz 契约不一致告警；`box_pair_task_adapter_node.py`/`dual_grasp_task_adapter_node.py` 改用新增的 `common.py::clamp_motion_scale()`；`check_l6_r8_real_safety.py` 补充对 `send_dual_grasp_sequence.py` 的静态扫描；重写 `docs/ethercat/REAL_DIRECTION_SAFETY.md` 反映 planner-live 是当前默认实机执行路径。
+- 验证结果：`python3 scripts/safety/check_l6_r8_real_safety.py` 通过；`py_compile` 全部改动文件通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config robot_motion_interfaces robot_motion_core alfa_robot_execution_bridge` 通过。全程只改本地仓库，未做任何真机操作。
+- 留给下个 AI：这些硬上限只在本地仓库 `execute_l6_r8_mock_live.py` 里生效；工控机 `~/lhy_dev` 上的副本若要同步这批改动，需要单独确认后再做，不要自动同步。
+
+## 2026-07-16 运控 / Claude / model<->hardware joint 命名转换收敛到 common.py（Refs MOTION-52，commit deb30d0）
+- 做了什么：全仓库扫描发现 `execute_trajectory_service_node.py`、`kinematic_sim_executor_node.py` 各自维护了一份 model 命名（`leftjoint1`...）↔硬件命名（`left_joint1`...）转换字典，写法不完全一致，存在”改一处漏改另一处”的隐患。
+- 改了哪里：`common.py` 新增 `HARDWARE_TO_MODEL_JOINT_ALIASES`/`MODEL_TO_HARDWARE_JOINT_ALIASES`/`REAL_ARM_JOINT_NAMES`/`canonical_joint_name()`/`hardware_joint_name()` 作为唯一实现；两个下游节点删除各自的重复字典，改为从 `common.py` 导入。方向/顺序的唯一权威源仍是 `alfa_robot_execution_bridge.joints`，本次不涉及方向值改动。
+- 验证结果：`py_compile` 通过；`colcon build --packages-select robot_motion_runtime alfa_robot_moveit_config` 通过；手动 import 烟雾测试确认新增符号可被两个下游节点正确导入使用。
+- 留给下个 AI：以后如果还有节点需要 model/hardware joint 命名转换，直接从 `common.py` 导入，不要再新建本地字典。
+
+## 2026-07-16 运控 / Claude / 收紧附着箱侧壁校验并稳定候选选择（Refs MOTION-52，commit 9a016fd）
+- 做了什么：确认此前遗留在工作区、尚未写入日志的 L6/R13、L11/R8 末端诡异旋转/侧壁碰撞修复（详见交接文档记录的排查过程），补写日志条目并正式提交。根因是负重轨迹完整校验里集装箱侧壁/顶板 AABB 只走可选开关，默认未强制失败，而动态箱墙默认强制，两者口径不一致。
+- 改了哪里：`dual_arm_planner_node.cpp` 新增 `carried_box_clear_container_obstacles()`，`state_clear_in_full_scene()` 无条件检查所有 `attached_boxes` 的集装箱侧壁/顶/底 AABB；`loaded_pose_planning.cpp` 候选排序与最终样本选择改为综合 `ik_score + distance`；`extract_monitor_state.cpp` 并行抽离早停增加 `best_ik_score` 跟踪，只有代价接近最优的成功样本才能触发 quorum 早停。
+- 验证结果：`colcon build --packages-select alfa_robot_moveit_config --cmake-args -DBUILD_TESTING=ON` 通过；`colcon test` 16/16 通过；`L6/R13`/`L11/R8` 复跑（`data/ik_benchmark/sidewall_fix_20260715/L6R13_L11R8_final/`）均成功选中低腕分支（约 4.7°/0°，不再是 175°/180°），container collisions = 0。
+- 留给下个 AI：这批改动在写入本条日志之前已经在工作区停留过一段时间，是通过交接文档 `/tmp/handoff-alfa-motion-20260716-*.md` 补记的，不是当天新做的修复；今后修复完成后应尽量当场写日志，避免依赖临时交接文档补记。
+
+## 2026-07-16 运控 / Claude / model joint state 归一化与固定频率轨迹重采样（来源不明确，commit fd2e2d7）
+- 做了什么：提交前系统性核查工作区未提交改动时，发现 `common.py`/`motion_state_source_node.py`/`plan_extract_service_node.py`/`plan_loaded_service_node.py`/两个 launch 文件/`motion_collision_service_node.cpp` 等一批改动，既不属于当天的安全加固/命名收敛工作，也不属于最近一次侧壁修复，日志里也没有对应条目，来源不明确。已重新验证通过后按既定原则一并提交，不再单独溯源。
+- 改了哪里：`common.py` 新增 `model_joint_name()`/`normalize_joint_state_for_model()`（硬件 joint state 归一化为 model 命名+固定顺序）、`make_fixed_rate_interpolated_trajectory()`（按固定频率而非固定总时长插值）；`motion_state_source_node.py` 发布归一化后的 `/robot_motion/model_joint_states`；`plan_extract_service_node.py`/`plan_loaded_service_node.py` 默认路径切到固定频率插值（`trajectory_rate_hz` 默认 10.0，与执行链路节奏一致）；`motion_collision_service_node.cpp` 的 `joint_state_topic` 改为可配置参数。
+- 验证结果：`colcon build`/`colcon test` 全部通过（moveit_config 16/16，robot_motion_runtime 8/8）；手动 `rclpy` 实例化 `MotionStateSourceNode`/`PlanExtractServiceNode`/`PlanLoadedServiceNode`/`ExecuteTrajectoryServiceNode` 四个节点均正常启动。
+- 留给下个 AI：这批改动来源不明确，如果后续发现行为异常，优先怀疑这里；`trajectory_duration_s`/`trajectory_rate_hz` 两套插值路径同时存在（`duration_s > 0` 走旧路径，否则走新路径），注意不要重复实现第三套。
