@@ -17,6 +17,11 @@
 namespace alfa_robot::motion
 {
 
+// updown 逻辑/URDF 规划范围上限 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。负重抬升的
+// 目标高度不得超过此上限，否则会命令超出 URDF joint limit 的 updown（原先硬编码 0.99
+// 属于旧 [0,0.99] 范围的遗留值）。
+constexpr double kUpdownLogicalUpperM = 0.78;
+
 LoadedPoseSelector::LoadedPoseSelector(LoadedPoseSelectorConfig config)
 : config_(std::move(config))
 {
@@ -1031,12 +1036,12 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     loaded_variable_names.begin(), loaded_variable_names.end(), "updown") != loaded_variable_names.end();
   if (top_suction_height_mismatch && has_updown_variable) {
     std::vector<double> lift_deltas{0.4, 0.5, 0.6, 0.7};
-    lift_deltas.push_back(0.99 - pre_loaded_top_lift_start_updown);
+    lift_deltas.push_back(kUpdownLogicalUpperM - pre_loaded_top_lift_start_updown);
     std::string last_lift_reason;
     for (const double lift_delta : lift_deltas) {
       if (lift_delta <= 1e-6) continue;
       const double lifted_updown = std::min(
-        0.99, pre_loaded_top_lift_start_updown + lift_delta);
+        kUpdownLogicalUpperM, pre_loaded_top_lift_start_updown + lift_delta);
       if (lifted_updown <= pre_loaded_top_lift_start_updown + 1e-6) continue;
 
       moveit::core::RobotState lifted_state(loaded_start_state);
@@ -1174,7 +1179,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
             has_updown_variable) {
           constexpr double kDeterministicLiftDistance = 0.36;
           const double lifted_updown = std::min(
-            0.99,
+            kUpdownLogicalUpperM,
             std::max(currentUpdown(loaded_start_state), currentUpdown(goal_state)) +
               kDeterministicLiftDistance);
 

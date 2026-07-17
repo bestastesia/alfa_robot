@@ -86,7 +86,11 @@ class DualGraspTaskAdapterNode(Node):
         self.declare_parameter("state_topic", "/robot_motion/state")
         self.declare_parameter("service_timeout_s", 60.0)
         self.declare_parameter("default_frame_id", "base_link")
-        self.declare_parameter("default_fixed_updown", 0.0)
+        self.declare_parameter("default_fixed_updown", 0.08)
+        # updown 逻辑/URDF 规划范围 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。fixed_updown
+        # 取当前车体状态,可能落在旧范围或越界,这里在"喂给规划前"就夹紧,不把越界值当 IK 种子。
+        self.declare_parameter("updown_logical_lower_m", 0.08)
+        self.declare_parameter("updown_logical_upper_m", 0.78)
         self.declare_parameter("default_candidate_limit", 8)
         self.declare_parameter("default_planning_mode", "shortcut")
         self.declare_parameter("default_velocity_scale", 1.0)
@@ -99,6 +103,8 @@ class DualGraspTaskAdapterNode(Node):
         self.service_timeout_s = float(self.get_parameter("service_timeout_s").value)
         self.default_frame_id = str(self.get_parameter("default_frame_id").value)
         self.default_fixed_updown = float(self.get_parameter("default_fixed_updown").value)
+        self.updown_logical_lower_m = float(self.get_parameter("updown_logical_lower_m").value)
+        self.updown_logical_upper_m = float(self.get_parameter("updown_logical_upper_m").value)
         self.default_candidate_limit = int(self.get_parameter("default_candidate_limit").value)
         self.default_planning_mode = str(self.get_parameter("default_planning_mode").value)
         self.default_velocity_scale = float(self.get_parameter("default_velocity_scale").value)
@@ -184,16 +190,27 @@ class DualGraspTaskAdapterNode(Node):
             return self.latest_state.joint_state
         return seed_or_default(JointState(), self.default_fixed_updown)
 
+    def clamp_updown_logical(self, value: float) -> float:
+        """把 updown 逻辑值夹紧到规划范围 [0.08, 0.78]；越界(如旧范围遗留值或车体
+        当前停在范围外)时告警并夹紧，绝不把越界值当 IK 种子/规划输入。"""
+        clamped = max(self.updown_logical_lower_m, min(self.updown_logical_upper_m, float(value)))
+        if abs(clamped - float(value)) > 1e-6:
+            self.get_logger().warn(
+                f"updown 逻辑值 {float(value):.4f}m 超出规划范围 "
+                f"[{self.updown_logical_lower_m}, {self.updown_logical_upper_m}]m，已夹紧到 {clamped:.4f}m"
+            )
+        return clamped
+
     def fixed_updown(self) -> float:
         if self.latest_state is None:
-            return self.default_fixed_updown
+            return self.clamp_updown_logical(self.default_fixed_updown)
         joint_state = self.latest_state.joint_state
         if "updown" not in joint_state.name:
-            return self.default_fixed_updown
+            return self.clamp_updown_logical(self.default_fixed_updown)
         index = joint_state.name.index("updown")
         if index >= len(joint_state.position):
-            return self.default_fixed_updown
-        return float(joint_state.position[index])
+            return self.clamp_updown_logical(self.default_fixed_updown)
+        return self.clamp_updown_logical(float(joint_state.position[index]))
 
     def on_run_dual_grasp_task(self, request, response):
         started = time.monotonic()

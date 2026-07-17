@@ -25,11 +25,16 @@ frames:
   world_to_base_z_m: 0.202094
 
 updown:
-  logical_lower_m: 0.0
-  logical_upper_m: 0.7
+  # 现场标定对应关系：电机物理 0 位 <-> URDF/逻辑 0.08m，电机 0.7 <-> URDF 0.78m。
+  # 即 logical(URDF) = physical(电机) + 0.08；physical(电机) = logical(URDF) - 0.08。
+  # 逻辑规划范围 [0.08, 0.78] 与电机物理行程 [0, 0.7] 精确一一对应（用满行程）。
+  # 换算与范围夹紧收口在 alfa_robot_execution_bridge/joints.py 单一来源。
+  logical_lower_m: 0.08
+  logical_upper_m: 0.78
   physical_zero_offset_m: 0.08
-  physical_lower_m: 0.08
-  physical_upper_m: 0.78
+  # 电机物理行程硬限位（不可超出）：
+  physical_lower_m: 0.0
+  physical_upper_m: 0.7
   default_home_m: 0.3
   front_grasp_z_reach_world_m: [0.45, 1.25]
   top_suction_z_reach_world_m: [0.3, 0.45]

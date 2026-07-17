@@ -54,8 +54,10 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_monitor_top_suction", default_value="false"),
         DeclareLaunchArgument("ik_workers", default_value="1"),
         DeclareLaunchArgument("ik_h_candidate_count", default_value="64"),
-        DeclareLaunchArgument("ik_h_lower", default_value="0.0"),
-        DeclareLaunchArgument("ik_h_upper", default_value="0.7"),
+        # updown(h) 候选采样范围：逻辑/URDF 空间 [0.08, 0.78]，对应电机满行程 [0, 0.7]。
+        # 在采样阶段就限死，不会生成 <0.08 或 >0.78 的候选（不是算出来再拒）。
+        DeclareLaunchArgument("ik_h_lower", default_value="0.08"),
+        DeclareLaunchArgument("ik_h_upper", default_value="0.78"),
         DeclareLaunchArgument("ik_h_step", default_value="0.01"),
         DeclareLaunchArgument("ik_full_h_range_scan", default_value="false"),
         DeclareLaunchArgument("ik_seed_count", default_value="32"),

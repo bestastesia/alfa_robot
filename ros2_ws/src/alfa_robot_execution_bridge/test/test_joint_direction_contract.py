@@ -57,29 +57,36 @@ def test_direction_conversion_round_trip():
 
 
 def test_updown_conversion_endpoints():
-    assert UPDOWN_LOGICAL_LOWER_M == 0.0
-    assert UPDOWN_LOGICAL_UPPER_M == 0.7
+    # 现场标定：电机物理行程 [0, 0.7] 与 URDF/逻辑规划范围 [0.08, 0.78] 精确一一对应，
+    # physical(电机) = logical(URDF) - 0.08，logical = physical + 0.08（用满电机行程）。
+    assert UPDOWN_LOGICAL_LOWER_M == 0.08
+    assert UPDOWN_LOGICAL_UPPER_M == 0.78
     assert UPDOWN_PHYSICAL_ZERO_OFFSET_M == 0.08
-    assert UPDOWN_PHYSICAL_LOWER_M == 0.08
-    assert UPDOWN_PHYSICAL_UPPER_M == pytest.approx(0.78)
-    assert logical_to_physical_updown(0.0) == pytest.approx(0.08)
-    assert logical_to_physical_updown(0.7) == pytest.approx(0.78)
-    assert physical_to_logical_updown(0.08) == pytest.approx(0.0)
-    assert physical_to_logical_updown(0.78) == pytest.approx(0.7)
+    assert UPDOWN_PHYSICAL_LOWER_M == 0.0
+    assert UPDOWN_PHYSICAL_UPPER_M == pytest.approx(0.7)
+    # 逻辑范围端点精确映射电机满行程端点。
+    assert logical_to_physical_updown(0.08) == pytest.approx(0.0)
+    assert logical_to_physical_updown(0.78) == pytest.approx(0.7)
+    assert physical_to_logical_updown(0.0) == pytest.approx(0.08)
+    assert physical_to_logical_updown(0.7) == pytest.approx(0.78)
+    # 用户给的具体例子：IK 规划出 URDF 0.28 -> 下发电机 0.20。
+    assert logical_to_physical_updown(0.28) == pytest.approx(0.20)
+    assert physical_to_logical_updown(0.20) == pytest.approx(0.28)
 
 
-def test_updown_conversion_round_trip():
-    for logical_m in (0.0, 0.12, 0.3, 0.55, 0.7):
+def test_updown_physical_command_never_exceeds_motor_range():
+    # 电机物理行程 [0, 0.7] 绝不可超出：logical 换算后强制夹紧。
+    # 规划域已收紧到 [0.08, 0.78]，正常不会越界；clamp 是最后一道硬防线。
+    assert logical_to_physical_updown(0.08) == pytest.approx(0.0)
+    assert logical_to_physical_updown(0.78) == pytest.approx(0.7)
+    # 任何输入（含越界）的输出都落在 [0, 0.7]。
+    for logical_m in (-1.0, 0.0, 0.05, 0.08, 0.3, 0.78, 0.9, 1.5):
+        physical_m = logical_to_physical_updown(logical_m)
+        assert UPDOWN_PHYSICAL_LOWER_M <= physical_m <= UPDOWN_PHYSICAL_UPPER_M
+
+
+def test_updown_conversion_round_trip_within_clampable_range():
+    # logical 落在 [0.08, 0.78]（换算后 physical 在 [0,0.7] 未被夹紧）时 round-trip 精确还原。
+    for logical_m in (0.08, 0.12, 0.3, 0.55, 0.78):
         physical_m = logical_to_physical_updown(logical_m)
         assert physical_to_logical_updown(physical_m) == pytest.approx(logical_m)
-
-
-def test_updown_conversion_rejects_out_of_range():
-    with pytest.raises(ValueError):
-        logical_to_physical_updown(-0.01)
-    with pytest.raises(ValueError):
-        logical_to_physical_updown(0.71)
-    with pytest.raises(ValueError):
-        physical_to_logical_updown(0.07)
-    with pytest.raises(ValueError):
-        physical_to_logical_updown(0.79)

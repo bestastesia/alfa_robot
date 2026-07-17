@@ -646,7 +646,9 @@
     <parent link="turn" />
     <child link="updown" />
     <axis xyz="0 0 1" />
-    <limit lower="0" upper="0.7" effort="0" velocity="0" />
+    <!-- updown 逻辑/URDF 规划范围 [0.08, 0.78]，对应电机物理满行程 [0, 0.7]
+         (physical = logical - 0.08，换算与夹紧收口在 alfa_robot_execution_bridge/joints.py)。 -->
+    <limit lower="0.08" upper="0.78" effort="0" velocity="0" />
   </joint>
 
   <joint name="front_sensor" type="fixed">

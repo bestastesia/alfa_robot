@@ -726,10 +726,16 @@ public:
     apply_container_obstacles();
     set_static_box_wall_opening(extract_demo_left_box_id_, extract_demo_right_box_id_, "initial");
 
-    if (container_track_vehicle_drift_) {
+    if (vehicle_pose_tracking_active()) {
       vehicle_drift_check_timer_ = create_wall_timer(
         std::chrono::duration<double>(1.0),
         [this]() { check_static_obstacles_drift(); });
+      RCLCPP_INFO(
+        get_logger(),
+        "车体位姿跟踪已启动(1Hz)：track_drift=%s dynamic_pose=%s（动态位姿模式会自动"
+        "启用漂移刷新，车体挪动超阈值时重算集装箱几何）。",
+        container_track_vehicle_drift_ ? "true" : "false",
+        container_pose_dynamic_ ? "true" : "false");
     }
 
     demo_srv_ = create_service<std_srvs::srv::Trigger>(
@@ -1006,8 +1012,24 @@ private:
   void refresh_dynamic_container_geometry()
   {
     if (!container_pose_dynamic_) return;
+    bool tf_ok = false;
+    const Eigen::Isometry3d vehicle_pose = lookup_vehicle_pose(&tf_ok);
+    if (!tf_ok) {
+      // TF 查询失败时绝不用 identity 兜底去覆盖已有缓存——那会把集装箱悄悄挪回"车体在
+      // 原点"的错误假设位置。保留上一次成功算出的相对位姿；若从未成功过，则维持空缓存，
+      // container_geometry_config() 会退回静态 container_center_x/y（明确的保守回退），
+      // 而不是一个基于错误车体位姿算出的几何。
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "container_pose_dynamic 已启用，但 %s -> %s 车体位姿 TF 不可用；"
+        "%s，不用 identity 兜底覆盖，避免集装箱几何跳到错误位置。",
+        vehicle_drift_global_frame_.c_str(), container_frame_.c_str(),
+        container_pose_dynamic_cache_.has_value() ? "沿用上一次成功的相对位姿缓存"
+                                                  : "尚无成功缓存，退回静态 container_center_x/y");
+      return;
+    }
     container_pose_dynamic_cache_ = compute_container_pose_relative_to_vehicle(
-      lookup_vehicle_pose(), container_pose_map_x_, container_pose_map_y_, container_pose_map_yaw_);
+      vehicle_pose, container_pose_map_x_, container_pose_map_y_, container_pose_map_yaw_);
   }
 
   ContainerGeometryConfig container_geometry_config() const
@@ -1284,7 +1306,7 @@ private:
     config.carried_box = carried_box_geometry_config();
     config.left_tip = left_tip_;
     config.right_tip = right_tip_;
-    if (container_track_vehicle_drift_) {
+    if (vehicle_pose_tracking_active()) {
       config.vehicle_pose_provider = [this]() { return lookup_vehicle_pose(); };
     }
     return config;
@@ -1296,14 +1318,30 @@ private:
   // 判断"车体在全局系下挪动了多少"，供 MotionSceneAdapter::staticObstaclesStale 检测
   // container_center_x/y 这类相对偏移参数是否已经对不上车体新停靠的位置。
   // 查询失败（例如车体位姿源节点未启动）时退化为 identity，不会导致规划节点崩溃。
-  Eigen::Isometry3d lookup_vehicle_pose()
+  // 车体位姿跟踪机制（1Hz TF 查询定时器 + scene adapter 的 vehicle_pose_provider +
+  // 漂移检测）在两种情况下都需要启动：
+  //   1. container_track_vehicle_drift_：显式的"车体漂移告警"开关（历史行为）；
+  //   2. container_pose_dynamic_：动态集装箱位姿建模——车体一动，集装箱相对车体的几何
+  //      就必须重新计算并刷新，否则集装箱几何会停在构造时算出的那一帧再也不更新。
+  // 早期版本只 gate 在 (1) 上，导致只开 (2) 时刷新机制完全不启动、集装箱几何静默冻结。
+  bool vehicle_pose_tracking_active() const
   {
-    if (!tf_buffer_) return Eigen::Isometry3d::Identity();
+    return container_track_vehicle_drift_ || container_pose_dynamic_;
+  }
+
+  Eigen::Isometry3d lookup_vehicle_pose(bool* tf_ok = nullptr)
+  {
+    if (!tf_buffer_) {
+      if (tf_ok) *tf_ok = false;
+      return Eigen::Isometry3d::Identity();
+    }
     try {
       const auto transform = tf_buffer_->lookupTransform(
         vehicle_drift_global_frame_, container_frame_, tf2::TimePointZero, tf2::durationFromSec(0.05));
+      if (tf_ok) *tf_ok = true;
       return tf2::transformToEigen(transform);
     } catch (const tf2::TransformException& ex) {
+      if (tf_ok) *tf_ok = false;
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
         "lookup_vehicle_pose: %s -> %s unavailable (%s), falling back to identity",
@@ -1314,7 +1352,7 @@ private:
 
   void check_static_obstacles_drift()
   {
-    if (!container_track_vehicle_drift_ || !scene_adapter_) return;
+    if (!vehicle_pose_tracking_active() || !scene_adapter_) return;
     if (!scene_adapter_->staticObstaclesStale(
           vehicle_drift_translation_threshold_m_, vehicle_drift_rotation_threshold_rad_)) {
       return;

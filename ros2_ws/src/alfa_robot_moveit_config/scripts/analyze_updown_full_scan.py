@@ -67,7 +67,7 @@ with (root/'height_scan_1cm.csv').open('w',newline='') as f:
  w=csv.DictWriter(f,fieldnames=rows[0].keys());w.writeheader();w.writerows(rows)
 with (root/'task_height_summary.csv').open('w',newline='') as f:
  w=csv.DictWriter(f,fieldnames=summaries[0].keys());w.writeheader();w.writerows(summaries)
-md=['# 13组任务 Updown 全高度扫描分析','', '- 扫描申请范围：`0.00~0.99 m`，步长 `0.01 m`。','- 当前 URDF 物理范围：`0.00~0.92 m`；`0.93~0.99 m`仅用于暴露配置越界，不纳入推荐。','- Joint2 限位：左右均为 `±90°`。','- “可用区间”：该高度至少存在1个附着箱体场景碰撞通过的双臂IK解。','- “稳健区间”：该高度的通过分支数不少于本任务单高度最大通过数的50%。','', '|任务|可用区间(m)|稳健区间(m)|每高度最多通过分支|碰撞通过/检查|总通过率|主要碰撞原因|','|---|---|---|---:|---:|---:|---|']
+md=['# 13组任务 Updown 全高度扫描分析','', '- 扫描申请范围：`0.00~0.99 m`，步长 `0.01 m`。','- 当前 URDF 逻辑范围：`0.08~0.78 m`（对应电机物理满行程 `0.00~0.70 m`，physical=logical-0.08）；该范围外仅用于暴露配置越界，不纳入推荐。','- Joint2 限位：左右均为 `±90°`。','- “可用区间”：该高度至少存在1个附着箱体场景碰撞通过的双臂IK解。','- “稳健区间”：该高度的通过分支数不少于本任务单高度最大通过数的50%。','', '|任务|可用区间(m)|稳健区间(m)|每高度最多通过分支|碰撞通过/检查|总通过率|主要碰撞原因|','|---|---|---|---:|---:|---:|---|']
 for s in summaries:
  md.append(f"|{s['task']}|{s['feasible_interval_m']}|{s['robust_interval_m']}|{s['max_collision_free_branches_per_height']}|{s['collision_pass']}/{s['collision_checked_unique']}|{s['overall_collision_pass_rate_pct']}%|{s['top_collision_reason']} ({s['top_collision_reason_count']})|")
 (root/'ANALYSIS.md').write_text('\n'.join(md)+'\n')

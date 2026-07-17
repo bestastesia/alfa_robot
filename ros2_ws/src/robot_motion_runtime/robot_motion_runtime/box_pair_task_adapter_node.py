@@ -216,7 +216,10 @@ class BoxPairTaskAdapterNode(Node):
         self.declare_parameter("default_box_front_x", 0.925)
         self.declare_parameter("default_scene_y_shift", -0.4)
         self.declare_parameter("default_world_to_base_z", 0.202094)
-        self.declare_parameter("default_fixed_updown", 0.0)
+        self.declare_parameter("default_fixed_updown", 0.08)
+        # updown 逻辑/URDF 规划范围 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。
+        self.declare_parameter("updown_logical_lower_m", 0.08)
+        self.declare_parameter("updown_logical_upper_m", 0.78)
         self.declare_parameter("default_top_suction_x_offset", 0.15)
         self.declare_parameter("default_top_suction_z_offset", 0.2)
         self.declare_parameter("default_candidate_limit", 8)
@@ -230,6 +233,8 @@ class BoxPairTaskAdapterNode(Node):
         self.default_scene_y_shift = float(self.get_parameter("default_scene_y_shift").value)
         self.default_world_to_base_z = float(self.get_parameter("default_world_to_base_z").value)
         self.default_fixed_updown = float(self.get_parameter("default_fixed_updown").value)
+        self.updown_logical_lower_m = float(self.get_parameter("updown_logical_lower_m").value)
+        self.updown_logical_upper_m = float(self.get_parameter("updown_logical_upper_m").value)
         self.default_top_suction_x_offset = float(self.get_parameter("default_top_suction_x_offset").value)
         self.default_top_suction_z_offset = float(self.get_parameter("default_top_suction_z_offset").value)
         self.default_candidate_limit = int(self.get_parameter("default_candidate_limit").value)
@@ -334,7 +339,23 @@ class BoxPairTaskAdapterNode(Node):
             box_front_x = request.box_front_x if request.box_front_x > 0.0 else self.default_box_front_x
             scene_y_shift = request.scene_y_shift if request.scene_y_shift != 0.0 else self.default_scene_y_shift
             world_to_base_z = request.world_to_base_z if request.world_to_base_z > 0.0 else self.default_world_to_base_z
-            fixed_updown = request.fixed_updown if request.fixed_updown >= 0.0 else self.default_fixed_updown
+            # updown 逻辑值合法范围是 [0.08, 0.78]；请求未设置时 ROS 默认为 0.0（< 0.08），
+            # 视为"未指定"回退到 default_fixed_updown，避免把未设置值当合法输入而每次告警夹紧。
+            fixed_updown = (
+                request.fixed_updown
+                if request.fixed_updown >= self.updown_logical_lower_m
+                else self.default_fixed_updown
+            )
+            # 显式给了但越上界(或落在下界之下的其它情况)仍夹紧到 [0.08, 0.78] 并告警。
+            updown_clamped = max(
+                self.updown_logical_lower_m, min(self.updown_logical_upper_m, float(fixed_updown))
+            )
+            if abs(updown_clamped - float(fixed_updown)) > 1e-6:
+                self.get_logger().warn(
+                    f"updown 逻辑值 {float(fixed_updown):.4f}m 超出规划范围 "
+                    f"[{self.updown_logical_lower_m}, {self.updown_logical_upper_m}]m，已夹紧到 {updown_clamped:.4f}m"
+                )
+            fixed_updown = updown_clamped
             top_x_offset = (
                 request.top_suction_x_offset
                 if request.top_suction_x_offset != 0.0

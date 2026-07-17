@@ -34,9 +34,9 @@ from alfa_robot_execution_bridge.joints import (
     REAL_CONTROLLER_JOINT_NAMES,
     UPDOWN_LOGICAL_LOWER_M,
     UPDOWN_LOGICAL_UPPER_M,
-    UPDOWN_PHYSICAL_ZERO_OFFSET_M,
     ethercat_to_ros_position,
     logical_to_physical_updown,
+    physical_to_logical_updown,
     require_updown_logical_in_range,
     ros_to_ethercat_position,
 )
@@ -177,7 +177,7 @@ class JogToPose(Node):
             if name in EXECUTION_JOINT_NAMES:
                 values[name] = ethercat_to_ros_position(name, raw_value)
             elif name == 'updown':
-                logical_m = raw_value - UPDOWN_PHYSICAL_ZERO_OFFSET_M
+                logical_m = physical_to_logical_updown(raw_value)
                 values[name] = logical_m
                 if not (UPDOWN_LOGICAL_LOWER_M - 1e-9 <= logical_m <= UPDOWN_LOGICAL_UPPER_M + 1e-9):
                     updown_out_of_contract = True

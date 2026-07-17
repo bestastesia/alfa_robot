@@ -60,6 +60,8 @@ from alfa_robot_execution_bridge.joints import (  # noqa: E402
     EXECUTION_JOINT_NAMES,
     REAL_CONTROLLER_JOINT_NAMES,
     ethercat_to_ros_position,
+    logical_to_physical_updown,
+    physical_to_logical_updown,
     ros_to_ethercat_position,
 )
 import extract_stage_monitor_console as monitor  # noqa: E402
@@ -603,7 +605,9 @@ class LiveExecutionClient(Node):
             if stop.is_set():
                 return
             msg = Float64MultiArray()
-            msg.data = [float(updown_m)]
+            # updown_m 是 URDF/MoveIt 逻辑值；下发电机前统一走 joints.py 收口换算
+            # (physical = logical - 0.08) 并夹紧到电机物理行程 [0, 0.7]，绝不下发超程指令。
+            msg.data = [logical_to_physical_updown(float(updown_m))]
             self.updown_pub.publish(msg)
 
 
@@ -637,8 +641,8 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         ik_top_position_tolerance=getattr(args, "ik_top_position_tolerance", 0.04),
         ik_top_orientation_tolerance_deg=getattr(args, "ik_top_orientation_tolerance_deg", 7.0),
         ik_h_candidate_count=getattr(args, "ik_h_candidate_count", 64),
-        ik_h_lower=getattr(args, "ik_h_lower", 0.0),
-        ik_h_upper=getattr(args, "ik_h_upper", 0.7),
+        ik_h_lower=getattr(args, "ik_h_lower", 0.08),
+        ik_h_upper=getattr(args, "ik_h_upper", 0.78),
         ik_h_step=getattr(args, "ik_h_step", 0.01),
         ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", True),
         ik_seed_count=getattr(args, "ik_seed_count", 32),
@@ -895,8 +899,8 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
-    parser.add_argument("--ik-h-lower", type=float, default=0.0)
-    parser.add_argument("--ik-h-upper", type=float, default=0.7)
+    parser.add_argument("--ik-h-lower", type=float, default=0.08)
+    parser.add_argument("--ik-h-upper", type=float, default=0.78)
     parser.add_argument("--ik-h-step", type=float, default=0.01)
     parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--ik-seed-count", type=int, default=32)
@@ -1121,12 +1125,19 @@ def main(default_executor_mode: str = "mock") -> int:
     try:
         print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}", flush=True)
         if args.fixed_updown_from_joint_states:
-            args.fixed_updown = read_joint_position_once(
+            raw_updown_physical = read_joint_position_once(
                 args.updown_joint_state_topic,
                 "updown",
                 args.joint_state_timeout_s,
             )
-            print(f"从 {args.updown_joint_state_topic} 读取 fixed_updown={args.fixed_updown:.6f}m", flush=True)
+            # /canopen/joint_states 反馈的是电机物理值；转成 URDF/MoveIt 逻辑值
+            # (logical = physical + 0.08) 再交给规划,与下发时的 logical->physical 收口对称。
+            args.fixed_updown = physical_to_logical_updown(raw_updown_physical)
+            print(
+                f"从 {args.updown_joint_state_topic} 读取 updown 电机物理值="
+                f"{raw_updown_physical:.6f}m -> 逻辑值={args.fixed_updown:.6f}m",
+                flush=True,
+            )
         if args.executor_mode == "mock":
             bridge = start_execution_bridge(run_dir, args.hz, "execution_bridge.yaml")
             print("mock执行桥启动中。", flush=True)

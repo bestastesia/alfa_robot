@@ -34,7 +34,7 @@ def generate_launch_description():
             DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
             DeclareLaunchArgument("run_dual_grasp_task_service_name", default_value="/robot_motion/run_dual_grasp_task"),
             DeclareLaunchArgument("task_receipt_topic", default_value="/robot_motion/task_receipt"),
-            DeclareLaunchArgument("default_fixed_updown", default_value="0.0"),
+            DeclareLaunchArgument("default_fixed_updown", default_value="0.08"),
             DeclareLaunchArgument("default_candidate_limit", default_value="8"),
             DeclareLaunchArgument("default_planning_mode", default_value="shortcut"),
             DeclareLaunchArgument("plan_trajectory_duration_s", default_value="0.0"),
