@@ -30,6 +30,7 @@ struct ContainerPanel
   std::string id;
   std::array<double, 3> center;
   std::array<double, 3> size;
+  double yaw = 0.0;  // 绕 Z 轴，弧度；0 时是轴对齐墙板，与改造前行为一致
 };
 
 struct StaticBoxObstacle
@@ -52,6 +53,19 @@ struct AxisAlignedBox
   std::array<double, 3> center;
   std::array<double, 3> size;
 };
+
+// 绕 Z 轴旋转的长方体（车体/集装箱地面法线始终朝上，roll/pitch 恒为 0）。
+// yaw == 0 时退化为轴对齐 box，与 AxisAlignedBox 语义一致。
+struct OrientedBox
+{
+  std::array<double, 3> center;
+  std::array<double, 3> size;
+  double yaw = 0.0;
+};
+
+// aabb 与绕 Z 轴旋转的 obb 是否重叠。Z 方向不受 yaw 影响，按 1D 区间独立判断；
+// X-Y 平面内退化为"轴对齐矩形 vs 旋转矩形"的 2D 分离轴测试。
+bool aabb_overlaps_oriented_box(const AxisAlignedBox& aabb, const OrientedBox& obb);
 
 std::string trim_copy(std::string value);
 

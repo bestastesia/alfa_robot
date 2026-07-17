@@ -440,10 +440,9 @@ def log_sequence_replay(
                 f"loaded_success={record.get('loaded_plan_success')} "
                 f"reason={record.get('loaded_plan_failure_reason') or record.get('failure_reason')}"
             )
-    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
-    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
+    container_panels = snapshot.get("container_panels")
     sample = sample_start
     previous_positions: list[float] | None = None
     previous_joint_names: list[str] | None = None
@@ -466,8 +465,7 @@ def log_sequence_replay(
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
-            monitor.log_default_container(scene_y_shift)
-            monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+            monitor.log_container_panels(container_panels)
             monitor.log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = monitor.joint_dict_from_stage_point(stage, point)
@@ -510,18 +508,16 @@ def log_raw_ik_records(
     sample_start: int,
 ) -> int:
     records = [record for record in snapshot.get("records", []) if isinstance(record, dict)]
-    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
-    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
+    container_panels = snapshot.get("container_panels")
     sample = sample_start
     for record_index, record in enumerate(records):
         joint_map = record.get("state", {}).get("joint_map", {})
         if not isinstance(joint_map, dict) or not joint_map:
             continue
         helpers.set_sample_time(sample)
-        monitor.log_default_container(scene_y_shift)
-        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_container_panels(container_panels)
         log_robot_state_display(
             helpers,
             robot,
@@ -555,11 +551,10 @@ def log_scene_rejected_ik_records(
     sample_start: int,
 ) -> int:
     records = [record for record in snapshot.get("scene_rejected_records", []) if isinstance(record, dict)]
-    scene_y_shift = float(snapshot.get("scene_y_shift", display_scene_y_shift(args)))
-    box_front_x = float(snapshot.get("box_front_x", effective_box_front_x(args, getattr(args, "grasp_mode", "front"))))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
     attached_boxes = snapshot.get("attached_boxes", [])
+    container_panels = snapshot.get("container_panels")
     sample = sample_start
     for record_index, record in enumerate(records):
         joint_map = record.get("state", {}).get("joint_map", {})
@@ -568,8 +563,7 @@ def log_scene_rejected_ik_records(
         joints = {str(name): float(value) for name, value in joint_map.items()}
         reason = str(record.get("scene_rejection_reason", "ik_candidate_scene_rejected"))
         helpers.set_sample_time(sample)
-        monitor.log_default_container(scene_y_shift)
-        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_container_panels(container_panels)
         monitor.log_static_box_obstacles(snapshot.get("static_box_obstacles"))
         log_robot_state_display(helpers, robot, joints, "monitor/robot", args)
         log_attached_boxes_display(robot, joints, attached_boxes, args)
@@ -607,9 +601,10 @@ def log_failure_marker(
     output: str,
 ) -> int:
     helpers.set_sample_time(sample_start)
-    monitor.log_default_container(args.scene_y_shift)
+    # 规划失败时没有 snapshot，也就没有权威的集装箱碰撞几何可画；不再画硬编码的
+    # 集装箱壳/5x5 箱堆（那属于"仅为好看"的伪几何）。仅保留下方的目标点标记，
+    # 目标点由 all_boxes 查表得到，与规划器 make_boxes 推导抓取目标同源。
     box_front_x = effective_box_front_x(args, getattr(args, "grasp_mode", "front"))
-    monitor.log_box_stack(box_front_x, left_id, right_id, args.scene_y_shift)
     boxes = monitor.all_boxes(box_front_x, args.scene_y_shift)
     target_centers = []
     target_labels = []

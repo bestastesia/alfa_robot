@@ -21,6 +21,21 @@ int main()
   assert(panels[0].id == "container_left_wall");
   assert(panels[1].id == "container_right_wall");
   assert(panels[2].id == "container_ceiling");
+  assert(panels[0].yaw == 0.0);
+
+  // yaw != 0 时，墙板中心应绕 (center_x, center_y) 旋转；ceiling 本身在旋转中心正上方，
+  // 中心位置不受旋转影响，但 yaw 字段仍应写入。
+  ContainerGeometryConfig rotated_container = container;
+  rotated_container.yaw = M_PI_2;  // 90 度
+  const auto rotated_panels = make_container_panels(rotated_container);
+  const double half_width = container.width * 0.5 + container.wall_thickness * 0.5;
+  // 未旋转时 left_wall 中心在 (center_x, center_y + half_width)；绕 (center_x, center_y)
+  // 转 90 度后应变成 (center_x - half_width, center_y)。
+  assert(std::abs(rotated_panels[0].center[0] - (container.center_x - half_width)) < 1e-9);
+  assert(std::abs(rotated_panels[0].center[1] - container.center_y) < 1e-9);
+  assert(std::abs(rotated_panels[0].yaw - M_PI_2) < 1e-9);
+  assert(std::abs(rotated_panels[2].center[0] - container.center_x) < 1e-9);
+  assert(std::abs(rotated_panels[2].center[1] - container.center_y) < 1e-9);
 
   BoxWallGeometryConfig wall;
   wall.box_front_x = 0.925;
@@ -128,6 +143,72 @@ int main()
   reason.clear();
   assert(carried_box_clear_rear_guards(a, "carried_box", {static_obstacle}, &reason));
   assert(reason.empty());
+
+  // aabb_overlaps_oriented_box: yaw=0 时应与 aabb_overlaps 数值一致（回归保护）。
+  {
+    const OrientedBox obb_zero_yaw{b.center, b.size, 0.0};
+    assert(aabb_overlaps_oriented_box(a, obb_zero_yaw) == aabb_overlaps(a, b));
+    const OrientedBox obb_zero_yaw_far{c.center, c.size, 0.0};
+    assert(aabb_overlaps_oriented_box(a, obb_zero_yaw_far) == aabb_overlaps(a, c));
+  }
+
+  // 一个绕 Z 轴转 45 度的 1x1x1 方块，中心在 (1.2, 0, 0)：旋转后对角线沿 X 轴伸展到
+  // 约 1.2 - 1/sqrt(2) ≈ 0.49，与轴对齐时 [0.7, 1.7] 相比会更靠近原点，
+  // 因此一个中心在原点、半宽 0.5 的 aabb（覆盖 [-0.5,0.5]）不会碰到它；
+  // 但把 obb 中心拉近到 (0.9, 0, 0) 后，旋转后的角点会伸入 aabb 范围，应判定重叠。
+  {
+    const AxisAlignedBox unit_aabb{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
+    const OrientedBox far_rotated{{1.2, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    assert(!aabb_overlaps_oriented_box(unit_aabb, far_rotated));
+    const OrientedBox near_rotated{{0.9, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    assert(aabb_overlaps_oriented_box(unit_aabb, near_rotated));
+  }
+
+  // Z 方向不受 yaw 影响：X-Y 平面完全重合但 Z 方向分离时应判定不重叠。
+  {
+    const AxisAlignedBox low_box{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
+    const OrientedBox high_obb{{0.0, 0.0, 5.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    assert(!aabb_overlaps_oriented_box(low_box, high_obb));
+  }
+
+  // carried_box_clear_obstacles: panel 带 yaw 时应走 OBB 判定路径而不是把 yaw 当 0 处理。
+  {
+    reason.clear();
+    const ContainerPanel rotated_ceiling{
+      "container_ceiling_rotated", {1.2, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    assert(!carried_box_clear_obstacles(a, "carried_box", {}, {rotated_ceiling}, &reason));
+    assert(reason == "carried_box overlaps container_ceiling_rotated");
+
+    reason.clear();
+    const ContainerPanel far_rotated_ceiling{
+      "container_ceiling_far", {2.0, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    assert(carried_box_clear_obstacles(a, "carried_box", {}, {far_rotated_ceiling}, &reason));
+    assert(reason.empty());
+  }
+
+  // compute_container_pose_relative_to_vehicle: 车体在原点不转时，结果应等于集装箱的
+  // map 绝对坐标（向后兼容基准，对应改动前 container_center_x/y 语义）。
+  {
+    const auto identity_result = compute_container_pose_relative_to_vehicle(
+      Eigen::Isometry3d::Identity(), 0.8, 0.3, 0.1);
+    assert(std::abs(identity_result.x - 0.8) < 1e-9);
+    assert(std::abs(identity_result.y - 0.3) < 1e-9);
+    assert(std::abs(identity_result.yaw - 0.1) < 1e-9);
+  }
+
+  // 车体平移 (1.0, 0.0) 且转 90 度时：集装箱在 map 下位于车体正前方 (2.0, 0.0)，
+  // 相对车体系应该在车体的左侧方向（车体转 90 度后，原来的 +X 变成车体系下的 +Y）。
+  {
+    Eigen::Isometry3d vehicle_pose_map = Eigen::Isometry3d::Identity();
+    vehicle_pose_map.translation() = Eigen::Vector3d(1.0, 0.0, 0.0);
+    vehicle_pose_map.linear() =
+      Eigen::AngleAxisd(M_PI_2, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+    const auto result = compute_container_pose_relative_to_vehicle(
+      vehicle_pose_map, 2.0, 0.0, M_PI_2);
+    assert(std::abs(result.x - 0.0) < 1e-9);
+    assert(std::abs(result.y - (-1.0)) < 1e-9);
+    assert(std::abs(result.yaw - 0.0) < 1e-9);
+  }
 
   std::cout << "scene geometry smoke passed\n";
   return 0;

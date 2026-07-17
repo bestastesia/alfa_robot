@@ -30,6 +30,7 @@ nlohmann::json container_panels_json(const std::vector<ContainerPanel>& panels)
       {"id", panel.id},
       {"center", {panel.center[0], panel.center[1], panel.center[2]}},
       {"size", {panel.size[0], panel.size[1], panel.size[2]}},
+      {"yaw", panel.yaw},
     });
   }
   return out;

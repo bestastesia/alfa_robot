@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-ZERO_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 
 
 def generate_launch_description():
@@ -74,8 +74,8 @@ def generate_launch_description():
         DeclareLaunchArgument("ik_joint5_limit_weight", default_value="1.5"),
         DeclareLaunchArgument("ik_joint6_limit_weight", default_value="1.2"),
         DeclareLaunchArgument("ik_joint_limit_free_ratio", default_value="0.6"),
-        DeclareLaunchArgument("loaded_left_pose_family_deg", default_value=ZERO_LOADED_POSE_FAMILY_DEG),
-        DeclareLaunchArgument("loaded_right_pose_family_deg", default_value=ZERO_LOADED_POSE_FAMILY_DEG),
+        DeclareLaunchArgument("loaded_left_pose_family_deg", default_value=DEFAULT_LOADED_POSE_FAMILY_DEG),
+        DeclareLaunchArgument("loaded_right_pose_family_deg", default_value=DEFAULT_LOADED_POSE_FAMILY_DEG),
         DeclareLaunchArgument("loaded_preferred_pose_index", default_value="0"),
         DeclareLaunchArgument("front_z_reach_lower", default_value="0.45"),
         DeclareLaunchArgument("front_z_reach_upper", default_value="1.25"),
@@ -87,11 +87,19 @@ def generate_launch_description():
         DeclareLaunchArgument("ik_fallback_enabled", default_value="false"),
         DeclareLaunchArgument("enable_container_obstacle", default_value="true"),
         DeclareLaunchArgument("container_frame", default_value="world"),
+        DeclareLaunchArgument("container_track_vehicle_drift", default_value="false"),
+        DeclareLaunchArgument("vehicle_drift_global_frame", default_value="map"),
+        DeclareLaunchArgument("vehicle_drift_translation_threshold_m", default_value="0.05"),
+        DeclareLaunchArgument("vehicle_drift_rotation_threshold_rad", default_value="0.02"),
         DeclareLaunchArgument("container_length", default_value="4.0"),
         DeclareLaunchArgument("container_width", default_value="2.2"),
         DeclareLaunchArgument("container_height", default_value="2.4"),
         DeclareLaunchArgument("container_center_x", default_value="0.8"),
         DeclareLaunchArgument("container_center_y", default_value="0.0"),
+        DeclareLaunchArgument("container_pose_dynamic", default_value="false"),
+        DeclareLaunchArgument("container_pose_map_x", default_value="0.8"),
+        DeclareLaunchArgument("container_pose_map_y", default_value="0.0"),
+        DeclareLaunchArgument("container_pose_map_yaw", default_value="0.0"),
         DeclareLaunchArgument("container_floor_z", default_value="0.0"),
         DeclareLaunchArgument("container_wall_thickness", default_value="0.02"),
         DeclareLaunchArgument("enable_attached_box_collision", default_value="true"),
@@ -292,11 +300,19 @@ def generate_launch_description():
                 "ik_fallback_enabled": ParameterValue(LaunchConfiguration("ik_fallback_enabled"), value_type=bool),
                 "enable_container_obstacle": ParameterValue(LaunchConfiguration("enable_container_obstacle"), value_type=bool),
                 "container_frame": LaunchConfiguration("container_frame"),
+                "container_track_vehicle_drift": ParameterValue(LaunchConfiguration("container_track_vehicle_drift"), value_type=bool),
+                "vehicle_drift_global_frame": LaunchConfiguration("vehicle_drift_global_frame"),
+                "vehicle_drift_translation_threshold_m": ParameterValue(LaunchConfiguration("vehicle_drift_translation_threshold_m"), value_type=float),
+                "vehicle_drift_rotation_threshold_rad": ParameterValue(LaunchConfiguration("vehicle_drift_rotation_threshold_rad"), value_type=float),
                 "container_length": ParameterValue(LaunchConfiguration("container_length"), value_type=float),
                 "container_width": ParameterValue(LaunchConfiguration("container_width"), value_type=float),
                 "container_height": ParameterValue(LaunchConfiguration("container_height"), value_type=float),
                 "container_center_x": ParameterValue(LaunchConfiguration("container_center_x"), value_type=float),
                 "container_center_y": ParameterValue(LaunchConfiguration("container_center_y"), value_type=float),
+                "container_pose_dynamic": ParameterValue(LaunchConfiguration("container_pose_dynamic"), value_type=bool),
+                "container_pose_map_x": ParameterValue(LaunchConfiguration("container_pose_map_x"), value_type=float),
+                "container_pose_map_y": ParameterValue(LaunchConfiguration("container_pose_map_y"), value_type=float),
+                "container_pose_map_yaw": ParameterValue(LaunchConfiguration("container_pose_map_yaw"), value_type=float),
                 "container_floor_z": ParameterValue(LaunchConfiguration("container_floor_z"), value_type=float),
                 "container_wall_thickness": ParameterValue(LaunchConfiguration("container_wall_thickness"), value_type=float),
                 "enable_attached_box_collision": ParameterValue(LaunchConfiguration("enable_attached_box_collision"), value_type=bool),
@@ -415,7 +431,10 @@ def generate_launch_description():
     move_group_launch = generate_move_group_launch(moveit_config)
     launch_dir = moveit_config.package_path / "launch"
     support_nodes = [
-        IncludeLaunchDescription(PythonLaunchDescriptionSource(str(launch_dir / "static_virtual_joint_tfs.launch.py"))),
+        # static_virtual_joint_tfs.launch.py 故意不启动：它是 MoveIt 根据 SRDF virtual_joint
+        # 自动生成的 identity（Z=0）world->base_link 静态发布者，会与 rsp.launch.py（robot_state_publisher
+        # 按 URDF 发布，Z=0.202094）竞争同一条 TF 边，谁生效取决于启动时序。robot_state_publisher
+        # 是唯一权威来源，这里保留 rsp.launch.py 即可。
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(launch_dir / "rsp.launch.py"))),
         Node(
             package="controller_manager",

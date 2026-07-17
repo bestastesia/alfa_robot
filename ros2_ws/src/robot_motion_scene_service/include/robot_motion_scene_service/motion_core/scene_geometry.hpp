@@ -14,6 +14,7 @@ struct ContainerGeometryConfig
 {
   double center_x = 0.0;
   double center_y = 0.0;
+  double yaw = 0.0;  // 绕 Z 轴，弧度；集装箱相对 config.frame（world）的朝向
   double width = 2.2;
   double height = 2.4;
   double length = 8.0;
@@ -46,6 +47,23 @@ struct CarriedBoxGeometryConfig
 };
 
 std::vector<ContainerPanel> make_container_panels(const ContainerGeometryConfig& config);
+
+// 集装箱相对车体（world 系）的动态位姿：x/y 为平移分量，yaw 为绕 Z 轴的朝向差。
+struct ContainerRelativePose
+{
+  double x = 0.0;
+  double y = 0.0;
+  double yaw = 0.0;
+};
+
+// 给定车体在 map 下的位姿（vehicle_pose_map，即 map -> world 变换本身）和集装箱在
+// map 下的绝对位姿 (container_map_x/y/yaw)，计算集装箱相对车体（world 系）的位姿。
+// 车体在原点且 yaw=0 时，结果退化为集装箱的 map 绝对坐标（向后兼容基准）。
+ContainerRelativePose compute_container_pose_relative_to_vehicle(
+  const Eigen::Isometry3d& vehicle_pose_map,
+  double container_map_x,
+  double container_map_y,
+  double container_map_yaw);
 
 std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   int left_box_id,

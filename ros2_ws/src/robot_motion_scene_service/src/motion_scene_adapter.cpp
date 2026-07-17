@@ -5,6 +5,7 @@
 #include <shape_msgs/msg/solid_primitive.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <thread>
 
 namespace alfa_robot::motion
@@ -21,12 +22,21 @@ std::vector<ContainerPanel> MotionSceneAdapter::containerPanels() const
   return make_container_panels(config_.container);
 }
 
+void MotionSceneAdapter::updateContainerGeometry(ContainerGeometryConfig container)
+{
+  config_.container = std::move(container);
+}
+
 moveit_msgs::msg::CollisionObject MotionSceneAdapter::makeCollisionObject(
   const std::string& id,
   const std::array<double, 3>& center,
   const std::array<double, 3>& size,
-  int operation) const
+  int operation,
+  double yaw) const
 {
+  // MoveIt 的 planning scene 只认识 robot model 自带的 frame（SRDF virtual_joint 的
+  // parent_frame，即 config_.frame == "world"），不能写成 "map" 之类的任意 TF frame，
+  // 所以这里始终以 config_.frame 写入；车体位姿关联跟踪在 apply* 成功后单独记录。
   moveit_msgs::msg::CollisionObject object;
   object.header.frame_id = config_.frame;
   object.id = id;
@@ -36,9 +46,38 @@ moveit_msgs::msg::CollisionObject MotionSceneAdapter::makeCollisionObject(
     primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
     primitive.dimensions = {size[0], size[1], size[2]};
     object.primitives.push_back(primitive);
-    object.primitive_poses.push_back(make_identity_pose(center[0], center[1], center[2]));
+    if (std::abs(yaw) < 1e-9) {
+      object.primitive_poses.push_back(make_identity_pose(center[0], center[1], center[2]));
+    } else {
+      geometry_msgs::msg::Pose pose = make_identity_pose(center[0], center[1], center[2]);
+      pose.orientation.w = std::cos(0.5 * yaw);
+      pose.orientation.z = std::sin(0.5 * yaw);
+      object.primitive_poses.push_back(pose);
+    }
   }
   return object;
+}
+
+void MotionSceneAdapter::recordVehiclePoseAtApply()
+{
+  if (config_.vehicle_pose_provider) {
+    vehicle_pose_at_last_apply_ = config_.vehicle_pose_provider();
+  }
+}
+
+bool MotionSceneAdapter::staticObstaclesStale(
+  double translation_threshold_m,
+  double rotation_threshold_rad) const
+{
+  if (!config_.vehicle_pose_provider || !vehicle_pose_at_last_apply_.has_value()) return false;
+
+  const Eigen::Isometry3d current_pose = config_.vehicle_pose_provider();
+  const Eigen::Isometry3d drift = vehicle_pose_at_last_apply_->inverse() * current_pose;
+
+  const double translation_drift = drift.translation().norm();
+  const Eigen::AngleAxisd rotation_drift(drift.rotation());
+  return translation_drift > translation_threshold_m ||
+         std::abs(rotation_drift.angle()) > rotation_threshold_rad;
 }
 
 bool MotionSceneAdapter::applyContainerObstacles()
@@ -52,9 +91,12 @@ bool MotionSceneAdapter::applyContainerObstacles()
       panel.id,
       panel.center,
       panel.size,
-      moveit_msgs::msg::CollisionObject::ADD));
+      moveit_msgs::msg::CollisionObject::ADD,
+      panel.yaw));
   }
-  return planning_scene_interface_->applyCollisionObjects(objects);
+  if (!planning_scene_interface_->applyCollisionObjects(objects)) return false;
+  recordVehiclePoseAtApply();
+  return true;
 }
 
 void MotionSceneAdapter::clearAppliedStaticBoxObstacles()
@@ -102,6 +144,7 @@ bool MotionSceneAdapter::applyStaticBoxObstacles()
   for (const auto& object : objects) {
     applied_static_box_obstacle_ids_.push_back(object.id);
   }
+  recordVehiclePoseAtApply();
   return true;
 }
 

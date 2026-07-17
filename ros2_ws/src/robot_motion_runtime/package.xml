@@ -11,9 +11,11 @@
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
   <depend>trajectory_msgs</depend>
   <depend>control_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>tf2_ros</depend>
   <depend>robot_motion_interfaces</depend>
 
   <exec_depend>launch</exec_depend>

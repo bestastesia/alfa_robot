@@ -34,6 +34,19 @@ void add_static_wall_piece(
   });
 }
 
+// 把本地偏移量 (local_x, local_y)（未旋转时相对集装箱中心的偏移）绕 Z 轴转 yaw，
+// 再叠加到 (center_x, center_y) 上，得到旋转后墙板在 world 系下的中心。
+std::array<double, 2> rotate_panel_offset(
+  double center_x, double center_y, double local_x, double local_y, double yaw)
+{
+  const double cos_yaw = std::cos(yaw);
+  const double sin_yaw = std::sin(yaw);
+  return {
+    center_x + local_x * cos_yaw - local_y * sin_yaw,
+    center_y + local_x * sin_yaw + local_y * cos_yaw,
+  };
+}
+
 }  // namespace
 
 std::vector<ContainerPanel> make_container_panels(const ContainerGeometryConfig& config)
@@ -41,24 +54,52 @@ std::vector<ContainerPanel> make_container_panels(const ContainerGeometryConfig&
   const double half_width = config.width * 0.5;
   const double half_thickness = config.wall_thickness * 0.5;
   const double z_center = config.floor_z + config.height * 0.5;
+
+  const auto left_center = rotate_panel_offset(
+    config.center_x, config.center_y, 0.0, half_width + half_thickness, config.yaw);
+  const auto right_center = rotate_panel_offset(
+    config.center_x, config.center_y, 0.0, -(half_width + half_thickness), config.yaw);
+  const auto ceiling_center = rotate_panel_offset(
+    config.center_x, config.center_y, 0.0, 0.0, config.yaw);
+
   return {
     {
       "container_left_wall",
-      {config.center_x, config.center_y + half_width + half_thickness, z_center},
+      {left_center[0], left_center[1], z_center},
       {config.length, config.wall_thickness, config.height},
+      config.yaw,
     },
     {
       "container_right_wall",
-      {config.center_x, config.center_y - half_width - half_thickness, z_center},
+      {right_center[0], right_center[1], z_center},
       {config.length, config.wall_thickness, config.height},
+      config.yaw,
     },
     {
       "container_ceiling",
-      {config.center_x, config.center_y, config.floor_z + config.height + half_thickness},
+      {ceiling_center[0], ceiling_center[1], config.floor_z + config.height + half_thickness},
       {config.length, config.width + 2.0 * config.wall_thickness, config.wall_thickness},
+      config.yaw,
     },
   };
 }
+
+ContainerRelativePose compute_container_pose_relative_to_vehicle(
+  const Eigen::Isometry3d& vehicle_pose_map,
+  double container_map_x,
+  double container_map_y,
+  double container_map_yaw)
+{
+  Eigen::Isometry3d container_pose_map = Eigen::Isometry3d::Identity();
+  container_pose_map.translation() = Eigen::Vector3d(container_map_x, container_map_y, 0.0);
+  container_pose_map.linear() =
+    Eigen::AngleAxisd(container_map_yaw, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+
+  const Eigen::Isometry3d relative = vehicle_pose_map.inverse() * container_pose_map;
+  const double yaw = std::atan2(relative.linear()(1, 0), relative.linear()(0, 0));
+  return {relative.translation().x(), relative.translation().y(), yaw};
+}
+
 
 std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   int left_box_id,
@@ -319,10 +360,18 @@ bool carried_box_clear_obstacles(
   }
 
   for (const auto& panel : container_panels) {
-    const AxisAlignedBox panel_aabb{panel.center, panel.size};
-    if (aabb_overlaps(carried_box, panel_aabb)) {
-      if (reason) *reason = carried_box_id + " overlaps " + panel.id;
-      return false;
+    if (std::abs(panel.yaw) < 1e-6) {
+      const AxisAlignedBox panel_aabb{panel.center, panel.size};
+      if (aabb_overlaps(carried_box, panel_aabb)) {
+        if (reason) *reason = carried_box_id + " overlaps " + panel.id;
+        return false;
+      }
+    } else {
+      const OrientedBox panel_obb{panel.center, panel.size, panel.yaw};
+      if (aabb_overlaps_oriented_box(carried_box, panel_obb)) {
+        if (reason) *reason = carried_box_id + " overlaps " + panel.id;
+        return false;
+      }
     }
   }
 

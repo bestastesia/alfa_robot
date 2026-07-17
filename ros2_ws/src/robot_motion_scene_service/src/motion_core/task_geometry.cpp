@@ -1,9 +1,72 @@
 #include "robot_motion_scene_service/motion_core/task_geometry.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace alfa_robot::motion
 {
+
+namespace
+{
+
+// 把矩形 (center, half_extent, axis_x/axis_y 是矩形自身的两条正交边方向) 的四个角点
+// 投影到 axis 上，返回 [min, max]。axis 必须是单位向量。
+std::pair<double, double> project_rectangle(
+  const std::array<double, 2>& center,
+  const std::array<double, 2>& half_extent,
+  const std::array<double, 2>& axis_x,
+  const std::array<double, 2>& axis_y,
+  const std::array<double, 2>& axis)
+{
+  const double center_proj = center[0] * axis[0] + center[1] * axis[1];
+  const double radius =
+    std::abs(half_extent[0] * (axis_x[0] * axis[0] + axis_x[1] * axis[1])) +
+    std::abs(half_extent[1] * (axis_y[0] * axis[0] + axis_y[1] * axis[1]));
+  return {center_proj - radius, center_proj + radius};
+}
+
+bool intervals_overlap(const std::pair<double, double>& lhs, const std::pair<double, double>& rhs)
+{
+  return lhs.first <= rhs.second && lhs.second >= rhs.first;
+}
+
+}  // namespace
+
+bool aabb_overlaps_oriented_box(const AxisAlignedBox& aabb, const OrientedBox& obb)
+{
+  const double aabb_z_min = aabb.center[2] - 0.5 * aabb.size[2];
+  const double aabb_z_max = aabb.center[2] + 0.5 * aabb.size[2];
+  const double obb_z_min = obb.center[2] - 0.5 * obb.size[2];
+  const double obb_z_max = obb.center[2] + 0.5 * obb.size[2];
+  if (aabb_z_max < obb_z_min || obb_z_max < aabb_z_min) {
+    return false;
+  }
+
+  const std::array<double, 2> aabb_center{aabb.center[0], aabb.center[1]};
+  const std::array<double, 2> aabb_half{0.5 * aabb.size[0], 0.5 * aabb.size[1]};
+  const std::array<double, 2> aabb_axis_x{1.0, 0.0};
+  const std::array<double, 2> aabb_axis_y{0.0, 1.0};
+
+  const std::array<double, 2> obb_center{obb.center[0], obb.center[1]};
+  const std::array<double, 2> obb_half{0.5 * obb.size[0], 0.5 * obb.size[1]};
+  const std::array<double, 2> obb_axis_x{std::cos(obb.yaw), std::sin(obb.yaw)};
+  const std::array<double, 2> obb_axis_y{-std::sin(obb.yaw), std::cos(obb.yaw)};
+
+  const std::array<std::array<double, 2>, 4> axes{
+    aabb_axis_x, aabb_axis_y, obb_axis_x, obb_axis_y};
+
+  for (const auto& axis : axes) {
+    const auto aabb_interval =
+      project_rectangle(aabb_center, aabb_half, aabb_axis_x, aabb_axis_y, axis);
+    const auto obb_interval =
+      project_rectangle(obb_center, obb_half, obb_axis_x, obb_axis_y, axis);
+    if (!intervals_overlap(aabb_interval, obb_interval)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 std::string trim_copy(std::string value)
 {

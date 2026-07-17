@@ -468,6 +468,9 @@ class LiveExecutionClient(Node):
         self.helpers = helpers
         self.robot = robot
         self.snapshot = snapshot
+        # 集装箱壳几何在一次流程内恒定，取 snapshot 顶层 container_panels（与 MoveIt
+        # 规划场景同源，含 yaw），可视化不再硬编码 center_x/width/height。
+        self.container_panels = snapshot.get("container_panels")
         self.run_dir = run_dir
         self.box_front_x = box_front_x
         self.scene_y_shift = scene_y_shift
@@ -496,25 +499,13 @@ class LiveExecutionClient(Node):
     def log_static_scene(self) -> None:
         monitor.rr.log("monitor", monitor.rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
         self.helpers.log_robot_static_model(self.robot, "monitor/robot", log_meshes=True)
-        monitor.log_default_container(self.scene_y_shift)
-        monitor.log_box_stack(
-            self.box_front_x,
-            int(self.snapshot.get("left_box_id", 6)),
-            int(self.snapshot.get("right_box_id", 8)),
-            self.scene_y_shift,
-        )
+        monitor.log_container_panels(self.container_panels)
 
     def log_positions(self, positions: list[float], context: dict[str, Any] | None = None) -> None:
         context = context or self.last_context
         with self._lock:
             self.helpers.set_sample_time(self.sample)
-            monitor.log_default_container(self.scene_y_shift)
-            monitor.log_box_stack(
-                self.box_front_x,
-                int(self.snapshot.get("left_box_id", 6)),
-                int(self.snapshot.get("right_box_id", 8)),
-                self.scene_y_shift,
-            )
+            monitor.log_container_panels(self.container_panels)
             monitor.log_static_box_obstacles(context.get("static_box_obstacles"))
             joint_map = execution_to_rerun_joint_map(positions, updown=float(context.get("updown", 0.3)))
             self.helpers.log_robot_state(self.robot, joint_map, "monitor/robot")

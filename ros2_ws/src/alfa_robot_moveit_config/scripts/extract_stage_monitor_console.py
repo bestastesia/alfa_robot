@@ -557,53 +557,42 @@ def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, floa
     return out
 
 
-def log_box_stack(
-    box_x: float,
-    left_box_id: int,
-    right_box_id: int,
-    y_shift: float = 0.0,
-    *,
-    static: bool = False,
-) -> None:
+def log_container_panels(panels: list[dict[str, Any]] | None, *, static: bool = False) -> None:
+    """绘制集装箱壳碰撞几何。
+
+    数据必须来自规划节点写入 snapshot 的 ``container_panels`` 字段——它就是
+    ``MotionSceneAdapter::containerPanels()`` 实际写入 MoveIt PlanningScene 的同一份
+    碰撞几何（含绕 Z 轴 ``yaw``）。可视化侧不再重新计算/硬编码任何集装箱尺寸；
+    若 snapshot 没有该字段（例如旧快照），则不绘制任何集装箱，避免画出与真实
+    碰撞检测不一致的伪几何。
+    """
+    if not panels:
+        rr.log("monitor/scene/container", rr.Clear(recursive=True))
+        return
     centers = []
     half_sizes = []
+    rotations = []
     colors = []
     labels = []
-    for box_id, (x, y, z) in sorted(all_boxes(box_x, y_shift).items()):
-        centers.append([x + 0.15, y, z])
-        half_sizes.append([0.15, 0.2, 0.2])
-        if box_id in (left_box_id, right_box_id):
-            colors.append([80, 240, 100, 190])
-        else:
-            colors.append([255, 180, 60, 125])
-        labels.append(str(box_id))
-    rr.log(
-        "monitor/scene/boxes",
-        rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels),
-        static=static,
-    )
-
-
-def log_default_container(y_shift: float = 0.0, *, static: bool = False) -> None:
-    thickness = 0.02
-    length = 4.0
-    width = 2.2
-    height = 2.4
-    center_x = 0.8
-    center_y = y_shift
-    floor_z = 0.0
-    panels = [
-        ([center_x, center_y + width * 0.5 + thickness * 0.5, floor_z + height * 0.5], [length, thickness, height], "left_wall"),
-        ([center_x, center_y - width * 0.5 - thickness * 0.5, floor_z + height * 0.5], [length, thickness, height], "right_wall"),
-        ([center_x, center_y, floor_z + height + thickness * 0.5], [length, width + 2.0 * thickness, thickness], "ceiling"),
-    ]
+    for panel in panels:
+        center = panel.get("center", [])
+        size = panel.get("size", [])
+        if len(center) != 3 or len(size) != 3:
+            continue
+        centers.append([float(value) for value in center])
+        half_sizes.append([float(value) * 0.5 for value in size])
+        yaw = float(panel.get("yaw", 0.0))
+        rotations.append(rr.RotationAxisAngle(axis=[0.0, 0.0, 1.0], radians=yaw))
+        colors.append([80, 170, 255, 45])
+        labels.append(str(panel.get("id", "container_panel")))
     rr.log(
         "monitor/scene/container",
         rr.Boxes3D(
-            centers=[panel[0] for panel in panels],
-            half_sizes=[[value * 0.5 for value in panel[1]] for panel in panels],
-            colors=[[80, 170, 255, 45] for _ in panels],
-            labels=[panel[2] for panel in panels],
+            centers=centers,
+            half_sizes=half_sizes,
+            rotation_axis_angles=rotations,
+            colors=colors,
+            labels=labels,
         ),
         static=static,
     )
@@ -879,9 +868,8 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
         rr.log("monitor", rr.Clear(recursive=True))
     rr.log("monitor", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     helpers.log_robot_static_model(robot, "monitor/robot", log_meshes=True)
-    scene_y_shift = float(snapshot.get("scene_y_shift", args.scene_y_shift))
-    log_default_container(scene_y_shift)
-    log_box_stack(float(args.box_front_x), int(snapshot.get("left_box_id", args.left_box_id)), int(snapshot.get("right_box_id", args.right_box_id)), scene_y_shift)
+    container_panels = snapshot.get("container_panels")
+    log_container_panels(container_panels)
     rr.log(
         "monitor/title",
         rr.TextLog(
@@ -923,13 +911,7 @@ def log_selected_replay(snapshot: dict[str, Any], helpers: Any, robot: Any, args
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
-            log_default_container(scene_y_shift)
-            log_box_stack(
-                float(args.box_front_x),
-                int(snapshot.get("left_box_id", args.left_box_id)),
-                int(snapshot.get("right_box_id", args.right_box_id)),
-                scene_y_shift,
-            )
+            log_container_panels(container_panels)
             log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = joint_dict_from_stage_point(stage, point)

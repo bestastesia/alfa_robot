@@ -111,9 +111,7 @@ def log_stage_record_replay(
     record_count: int,
 ) -> int:
     replay_stages = list(record.get("replay_stages", []))
-    scene_y_shift = float(snapshot.get("scene_y_shift", args.scene_y_shift))
-    left_id = int(snapshot.get("left_box_id", args.left_box_id))
-    right_id = int(snapshot.get("right_box_id", args.right_box_id))
+    container_panels = snapshot.get("container_panels")
     candidate_order = record.get("candidate_order", "?")
     loaded_rank = record.get("loaded_plan_rank", 0)
     loaded_ok = bool(record.get("loaded_plan_success", False))
@@ -121,8 +119,7 @@ def log_stage_record_replay(
 
     if not replay_stages:
       helpers.set_sample_time(sample)
-      monitor.log_default_container(scene_y_shift)
-      monitor.log_box_stack(float(args.box_front_x), left_id, right_id, scene_y_shift)
+      monitor.log_container_panels(container_panels)
       joint_map = monitor.record_joint_map(record)
       if joint_map:
           helpers.log_robot_state(robot, joint_map, "monitor/robot")
@@ -147,8 +144,7 @@ def log_stage_record_replay(
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample + used)
-            monitor.log_default_container(scene_y_shift)
-            monitor.log_box_stack(float(args.box_front_x), left_id, right_id, scene_y_shift)
+            monitor.log_container_panels(container_panels)
             monitor.log_static_box_obstacles(stage.get("static_box_obstacles"))
             point = points[point_index]
             joints = monitor.joint_dict_from_stage_point(stage, point)

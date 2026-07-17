@@ -166,10 +166,9 @@ def log_records(
     helpers: Any, robot: Any, display_args: Any, red_meshes: Any,
     task_index: int, task_count: int, sample: int,
 ) -> int:
-    scene_y_shift = float(snapshot.get("scene_y_shift", -0.4))
-    box_front_x = float(snapshot.get("box_front_x", 0.625))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
+    container_panels = snapshot.get("container_panels")
     for index, record in enumerate(records):
         joint_map = record.get("state", {}).get("joint_map", {})
         if not isinstance(joint_map, dict) or not joint_map:
@@ -178,8 +177,7 @@ def log_records(
         reason = "collision_free" if accepted else str(record.get("scene_rejection_reason", "collision_rejected"))
         entities = [] if accepted else collision_entities(reason)
         helpers.set_sample_time(sample)
-        monitor.log_default_container(scene_y_shift)
-        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_container_panels(container_panels)
         monitor.log_static_box_obstacles(snapshot.get("static_box_obstacles"))
         sequence.log_robot_state_display(helpers, robot, joints, "monitor/robot", display_args)
         sequence.log_attached_boxes_display(robot, joints, snapshot.get("attached_boxes", []), display_args)

@@ -55,82 +55,19 @@ def follow_jsonl(path: Path, start_at_end: bool = False):
             yield json.loads(line)
 
 
-def all_boxes(box_x: float) -> dict[int, tuple[float, float, float]]:
-    rows = [
-        [(1, 0.8), (2, 0.4), (3, 0.0), (4, -0.4), (5, -0.8)],
-        [(6, 0.8), (7, 0.4), (8, 0.0), (9, -0.4), (10, -0.8)],
-        [(11, 0.8), (12, 0.4), (13, 0.0), (14, -0.4), (15, -0.8)],
-        [(16, 0.8), (17, 0.4), (18, 0.0), (19, -0.4), (20, -0.8)],
-        [(21, 0.8), (22, 0.4), (23, 0.0), (24, -0.4), (25, -0.8)],
-    ]
-    out: dict[int, tuple[float, float, float]] = {}
-    for row_i, row in enumerate(rows):
-        z = 0.2 + 0.4 * (len(rows) - 1 - row_i)
-        for box_id, y in row:
-            out[box_id] = (box_x, y, z)
-    return out
-
-
-def log_box_stack(box_x: float) -> None:
-    centers = []
-    half_sizes = []
-    colors = []
-    labels = []
-    for box_id, (x, y, z) in sorted(all_boxes(box_x).items()):
-        centers.append([x + 0.15, y, z])
-        half_sizes.append([0.15, 0.2, 0.2])
-        colors.append([255, 180, 60, 90])
-        labels.append(str(box_id))
-    rr.log("scene/boxes", rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels), static=True)
-
-
-def default_container_obstacle() -> dict[str, Any]:
-    thickness = 0.02
-    length = 4.0
-    width = 2.2
-    height = 2.4
-    center_x = 0.8
-    center_y = 0.0
-    floor_z = 0.0
-    return {
-        "enabled": True,
-        "frame": "world",
-        "length": length,
-        "width": width,
-        "height": height,
-        "center_x": center_x,
-        "center_y": center_y,
-        "floor_z": floor_z,
-        "wall_thickness": thickness,
-        "panels": [
-            {
-                "id": "container_left_wall",
-                "center": [center_x, center_y + width * 0.5 + thickness * 0.5, floor_z + height * 0.5],
-                "size": [length, thickness, height],
-            },
-            {
-                "id": "container_right_wall",
-                "center": [center_x, center_y - width * 0.5 - thickness * 0.5, floor_z + height * 0.5],
-                "size": [length, thickness, height],
-            },
-            {
-                "id": "container_ceiling",
-                "center": [center_x, center_y, floor_z + height + thickness * 0.5],
-                "size": [length, width + 2.0 * thickness, thickness],
-            },
-        ],
-    }
-
-
 def log_container_obstacle(config: dict[str, Any] | None) -> None:
-    if not config:
-        config = default_container_obstacle()
-    if not config.get("enabled", True):
+    """绘制集装箱壳碰撞几何，数据来自 JSONL header 的 container_obstacle.panels
+    （由 C++ container_obstacle_json()→container_panels_json() 写入，与 MoveIt
+    规划场景同源，含绕 Z 轴 yaw）。不再回退到硬编码几何：若 header 没有该字段，
+    则不画集装箱，避免画出与真实碰撞检测不一致的伪几何。"""
+    if not config or not config.get("enabled", True):
         return
-
-    panels = config.get("panels") or default_container_obstacle()["panels"]
+    panels = config.get("panels")
+    if not panels:
+        return
     centers = []
     half_sizes = []
+    rotations = []
     colors = []
     labels = []
     for panel in panels:
@@ -140,12 +77,19 @@ def log_container_obstacle(config: dict[str, Any] | None) -> None:
             continue
         centers.append([float(value) for value in center])
         half_sizes.append([float(value) * 0.5 for value in size])
+        rotations.append(rr.RotationAxisAngle(axis=[0.0, 0.0, 1.0], radians=float(panel.get("yaw", 0.0))))
         colors.append([80, 170, 255, 45])
         labels.append(str(panel.get("id", "container")))
     if centers:
         rr.log(
             "scene/container",
-            rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels),
+            rr.Boxes3D(
+                centers=centers,
+                half_sizes=half_sizes,
+                rotation_axis_angles=rotations,
+                colors=colors,
+                labels=labels,
+            ),
             static=True,
         )
 
@@ -368,7 +312,6 @@ class FlowLogger:
 
         rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
         helpers.log_robot_static_model(self.robot, args.robot_path, log_meshes=not args.no_meshes)
-        log_box_stack(float(header.get("box_front_x", 0.625)))
         if not args.no_container:
             log_container_obstacle(header.get("container_obstacle"))
 

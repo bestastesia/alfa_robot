@@ -47,6 +47,10 @@
 #include <std_srvs/srv/trigger.hpp>
 #include "alfa_robot_moveit_config/srv/configure_extract_monitor.hpp"
 
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <atomic>
@@ -152,6 +156,8 @@ using alfa_robot::motion::BoxWallGeometryConfig;
 using alfa_robot::motion::CarriedBoxGeometryConfig;
 using alfa_robot::motion::ContainerGeometryConfig;
 using alfa_robot::motion::ContainerPanel;
+using alfa_robot::motion::ContainerRelativePose;
+using alfa_robot::motion::compute_container_pose_relative_to_vehicle;
 using alfa_robot::motion::LoadedPoseBatchPlanOptions;
 using alfa_robot::motion::LoadedPoseBatchPlanResult;
 using alfa_robot::motion::IkCandidateSelectionStats;
@@ -268,6 +274,9 @@ public:
 
   void init()
   {
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
+
     planning_group_ = get_or_declare_parameter<std::string>("planning_group", "dual_arm_with_base");
     left_tip_ = get_or_declare_parameter<std::string>("left_tip", "left_tool0");
     right_tip_ = get_or_declare_parameter<std::string>("right_tip", "right_tool0");
@@ -371,11 +380,21 @@ public:
 
     enable_container_obstacle_ = get_or_declare_parameter<bool>("enable_container_obstacle", true);
     container_frame_ = get_or_declare_parameter<std::string>("container_frame", "world");
+    container_track_vehicle_drift_ = get_or_declare_parameter<bool>("container_track_vehicle_drift", false);
+    vehicle_drift_global_frame_ = get_or_declare_parameter<std::string>("vehicle_drift_global_frame", "map");
+    vehicle_drift_translation_threshold_m_ =
+      get_or_declare_parameter<double>("vehicle_drift_translation_threshold_m", 0.05);
+    vehicle_drift_rotation_threshold_rad_ =
+      get_or_declare_parameter<double>("vehicle_drift_rotation_threshold_rad", 0.02);
     container_length_ = get_or_declare_parameter<double>("container_length", 4.0);
     container_width_ = get_or_declare_parameter<double>("container_width", 2.2);
     container_height_ = get_or_declare_parameter<double>("container_height", 2.4);
     container_center_x_ = get_or_declare_parameter<double>("container_center_x", 0.8);
     container_center_y_ = get_or_declare_parameter<double>("container_center_y", 0.0);
+    container_pose_dynamic_ = get_or_declare_parameter<bool>("container_pose_dynamic", false);
+    container_pose_map_x_ = get_or_declare_parameter<double>("container_pose_map_x", container_center_x_);
+    container_pose_map_y_ = get_or_declare_parameter<double>("container_pose_map_y", container_center_y_);
+    container_pose_map_yaw_ = get_or_declare_parameter<double>("container_pose_map_yaw", 0.0);
     container_floor_z_ = get_or_declare_parameter<double>("container_floor_z", 0.0);
     container_wall_thickness_ = get_or_declare_parameter<double>("container_wall_thickness", 0.02);
     enable_attached_box_collision_ = get_or_declare_parameter<bool>("enable_attached_box_collision", true);
@@ -581,8 +600,8 @@ public:
     ik_config_.left_preferred_loaded_pose_index = left_preferred_loaded_pose_index_;
     ik_config_.right_preferred_loaded_pose_index = right_preferred_loaded_pose_index_;
 
-    left_pregrasp_arm_ = deg_to_rad({0, -90, 135, -45, 0, 0});
-    right_pregrasp_arm_ = deg_to_rad({0, -90, 135, 45, 0, 0});
+    left_pregrasp_arm_ = deg_to_rad({0, -45, 120, -75, 0, 0});
+    right_pregrasp_arm_ = deg_to_rad({0, -45, 120, -75, 0, 0});
     left_loaded_arm_ = left_loaded_pose_family_[left_preferred_loaded_pose_index_];
     right_loaded_arm_ = right_loaded_pose_family_[right_preferred_loaded_pose_index_];
 
@@ -706,6 +725,12 @@ public:
     ik_candidate_selector_ = std::make_unique<IkCandidateSelector>(ik_candidate_selector_config());
     apply_container_obstacles();
     set_static_box_wall_opening(extract_demo_left_box_id_, extract_demo_right_box_id_, "initial");
+
+    if (container_track_vehicle_drift_) {
+      vehicle_drift_check_timer_ = create_wall_timer(
+        std::chrono::duration<double>(1.0),
+        [this]() { check_static_obstacles_drift(); });
+    }
 
     demo_srv_ = create_service<std_srvs::srv::Trigger>(
       "~/plan_and_execute",
@@ -974,17 +999,35 @@ private:
     return cache.scene;
   }
 
+  // container_pose_dynamic_ 为真时，用车体最近一次查询到的位姿刷新集装箱相对车体的
+  // 位姿缓存。查询 TF 有副作用（节流日志的时间戳），因此这个函数不是 const；真正的碰撞
+  // 几何计算 (container_geometry_config()) 只读这份缓存，保持 const，不牵连调用它的一大
+  // 批 const 碰撞检测热路径函数（carried_box_clear_scene_obstacles 等）。
+  void refresh_dynamic_container_geometry()
+  {
+    if (!container_pose_dynamic_) return;
+    container_pose_dynamic_cache_ = compute_container_pose_relative_to_vehicle(
+      lookup_vehicle_pose(), container_pose_map_x_, container_pose_map_y_, container_pose_map_yaw_);
+  }
+
   ContainerGeometryConfig container_geometry_config() const
   {
-    return {
-      container_center_x_,
-      container_center_y_ + scene_y_shift_,
-      container_width_,
-      container_height_,
-      container_length_,
-      container_wall_thickness_,
-      container_floor_z_,
-    };
+    ContainerGeometryConfig config;
+    config.width = container_width_;
+    config.height = container_height_;
+    config.length = container_length_;
+    config.wall_thickness = container_wall_thickness_;
+    config.floor_z = container_floor_z_;
+    if (container_pose_dynamic_ && container_pose_dynamic_cache_.has_value()) {
+      config.center_x = container_pose_dynamic_cache_->x;
+      config.center_y = container_pose_dynamic_cache_->y + scene_y_shift_;
+      config.yaw = container_pose_dynamic_cache_->yaw;
+    } else {
+      config.center_x = container_center_x_;
+      config.center_y = container_center_y_ + scene_y_shift_;
+      config.yaw = 0.0;
+    }
+    return config;
   }
 
   BoxWallGeometryConfig box_wall_geometry_config() const
@@ -1229,7 +1272,7 @@ private:
     return optimized_dual_ik_solver_->ready();
   }
 
-  MotionSceneAdapterConfig motion_scene_adapter_config() const
+  MotionSceneAdapterConfig motion_scene_adapter_config()
   {
     MotionSceneAdapterConfig config;
     config.enable_container_obstacle = enable_container_obstacle_;
@@ -1241,7 +1284,60 @@ private:
     config.carried_box = carried_box_geometry_config();
     config.left_tip = left_tip_;
     config.right_tip = right_tip_;
+    if (container_track_vehicle_drift_) {
+      config.vehicle_pose_provider = [this]() { return lookup_vehicle_pose(); };
+    }
     return config;
+  }
+
+  // 查询 vehicle_drift_global_frame_ -> container_frame_（通常是 map -> world）的当前
+  // 变换。碰撞几何本身始终以 container_frame_（world）写入 planning scene 不变——world
+  // 跟车体刚性绑定，车体怎么动它天然跟着动，MoveIt 的规划假设不受影响。这个查询只用来
+  // 判断"车体在全局系下挪动了多少"，供 MotionSceneAdapter::staticObstaclesStale 检测
+  // container_center_x/y 这类相对偏移参数是否已经对不上车体新停靠的位置。
+  // 查询失败（例如车体位姿源节点未启动）时退化为 identity，不会导致规划节点崩溃。
+  Eigen::Isometry3d lookup_vehicle_pose()
+  {
+    if (!tf_buffer_) return Eigen::Isometry3d::Identity();
+    try {
+      const auto transform = tf_buffer_->lookupTransform(
+        vehicle_drift_global_frame_, container_frame_, tf2::TimePointZero, tf2::durationFromSec(0.05));
+      return tf2::transformToEigen(transform);
+    } catch (const tf2::TransformException& ex) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "lookup_vehicle_pose: %s -> %s unavailable (%s), falling back to identity",
+        vehicle_drift_global_frame_.c_str(), container_frame_.c_str(), ex.what());
+      return Eigen::Isometry3d::Identity();
+    }
+  }
+
+  void check_static_obstacles_drift()
+  {
+    if (!container_track_vehicle_drift_ || !scene_adapter_) return;
+    if (!scene_adapter_->staticObstaclesStale(
+          vehicle_drift_translation_threshold_m_, vehicle_drift_rotation_threshold_rad_)) {
+      return;
+    }
+    if (container_pose_dynamic_) {
+      RCLCPP_WARN(
+        get_logger(),
+        "静态碰撞几何(container)已过期：车体在 %s 下的位姿相对上次写入时已超出阈值"
+        "(平移>%.3fm 或 旋转>%.3frad)，正在按 container_pose_map_x/y/yaw 重新计算"
+        "集装箱相对车体的位姿并自动刷新碰撞场景。",
+        vehicle_drift_global_frame_.c_str(), vehicle_drift_translation_threshold_m_,
+        vehicle_drift_rotation_threshold_rad_);
+      apply_container_obstacles();
+      return;
+    }
+    RCLCPP_WARN(
+      get_logger(),
+      "静态碰撞几何(container/box wall)可能已过期：车体在 %s 下的位姿相对上次写入时"
+      "已超出阈值(平移>%.3fm 或 旋转>%.3frad)，container_center_x/y 等相对偏移参数"
+      "描述的可能已经不是车体当前停靠位置。请重新调用 apply_container_obstacles 之类"
+      "的写入接口刷新碰撞场景。",
+      vehicle_drift_global_frame_.c_str(), vehicle_drift_translation_threshold_m_,
+      vehicle_drift_rotation_threshold_rad_);
   }
 
   LoadedPosePlannerConfig loaded_pose_planner_config()
@@ -1668,12 +1764,20 @@ private:
     }
     if (!scene_adapter_) return;
 
+    if (container_pose_dynamic_) {
+      refresh_dynamic_container_geometry();
+      scene_adapter_->updateContainerGeometry(container_geometry_config());
+    }
     if (scene_adapter_->applyContainerObstacles()) {
       extract_collision_scene_epoch_.fetch_add(1, std::memory_order_acq_rel);
+      const auto& applied = scene_adapter_->config().container;
       RCLCPP_INFO(get_logger(),
-                  "Applied container obstacle: frame=%s length=%.2f width=%.2f height=%.2f panels=%zu",
+                  "Applied container obstacle: frame=%s length=%.2f width=%.2f height=%.2f panels=%zu "
+                  "center_x=%.3f center_y=%.3f yaw_deg=%.2f dynamic=%s",
                   container_frame_.c_str(), container_length_, container_width_, container_height_,
-                  container_panels().size());
+                  container_panels().size(),
+                  applied.center_x, applied.center_y, applied.yaw * 180.0 / M_PI,
+                  container_pose_dynamic_ ? "true" : "false");
     } else {
       RCLCPP_WARN(get_logger(), "Failed to apply container obstacle collision objects");
     }
@@ -3867,11 +3971,15 @@ private:
   }
 
   bool finish_extract_monitor_stage(
-    const nlohmann::json& snapshot,
+    nlohmann::json snapshot,
     const std::string& context,
     const std::string& success_message,
     std::string* message)
   {
+    // Rerun 等下游可视化必须与 MoveIt 规划场景共用同一份碰撞几何：这里注入的
+    // container_panels 就是 MotionSceneAdapter 实际写入 PlanningScene 的同一份数据，
+    // 不是重新计算的另一套。
+    snapshot["container_panels"] = alfa_robot::motion::container_panels_json(container_panels());
     const auto result = extract_monitor_snapshot_writer_.writeStageSnapshot(
       ExtractMonitorStageSnapshotWriteRequest{
         &snapshot,
@@ -5165,11 +5273,20 @@ private:
   double state_wait_timeout_s_ = 2.0;
   bool enable_container_obstacle_ = true;
   std::string container_frame_ = "world";
+  bool container_track_vehicle_drift_ = false;
+  std::string vehicle_drift_global_frame_ = "map";
+  double vehicle_drift_translation_threshold_m_ = 0.05;
+  double vehicle_drift_rotation_threshold_rad_ = 0.02;
   double container_length_ = 4.0;
   double container_width_ = 2.2;
   double container_height_ = 2.4;
   double container_center_x_ = 0.8;
   double container_center_y_ = 0.0;
+  bool container_pose_dynamic_ = false;
+  double container_pose_map_x_ = 0.8;
+  double container_pose_map_y_ = 0.0;
+  double container_pose_map_yaw_ = 0.0;
+  std::optional<ContainerRelativePose> container_pose_dynamic_cache_;
   double container_floor_z_ = 0.0;
   double container_wall_thickness_ = 0.02;
   bool enable_attached_box_collision_ = true;
@@ -5314,6 +5431,9 @@ private:
   std::unique_ptr<BoxPoseRrtExtractPlanner> box_pose_rrt_extract_planner_;
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+  rclcpp::TimerBase::SharedPtr vehicle_drift_check_timer_;
   planning_scene_monitor::PlanningSceneMonitorPtr planning_scene_monitor_;
   mutable std::atomic<uint64_t> extract_collision_scene_epoch_{1};
   planning_pipeline::PlanningPipelinePtr loaded_planning_pipeline_;

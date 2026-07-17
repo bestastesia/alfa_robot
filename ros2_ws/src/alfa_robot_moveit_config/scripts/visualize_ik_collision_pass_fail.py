@@ -42,11 +42,10 @@ def log_records(
     task_count: int,
     sample_start: int,
 ) -> int:
-    scene_y_shift = float(snapshot.get("scene_y_shift", -0.4))
-    box_front_x = float(snapshot.get("box_front_x", 0.925))
     left_id = int(snapshot.get("left_box_id", 0))
     right_id = int(snapshot.get("right_box_id", 0))
     attached_boxes = snapshot.get("attached_boxes", [])
+    container_panels = snapshot.get("container_panels")
     sample = sample_start
     phase = "碰撞通过" if accepted else "碰撞拒绝"
     color = [40, 220, 80, 255] if accepted else [255, 35, 35, 255]
@@ -60,8 +59,7 @@ def log_records(
             record.get("scene_rejection_reason", "ik_candidate_scene_rejected")
         )
         helpers.set_sample_time(sample)
-        monitor.log_default_container(scene_y_shift)
-        monitor.log_box_stack(box_front_x, left_id, right_id, scene_y_shift)
+        monitor.log_container_panels(container_panels)
         monitor.log_static_box_obstacles(snapshot.get("static_box_obstacles"))
         sequence.log_robot_state_display(helpers, robot, joints, "monitor/robot", display_args)
         sequence.log_attached_boxes_display(robot, joints, attached_boxes, display_args)
