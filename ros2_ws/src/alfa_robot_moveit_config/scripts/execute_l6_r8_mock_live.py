@@ -769,7 +769,7 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
         start = time.monotonic()
         success, output, elapsed_ms = monitor.call_trigger_service(
             "/dual_arm_planner/run_extract_monitor_full_selected",
-            args.service_timeout,
+            args.compute_timeout,
         )
         print(output, flush=True)
         print(f"计算完成：success={success} service={elapsed_ms:.1f}ms wall={(time.monotonic()-start)*1000.0:.1f}ms", flush=True)
@@ -992,6 +992,10 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)
+    # 计算本身(run_extract_monitor_full_selected)的独立超时,与"等planner启动"分开:
+    # planner 起 move_group+IK预热要 30~40s,不能用它卡计算;而计算(候选收敛后)应几秒内出,
+    # 给它一个较紧的上限让真卡死时快速失败,不空等 service-timeout 那么久。默认 30s。
+    parser.add_argument("--compute-timeout", type=float, default=30.0)
     parser.add_argument("--hz", type=float, default=10.0)
     parser.add_argument("--max-joint-speed-deg-s", type=float, default=20.0)
     parser.add_argument("--max-updown-speed-m-s", type=float, default=0.05)
