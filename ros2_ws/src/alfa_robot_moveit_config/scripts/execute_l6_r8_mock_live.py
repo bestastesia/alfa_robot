@@ -1009,8 +1009,9 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--joint-state-topic", default="/joint_states")
     parser.add_argument(
         "--updown-joint-state-topic",
-        default="/canopen/joint_states",
-        help="updown 由 CANopen 控制栈独立发布，与 --joint-state-topic（12臂+turn）不是同一个 topic",
+        default="/joint_states",
+        help="updown 现已合并进 /joint_states(与12臂+turn同一个topic);"
+             "该topic上的updown是电机物理值,读取后经 physical_to_logical_updown 转逻辑值",
     )
     parser.add_argument("--joint-state-timeout-s", type=float, default=3.0)
     parser.add_argument(
@@ -1147,7 +1148,7 @@ def main(default_executor_mode: str = "mock") -> int:
                 "updown",
                 args.joint_state_timeout_s,
             )
-            # /canopen/joint_states 反馈的是电机物理值；转成 URDF/MoveIt 逻辑值
+            # /joint_states 上 updown 是电机物理值;转成 URDF/MoveIt 逻辑值
             # (logical = physical + 0.08) 再交给规划,与下发时的 logical->physical 收口对称。
             args.fixed_updown = physical_to_logical_updown(raw_updown_physical)
             print(
