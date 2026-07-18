@@ -656,7 +656,7 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         ik_h_lower=getattr(args, "ik_h_lower", 0.08),
         ik_h_upper=getattr(args, "ik_h_upper", 0.78),
         ik_h_step=getattr(args, "ik_h_step", 0.01),
-        ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", True),
+        ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", False),
         ik_seed_count=getattr(args, "ik_seed_count", 32),
         ik_workers=getattr(args, "ik_workers", 1),
         ik_candidate_timeout=getattr(args, "ik_candidate_timeout", 0.01),
@@ -914,7 +914,12 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--ik-h-lower", type=float, default=0.08)
     parser.add_argument("--ik-h-upper", type=float, default=0.78)
     parser.add_argument("--ik-h-step", type=float, default=0.01)
-    parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=True)
+    # full-h-range-scan 会把整个 [0.08,0.78] 按 0.01 步长扫 ~70 个高度,再对每个高度做
+    # 左×右解析解笛卡尔积,产出上百个候选喂给重型 box_pose_rrt 抽离 -> 真机 180s 超时。
+    # 离线 13/13 基线(extract_stage_monitor_console/extract_sequence_rerun)用的是
+    # false: 只在"由目标反推的可达 h 区间"里按 h_search_margin 取少量高度,候选 ~20 个。
+    # 这里对齐那套被验证过的原方案,默认 false。
+    parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
