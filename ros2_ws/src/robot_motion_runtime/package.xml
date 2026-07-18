@@ -17,6 +17,7 @@
   <depend>std_srvs</depend>
   <depend>tf2_ros</depend>
   <depend>robot_motion_interfaces</depend>
+  <depend>alfa_robot_execution_bridge</depend>
 
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>

@@ -12,6 +12,43 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
+# EtherCAT<->ROS 方向符号的唯一权威来源是 alfa_robot_execution_bridge.joints
+# （FLIPPED_JOINT_NAMES = left_joint3/left_joint5/right_joint2/right_joint4）。
+# 从 /joint_states 读回来的是硬件(EtherCAT)符号，喂给 MoveIt/规划前必须与发送侧
+# (ros_to_ethercat_position) 对称地校准回 ROS 符号，否则被翻转的关节姿态是反的，
+# 会导致镜像姿态错误与自碰撞误报。这里复用该表，不重新定义方向。
+try:
+    from alfa_robot_execution_bridge.joints import (
+        ROS_TO_ETHERCAT_SIGN_BY_JOINT as _EC_SIGN_BY_JOINT,
+        ethercat_to_ros_position as _ethercat_to_ros_position,
+        ros_to_ethercat_position as _ros_to_ethercat_position,
+    )
+except Exception:  # pragma: no cover - bridge 不可用时退化为不校准(并在使用处告警)
+    _EC_SIGN_BY_JOINT = {}
+
+    def _ethercat_to_ros_position(joint_name: str, value: float) -> float:
+        return float(value)
+
+    def _ros_to_ethercat_position(joint_name: str, value: float) -> float:
+        return float(value)
+
+
+def ethercat_to_ros_hardware_position(hardware_name: str, value: float) -> float:
+    """把 /joint_states 上的硬件(EtherCAT)符号值校准回 ROS 符号。
+    只对方向表里已知的关节(13 轴机械臂 + turn)生效；updown/track/pitch 等不在表里的
+    保持原值(它们没有方向翻转)。"""
+    if hardware_name in _EC_SIGN_BY_JOINT:
+        return _ethercat_to_ros_position(hardware_name, value)
+    return float(value)
+
+
+def ros_to_ethercat_hardware_position(hardware_name: str, value: float) -> float:
+    """发送轨迹到硬件 action 前，把 ROS 符号值翻成硬件(EtherCAT)符号，与读取侧对称。
+    只对方向表里已知关节生效。符号是自身逆运算，与 ethercat_to_ros 同表。"""
+    if hardware_name in _EC_SIGN_BY_JOINT:
+        return _ros_to_ethercat_position(hardware_name, value)
+    return float(value)
+
 
 DEFAULT_MOTION_JOINTS = [
     "updown",
@@ -100,14 +137,21 @@ def normalize_joint_state_for_model(joint_state: JointState) -> JointState:
     def record(index: int, prefer_existing: bool) -> None:
         if index >= len(joint_state.name) or index >= len(joint_state.position):
             return
-        model_name = model_joint_name(str(joint_state.name[index]))
+        hardware_name = str(joint_state.name[index])
+        model_name = model_joint_name(hardware_name)
         if model_name is None:
             return
         if prefer_existing and model_name in values:
             return
-        values[model_name] = float(joint_state.position[index])
+        # /joint_states 是硬件(EtherCAT)符号；用硬件名把被翻转的关节校准回 ROS 符号，
+        # 与发送轨迹侧 ros_to_ethercat_position 对称。非翻转关节为原值。
+        values[model_name] = ethercat_to_ros_hardware_position(
+            hardware_name, float(joint_state.position[index])
+        )
         if index < len(joint_state.velocity):
-            velocities[model_name] = float(joint_state.velocity[index])
+            velocities[model_name] = ethercat_to_ros_hardware_position(
+                hardware_name, float(joint_state.velocity[index])
+            )
         if index < len(joint_state.effort):
             efforts[model_name] = float(joint_state.effort[index])
 

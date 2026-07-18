@@ -22,6 +22,7 @@ from robot_motion_runtime.common import (
     duration_seconds,
     hardware_joint_name,
     resample_trajectory,
+    ros_to_ethercat_hardware_position,
 )
 
 
@@ -247,15 +248,27 @@ class ExecuteTrajectoryServiceNode(Node):
                 )
             point = JointTrajectoryPoint()
             point.time_from_start = source_point.time_from_start
-            for target_index, hold_value in zip(target_indices, hold_values):
+            for slot_index, (target_index, hold_value) in enumerate(zip(target_indices, hold_values)):
+                real_name = REAL_ARM_JOINT_NAMES[slot_index]
                 if target_index is None:
+                    # hold_value 来自 self.latest_joint_positions(直接读 /joint_states,
+                    # 已是硬件 EtherCAT 符号),原样保持,不再翻符号。
                     point.positions.append(float(hold_value))
                 else:
-                    point.positions.append(float(source_point.positions[target_index]))
+                    # 规划出的轨迹是 ROS/URDF 符号;发给硬件 action 前翻成 EtherCAT 符号,
+                    # 与读取侧 ethercat_to_ros 对称(收口到 joints.py 单一方向表)。
+                    point.positions.append(
+                        ros_to_ethercat_hardware_position(
+                            real_name, float(source_point.positions[target_index])
+                        )
+                    )
             if source_point.velocities:
-                for target_index, _ in zip(target_indices, hold_values):
+                for slot_index, (target_index, _) in enumerate(zip(target_indices, hold_values)):
+                    real_name = REAL_ARM_JOINT_NAMES[slot_index]
                     point.velocities.append(
-                        float(source_point.velocities[target_index])
+                        ros_to_ethercat_hardware_position(
+                            real_name, float(source_point.velocities[target_index])
+                        )
                         if target_index is not None and target_index < len(source_point.velocities)
                         else 0.0
                     )
