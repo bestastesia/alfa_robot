@@ -230,13 +230,13 @@ size_t nearest_state_index(
 
 bool is_arm_joint_variable(const std::string& name)
 {
-  return name.rfind("leftjoint", 0) == 0 || name.rfind("rightjoint", 0) == 0;
+  return name.rfind("left_joint", 0) == 0 || name.rfind("right_joint", 0) == 0;
 }
 
 std::string arm_side_for_variable(const std::string& name)
 {
-  if (name.rfind("leftjoint", 0) == 0) return "left";
-  if (name.rfind("rightjoint", 0) == 0) return "right";
+  if (name.rfind("left_joint", 0) == 0) return "left";
+  if (name.rfind("right_joint", 0) == 0) return "right";
   return "";
 }
 

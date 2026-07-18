@@ -219,15 +219,15 @@ std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box
 {
   std::vector<std::string> links{box.link_name};
   if (box.link_name.rfind("left_", 0) == 0) {
-    links.push_back("leftjoint6");
-    links.push_back("leftjoint5");
-    links.push_back("leftjoint4");
-    links.push_back("leftjoint3");
+    links.push_back("left_joint6");
+    links.push_back("left_joint5");
+    links.push_back("left_joint4");
+    links.push_back("left_joint3");
   } else if (box.link_name.rfind("right_", 0) == 0) {
-    links.push_back("rightjoint6");
-    links.push_back("rightjoint5");
-    links.push_back("rightjoint4");
-    links.push_back("rightjoint3");
+    links.push_back("right_joint6");
+    links.push_back("right_joint5");
+    links.push_back("right_joint4");
+    links.push_back("right_joint3");
   }
   return links;
 }
@@ -2681,10 +2681,10 @@ private:
     sensor_msgs::msg::JointState target;
     target.name = {
       "updown",
-      "leftjoint1", "leftjoint2", "leftjoint3",
-      "leftjoint4", "leftjoint5", "leftjoint6",
-      "rightjoint1", "rightjoint2", "rightjoint3",
-      "rightjoint4", "rightjoint5", "rightjoint6",
+      "left_joint1", "left_joint2", "left_joint3",
+      "left_joint4", "left_joint5", "left_joint6",
+      "right_joint1", "right_joint2", "right_joint3",
+      "right_joint4", "right_joint5", "right_joint6",
     };
     target.position.reserve(target.name.size());
     target.position.push_back(updown);
@@ -5147,10 +5147,10 @@ private:
       auto seed_state = std::make_shared<moveit::core::RobotState>(robot_model_);
       seed_state->setToDefaultValues();
       for (size_t i = 0; i < left_pregrasp_arm_.size(); ++i) {
-        seed_state->setVariablePosition("leftjoint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
+        seed_state->setVariablePosition("left_joint" + std::to_string(i + 1), left_pregrasp_arm_[i]);
       }
       for (size_t i = 0; i < right_pregrasp_arm_.size(); ++i) {
-        seed_state->setVariablePosition("rightjoint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
+        seed_state->setVariablePosition("right_joint" + std::to_string(i + 1), right_pregrasp_arm_[i]);
       }
       seed_state->setVariablePosition("updown", extract_grasp_ik_home_updown_);
       if (is_robot_variable("turn")) {

@@ -88,10 +88,10 @@ int main()
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
   assert(joint_names.front() == "updown");
-  assert(joint_names[1] == "leftjoint1");
-  assert(joint_names[6] == "leftjoint6");
-  assert(joint_names[7] == "rightjoint1");
-  assert(joint_names.back() == "rightjoint6");
+  assert(joint_names[1] == "left_joint1");
+  assert(joint_names[6] == "left_joint6");
+  assert(joint_names[7] == "right_joint1");
+  assert(joint_names.back() == "right_joint6");
 
   const AxisAlignedBox a{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
   const AxisAlignedBox b{{0.4, 0.0, 0.0}, {1.0, 1.0, 1.0}};

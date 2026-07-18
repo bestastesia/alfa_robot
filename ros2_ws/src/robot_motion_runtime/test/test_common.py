@@ -19,8 +19,8 @@ def joint_state(names, positions):
 
 
 def test_interpolation_respects_joint_and_updown_step_limits():
-    start = joint_state(["updown", "leftjoint1"], [0.0, 0.0])
-    goal = joint_state(["updown", "leftjoint1"], [0.03, math.radians(12.0)])
+    start = joint_state(["updown", "left_joint1"], [0.0, 0.0])
+    goal = joint_state(["updown", "left_joint1"], [0.03, math.radians(12.0)])
 
     trajectory = make_interpolated_trajectory(
         start,
@@ -37,8 +37,8 @@ def test_interpolation_respects_joint_and_updown_step_limits():
 
 
 def test_fixed_rate_interpolation_uses_point_cadence_for_duration():
-    start = joint_state(["leftjoint1"], [0.0])
-    goal = joint_state(["leftjoint1"], [math.radians(18.0)])
+    start = joint_state(["left_joint1"], [0.0])
+    goal = joint_state(["left_joint1"], [math.radians(18.0)])
 
     trajectory = make_fixed_rate_interpolated_trajectory(
         start,
@@ -59,9 +59,9 @@ def test_fixed_rate_interpolation_uses_point_cadence_for_duration():
 
 
 def test_concatenate_removes_duplicate_seam_and_offsets_time():
-    zero = joint_state(["leftjoint1"], [0.0])
-    middle = joint_state(["leftjoint1"], [0.5])
-    goal = joint_state(["leftjoint1"], [1.0])
+    zero = joint_state(["left_joint1"], [0.0])
+    middle = joint_state(["left_joint1"], [0.5])
+    goal = joint_state(["left_joint1"], [1.0])
     first = make_interpolated_trajectory(zero, middle, duration_s=1.0, max_joint_step_rad=1.0)
     second = make_interpolated_trajectory(middle, goal, duration_s=2.0, max_joint_step_rad=1.0)
 
@@ -73,8 +73,8 @@ def test_concatenate_removes_duplicate_seam_and_offsets_time():
 
 
 def test_resample_produces_fixed_rate_and_keeps_endpoints():
-    start = joint_state(["leftjoint1"], [0.0])
-    goal = joint_state(["leftjoint1"], [1.0])
+    start = joint_state(["left_joint1"], [0.0])
+    goal = joint_state(["left_joint1"], [1.0])
     trajectory = make_interpolated_trajectory(start, goal, duration_s=1.0, max_joint_step_rad=2.0)
 
     sampled = resample_trajectory(trajectory, rate_hz=4.0)

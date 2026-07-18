@@ -54,33 +54,33 @@ DEFAULT_MOTION_JOINTS = [
     "updown",
     "turn",
     "pitch",
-    "leftjoint1",
-    "leftjoint2",
-    "leftjoint3",
-    "leftjoint4",
-    "leftjoint5",
-    "leftjoint6",
-    "rightjoint1",
-    "rightjoint2",
-    "rightjoint3",
-    "rightjoint4",
-    "rightjoint5",
-    "rightjoint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
 ]
 
 HARDWARE_TO_MODEL_JOINT_ALIASES = {
-    "left_joint1": "leftjoint1",
-    "left_joint2": "leftjoint2",
-    "left_joint3": "leftjoint3",
-    "left_joint4": "leftjoint4",
-    "left_joint5": "leftjoint5",
-    "left_joint6": "leftjoint6",
-    "right_joint1": "rightjoint1",
-    "right_joint2": "rightjoint2",
-    "right_joint3": "rightjoint3",
-    "right_joint4": "rightjoint4",
-    "right_joint5": "rightjoint5",
-    "right_joint6": "rightjoint6",
+    "left_joint1": "left_joint1",
+    "left_joint2": "left_joint2",
+    "left_joint3": "left_joint3",
+    "left_joint4": "left_joint4",
+    "left_joint5": "left_joint5",
+    "left_joint6": "left_joint6",
+    "right_joint1": "right_joint1",
+    "right_joint2": "right_joint2",
+    "right_joint3": "right_joint3",
+    "right_joint4": "right_joint4",
+    "right_joint5": "right_joint5",
+    "right_joint6": "right_joint6",
 }
 
 MODEL_TO_HARDWARE_JOINT_ALIASES = {
@@ -125,7 +125,7 @@ def canonical_joint_name(name: str) -> str:
 
 
 def hardware_joint_name(name: str) -> str:
-    """Map a model joint name (leftjoint1...) to its hardware alias."""
+    """Map a model joint name (left_joint1...) to its hardware alias."""
     return MODEL_TO_HARDWARE_JOINT_ALIASES.get(str(name), str(name))
 
 

@@ -37,21 +37,21 @@ std::vector<std::string> ExecutionTrajectoryAdapter::targetJointNames() const
 std::string ExecutionTrajectoryAdapter::alfaToMoveItJointName(const std::string& name) const
 {
   if (name.rfind("left_joint", 0) == 0) {
-    return "leftjoint" + name.substr(std::string("left_joint").size());
+    return "left_joint" + name.substr(std::string("left_joint").size());
   }
   if (name.rfind("right_joint", 0) == 0) {
-    return "rightjoint" + name.substr(std::string("right_joint").size());
+    return "right_joint" + name.substr(std::string("right_joint").size());
   }
   return name;
 }
 
 std::string ExecutionTrajectoryAdapter::moveItToAlfaJointName(const std::string& name) const
 {
-  if (name.rfind("leftjoint", 0) == 0) {
-    return "left_joint" + name.substr(std::string("leftjoint").size());
+  if (name.rfind("left_joint", 0) == 0) {
+    return "left_joint" + name.substr(std::string("left_joint").size());
   }
-  if (name.rfind("rightjoint", 0) == 0) {
-    return "right_joint" + name.substr(std::string("rightjoint").size());
+  if (name.rfind("right_joint", 0) == 0) {
+    return "right_joint" + name.substr(std::string("right_joint").size());
   }
   return name;
 }

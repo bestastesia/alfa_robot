@@ -128,10 +128,10 @@ def duration_to_seconds(duration: Any) -> float:
 
 
 def moveit_to_execution_name(name: str) -> str | None:
-    if name.startswith("leftjoint"):
-        return "left_joint" + name.removeprefix("leftjoint")
-    if name.startswith("rightjoint"):
-        return "right_joint" + name.removeprefix("rightjoint")
+    if name.startswith("left_joint"):
+        return "left_joint" + name.removeprefix("left_joint")
+    if name.startswith("right_joint"):
+        return "right_joint" + name.removeprefix("right_joint")
     if name.startswith("left_joint"):
         return name
     if name.startswith("right_joint"):
@@ -143,9 +143,9 @@ def moveit_to_execution_name(name: str) -> str | None:
 
 def execution_to_moveit_name(name: str) -> str:
     if name.startswith("left_joint"):
-        return "leftjoint" + name.removeprefix("left_joint")
+        return "left_joint" + name.removeprefix("left_joint")
     if name.startswith("right_joint"):
-        return "rightjoint" + name.removeprefix("right_joint")
+        return "right_joint" + name.removeprefix("right_joint")
     return name
 
 

@@ -189,7 +189,7 @@ bool ExtractCandidateSolver::solveAnalytic(
 
   std::array<double, 6> seed{};
   for (size_t i = 0; i < seed.size(); ++i) {
-    seed[i] = current_state.getVariablePosition(side + "joint" + std::to_string(i + 1));
+    seed[i] = current_state.getVariablePosition(side + "_joint" + std::to_string(i + 1));
   }
 
   alfa_robot::analytic_ik::ArmAnalyticIkRequest request;
@@ -216,7 +216,7 @@ bool ExtractCandidateSolver::solveAnalytic(
 
   const auto& best_solution = solutions.front();
   for (size_t i = 0; i < best_solution.joints.size(); ++i) {
-    state.setVariablePosition(side + "joint" + std::to_string(i + 1), best_solution.joints[i]);
+    state.setVariablePosition(side + "_joint" + std::to_string(i + 1), best_solution.joints[i]);
   }
   state.setVariablePosition("updown", fixed_updown);
   state.enforceBounds(config_.joint_group);

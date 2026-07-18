@@ -136,7 +136,7 @@ TEST(RmdJointTest, ActivateWithNoDriverKeepsFirstReadTrue)
 {
   // Driver is not open -> readPositions returns empty -> activate does NOT clear first_read_
   RmdDriver drv({"bogus", 1800});
-  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   joint.activate();
   // first_read_ still true -> write() is a no-op -> position stays 0
   auto si = joint.exportStateInterfaces();
@@ -147,7 +147,7 @@ TEST(RmdJointTest, ActivateWithNoDriverKeepsFirstReadTrue)
 TEST(RmdJointTest, WriteIsNoOpBeforeFirstRead)
 {
   RmdDriver drv({"bogus", 1800});
-  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   // Never called read() -> write() must not crash
   EXPECT_NO_THROW(joint.write(0.01));
 }
@@ -155,7 +155,7 @@ TEST(RmdJointTest, WriteIsNoOpBeforeFirstRead)
 TEST(RmdJointTest, ExportsThreeStateAndOneCommandInterface)
 {
   RmdDriver drv({"bogus", 1800});
-  RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   EXPECT_EQ(joint.exportStateInterfaces().size(), 3u);
   EXPECT_EQ(joint.exportCommandInterfaces().size(), 1u);
   EXPECT_EQ(joint.exportCommandInterfaces()[0].get_interface_name(), "position");

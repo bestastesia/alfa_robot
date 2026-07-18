@@ -24,17 +24,17 @@
 | Joint | Type | ID | Bus |
 |-------|------|----|-----|
 | `turn` | RMD | motor_id=1 | BASE (can2) |
-| `leftjoint2` | RMD | motor_id=1 | LEFT (can0) |
-| `leftjoint3` | RMD | motor_id=2 | LEFT (can0) |
-| `leftjoint4` | RMD | motor_id=3 | LEFT (can0) |
-| `rightjoint2` | RMD | motor_id=4 | RIGHT (can1) |
-| `rightjoint3` | RMD | motor_id=5 | RIGHT (can1) |
-| `rightjoint4` | RMD | motor_id=6 | RIGHT (can1) |
+| `left_joint2` | RMD | motor_id=1 | LEFT (can0) |
+| `left_joint3` | RMD | motor_id=2 | LEFT (can0) |
+| `left_joint4` | RMD | motor_id=3 | LEFT (can0) |
+| `right_joint2` | RMD | motor_id=4 | RIGHT (can1) |
+| `right_joint3` | RMD | motor_id=5 | RIGHT (can1) |
+| `right_joint4` | RMD | motor_id=6 | RIGHT (can1) |
 | `updown` | CANopen | node_id=1 | CANOPEN (can3) |
 | `leftarmbase` | CANopen | node_id=2, gear=3.0 | CANOPEN (can3) |
-| `leftjoint1` | CANopen | node_id=3 | CANOPEN (can3) |
+| `left_joint1` | CANopen | node_id=3 | CANOPEN (can3) |
 | `rightarmbase` | CANopen | node_id=4, gear=3.0 | CANOPEN (can3) |
-| `rightjoint1` | CANopen | node_id=5 | CANOPEN (can3) |
+| `right_joint1` | CANopen | node_id=5 | CANOPEN (can3) |
 | `left_back` | Wheel (Velocity) | — | — |
 | `left_forward` | Wheel (Velocity) | — | — |
 | `right_back` | Wheel (Velocity) | — | — |
@@ -1343,7 +1343,7 @@ TEST(RmdJointTest, ActivateWithNoDriverSetsFirstReadFalse)
   // Driver is not open -> readPositions returns empty -> activate still sets first_read_=false? No.
   // activate() only clears first_read_ if data received. Test that first_read_ stays true.
   alfa_robot_hardware::RmdDriver drv({"bogus", 1800});
-  alfa_robot_hardware::RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  alfa_robot_hardware::RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   joint.activate();
   // No data from driver -> first_read_ remains true -> write() is a no-op
   // Verify: export state interfaces return position=0
@@ -1356,7 +1356,7 @@ TEST(RmdJointTest, ActivateWithNoDriverSetsFirstReadFalse)
 TEST(RmdJointTest, WriteIsNoOpBeforeFirstRead)
 {
   alfa_robot_hardware::RmdDriver drv({"bogus", 1800});
-  alfa_robot_hardware::RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  alfa_robot_hardware::RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   // Never called read() -> write() must not crash (driver.writePositions on closed socket is safe)
   EXPECT_NO_THROW(joint.write(0.01));
 }
@@ -1364,7 +1364,7 @@ TEST(RmdJointTest, WriteIsNoOpBeforeFirstRead)
 TEST(RmdJointTest, ExportsThreeStateAndOneCommandInterface)
 {
   alfa_robot_hardware::RmdDriver drv({"bogus", 1800});
-  alfa_robot_hardware::RmdJoint joint("leftjoint2", {1, 0.0, 0.0}, drv);
+  alfa_robot_hardware::RmdJoint joint("left_joint2", {1, 0.0, 0.0}, drv);
   EXPECT_EQ(joint.exportStateInterfaces().size(), 3u);
   EXPECT_EQ(joint.exportCommandInterfaces().size(), 1u);
   EXPECT_EQ(joint.exportCommandInterfaces()[0].get_interface_name(), "position");
@@ -1724,7 +1724,7 @@ TrajectoryLogger::TrajectoryLogger(rclcpp::Node::SharedPtr node)
     [this](const std_srvs::srv::SetBool::Request::SharedPtr req,
            std_srvs::srv::SetBool::Response::SharedPtr res) {
       if (req->data) {
-        constexpr uint8_t kDefaultMotorId = 6;  // rightjoint4
+        constexpr uint8_t kDefaultMotorId = 6;  // right_joint4
         if (on_start_cb_) { on_start_cb_(kDefaultMotorId); }
         active_.store(true);
         tracked_motor_id_ = kDefaultMotorId;
@@ -1996,8 +1996,8 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State &)
 {
   // Enable motors per bus
-  rmd_left_->enableMotors({1, 2, 3});   // leftjoint2/3/4
-  rmd_right_->enableMotors({4, 5, 6});  // rightjoint2/3/4
+  rmd_left_->enableMotors({1, 2, 3});   // left_joint2/3/4
+  rmd_right_->enableMotors({4, 5, 6});  // right_joint2/3/4
   rmd_base_->enableMotors({1});          // turn
   canopen_->enableNodes({1, 2, 3, 4, 5});
 
@@ -2089,19 +2089,19 @@ void AlfaRobotHW::buildJoints()
     RmdJoint::Config{1, 0.0, 0.0}, *rmd_base_));
 
   // RMD joints — left bus
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint2",
+  joints_.push_back(std::make_unique<RmdJoint>("left_joint2",
     RmdJoint::Config{1, 0.0, 0.0}, *rmd_left_));
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint3",
+  joints_.push_back(std::make_unique<RmdJoint>("left_joint3",
     RmdJoint::Config{2, 0.0, 0.0}, *rmd_left_));
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint4",
+  joints_.push_back(std::make_unique<RmdJoint>("left_joint4",
     RmdJoint::Config{3, 0.0, 0.0}, *rmd_left_));
 
   // RMD joints — right bus
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint2",
     RmdJoint::Config{4, 0.0, 0.0}, *rmd_right_));
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint3",
     RmdJoint::Config{5, 0.0, 0.0}, *rmd_right_));
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint4",
     RmdJoint::Config{6, 0.0, 0.0}, *rmd_right_));
 
   // CANopen joints
@@ -2109,11 +2109,11 @@ void AlfaRobotHW::buildJoints()
     CanopenJoint::Config{1, 1.0, 0.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("leftarmbase",
     CanopenJoint::Config{2, 3.0, 0.0}, *canopen_));   // gear_ratio=3.0
-  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint1",
+  joints_.push_back(std::make_unique<CanopenJoint>("left_joint1",
     CanopenJoint::Config{3, 1.0, 0.0}, *canopen_));
   joints_.push_back(std::make_unique<CanopenJoint>("rightarmbase",
     CanopenJoint::Config{4, 3.0, 0.0}, *canopen_));   // gear_ratio=3.0
-  joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
+  joints_.push_back(std::make_unique<CanopenJoint>("right_joint1",
     CanopenJoint::Config{5, 1.0, 0.0}, *canopen_));
 
   // Wheel joints (velocity-controlled placeholders)

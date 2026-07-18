@@ -50,10 +50,10 @@ std::optional<double> candidate_joint_value(
 const std::vector<std::string>& fixed_variable_names()
 {
   static const std::vector<std::string> names = {
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
   };
   return names;
 }
@@ -62,17 +62,17 @@ const std::vector<std::string>& fixed_full_variable_names()
 {
   static const std::vector<std::string> names = {
     "updown",
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
   };
   return names;
 }
 
 std::string arm_joint_name(const std::string& side, size_t index)
 {
-  return side + "joint" + std::to_string(index + 1);
+  return side + "_joint" + std::to_string(index + 1);
 }
 
 std::array<double, 6> arm_seed_from_state(
@@ -709,10 +709,10 @@ bool IkCandidateSelector::similar(
   }
 
   static const std::array<const char*, 12> arm_joints = {
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
   };
 
   size_t compared = 0;

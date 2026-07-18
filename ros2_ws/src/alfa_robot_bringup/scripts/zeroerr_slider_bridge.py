@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 零差云控电机（can0 Node 1,2）滑块测试
-仅控制 leftjoint2 和 leftjoint3 两个关节
+仅控制 left_joint2 和 left_joint3 两个关节
 """
 
 import rclpy
@@ -18,8 +18,8 @@ class ZeroerrSliderBridge(Node):
 
         self.declare_parameter("joint_states_topic", "/joint_states_gui")
         self.declare_parameter("controller_name", "zeroerr_slider_controller")
-        # 只控制 leftjoint2 和 leftjoint3
-        self._joint_names = ["leftjoint2", "leftjoint3"]
+        # 只控制 left_joint2 和 left_joint3
+        self._joint_names = ["left_joint2", "left_joint3"]
 
         joint_states_topic = self.get_parameter("joint_states_topic").value
         controller_name = self.get_parameter("controller_name").value
@@ -47,7 +47,7 @@ class ZeroerrSliderBridge(Node):
             if index < len(msg.position)
         }
 
-        # 只提取 leftjoint2 和 leftjoint3
+        # 只提取 left_joint2 和 left_joint3
         try:
             ordered = [positions[name] for name in self._joint_names]
         except KeyError:

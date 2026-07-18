@@ -141,10 +141,10 @@ std::vector<std::string> dual_arm_with_updown_joint_names()
 {
   return {
     "updown",
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
   };
 }
 

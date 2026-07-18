@@ -75,32 +75,32 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          leftjoint1:
+          left_joint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint2:
+          left_joint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint3:
+          left_joint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint4:
+          left_joint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint5:
+          left_joint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint6:
+          left_joint6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -118,32 +118,32 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          rightjoint1:
+          right_joint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint2:
+          right_joint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint3:
+          right_joint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint4:
+          right_joint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint5:
+          right_joint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint6:
+          right_joint6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -220,32 +220,32 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          leftjoint1:
+          left_joint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint2:
+          left_joint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint3:
+          left_joint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint4:
+          left_joint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint5:
+          left_joint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          leftjoint6:
+          left_joint6:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -263,32 +263,32 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-          rightjoint1:
+          right_joint1:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint2:
+          right_joint2:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint3:
+          right_joint3:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint4:
+          right_joint4:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint5:
+          right_joint5:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          rightjoint6:
+          right_joint6:
             Alpha: 1
             Show Axes: false
             Show Trail: false

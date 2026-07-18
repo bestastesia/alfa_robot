@@ -54,7 +54,7 @@ class KinematicSimExecutorNode(Node):
     - Updown absolute-position topic:
       /canopen/updown_position_controller/commands
 
-    Internally it keeps the repository model joint names (leftjoint1...) so
+    Internally it keeps the repository model joint names (left_joint1...) so
     robot_state_publisher and Rerun remain compatible, while also publishing
     hardware aliases (left_joint1...) on /joint_states for client-side tests.
     """

@@ -43,7 +43,7 @@ bool LoadedPoseSelector::hasVariable(const moveit::core::RobotState& state, cons
 
 std::string LoadedPoseSelector::jointName(const std::string& side, size_t index)
 {
-  return side + "joint" + std::to_string(index + 1);
+  return side + "_joint" + std::to_string(index + 1);
 }
 
 double LoadedPoseSelector::armPoseDistance(
@@ -252,15 +252,15 @@ std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box
 {
   std::vector<std::string> links{box.link_name};
   if (box.link_name.rfind("left_", 0) == 0) {
-    links.push_back("leftjoint6");
-    links.push_back("leftjoint5");
-    links.push_back("leftjoint4");
-    links.push_back("leftjoint3");
+    links.push_back("left_joint6");
+    links.push_back("left_joint5");
+    links.push_back("left_joint4");
+    links.push_back("left_joint3");
   } else if (box.link_name.rfind("right_", 0) == 0) {
-    links.push_back("rightjoint6");
-    links.push_back("rightjoint5");
-    links.push_back("rightjoint4");
-    links.push_back("rightjoint3");
+    links.push_back("right_joint6");
+    links.push_back("right_joint5");
+    links.push_back("right_joint4");
+    links.push_back("right_joint3");
   }
   return links;
 }
@@ -479,12 +479,12 @@ moveit::core::RobotState state_from_plan_at_time(
 
 bool is_left_arm_joint(const std::string& name)
 {
-  return name.rfind("leftjoint", 0) == 0;
+  return name.rfind("left_joint", 0) == 0;
 }
 
 bool is_right_arm_joint(const std::string& name)
 {
-  return name.rfind("rightjoint", 0) == 0;
+  return name.rfind("right_joint", 0) == 0;
 }
 
 void copy_arm_goal(
@@ -493,7 +493,7 @@ void copy_arm_goal(
   moveit::core::RobotState& state)
 {
   for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
-    const std::string joint_name = side + "joint" + std::to_string(joint_index);
+    const std::string joint_name = side + "_joint" + std::to_string(joint_index);
     state.setVariablePosition(joint_name, goal_state.getVariablePosition(joint_name));
   }
   state.enforceBounds();
@@ -1207,7 +1207,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 moveit::core::RobotState intermediate(lifted_state);
                 for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
                   const std::string joint_name =
-                    first_side + "joint" + std::to_string(joint_index);
+                    first_side + "_joint" + std::to_string(joint_index);
                   intermediate.setVariablePosition(
                     joint_name, lifted_goal_state.getVariablePosition(joint_name));
                 }
@@ -1387,7 +1387,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 moveit::core::RobotState intermediate(retreat_state);
                 for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
                   const std::string joint_name =
-                    first_side + "joint" + std::to_string(joint_index);
+                    first_side + "_joint" + std::to_string(joint_index);
                   intermediate.setVariablePosition(
                     joint_name, goal_state.getVariablePosition(joint_name));
                 }

@@ -44,15 +44,15 @@ DUAL_ARM_GROUP = "dual_arm_with_base"
 TORSO_JOINTS = ["pitch", "turn"]
 ARM_JOINTS = [
     "updown",
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
 ]
 ALL_JOINTS = TORSO_JOINTS + ARM_JOINTS
 
-LEFT_TOUCH = ["leftjoint6", "left_tool0"]
-RIGHT_TOUCH = ["rightjoint6", "right_tool0"]
+LEFT_TOUCH = ["left_joint6", "left_tool0"]
+RIGHT_TOUCH = ["right_joint6", "right_tool0"]
 
 LEFT_ATTACH_LINK = LEFT_TIP  # left_tool0
 RIGHT_ATTACH_LINK = RIGHT_TIP  # right_tool0

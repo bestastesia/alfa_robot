@@ -146,7 +146,7 @@ int main()
   monitor_state.loaded_start_state = start_state;
   const auto factory_request = make_extract_monitor_replay_request(
     monitor_state,
-    {"updown", "leftjoint1"},
+    {"updown", "left_joint1"},
     nlohmann::json{{"boxes", nlohmann::json::array()}},
     ik_state);
   assert(factory_request.prefix == "extract_monitor_L1_R2");

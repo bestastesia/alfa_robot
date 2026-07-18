@@ -171,7 +171,7 @@ ros2 service call /robot_motion/set_state robot_motion_interfaces/srv/SetRobotMo
   source: 'manual',
   authoritative: true,
   joint_state: {
-    name: ['updown','turn','pitch','leftjoint1','leftjoint2','leftjoint3','leftjoint4','leftjoint5','leftjoint6','rightjoint1','rightjoint2','rightjoint3','rightjoint4','rightjoint5','rightjoint6'],
+    name: ['updown','turn','pitch','left_joint1','left_joint2','left_joint3','left_joint4','left_joint5','left_joint6','right_joint1','right_joint2','right_joint3','right_joint4','right_joint5','right_joint6'],
     position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
   }
 }"
@@ -197,12 +197,12 @@ ros2 service call /robot_motion/set_scene robot_motion_interfaces/srv/SetRobotMo
 ```bash
 ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTask "{
   context: {request_id: 'demo_task', frame_id: 'world', scene_id: 'demo', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.55,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   ik_candidate_states: [
-    {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.3,0,0,0.1,-0.1]}
+    {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.3,0,0,0.1,-0.1]}
   ],
   loaded_goal_family: [
-    {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.3,0,0,0,0]}
+    {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.3,0,0,0,0]}
   ],
   candidate_limit: 8,
   planning_mode: 'shortcut',
@@ -218,7 +218,7 @@ ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTa
 ```bash
 ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/srv/RunDualArmPoseTask "{
   context: {request_id: 'pose_task', frame_id: 'base_link', scene_id: 'demo', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.55,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   left_target: {header: {frame_id: 'base_link'}, pose: {position: {x: 0.6, y: 0.25, z: 0.8}, orientation: {x: 0.0, y: 0.7071068, z: 0.0, w: 0.7071068}}},
   right_target: {header: {frame_id: 'base_link'}, pose: {position: {x: 0.6, y: -0.25, z: 0.8}, orientation: {x: 0.0, y: 0.7071068, z: 0.0, w: 0.7071068}}},
   fixed_updown: 0.55,
@@ -236,7 +236,7 @@ ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/s
 ```bash
 ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/RunBoxPairTask "{
   context: {request_id: 'box_pair_demo', frame_id: 'base_link', scene_id: 'box_stack', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','leftjoint2','leftjoint3','leftjoint4','leftjoint5','leftjoint6','rightjoint1','rightjoint2','rightjoint3','rightjoint4','rightjoint5','rightjoint6'], position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','left_joint2','left_joint3','left_joint4','left_joint5','left_joint6','right_joint1','right_joint2','right_joint3','right_joint4','right_joint5','right_joint6'], position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
   left_box_id: 1,
   right_box_id: 3,
   left_grasp_mode: 'front',
