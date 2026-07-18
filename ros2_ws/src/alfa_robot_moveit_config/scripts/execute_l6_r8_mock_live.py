@@ -20,6 +20,7 @@ from alfa_robot_rerun import visualize_rerun as rerun_helpers
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -66,6 +67,17 @@ from alfa_robot_execution_bridge.joints import (  # noqa: E402
 )
 import extract_stage_monitor_console as monitor  # noqa: E402
 import process_lifecycle  # noqa: E402
+
+
+# /joint_states 由传感器/驱动侧以 BEST_EFFORT 发布（rclcpp SensorDataQoS 语义）。
+# 订阅方若用默认 RELIABLE，会因 QoS 不兼容而收不到任何消息（DDS 直接拒绝匹配）。
+# 这里显式用 BEST_EFFORT + KEEP_LAST(depth=10) 与发布方对齐，读取当前关节状态。
+JOINT_STATE_QOS = QoSProfile(
+    reliability=ReliabilityPolicy.BEST_EFFORT,
+    durability=DurabilityPolicy.VOLATILE,
+    history=HistoryPolicy.KEEP_LAST,
+    depth=10,
+)
 
 
 def bash_source_command(command: str) -> list[str]:
@@ -822,7 +834,7 @@ def read_joint_position_once(topic: str, joint_name: str, timeout_s: float) -> f
         if index < len(msg.position):
             holder["value"] = float(msg.position[index])
 
-    subscription = node.create_subscription(JointState, topic, on_msg, 10)
+    subscription = node.create_subscription(JointState, topic, on_msg, JOINT_STATE_QOS)
     try:
         deadline = time.monotonic() + timeout_s
         while rclpy.ok() and time.monotonic() < deadline and "value" not in holder:
@@ -857,7 +869,7 @@ def read_current_execution_joint_map(topic: str, timeout_s: float) -> dict[str, 
         if all(name in values for name in EXECUTION_JOINT_NAMES):
             holder["values"] = values
 
-    subscription = node.create_subscription(JointState, topic, on_msg, 10)
+    subscription = node.create_subscription(JointState, topic, on_msg, JOINT_STATE_QOS)
     try:
         deadline = time.monotonic() + timeout_s
         while rclpy.ok() and time.monotonic() < deadline and "values" not in holder:
