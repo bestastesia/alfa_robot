@@ -140,6 +140,7 @@ class MotionTaskOrchestratorNode(Node):
         dry_run,
         velocity_scale,
         acceleration_scale,
+        strategy=None,
     ) -> dict[str, Any]:
         started = time.monotonic()
         if not ik_candidate_states:
@@ -157,6 +158,8 @@ class MotionTaskOrchestratorNode(Node):
         extract_request.seed_state = seed_state
         extract_request.ik_candidate_states = ik_candidate_states
         extract_request.attached_boxes = attached_boxes
+        if strategy is not None:
+            extract_request.strategy = strategy
         extract_request.scene_objects = scene_objects
         extract_request.attached_collision_objects = attached_collision_objects
         extract_request.candidate_limit = candidate_limit
@@ -277,6 +280,7 @@ class MotionTaskOrchestratorNode(Node):
                 dry_run=request.dry_run,
                 velocity_scale=request.velocity_scale,
                 acceleration_scale=request.acceleration_scale,
+                strategy=None,
             )
             self.apply_chain_result(response, result)
             self.status.mark_done(response.success, response.message)
@@ -331,6 +335,7 @@ class MotionTaskOrchestratorNode(Node):
                 dry_run=request.dry_run,
                 velocity_scale=request.velocity_scale,
                 acceleration_scale=request.acceleration_scale,
+                strategy=request.strategy,
             )
             self.apply_chain_result(response, result)
             response.message = (

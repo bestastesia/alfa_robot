@@ -15,6 +15,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory
 
+from alfa_robot_execution_bridge.updown import validate_updown_command_data
 from robot_motion_runtime.common import (
     DEFAULT_MOTION_JOINTS,
     MODEL_TO_HARDWARE_JOINT_ALIASES,
@@ -54,7 +55,7 @@ class KinematicSimExecutorNode(Node):
     - Updown absolute-position topic:
       /canopen/updown_position_controller/commands
 
-    Internally it keeps the repository model joint names (leftjoint1...) so
+    Internally it keeps the repository model joint names (left_joint1...) so
     robot_state_publisher and Rerun remain compatible, while also publishing
     hardware aliases (left_joint1...) on /joint_states for client-side tests.
     """
@@ -331,18 +332,18 @@ class KinematicSimExecutorNode(Node):
             self.get_logger().error(f"Rejecting trajectory topic message: {exc}")
 
     def on_updown_command(self, msg: Float64MultiArray) -> None:
-        if len(msg.data) != 1:
-            self.get_logger().error(
-                f"Rejecting updown command with length {len(msg.data)}; expected 1"
-            )
-            return
-        target = float(msg.data[0])
-        if not math.isfinite(target):
-            self.get_logger().error(f"Rejecting non-finite updown command: {target}")
+        try:
+            target, velocity, acceleration, deceleration = validate_updown_command_data(msg.data)
+        except ValueError as exc:
+            self.get_logger().error(f"Rejecting updown command: {exc}")
             return
         with self.lock:
             self.positions["updown"] = target
-        self.get_logger().info(f"Simulated updown absolute target accepted: {target:.4f}m")
+        self.get_logger().info(
+            "Simulated updown profile target accepted: "
+            f"position={target:.4f}m velocity={velocity:.4f}m/s "
+            f"acceleration={acceleration:.4f}m/s^2 deceleration={deceleration:.4f}m/s^2"
+        )
 
     def execute_goal(self, goal_handle):
         trajectory = goal_handle.request.trajectory

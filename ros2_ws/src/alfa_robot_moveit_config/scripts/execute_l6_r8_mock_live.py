@@ -61,9 +61,14 @@ from alfa_robot_execution_bridge.joints import (  # noqa: E402
     EXECUTION_JOINT_NAMES,
     REAL_CONTROLLER_JOINT_NAMES,
     ethercat_to_ros_position,
-    logical_to_physical_updown,
     physical_to_logical_updown,
     ros_to_ethercat_position,
+)
+from alfa_robot_execution_bridge.updown import (  # noqa: E402
+    DEFAULT_UPDOWN_ACCELERATION_MPS2,
+    DEFAULT_UPDOWN_DECELERATION_MPS2,
+    make_updown_command_data,
+    synchronized_updown_velocity_mps,
 )
 import extract_stage_monitor_console as monitor  # noqa: E402
 import process_lifecycle  # noqa: E402
@@ -95,20 +100,14 @@ def terminate_process(process: subprocess.Popen[str] | None, timeout: float = 5.
     process_lifecycle.terminate_process_tree(process, interrupt_timeout=timeout)
 
 
-def require_explicit_confirmation(prompt: str, token: str = "YES") -> None:
-    """real direct 流程的人工确认关卡。
-
-    非交互环境（无 tty，如被 subprocess/cron/CI 调起）下直接拒绝执行，
-    不能让 EOFError 静默穿透；交互环境下必须手动输入指定 token，回车不算确认。
-    """
+def wait_for_enter_confirmation(prompt: str) -> None:
+    """real direct 流程的人工回车确认关卡。"""
     if not sys.stdin.isatty():
         raise SystemExit(
-            f"拒绝执行：{prompt} 需要交互式人工确认（输入 '{token}'），"
+            f"拒绝执行：{prompt} 需要交互式人工回车确认，"
             "但当前标准输入不是 tty，无法确认人员/设备安全状态。"
         )
-    reply = input(f"{prompt}\n输入 '{token}' 并回车以确认；其它任意输入或 Ctrl+C 取消：").strip()
-    if reply != token:
-        raise SystemExit(f"未确认（收到 {reply!r}，需要 {token!r}），拒绝执行。")
+    input(f"{prompt}\n确认后直接按回车继续；Ctrl+C 取消：")
 
 
 def seconds_to_duration(seconds: float):
@@ -128,10 +127,10 @@ def duration_to_seconds(duration: Any) -> float:
 
 
 def moveit_to_execution_name(name: str) -> str | None:
-    if name.startswith("leftjoint"):
-        return "left_joint" + name.removeprefix("leftjoint")
-    if name.startswith("rightjoint"):
-        return "right_joint" + name.removeprefix("rightjoint")
+    if name.startswith("left_joint"):
+        return "left_joint" + name.removeprefix("left_joint")
+    if name.startswith("right_joint"):
+        return "right_joint" + name.removeprefix("right_joint")
     if name.startswith("left_joint"):
         return name
     if name.startswith("right_joint"):
@@ -143,9 +142,9 @@ def moveit_to_execution_name(name: str) -> str | None:
 
 def execution_to_moveit_name(name: str) -> str:
     if name.startswith("left_joint"):
-        return "leftjoint" + name.removeprefix("left_joint")
+        return "left_joint" + name.removeprefix("left_joint")
     if name.startswith("right_joint"):
-        return "rightjoint" + name.removeprefix("right_joint")
+        return "right_joint" + name.removeprefix("right_joint")
     return name
 
 
@@ -184,9 +183,14 @@ def resample_segment(
     start_time: float,
     hz: float,
     max_joint_speed_deg_s: float,
+    minimum_duration_s: float = 0.0,
 ) -> list[tuple[float, dict[str, float]]]:
     max_delta = max(abs(goal[name] - start[name]) for name in EXECUTION_JOINT_NAMES)
-    duration = max(1.0 / hz, max_delta / math.radians(max_joint_speed_deg_s))
+    duration = max(
+        1.0 / hz,
+        max_delta / math.radians(max_joint_speed_deg_s),
+        float(minimum_duration_s),
+    )
     steps = max(1, int(math.ceil(duration * hz)))
     out: list[tuple[float, dict[str, float]]] = []
     for step in range(1, steps + 1):
@@ -458,6 +462,106 @@ def trajectory_from_snapshot_preserve_timing(
     return samples
 
 
+def split_task_execution_phases(
+    samples: list[tuple[float, dict[str, float], dict[str, Any]]],
+) -> tuple[
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+]:
+    """Split replay samples into pre-contact, 5cm contact, and post-contact phases."""
+    pre_contact = [sample for sample in samples if int(sample[2].get("stage_index", -1)) == 0]
+    contact = [sample for sample in samples if int(sample[2].get("stage_index", -1)) == 1]
+    post_contact = [sample for sample in samples if int(sample[2].get("stage_index", -1)) >= 2]
+    if not pre_contact or not contact or not post_contact:
+        raise RuntimeError(
+            "snapshot is missing required execution phases: "
+            f"pre_contact={len(pre_contact)} contact={len(contact)} post_contact={len(post_contact)}"
+        )
+
+    def prepend_boundary(
+        phase: list[tuple[float, dict[str, float], dict[str, Any]]],
+        previous: tuple[float, dict[str, float], dict[str, Any]],
+    ) -> list[tuple[float, dict[str, float], dict[str, Any]]]:
+        first_time = phase[0][0]
+        if previous[0] > first_time + 1e-9:
+            raise RuntimeError("execution phase boundary time moved backwards")
+        boundary_context = dict(phase[0][2])
+        boundary_context["updown"] = float(previous[2].get("updown", boundary_context.get("updown", 0.3)))
+        return [(previous[0], dict(previous[1]), boundary_context), *phase]
+
+    contact = prepend_boundary(contact, pre_contact[-1])
+    post_contact = prepend_boundary(post_contact, contact[-1])
+    return pre_contact, contact, post_contact
+
+
+def split_post_contact_place_cycle(
+    post_contact: list[tuple[float, dict[str, float], dict[str, Any]]],
+    *,
+    required: bool,
+) -> tuple[
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+    list[tuple[float, dict[str, float], dict[str, Any]]],
+]:
+    """Split post-contact replay into extract, loaded-to-place, and return phases."""
+
+    def stage_ends_with(sample, suffix: str) -> bool:
+        return str(sample[2].get("stage", "")).endswith(suffix)
+
+    loaded_to_place = [
+        sample for sample in post_contact
+        if stage_ends_with(sample, "/selected_loaded_to_place")
+    ]
+    place_to_loaded = [
+        sample for sample in post_contact
+        if stage_ends_with(sample, "/selected_place_to_loaded")
+    ]
+    if not loaded_to_place and not place_to_loaded:
+        if required:
+            raise RuntimeError("snapshot is missing the required loaded/place/loaded cycle")
+        return post_contact, [], []
+    if not loaded_to_place or not place_to_loaded:
+        raise RuntimeError(
+            "snapshot contains an incomplete place cycle: "
+            f"loaded_to_place={len(loaded_to_place)} place_to_loaded={len(place_to_loaded)}"
+        )
+
+    place_stage_names = {
+        str(sample[2].get("stage", "")) for sample in loaded_to_place + place_to_loaded
+    }
+    extract_to_loaded = [
+        sample for sample in post_contact
+        if str(sample[2].get("stage", "")) not in place_stage_names
+    ]
+    if not extract_to_loaded:
+        raise RuntimeError("snapshot place cycle has no preceding extract-to-loaded phase")
+
+    def prepend_boundary(phase, previous):
+        boundary_context = dict(phase[0][2])
+        boundary_context["updown"] = float(
+            previous[2].get("updown", boundary_context.get("updown", 0.3))
+        )
+        return [(previous[0], dict(previous[1]), boundary_context), *phase]
+
+    loaded_to_place = prepend_boundary(loaded_to_place, extract_to_loaded[-1])
+    place_to_loaded = prepend_boundary(place_to_loaded, loaded_to_place[-1])
+    return extract_to_loaded, loaded_to_place, place_to_loaded
+
+
+def phase_updown_samples(
+    samples: list[tuple[float, dict[str, float], dict[str, Any]]],
+) -> list[tuple[float, float]]:
+    if not samples:
+        return []
+    start_time = samples[0][0]
+    return [
+        (time_s - start_time, float(context["updown"]))
+        for time_s, _, context in samples
+        if "updown" in context
+    ]
+
+
 def load_rerun_helpers():
     return rerun_helpers
 
@@ -475,6 +579,9 @@ class LiveExecutionClient(Node):
         scene_y_shift: float,
         hz: float,
         updown_topic: str,
+        max_updown_speed_m_s: float,
+        updown_acceleration_m_s2: float,
+        updown_deceleration_m_s2: float,
     ) -> None:
         super().__init__("alfa_l6_r8_live_executor")
         self.client = ActionClient(self, FollowJointTrajectory, action_name)
@@ -490,6 +597,9 @@ class LiveExecutionClient(Node):
         self.scene_y_shift = scene_y_shift
         self.hz = hz
         self.updown_topic = updown_topic
+        self.max_updown_speed_m_s = max_updown_speed_m_s
+        self.updown_acceleration_m_s2 = updown_acceleration_m_s2
+        self.updown_deceleration_m_s2 = updown_deceleration_m_s2
         self.sample = 0
         self.last_context: dict[str, Any] = {}
         self.feedback_count = 0
@@ -577,50 +687,44 @@ class LiveExecutionClient(Node):
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
-        updown_stop = threading.Event()
-        updown_thread: threading.Thread | None = None
         if self.updown_pub is not None and updown_samples:
-            updown_thread = threading.Thread(
-                target=self._publish_updown_samples,
-                args=(list(updown_samples), updown_stop),
-                daemon=True,
+            velocity_mps = synchronized_updown_velocity_mps(
+                updown_samples,
+                self.max_updown_speed_m_s,
             )
-            updown_thread.start()
+            if velocity_mps is not None:
+                self._publish_updown_target(updown_samples[-1][1], velocity_mps)
+                self.get_logger().info(
+                    f"{label}: updown PP target={updown_samples[-1][1]:.4f}m "
+                    f"velocity={velocity_mps:.4f}m/s "
+                    f"accel={self.updown_acceleration_m_s2:.4f}m/s^2 "
+                    f"decel={self.updown_deceleration_m_s2:.4f}m/s^2"
+                )
         future = self.client.send_goal_async(goal, feedback_callback=feedback_callback)
         rclpy.spin_until_future_complete(self, future)
         goal_handle = future.result()
         if goal_handle is None or not goal_handle.accepted:
-            updown_stop.set()
             self.get_logger().error(f"{label}: goal rejected")
             return False
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
-        updown_stop.set()
-        if updown_thread is not None:
-            updown_thread.join(timeout=1.0)
         result = result_future.result().result
         ok = result.error_code == FollowJointTrajectory.Result.SUCCESSFUL
         if not ok:
             self.get_logger().error(f"{label}: failed {result.error_code} {result.error_string}")
         return ok
 
-    def _publish_updown_samples(self, samples: list[tuple[float, float]], stop: threading.Event) -> None:
-        if self.updown_pub is None or not samples:
+    def _publish_updown_target(self, updown_m: float, velocity_mps: float) -> None:
+        if self.updown_pub is None:
             return
-        start = time.monotonic()
-        for sample_time_s, updown_m in samples:
-            while not stop.is_set():
-                remaining = start + sample_time_s - time.monotonic()
-                if remaining <= 0.0:
-                    break
-                time.sleep(min(remaining, 0.01))
-            if stop.is_set():
-                return
-            msg = Float64MultiArray()
-            # updown_m 是 URDF/MoveIt 逻辑值；下发电机前统一走 joints.py 收口换算
-            # (physical = logical - 0.08) 并夹紧到电机物理行程 [0, 0.7]，绝不下发超程指令。
-            msg.data = [logical_to_physical_updown(float(updown_m))]
-            self.updown_pub.publish(msg)
+        msg = Float64MultiArray()
+        msg.data = make_updown_command_data(
+            updown_m,
+            velocity_mps,
+            self.updown_acceleration_m_s2,
+            self.updown_deceleration_m_s2,
+        )
+        self.updown_pub.publish(msg)
 
 
 def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: Path) -> SimpleNamespace:
@@ -653,10 +757,10 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         ik_top_position_tolerance=getattr(args, "ik_top_position_tolerance", 0.04),
         ik_top_orientation_tolerance_deg=getattr(args, "ik_top_orientation_tolerance_deg", 7.0),
         ik_h_candidate_count=getattr(args, "ik_h_candidate_count", 64),
-        ik_h_lower=getattr(args, "ik_h_lower", 0.08),
-        ik_h_upper=getattr(args, "ik_h_upper", 0.78),
+        ik_h_lower=getattr(args, "ik_h_lower", 0.0),
+        ik_h_upper=getattr(args, "ik_h_upper", 0.7),
         ik_h_step=getattr(args, "ik_h_step", 0.01),
-        ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", True),
+        ik_full_h_range_scan=getattr(args, "ik_full_h_range_scan", False),
         ik_seed_count=getattr(args, "ik_seed_count", 32),
         ik_workers=getattr(args, "ik_workers", 1),
         ik_candidate_timeout=getattr(args, "ik_candidate_timeout", 0.01),
@@ -708,6 +812,14 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         extract_ik_loaded_distance_order_weight=getattr(args, "extract_ik_loaded_distance_order_weight", 0.0),
         ik_only_raw=False,
         extract_monitor_build_final_replay=True,
+        place_cycle_enabled=getattr(args, "place_cycle_enabled", True),
+        place_updown=getattr(args, "place_updown", 0.20),
+        place_left_pose_deg=getattr(
+            args, "place_left_pose_deg", "[0.0,-55.0,-50.0,-60.0,0.0,0.0]"
+        ),
+        place_right_pose_deg=getattr(
+            args, "place_right_pose_deg", "[0.0,-55.0,-50.0,-60.0,0.0,0.0]"
+        ),
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
@@ -716,7 +828,7 @@ def build_planner_args(args: argparse.Namespace, run_dir: Path, snapshot_path: P
         pre_lower_left_box_id=args.pre_lower_left_box_id,
         pre_lower_right_box_id=args.pre_lower_right_box_id,
         pre_lower_updown_delta=args.pre_lower_updown_delta,
-        loaded_updown=args.fixed_updown,
+        loaded_updown=args.loaded_updown,
         loaded_planner_id=getattr(args, "loaded_planner_id", ""),
         loaded_planning_mode=getattr(args, "loaded_planning_mode", "shortcut"),
         loaded_planning_time=args.loaded_planning_time,
@@ -769,7 +881,7 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
         start = time.monotonic()
         success, output, elapsed_ms = monitor.call_trigger_service(
             "/dual_arm_planner/run_extract_monitor_full_selected",
-            args.service_timeout,
+            args.compute_timeout,
         )
         print(output, flush=True)
         print(f"计算完成：success={success} service={elapsed_ms:.1f}ms wall={(time.monotonic()-start)*1000.0:.1f}ms", flush=True)
@@ -865,7 +977,9 @@ def read_current_execution_joint_map(topic: str, timeout_s: float) -> dict[str, 
                 continue
             execution_name = moveit_to_execution_name(str(name))
             if execution_name in EXECUTION_JOINT_NAMES:
-                values[execution_name] = float(msg.position[index])
+                values[execution_name] = ethercat_to_ros_position(
+                    execution_name, float(msg.position[index])
+                )
         if all(name in values for name in EXECUTION_JOINT_NAMES):
             holder["values"] = values
 
@@ -902,6 +1016,12 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--top-box-front-x", type=float, default=None)
     parser.add_argument("--scene-y-shift", type=float, default=-0.4)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
+    parser.add_argument(
+        "--loaded-updown",
+        type=float,
+        default=0.3,
+        help="初始化及任务结束时的负重高度；与当前 IK 参考 fixed_updown 分离",
+    )
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
     parser.add_argument("--top-z-reach-lower", type=float, default=0.0)
@@ -911,10 +1031,15 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
-    parser.add_argument("--ik-h-lower", type=float, default=0.08)
-    parser.add_argument("--ik-h-upper", type=float, default=0.78)
+    parser.add_argument("--ik-h-lower", type=float, default=0.0)
+    parser.add_argument("--ik-h-upper", type=float, default=0.7)
     parser.add_argument("--ik-h-step", type=float, default=0.01)
-    parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=True)
+    # full-h-range-scan 会把整个 [0,0.7] 按 0.01 步长扫 ~70 个高度,再对每个高度做
+    # 左×右解析解笛卡尔积,产出上百个候选喂给重型 box_pose_rrt 抽离 -> 真机 180s 超时。
+    # 离线 13/13 基线(extract_stage_monitor_console/extract_sequence_rerun)用的是
+    # false: 只在"由目标反推的可达 h 区间"里按 h_search_margin 取少量高度,候选 ~20 个。
+    # 这里对齐那套被验证过的原方案,默认 false。
+    parser.add_argument("--ik-full-h-range-scan", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--ik-seed-count", type=int, default=32)
     parser.add_argument("--ik-workers", type=int, default=1)
     parser.add_argument("--ik-candidate-timeout", type=float, default=0.01)
@@ -977,7 +1102,17 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--place-cycle-enabled", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--place-updown", type=float, default=0.20)
+    parser.add_argument(
+        "--place-left-pose-deg",
+        default="[0.0,-55.0,-50.0,-60.0,0.0,0.0]",
+    )
+    parser.add_argument(
+        "--place-right-pose-deg",
+        default="[0.0,-55.0,-50.0,-60.0,0.0,0.0]",
+    )
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)
     parser.add_argument("--lateral-shift-column", type=int, default=2)
@@ -987,9 +1122,23 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--dedup-joint-threshold-deg", type=float, default=1.0)
     parser.add_argument("--dedup-h-threshold", type=float, default=0.005)
     parser.add_argument("--service-timeout", type=float, default=120.0)
+    # 计算本身(run_extract_monitor_full_selected)的独立超时,与"等planner启动"分开:
+    # planner 起 move_group+IK预热要 30~40s,不能用它卡计算;而计算(候选收敛后)应几秒内出,
+    # 给它一个较紧的上限让真卡死时快速失败,不空等 service-timeout 那么久。默认 30s。
+    parser.add_argument("--compute-timeout", type=float, default=30.0)
     parser.add_argument("--hz", type=float, default=10.0)
-    parser.add_argument("--max-joint-speed-deg-s", type=float, default=20.0)
+    parser.add_argument("--max-joint-speed-deg-s", type=float, default=10.0)
     parser.add_argument("--max-updown-speed-m-s", type=float, default=0.05)
+    parser.add_argument(
+        "--updown-acceleration-m-s2",
+        type=float,
+        default=DEFAULT_UPDOWN_ACCELERATION_MPS2,
+    )
+    parser.add_argument(
+        "--updown-deceleration-m-s2",
+        type=float,
+        default=DEFAULT_UPDOWN_DECELERATION_MPS2,
+    )
     parser.add_argument(
         "--trajectory-timing-source",
         choices=["snapshot", "python"],
@@ -1004,8 +1153,9 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument("--joint-state-topic", default="/joint_states")
     parser.add_argument(
         "--updown-joint-state-topic",
-        default="/canopen/joint_states",
-        help="updown 由 CANopen 控制栈独立发布，与 --joint-state-topic（12臂+turn）不是同一个 topic",
+        default="/joint_states",
+        help="updown 现已合并进 /joint_states(与12臂+turn同一个topic);"
+             "该topic上的updown是电机物理值,读取后经 physical_to_logical_updown 转逻辑值",
     )
     parser.add_argument("--joint-state-timeout-s", type=float, default=3.0)
     parser.add_argument(
@@ -1052,6 +1202,12 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
         help="本次 ROS_DOMAIN_ID；auto 隔离自启动测试，inherit 表示沿用当前终端。",
     )
     args = parser.parse_args()
+    make_updown_command_data(
+        0.0,
+        args.max_updown_speed_m_s,
+        args.updown_acceleration_m_s2,
+        args.updown_deceleration_m_s2,
+    )
     real_direct = args.executor_mode == "real" and not args.start_execution_bridge
     if (
         real_direct
@@ -1134,6 +1290,7 @@ def main(default_executor_mode: str = "mock") -> int:
     Path(os.environ["ROS_LOG_DIR"]).mkdir(parents=True, exist_ok=True)
 
     bridge = None
+    current_updown_logical: float | None = None
     try:
         print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}", flush=True)
         if args.fixed_updown_from_joint_states:
@@ -1142,9 +1299,10 @@ def main(default_executor_mode: str = "mock") -> int:
                 "updown",
                 args.joint_state_timeout_s,
             )
-            # /canopen/joint_states 反馈的是电机物理值；转成 URDF/MoveIt 逻辑值
-            # (logical = physical + 0.08) 再交给规划,与下发时的 logical->physical 收口对称。
+            # /joint_states 上 updown 是电机物理值；仍经合同函数转成 URDF/MoveIt 逻辑值。
+            # 当前实机标定为零偏移，因此数值不变，但禁止绕过合同边界。
             args.fixed_updown = physical_to_logical_updown(raw_updown_physical)
+            current_updown_logical = args.fixed_updown
             print(
                 f"从 {args.updown_joint_state_topic} 读取 updown 电机物理值="
                 f"{raw_updown_physical:.6f}m -> 逻辑值={args.fixed_updown:.6f}m",
@@ -1196,6 +1354,9 @@ def main(default_executor_mode: str = "mock") -> int:
                 if args.executor_mode == "real" and args.send_updown
                 else ""
             ),
+            max_updown_speed_m_s=args.max_updown_speed_m_s,
+            updown_acceleration_m_s2=args.updown_acceleration_m_s2,
+            updown_deceleration_m_s2=args.updown_deceleration_m_s2,
         )
         try:
             client.log_static_scene()
@@ -1206,6 +1367,22 @@ def main(default_executor_mode: str = "mock") -> int:
                 zero = {name: 0.0 for name in EXECUTION_JOINT_NAMES}
                 print("负重过渡起点：全0姿态", flush=True)
             loaded = loaded_joint_map(args.loaded_preferred_pose_index)
+            if args.executor_mode == "real" and args.send_updown:
+                if current_updown_logical is None:
+                    raw_updown_physical = read_joint_position_once(
+                        args.updown_joint_state_topic,
+                        "updown",
+                        args.joint_state_timeout_s,
+                    )
+                    current_updown_logical = physical_to_logical_updown(raw_updown_physical)
+                print(
+                    "初始化 updown："
+                    f"current={current_updown_logical:.6f}m "
+                    f"target={args.loaded_updown:.6f}m",
+                    flush=True,
+                )
+            else:
+                current_updown_logical = args.loaded_updown
             command_joint_names = (
                 REAL_CONTROLLER_JOINT_NAMES
                 if args.executor_mode == "real"
@@ -1218,6 +1395,10 @@ def main(default_executor_mode: str = "mock") -> int:
                 and not args.start_execution_bridge
                 and args.real_apply_direction_signs
             )
+            home_updown_duration = (
+                abs(args.loaded_updown - current_updown_logical) / args.max_updown_speed_m_s
+                if args.send_updown else 0.0
+            )
             home_samples = [
                 (0.0, zero),
                 *resample_segment(
@@ -1226,7 +1407,18 @@ def main(default_executor_mode: str = "mock") -> int:
                     start_time=0.0,
                     hz=args.hz,
                     max_joint_speed_deg_s=args.max_joint_speed_deg_s,
+                    minimum_duration_s=home_updown_duration,
                 ),
+            ]
+            home_duration = home_samples[-1][0]
+            home_updown_samples = [
+                (
+                    time_s,
+                    current_updown_logical
+                    + (args.loaded_updown - current_updown_logical)
+                    * min(1.0, max(0.0, time_s / home_duration)),
+                )
+                for time_s, _ in home_samples
             ]
             home_contexts = [
                 {
@@ -1234,9 +1426,9 @@ def main(default_executor_mode: str = "mock") -> int:
                     "stage": "zero_to_loaded",
                     "attached_boxes": [],
                     "static_box_obstacles": [],
-                    "updown": args.fixed_updown,
+                    "updown": updown,
                 }
-                for _ in home_samples
+                for (_, _), (_, updown) in zip(home_samples, home_updown_samples)
             ]
             if args.executor_mode == "real":
                 print("实机手臂 action 将发送 12 个手臂关节 + turn=0。", flush=True)
@@ -1247,7 +1439,9 @@ def main(default_executor_mode: str = "mock") -> int:
                 print(f"负重姿态族索引：{args.loaded_preferred_pose_index}（0 为当前实机确认方向）", flush=True)
                 print(f"实机方向映射：{'开启' if apply_ethercat_signs else '关闭'}", flush=True)
                 print("实机 joint_names 顺序：" + ", ".join(command_joint_names), flush=True)
-                require_explicit_confirmation("确认真实机器人当前状态安全、人员远离、可运动后再继续：当前姿态→负重姿态")
+                wait_for_enter_confirmation(
+                    "确认真实机器人当前状态安全、人员远离。按回车后先回到初始化负重姿态"
+                )
             print("开始执行：当前姿态 → 负重姿态", flush=True)
             home_start = time.monotonic()
             if not client.send_and_wait(
@@ -1259,12 +1453,10 @@ def main(default_executor_mode: str = "mock") -> int:
                 home_contexts,
                 "home_to_loaded",
                 feedback_uses_ethercat_signs=apply_ethercat_signs,
+                updown_samples=(home_updown_samples if args.send_updown else None),
             ):
                 return 1
             print(f"完成执行：当前姿态 → 负重姿态，用时 {(time.monotonic() - home_start):.3f}s", flush=True)
-
-            if args.executor_mode == "real":
-                require_explicit_confirmation("已到负重姿态，确认可以开始 L6/R8 任务执行")
 
             if args.trajectory_timing_source == "python":
                 task_samples_raw = trajectory_from_snapshot(
@@ -1277,39 +1469,123 @@ def main(default_executor_mode: str = "mock") -> int:
                 task_samples_raw = trajectory_from_snapshot_preserve_timing(
                     snapshot,
                     initial=loaded,
-                    initial_updown=args.fixed_updown,
+                    initial_updown=args.loaded_updown,
                     hz=args.hz,
                     max_joint_speed_deg_s=args.max_joint_speed_deg_s,
                     max_updown_speed_m_s=args.max_updown_speed_m_s,
                 )
-            task_samples = [(time_s, joint_map) for time_s, joint_map, _ in task_samples_raw]
-            task_contexts = [context for _, _, context in task_samples_raw]
-            if not task_samples:
+            if not task_samples_raw:
                 raise RuntimeError("snapshot produced empty execution trajectory")
-            updown_samples = [
-                (time_s - task_samples[0][0], float(context["updown"]))
-                for time_s, _, context in task_samples_raw
-                if "updown" in context
-            ]
-            print(
-                f"开始执行：L{args.left_box_id}/R{args.right_box_id} 任务轨迹，"
-                f"轨迹点 {len(task_samples)}，timing={args.trajectory_timing_source}",
-                flush=True,
+            pre_contact_phase, contact_phase, post_contact_phase = split_task_execution_phases(
+                task_samples_raw
             )
+            extract_phase, place_phase, return_phase = split_post_contact_place_cycle(
+                post_contact_phase,
+                required=args.place_cycle_enabled,
+            )
+
+            def execute_phase(
+                phase_samples_raw: list[tuple[float, dict[str, float], dict[str, Any]]],
+                label: str,
+                description: str,
+            ) -> bool:
+                phase_samples = [
+                    (time_s, joint_map) for time_s, joint_map, _ in phase_samples_raw
+                ]
+                phase_contexts = [context for _, _, context in phase_samples_raw]
+                planned_duration = phase_samples[-1][0] - phase_samples[0][0]
+                print(
+                    f"开始执行：{description}，轨迹点 {len(phase_samples)}，"
+                    f"计划时长 {planned_duration:.3f}s，timing={args.trajectory_timing_source}",
+                    flush=True,
+                )
+                phase_start = time.monotonic()
+                ok = client.send_and_wait(
+                    make_trajectory(
+                        phase_samples,
+                        command_joint_names,
+                        apply_ethercat_signs=apply_ethercat_signs,
+                    ),
+                    phase_contexts,
+                    label,
+                    feedback_uses_ethercat_signs=apply_ethercat_signs,
+                    updown_samples=(
+                        phase_updown_samples(phase_samples_raw)
+                        if args.send_updown else None
+                    ),
+                )
+                print(
+                    f"{'完成' if ok else '失败'}执行：{description}，"
+                    f"实际用时 {(time.monotonic() - phase_start):.3f}s",
+                    flush=True,
+                )
+                return ok
+
             task_start = time.monotonic()
-            if not client.send_and_wait(
-                make_trajectory(
-                    task_samples,
-                    command_joint_names,
-                    apply_ethercat_signs=apply_ethercat_signs,
-                ),
-                task_contexts,
-                "L6_R8_task",
-                feedback_uses_ethercat_signs=apply_ethercat_signs,
-                updown_samples=updown_samples if args.send_updown else None,
+            if not execute_phase(
+                pre_contact_phase,
+                "loaded_to_pre_contact",
+                "初始化负重姿态 → IK 前 5cm 预接触姿态",
             ):
                 return 1
-            print(f"完成执行：L6/R8 任务轨迹，用时 {(time.monotonic() - task_start):.3f}s", flush=True)
+            expected_pre_contact_updown = float(pre_contact_phase[-1][2].get("updown", args.fixed_updown))
+            if args.executor_mode == "real":
+                wait_for_enter_confirmation(
+                    "已到 IK 前 5cm 预接触姿态。请等待并确认 updown 已到目标位置 "
+                    f"logical={expected_pre_contact_updown:.3f}m 后再继续"
+                )
+                raw_updown_physical = read_joint_position_once(
+                    args.updown_joint_state_topic,
+                    "updown",
+                    args.joint_state_timeout_s,
+                )
+                actual_updown_logical = physical_to_logical_updown(raw_updown_physical)
+                print(
+                    "回车确认时 updown："
+                    f"physical={raw_updown_physical:.6f}m "
+                    f"logical={actual_updown_logical:.6f}m "
+                    f"target={expected_pre_contact_updown:.6f}m "
+                    f"error={actual_updown_logical - expected_pre_contact_updown:+.6f}m",
+                    flush=True,
+                )
+            if not execute_phase(
+                contact_phase,
+                "pre_contact_to_grasp",
+                "预接触姿态 → IK 吸附点（前进 5cm）",
+            ):
+                return 1
+            if args.executor_mode == "real":
+                wait_for_enter_confirmation(
+                    "机械臂已到 IK 吸附点。确认吸附条件正常后，按回车开始抽离并回到负重姿态"
+                )
+            if not execute_phase(
+                extract_phase,
+                "extract_to_loaded",
+                "IK 吸附点 → 抽离 → 负重姿态",
+            ):
+                return 1
+            if place_phase:
+                if not execute_phase(
+                    place_phase,
+                    "loaded_to_place",
+                    "负重姿态 → 放货姿态",
+                ):
+                    return 1
+                if args.executor_mode == "real":
+                    wait_for_enter_confirmation(
+                        "机械臂已到放货姿态。确认箱子已经释放且环境安全后，按回车返回负重初始姿态"
+                    )
+                if not execute_phase(
+                    return_phase,
+                    "place_to_loaded",
+                    "放货姿态 → 负重初始姿态",
+                ):
+                    return 1
+            print(
+                f"完成执行：L{args.left_box_id}/R{args.right_box_id} 分段任务，"
+                f"总用时 {(time.monotonic() - task_start):.3f}s",
+                flush=True,
+            )
             if save_path is not None:
                 print(f"Rerun 已保存：{save_path}", flush=True)
             print(f"运行目录：{run_dir}", flush=True)

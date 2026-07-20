@@ -90,7 +90,7 @@ private:
   std::unique_ptr<CanopenDriver> canopen_;
   std::unique_ptr<CanopenDriver> canopen_plate_;
   std::unique_ptr<ZeroerrDriver> zeroerr_left_;    // ZeroErr motors on can0 (mixed protocol)
-  std::unique_ptr<CylinderDriver> cylinder_;       // Cylinder (leftjoint4) on can0
+  std::unique_ptr<CylinderDriver> cylinder_;       // Cylinder (left_joint4) on can0
 
   // All joints (single list — no type dispatch in AlfaRobotHW)
   std::vector<std::unique_ptr<IJoint>> joints_;

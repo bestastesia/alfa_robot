@@ -80,7 +80,7 @@ std::vector<std::string> joint_name_aliases(const std::string& side, size_t inde
 {
   const std::string suffix = std::to_string(index + 1);
   return {
-    side + "joint" + suffix,
+    side + "_joint" + suffix,
     side + "_joint" + suffix,
     side + "_v5_joint" + suffix,
   };
@@ -123,7 +123,7 @@ sensor_msgs::msg::JointState solution_to_joint_state(
 
   const std::string prefix = side_name(side);
   for (size_t i = 0; i < solution.joints.size(); ++i) {
-    out.name.push_back(prefix + "joint" + std::to_string(i + 1));
+    out.name.push_back(prefix + "_joint" + std::to_string(i + 1));
     out.position.push_back(solution.joints[i]);
   }
   return out;
@@ -182,7 +182,7 @@ private:
       solver_.forwardInArmBase(ArmSide::Left, seed);
     request.target.pose = pose_from_isometry(target_in_base);
     request.seed_state.name = {
-      "leftjoint1", "leftjoint2", "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6"};
+      "left_joint1", "left_joint2", "left_joint3", "left_joint4", "left_joint5", "left_joint6"};
     request.seed_state.position = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
     request.max_solutions = 8;
 

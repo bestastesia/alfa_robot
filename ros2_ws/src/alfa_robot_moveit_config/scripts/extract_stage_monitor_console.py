@@ -155,6 +155,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "start_move_group:=true",
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
+        f"world_to_base_z:={getattr(args, 'world_to_base_z', 0.202094)}",
         f"fixed_updown:={args.fixed_updown}",
         f"extract_monitor_turn:={getattr(args, 'turn_rad', 0.0)}",
         f"front_z_reach_lower:={args.front_z_reach_lower}",
@@ -166,8 +167,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_top_position_tolerance:={getattr(args, 'ik_top_position_tolerance', 0.04)}",
         f"ik_top_orientation_tolerance_deg:={getattr(args, 'ik_top_orientation_tolerance_deg', 7.0)}",
         f"ik_h_candidate_count:={args.ik_h_candidate_count}",
-        f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.08)}",
-        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.78)}",
+        f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
+        f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.7)}",
         f"ik_h_step:={getattr(args, 'ik_h_step', 0.01)}",
         f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
@@ -204,6 +205,10 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_ik_loaded_distance_order_weight:={getattr(args, 'extract_ik_loaded_distance_order_weight', 0.0)}",
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_monitor_build_final_replay:={str(getattr(args, 'extract_monitor_build_final_replay', True)).lower()}",
+        f"extract_monitor_place_cycle_enabled:={str(getattr(args, 'place_cycle_enabled', False)).lower()}",
+        f"extract_monitor_place_updown:={getattr(args, 'place_updown', 0.20)}",
+        f"extract_monitor_place_left_pose_deg:='{getattr(args, 'place_left_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
+        f"extract_monitor_place_right_pose_deg:='{getattr(args, 'place_right_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
@@ -303,6 +308,30 @@ def call_trigger_service(service_name: str, timeout: float) -> tuple[bool, str, 
         rclpy.shutdown()
 
 
+def assign_explicit_targets(
+    request: Any,
+    left_target: dict[str, Any] | None,
+    right_target: dict[str, Any] | None,
+) -> None:
+    request.use_explicit_targets = left_target is not None and right_target is not None
+    if not request.use_explicit_targets:
+        return
+    for target_message, target in (
+        (request.left_target, left_target),
+        (request.right_target, right_target),
+    ):
+        target_message.header.frame_id = str(target.get("frame_id", "base_link"))
+        position = target["position"]
+        orientation = target["orientation"]
+        target_message.pose.position.x = float(position[0])
+        target_message.pose.position.y = float(position[1])
+        target_message.pose.position.z = float(position[2])
+        target_message.pose.orientation.x = float(orientation[0])
+        target_message.pose.orientation.y = float(orientation[1])
+        target_message.pose.orientation.z = float(orientation[2])
+        target_message.pose.orientation.w = float(orientation[3])
+
+
 def call_configure_extract_monitor_service(
     service_name: str,
     left_box_id: int,
@@ -311,6 +340,8 @@ def call_configure_extract_monitor_service(
     timeout: float,
     left_top_suction: bool = False,
     right_top_suction: bool = False,
+    left_target: dict[str, Any] | None = None,
+    right_target: dict[str, Any] | None = None,
 ) -> tuple[bool, str, float]:
     start = time.monotonic()
     try:
@@ -344,6 +375,7 @@ def call_configure_extract_monitor_service(
         request.snapshot_path = str(snapshot_path)
         request.left_top_suction = bool(left_top_suction)
         request.right_top_suction = bool(right_top_suction)
+        assign_explicit_targets(request, left_target, right_target)
         future = client.call_async(request)
         deadline = time.monotonic() + timeout
         while rclpy.ok() and not future.done() and time.monotonic() < deadline:
@@ -413,6 +445,8 @@ class ExtractMonitorServiceClient:
         timeout: float,
         left_top_suction: bool = False,
         right_top_suction: bool = False,
+        left_target: dict[str, Any] | None = None,
+        right_target: dict[str, Any] | None = None,
     ) -> tuple[bool, str, float]:
         start = time.monotonic()
         request = self._configure_type.Request()
@@ -421,6 +455,7 @@ class ExtractMonitorServiceClient:
         request.snapshot_path = str(snapshot_path)
         request.left_top_suction = bool(left_top_suction)
         request.right_top_suction = bool(right_top_suction)
+        assign_explicit_targets(request, left_target, right_target)
         future = self.configure_client.call_async(request)
         self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
         elapsed = (time.monotonic() - start) * 1000.0
@@ -1072,7 +1107,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)

@@ -4,6 +4,7 @@
 
 #include <Eigen/Geometry>
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -92,6 +93,19 @@ bool carried_box_detached_from_source_xz(
   const AxisAlignedBox& carried_box,
   const AxisAlignedBox& source_box,
   double margin,
+  const std::string& carried_box_id,
+  std::string* reason);
+
+bool carried_box_detached_from_source_layers_xz(
+  const AxisAlignedBox& carried_box,
+  int box_id,
+  double box_front_x,
+  double scene_y_shift,
+  double carried_box_width,
+  double carried_box_height,
+  double carried_box_depth,
+  double margin,
+  size_t clearance_levels,
   const std::string& carried_box_id,
   std::string* reason);
 

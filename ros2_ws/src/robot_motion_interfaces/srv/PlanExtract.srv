@@ -4,6 +4,7 @@ MotionContext context
 sensor_msgs/JointState seed_state
 sensor_msgs/JointState[] ik_candidate_states
 AttachedBox[] attached_boxes
+DualGraspStrategy strategy
 uint32 candidate_limit
 bool dual_arm
 moveit_msgs/CollisionObject[] scene_objects

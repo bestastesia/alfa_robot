@@ -158,6 +158,9 @@ using LoadedDirectPlanCallback = std::function<bool(
   moveit::planning_interface::MoveGroupInterface::Plan*,
   std::string*)>;
 
+using LoadedPlanCancellationCheck = std::function<bool()>;
+using LoadedTopSuctionHeightMismatchCallback = std::function<bool()>;
+
 struct LoadedPosePlannerConfig
 {
   moveit::planning_interface::MoveGroupInterface* move_group = nullptr;
@@ -180,6 +183,7 @@ struct LoadedPosePlannerConfig
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
   LoadedDirectPlanCallback direct_plan_callback;
+  LoadedTopSuctionHeightMismatchCallback top_suction_height_mismatch_callback;
 };
 
 class LoadedPosePlanner
@@ -209,7 +213,8 @@ private:
     const moveit::core::RobotState& extract_state,
     const std::vector<AttachedBoxSpec>& carried_boxes,
     size_t loaded_plan_rank,
-    bool manage_scene_adapter);
+    bool manage_scene_adapter,
+    const LoadedPlanCancellationCheck& is_cancelled);
 
   bool planLateralShift(
     const std::string& stage_name,

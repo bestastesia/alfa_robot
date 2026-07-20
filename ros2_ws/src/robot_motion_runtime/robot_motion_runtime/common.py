@@ -17,20 +17,13 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 # 从 /joint_states 读回来的是硬件(EtherCAT)符号，喂给 MoveIt/规划前必须与发送侧
 # (ros_to_ethercat_position) 对称地校准回 ROS 符号，否则被翻转的关节姿态是反的，
 # 会导致镜像姿态错误与自碰撞误报。这里复用该表，不重新定义方向。
-try:
-    from alfa_robot_execution_bridge.joints import (
-        ROS_TO_ETHERCAT_SIGN_BY_JOINT as _EC_SIGN_BY_JOINT,
-        ethercat_to_ros_position as _ethercat_to_ros_position,
-        ros_to_ethercat_position as _ros_to_ethercat_position,
-    )
-except Exception:  # pragma: no cover - bridge 不可用时退化为不校准(并在使用处告警)
-    _EC_SIGN_BY_JOINT = {}
-
-    def _ethercat_to_ros_position(joint_name: str, value: float) -> float:
-        return float(value)
-
-    def _ros_to_ethercat_position(joint_name: str, value: float) -> float:
-        return float(value)
+from alfa_robot_execution_bridge.joints import (
+    EXECUTION_JOINT_NAMES,
+    REAL_CONTROLLER_JOINT_NAMES,
+    ROS_TO_ETHERCAT_SIGN_BY_JOINT as _EC_SIGN_BY_JOINT,
+    ethercat_to_ros_position as _ethercat_to_ros_position,
+    ros_to_ethercat_position as _ros_to_ethercat_position,
+)
 
 
 def ethercat_to_ros_hardware_position(hardware_name: str, value: float) -> float:
@@ -54,33 +47,22 @@ DEFAULT_MOTION_JOINTS = [
     "updown",
     "turn",
     "pitch",
-    "leftjoint1",
-    "leftjoint2",
-    "leftjoint3",
-    "leftjoint4",
-    "leftjoint5",
-    "leftjoint6",
-    "rightjoint1",
-    "rightjoint2",
-    "rightjoint3",
-    "rightjoint4",
-    "rightjoint5",
-    "rightjoint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
 ]
 
 HARDWARE_TO_MODEL_JOINT_ALIASES = {
-    "left_joint1": "leftjoint1",
-    "left_joint2": "leftjoint2",
-    "left_joint3": "leftjoint3",
-    "left_joint4": "leftjoint4",
-    "left_joint5": "leftjoint5",
-    "left_joint6": "leftjoint6",
-    "right_joint1": "rightjoint1",
-    "right_joint2": "rightjoint2",
-    "right_joint3": "rightjoint3",
-    "right_joint4": "rightjoint4",
-    "right_joint5": "rightjoint5",
-    "right_joint6": "rightjoint6",
+    name: name for name in EXECUTION_JOINT_NAMES if name != "turn"
 }
 
 MODEL_TO_HARDWARE_JOINT_ALIASES = {
@@ -90,21 +72,7 @@ MODEL_TO_HARDWARE_JOINT_ALIASES = {
 # 13 轴 EtherCAT 硬件 action 期望的 joint 名字与顺序（右臂在前，含 turn）。
 # 唯一权威方向/顺序定义在 alfa_robot_execution_bridge.joints；这里只复用命名别名做
 # model<->hardware 转换，不重新定义方向表。
-REAL_ARM_JOINT_NAMES = [
-    "right_joint1",
-    "right_joint2",
-    "right_joint3",
-    "right_joint4",
-    "right_joint5",
-    "right_joint6",
-    "left_joint1",
-    "left_joint2",
-    "left_joint3",
-    "left_joint4",
-    "left_joint5",
-    "left_joint6",
-    "turn",
-]
+REAL_ARM_JOINT_NAMES = list(REAL_CONTROLLER_JOINT_NAMES)
 
 MODEL_JOINT_SET = set(DEFAULT_MOTION_JOINTS)
 
@@ -125,7 +93,7 @@ def canonical_joint_name(name: str) -> str:
 
 
 def hardware_joint_name(name: str) -> str:
-    """Map a model joint name (leftjoint1...) to its hardware alias."""
+    """Map a model joint name (left_joint1...) to its hardware alias."""
     return MODEL_TO_HARDWARE_JOINT_ALIASES.get(str(name), str(name))
 
 

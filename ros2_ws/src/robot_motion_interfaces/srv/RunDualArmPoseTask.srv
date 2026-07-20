@@ -10,6 +10,7 @@ sensor_msgs/JointState[] loaded_goal_family
 float64 fixed_updown
 bool left_top_suction
 bool right_top_suction
+DualGraspStrategy strategy
 float64 position_tolerance
 float64 orientation_tolerance
 uint32 max_solutions_per_arm

@@ -111,18 +111,24 @@ run_move_all_joints_abs.sh \
 `updown` 同样存在上位机语义（logical，MoveIt/URDF/joint_limits.yaml 范围 `0.0–0.7` m）与实机物理命令（physical，发到 `/canopen/updown_position_controller/commands` 的原始米数）两套语义，换算关系：
 
 ```text
-physical = logical + UPDOWN_PHYSICAL_ZERO_OFFSET_M   # offset = 0.08 m
+physical = logical - UPDOWN_PHYSICAL_ZERO_OFFSET_M
+logical  = physical + UPDOWN_PHYSICAL_ZERO_OFFSET_M
+UPDOWN_PHYSICAL_ZERO_OFFSET_M = 0.0 m
 ```
 
-即 logical `0.0` m 对应 physical `0.08` m，logical `0.7` m 对应 physical `0.78` m。这组常量和 `logical_to_physical_updown()` / `physical_to_logical_updown()` 函数同样定义在 `joints.py`，与关节方向表在同一个文件里维护。
+即 logical `0.0` m 对应 physical `0.0` m，logical `0.7` m 对应 physical `0.7` m。
+`logical_to_physical_updown()` / `physical_to_logical_updown()` 仍必须调用，当前只是转换结果数值相同，
+不允许调用方因为零偏移就绕过合同。
 
-`0.08` m 这个 offset 来自本仓库既有基线文档（`current_motion_baseline.yaml`），这次只是把它从"写在文档里但从未被任何代码执行"变成"真正会被执行的代码"。offset 数值本身尚未经过这次实机重新测量确认，实机部署后仍需电控工程师用低速单轴测试核实 logical 0 对应的物理高度是否符合预期，才能认为这条换算在当前这台机器上是准确的。
+旧 `0.08m` offset 来自历史基线假设。2026-07-19 实机复测中，发送 logical `0.28m` 时旧合同实际下发 physical `0.20m`，
+机械结构整体比 URDF/FK 低约 `0.08m`；因此确认 offset 应为 `0.0m`，逻辑和物理行程统一为 `[0,0.7]m`。
 
 实机侧历史范围曾是 physical `0.0–0.92` m（`ros2_control` 硬件层会静默 clamp 越界命令，不会报错拒绝），与上位机 `0.0–0.7` m 的 logical 范围不是同一回事，不要混用。
 
 ## 现在如何在实机上手动点位/示教
 
-`run_move_all_joints_abs.sh` / `move_all_joints_abs.py` 已废弃（脚本顶部已加注释标注），原因：方向表手抄且过时、转换是可关闭 flag、updown 完全没有 logical/physical 换算。替换为：
+旧 `move_all_joints_abs.py` 已废弃，原因是方向表手抄且过时、转换可关闭且 updown 绕过合同。
+为兼容现场命令，`run_move_all_joints_abs.sh` 现在只是 `jog_to_pose.py` 的兼容入口，两者均强制使用 `joints.py`：
 
 ```bash
 /home/ar/lhy_dev/ros2_ws/src/alfa_robot_execution_bridge/scripts/run_jog_to_pose.sh \
@@ -150,6 +156,6 @@ ethercat_target_updown_m = logical_to_physical_updown(ros_target_updown_m)
 
 ## 注意事项
 
-- 本结论只描述关节正方向符号关系和 updown 换算关系，不描述零位标定精度本身。
+- 本结论只描述关节正方向符号关系和 2026-07-19 已确认的 updown 零偏移合同；机械零位精度仍需独立维护。
 - 当前测试脚本发送时会先读取 `/joint_states` 作为轨迹第一点，避免首点与真实位置差距过大导致控制器拒绝。
 - 后续正式控制器仍应单独处理：零位标定、软限位、速度/加速度限制、急停与跟随误差保护。

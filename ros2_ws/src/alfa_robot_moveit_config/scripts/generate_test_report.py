@@ -39,7 +39,7 @@ def load_container_panels(snapshot_path: Path) -> list[dict]:
 
 
 def svg_updown_mapping() -> str:
-    """画 logical[0.08,0.78] <-> physical[0,0.7] 的线性映射 + clamp 区。"""
+    """画 logical[0,0.7] <-> physical[0,0.7] 的零偏移映射 + clamp 区。"""
     W, H, pad = 620, 300, 55
     x0, x1 = pad, W - pad
     y0, y1 = H - pad, pad
@@ -48,22 +48,21 @@ def svg_updown_mapping() -> str:
     def py(v): return y0 + (y1 - y0) * (v / 0.8)
     parts = [f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;height:auto">']
     parts.append(f'<rect x="0" y="0" width="{W}" height="{H}" fill="#0d1117"/>')
-    # 有效区阴影 logical[0.08,0.78]
-    parts.append(f'<rect x="{lx(0.08):.1f}" y="{y1}" width="{lx(0.78)-lx(0.08):.1f}" height="{y0-y1}" fill="#1f6feb" opacity="0.12"/>')
+    parts.append(f'<rect x="{lx(0.0):.1f}" y="{y1}" width="{lx(0.7)-lx(0.0):.1f}" height="{y0-y1}" fill="#1f6feb" opacity="0.12"/>')
     # 轴
     parts.append(f'<line x1="{x0}" y1="{y0}" x2="{x1}" y2="{y0}" stroke="#8b949e" stroke-width="1.5"/>')
     parts.append(f'<line x1="{x0}" y1="{y0}" x2="{x0}" y2="{y1}" stroke="#8b949e" stroke-width="1.5"/>')
-    # 映射折线: clamp 段(logical<0.08 -> physical 0) + 线性段 + clamp 段(>0.78 -> 0.7)
-    pts = [(0.0, 0.0), (0.08, 0.0), (0.78, 0.7), (0.9, 0.7)]
+    # 映射折线: [0,0.7] 内恒等，超上界夹紧到 0.7。
+    pts = [(0.0, 0.0), (0.7, 0.7), (0.9, 0.7)]
     poly = " ".join(f"{lx(a):.1f},{py(b):.1f}" for a, b in pts)
     parts.append(f'<polyline points="{poly}" fill="none" stroke="#3fb950" stroke-width="2.5"/>')
     # 关键点
-    key = [(0.08, 0.0, "0.08→0"), (0.28, 0.20, "0.28→0.20"), (0.78, 0.70, "0.78→0.70")]
+    key = [(0.0, 0.0, "0→0"), (0.28, 0.28, "0.28→0.28"), (0.7, 0.7, "0.7→0.7")]
     for a, b, label in key:
         parts.append(f'<circle cx="{lx(a):.1f}" cy="{py(b):.1f}" r="4.5" fill="#f0883e"/>')
         parts.append(f'<text x="{lx(a)+8:.1f}" y="{py(b)-8:.1f}" fill="#f0883e" font-size="12" font-family="monospace">{label}</text>')
     # 轴刻度
-    for v in [0.0, 0.08, 0.28, 0.5, 0.78, 0.9]:
+    for v in [0.0, 0.28, 0.5, 0.7, 0.9]:
         parts.append(f'<text x="{lx(v):.1f}" y="{y0+18:.1f}" fill="#8b949e" font-size="11" text-anchor="middle" font-family="monospace">{v}</text>')
     for v in [0.0, 0.2, 0.42, 0.7]:
         parts.append(f'<text x="{x0-8:.1f}" y="{py(v)+4:.1f}" fill="#8b949e" font-size="11" text-anchor="end" font-family="monospace">{v}</text>')
@@ -129,7 +128,7 @@ def build_body(panels: list[dict], snapshot: Path) -> str:
              "<tr><td>test_joint_direction_contract</td><td>updown 换算 + 方向符号契约</td>"
              "<td class='pass'>5/5 通过</td></tr>"
              "<tr><td>xacro 展开</td><td>URDF updown limit 生效验证</td>"
-             "<td class='pass'>lower=0.08 upper=0.78</td></tr></table>")
+             "<td class='pass'>lower=0.0 upper=0.7</td></tr></table>")
 
     # 2. updown 映射
     s.append("<h2>2. updown 换算与范围收紧 (MOTION-73)</h2>")
@@ -142,17 +141,16 @@ def build_body(panels: list[dict], snapshot: Path) -> str:
     s.append("<p>下表数值由 <code>alfa_robot_execution_bridge.joints</code> 的真实函数实时算出：</p>")
     s.append("<table><tr><th>logical (URDF)</th><th>→ physical (电机)</th><th>说明</th></tr>")
     rows = [
-        (0.0, "低于 0.08，夹紧到电机 0"),
-        (0.05, "低于 0.08，夹紧到电机 0"),
-        (0.08, "逻辑下界 → 电机 0（满行程起点）"),
-        (0.28, "用户示例：IK 出 0.28 → 下发 0.20"),
-        (0.50, "范围内线性"),
-        (0.78, "逻辑上界 → 电机 0.7（满行程终点）"),
+        (0.0, "逻辑/物理下界"),
+        (0.05, "零偏移恒等映射"),
+        (0.28, "实机确认示例：0.28 → 0.28"),
+        (0.50, "零偏移恒等映射"),
+        (0.70, "逻辑/物理上界"),
         (0.90, "超上界，夹紧到电机 0.7"),
     ]
     for lg, note in rows:
         ph = logical_to_physical_updown(lg)
-        cls = "warn" if (lg < 0.08 or lg > 0.78) else "pass"
+        cls = "warn" if (lg < 0.0 or lg > 0.7) else "pass"
         s.append(f"<tr><td class='mono'>{lg:.2f}</td><td class='mono {cls}'>{ph:.3f}</td>"
                  f"<td>{html.escape(note)}</td></tr>")
     s.append("</table>")
@@ -164,15 +162,15 @@ def build_body(panels: list[dict], snapshot: Path) -> str:
     s.append("<h2>3. updown 范围在全链路的收紧点（计算阶段限死）</h2>")
     s.append("<table><tr><th>位置</th><th>作用</th><th>值</th></tr>"
              "<tr><td>URDF <code>alfa_robot.urdf.xacro</code></td><td>MoveIt 规划域 joint limit</td>"
-             "<td class='mono'>[0.08, 0.78]</td></tr>"
-             "<tr><td><code>joint_limits.yaml</code></td><td>MoveIt 规划限位</td><td class='mono'>[0.08, 0.78]</td></tr>"
+             "<td class='mono'>[0.0, 0.7]</td></tr>"
+             "<tr><td><code>joint_limits.yaml</code></td><td>MoveIt 规划限位</td><td class='mono'>[0.0, 0.7]</td></tr>"
              "<tr><td><code>ik_h_lower/upper</code>(launch+C++默认)</td><td>IK h 候选<b>采样阶段</b>限死</td>"
-             "<td class='mono'>[0.08, 0.78]</td></tr>"
+             "<td class='mono'>[0.0, 0.7]</td></tr>"
              "<tr><td><code>joints.py</code></td><td>换算+电机行程硬夹紧(单一来源)</td><td class='mono'>逻辑↔电机</td></tr>"
              "<tr><td>RunDualGraspTask 两个 adapter</td><td>fixed_updown 喂规划前 clamp</td>"
-             "<td class='mono'>[0.08, 0.78]</td></tr>"
+             "<td class='mono'>[0.0, 0.7]</td></tr>"
              "<tr><td><code>loaded_pose_planning.cpp</code></td><td>负重抬升上限(旧0.99)</td>"
-             "<td class='mono'>0.78</td></tr>"
+             "<td class='mono'>0.7</td></tr>"
              "<tr><td>ros2_control command_interface</td><td>电机物理接口(有意不改)</td>"
              "<td class='mono warn'>[0, 0.7]</td></tr></table>")
 
@@ -200,12 +198,11 @@ def build_body(panels: list[dict], snapshot: Path) -> str:
     s.append("<p>独立 review 覆盖 3 个 commit，发现 4 处残留并已在 commit "
              "<code>1b32c6f</code> 修复：</p>"
              "<table><tr><th>级别</th><th>问题</th><th>状态</th></tr>"
-             "<tr><td class='fail'>HIGH</td><td>execute_l6_r8 的 ik_h argparse 默认值仍 0.0/0.7，"
-             "覆盖新采样域</td><td class='pass'>已修</td></tr>"
-             "<tr><td class='warn'>MED</td><td>3 个 rerun 脚本同名 ik_h 默认残留</td><td class='pass'>已修</td></tr>"
-             "<tr><td class='warn'>MED</td><td>box_pair 哨兵把未设置(0.0)当合法值，每次夹紧告警</td>"
-             "<td class='pass'>已修</td></tr>"
-             "<tr><td>LOW</td><td>analyze 脚本报告文案残留旧范围</td><td class='pass'>已修</td></tr></table>")
+             "<tr><td class='fail'>HIGH</td><td>旧 0.08m 偏移导致 logical 0.28 实际只下发 physical 0.20</td>"
+             "<td class='pass'>已按实机复测改为零偏移</td></tr>"
+             "<tr><td class='warn'>MED</td><td>URDF、MoveIt、IK 和 runtime 范围必须同步改为 [0,0.7]</td>"
+             "<td class='pass'>已统一</td></tr>"
+             "<tr><td>LOW</td><td>分析与报告脚本文案残留旧范围</td><td class='pass'>已修</td></tr></table>")
     s.append("<p class='mono' style='color:#8b949e;font-size:12px'>核心数学(joints.py)、URDF/limits、"
              "container_pose_dynamic 开关耦合与 TF 兜底、loaded 抬升上限均 review 通过。</p>")
     return "".join(s)

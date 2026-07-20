@@ -61,3 +61,70 @@ ros2 launch alfa_robot_moveit_config dual_arm_planner.launch.py \
 `alfa_robot_execution_bridge/joints.py` 是当前实机方向标定的唯一真相源，包含 joint 顺序和 `ROS/Rerun -> EtherCAT` 方向映射。
 
 `config/*.yaml` 不再复制 `direction_signs`。默认 `apply_direction_signs=false`，表示电控侧 ros2_control / 硬件层已经处理方向；如果确认下游没有处理方向，再打开该参数，运行时会自动使用 `joints.py` 中的方向表，避免双重翻转和配置漂移。
+
+## updown 四字段命令合同
+
+生产话题保持为 `/canopen/updown_position_controller/commands`，消息固定为：
+
+```text
+[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]
+```
+
+旧的单元素 `[position_m]` 不再有效。`updown.py` 是运控侧构造和校验该消息的唯一入口；
+位置仍先经过 `joints.py` 的逻辑值到电机值换算。`run_jog_to_pose.sh` 可通过
+`--updown-speed-mps`、`--updown-acceleration-mps2`、`--updown-deceleration-mps2`
+设置 profile，默认均为 `0.05`。
+
+```bash
+/home/ar/lhy_dev/run_jog_to_pose.sh \
+  --updown-m 0.15 \
+  --updown-speed-mps 0.05 \
+  --updown-acceleration-mps2 0.05 \
+  --updown-deceleration-mps2 0.05 \
+  --send
+```
+
+全流程执行脚本不再按 10Hz 连续重发 PP 位置点，而是在每个阶段开始时原子下发一次最终位置和
+profile 参数；速度根据该阶段位移/时长动态计算，并受 `--max-updown-speed-m-s` 上限约束。
+
+## jog_to_pose PLC IO 联调
+
+工控机联调入口 `/home/ar/lhy_dev/run_jog_to_pose.sh` 支持在运动前或运动成功后调用
+`plc_node` 的三路 `SetBool` 服务。三个输出默认都是 `keep`，未传参数时不会修改 PLC 输出。
+
+只测试 PLC，不运动：
+
+```bash
+/home/ar/lhy_dev/run_jog_to_pose.sh \
+  --plc-only \
+  --left-solenoid on \
+  --right-solenoid on \
+  --vacuum-pump on \
+  --send
+```
+
+全部关闭：
+
+```bash
+/home/ar/lhy_dev/run_jog_to_pose.sh \
+  --plc-only \
+  --left-solenoid off \
+  --right-solenoid off \
+  --vacuum-pump off \
+  --send
+```
+
+在轨迹成功完成后再打开阀和泵：
+
+```bash
+/home/ar/lhy_dev/run_jog_to_pose.sh \
+  <原有位置参数> \
+  --left-solenoid on \
+  --right-solenoid on \
+  --vacuum-pump on \
+  --plc-when after \
+  --send
+```
+
+`--plc-when before` 表示运动前切换；默认 `after` 只在轨迹 action 成功后切换。
+未指定的输出保持不变，脚本不会根据电磁阀状态自动推导真空泵状态。

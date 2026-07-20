@@ -95,11 +95,11 @@ class ArmFullPlanner(Node):
         # 定义关节顺序
         joint_names = ["turn", "updown"]
         if arm == "left":
-            joint_names.extend(["leftjoint1", "leftjoint2",
-                               "leftjoint3", "leftjoint4", "leftjoint5", "leftjoint6"])
+            joint_names.extend(["left_joint1", "left_joint2",
+                               "left_joint3", "left_joint4", "left_joint5", "left_joint6"])
         else:
-            joint_names.extend(["rightjoint1", "rightjoint2",
-                               "rightjoint3", "rightjoint4", "rightjoint5", "rightjoint6"])
+            joint_names.extend(["right_joint1", "right_joint2",
+                               "right_joint3", "right_joint4", "right_joint5", "right_joint6"])
 
         result = {}
         for name in joint_names:
@@ -122,7 +122,7 @@ class ArmFullPlanner(Node):
 
     def get_end_effector_pose(self, arm="left"):
         """获取末端执行器位姿"""
-        ee_link = "leftjoint6" if arm == "left" else "rightjoint6"
+        ee_link = "left_joint6" if arm == "left" else "right_joint6"
 
         try:
             transform = self.tf_buffer.lookup_transform(
@@ -148,7 +148,7 @@ class ArmFullPlanner(Node):
         # 显示左臂末端位姿
         left_pose = self.get_end_effector_pose("left")
         if left_pose:
-            self.get_logger().info("左臂末端位姿 (leftjoint6):")
+            self.get_logger().info("左臂末端位姿 (left_joint6):")
             self.get_logger().info(f"  位置: x={left_pose.position.x:.4f}, "
                                    f"y={left_pose.position.y:.4f}, "
                                    f"z={left_pose.position.z:.4f}")
@@ -161,7 +161,7 @@ class ArmFullPlanner(Node):
         right_pose = self.get_end_effector_pose("right")
         if right_pose:
             self.get_logger().info("-" * 60)
-            self.get_logger().info("右臂末端位姿 (rightjoint6):")
+            self.get_logger().info("右臂末端位姿 (right_joint6):")
             self.get_logger().info(f"  位置: x={right_pose.position.x:.4f}, "
                                    f"y={right_pose.position.y:.4f}, "
                                    f"z={right_pose.position.z:.4f}")
@@ -177,18 +177,18 @@ class ArmFullPlanner(Node):
         if arm == "left":
             return {
                 "group_name": "left_arm_with_base",
-                "ee_link": "leftjoint6",
+                "ee_link": "left_joint6",
                 "controller": "left_arm_with_base_controller",
-                "joints": ["updown", "leftjoint1", "leftjoint2", "leftjoint3",
-                          "leftjoint4", "leftjoint5", "leftjoint6"]
+                "joints": ["updown", "left_joint1", "left_joint2", "left_joint3",
+                          "left_joint4", "left_joint5", "left_joint6"]
             }
         else:
             return {
                 "group_name": "right_arm_with_base",
-                "ee_link": "rightjoint6",
+                "ee_link": "right_joint6",
                 "controller": "right_arm_with_base_controller",
-                "joints": ["updown", "rightjoint1", "rightjoint2", "rightjoint3",
-                          "rightjoint4", "rightjoint5", "rightjoint6"]
+                "joints": ["updown", "right_joint1", "right_joint2", "right_joint3",
+                          "right_joint4", "right_joint5", "right_joint6"]
             }
 
     def plan_to_joint_values(self, joint_values, arm="left"):

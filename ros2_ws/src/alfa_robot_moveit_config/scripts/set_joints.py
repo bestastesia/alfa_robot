@@ -43,10 +43,10 @@ from moveit_msgs.msg import PlanningScene, RobotState
 TORSO_JOINTS = ["pitch", "turn"]
 ARM_JOINTS = [
     "updown",
-    "leftjoint1", "leftjoint2", "leftjoint3",
-    "leftjoint4", "leftjoint5", "leftjoint6",
-    "rightjoint1", "rightjoint2", "rightjoint3",
-    "rightjoint4", "rightjoint5", "rightjoint6",
+    "left_joint1", "left_joint2", "left_joint3",
+    "left_joint4", "left_joint5", "left_joint6",
+    "right_joint1", "right_joint2", "right_joint3",
+    "right_joint4", "right_joint5", "right_joint6",
 ]
 ALL_JOINTS = TORSO_JOINTS + ARM_JOINTS
 
@@ -73,10 +73,10 @@ class JointSetter(Node):
                 "ns": "/dual_arm_controller/follow_joint_trajectory",
                 "joints": [
                     "updown",
-                    "leftjoint1", "leftjoint2", "leftjoint3",
-                    "leftjoint4", "leftjoint5", "leftjoint6",
-                    "rightjoint1", "rightjoint2", "rightjoint3",
-                    "rightjoint4", "rightjoint5", "rightjoint6",
+                    "left_joint1", "left_joint2", "left_joint3",
+                    "left_joint4", "left_joint5", "left_joint6",
+                    "right_joint1", "right_joint2", "right_joint3",
+                    "right_joint4", "right_joint5", "right_joint6",
                 ],
             },
         }
@@ -265,29 +265,29 @@ def main():
     parser.add_argument(
         "--updown", type=float, default=None)
     parser.add_argument(
-        "--left1", "--leftjoint1", type=float, default=None)
+        "--left1", "--left_joint1", type=float, default=None)
     parser.add_argument(
-        "--left2", "--leftjoint2", type=float, default=None)
+        "--left2", "--left_joint2", type=float, default=None)
     parser.add_argument(
-        "--left3", "--leftjoint3", type=float, default=None)
+        "--left3", "--left_joint3", type=float, default=None)
     parser.add_argument(
-        "--left4", "--leftjoint4", type=float, default=None)
+        "--left4", "--left_joint4", type=float, default=None)
     parser.add_argument(
-        "--left5", "--leftjoint5", type=float, default=None)
+        "--left5", "--left_joint5", type=float, default=None)
     parser.add_argument(
-        "--left6", "--leftjoint6", type=float, default=None)
+        "--left6", "--left_joint6", type=float, default=None)
     parser.add_argument(
-        "--right1", "--rightjoint1", type=float, default=None)
+        "--right1", "--right_joint1", type=float, default=None)
     parser.add_argument(
-        "--right2", "--rightjoint2", type=float, default=None)
+        "--right2", "--right_joint2", type=float, default=None)
     parser.add_argument(
-        "--right3", "--rightjoint3", type=float, default=None)
+        "--right3", "--right_joint3", type=float, default=None)
     parser.add_argument(
-        "--right4", "--rightjoint4", type=float, default=None)
+        "--right4", "--right_joint4", type=float, default=None)
     parser.add_argument(
-        "--right5", "--rightjoint5", type=float, default=None)
+        "--right5", "--right_joint5", type=float, default=None)
     parser.add_argument(
-        "--right6", "--rightjoint6", type=float, default=None)
+        "--right6", "--right_joint6", type=float, default=None)
     args = parser.parse_args()
 
     targets = {}
@@ -315,12 +315,12 @@ def main():
     # 命令行覆盖
     cli_args = {
         "pitch": args.pitch, "turn": args.turn, "updown": args.updown,
-        "leftjoint1": args.left1, "leftjoint2": args.left2,
-        "leftjoint3": args.left3, "leftjoint4": args.left4,
-        "leftjoint5": args.left5, "leftjoint6": args.left6,
-        "rightjoint1": args.right1, "rightjoint2": args.right2,
-        "rightjoint3": args.right3, "rightjoint4": args.right4,
-        "rightjoint5": args.right5, "rightjoint6": args.right6,
+        "left_joint1": args.left1, "left_joint2": args.left2,
+        "left_joint3": args.left3, "left_joint4": args.left4,
+        "left_joint5": args.left5, "left_joint6": args.left6,
+        "right_joint1": args.right1, "right_joint2": args.right2,
+        "right_joint3": args.right3, "right_joint4": args.right4,
+        "right_joint5": args.right5, "right_joint6": args.right6,
     }
     for name, val in cli_args.items():
         if val is not None:

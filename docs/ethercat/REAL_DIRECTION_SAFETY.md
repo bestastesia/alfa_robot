@@ -40,23 +40,35 @@ scripts/lhy_dev/send_dual_grasp_sequence.py  （--execute-backend planner-live�
 
 超过上限或触发禁止项时，脚本用 `SystemExit` 直接拒绝启动，不会静默放行。
 
-**关于 `--max-joint-speed-deg-s` 上限取值 20.0（而不是更保守的 10.0）**：脚本当前默认值本身就是
-20.0（`send_dual_grasp_sequence.py` 第 258 行 `default=20.0`），这是经项目负责人明确确认保留的值，
-不是本次修复引入的放宽。若之后要收紧到更低的值，需要同时改脚本默认值和这里的硬上限常量，
-并重新走一次仿真/mock验证。
+`--max-joint-speed-deg-s` 的实机默认值为 10.0，轨迹仍按 10Hz 下发。20.0 只保留为必须显式指定的
+硬上限，不再是默认测试速度。
 
 `--hz` 硬上限 10.0 与 `execute_trajectory_service_node.py` 里 `resample_rate_hz` 参数默认值
 （同为 10.0）保持同一口径，见下节。这两处如果要联动修改，必须同时改。
 
 ## 人工确认关卡
 
-`execute_l6_r8_mock_live.py` 的 `require_explicit_confirmation()`：
+`execute_l6_r8_mock_live.py` 的 `wait_for_enter_confirmation()`：
 
 - 只在 `executor_mode == "real"` 时触发（mock 模式不驱动硬件，不强制人工确认）。
 - 非 tty 环境（被 subprocess/cron 调起、没有交互终端）直接拒绝执行，不会让 `EOFError`
   静默穿透变成"当作已确认"。
-- 交互环境下必须手动输入指定 token（默认 `"YES"`），单纯回车不算确认。
-- 触发点：进入负重姿态前一次，到达负重姿态、正式开始 L6/R8 任务执行前再一次。
+- 交互环境下直接按回车确认，不再要求输入 `YES`。
+- 触发点：进入初始化负重姿态前、预接触且人工确认 updown 到位后、IK 吸附点确认后、放货姿态确认箱子释放后。
+- 初始化负重姿态的 `updown` 目标独立固定为逻辑/URDF `0.30m`。程序读取当前物理反馈并经
+  `physical_to_logical_updown()` 转换后，与双臂轨迹同步运动到 `0.30m`；不能再把当前 IK
+  参考高度 `fixed_updown` 当作负重初始化高度。
+- 2026-07-19 实机复测确认 `UPDOWN_PHYSICAL_ZERO_OFFSET_M=0.0`，因此 logical 与 physical
+  数值相同、范围均为 `[0,0.7]m`。转换函数和范围检查仍是强制合同，不允许旁路。
+- 2026-07-19 电控合同升级后，`/canopen/updown_position_controller/commands` 必须固定发送
+  `[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]`。旧的单元素位置命令会被
+  runtime 拒绝。全流程使用 `updown.py` 构造原子四字段命令，每个阶段只下发一次最终 PP 目标，
+  速度按阶段位移/时长计算并受 `--max-updown-speed-m-s` 限制。
+- 抽离回到负重姿态后，默认追加“负重→放货→负重”循环。放货姿态采用 ROS/URDF 语义：
+  双臂均为 `[0,-55,-50,-60,0,0]°`，`turn=0°`，`updown=0.20m`；去程保留两只附着箱，
+  回程按箱子已释放处理。两段均先做全场景直连碰撞校验，仅碰撞区间才调用局部 RRT 修补。
+- 外层 `run_13_dual_grasp_tasks.sh --execute --yes-execute` 的命令行安全开关仍保留；
+  `--yes-execute` 不是运行过程中的交互 token。
 
 ## 服务编排路径（`--execute-backend service`）里 velocity_scale/acceleration_scale 的现状
 
@@ -98,7 +110,8 @@ ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/joints.py
 | left_joint3 | 翻转 |
 | left_joint5 | 翻转 |
 | right_joint2 | 翻转 |
-| 其它 10 个关节 | 不翻转 |
+| right_joint4 | 翻转 |
+| 其它 9 个关节 | 不翻转 |
 
 负重姿态族：`loaded_preferred_pose_index=1` 对应 `[-75, 135, 60]` 肘型（历史上出现过方向反的
 问题源头之一）；当前实机唯一确认方向正确的是 `loaded_preferred_pose_index=0`。
@@ -139,7 +152,7 @@ scripts/safety/check_l6_r8_real_safety.py
 - **（新增）** `send_dual_grasp_sequence.py` 的 `--execute-backend` 默认值仍是 `planner-live`，
   `--yes-execute` 确认护栏还在，`--max-joint-speed-deg-s`/`--max-updown-speed-m-s`/`--hz`
   的默认值没有被静默改动，且 `run_planner_live_task()` 确实把 `args.hz`/
-  `args.max_joint_speed_deg_s`/`args.max_updown_speed_m_s` 转发给了下游 real-direct 脚本
+  `args.max_joint_speed_deg_s`/`args.max_updown_speed_m_s`/升降加减速度转发给了下游 real-direct 脚本
   （即上限校验不会因为参数没传下去而被绕过）。
 
 工控机上原来提到的 `/home/ar/lhy_dev/verify_l6_r8_direction_safety.sh` 如果还存在，可以继续

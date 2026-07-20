@@ -356,13 +356,13 @@ AlfaRobotHW (owner)
  ├── CanopenDriver
  ├── joints_: vector<unique_ptr<IJoint>>
  │    ├── RmdJoint(turn)          → RmdDriver& (base)
- │    ├── RmdJoint(leftjoint2-4)  → RmdDriver& (left)
- │    ├── RmdJoint(rightjoint2-4) → RmdDriver& (right)
+ │    ├── RmdJoint(left_joint2-4)  → RmdDriver& (left)
+ │    ├── RmdJoint(right_joint2-4) → RmdDriver& (right)
  │    ├── CanopenJoint(updown)         → CanopenDriver&
  │    ├── CanopenJoint(leftarmbase)    → CanopenDriver& (gear=3.0)
- │    ├── CanopenJoint(leftjoint1)     → CanopenDriver&
+ │    ├── CanopenJoint(left_joint1)     → CanopenDriver&
  │    ├── CanopenJoint(rightarmbase)   → CanopenDriver& (gear=3.0)
- │    ├── CanopenJoint(rightjoint1)    → CanopenDriver&
+ │    ├── CanopenJoint(right_joint1)    → CanopenDriver&
  │    ├── WheelJoint(left_back)        Velocity
  │    ├── WheelJoint(left_forward)     Velocity
  │    ├── WheelJoint(right_back)       Velocity

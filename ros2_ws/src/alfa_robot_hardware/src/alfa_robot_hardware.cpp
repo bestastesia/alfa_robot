@@ -147,18 +147,18 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_activate(
   const rclcpp_lifecycle::State &)
 {
   // Enable motors per bus
-  // Mixed protocol on can0: Node 1,2 are ZeroErr (custom CAN), Node 3 is Cylinder (IDS830ABS), Node 4 is RMD (leftjoint5)
-  cylinder_->enable();                   // Node 3 (leftjoint4 - cylinder)
+  // Mixed protocol on can0: Node 1,2 are ZeroErr (custom CAN), Node 3 is Cylinder (IDS830ABS), Node 4 is RMD (left_joint5)
+  cylinder_->enable();                   // Node 3 (left_joint4 - cylinder)
   cylinder_->setVelocity(0.05);          // Set velocity to 0.05 m/s (50 mm/s) for cylinder
-  rmd_left_->enableMotors({4});          // Node 4 (leftjoint5 - RMD protocol)
+  rmd_left_->enableMotors({4});          // Node 4 (left_joint5 - RMD protocol)
 
   // ZeroErr motors on can0: Full initialization sequence per datasheet
-  zeroerr_left_->enableMotors({1, 2});     // Node 1,2 (leftjoint2/3) - 01 00 00 00 00 01
+  zeroerr_left_->enableMotors({1, 2});     // Node 1,2 (left_joint2/3) - 01 00 00 00 00 01
   zeroerr_left_->setPositionMode({1, 2});  // 00 4E 00 00 00 03
   zeroerr_left_->setMotionMode({1, 2}, 1); // 00 8D 00 00 00 01 (1=absolute position)
   zeroerr_left_->setMotionParams({1, 2});  // 00 88/89/8A - accel/decel/velocity
 
-  rmd_right_->enableMotors({4, 5, 6});   // rightjoint2/3/4
+  rmd_right_->enableMotors({4, 5, 6});   // right_joint2/3/4
   rmd_base_->enableMotors({1});           // turn
   canopen_->enableNodes({1, 2, 3, 4, 5});
   canopen_plate_->enableNodes({1});  // plate
@@ -198,9 +198,9 @@ hardware_interface::CallbackReturn AlfaRobotHW::on_deactivate(
   }
 
   // Mixed protocol on can0
-  cylinder_->disable();                  // Node 3 (leftjoint4 - cylinder)
-  rmd_left_->disableMotors({4});         // Node 4 (leftjoint5 - RMD)
-  zeroerr_left_->disableMotors({1, 2});  // Node 1,2 (leftjoint2/3)
+  cylinder_->disable();                  // Node 3 (left_joint4 - cylinder)
+  rmd_left_->disableMotors({4});         // Node 4 (left_joint5 - RMD)
+  zeroerr_left_->disableMotors({1, 2});  // Node 1,2 (left_joint2/3)
 
   rmd_right_->disableMotors({4, 5, 6});
   rmd_base_->disableMotors({1});
@@ -252,10 +252,10 @@ hardware_interface::return_type AlfaRobotHW::read(
   double dt = (period.nanoseconds() > 0) ? period.seconds() : 0.0;
   // One batched read per bus - sends all 0x92, then drains with a poll() budget.
   // Joints subsequently read from the driver's position cache.
-  // Mixed protocol on can0: Node 1,2 via ZeroErr (custom CAN), Node 3 via Cylinder (IDS830ABS), Node 4 via RMD (leftjoint5)
+  // Mixed protocol on can0: Node 1,2 via ZeroErr (custom CAN), Node 3 via Cylinder (IDS830ABS), Node 4 via RMD (left_joint5)
   // IMPORTANT: All can0 reads must be sequential to avoid CAN bus contention
-  rmd_left_->readPositions({4});         // can0: Node 4 (leftjoint5 - RMD)
-  {                                      // can0: Node 3 (leftjoint4 - Cylinder)
+  rmd_left_->readPositions({4});         // can0: Node 4 (left_joint5 - RMD)
+  {                                      // can0: Node 3 (left_joint4 - Cylinder)
     double dummy;
     cylinder_->readPosition(dummy);
   }
@@ -337,36 +337,36 @@ void AlfaRobotHW::buildJoints()
 
   // Left bus (can0) - mixed protocol
   // Node 1,2: ZeroErr rotary motors (gear_ratio=200:1, encoder_resolution=524288 pulses/rev)
-  joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint2",
+  joints_.push_back(std::make_unique<ZeroerrJoint>("left_joint2",
     ZeroerrJoint::Config{1, 0.0, -1.0, 262144,
       -M_PI, M_PI, false},  // continuous joint, no limits
     *zeroerr_left_));
-  joints_.push_back(std::make_unique<ZeroerrJoint>("leftjoint3",
+  joints_.push_back(std::make_unique<ZeroerrJoint>("left_joint3",
     ZeroerrJoint::Config{2, 0.0, -1.0, 262144,
       -M_PI_2, M_PI_2, true},  // revolute, -π/2 ~ π/2
     *zeroerr_left_));
 
-  // Node 3: IDS830ABS Cylinder (leftjoint4 - linear actuator, 15cm travel)
-  joints_.push_back(std::make_unique<CylinderJoint>("leftjoint4",
+  // Node 3: IDS830ABS Cylinder (left_joint4 - linear actuator, 15cm travel)
+  joints_.push_back(std::make_unique<CylinderJoint>("left_joint4",
     CylinderJoint::Config{3, 0.0, 1.0, 0.0, 0.15, true},  // 限位: min=0, max_travel=0.15m
     *cylinder_));
 
-  // Node 4: RMD motor (leftjoint5 - rotary)
-  joints_.push_back(std::make_unique<RmdJoint>("leftjoint5",
+  // Node 4: RMD motor (left_joint5 - rotary)
+  joints_.push_back(std::make_unique<RmdJoint>("left_joint5",
     RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0,
       -M_PI, M_PI, false},  // continuous joint, no limits
     *rmd_left_));
 
   // RMD joints - right bus (can1)
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint2",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint2",
     RmdJoint::Config{4, 0.0, 0.0, -1.0, 0.0,
       -M_PI, M_PI, false},  // continuous joint, no limits
     *rmd_right_));
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint3",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint3",
     RmdJoint::Config{5, 0.0, 0.0, -1.0, 0.0,
       -M_PI_2, M_PI_2, true},  // revolute, -π/2 ~ π/2
     *rmd_right_));
-  joints_.push_back(std::make_unique<RmdJoint>("rightjoint4",
+  joints_.push_back(std::make_unique<RmdJoint>("right_joint4",
     RmdJoint::Config{6, 0.0, 0.0, -1.0, 0.0,
       -M_PI, M_PI, false},  // continuous joint, no limits
     *rmd_right_));
@@ -374,9 +374,9 @@ void AlfaRobotHW::buildJoints()
   // CANopen joints (can3) - linear actuators
   joints_.push_back(std::make_unique<CanopenJoint>("updown",
     CanopenJoint::Config{1, 1.0, 0.0, 0.0, -1.0}, *canopen_));
-  joints_.push_back(std::make_unique<CanopenJoint>("leftjoint1",
+  joints_.push_back(std::make_unique<CanopenJoint>("left_joint1",
     CanopenJoint::Config{2, 1.0, 0.0, 0.0, -1.0}, *canopen_));
-  joints_.push_back(std::make_unique<CanopenJoint>("rightjoint1",
+  joints_.push_back(std::make_unique<CanopenJoint>("right_joint1",
     CanopenJoint::Config{3, 1.0, 0.0, 0.0, -1.0}, *canopen_));
   // plate - separate CANopen bus (can4), node 1
   joints_.push_back(std::make_unique<CanopenJoint>("plate",

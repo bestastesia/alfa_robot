@@ -533,6 +533,15 @@ struct BoxPoseRrtExtractPlannerConfig
   std::shared_ptr<Profile> profile;
 };
 
+struct BoxPoseRrtArmPolicy
+{
+  bool require_full_detachment = true;
+  size_t front_clearance_levels = 1;
+  double retreat_priority = 1.0;
+  double lift_priority = 1.0;
+  double pitch_priority = 1.0;
+};
+
 class BoxPoseRrtExtractPlanner
 {
 public:
@@ -552,6 +561,8 @@ public:
     double ik_solve_ms,
     bool left_top_suction,
     bool right_top_suction,
+    const BoxPoseRrtArmPolicy& left_policy = {},
+    const BoxPoseRrtArmPolicy& right_policy = {},
     const ExtractRecordStepCallback& record_step = {}) const;
 
 private:
@@ -563,6 +574,7 @@ private:
     const AttachedBoxSpec& carried_box,
     int box_id,
     bool top_suction,
+    const BoxPoseRrtArmPolicy& policy,
     ArmPath* diagnostic_path = nullptr) const;
 
   BoxPoseRrtExtractPlannerConfig config_;

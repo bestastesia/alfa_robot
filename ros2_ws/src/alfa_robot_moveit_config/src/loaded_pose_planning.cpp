@@ -17,10 +17,10 @@
 namespace alfa_robot::motion
 {
 
-// updown 逻辑/URDF 规划范围上限 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。负重抬升的
+// updown 逻辑/URDF 与电机物理规划范围上限均为 0.7m。负重抬升的
 // 目标高度不得超过此上限，否则会命令超出 URDF joint limit 的 updown（原先硬编码 0.99
 // 属于旧 [0,0.99] 范围的遗留值）。
-constexpr double kUpdownLogicalUpperM = 0.78;
+constexpr double kUpdownLogicalUpperM = 0.7;
 
 LoadedPoseSelector::LoadedPoseSelector(LoadedPoseSelectorConfig config)
 : config_(std::move(config))
@@ -43,7 +43,7 @@ bool LoadedPoseSelector::hasVariable(const moveit::core::RobotState& state, cons
 
 std::string LoadedPoseSelector::jointName(const std::string& side, size_t index)
 {
-  return side + "joint" + std::to_string(index + 1);
+  return side + "_joint" + std::to_string(index + 1);
 }
 
 double LoadedPoseSelector::armPoseDistance(
@@ -252,15 +252,15 @@ std::vector<std::string> touch_links_for_attached_box(const AttachedBoxSpec& box
 {
   std::vector<std::string> links{box.link_name};
   if (box.link_name.rfind("left_", 0) == 0) {
-    links.push_back("leftjoint6");
-    links.push_back("leftjoint5");
-    links.push_back("leftjoint4");
-    links.push_back("leftjoint3");
+    links.push_back("left_joint6");
+    links.push_back("left_joint5");
+    links.push_back("left_joint4");
+    links.push_back("left_joint3");
   } else if (box.link_name.rfind("right_", 0) == 0) {
-    links.push_back("rightjoint6");
-    links.push_back("rightjoint5");
-    links.push_back("rightjoint4");
-    links.push_back("rightjoint3");
+    links.push_back("right_joint6");
+    links.push_back("right_joint5");
+    links.push_back("right_joint4");
+    links.push_back("right_joint3");
   }
   return links;
 }
@@ -479,12 +479,12 @@ moveit::core::RobotState state_from_plan_at_time(
 
 bool is_left_arm_joint(const std::string& name)
 {
-  return name.rfind("leftjoint", 0) == 0;
+  return name.rfind("left_joint", 0) == 0;
 }
 
 bool is_right_arm_joint(const std::string& name)
 {
-  return name.rfind("rightjoint", 0) == 0;
+  return name.rfind("right_joint", 0) == 0;
 }
 
 void copy_arm_goal(
@@ -493,7 +493,7 @@ void copy_arm_goal(
   moveit::core::RobotState& state)
 {
   for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
-    const std::string joint_name = side + "joint" + std::to_string(joint_index);
+    const std::string joint_name = side + "_joint" + std::to_string(joint_index);
     state.setVariablePosition(joint_name, goal_state.getVariablePosition(joint_name));
   }
   state.enforceBounds();
@@ -548,9 +548,11 @@ moveit::planning_interface::MoveGroupInterface::Plan merge_parallel_arm_plans(
 ExtractMonitorTransitionPlanner make_loaded_transition_planner(
   const LoadedPosePlannerConfig& config,
   const std::string& stage_name,
-  const std::vector<AttachedBoxSpec>& carried_boxes)
+  const std::vector<AttachedBoxSpec>& carried_boxes,
+  const LoadedPlanCancellationCheck& is_cancelled)
 {
   ExtractMonitorTransitionPlanner repair_planner;
+  repair_planner.is_cancelled = is_cancelled;
   repair_planner.make_interpolated_plan =
     [&config](const auto& start, const auto& goal, double duration_s) {
       return make_interpolated_joint_plan(
@@ -878,7 +880,9 @@ LoadedPosePlanResult LoadedPosePlanner::plan(
   const std::vector<AttachedBoxSpec>& carried_boxes,
   size_t loaded_plan_rank)
 {
-  return planInternal(stage_name, extract_state, carried_boxes, loaded_plan_rank, true);
+  return planInternal(
+    stage_name, extract_state, carried_boxes, loaded_plan_rank, true,
+    LoadedPlanCancellationCheck{});
 }
 
 LoadedPosePlanResult LoadedPosePlanner::planInternal(
@@ -886,9 +890,17 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   const moveit::core::RobotState& extract_state,
   const std::vector<AttachedBoxSpec>& carried_boxes,
   size_t loaded_plan_rank,
-  bool manage_scene_adapter)
+  bool manage_scene_adapter,
+  const LoadedPlanCancellationCheck& is_cancelled)
 {
   LoadedPosePlanResult result;
+  const auto cancelled = [&]() {
+    return is_cancelled && is_cancelled();
+  };
+  if (cancelled()) {
+    result.failure_reason = "loaded_plan_cancelled_after_first_success";
+    return result;
+  }
   if (!config_.move_group && !config_.direct_plan_callback) {
     result.failure_reason = "loaded_move_group_not_initialized";
     return result;
@@ -921,6 +933,12 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     config_.scene_adapter->setActiveAttachedBoxesForRecordOnly(saved_boxes);
   };
 
+  const auto cancel_result = [&]() {
+    result.failure_reason = "loaded_plan_cancelled_after_first_success";
+    restore_boxes();
+    return result;
+  };
+
   if (manage_scene_adapter &&
       !config_.scene_adapter->applyAttachedBoxState(
         config_.scene_adapter->activeAttachedBoxes(),
@@ -928,6 +946,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     result.failure_reason = "failed_to_attach_box_for_loaded_plan";
     restore_boxes();
     return result;
+  }
+
+  if (cancelled()) {
+    return cancel_result();
   }
 
   moveit::core::RobotState start_state_with_boxes(extract_state);
@@ -945,10 +967,16 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     boxId(carried_boxes[1]) == config_.pre_loaded_lower_right_box_id;
   {
     std::lock_guard<std::mutex> lock(record_mutex_);
+    if (cancelled()) {
+      return cancel_result();
+    }
     if (!planLateralShift(stage_name, shifted_state, carried_boxes, &shifted_state, &result)) {
       restore_boxes();
       return result;
     }
+  }
+  if (cancelled()) {
+    return cancel_result();
   }
   if (apply_pre_loaded_lower) {
     const moveit::core::RobotState pre_lower_start(shifted_state);
@@ -1022,15 +1050,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   const bool both_top_suction =
     carried_boxes.size() == 2 &&
     std::all_of(carried_boxes.begin(), carried_boxes.end(), box_uses_top_suction);
-  const auto box_layer = [&](const AttachedBoxSpec& box) {
-    const int id = boxId(box);
-    return id > 0 ? (id - 1) / 5 : -1;
-  };
   const bool top_suction_height_mismatch =
     both_top_suction &&
-    box_layer(carried_boxes[0]) >= 0 &&
-    box_layer(carried_boxes[1]) >= 0 &&
-    box_layer(carried_boxes[0]) != box_layer(carried_boxes[1]);
+    config_.top_suction_height_mismatch_callback &&
+    config_.top_suction_height_mismatch_callback();
   const auto& loaded_variable_names = loaded_start_state.getRobotModel()->getVariableNames();
   const bool has_updown_variable = std::find(
     loaded_variable_names.begin(), loaded_variable_names.end(), "updown") != loaded_variable_names.end();
@@ -1039,6 +1062,9 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     lift_deltas.push_back(kUpdownLogicalUpperM - pre_loaded_top_lift_start_updown);
     std::string last_lift_reason;
     for (const double lift_delta : lift_deltas) {
+      if (cancelled()) {
+        return cancel_result();
+      }
       if (lift_delta <= 1e-6) continue;
       const double lifted_updown = std::min(
         kUpdownLogicalUpperM, pre_loaded_top_lift_start_updown + lift_delta);
@@ -1105,7 +1131,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   std::string direct_failure_reason;
   if (config_.planning_mode == "shortcut") {
     ExtractMonitorTransitionPlanner repair_planner =
-      make_loaded_transition_planner(config_, stage_name, carried_boxes);
+      make_loaded_transition_planner(config_, stage_name, carried_boxes, is_cancelled);
     const bool shortcut_ok = plan_loaded_fixed_updown_parallel_arms(
       loaded_start_state,
       goal_state,
@@ -1129,6 +1155,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     plan_result = config_.move_group->plan(plan);
   }
   const auto t1 = std::chrono::steady_clock::now();
+
+  if (cancelled()) {
+    return cancel_result();
+  }
 
   result.attempted = true;
   result.plan_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
@@ -1155,7 +1185,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     if (config_.planning_mode == "shortcut" && config_.direct_plan_callback) {
       const auto repair_start = std::chrono::steady_clock::now();
       ExtractMonitorTransitionPlanner repair_planner =
-        make_loaded_transition_planner(config_, stage_name, carried_boxes);
+        make_loaded_transition_planner(config_, stage_name, carried_boxes, is_cancelled);
 
       const bool rear_guard_collision =
         carried_collision_reason.find("rear guard") != std::string::npos;
@@ -1207,7 +1237,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 moveit::core::RobotState intermediate(lifted_state);
                 for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
                   const std::string joint_name =
-                    first_side + "joint" + std::to_string(joint_index);
+                    first_side + "_joint" + std::to_string(joint_index);
                   intermediate.setVariablePosition(
                     joint_name, lifted_goal_state.getVariablePosition(joint_name));
                 }
@@ -1284,6 +1314,9 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
           constexpr size_t kRetreatSteps = 20;
           bool retreat_ready = false;
           for (size_t retreat_step = 1; retreat_step <= kRetreatSteps; ++retreat_step) {
+            if (cancelled()) {
+              return cancel_result();
+            }
             moveit::core::RobotState next_state(retreat_state);
             bool solve_ok = true;
             for (const auto& box : carried_boxes) {
@@ -1387,7 +1420,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
                 moveit::core::RobotState intermediate(retreat_state);
                 for (size_t joint_index = 1; joint_index <= 6; ++joint_index) {
                   const std::string joint_name =
-                    first_side + "joint" + std::to_string(joint_index);
+                    first_side + "_joint" + std::to_string(joint_index);
                   intermediate.setVariablePosition(
                     joint_name, goal_state.getVariablePosition(joint_name));
                 }
@@ -1521,6 +1554,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     std::lock_guard<std::mutex> lock(record_mutex_);
     config_.record_callback(
       stage_name, plan, validation_start_state, goal_state, config_.target_joint_names, extra);
+  }
+
+  if (cancelled()) {
+    return cancel_result();
   }
 
   if (!result.carried_clear) {
@@ -1704,6 +1741,7 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     std::mutex result_mutex;
     std::atomic<size_t> next_rank{0};
     std::atomic<bool> stop{false};
+    std::atomic<size_t> first_success_rank{loaded_limit};
 
     std::vector<std::thread> workers;
     workers.reserve(worker_count);
@@ -1724,8 +1762,14 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
             *timing.final_state,
             carried_boxes,
             rank + 1,
-            false);
+            false,
+            [&]() {
+              return options.stop_on_first_success && stop.load(std::memory_order_relaxed);
+            });
           if (options.stop_on_first_success && result.success) {
+            size_t expected = loaded_limit;
+            first_success_rank.compare_exchange_strong(
+              expected, rank, std::memory_order_relaxed);
             stop.store(true, std::memory_order_relaxed);
           }
           {
@@ -1756,19 +1800,18 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
       apply_result(rank, results[rank]);
     }
 
-    if (options.stop_on_first_success) {
-      size_t first_success_rank = loaded_limit;
-      for (size_t rank = 0; rank < loaded_limit; ++rank) {
-        if (finished[rank] && results[rank].success) {
-          first_success_rank = rank;
-          break;
-        }
+    if (options.stop_on_first_success && first_success_rank.load(std::memory_order_relaxed) < loaded_limit) {
+      const size_t winner_rank = first_success_rank.load(std::memory_order_relaxed);
+      for (const size_t timing_index : batch_result.plan_indices) {
+        timings[timing_index].loaded_plan_selected = false;
       }
-      if (first_success_rank + 1 < batch_result.plan_indices.size()) {
-        set_skipped_after_success(first_success_rank + 1);
+      timings[batch_result.plan_indices[winner_rank]].loaded_plan_selected = true;
+      if (winner_rank + 1 < batch_result.plan_indices.size()) {
+        set_skipped_after_success(winner_rank + 1);
       }
+    } else {
+      choose_best_success();
     }
-    choose_best_success();
 
     std::vector<std::string> ids;
     ids.reserve(carried_boxes.size());

@@ -21,7 +21,7 @@ def test_set_state_rejects_incomplete_joint_state():
     node = MotionStateSourceNode()
     try:
         request = SetRobotMotionState.Request()
-        request.joint_state.name = ["leftjoint1"]
+        request.joint_state.name = ["left_joint1"]
         response = node.on_set_state(request, SetRobotMotionState.Response())
         assert not response.success
         assert response.message == "joint_state.position shorter than name"
@@ -40,7 +40,7 @@ def test_set_state_publishes_single_authoritative_fact_with_context():
         request.context.state_id = "state-9"
         request.source = "test_fixture"
         request.authoritative = True
-        request.joint_state.name = ["updown", "leftjoint1"]
+        request.joint_state.name = ["updown", "left_joint1"]
         request.joint_state.position = [0.3, 0.2]
 
         response = node.on_set_state(request, SetRobotMotionState.Response())
@@ -78,8 +78,8 @@ def test_joint_state_subscription_normalizes_hardware_names_to_model_names():
             "updown",
             "turn",
             "pitch",
-            "leftjoint2",
-            "rightjoint1",
+            "left_joint2",
+            "right_joint1",
         ]
         assert list(node.latest_state.joint_state.position) == [0.4, 0.3, 0.0, 0.2, 0.1]
     finally:

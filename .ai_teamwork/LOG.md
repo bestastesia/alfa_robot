@@ -1521,3 +1521,43 @@
 - 验证结果：`colcon build --packages-select robot_motion_scene_service alfa_robot_moveit_config`（`-DBUILD_TESTING=ON`）通过；`test_scene_geometry`/`test_task_geometry` 新增用例（yaw 旋转墙板中心正确性、`aabb_overlaps_oriented_box` 旋转 45°典型重叠/不重叠/Z轴分离场景、带 yaw 的 `carried_box_clear_obstacles`、`compute_container_pose_relative_to_vehicle` 两组手算验证含车体 yaw=90° 场景）全部通过；`alfa_robot_moveit_config` 既有 15 个测试（除与本次改动无关、历史遗留失败的 `check_l6_r8_real_safety` 方向表快照哨兵）全部通过，确认无回归。完整 `dual_arm_planner.launch.py` 端到端 launch 烟测未能跑通——本机环境下 `ros2_control` controller spawner 反复超时失败（`torso_controller`/`dual_arm_controller` 均报 `Failed loading`/`already loaded`），60 秒内未到达 `DualArmPlannerNode ready`，确认与本次代码改动无关（构造该节点前置的 MoveIt/controller_manager 链路本身在这台机器上不稳定），未继续深挖。
 - 留给下个 AI：功能默认关闭（`container_pose_dynamic` 默认 `false`），不影响任何现有行为；启用后集装箱位姿来自 `container_pose_map_x/y/yaw` 参数（模拟"已知的 map 绝对位姿"）和现有 `lookup_vehicle_pose()`（`vehicle_drift_global_frame_ -> container_frame_`，即 `map -> world`，语义上就是车体在map下的位姿，本次未新增 TF 查询代码）。真实导航接口接入时只需替换 `vehicle_pose_source_node.py` 的数据源和/或把 `container_pose_map_x/y/yaw` 换成真实感知输出，下游 `compute_container_pose_relative_to_vehicle()`/OBB 碰撞判定逻辑不需要变。完整 launch 烟测因环境 controller_manager 不稳定未跑通，建议下个 AI 在更干净的环境下补一次，或者用不依赖完整 MoveIt 栈的更轻量方式验证 `apply_container_obstacles()` 实际写入 PlanningScene 的 pose。
 
+## 2026-07-18 运控 / Codex / 实机任务分段确认执行
+- 做了什么：将 planner-live 执行从整条轨迹一次发送改为人工确认的分段流程：当前位置先回初始化负重姿态，自动到 IK 前 5cm 预接触点；人工确认 `updown` 到位后前进 5cm 到吸附点；再次确认后执行抽离并回到负重姿态。交互确认从输入 `YES` 改为直接按回车，命令行 `--yes-execute` 总安全护栏保留。
+- 改了哪里：`execute_l6_r8_mock_live.py` 增加阶段切分、阶段边界连续处理、分段 action 发送、updown 到位读回提示和回车确认；同步安全检查、测试及 `docs/ethercat/REAL_DIRECTION_SAFETY.md`。
+- 验证结果：本地构建与定向测试通过；本地完整 mock 通过。工控机 `/home/ar/lhy_dev` 已同步并完成完整 mock：算法 `2143.27ms`，三段执行实际耗时分别 `3.448s`、`0.616s`、`12.745s`，Rerun 为 `/home/ar/lhy_dev/data/ik_benchmark/codex_segmented_mock_remote/L6_R8_segmented.rrd`。未发送任何真实硬件轨迹。
+- 留给下个 AI：实机仍使用 `run_13_dual_grasp_tasks.sh --only 4 --execute --yes-execute` 启动；运行过程中只需按回车确认。`updown` 仍是独立 PP 位置命令，预接触处必须以人工确认/读回误差作为进入 5cm 吸附动作的门槛。
+
+## 2026-07-19 运控 / Codex / 全流程追加放货往返
+- 做了什么：在“IK→抽离→负重”之后追加“负重→放货→负重初始姿态”。放货目标严格复用 `jog_to_pose.py` 的 ROS/URDF 语义：双臂 `[0,-55,-50,-60,0,0]°`、`updown=0.20m`；去程携带两个附着箱，放货后回程移除附着箱。两段复用 `ExtractMonitorTransitionPlanner`，先验证直连 shortcut，仅碰撞区间调用局部 RRT 修补。初始化首段同时读取当前 updown 物理反馈、按 `joints.py` 转为逻辑值，并与双臂同步运动到独立负重高度 `0.30m`；不再复用当前 IK 参考高度。
+- 改了哪里：`dual_arm_planner_node.cpp` 增加可参数化放货循环及快照阶段；`dual_arm_planner.launch.py`、`extract_stage_monitor_console.py` 透传参数；`execute_l6_r8_mock_live.py` 将执行拆为抽离回负重、去放货、确认释放、回负重；同步安全哨兵、测试和文档。
+- 验证结果：本地构建通过，`alfa_robot_moveit_config` 17/17 测试通过，完整 mock 成功；本地 Rerun：`data/ik_benchmark/place_cycle_mock/L6_R8_place_cycle.rrd`。工控机 `/home/ar/lhy_dev` clean build 和两轮完整 mock 成功，最新 Rerun：`/home/ar/lhy_dev/data/ik_benchmark/home_updown_place_cycle_mock/L6_R8.rrd`；放货去程/回程均为无碰撞直连 `joint_interpolation`，各 8.5s，去程附着箱数量 2、回程 0。未发送真实硬件轨迹。
+- 留给下个 AI：实机到达放货姿态后会等待回车确认箱子已经释放，再返回负重姿态；当前尚未自动调用真空阀服务。若接入电磁阀，应在该确认边界插入关闭阀门并等待反馈，不要把阀动作埋进轨迹插值循环。
+
+## 2026-07-19 运控/电控接口 / Codex / updown 零偏移合同实机校正
+- 做了什么：根据实机复测“logical 0.28 经旧合同下发 physical 0.20，整机高度比 URDF/FK 低约 8cm”，将 `joints.py` 的 updown 零点偏移从 `0.08m` 校正为 `0.0m`；合同转换函数继续强制使用，但现在 logical 与 physical 数值相同。逻辑/物理行程同步统一为 `[0,0.7]m`。
+- 改了哪里：统一更新 execution bridge 合同和测试、description URDF、MoveIt joint limits、IK h 默认范围、loaded 抬升上限、runtime adapter/launch、实验脚本、基线与标定文档；历史 `/home/ar/lhy_dev/run_move_all_joints_abs.sh` 改为 canonical `jog_to_pose.py` 兼容入口，彻底停止调用会绕过 `joints.py` 的旧重复实现。
+- 验证结果：本地四个受影响包构建通过，execution bridge 5/5、motion core 2/2、moveit config 17/17、runtime 8/8 测试通过；本地完整 L6/R8 mock 成功。工控机五包 clean build、合同测试 5/5、完整 mock 成功，Rerun：`/home/ar/lhy_dev/data/ik_benchmark/updown_zero_offset_mock/L6_R8.rrd`。使用现场历史命令入口做不带 `--send` 的 dry-run，明确输出 `logical=0.2800m -> physical=0.2800m`。全程未发送真实硬件命令。
+- 留给下个 AI：不要删除 `logical_to_physical_updown()` / `physical_to_logical_updown()`；零偏移不是“无合同”。工控机 description clean build出现一次 xacro underlay 依赖扫描警告，但运行时 `ros2 pkg prefix alfa_robot_description` 指向 `/home/ar/lhy_dev`，实际展开的 updown limit 已确认是 `[0,0.7]`。
+## 2026-07-19 运控 / Codex / 负重候选首成功协作早停
+- 做了什么：修复并行负重规划虽配置 `stop_on_first_success` 仍等待全部 worker `join` 的问题；现在以最先完成的成功候选为胜出者，并向其余 shortcut、自研局部 RRT、后挡墙修补流程传播协作取消信号。默认开启，仍可用 `--no-loaded-stop-on-first-success` 恢复“全部完成后选最低代价”。
+- 改了哪里：`extract_monitor_transition_planning.*` 增加取消检查；`loaded_pose_planning.*` 增加首成功 winner 与协作取消；planner launch、13组序列、阶段监控和实况执行入口默认开启首成功早停。
+- 验证结果：`alfa_robot_moveit_config` 构建通过，17/17 定向测试通过。`h=[0,0.7]` 的13组复测保持 10/13 成功；10个成功任务负重阶段平均从 695.3ms 降到 298.1ms，最大从 1629.3ms 降到 504.9ms。诊断 Rerun：`data/ik_benchmark/updown_0_0p7_full13_20260719/diagnostics/rear_guard_conflicts_L16_R23_L21_R18.rrd`、`data/ik_benchmark/updown_0_0p7_full13_20260719/diagnostics/loaded_wall_conflicts_L11_R8.rrd`。
+- 留给下个 AI：无成功候选的任务（当前 L11/R8）无法触发早停，仍会跑完8个候选；首成功模式优化计算延迟，但不再保证从全部成功轨迹中选择总代价最低者。
+
+## 2026-07-20 运控 / Codex / 不等高双侧吸矮侧双层脱离判据
+- 做了什么：将双侧吸细分为等高、左高、右高；混合侧吸/顶吸先换算为双侧吸接触位姿，再按有效高度分类。不等高任务要求矮侧附着箱除原侧邻箱判据外，还必须离开原箱位和正上方一层箱位的 x-z 侧面投影；等高任务保持原规则。
+- 改了哪里：`robot_motion_interfaces` 增加策略类型与 `front_clearance_levels`；`robot_motion_runtime/dual_grasp_strategy.py` 和适配节点负责分类；`robot_motion_scene_service` 提供同源双层几何判据；`dual_arm_planner_node.cpp` 将判据接入箱体位姿 RRT 目标检查和最终校验；策略文档与测试同步更新。
+- 验证结果：隔离构建通过，`robot_motion_scene_service` 2/2、`alfa_robot_moveit_config` 17/17、`robot_motion_runtime` 15/15，共 34/34 测试通过。分类烟测确认 L1/R3=`(1,1)`、L1/R8=`(1,2)`、L6/R3=`(2,1)`。代表性全流程中 L6/R3 成功，总计 17.02s（抽离 16.40s）；L11/R8 抽离成功但负重规划失败，总计 135.35s（抽离 132.82s）。证据：`/tmp/alfa_unequal_front_clearance_targeted_v3_20260720/sequence_20260720_121552/`。
+- 留给下个 AI：抽离早停只停止后续候选派发，不能中断已在运行的箱体 RRT；质量阈值不满足时还需累计 3 个成功。新双层目标显著提高困难任务搜索量，下一步性能优化应给抽离 RRT 增加协作取消或针对矮侧双层目标加入更强目标偏置，不能放宽本次脱离安全语义。
+
+## 2026-07-19 运控 / Codex / MOTION-64 双抓取6D合同与任务策略
+- 做了什么：把整机双抓取入口收紧为 `request_id + 左右6D接触位姿/吸附模式 + execute`；按模式和目标高度分类双侧吸、等高双顶吸、左高双顶吸、右高双顶吸、混合降级五个内部策略；不等高双顶吸仅要求低侧完全抽离，高侧允许无碰撞的最佳努力路径。
+- 改了哪里：新增 `Pose6D`、`GraspTarget`、`DualGraspStrategy`、`ArmExtractPolicy` 合同；分类与混合坐标换算位于 `robot_motion_runtime/dual_grasp_strategy.py`；完整 C++ 箱体位姿 RRT 接入逐臂脱离要求；13任务工具和工控机发送器改用显式目标；详细说明见 `docs/运控/双抓取6D任务合同与策略.md`。
+- 验证结果：核心、场景、运行时和完整规划共 39 项测试零失败；ROS interface 与 13任务发送器烟测通过；顶吸7组在全 h 扫描下 7/7 成功，不等高日志确认高侧进入 `collision-free best-effort path`。与前6组侧吸/混合结果合并为 11/13；L6/R3、L11/R8 仍失败在负重规划。结果：`/tmp/alfa_dual_strategy_top_fullh_20260719/sequence_20260719_220512/`、`/tmp/alfa_dual_strategy_full13_20260719_1400/sequence_20260719_215757/`。
+- 留给下个 AI：箱号只应继续作为固定实验场景开洞/标签，不得参与策略分类。独立运行时 `PlanExtract` 仍是 shortcut 过渡实现，完整 C++ rollout 尚未迁入该服务；算法验收仍应走 `dual_arm_planner_node` 完整流程。当前抽离仍有明显长尾，L1/R8、L6/R13 分别约 64.9s、85.1s，原因是大量低序候选单臂 RRT 失败后才找到可用候选，不属于本轮线程阻塞。
+
+## 2026-07-20 运控/电控接口 / Codex / updown 四字段动态速度与 PLC 联调恢复
+- 做了什么：适配电控侧新的 updown 原子命令合同 `[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]`；示教工具和 planner-live 全流程不再发送已失效的单元素位置命令。全流程按阶段位移/时长动态计算 PP 速度并受 `--max-updown-speed-m-s` 上限约束，每阶段只发送一次最终位置与 profile。恢复 `run_jog_to_pose.sh` 的左右电磁阀、真空泵、运动前后切换和 PLC-only 联调参数。
+- 改了哪里：新增 `alfa_robot_execution_bridge/updown.py` 作为四字段构造/校验唯一入口；更新 `jog_to_pose.py`、`execute_l6_r8_mock_live.py`、13任务发送器、运动学孪生消费者、安全哨兵及执行文档。工控机 `/home/ar/lhy_dev` 已备份旧文件到 `/home/ar/lhy_dev/backups/updown_plc_20260720_000049`，同步源码并把 execution bridge 纳入 `build_lhy_dev.sh`。
+- 验证结果：本地 execution bridge 单测 7/7、静态实机安全检查、9包构建通过；隔离 ROS smoke 明确拒绝 `[0.2]` 并接受 `[0.2,0.05,0.05,0.05]`。工控机 10 包构建通过，`run_jog_to_pose.sh --plc-only` dry-run、四字段构造、全流程参数转发、13任务列表通过；未写 PLC、未发送真实机械臂命令。上轮 13任务失败状态回放保存到 `data/ik_benchmark/dual_grasp_strategy_contract_20260719/loaded_failures_L6_R3_L11_R8.rrd`。
+- 留给下个 AI：电控真实硬件尚未验证新四字段运动；首次实机必须先单独小行程 updown，确认位置/速度/加减速度，再运行全流程。PLC 恢复只接服务调用边界，尚未自动嵌入“到吸附点开阀、到放货点关阀”的任务状态机。

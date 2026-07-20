@@ -105,22 +105,21 @@ def ethercat_to_ros_position(joint_name: str, value: float) -> float:
 # joint semantics, what IK 规划出来的值) vs physical meters (raw value sent to
 # /canopen/updown_position_controller/commands，电机侧原始位置).
 #
-# 物理对应关系（现场标定）：电机 0 位 <-> URDF 0.08m，电机 0.7 <-> URDF 0.78m，即
+# 2026-07-19 实机复测确认：电机位置与 URDF/MoveIt 位置无需零点平移，即
 #   logical(URDF) = physical(电机) + UPDOWN_PHYSICAL_ZERO_OFFSET_M
 #   physical(电机) = logical(URDF) - UPDOWN_PHYSICAL_ZERO_OFFSET_M
-# 例：IK 规划出 URDF 0.28 -> 下发电机 0.28 - 0.08 = 0.20。
+# 且 UPDOWN_PHYSICAL_ZERO_OFFSET_M = 0，因此 logical == physical。
 #
-# 逻辑/URDF 规划范围 [0.08, 0.78] 与电机物理行程 [0, 0.7] 精确一一对应（用满行程）：
+# 逻辑/URDF 规划范围 [0, 0.7] 与电机物理行程 [0, 0.7] 精确一一对应：
 # MoveIt 的 urdf 'updown' limit 与 joint_limits.yaml、IK 的 h 采样范围都已统一为
-# [0.08, 0.78]，在采样/规划阶段就限死，不会产生越界候选。physical=logical-0.08 换算后
-# 理论上恰好落在 [0, 0.7]；仍保留 clamp 作为最后一道硬防线，杜绝任何来源的超程指令。
-UPDOWN_PHYSICAL_ZERO_OFFSET_M = 0.08
+# [0, 0.7]。转换函数仍是强制合同边界，不能绕过；clamp 仍作为最后一道硬防线。
+UPDOWN_PHYSICAL_ZERO_OFFSET_M = 0.0
 # 电机侧物理行程硬限位（不可超出）：
 UPDOWN_PHYSICAL_LOWER_M = 0.0
 UPDOWN_PHYSICAL_UPPER_M = 0.7
 # MoveIt/URDF 规划的 logical 范围（与 urdf 'updown' limit、joint_limits.yaml 保持一致）：
-UPDOWN_LOGICAL_LOWER_M = 0.08
-UPDOWN_LOGICAL_UPPER_M = 0.78
+UPDOWN_LOGICAL_LOWER_M = 0.0
+UPDOWN_LOGICAL_UPPER_M = 0.7
 
 
 def clamp_updown_physical(physical_m: float) -> float:
@@ -145,12 +144,12 @@ def require_updown_physical_in_range(physical_m: float) -> None:
 
 
 def logical_to_physical_updown(logical_m: float) -> float:
-    """URDF/MoveIt 逻辑值 -> 电机侧物理指令值。physical = logical - 0.08，并强制夹紧到
+    """URDF/MoveIt 逻辑值 -> 电机侧物理指令值。当前零偏移，仍统一经合同转换并强制夹紧到
     电机物理行程 [0, 0.7]（超出部分被安全裁剪，绝不下发超程指令）。"""
     physical_m = float(logical_m) - UPDOWN_PHYSICAL_ZERO_OFFSET_M
     return clamp_updown_physical(physical_m)
 
 
 def physical_to_logical_updown(physical_m: float) -> float:
-    """电机侧物理反馈值 -> URDF/MoveIt 逻辑值。logical = physical + 0.08。"""
+    """电机侧物理反馈值 -> URDF/MoveIt 逻辑值。当前零偏移，logical == physical。"""
     return float(physical_m) + UPDOWN_PHYSICAL_ZERO_OFFSET_M

@@ -27,6 +27,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
+from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from alfa_robot_execution_bridge.joints import (
@@ -39,6 +40,12 @@ from alfa_robot_execution_bridge.joints import (
     physical_to_logical_updown,
     require_updown_logical_in_range,
     ros_to_ethercat_position,
+)
+from alfa_robot_execution_bridge.updown import (
+    DEFAULT_UPDOWN_ACCELERATION_MPS2,
+    DEFAULT_UPDOWN_DECELERATION_MPS2,
+    DEFAULT_UPDOWN_VELOCITY_MPS,
+    make_updown_command_data,
 )
 
 SMOOTHSTEP_MAX_VELOCITY_GAIN = 1.875
@@ -109,12 +116,34 @@ class TargetPlan:
     updown_target: float | None
 
 
+PLC_OUTPUT_ARGUMENTS = (
+    ("left_solenoid", "left solenoid"),
+    ("right_solenoid", "right solenoid"),
+    ("vacuum_pump", "vacuum pump"),
+)
+
+
+def requested_plc_outputs(args: argparse.Namespace) -> list[tuple[str, bool]]:
+    outputs: list[tuple[str, bool]] = []
+    for attribute, label in PLC_OUTPUT_ARGUMENTS:
+        value = str(getattr(args, attribute)).strip().lower()
+        if value == "keep":
+            continue
+        outputs.append((label, value == "on"))
+    return outputs
+
+
 class JogToPose(Node):
     def __init__(self, args: argparse.Namespace) -> None:
         super().__init__('lhy_jog_to_pose')
         self.args = args
         self.action_client = ActionClient(self, FollowJointTrajectory, args.action_name)
         self.updown_pub = self.create_publisher(Float64MultiArray, args.updown_topic, 10)
+        self.plc_clients = {
+            "left solenoid": self.create_client(SetBool, args.left_solenoid_service),
+            "right solenoid": self.create_client(SetBool, args.right_solenoid_service),
+            "vacuum pump": self.create_client(SetBool, args.vacuum_pump_service),
+        }
         self._latest_joint_state: JointState | None = None
         self.create_subscription(
             JointState, args.joint_state_topic, self._on_joint_state, qos_profile_sensor_data,
@@ -160,7 +189,7 @@ class JogToPose(Node):
         or skip the conversion.
 
         Returns (values, updown_out_of_contract). The physical-to-logical
-        offset subtraction always applies (it is not conditional), but if the
+        contract conversion always applies (the current calibrated offset is zero), but if the
         result falls outside [UPDOWN_LOGICAL_LOWER_M, UPDOWN_LOGICAL_UPPER_M]
         (e.g. updown still sitting at a pre-contract or old-wide-range value),
         the value is still reported so the operator can see current state and
@@ -295,6 +324,10 @@ class JogToPose(Node):
         if plan.updown_target is not None:
             current_text = 'UNKNOWN' if plan.updown_current is None else f'{plan.updown_current:.4f} m'
             print(f'  {"updown":12s} {current_text:>13s} -> {plan.updown_target:9.4f} m (logical)')
+            print(
+                f'  updown contract logical={plan.updown_target:.4f} m '
+                f'-> physical={logical_to_physical_updown(plan.updown_target):.4f} m'
+            )
         else:
             current_text = 'UNKNOWN' if plan.updown_current is None else f'{plan.updown_current:.4f} m'
             print(f'  {"updown":12s} {current_text:>13s} -> hold/no command')
@@ -315,16 +348,58 @@ class JogToPose(Node):
         print(f'  max_arm_delta={math.degrees(max_delta):.3f}deg@{max_joint}')
         print('  direction/updown conversion: MANDATORY (alfa_robot_execution_bridge.joints), not optional')
         if plan.updown_target is not None:
-            print(f'  updown_topic={self.args.updown_topic}')
+            print(
+                f'  updown_topic={self.args.updown_topic} '
+                f'profile=[velocity={self.args.updown_speed_mps:.4f}m/s, '
+                f'acceleration={self.args.updown_acceleration_mps2:.4f}m/s^2, '
+                f'deceleration={self.args.updown_deceleration_mps2:.4f}m/s^2]'
+            )
+
+    def print_plc_plan(self) -> None:
+        outputs = requested_plc_outputs(self.args)
+        if not outputs:
+            print("\nPLC outputs: keep all outputs unchanged")
+            return
+        print(f"\nPLC outputs ({self.args.plc_when}):")
+        for label, enabled in outputs:
+            print(f"  {label:14s} -> {'on' if enabled else 'off'}")
 
     def publish_updown_once(self, target_logical_m: float) -> None:
-        target_physical_m = logical_to_physical_updown(target_logical_m)
         msg = Float64MultiArray()
-        msg.data = [float(target_physical_m)]
+        msg.data = make_updown_command_data(
+            target_logical_m,
+            self.args.updown_speed_mps,
+            self.args.updown_acceleration_mps2,
+            self.args.updown_deceleration_mps2,
+        )
         for _ in range(max(1, self.args.updown_publish_repeats)):
             self.updown_pub.publish(msg)
             rclpy.spin_once(self, timeout_sec=0.02)
             time.sleep(0.02)
+
+    def apply_plc_outputs(self) -> bool:
+        outputs = requested_plc_outputs(self.args)
+        for label, enabled in outputs:
+            client = self.plc_clients[label]
+            if not client.wait_for_service(timeout_sec=self.args.plc_service_timeout_s):
+                print(f"PLC service unavailable for {label}: {client.srv_name}", file=sys.stderr)
+                return False
+            request = SetBool.Request()
+            request.data = enabled
+            future = client.call_async(request)
+            deadline = time.monotonic() + self.args.plc_service_timeout_s
+            while rclpy.ok() and not future.done() and time.monotonic() < deadline:
+                rclpy.spin_once(self, timeout_sec=0.05)
+            if not future.done():
+                print(f"PLC service timed out for {label}: {client.srv_name}", file=sys.stderr)
+                return False
+            response = future.result()
+            if response is None or not response.success:
+                message = "no response" if response is None else response.message
+                print(f"PLC command failed for {label}: {message}", file=sys.stderr)
+                return False
+            print(f"PLC {label} -> {'on' if enabled else 'off'}: {response.message}")
+        return True
 
     def send(self, plan: TargetPlan, trajectory: JointTrajectory) -> int:
         if not self.action_client.wait_for_server(timeout_sec=self.args.action_timeout_s):
@@ -432,6 +507,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--action-name', default='/dual_arm_trajectory_controller/follow_joint_trajectory')
     parser.add_argument('--joint-state-topic', default='/joint_states')
     parser.add_argument('--updown-topic', default='/canopen/updown_position_controller/commands')
+    parser.add_argument('--updown-speed-mps', type=float, default=DEFAULT_UPDOWN_VELOCITY_MPS)
+    parser.add_argument(
+        '--updown-acceleration-mps2',
+        type=float,
+        default=DEFAULT_UPDOWN_ACCELERATION_MPS2,
+    )
+    parser.add_argument(
+        '--updown-deceleration-mps2',
+        type=float,
+        default=DEFAULT_UPDOWN_DECELERATION_MPS2,
+    )
     parser.add_argument('--duration-s', type=float, default=5.0)
     parser.add_argument('--hz', type=float, default=10.0)
     parser.add_argument('--profile', choices=['smoothstep', 'linear'], default='smoothstep')
@@ -444,6 +530,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--wait-result', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--send', action='store_true', help='Actually send commands. Without this, only prints the plan (dry run).')
     parser.add_argument('--updown-publish-repeats', type=int, default=3)
+    parser.add_argument('--left-solenoid', choices=['keep', 'on', 'off'], default='keep')
+    parser.add_argument('--right-solenoid', choices=['keep', 'on', 'off'], default='keep')
+    parser.add_argument('--vacuum-pump', choices=['keep', 'on', 'off'], default='keep')
+    parser.add_argument('--plc-when', choices=['before', 'after'], default='after')
+    parser.add_argument('--plc-only', action='store_true')
+    parser.add_argument('--left-solenoid-service', default='/plc/left_solenoid')
+    parser.add_argument('--right-solenoid-service', default='/plc/right_solenoid')
+    parser.add_argument('--vacuum-pump-service', default='/plc/vacuum_pump')
+    parser.add_argument('--plc-service-timeout-s', type=float, default=3.0)
     parser.add_argument('--verbose-feedback', action='store_true')
     parser.add_argument('--rerun', dest='rerun', action='store_true', default=False, help='Open a live Rerun view of actual + target robot state.')
     parser.add_argument('--no-rerun', dest='rerun', action='store_false')
@@ -485,10 +580,33 @@ def main() -> int:
         raise SystemExit('--max-vel-deg-s must be > 0')
     if args.max_accel_deg_s2 <= 0.0:
         raise SystemExit('--max-accel-deg-s2 must be > 0')
+    make_updown_command_data(
+        0.0,
+        args.updown_speed_mps,
+        args.updown_acceleration_mps2,
+        args.updown_deceleration_mps2,
+    )
+    if args.plc_service_timeout_s <= 0.0:
+        raise SystemExit('--plc-service-timeout-s must be > 0')
+    if args.plc_only and not requested_plc_outputs(args):
+        raise SystemExit('--plc-only requires at least one PLC output set to on/off')
+    if args.plc_only and args.rerun:
+        raise SystemExit('--plc-only cannot be combined with --rerun')
+    if requested_plc_outputs(args) and args.plc_when == 'after' and not args.wait_result:
+        raise SystemExit('--plc-when after requires --wait-result')
     rclpy.init()
     node = JogToPose(args)
     rerun_ctx = None
     try:
+        if args.plc_only:
+            node.print_plc_plan()
+            if not args.send:
+                print('\nDry run only. Add --send to write PLC outputs.')
+                return 0
+            wait_for_enter_while_spinning(
+                node, '\n确认 PLC 输出切换安全后按 Enter 发送；Ctrl+C 取消...',
+            )
+            return 0 if node.apply_plc_outputs() else 4
         if args.rerun:
             rerun_ctx = RerunLiveContext()
             node.rerun_ctx = rerun_ctx
@@ -497,6 +615,7 @@ def main() -> int:
             rerun_ctx.log_target(plan.target, plan.updown_target)
         trajectory = node.make_trajectory(plan)
         node.print_plan(plan, trajectory)
+        node.print_plc_plan()
         if not args.send:
             print('\nDry run only. Add --send after confirming hardware safety.')
             if rerun_ctx is not None:
@@ -506,7 +625,16 @@ def main() -> int:
         wait_for_enter_while_spinning(
             node, '\n确认机械安全、人员远离、目标位置正确后按 Enter 发送；Ctrl+C 取消...',
         )
-        return node.send(plan, trajectory)
+        if requested_plc_outputs(args) and args.plc_when == 'before':
+            if not node.apply_plc_outputs():
+                return 4
+        result = node.send(plan, trajectory)
+        if result != 0:
+            return result
+        if requested_plc_outputs(args) and args.plc_when == 'after':
+            if not node.apply_plc_outputs():
+                return 4
+        return 0
     finally:
         node.destroy_node()
         if rclpy.ok():

@@ -124,7 +124,7 @@
     <origin xyz="0.095 0.26 0.2" rpy="0 0 0"/>
   </joint>
 
-  <link name="leftjoint1">
+  <link name="left_joint1">
     <inertial>
       <origin xyz="1.98132632578396E-05 0.0024729821757461 0.0580356323599247" rpy="0 0 0" />
       <mass value="2.53849365971092" />
@@ -147,15 +147,15 @@
     </collision>
   </link>
 
-  <joint name="leftjoint1" type="revolute">
+  <joint name="left_joint1" type="revolute">
     <origin xyz="0 0 0" rpy="0 0 0" />
     <parent link="left_arm_base" />
-    <child link="leftjoint1" />
+    <child link="left_joint1" />
     <axis xyz="0 0 1" />
     <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
   </joint>
 
-  <link name="leftjoint2">
+  <link name="left_joint2">
     <inertial>
       <origin xyz="-3.91993260073775E-09 -0.198242241905537 0.0685963634370466" rpy="0 0 0" />
       <mass value="13.5734229269593" />
@@ -178,15 +178,15 @@
     </collision>
   </link>
 
-  <joint name="leftjoint2" type="revolute">
+  <joint name="left_joint2" type="revolute">
     <origin xyz="0 0.0825 0.058" rpy="-1.5708 0 0" />
-    <parent link="leftjoint1" />
-    <child link="leftjoint2" />
+    <parent link="left_joint1" />
+    <child link="left_joint2" />
     <axis xyz="0 0 1" />
     <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
-  <link name="leftjoint3">
+  <link name="left_joint3">
     <inertial>
       <origin xyz="2.86018788653308E-08 -0.174995964436896 -0.0214654505916678" rpy="0 0 0" />
       <mass value="5.46918956371602" />
@@ -209,15 +209,15 @@
     </collision>
   </link>
 
-  <joint name="leftjoint3" type="revolute">
+  <joint name="left_joint3" type="revolute">
     <origin xyz="0 -0.4 0.008" rpy="0 0 0" />
-    <parent link="leftjoint2" />
-    <child link="leftjoint3" />
+    <parent link="left_joint2" />
+    <child link="left_joint3" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
   </joint>
 
-  <link name="leftjoint4">
+  <link name="left_joint4">
     <inertial>
       <origin xyz="1.79301766545237E-05 0.0022398818670486 0.0513862987308302" rpy="0 0 0" />
       <mass value="2.80270206383319" />
@@ -240,15 +240,15 @@
     </collision>
   </link>
 
-  <joint name="leftjoint4" type="revolute">
+  <joint name="left_joint4" type="revolute">
     <origin xyz="0 -0.34 0.036" rpy="0 0 3.14159265" />
-    <parent link="leftjoint3" />
-    <child link="leftjoint4" />
+    <parent link="left_joint3" />
+    <child link="left_joint4" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
 
-  <link name="leftjoint5">
+  <link name="left_joint5">
     <inertial>
       <origin xyz="0.00232761885815957 1.86282466611079E-05 -0.0541835932362768" rpy="0 0 0" />
       <mass value="2.69701788961683" />
@@ -271,15 +271,15 @@
     </collision>
   </link>
 
-  <joint name="leftjoint5" type="revolute">
+  <joint name="left_joint5" type="revolute">
     <origin xyz="0 0.076 0.058" rpy="-1.5708 0 3.14159265" />
-    <parent link="leftjoint4" />
-    <child link="leftjoint5" />
+    <parent link="left_joint4" />
+    <child link="left_joint5" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
 
-  <link name="leftjoint6">
+  <link name="left_joint6">
     <inertial>
       <origin xyz="0.000656912040293556 0.000831354479587647 0.143020209405828" rpy="0 0 0" />
       <mass value="9.66858880038425" />
@@ -302,10 +302,10 @@
     </collision>
   </link>
 
-  <joint name="leftjoint6" type="revolute">
+  <joint name="left_joint6" type="revolute">
     <origin xyz="0.0825 0 -0.058" rpy="0 1.5708 0" />
-    <parent link="leftjoint5" />
-    <child link="leftjoint6" />
+    <parent link="left_joint5" />
+    <child link="left_joint6" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
   </joint>
@@ -325,7 +325,7 @@
     <origin xyz="0.095 -0.26 0.2" rpy="0 0 0"/>
   </joint>
 
-  <link name="rightjoint1">
+  <link name="right_joint1">
     <inertial>
       <origin xyz="-1.97935614578704E-05 -0.00247298310211252 0.0580356306667533" rpy="0 0 0" />
       <mass value="2.53849328920251" />
@@ -348,15 +348,15 @@
     </collision>
   </link>
 
-  <joint name="rightjoint1" type="revolute">
+  <joint name="right_joint1" type="revolute">
     <origin xyz="0 0 0" rpy="0 0 0" />
     <parent link="right_arm_base" />
-    <child link="rightjoint1" />
+    <child link="right_joint1" />
     <axis xyz="0 0 1" />
     <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
   </joint>
 
-  <link name="rightjoint2">
+  <link name="right_joint2">
     <inertial>
       <origin xyz="-3.93094157224994E-09 -0.198242241906288 -0.0685963669555529" rpy="0 0 0" />
       <mass value="13.573422926924" />
@@ -379,15 +379,15 @@
     </collision>
   </link>
 
-  <joint name="rightjoint2" type="revolute">
+  <joint name="right_joint2" type="revolute">
     <origin xyz="0 -0.0825 0.058" rpy="-1.5708 0 0" />
-    <parent link="rightjoint1" />
-    <child link="rightjoint2" />
+    <parent link="right_joint1" />
+    <child link="right_joint2" />
     <axis xyz="0 0 1" />
     <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
   </joint>
 
-  <link name="rightjoint3">
+  <link name="right_joint3">
     <inertial>
       <origin xyz="-2.19745741603106E-08 -0.174995898002215 0.0214654414595061" rpy="0 0 0" />
       <mass value="5.4691844498613" />
@@ -410,15 +410,15 @@
     </collision>
   </link>
 
-  <joint name="rightjoint3" type="revolute">
+  <joint name="right_joint3" type="revolute">
     <origin xyz="0 -0.4 -0.008" rpy="0 0 0" />
-    <parent link="rightjoint2" />
-    <child link="rightjoint3" />
+    <parent link="right_joint2" />
+    <child link="right_joint3" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
   </joint>
 
-  <link name="rightjoint4">
+  <link name="right_joint4">
     <inertial>
       <origin xyz="-1.79645036204601E-05 0.0022398851924712 -0.051386302023446" rpy="0 0 0" />
       <mass value="2.80270248559314" />
@@ -441,15 +441,15 @@
     </collision>
   </link>
 
-  <joint name="rightjoint4" type="revolute">
+  <joint name="right_joint4" type="revolute">
     <origin xyz="0 -0.34 -0.036" rpy="0 0 3.14159265" />
-    <parent link="rightjoint3" />
-    <child link="rightjoint4" />
+    <parent link="right_joint3" />
+    <child link="right_joint4" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
 
-  <link name="rightjoint5">
+  <link name="right_joint5">
     <inertial>
       <origin xyz="0.00247297487810383 1.97916984613355E-05 -0.0580356333661171" rpy="0 0 0" />
       <mass value="2.53849312800543" />
@@ -472,15 +472,15 @@
     </collision>
   </link>
 
-  <joint name="rightjoint5" type="revolute">
+  <joint name="right_joint5" type="revolute">
     <origin xyz="0 0.076 -0.058" rpy="-1.5708 0 3.14159265" />
-    <parent link="rightjoint4" />
-    <child link="rightjoint5" />
+    <parent link="right_joint4" />
+    <child link="right_joint5" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
   </joint>
 
-  <link name="rightjoint6">
+  <link name="right_joint6">
     <inertial>
       <origin xyz="0.000634748756222159 -0.000892103298974378 0.142311014574405" rpy="0 0 0" />
       <mass value="10.0061845981926" />
@@ -503,10 +503,10 @@
     </collision>
   </link>
 
-  <joint name="rightjoint6" type="revolute">
+  <joint name="right_joint6" type="revolute">
     <origin xyz="0.0825 0 -0.058" rpy="0 1.5708 0" />
-    <parent link="rightjoint5" />
-    <child link="rightjoint6" />
+    <parent link="right_joint5" />
+    <child link="right_joint6" />
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
   </joint>
@@ -646,9 +646,9 @@
     <parent link="turn" />
     <child link="updown" />
     <axis xyz="0 0 1" />
-    <!-- updown 逻辑/URDF 规划范围 [0.08, 0.78]，对应电机物理满行程 [0, 0.7]
-         (physical = logical - 0.08，换算与夹紧收口在 alfa_robot_execution_bridge/joints.py)。 -->
-    <limit lower="0.08" upper="0.78" effort="0" velocity="0" />
+    <!-- updown 逻辑/URDF 与电机物理位置均为 [0, 0.7]；零偏移合同和夹紧收口在
+         alfa_robot_execution_bridge/joints.py，调用方仍禁止绕过转换函数。 -->
+    <limit lower="0" upper="0.7" effort="0" velocity="0" />
   </joint>
 
   <joint name="front_sensor" type="fixed">
@@ -694,7 +694,7 @@
     </inertial>
   </link>
   <joint name="left_tool0_fixed" type="fixed">
-    <parent link="leftjoint6"/>
+    <parent link="left_joint6"/>
     <child link="left_tool0"/>
     <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>
@@ -707,7 +707,7 @@
     </inertial>
   </link>
   <joint name="right_tool0_fixed" type="fixed">
-    <parent link="rightjoint6"/>
+    <parent link="right_joint6"/>
     <child link="right_tool0"/>
     <origin xyz="0 0 0.209" rpy="0 0 0"/>
   </joint>

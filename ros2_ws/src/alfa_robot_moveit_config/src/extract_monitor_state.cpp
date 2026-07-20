@@ -111,13 +111,13 @@ moveit::core::RobotState make_extract_monitor_joint_state(
     return std::find(variable_names.begin(), variable_names.end(), name) != variable_names.end();
   };
   for (size_t i = 0; i < seed.left_arm.size(); ++i) {
-    const std::string name = "leftjoint" + std::to_string(i + 1);
+    const std::string name = "left_joint" + std::to_string(i + 1);
     if (has_variable(name)) {
       state.setVariablePosition(name, seed.left_arm[i]);
     }
   }
   for (size_t i = 0; i < seed.right_arm.size(); ++i) {
-    const std::string name = "rightjoint" + std::to_string(i + 1);
+    const std::string name = "right_joint" + std::to_string(i + 1);
     if (has_variable(name)) {
       state.setVariablePosition(name, seed.right_arm[i]);
     }

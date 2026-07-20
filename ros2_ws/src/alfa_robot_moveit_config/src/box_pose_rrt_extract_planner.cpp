@@ -350,6 +350,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
   const AttachedBoxSpec& carried_box,
   int box_id,
   bool top_suction,
+  const BoxPoseRrtArmPolicy& policy,
   ArmPath* diagnostic_path) const
 {
   std::vector<ArmPath> paths;
@@ -564,6 +565,20 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
       paths.push_back(std::move(path));
     }
   }
+  if (!policy.require_full_detachment && paths.empty() && diagnostic_path &&
+      diagnostic_path->states.size() > 1 && !diagnostic_path->box_states.empty()) {
+    const auto& final = diagnostic_path->box_states.back();
+    const bool made_progress =
+      final.retreat > 1e-6 || final.lift > 1e-6 || std::abs(final.pitch) > 1e-6 ||
+      std::abs(final.lateral) > 1e-6;
+    if (made_progress) {
+      paths.push_back(*diagnostic_path);
+      RCLCPP_INFO(
+        config_.logger,
+        "%s box-pose RRT accepted collision-free best-effort path: retreat=%.3f lift=%.3f pitch=%.1fdeg",
+        side.c_str(), final.retreat, final.lift, final.pitch * 180.0 / M_PI);
+    }
+  }
   const auto arm_path_score = [&](const ArmPath& path) {
     double score = path.joint_motion;
     if (top_suction && !path.box_states.empty()) {
@@ -617,6 +632,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   double ik_solve_ms,
   bool left_top_suction,
   bool right_top_suction,
+  const BoxPoseRrtArmPolicy& left_policy,
+  const BoxPoseRrtArmPolicy& right_policy,
   const ExtractRecordStepCallback& record_step) const
 {
   const auto started = std::chrono::steady_clock::now();
@@ -631,9 +648,9 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   ArmPath left_diagnostic;
   ArmPath right_diagnostic;
   const auto left_paths = planArm(
-    "left", start_state, left_box, left_box_id, left_top_suction, &left_diagnostic);
+    "left", start_state, left_box, left_box_id, left_top_suction, left_policy, &left_diagnostic);
   const auto right_paths = planArm(
-    "right", start_state, right_box, right_box_id, right_top_suction, &right_diagnostic);
+    "right", start_state, right_box, right_box_id, right_top_suction, right_policy, &right_diagnostic);
   RCLCPP_INFO(
     config_.logger,
     "box-pose RRT arm paths: candidate=%zu left=%zu right=%zu modes=(%s,%s)",
@@ -838,7 +855,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       failure_counts[failure_reason]++;
       continue;
     }
-    if (!final_left_detached || !final_right_detached) {
+    if ((left_policy.require_full_detachment && !final_left_detached) ||
+        (right_policy.require_full_detachment && !final_right_detached)) {
       failure_counts["box_pose_rrt_final_not_detached"]++;
       continue;
     }
@@ -894,7 +912,11 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
           {"right_lateral_y", right.box_states[right_index].lateral},
           {"extract_smoothing_applied", true},
           {"left_top_suction", left_top_suction},
-          {"right_top_suction", right_top_suction}
+          {"right_top_suction", right_top_suction},
+          {"left_detachment_required", left_policy.require_full_detachment},
+          {"right_detachment_required", right_policy.require_full_detachment},
+          {"left_front_clearance_levels", left_policy.front_clearance_levels},
+          {"right_front_clearance_levels", right_policy.front_clearance_levels}
         });
       }
     }

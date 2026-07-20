@@ -55,7 +55,7 @@ int main()
   for (const auto& obstacle : obstacles) {
     if (obstacle.id.find("_rear_guard") != std::string::npos) {
       found_rear_guard = true;
-      assert(obstacle.size[0] == wall.rear_guard_thickness);
+      assert(std::abs(obstacle.size[0] - wall.rear_guard_thickness) < 1e-9);
       const double expected_center_x =
         wall.box_front_x + wall.carried_box_depth + wall.rear_guard_clearance +
         0.5 * wall.rear_guard_thickness;
@@ -88,10 +88,10 @@ int main()
   const auto joint_names = dual_arm_with_updown_joint_names();
   assert(joint_names.size() == 13);
   assert(joint_names.front() == "updown");
-  assert(joint_names[1] == "leftjoint1");
-  assert(joint_names[6] == "leftjoint6");
-  assert(joint_names[7] == "rightjoint1");
-  assert(joint_names.back() == "rightjoint6");
+  assert(joint_names[1] == "left_joint1");
+  assert(joint_names[6] == "left_joint6");
+  assert(joint_names[7] == "right_joint1");
+  assert(joint_names.back() == "right_joint6");
 
   const AxisAlignedBox a{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
   const AxisAlignedBox b{{0.4, 0.0, 0.0}, {1.0, 1.0, 1.0}};
@@ -115,6 +115,53 @@ int main()
   const AxisAlignedBox lifted_box{{0.15, 0.0, 0.63}, {0.3, 0.4, 0.4}};
   assert(carried_box_detached_from_source_xz(
     lifted_box, source_box, 0.03, "carried_box", &reason));
+
+  // 不等高侧吸：矮侧不仅要离开自己的原始侧面投影，还要离开正上方一层箱子的侧面投影。
+  // box 11 的中心 z=1.0，正上方 box 6 的中心 z=1.4。
+  const AxisAlignedBox lower_front_box_lifted_into_upper_layer{
+    {0.15, 0.0, 1.44}, {0.3, 0.4, 0.4}};
+  reason.clear();
+  assert(carried_box_detached_from_source_layers_xz(
+    lower_front_box_lifted_into_upper_layer,
+    11,
+    0.0,
+    0.0,
+    0.4,
+    0.4,
+    0.3,
+    0.03,
+    1,
+    "carried_box_11",
+    &reason));
+  reason.clear();
+  assert(!carried_box_detached_from_source_layers_xz(
+    lower_front_box_lifted_into_upper_layer,
+    11,
+    0.0,
+    0.0,
+    0.4,
+    0.4,
+    0.3,
+    0.03,
+    2,
+    "carried_box_11",
+    &reason));
+  assert(reason.find("source layer box 6") != std::string::npos);
+
+  const AxisAlignedBox lower_front_box_retreated{{-0.18, 0.0, 1.0}, {0.3, 0.4, 0.4}};
+  reason.clear();
+  assert(carried_box_detached_from_source_layers_xz(
+    lower_front_box_retreated,
+    11,
+    0.0,
+    0.0,
+    0.4,
+    0.4,
+    0.3,
+    0.03,
+    2,
+    "carried_box_11",
+    &reason));
 
   reason.clear();
   const StaticBoxObstacle static_obstacle{"box_wall", {0.0, 0.0, 0.0}, {0.5, 0.5, 0.5}};
@@ -152,13 +199,13 @@ int main()
     assert(aabb_overlaps_oriented_box(a, obb_zero_yaw_far) == aabb_overlaps(a, c));
   }
 
-  // 一个绕 Z 轴转 45 度的 1x1x1 方块，中心在 (1.2, 0, 0)：旋转后对角线沿 X 轴伸展到
-  // 约 1.2 - 1/sqrt(2) ≈ 0.49，与轴对齐时 [0.7, 1.7] 相比会更靠近原点，
-  // 因此一个中心在原点、半宽 0.5 的 aabb（覆盖 [-0.5,0.5]）不会碰到它；
+  // 一个绕 Z 轴转 45 度的 1x1x1 方块，中心在 (1.21, 0, 0)：旋转后对角线沿 X 轴伸展到
+  // 约 1.21 - 1/sqrt(2) ≈ 0.503，与轴对齐时 [0.71, 1.71] 相比会更靠近原点，
+  // 但仍不会碰到中心在原点、半宽 0.5 的 aabb（覆盖 [-0.5,0.5]）；
   // 但把 obb 中心拉近到 (0.9, 0, 0) 后，旋转后的角点会伸入 aabb 范围，应判定重叠。
   {
     const AxisAlignedBox unit_aabb{{0.0, 0.0, 0.0}, {1.0, 1.0, 1.0}};
-    const OrientedBox far_rotated{{1.2, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
+    const OrientedBox far_rotated{{1.21, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
     assert(!aabb_overlaps_oriented_box(unit_aabb, far_rotated));
     const OrientedBox near_rotated{{0.9, 0.0, 0.0}, {1.0, 1.0, 1.0}, M_PI_4};
     assert(aabb_overlaps_oriented_box(unit_aabb, near_rotated));

@@ -37,10 +37,10 @@ moveit::core::RobotModelPtr monitor_seed_test_model()
   for (const auto side : {"left", "right"}) {
     std::string parent = "updown_link";
     for (int i = 1; i <= 6; ++i) {
-      const std::string link = std::string(side) + "joint" + std::to_string(i);
+      const std::string link = std::string(side) + "_joint" + std::to_string(i);
       urdf_xml +=
         "  <link name=\"" + link + "\"/>\n"
-        "  <joint name=\"" + std::string(side) + "joint" + std::to_string(i) + "\" type=\"revolute\">\n"
+        "  <joint name=\"" + std::string(side) + "_joint" + std::to_string(i) + "\" type=\"revolute\">\n"
         "    <parent link=\"" + parent + "\"/>\n"
         "    <child link=\"" + link + "\"/>\n"
         "    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>\n"
@@ -241,10 +241,10 @@ int main()
     0.35};
   const auto seed_state = make_extract_monitor_joint_state(seed_model, nullptr, arm_seed);
   assert(seed_state.getVariablePosition("updown") == 0.35);
-  assert(seed_state.getVariablePosition("leftjoint1") == 0.1);
-  assert(seed_state.getVariablePosition("leftjoint6") == 0.6);
-  assert(seed_state.getVariablePosition("rightjoint1") == -0.1);
-  assert(seed_state.getVariablePosition("rightjoint6") == -0.6);
+  assert(seed_state.getVariablePosition("left_joint1") == 0.1);
+  assert(seed_state.getVariablePosition("left_joint6") == 0.6);
+  assert(seed_state.getVariablePosition("right_joint1") == -0.1);
+  assert(seed_state.getVariablePosition("right_joint6") == -0.6);
 
   const auto initialized_state = make_extract_monitor_initial_state(
     ExtractMonitorInitialStateRequest{
@@ -266,8 +266,8 @@ int main()
   assert(initialized_state.loaded_start_state);
   assert(initialized_state.seed_state->getVariablePosition("updown") == 0.35);
   assert(initialized_state.loaded_start_state->getVariablePosition("updown") == 0.45);
-  assert(initialized_state.loaded_start_state->getVariablePosition("leftjoint1") == 1.1);
-  assert(initialized_state.loaded_start_state->getVariablePosition("rightjoint6") == -1.6);
+  assert(initialized_state.loaded_start_state->getVariablePosition("left_joint1") == 1.1);
+  assert(initialized_state.loaded_start_state->getVariablePosition("right_joint6") == -1.6);
 
   state.legal_candidates.resize(3);
   size_t built_count = 0;

@@ -117,7 +117,7 @@ def build_launch_args(args: argparse.Namespace, run_dir: Path) -> list[str]:
         "extract_benchmark_plan_loaded_after_success:=true",
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
         "extract_loaded_sort_by_pose_distance:=true",
-        "extract_loaded_stop_on_first_success:=false",
+        "extract_loaded_stop_on_first_success:=true",
         "extract_loaded_lateral_shift_enabled:=true",
         f"extract_loaded_lateral_shift_distance:={args.lateral_shift_distance}",
         f"extract_loaded_lateral_shift_step:={args.lateral_shift_step}",

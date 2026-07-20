@@ -77,7 +77,7 @@ std::string make_test_urdf()
 
     std::string parent = side + "_arm_base";
     for (int i = 1; i <= 6; ++i) {
-      const std::string link = side + "joint" + std::to_string(i);
+      const std::string link = side + "_joint" + std::to_string(i);
       urdf << "<link name=\"" << link << "\"/>"
            << "<joint name=\"" << link << "\" type=\"revolute\">"
            << "<parent link=\"" << parent << "\"/>"
@@ -123,7 +123,7 @@ void assert_fk_matches(
   state.setToDefaultValues();
   state.setVariablePosition("updown", updown);
   for (size_t i = 0; i < joints.size(); ++i) {
-    state.setVariablePosition(side_name + "joint" + std::to_string(i + 1), joints[i]);
+    state.setVariablePosition(side_name + "_joint" + std::to_string(i + 1), joints[i]);
   }
   state.update();
 

@@ -39,18 +39,18 @@
     </group>
     <group_state name="home" group="dual_arm_with_base">
         <joint name="updown" value="0"/>
-        <joint name="leftjoint1" value="0"/>
-        <joint name="leftjoint2" value="0.0"/>
-        <joint name="leftjoint3" value="0.0"/>
-        <joint name="leftjoint4" value="0"/>
-        <joint name="leftjoint5" value="0.0"/>
-        <joint name="leftjoint6" value="0"/>
-        <joint name="rightjoint1" value="0"/>
-        <joint name="rightjoint2" value="0.0"/>
-        <joint name="rightjoint3" value="0.0"/>
-        <joint name="rightjoint4" value="0"/>
-        <joint name="rightjoint5" value="0.0"/>
-        <joint name="rightjoint6" value="0"/>
+        <joint name="left_joint1" value="0"/>
+        <joint name="left_joint2" value="0.0"/>
+        <joint name="left_joint3" value="0.0"/>
+        <joint name="left_joint4" value="0"/>
+        <joint name="left_joint5" value="0.0"/>
+        <joint name="left_joint6" value="0"/>
+        <joint name="right_joint1" value="0"/>
+        <joint name="right_joint2" value="0.0"/>
+        <joint name="right_joint3" value="0.0"/>
+        <joint name="right_joint4" value="0"/>
+        <joint name="right_joint5" value="0.0"/>
+        <joint name="right_joint6" value="0"/>
     </group_state>
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>
@@ -69,34 +69,34 @@
     <disable_collisions link1="turn" link2="lidar_rear" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="cam_front" reason="Adjacent"/>
     <disable_collisions link1="turn" link2="cam_rear" reason="Adjacent"/>
-    <disable_collisions link1="left_arm_base" link2="leftjoint1" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="leftjoint1" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="rightjoint1" reason="Adjacent"/>
-    <disable_collisions link1="leftjoint1" link2="leftjoint2" reason="Adjacent"/>
-    <disable_collisions link1="leftjoint2" link2="leftjoint3" reason="Adjacent"/>
-    <disable_collisions link1="leftjoint3" link2="leftjoint4" reason="Adjacent"/>
-    <disable_collisions link1="leftjoint4" link2="leftjoint5" reason="Adjacent"/>
-    <disable_collisions link1="leftjoint5" link2="leftjoint6" reason="Adjacent"/>
-    <disable_collisions link1="right_arm_base" link2="rightjoint1" reason="Adjacent"/>
-    <disable_collisions link1="rightjoint1" link2="rightjoint2" reason="Adjacent"/>
-    <disable_collisions link1="rightjoint2" link2="rightjoint3" reason="Adjacent"/>
-    <disable_collisions link1="rightjoint3" link2="rightjoint4" reason="Adjacent"/>
-    <disable_collisions link1="rightjoint4" link2="rightjoint5" reason="Adjacent"/>
-    <disable_collisions link1="rightjoint5" link2="rightjoint6" reason="Adjacent"/>
+    <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>
+    <disable_collisions link1="updown" link2="left_joint1" reason="Adjacent"/>
+    <disable_collisions link1="updown" link2="right_joint1" reason="Adjacent"/>
+    <disable_collisions link1="left_joint1" link2="left_joint2" reason="Adjacent"/>
+    <disable_collisions link1="left_joint2" link2="left_joint3" reason="Adjacent"/>
+    <disable_collisions link1="left_joint3" link2="left_joint4" reason="Adjacent"/>
+    <disable_collisions link1="left_joint4" link2="left_joint5" reason="Adjacent"/>
+    <disable_collisions link1="left_joint5" link2="left_joint6" reason="Adjacent"/>
+    <disable_collisions link1="right_arm_base" link2="right_joint1" reason="Adjacent"/>
+    <disable_collisions link1="right_joint1" link2="right_joint2" reason="Adjacent"/>
+    <disable_collisions link1="right_joint2" link2="right_joint3" reason="Adjacent"/>
+    <disable_collisions link1="right_joint3" link2="right_joint4" reason="Adjacent"/>
+    <disable_collisions link1="right_joint4" link2="right_joint5" reason="Adjacent"/>
+    <disable_collisions link1="right_joint5" link2="right_joint6" reason="Adjacent"/>
     <!-- Arm vs Base collisions are intentionally enabled globally. -->
     <!-- Suction/link6 vs own arm collisions are intentionally enabled. -->
     <disable_collisions link1="left_tool0" link2="left_arm_base" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint1" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint2" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint3" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint4" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint5" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="leftjoint6" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint1" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint2" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint3" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint4" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint5" reason="Never"/>
+    <disable_collisions link1="left_tool0" link2="left_joint6" reason="Never"/>
     <disable_collisions link1="right_tool0" link2="right_arm_base" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint1" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint2" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint3" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint4" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint5" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="rightjoint6" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint1" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint2" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint3" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint4" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint5" reason="Never"/>
+    <disable_collisions link1="right_tool0" link2="right_joint6" reason="Never"/>
 </robot>

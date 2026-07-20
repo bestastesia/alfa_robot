@@ -22,18 +22,18 @@ DEFAULT_JOINT_NAMES = [
     "updown",
     "turn",
     "pitch",
-    "leftjoint1",
-    "leftjoint2",
-    "leftjoint3",
-    "leftjoint4",
-    "leftjoint5",
-    "leftjoint6",
-    "rightjoint1",
-    "rightjoint2",
-    "rightjoint3",
-    "rightjoint4",
-    "rightjoint5",
-    "rightjoint6",
+    "left_joint1",
+    "left_joint2",
+    "left_joint3",
+    "left_joint4",
+    "left_joint5",
+    "left_joint6",
+    "right_joint1",
+    "right_joint2",
+    "right_joint3",
+    "right_joint4",
+    "right_joint5",
+    "right_joint6",
 ]
 
 FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
@@ -216,10 +216,10 @@ class BoxPairTaskAdapterNode(Node):
         self.declare_parameter("default_box_front_x", 0.925)
         self.declare_parameter("default_scene_y_shift", -0.4)
         self.declare_parameter("default_world_to_base_z", 0.202094)
-        self.declare_parameter("default_fixed_updown", 0.08)
-        # updown 逻辑/URDF 规划范围 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。
-        self.declare_parameter("updown_logical_lower_m", 0.08)
-        self.declare_parameter("updown_logical_upper_m", 0.78)
+        self.declare_parameter("default_fixed_updown", 0.0)
+        # updown 逻辑/URDF 与电机物理规划范围均为 [0, 0.7]。
+        self.declare_parameter("updown_logical_lower_m", 0.0)
+        self.declare_parameter("updown_logical_upper_m", 0.7)
         self.declare_parameter("default_top_suction_x_offset", 0.15)
         self.declare_parameter("default_top_suction_z_offset", 0.2)
         self.declare_parameter("default_candidate_limit", 8)
@@ -339,14 +339,13 @@ class BoxPairTaskAdapterNode(Node):
             box_front_x = request.box_front_x if request.box_front_x > 0.0 else self.default_box_front_x
             scene_y_shift = request.scene_y_shift if request.scene_y_shift != 0.0 else self.default_scene_y_shift
             world_to_base_z = request.world_to_base_z if request.world_to_base_z > 0.0 else self.default_world_to_base_z
-            # updown 逻辑值合法范围是 [0.08, 0.78]；请求未设置时 ROS 默认为 0.0（< 0.08），
-            # 视为"未指定"回退到 default_fixed_updown，避免把未设置值当合法输入而每次告警夹紧。
+            # updown 逻辑值合法范围是 [0, 0.7]；0.0 现在是合法的最低位置。
             fixed_updown = (
                 request.fixed_updown
                 if request.fixed_updown >= self.updown_logical_lower_m
                 else self.default_fixed_updown
             )
-            # 显式给了但越上界(或落在下界之下的其它情况)仍夹紧到 [0.08, 0.78] 并告警。
+            # 显式给了但越界时仍夹紧到 [0, 0.7] 并告警。
             updown_clamped = max(
                 self.updown_logical_lower_m, min(self.updown_logical_upper_m, float(fixed_updown))
             )

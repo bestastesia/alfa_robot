@@ -25,6 +25,24 @@ using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
 
 constexpr double kMaxStageJointSpeedRadS = 20.0 * M_PI / 180.0;
 
+bool transition_cancelled(const ExtractMonitorTransitionPlanner& planner)
+{
+  return planner.is_cancelled && planner.is_cancelled();
+}
+
+bool reject_if_cancelled(
+  const ExtractMonitorTransitionPlanner& planner,
+  std::string* reason)
+{
+  if (!transition_cancelled(planner)) {
+    return false;
+  }
+  if (reason) {
+    *reason = "loaded_plan_cancelled_after_first_success";
+  }
+  return true;
+}
+
 double point_time_s(const trajectory_msgs::msg::JointTrajectoryPoint& point)
 {
   return rclcpp::Duration(point.time_from_start).seconds();
@@ -94,6 +112,9 @@ bool make_valid_interpolation(
   Plan* plan,
   std::string* reason)
 {
+  if (reject_if_cancelled(planner, reason)) {
+    return false;
+  }
   if (!planner.make_interpolated_plan || !planner.densify_plan || !planner.validate_plan) {
     if (reason) {
       *reason = "transition_planner_missing_basic_adapter";
@@ -128,6 +149,9 @@ bool make_valid_local_rrt(
   Plan* plan,
   std::string* reason)
 {
+  if (reject_if_cancelled(planner, reason)) {
+    return false;
+  }
   if (!planner.direct_plan || !planner.densify_plan || !planner.validate_plan) {
     if (reason) {
       *reason = "transition_planner_missing_local_rrt_adapter";
@@ -230,13 +254,13 @@ size_t nearest_state_index(
 
 bool is_arm_joint_variable(const std::string& name)
 {
-  return name.rfind("leftjoint", 0) == 0 || name.rfind("rightjoint", 0) == 0;
+  return name.rfind("left_joint", 0) == 0 || name.rfind("right_joint", 0) == 0;
 }
 
 std::string arm_side_for_variable(const std::string& name)
 {
-  if (name.rfind("leftjoint", 0) == 0) return "left";
-  if (name.rfind("rightjoint", 0) == 0) return "right";
+  if (name.rfind("left_joint", 0) == 0) return "left";
+  if (name.rfind("right_joint", 0) == 0) return "right";
   return "";
 }
 
@@ -299,6 +323,9 @@ std::vector<moveit::core::RobotState> shortcut_state_path(
 
   size_t current = 0;
   while (current + 1 < states.size()) {
+    if (transition_cancelled(planner)) {
+      return {};
+    }
     bool advanced = false;
     for (size_t target = states.size() - 1; target > current; --target) {
       Plan segment;
@@ -327,6 +354,9 @@ bool custom_local_rrt_bridge(
   Plan* repaired_plan,
   std::string* reason)
 {
+  if (reject_if_cancelled(planner, reason)) {
+    return false;
+  }
   if (variable_names.empty()) {
     if (reason) *reason = "custom_local_rrt_missing_variables";
     return false;
@@ -385,6 +415,9 @@ bool custom_local_rrt_bridge(
 
   std::string last_reason = direct_reason;
   for (size_t iter = 0; iter < kMaxIterations; ++iter) {
+    if (reject_if_cancelled(planner, reason)) {
+      return false;
+    }
     moveit::core::RobotState sample(start_state);
     const double blend = (iter % 5 == 0) ? 1.0 : blend_distribution(rng);
     for (const auto& name : active_variable_names) {
@@ -438,6 +471,10 @@ bool custom_local_rrt_bridge(
     }
 
     ordered_states = shortcut_state_path(planner, ordered_states);
+    if (ordered_states.empty() && transition_cancelled(planner)) {
+      if (reason) *reason = "loaded_plan_cancelled_after_first_success";
+      return false;
+    }
 
     Plan combined;
     moveit::core::robotStateToRobotStateMsg(start_state, combined.start_state_, true);
@@ -491,6 +528,9 @@ bool repair_with_local_rrt(
   size_t* local_rrt_segments,
   std::string* reason)
 {
+  if (reject_if_cancelled(planner, reason)) {
+    return false;
+  }
   const auto states = plan_states(reference_plan, start_state, goal_state);
   if (states.size() < 3) {
     if (reason) {
@@ -523,6 +563,9 @@ bool repair_with_local_rrt(
   };
 
   while (current_index() + 1 < states.size()) {
+    if (reject_if_cancelled(planner, reason)) {
+      return false;
+    }
     const size_t current = current_index();
     const size_t max_to = std::min(states.size() - 1, current + kLocalWindow);
 
@@ -543,6 +586,9 @@ bool repair_with_local_rrt(
     std::string last_rrt_reason;
     size_t first_safe_target = states.size();
     for (size_t to = current + 1; to < states.size(); ++to) {
+      if (reject_if_cancelled(planner, reason)) {
+        return false;
+      }
       std::string state_reason;
       if (state_is_valid(planner, states[to], &state_reason)) {
         first_safe_target = to;
@@ -619,7 +665,7 @@ bool repair_with_local_rrt(
       &segment,
       &segment_reason);
     std::string solver_tag = "custom";
-    if (!solved) {
+    if (!solved && !transition_cancelled(planner)) {
       solved = make_valid_local_rrt(
         planner, states[patch_start], states[patch_target], &segment, &segment_reason);
       solver_tag = "moveit";
@@ -689,6 +735,9 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   const moveit::core::RobotState& goal_state) const
 {
   ExtractMonitorTransitionPlanResult result;
+  if (reject_if_cancelled(*this, &result.failure_reason)) {
+    return result;
+  }
   if (!make_interpolated_plan || !densify_plan || !validate_plan) {
     result.failure_reason = "transition_planner_missing_basic_adapter";
     return result;
@@ -702,6 +751,11 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   result.valid = validate_plan(result.plan, start_state, &result.failure_reason);
   if (result.valid) {
     result.failure_reason.clear();
+    return result;
+  }
+
+  if (reject_if_cancelled(*this, &result.failure_reason)) {
+    result.valid = false;
     return result;
   }
 

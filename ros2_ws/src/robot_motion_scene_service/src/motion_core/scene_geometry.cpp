@@ -272,8 +272,13 @@ bool carried_box_detached_from_source_xz(
   const double source_max_x = protected_source.center[0] + 0.5 * protected_source.size[0];
   const double source_min_z = protected_source.center[2] - 0.5 * protected_source.size[2];
   const double source_max_z = protected_source.center[2] + 0.5 * protected_source.size[2];
-  const bool x_overlaps = carried_min_x < source_max_x && carried_max_x > source_min_x;
-  const bool z_overlaps = carried_min_z < source_max_z && carried_max_z > source_min_z;
+  constexpr double kBoundaryTolerance = 1e-9;
+  const bool x_overlaps =
+    carried_min_x < source_max_x - kBoundaryTolerance &&
+    carried_max_x > source_min_x + kBoundaryTolerance;
+  const bool z_overlaps =
+    carried_min_z < source_max_z - kBoundaryTolerance &&
+    carried_max_z > source_min_z + kBoundaryTolerance;
   if (!x_overlaps || !z_overlaps) {
     return true;
   }
@@ -287,6 +292,49 @@ bool carried_box_detached_from_source_xz(
     *reason = oss.str();
   }
   return false;
+}
+
+bool carried_box_detached_from_source_layers_xz(
+  const AxisAlignedBox& carried_box,
+  int box_id,
+  double box_front_x,
+  double scene_y_shift,
+  double carried_box_width,
+  double carried_box_height,
+  double carried_box_depth,
+  double margin,
+  size_t clearance_levels,
+  const std::string& carried_box_id,
+  std::string* reason)
+{
+  const auto boxes = make_boxes(box_front_x, scene_y_shift);
+  const size_t levels = std::max<size_t>(1, clearance_levels);
+  for (size_t level = 0; level < levels; ++level) {
+    const int layer_box_id = box_id - static_cast<int>(5 * level);
+    if (layer_box_id <= 0) continue;
+    const auto it = boxes.find(layer_box_id);
+    if (it == boxes.end()) continue;
+    const AxisAlignedBox source_layer{{
+      it->second.x + carried_box_depth * 0.5,
+      it->second.y,
+      it->second.z,
+    }, {
+      carried_box_depth,
+      carried_box_width,
+      carried_box_height,
+    }};
+    std::string layer_reason;
+    if (!carried_box_detached_from_source_xz(
+        carried_box, source_layer, margin, carried_box_id, &layer_reason)) {
+      if (reason) {
+        *reason = carried_box_id + " side face still overlaps source layer box " +
+          std::to_string(layer_box_id) + ": " + layer_reason;
+      }
+      return false;
+    }
+  }
+  if (reason) reason->clear();
+  return true;
 }
 
 bool carried_box_detached_from_neighbors(

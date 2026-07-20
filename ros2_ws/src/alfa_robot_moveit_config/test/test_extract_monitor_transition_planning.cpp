@@ -125,5 +125,14 @@ int main()
   assert(failed.method == "rrt");
   assert(failed.failure_reason == "direct_failed");
 
+  make_calls = 0;
+  direct_calls = 0;
+  planner.is_cancelled = []() { return true; };
+  const auto cancelled = planner.plan(start, goal);
+  assert(!cancelled.valid);
+  assert(cancelled.failure_reason == "loaded_plan_cancelled_after_first_success");
+  assert(make_calls == 0);
+  assert(direct_calls == 0);
+
   return 0;
 }

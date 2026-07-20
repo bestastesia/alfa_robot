@@ -9,13 +9,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 EXECUTE = ROOT / "ros2_ws/src/alfa_robot_moveit_config/scripts/execute_l6_r8_mock_live.py"
 JOINTS = ROOT / "ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/joints.py"
+UPDOWN = ROOT / "ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/updown.py"
 PLANNER = ROOT / "ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp"
 LAUNCH = ROOT / "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"
 DOC = ROOT / "docs/ethercat/REAL_DIRECTION_SAFETY.md"
 SEND_SEQUENCE = ROOT / "scripts/lhy_dev/send_dual_grasp_sequence.py"
+MOVE_ALL_COMPAT = ROOT / "scripts/lhy_dev/run_move_all_joints_abs.sh"
 
 EXPECTED_LEFT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_RIGHT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
+EXPECTED_PLACE_POSE = "[0.0,-55.0,-50.0,-60.0,0.0,0.0]"
+EXPECTED_PLACE_UPDOWN = "0.20"
 EXPECTED_SIGNS = {
     "left_joint1": 1.0,
     "left_joint2": 1.0,
@@ -26,7 +30,7 @@ EXPECTED_SIGNS = {
     "right_joint1": 1.0,
     "right_joint2": -1.0,
     "right_joint3": 1.0,
-    "right_joint4": 1.0,
+    "right_joint4": -1.0,
     "right_joint5": 1.0,
     "right_joint6": 1.0,
     "turn": 1.0,
@@ -78,6 +82,12 @@ def main() -> int:
         fail("execute script must not define its own EtherCAT direction sign table")
     if "ROS_TO_ETHERCAT_SIGN_BY_JOINT" in EXECUTE.read_text():
         fail("execute script must import direction helpers, not reference the sign table directly")
+    if literal_assignment(joints_tree, "UPDOWN_PHYSICAL_ZERO_OFFSET_M") != 0.0:
+        fail("updown physical/logical contract must retain the calibrated zero offset")
+    if literal_assignment(joints_tree, "UPDOWN_LOGICAL_LOWER_M") != 0.0:
+        fail("updown logical lower limit must remain 0.0m")
+    if literal_assignment(joints_tree, "UPDOWN_LOGICAL_UPPER_M") != 0.7:
+        fail("updown logical upper limit must remain 0.7m")
 
     tree = load_execute_tree()
     left_family = literal_assignment(tree, "LOADED_LEFT_POSE_FAMILY_DEG")
@@ -92,10 +102,13 @@ def main() -> int:
     execute_text = EXECUTE.read_text()
     for required_import in [
         "from alfa_robot_execution_bridge.joints import",
+        "from alfa_robot_execution_bridge.updown import",
         "ros_to_ethercat_position",
         "ethercat_to_ros_position",
         "REAL_CONTROLLER_JOINT_NAMES",
         "EXECUTION_JOINT_NAMES",
+        "make_updown_command_data",
+        "synchronized_updown_velocity_mps",
     ]:
         if required_import not in execute_text:
             fail(f"execute script missing canonical joint contract import: {required_import}")
@@ -109,18 +122,47 @@ def main() -> int:
         fail("execute script must default loaded pose index to 0")
     if "loaded_preferred_pose_index=args.loaded_preferred_pose_index" not in execute_text:
         fail("planner args must forward loaded_preferred_pose_index")
+    if "loaded_updown=args.loaded_updown" not in execute_text:
+        fail("planner loaded updown must not reuse the current IK fixed_updown")
     if "loaded = loaded_joint_map(args.loaded_preferred_pose_index)" not in execute_text:
         fail("execution loaded pose must use selected loaded_preferred_pose_index")
     if "apply_ethercat_signs=apply_ethercat_signs" not in execute_text:
         fail("real direct trajectories must apply EtherCAT direction signs")
+    if "values[execution_name] = ethercat_to_ros_position(" not in execute_text:
+        fail("current joint-state reads must convert EtherCAT signs through joints.py")
+    if "def wait_for_enter_confirmation(" not in execute_text:
+        fail("real execution must retain interactive enter confirmation gates")
+    if "split_task_execution_phases(" not in execute_text:
+        fail("real execution must split pre-contact, contact, and post-contact phases")
+    if "split_post_contact_place_cycle(" not in execute_text:
+        fail("real execution must split loaded-to-place and place-to-loaded phases")
+    if 'parser.add_argument(\n        "--loaded-updown"' not in execute_text:
+        fail("execute script must expose an independent loaded updown target")
+    if "updown_samples=(home_updown_samples if args.send_updown else None)" not in execute_text:
+        fail("home transition must synchronously command updown")
+    if "msg.data = [logical_to_physical_updown" in execute_text:
+        fail("execute script still publishes the rejected legacy one-element updown command")
+    updown_text = UPDOWN.read_text()
+    if "validate_updown_command_data" not in updown_text:
+        fail("canonical updown helper must validate the four-element wire contract")
+    if 'parser.add_argument("--place-cycle-enabled"' not in execute_text:
+        fail("execute script must expose the place-cycle safety switch")
+    if EXPECTED_PLACE_POSE not in execute_text:
+        fail("execute script default place pose changed unexpectedly")
 
     planner_text = PLANNER.read_text()
     if 'get_or_declare_parameter<int>("loaded_preferred_pose_index", 0)' not in planner_text:
         fail("planner node default loaded_preferred_pose_index must be 0")
+    if 'get_or_declare_parameter<double>("extract_monitor_place_updown", 0.20)' not in planner_text:
+        fail("planner default place updown must remain 0.20m")
+    if planner_text.count(EXPECTED_PLACE_POSE) < 2:
+        fail("planner default left/right place poses changed unexpectedly")
 
     launch_text = LAUNCH.read_text()
     if 'DeclareLaunchArgument("loaded_preferred_pose_index", default_value="0")' not in launch_text:
         fail("planner launch default loaded_preferred_pose_index must be 0")
+    if 'DeclareLaunchArgument("extract_monitor_place_updown", default_value="0.20")' not in launch_text:
+        fail("planner launch default place updown must remain 0.20m")
 
     doc_text = DOC.read_text() if DOC.exists() else ""
     for required in [
@@ -140,7 +182,26 @@ def main() -> int:
         fail("send_dual_grasp_sequence.py lacks --yes-execute confirmation guard")
     if "Refusing real execution: add --yes-execute" not in sequence_text:
         fail("send_dual_grasp_sequence.py must refuse execution without --yes-execute")
-    if "'--max-joint-speed-deg-s', type=float, default=20.0" not in sequence_text:
+    for required in [
+        "request.request_id =",
+        "self.assign_pose_6d(request.left, task.left_pose_6d)",
+        "self.assign_pose_6d(request.right, task.right_pose_6d)",
+        "request.left.grasp_mode = task.left_mode",
+        "request.right.grasp_mode = task.right_mode",
+    ]:
+        if required not in sequence_text:
+            fail(f"send_dual_grasp_sequence.py missing strict 6D task contract field: {required}")
+    for forbidden in [
+        "request.context.",
+        "request.left_position",
+        "request.right_position",
+        "request.left_grasp_mode",
+        "request.right_grasp_mode",
+        "request.task_id",
+    ]:
+        if forbidden in sequence_text:
+            fail(f"send_dual_grasp_sequence.py still writes removed task field: {forbidden}")
+    if "'--max-joint-speed-deg-s', type=float, default=10.0" not in sequence_text:
         fail("send_dual_grasp_sequence.py --max-joint-speed-deg-s default changed unexpectedly")
     if "'--max-updown-speed-m-s', type=float, default=0.05" not in sequence_text:
         fail("send_dual_grasp_sequence.py --max-updown-speed-m-s default changed unexpectedly")
@@ -150,12 +211,24 @@ def main() -> int:
     for node in ast.walk(sequence_tree):
         if isinstance(node, ast.FunctionDef) and node.name == "run_planner_live_task":
             source = ast.get_source_segment(sequence_text, node) or ""
-            for forwarded in ["args.hz", "args.max_joint_speed_deg_s", "args.max_updown_speed_m_s"]:
+            for forwarded in [
+                "args.hz",
+                "args.max_joint_speed_deg_s",
+                "args.max_updown_speed_m_s",
+                "args.updown_acceleration_m_s2",
+                "args.updown_deceleration_m_s2",
+            ]:
                 if forwarded not in source:
                     fail(f"run_planner_live_task must forward {forwarded} to the real-direct planner script")
             break
     else:
         fail("send_dual_grasp_sequence.py missing run_planner_live_task")
+
+    move_all_text = MOVE_ALL_COMPAT.read_text()
+    if "alfa_robot_execution_bridge/scripts/jog_to_pose.py" not in move_all_text:
+        fail("run_move_all_joints_abs.sh must delegate to canonical jog_to_pose.py")
+    if "scripts/move_all_joints_abs.py" in move_all_text and "不允许" not in move_all_text:
+        fail("run_move_all_joints_abs.sh must not execute the deprecated duplicate implementation")
 
     print("OK: L6/R8 real direction safety defaults are locked in repo.")
     return 0

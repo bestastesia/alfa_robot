@@ -3,6 +3,10 @@ int32 right_box_id
 string snapshot_path
 bool left_top_suction
 bool right_top_suction
+bool use_explicit_targets
+geometry_msgs/PoseStamped left_target
+geometry_msgs/PoseStamped right_target
+robot_motion_interfaces/DualGraspStrategy strategy
 ---
 bool success
 string message

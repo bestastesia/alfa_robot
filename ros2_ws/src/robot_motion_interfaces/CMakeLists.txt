@@ -11,8 +11,12 @@ find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AttachedBox.msg"
+  "msg/ArmExtractPolicy.msg"
+  "msg/DualGraspStrategy.msg"
+  "msg/GraspTarget.msg"
   "msg/MotionContext.msg"
   "msg/MotionPlanCandidate.msg"
+  "msg/Pose6D.msg"
   "msg/RobotMotionScene.msg"
   "msg/RobotMotionState.msg"
   "msg/TaskReceipt.msg"

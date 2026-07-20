@@ -28,6 +28,8 @@ DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extrac
 DEFAULT_SEQUENCE = "1,3;1,8;6,3;6,8;6,13;11,8;11,13;11,18;16,13;16,18;16,23;21,18;21,23"
 DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
 FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
+FRONT_TOOL_ORIENTATION_XYZW = [0.70710678, 0.0, 0.70710678, 0.0]
+TOP_TOOL_ORIENTATION_XYZW = [1.0, 0.0, 0.0, 0.0]
 
 
 def point_positions_by_name(joint_names: list[str], point: dict[str, Any]) -> dict[str, float]:
@@ -220,6 +222,28 @@ def effective_box_front_x(args: argparse.Namespace, grasp_mode: str) -> float:
     return float(args.box_front_x)
 
 
+def explicit_grasp_target(args: argparse.Namespace, box_id: int, grasp_mode: str) -> dict[str, Any]:
+    boxes = monitor.all_boxes(float(args.box_front_x), float(args.scene_y_shift))
+    if box_id not in boxes:
+        raise ValueError(f"unknown box id: {box_id}")
+    box_x, box_y, box_z = boxes[box_id]
+    if grasp_mode == "top_suction":
+        position = [
+            box_x + float(args.top_suction_x_offset),
+            box_y,
+            box_z + float(args.top_suction_z_offset) - float(args.world_to_base_z),
+        ]
+        orientation = TOP_TOOL_ORIENTATION_XYZW
+    else:
+        position = [box_x, box_y, box_z - float(args.world_to_base_z)]
+        orientation = FRONT_TOOL_ORIENTATION_XYZW
+    return {
+        "frame_id": "base_link",
+        "position": position,
+        "orientation": orientation,
+    }
+
+
 def make_pair_args(
     args: argparse.Namespace,
     left_id: int,
@@ -246,6 +270,7 @@ def make_pair_args(
         top_box_front_x=effective_box_front_x(args, mode),
         top_approach_forward=0.0,
         scene_y_shift=args.scene_y_shift,
+        world_to_base_z=args.world_to_base_z,
         fixed_updown=args.fixed_updown,
         turn_rad=math.radians(args.turn_deg),
         grasp_mode=mode,
@@ -673,6 +698,8 @@ def run_one_pair(
             args.service_timeout,
             args.left_grasp_mode == "top_suction",
             args.right_grasp_mode == "top_suction",
+            explicit_grasp_target(args, left_id, args.left_grasp_mode),
+            explicit_grasp_target(args, right_id, args.right_grasp_mode),
         )
         print(config_output)
         print(f"任务配置完成：success={config_ok} configure={config_ms:.1f}ms snapshot={snapshot_path}")
@@ -782,6 +809,7 @@ def main() -> int:
     parser.add_argument("--top-approach-forward", type=float, default=0.30, help="顶吸时车向箱墙前进距离；未指定 --top-box-front-x 时，顶吸 box_front_x=box_front_x-该值")
     parser.add_argument("--top-box-front-x", type=float, default=None, help="顶吸专用箱墙前表面 x；优先级高于 --top-approach-forward")
     parser.add_argument("--scene-y-shift", type=float, default=-0.4)
+    parser.add_argument("--world-to-base-z", type=float, default=0.202094)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
     parser.add_argument("--display-base-yaw-deg", type=float, default=0.0, help="仅用于 Rerun 回放显示底盘外部 yaw；规划仍使用当前 MoveIt base_link")
@@ -801,8 +829,8 @@ def main() -> int:
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
-    parser.add_argument("--ik-h-lower", type=float, default=0.08)
-    parser.add_argument("--ik-h-upper", type=float, default=0.78)
+    parser.add_argument("--ik-h-lower", type=float, default=0.0)
+    parser.add_argument("--ik-h-upper", type=float, default=0.7)
     parser.add_argument("--ik-h-step", type=float, default=0.01)
     parser.add_argument("--ik-full-h-range-scan", action="store_true")
     parser.add_argument("--ik-seed-count", type=int, default=32)
@@ -866,7 +894,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-updown", type=float, default=0.3)
     parser.add_argument("--loaded-preferred-pose-index", type=int, default=0)
     parser.add_argument(
@@ -1049,6 +1077,16 @@ def main() -> int:
                 args.service_timeout,
                 left_mode == "top_suction",
                 right_mode == "top_suction",
+                explicit_grasp_target(
+                    make_pair_args(args, left_id, right_id, mode, left_mode, right_mode),
+                    left_id,
+                    left_mode,
+                ),
+                explicit_grasp_target(
+                    make_pair_args(args, left_id, right_id, mode, left_mode, right_mode),
+                    right_id,
+                    right_mode,
+                ),
             )
             print(prewarm_output)
             if not prewarm_ok:

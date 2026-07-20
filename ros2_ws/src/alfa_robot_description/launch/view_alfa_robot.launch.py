@@ -88,18 +88,18 @@ def generate_launch_description():
             parameters.append(
                 {
                     "zeros.updown": 0.0,
-                    "zeros.leftjoint1": 0.0,
-                    "zeros.leftjoint2": 0.0,
-                    "zeros.leftjoint3": 0.0,
-                    "zeros.leftjoint4": 0.0,
-                    "zeros.leftjoint5": 0.0,
-                    "zeros.leftjoint6": 0.0,
-                    "zeros.rightjoint1": 0.0,
-                    "zeros.rightjoint2": 0.0,
-                    "zeros.rightjoint3": 0.0,
-                    "zeros.rightjoint4": 0.0,
-                    "zeros.rightjoint5": 0.0,
-                    "zeros.rightjoint6": 0.0,
+                    "zeros.left_joint1": 0.0,
+                    "zeros.left_joint2": 0.0,
+                    "zeros.left_joint3": 0.0,
+                    "zeros.left_joint4": 0.0,
+                    "zeros.left_joint5": 0.0,
+                    "zeros.left_joint6": 0.0,
+                    "zeros.right_joint1": 0.0,
+                    "zeros.right_joint2": 0.0,
+                    "zeros.right_joint3": 0.0,
+                    "zeros.right_joint4": 0.0,
+                    "zeros.right_joint5": 0.0,
+                    "zeros.right_joint6": 0.0,
                 }
             )
         return [

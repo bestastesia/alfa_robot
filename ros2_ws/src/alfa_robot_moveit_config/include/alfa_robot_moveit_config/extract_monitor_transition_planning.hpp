@@ -46,6 +46,8 @@ using ExtractMonitorShortcutPlan =
     const moveit::core::RobotState& start_state,
     std::string* reason)>;
 
+using ExtractMonitorCancellationCheck = std::function<bool()>;
+
 struct ExtractMonitorTransitionPlanner
 {
   ExtractMonitorMakeJointPlan make_interpolated_plan;
@@ -53,6 +55,7 @@ struct ExtractMonitorTransitionPlanner
   ExtractMonitorValidatePlan validate_plan;
   ExtractMonitorDirectPlan direct_plan;
   ExtractMonitorShortcutPlan shortcut_plan;
+  ExtractMonitorCancellationCheck is_cancelled;
 
   ExtractMonitorTransitionPlanResult plan(
     const moveit::core::RobotState& start_state,

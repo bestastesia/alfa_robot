@@ -11,7 +11,7 @@
 | `motion_scene_source_node` | `/robot_motion/set_scene`、`/robot_motion/scene` | 生产/仿真统一场景事实源。仿真可先调用 `set_scene` 固定箱墙、集装箱等碰撞对象；Plan 服务会使用该场景做碰撞检查。 |
 | `dual_arm_ik_candidate_service_node` | `/robot_motion/plan_dual_arm_ik` | 调用左右两次 `SolveArmIk`，把目标位姿转成双臂 IK candidate states。 |
 | `box_pair_task_adapter_node` | `/robot_motion/run_box_pair_task` | 把箱号、吸附模式和箱墙几何转成左右目标 Pose 与附着箱，再调用 `/robot_motion/run_dual_arm_pose_task`。 |
-| `dual_grasp_task_adapter_node` | `/robot_motion/run_dual_grasp_task`、`/robot_motion/task_receipt` | 对外任务入口。整机只传左右末端位置和侧吸/顶吸字段；节点发布任务接收、执行中、成功或失败回执。 |
+| `dual_grasp_task_adapter_node` | `/robot_motion/run_dual_grasp_task`、`/robot_motion/task_receipt` | 对外任务入口。整机只传左右末端 6D 接触位姿、吸附模式和执行开关；节点发布任务接收、执行中、成功或失败回执。 |
 | `plan_extract_service_node` | `/robot_motion/plan_extract` | 独立 `PlanExtract` 服务。轻量模式是 deterministic shortcut；完整栈可调用 `/robot_motion/check_collision` 过滤候选轨迹。 |
 | `plan_loaded_service_node` | `/robot_motion/plan_loaded` | 独立 `PlanLoaded` 服务。按最近负重姿态族生成 shortcut 轨迹；完整栈可调用碰撞服务过滤候选。 |
 | `execute_trajectory_service_node` | `/robot_motion/execute_trajectory` | 把 service 形式的执行请求转成现有 FollowJointTrajectory action，或 dry-run 验证。 |
@@ -63,26 +63,29 @@ ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
 ```
 
 终端 3：发送一次简化末端任务。这个接口是给整机/上游调度对接用的正式入口；
-核心输入只有左右末端位置和吸附模式。任务状态通过 `/robot_motion/task_receipt` 回执：
+核心输入只有左右末端 6D 接触位姿、吸附模式和执行开关。位姿固定使用 `base_link`，
+位置单位为米，RPY 单位为弧度。任务状态通过 `/robot_motion/task_receipt` 回执：
 
 ```bash
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
 source install/setup.bash
 
 ros2 service call /robot_motion/run_dual_grasp_task robot_motion_interfaces/srv/RunDualGraspTask "{
-  task_id: 'manual_dual_grasp_6_8',
-  context: {request_id: 'manual_dual_grasp_6_8', frame_id: 'base_link', scene_id: 'manual_box_stack', state_id: 'live_joint_states'},
-  frame_id: 'base_link',
-  left_position: {x: 0.925, y: 0.400, z: 1.197906},
-  right_position: {x: 0.925, y: -0.400, z: 1.197906},
-  left_grasp_mode: 'front',
-  right_grasp_mode: 'front',
-  execute: true,
-  dry_run: false,
-  velocity_scale: 1.0,
-  acceleration_scale: 1.0
+  request_id: 'manual_dual_grasp_6_8',
+  left: {
+    pose_6d: {x: 0.925, y: 0.400, z: 1.197906, roll: 3.14159265359, pitch: 1.57079632679, yaw: 3.14159265359},
+    grasp_mode: 'front'
+  },
+  right: {
+    pose_6d: {x: 0.925, y: -0.400, z: 1.197906, roll: 3.14159265359, pitch: 1.57079632679, yaw: 3.14159265359},
+    grasp_mode: 'front'
+  },
+  execute: true
 }"
 ```
+
+五类任务策略、混合吸附坐标换算和完整 C++ 算法边界见
+`docs/运控/双抓取6D任务合同与策略.md`。
 
 任务回执监听：
 
@@ -132,7 +135,8 @@ xdg-open http://127.0.0.1:8766
 如果要换真实执行层，终端 2 的算法栈默认已经指向生产 action
 `/dual_arm_trajectory_controller/follow_joint_trajectory`。真实执行层要求 13 轴顺序固定为
 `right_joint1..right_joint6,left_joint1..left_joint6,turn`，单位为 rad；updown 仍通过
-`/canopen/updown_position_controller/commands` 单独发送绝对位置 m。
+`/canopen/updown_position_controller/commands` 单独发送，固定消息为
+`[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]`。
 `execute_trajectory_service_node` 会把仓库模型名 `rightjoint*/leftjoint*` 适配成生产名
 `right_joint*/left_joint*`，并按 10Hz 重采样后发给生产 action；如果输入轨迹里 `updown` 发生变化，
 会拒绝转发，避免把无法同步的 updown 运动静默丢掉。
@@ -171,7 +175,7 @@ ros2 service call /robot_motion/set_state robot_motion_interfaces/srv/SetRobotMo
   source: 'manual',
   authoritative: true,
   joint_state: {
-    name: ['updown','turn','pitch','leftjoint1','leftjoint2','leftjoint3','leftjoint4','leftjoint5','leftjoint6','rightjoint1','rightjoint2','rightjoint3','rightjoint4','rightjoint5','rightjoint6'],
+    name: ['updown','turn','pitch','left_joint1','left_joint2','left_joint3','left_joint4','left_joint5','left_joint6','right_joint1','right_joint2','right_joint3','right_joint4','right_joint5','right_joint6'],
     position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
   }
 }"
@@ -197,12 +201,12 @@ ros2 service call /robot_motion/set_scene robot_motion_interfaces/srv/SetRobotMo
 ```bash
 ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTask "{
   context: {request_id: 'demo_task', frame_id: 'world', scene_id: 'demo', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.55,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   ik_candidate_states: [
-    {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.3,0,0,0.1,-0.1]}
+    {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.3,0,0,0.1,-0.1]}
   ],
   loaded_goal_family: [
-    {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.3,0,0,0,0]}
+    {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.3,0,0,0,0]}
   ],
   candidate_limit: 8,
   planning_mode: 'shortcut',
@@ -218,7 +222,7 @@ ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTa
 ```bash
 ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/srv/RunDualArmPoseTask "{
   context: {request_id: 'pose_task', frame_id: 'base_link', scene_id: 'demo', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','rightjoint1'], position: [0.55,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   left_target: {header: {frame_id: 'base_link'}, pose: {position: {x: 0.6, y: 0.25, z: 0.8}, orientation: {x: 0.0, y: 0.7071068, z: 0.0, w: 0.7071068}}},
   right_target: {header: {frame_id: 'base_link'}, pose: {position: {x: 0.6, y: -0.25, z: 0.8}, orientation: {x: 0.0, y: 0.7071068, z: 0.0, w: 0.7071068}}},
   fixed_updown: 0.55,
@@ -236,7 +240,7 @@ ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/s
 ```bash
 ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/RunBoxPairTask "{
   context: {request_id: 'box_pair_demo', frame_id: 'base_link', scene_id: 'box_stack', state_id: 'manual:zero'},
-  seed_state: {name: ['updown','turn','pitch','leftjoint1','leftjoint2','leftjoint3','leftjoint4','leftjoint5','leftjoint6','rightjoint1','rightjoint2','rightjoint3','rightjoint4','rightjoint5','rightjoint6'], position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
+  seed_state: {name: ['updown','turn','pitch','left_joint1','left_joint2','left_joint3','left_joint4','left_joint5','left_joint6','right_joint1','right_joint2','right_joint3','right_joint4','right_joint5','right_joint6'], position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
   left_box_id: 1,
   right_box_id: 3,
   left_grasp_mode: 'front',

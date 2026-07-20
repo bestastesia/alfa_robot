@@ -34,6 +34,7 @@ find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
+  DEPENDENCIES geometry_msgs robot_motion_interfaces
 )
 ament_export_dependencies(rosidl_default_runtime)
 
@@ -158,6 +159,7 @@ ament_target_dependencies(dual_arm_planner_node
   tf2_geometry_msgs
   tf2_eigen
   alfa_robot_analytic_ik
+  robot_motion_interfaces
   robot_motion_core
 )
 
@@ -320,6 +322,11 @@ if(BUILD_TESTING)
   add_test(
     NAME test_process_lifecycle
     COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_process_lifecycle.py
+  )
+
+  add_test(
+    NAME test_live_execution_phase_split
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_live_execution_phase_split.py
   )
 
   add_test(

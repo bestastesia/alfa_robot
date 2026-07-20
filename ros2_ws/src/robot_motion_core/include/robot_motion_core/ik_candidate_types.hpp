@@ -53,10 +53,10 @@ struct UpdownAwareIkConfig
   double gripper_z_reach_upper = 1.25;
   double top_suction_z_reach_lower = 0.3;
   double top_suction_z_reach_upper = 0.45;
-  // updown(h) 采样范围默认值：逻辑/URDF 空间 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。
+  // updown(h) 采样范围默认值：逻辑/URDF 与电机物理空间均为 [0, 0.7]。
   // 采样阶段即限死，不生成越界候选。
-  double h_lower = 0.08;
-  double h_upper = 0.78;
+  double h_lower = 0.0;
+  double h_upper = 0.7;
   bool full_h_range_scan = false;
 
   HSearchMode h_search_mode = HSearchMode::FixedDiscrete;

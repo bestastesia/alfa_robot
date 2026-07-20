@@ -1,48 +1,62 @@
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
 from typing import Any
 
 import rclpy
-from geometry_msgs.msg import PoseStamped, Vector3
+from geometry_msgs.msg import PoseStamped, Quaternion, Vector3
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import AttachedBox, RobotMotionState, TaskReceipt
+from robot_motion_interfaces.msg import (
+    ArmExtractPolicy,
+    AttachedBox,
+    DualGraspStrategy,
+    RobotMotionState,
+    TaskReceipt,
+)
 from robot_motion_interfaces.srv import RunDualArmPoseTask, RunDualGraspTask
 from robot_motion_runtime.box_pair_task_adapter_node import (
     default_loaded_goal,
-    forward_x_orientation,
     make_pose,
     seed_or_default,
-    top_suction_orientation,
 )
-from robot_motion_runtime.common import RuntimeStatusPublisher, clamp_motion_scale
-
-
-def normalize_grasp_mode(value: str) -> str:
-    normalized = value.strip().lower()
-    aliases = {
-        "": "front",
-        "front": "front",
-        "side": "front",
-        "side_suction": "front",
-        "top": "top_suction",
-        "top_suction": "top_suction",
-        "down": "top_suction",
-    }
-    if normalized not in aliases:
-        raise ValueError(f"unsupported grasp mode: {value}")
-    return aliases[normalized]
+from robot_motion_runtime.common import RuntimeStatusPublisher
+from robot_motion_runtime.dual_grasp_strategy import (
+    ArmExtractPolicyValue,
+    DualGraspStrategyValue,
+    normalize_grasp_mode,
+    pose6d_value,
+    resolve_dual_grasp_strategy,
+)
 
 
 def safe_id(value: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_]+", "_", value.strip())
     return cleaned.strip("_") or "task"
+
+
+def quaternion_from_rpy(roll: float, pitch: float, yaw: float) -> Quaternion:
+    half_roll = 0.5 * float(roll)
+    half_pitch = 0.5 * float(pitch)
+    half_yaw = 0.5 * float(yaw)
+    cr = math.cos(half_roll)
+    sr = math.sin(half_roll)
+    cp = math.cos(half_pitch)
+    sp = math.sin(half_pitch)
+    cy = math.cos(half_yaw)
+    sy = math.sin(half_yaw)
+    out = Quaternion()
+    out.w = cr * cp * cy + sr * sp * sy
+    out.x = sr * cp * cy - cr * sp * sy
+    out.y = cr * sp * cy + sr * cp * sy
+    out.z = cr * cp * sy - sr * sp * cy
+    return out
 
 
 def make_attached_box_for_task(side: str, task_id: str, mode: str) -> AttachedBox:
@@ -68,11 +82,32 @@ def make_attached_box_for_task(side: str, task_id: str, mode: str) -> AttachedBo
     return out
 
 
+def arm_policy_message(value: ArmExtractPolicyValue) -> ArmExtractPolicy:
+    out = ArmExtractPolicy()
+    out.grasp_mode = value.grasp_mode
+    out.require_full_detachment = value.require_full_detachment
+    out.front_clearance_levels = value.front_clearance_levels
+    out.retreat_priority = value.retreat_priority
+    out.lift_priority = value.lift_priority
+    out.pitch_priority = value.pitch_priority
+    return out
+
+
+def strategy_message(value: DualGraspStrategyValue) -> DualGraspStrategy:
+    out = DualGraspStrategy()
+    out.task_type = value.task_type
+    out.name = value.name
+    out.left = arm_policy_message(value.left)
+    out.right = arm_policy_message(value.right)
+    out.height_difference_m = value.height_difference_m
+    return out
+
+
 class DualGraspTaskAdapterNode(Node):
     """External task adapter for whole-machine dual-grasp requests.
 
     Public contract:
-      RunDualGraspTask: two end-effector positions + two grasp modes.
+      RunDualGraspTask: two explicit 6D tool contact poses + two grasp modes.
       TaskReceipt: accepted/running/succeeded/failed state for the whole machine.
 
     Internal details remain hidden behind RunDualArmPoseTask.
@@ -86,15 +121,16 @@ class DualGraspTaskAdapterNode(Node):
         self.declare_parameter("state_topic", "/robot_motion/state")
         self.declare_parameter("service_timeout_s", 60.0)
         self.declare_parameter("default_frame_id", "base_link")
-        self.declare_parameter("default_fixed_updown", 0.08)
-        # updown 逻辑/URDF 规划范围 [0.08, 0.78]（对应电机满行程 [0, 0.7]）。fixed_updown
+        self.declare_parameter("default_fixed_updown", 0.0)
+        # updown 逻辑/URDF 与电机物理规划范围均为 [0, 0.7]。fixed_updown
         # 取当前车体状态,可能落在旧范围或越界,这里在"喂给规划前"就夹紧,不把越界值当 IK 种子。
-        self.declare_parameter("updown_logical_lower_m", 0.08)
-        self.declare_parameter("updown_logical_upper_m", 0.78)
+        self.declare_parameter("updown_logical_lower_m", 0.0)
+        self.declare_parameter("updown_logical_upper_m", 0.7)
         self.declare_parameter("default_candidate_limit", 8)
         self.declare_parameter("default_planning_mode", "shortcut")
         self.declare_parameter("default_velocity_scale", 1.0)
         self.declare_parameter("default_acceleration_scale", 1.0)
+        self.declare_parameter("equal_height_tolerance_m", 0.02)
 
         self.service_name = str(self.get_parameter("service_name").value)
         self.pose_task_service = str(self.get_parameter("pose_task_service").value)
@@ -109,6 +145,7 @@ class DualGraspTaskAdapterNode(Node):
         self.default_planning_mode = str(self.get_parameter("default_planning_mode").value)
         self.default_velocity_scale = float(self.get_parameter("default_velocity_scale").value)
         self.default_acceleration_scale = float(self.get_parameter("default_acceleration_scale").value)
+        self.equal_height_tolerance_m = float(self.get_parameter("equal_height_tolerance_m").value)
 
         self.callback_group = ReentrantCallbackGroup()
         self.latest_state: RobotMotionState | None = None
@@ -177,12 +214,16 @@ class DualGraspTaskAdapterNode(Node):
             raise RuntimeError(f"RunDualArmPoseTask call failed: {holder['error']}")
         return holder["response"]
 
-    def pose_stamped(self, frame_id: str, x: float, y: float, z: float, mode: str) -> PoseStamped:
-        orientation = top_suction_orientation() if mode == "top_suction" else forward_x_orientation()
+    def pose_stamped(self, pose_6d) -> PoseStamped:
         out = PoseStamped()
-        out.header.frame_id = frame_id
+        out.header.frame_id = self.default_frame_id
         out.header.stamp = self.get_clock().now().to_msg()
-        out.pose = make_pose(x, y, z, orientation)
+        out.pose = make_pose(
+            pose_6d.x,
+            pose_6d.y,
+            pose_6d.z,
+            quaternion_from_rpy(pose_6d.roll, pose_6d.pitch, pose_6d.yaw),
+        )
         return out
 
     def seed_state(self):
@@ -191,7 +232,7 @@ class DualGraspTaskAdapterNode(Node):
         return seed_or_default(JointState(), self.default_fixed_updown)
 
     def clamp_updown_logical(self, value: float) -> float:
-        """把 updown 逻辑值夹紧到规划范围 [0.08, 0.78]；越界(如旧范围遗留值或车体
+        """把 updown 逻辑值夹紧到规划范围 [0, 0.7]；越界(如旧范围遗留值或车体
         当前停在范围外)时告警并夹紧，绝不把越界值当 IK 种子/规划输入。"""
         clamped = max(self.updown_logical_lower_m, min(self.updown_logical_upper_m, float(value)))
         if abs(clamped - float(value)) > 1e-6:
@@ -214,65 +255,55 @@ class DualGraspTaskAdapterNode(Node):
 
     def on_run_dual_grasp_task(self, request, response):
         started = time.monotonic()
-        task_id = (
-            request.task_id.strip()
-            or request.context.request_id.strip()
-            or f"dual_grasp_{int(started * 1000.0)}"
-        )
-        response.task_id = task_id
+        task_id = request.request_id.strip() or f"dual_grasp_{int(started * 1000.0)}"
+        response.request_id = task_id
         response.state = "accepted"
         self.publish_receipt(task_id, "accepted", "task accepted")
-        self.status.mark_running(f"{task_id} execute={request.execute} dry_run={request.dry_run}")
+        self.status.mark_running(f"{task_id} execute={request.execute}")
         try:
-            left_mode = normalize_grasp_mode(request.left_grasp_mode)
-            right_mode = normalize_grasp_mode(request.right_grasp_mode)
-            frame_id = (
-                request.frame_id.strip()
-                or request.context.frame_id.strip()
-                or self.default_frame_id
+            left_mode = normalize_grasp_mode(request.left.grasp_mode)
+            right_mode = normalize_grasp_mode(request.right.grasp_mode)
+            left_pose = pose6d_value(request.left.pose_6d)
+            right_pose = pose6d_value(request.right.pose_6d)
+            strategy, effective_left_pose, effective_right_pose = resolve_dual_grasp_strategy(
+                left_mode,
+                right_mode,
+                left_pose,
+                right_pose,
+                self.equal_height_tolerance_m,
             )
+            effective_left_mode = strategy.left.grasp_mode
+            effective_right_mode = strategy.right.grasp_mode
 
             pose_request = RunDualArmPoseTask.Request()
-            pose_request.context = request.context
             pose_request.context.request_id = task_id
-            pose_request.context.frame_id = frame_id
+            pose_request.context.frame_id = self.default_frame_id
             pose_request.context.stamp = self.get_clock().now().to_msg()
             pose_request.seed_state = self.seed_state()
             fixed_updown = self.fixed_updown()
-            pose_request.left_target = self.pose_stamped(
-                frame_id,
-                request.left_position.x,
-                request.left_position.y,
-                request.left_position.z,
-                left_mode,
-            )
-            pose_request.right_target = self.pose_stamped(
-                frame_id,
-                request.right_position.x,
-                request.right_position.y,
-                request.right_position.z,
-                right_mode,
-            )
+            pose_request.left_target = self.pose_stamped(effective_left_pose)
+            pose_request.right_target = self.pose_stamped(effective_right_pose)
             pose_request.attached_boxes = [
-                make_attached_box_for_task("left", task_id, left_mode),
-                make_attached_box_for_task("right", task_id, right_mode),
+                make_attached_box_for_task("left", task_id, effective_left_mode),
+                make_attached_box_for_task("right", task_id, effective_right_mode),
             ]
             pose_request.loaded_goal_family = [default_loaded_goal(fixed_updown)]
             pose_request.fixed_updown = fixed_updown
-            pose_request.left_top_suction = left_mode == "top_suction"
-            pose_request.right_top_suction = right_mode == "top_suction"
+            pose_request.left_top_suction = effective_left_mode == "top_suction"
+            pose_request.right_top_suction = effective_right_mode == "top_suction"
+            pose_request.strategy = strategy_message(strategy)
             pose_request.candidate_limit = self.default_candidate_limit
             pose_request.planning_mode = self.default_planning_mode
             pose_request.execute = bool(request.execute)
-            pose_request.dry_run = bool(request.dry_run)
-            pose_request.velocity_scale = clamp_motion_scale(
-                request.velocity_scale, self.default_velocity_scale
-            )
-            pose_request.acceleration_scale = clamp_motion_scale(
-                request.acceleration_scale, self.default_acceleration_scale
-            )
+            pose_request.dry_run = not bool(request.execute)
+            pose_request.velocity_scale = self.default_velocity_scale
+            pose_request.acceleration_scale = self.default_acceleration_scale
 
-            self.publish_receipt(task_id, "running", "task planning/execution started")
+            self.publish_receipt(
+                task_id,
+                "running",
+                f"task planning/execution started; strategy={strategy.name}",
+            )
             pose_response = self.call_pose_task(pose_request)
             response.success = bool(pose_response.success)
             response.state = "succeeded" if response.success else "failed"
