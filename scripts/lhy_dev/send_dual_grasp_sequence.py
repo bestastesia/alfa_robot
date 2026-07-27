@@ -14,8 +14,8 @@ from rclpy.node import Node
 from robot_motion_interfaces.srv import RunDualGraspTask
 
 
-DEFAULT_SEQUENCE = "1,3;1,8;6,3;6,8;6,13;11,8;11,13;11,18;16,13;16,18;16,23;21,18;21,23"
-FRONT_SUCTION_BOX_IDS = {1, 3, 6, 8}
+DEFAULT_SEQUENCE = "1,3;1,6;4,3;4,6;4,9;7,6;7,9;7,12;10,9;10,12"
+FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6}
 FRONT_TOOL_RPY = (math.pi, math.pi / 2.0, math.pi)
 TOP_TOOL_RPY = (math.pi, 0.0, 0.0)
 
@@ -87,16 +87,15 @@ def parse_mode_sequence(value: str, count: int) -> list[str] | None:
 
 def make_boxes(box_front_x: float, scene_y_shift: float) -> dict[int, tuple[float, float, float]]:
     rows_top_to_bottom = [
-        [(1, 0.8), (2, 0.4), (3, 0.0), (4, -0.4), (5, -0.8)],
-        [(6, 0.8), (7, 0.4), (8, 0.0), (9, -0.4), (10, -0.8)],
-        [(11, 0.8), (12, 0.4), (13, 0.0), (14, -0.4), (15, -0.8)],
-        [(16, 0.8), (17, 0.4), (18, 0.0), (19, -0.4), (20, -0.8)],
-        [(21, 0.8), (22, 0.4), (23, 0.0), (24, -0.4), (25, -0.8)],
+        [(1, 0.4), (2, 0.0), (3, -0.4)],
+        [(4, 0.4), (5, 0.0), (6, -0.4)],
+        [(7, 0.4), (8, 0.0), (9, -0.4)],
+        [(10, 0.4), (11, 0.0), (12, -0.4)],
     ]
     row_count = len(rows_top_to_bottom)
     boxes: dict[int, tuple[float, float, float]] = {}
     for row_index, row in enumerate(rows_top_to_bottom):
-        z = 0.2 + 0.4 * float(row_count - 1 - row_index)
+        z = (float(row_count - row_index) - 0.5) * 0.5
         for box_id, y in row:
             boxes[int(box_id)] = (float(box_front_x), float(y) + float(scene_y_shift), z)
     return boxes
@@ -230,7 +229,7 @@ class SequenceClient(Node):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Send the current 13 dual-grasp endpoint tasks.')
+    parser = argparse.ArgumentParser(description='Send the current 10 dual-grasp endpoint tasks.')
     parser.add_argument('--service-name', default='/robot_motion/run_dual_grasp_task')
     parser.add_argument('--service-timeout-s', type=float, default=30.0)
     parser.add_argument('--result-timeout-s', type=float, default=300.0)
@@ -250,10 +249,10 @@ def parse_args():
     parser.add_argument('--box-front-x', type=float, default=0.925)
     parser.add_argument('--top-approach-forward', type=float, default=0.30)
     parser.add_argument('--top-box-front-x', type=float, default=None)
-    parser.add_argument('--scene-y-shift', type=float, default=-0.4)
+    parser.add_argument('--scene-y-shift', type=float, default=0.0)
     parser.add_argument('--world-to-base-z', type=float, default=0.202094)
     parser.add_argument('--top-suction-x-offset', type=float, default=0.15)
-    parser.add_argument('--top-suction-z-offset', type=float, default=0.2)
+    parser.add_argument('--top-suction-z-offset', type=float, default=0.25)
     parser.add_argument('--velocity-scale', type=float, default=1.0)
     parser.add_argument('--acceleration-scale', type=float, default=1.0)
     parser.add_argument('--start-index', type=int, default=1)

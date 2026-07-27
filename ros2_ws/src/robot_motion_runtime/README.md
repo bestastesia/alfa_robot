@@ -33,7 +33,8 @@
 - updown：`/canopen/updown_position_controller/commands`
 - 兼容旧 action：`/alfa_execution/execute_joint_trajectory`
 
-仿真执行器按 250Hz 内部控制周期插值，`/joint_states` 默认按 50Hz 发布。
+仿真执行器按 250Hz 内部控制周期复现实机 `joint_trajectory_controller` 的 variable-degree spline，
+当前带位置和速度的轨迹会使用三次 Hermite 插值；`/joint_states` 默认按 50Hz 发布。
 
 ```bash
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws

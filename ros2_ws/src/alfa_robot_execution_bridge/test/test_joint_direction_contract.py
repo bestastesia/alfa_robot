@@ -3,6 +3,7 @@ import pytest
 from alfa_robot_execution_bridge.joints import (
     DEFAULT_DIRECTION_SIGNS,
     DEFAULT_JOINT_NAMES,
+    ETHERCAT_ZERO_OFFSET_BY_JOINT,
     EXECUTION_JOINT_NAMES,
     FLIPPED_JOINT_NAMES,
     REAL_CONTROLLER_JOINT_NAMES,
@@ -13,10 +14,12 @@ from alfa_robot_execution_bridge.joints import (
     UPDOWN_PHYSICAL_UPPER_M,
     UPDOWN_PHYSICAL_ZERO_OFFSET_M,
     direction_signs_for,
+    ethercat_zero_offset_for,
     ethercat_to_ros_position,
     logical_to_physical_updown,
     physical_to_logical_updown,
     ros_to_ethercat_position,
+    ros_to_ethercat_velocity,
 )
 from alfa_robot_execution_bridge.updown import (
     make_updown_command_data,
@@ -47,6 +50,9 @@ def test_joint_direction_contract_is_canonical():
         'right_joint6': 1.0,
         'turn': 1.0,
     }
+    assert set(ETHERCAT_ZERO_OFFSET_BY_JOINT) == set(EXECUTION_JOINT_NAMES)
+    assert ethercat_zero_offset_for('left_joint6') == pytest.approx(0.05235987755982989)
+    assert ethercat_zero_offset_for('right_joint6') == pytest.approx(-0.03490658503988659)
 
 
 def test_direction_conversion_round_trip():
@@ -59,6 +65,19 @@ def test_direction_conversion_round_trip():
     assert ros_to_ethercat_position('right_joint2', 0.25) == -0.25
     assert ros_to_ethercat_position('right_joint4', 0.25) == -0.25
     assert ros_to_ethercat_position('right_joint5', 0.25) == 0.25
+
+
+def test_joint6_zero_offsets_apply_at_ethercat_boundary():
+    assert ros_to_ethercat_position('left_joint6', 0.0) == pytest.approx(0.05235987755982989)
+    assert ros_to_ethercat_position('right_joint6', 0.0) == pytest.approx(-0.03490658503988659)
+    assert ethercat_to_ros_position('left_joint6', 0.05235987755982989) == pytest.approx(0.0)
+    assert ethercat_to_ros_position('right_joint6', -0.03490658503988659) == pytest.approx(0.0)
+
+
+def test_velocity_conversion_applies_direction_without_position_offset():
+    assert ros_to_ethercat_velocity('left_joint6', 0.25) == pytest.approx(0.25)
+    assert ros_to_ethercat_velocity('right_joint6', 0.25) == pytest.approx(0.25)
+    assert ros_to_ethercat_velocity('right_joint4', 0.25) == pytest.approx(-0.25)
 
 
 def test_updown_conversion_endpoints():

@@ -14,6 +14,13 @@
 
 发送的轨迹必须包含完整 13 个关节，位置单位是 `rad`，目标含义是 ROS 机械零位坐标下的绝对关节位置。
 
+## 轨迹插值语义
+
+`mock` 后端默认按与工控机 EtherCAT 控制器一致的 `250Hz` 控制周期执行，并复现
+`joint_trajectory_controller` 的 variable-degree spline 规则：只有位置时线性插值，位置和速度齐全时三次
+Hermite 插值，位置、速度和加速度齐全时五次插值。公共实现位于
+`alfa_robot_execution_bridge/trajectory_interpolation.py`，数字孪生执行器也复用该实现，避免本地回放与实机采用不同插值口径。
+
 ## 运行 mock
 
 ```bash

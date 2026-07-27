@@ -78,22 +78,30 @@ std::string trim_copy(std::string value)
 
 std::map<int, BoxSpec> make_boxes(double front_x, double y_shift)
 {
-  const std::vector<std::vector<std::pair<int, double>>> rows_top_to_bottom = {
-    {{1, 0.8}, {2, 0.4}, {3, 0.0}, {4, -0.4}, {5, -0.8}},
-    {{6, 0.8}, {7, 0.4}, {8, 0.0}, {9, -0.4}, {10, -0.8}},
-    {{11, 0.8}, {12, 0.4}, {13, 0.0}, {14, -0.4}, {15, -0.8}},
-    {{16, 0.8}, {17, 0.4}, {18, 0.0}, {19, -0.4}, {20, -0.8}},
-    {{21, 0.8}, {22, 0.4}, {23, 0.0}, {24, -0.4}, {25, -0.8}},
-  };
-
   std::map<int, BoxSpec> boxes;
-  for (size_t row = 0; row < rows_top_to_bottom.size(); ++row) {
-    const double z = 0.2 + 0.4 * static_cast<double>(rows_top_to_bottom.size() - 1 - row);
-    for (const auto& [id, y] : rows_top_to_bottom[row]) {
+  for (int row = 0; row < kBoxStackRowCount; ++row) {
+    const double z = (static_cast<double>(kBoxStackRowCount - row) - 0.5) * kBoxHeight;
+    for (int column = 0; column < kBoxStackColumnCount; ++column) {
+      const int id = row * kBoxStackColumnCount + column + 1;
+      const double y =
+        (0.5 * static_cast<double>(kBoxStackColumnCount - 1) - static_cast<double>(column)) *
+        kBoxWidth;
       boxes[id] = BoxSpec{id, front_x, y + y_shift, z};
     }
   }
   return boxes;
+}
+
+int box_column_from_left(int box_id)
+{
+  if (box_id < 1 || box_id > kBoxStackBoxCount) return 0;
+  return (box_id - 1) % kBoxStackColumnCount + 1;
+}
+
+int box_row_from_top(int box_id)
+{
+  if (box_id < 1 || box_id > kBoxStackBoxCount) return -1;
+  return (box_id - 1) / kBoxStackColumnCount;
 }
 
 std::vector<std::pair<int, int>> parse_box_pair_list(const std::string& value)
@@ -132,7 +140,7 @@ std::vector<PickPair> make_pick_pairs(
   }
   if (include_top_suction) {
     const int round = static_cast<int>(pairs.size() + 1);
-    pairs.push_back({round, 22, 24, true});
+    pairs.push_back({round, 13, 15, true});
   }
   return pairs;
 }

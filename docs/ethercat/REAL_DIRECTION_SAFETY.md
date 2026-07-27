@@ -65,7 +65,7 @@ scripts/lhy_dev/send_dual_grasp_sequence.py  （--execute-backend planner-live�
   runtime 拒绝。全流程使用 `updown.py` 构造原子四字段命令，每个阶段只下发一次最终 PP 目标，
   速度按阶段位移/时长计算并受 `--max-updown-speed-m-s` 限制。
 - 抽离回到负重姿态后，默认追加“负重→放货→负重”循环。放货姿态采用 ROS/URDF 语义：
-  双臂均为 `[0,-55,-50,-60,0,0]°`，`turn=0°`，`updown=0.20m`；去程保留两只附着箱，
+  双臂均为 `[0,-55,-50,-60,0,0]°`，`turn=0°`，`updown=0.10m`；去程保留两只附着箱，
   回程按箱子已释放处理。两段均先做全场景直连碰撞校验，仅碰撞区间才调用局部 RRT 修补。
 - 外层 `run_13_dual_grasp_tasks.sh --execute --yes-execute` 的命令行安全开关仍保留；
   `--yes-execute` 不是运行过程中的交互 token。

@@ -5,9 +5,10 @@ This module is the runtime single source of truth for:
 - execution-layer joint names
 - real EtherCAT controller joint order
 - ROS/Rerun semantics -> real EtherCAT command direction signs
+- real EtherCAT zero offsets -> ROS/Rerun zero semantics
 - ROS/Rerun updown logical meters -> real updown controller physical meters
 
-Do not duplicate the sign table or the updown offset in launch files, demo
+Do not duplicate the sign/offset tables or the updown offset in launch files, demo
 scripts, or YAML configs. Import from here instead.
 """
 
@@ -64,6 +65,25 @@ ROS_TO_ETHERCAT_SIGN_BY_JOINT = {
     'turn': 1.0,
 }
 
+# Raw EtherCAT command/feedback value that corresponds to ROS/URDF zero.
+# 2026-07-22 calibration: the last motor drivers cannot be mechanically
+# zeroed, so J6 zero is compensated here at the runtime contract boundary.
+ETHERCAT_ZERO_OFFSET_BY_JOINT = {
+    'left_joint1': 0.0,
+    'left_joint2': 0.0,
+    'left_joint3': 0.0,
+    'left_joint4': 0.0,
+    'left_joint5': 0.0,
+    'left_joint6': 0.05235987755982989,  # +3 deg
+    'right_joint1': 0.0,
+    'right_joint2': 0.0,
+    'right_joint3': 0.0,
+    'right_joint4': 0.0,
+    'right_joint5': 0.0,
+    'right_joint6': -0.03490658503988659,  # -2 deg
+    'turn': 0.0,
+}
+
 DEFAULT_JOINT_NAMES = EXECUTION_JOINT_NAMES
 DEFAULT_DIRECTION_SIGNS = [
     ROS_TO_ETHERCAT_SIGN_BY_JOINT[name]
@@ -89,16 +109,27 @@ def direction_sign_for(joint_name: str) -> float:
         raise KeyError(f'unknown ALFA execution joint: {joint_name}') from exc
 
 
+def ethercat_zero_offset_for(joint_name: str) -> float:
+    try:
+        return ETHERCAT_ZERO_OFFSET_BY_JOINT[joint_name]
+    except KeyError as exc:
+        raise KeyError(f'unknown ALFA execution joint: {joint_name}') from exc
+
+
 def direction_signs_for(joint_names: Iterable[str]) -> list[float]:
     return [direction_sign_for(name) for name in joint_names]
 
 
 def ros_to_ethercat_position(joint_name: str, value: float) -> float:
+    return float(value) * direction_sign_for(joint_name) + ethercat_zero_offset_for(joint_name)
+
+
+def ros_to_ethercat_velocity(joint_name: str, value: float) -> float:
     return float(value) * direction_sign_for(joint_name)
 
 
 def ethercat_to_ros_position(joint_name: str, value: float) -> float:
-    return float(value) * direction_sign_for(joint_name)
+    return (float(value) - ethercat_zero_offset_for(joint_name)) * direction_sign_for(joint_name)
 
 
 # updown (lift) axis: logical meters (ROS/MoveIt/Rerun/URDF 'updown' prismatic

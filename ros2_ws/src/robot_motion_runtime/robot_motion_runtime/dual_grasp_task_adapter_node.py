@@ -29,6 +29,10 @@ from robot_motion_runtime.box_pair_task_adapter_node import (
 from robot_motion_runtime.common import RuntimeStatusPublisher
 from robot_motion_runtime.dual_grasp_strategy import (
     ArmExtractPolicyValue,
+    BOX_DEPTH_M,
+    BOX_HEIGHT_M,
+    BOX_WIDTH_M,
+    OUTER_BOX_GRASP_LATERAL_OFFSET_M,
     DualGraspStrategyValue,
     normalize_grasp_mode,
     pose6d_value,
@@ -68,17 +72,21 @@ def make_attached_box_for_task(side: str, task_id: str, mode: str) -> AttachedBo
     out.grasp_mode = mode
     out.link_name = f"{side}_tool0"
     out.center_in_link.orientation.w = 1.0
+    out.center_in_link.position.y = (
+        -OUTER_BOX_GRASP_LATERAL_OFFSET_M if side == "left"
+        else OUTER_BOX_GRASP_LATERAL_OFFSET_M
+    )
     out.size = Vector3()
     if top_suction:
-        out.center_in_link.position.z = 0.4 * 0.5
-        out.size.x = 0.3
-        out.size.y = 0.4
-        out.size.z = 0.4
+        out.center_in_link.position.z = BOX_HEIGHT_M * 0.5
+        out.size.x = BOX_DEPTH_M
+        out.size.y = BOX_WIDTH_M
+        out.size.z = BOX_HEIGHT_M
     else:
-        out.center_in_link.position.z = 0.3 * 0.5
-        out.size.x = 0.4
-        out.size.y = 0.4
-        out.size.z = 0.3
+        out.center_in_link.position.z = BOX_DEPTH_M * 0.5
+        out.size.x = BOX_HEIGHT_M
+        out.size.y = BOX_WIDTH_M
+        out.size.z = BOX_DEPTH_M
     return out
 
 

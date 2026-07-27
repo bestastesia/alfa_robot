@@ -15,18 +15,17 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory
 
+from alfa_robot_execution_bridge.trajectory_interpolation import (
+    InterpolatedState,
+    TrajectorySample,
+    sample_trajectory,
+)
 from alfa_robot_execution_bridge.updown import validate_updown_command_data
 from robot_motion_runtime.common import (
     DEFAULT_MOTION_JOINTS,
     MODEL_TO_HARDWARE_JOINT_ALIASES,
     canonical_joint_name,
 )
-
-
-@dataclass(frozen=True)
-class TrajectorySample:
-    time_s: float
-    positions: list[float]
 
 
 @dataclass
@@ -96,6 +95,7 @@ class KinematicSimExecutorNode(Node):
         self.joint_names = list(DEFAULT_MOTION_JOINTS)
         self.positions = {name: 0.0 for name in self.joint_names}
         self.positions["updown"] = self.initial_updown
+        self.velocities = {name: 0.0 for name in self.joint_names}
         self.lock = threading.RLock()
         self.active_trajectory: ActiveTrajectory | None = None
         self.active_token = 0
@@ -181,11 +181,6 @@ class KinematicSimExecutorNode(Node):
             self.positions[name] = float(value)
 
     @staticmethod
-    def interpolate(start: list[float], target: list[float], alpha: float) -> list[float]:
-        alpha = min(1.0, max(0.0, alpha))
-        return [a + (b - a) * alpha for a, b in zip(start, target)]
-
-    @staticmethod
     def max_abs_delta(lhs: list[float], rhs: list[float]) -> float:
         if len(lhs) != len(rhs):
             return float("inf")
@@ -214,6 +209,16 @@ class KinematicSimExecutorNode(Node):
                     f"point {index} has {len(point.positions)} positions for "
                     f"{len(joint_names)} joints"
                 )
+            if point.velocities and len(point.velocities) != len(joint_names):
+                raise ValueError(
+                    f"point {index} has {len(point.velocities)} velocities for "
+                    f"{len(joint_names)} joints"
+                )
+            if point.accelerations and len(point.accelerations) != len(joint_names):
+                raise ValueError(
+                    f"point {index} has {len(point.accelerations)} accelerations for "
+                    f"{len(joint_names)} joints"
+                )
             point_time = duration_s(point.time_from_start)
             if point_time <= previous_time:
                 raise ValueError(
@@ -222,17 +227,37 @@ class KinematicSimExecutorNode(Node):
             previous_time = point_time
             samples.append(
                 TrajectorySample(
-                    time_s=point_time,
+                    time_from_start=point_time,
                     positions=[float(value) for value in point.positions],
+                    velocities=(
+                        [float(value) for value in point.velocities]
+                        if point.velocities
+                        else None
+                    ),
+                    accelerations=(
+                        [float(value) for value in point.accelerations]
+                        if point.accelerations
+                        else None
+                    ),
                 )
             )
 
-        if samples[0].time_s > 1e-9:
+        if samples[0].time_from_start > 1e-9:
             samples.insert(
                 0,
                 TrajectorySample(
-                    time_s=0.0,
+                    time_from_start=0.0,
                     positions=self.current_positions_for(joint_names),
+                    velocities=(
+                        [0.0] * len(joint_names)
+                        if samples[0].velocities is not None
+                        else None
+                    ),
+                    accelerations=(
+                        [0.0] * len(joint_names)
+                        if samples[0].accelerations is not None
+                        else None
+                    ),
                 ),
             )
         return joint_names, requested_names, samples
@@ -263,11 +288,11 @@ class KinematicSimExecutorNode(Node):
         self.get_logger().info(
             f"Started simulated trajectory from {source}: "
             f"joints={len(joint_names)} points={len(samples)} "
-            f"duration={samples[-1].time_s:.3f}s initial_delta={initial_delta:.6f} "
+            f"duration={samples[-1].time_from_start:.3f}s initial_delta={initial_delta:.6f} "
             f"first={self.brief_positions(requested_names, first_positions)} "
             f"last={self.brief_positions(requested_names, last_positions)}"
         )
-        return token, samples[-1].time_s, initial_delta
+        return token, samples[-1].time_from_start, initial_delta
 
     @staticmethod
     def brief_positions(joint_names: list[str], positions: list[float]) -> str:
@@ -277,18 +302,12 @@ class KinematicSimExecutorNode(Node):
         return "{" + ", ".join(f"{name}={value:.3f}" for name, value in pairs) + "}"
 
     @staticmethod
+    def sample_state(samples: list[TrajectorySample], elapsed_s: float) -> InterpolatedState:
+        return sample_trajectory(samples, elapsed_s)
+
+    @staticmethod
     def sample_positions(samples: list[TrajectorySample], elapsed_s: float) -> list[float]:
-        if elapsed_s <= samples[0].time_s:
-            return list(samples[0].positions)
-        previous = samples[0]
-        for current in samples[1:]:
-            if elapsed_s <= current.time_s:
-                if current.time_s <= previous.time_s:
-                    return list(current.positions)
-                alpha = (elapsed_s - previous.time_s) / (current.time_s - previous.time_s)
-                return KinematicSimExecutorNode.interpolate(previous.positions, current.positions, alpha)
-            previous = current
-        return list(samples[-1].positions)
+        return KinematicSimExecutorNode.sample_state(samples, elapsed_s).positions
 
     def on_control_timer(self) -> None:
         now = time.monotonic()
@@ -297,9 +316,11 @@ class KinematicSimExecutorNode(Node):
             if active is None:
                 return
             elapsed = now - active.start_time
-            positions = self.sample_positions(active.samples, elapsed)
-            self.set_positions_for(active.joint_names, positions)
-            if elapsed >= active.samples[-1].time_s:
+            state = self.sample_state(active.samples, elapsed)
+            self.set_positions_for(active.joint_names, state.positions)
+            for name, velocity in zip(active.joint_names, state.velocities):
+                self.velocities[name] = float(velocity)
+            if elapsed >= active.samples[-1].time_from_start:
                 self.set_positions_for(active.joint_names, active.samples[-1].positions)
                 self.active_trajectory = None
 
@@ -318,7 +339,10 @@ class KinematicSimExecutorNode(Node):
             else 0.0
             for name in names
         ]
-        msg.velocity = [0.0] * len(msg.name)
+        msg.velocity = [
+            float(self.velocities.get(canonical_joint_name(name), 0.0))
+            for name in names
+        ]
         self.publisher.publish(msg)
 
     def on_publish_timer(self) -> None:

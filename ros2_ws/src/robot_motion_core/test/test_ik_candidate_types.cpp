@@ -9,6 +9,8 @@ int main()
   assert(config.h_candidate_count == 5);
   assert(config.h_lower == 0.0);
   assert(config.h_upper == 0.7);
+  assert(config.full_h_range_scan);
+  assert(config.h_step == 0.01);
 
   robot_motion::core::UpdownAwareIkRequest request;
   assert(request.left_target.isApprox(Eigen::Isometry3d::Identity()));

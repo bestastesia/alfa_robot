@@ -50,7 +50,7 @@
 
 ### 3.1 箱垛与抓取目标
 
-- `make_boxes(box_front_x)` 生成 5×5 箱垛坐标。
+- `make_boxes(box_front_x)` 生成当前 3×4 箱垛坐标。
 - `parse_box_pair_list()` / `make_pick_pairs()` 生成抓取 pair。
 - `make_front_grasp_pose()` / `make_top_suction_pose()` 在 `motion_core/pose_math` 内结合抓取模式生成左右末端 Pose。
 - 集装箱和箱墙几何来自 `robot_motion_scene_service/motion_core/scene_geometry`，再由 `MotionSceneAdapter` 注入 MoveIt。
@@ -224,6 +224,7 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 每个任务允许重置的部分：
 
 - 当前抓取箱号、箱墙开洞、左右 box 目标、snapshot 路径。
+- 箱墙前表面距离、横向布局偏移、抽离模式、负重前侧向让位开关和箱体 RRT 迭代上限；这些字段更新时，集装箱与箱墙碰撞体会使用同一份运行时几何重新写入 PlanningScene。
 - monitor 阶段状态、上一阶段耗时、候选缓存和最终回放缓存。
 - 末端携带箱与动态碰撞对象状态。
 
@@ -231,7 +232,8 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 
 - `/dual_arm_planner/configure_extract_monitor`
 - 类型：`alfa_robot_moveit_config/srv/ConfigureExtractMonitor`
-- 字段：`left_box_id`、`right_box_id`、`snapshot_path`
+- 基础字段：`left_box_id`、`right_box_id`、`snapshot_path`、左右吸附模式和显式目标 Pose。
+- 运行时字段：`update_runtime_config=true` 时使用 `box_front_x`、`scene_y_shift`、`extract_rollout_mode`、`loaded_lateral_shift_enabled`、`extract_box_pose_rrt_max_iterations`。
 - 作用：切换当前任务、重置 monitor 状态、设置 snapshot 输出路径、更新箱墙开洞，并确保 IK solver 已预热。
 
 当前已接入该复用语义的入口：
@@ -242,6 +244,7 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 - `scripts/execute_l6_r8_mock_live.py` / `execute_l6_r8_real_live.py`：计算到执行链路启动后先 configure/prewarm。
 - `scripts/extract_startup_stability_smoke.py`：把“服务就绪 + IK 预热”计入 startup，而不是计入单次 IK。
 - `scripts/run_extract_live_benchmark.py`：旧实时演示入口仍被安装；现在启动后也会先 configure/prewarm，再触发 `run_left_extract_demo`。
+- `tools/demonstration0720/armmotion`：`algorithm_thread` 启动时创建一个 planner 长驻会话；`A1..A5/B1..B5` 后续任务只做动态 configure 和 trigger，不再为每个任务启动 MoveIt。
 
 耗时解释：
 
@@ -326,7 +329,7 @@ xdg-open http://127.0.0.1:8766
 - `motion_state_source_node`：发布 `/robot_motion/state`，提供 `/robot_motion/set_state`。
 - `motion_scene_source_node`：发布 `/robot_motion/scene`，提供 `/robot_motion/set_scene`。
 - `dual_arm_ik_candidate_service_node`：提供 `/robot_motion/plan_dual_arm_ik`，调用左右两次 `SolveArmIk` 并组合候选。
-- `box_pair_task_adapter_node`：提供 `/robot_motion/run_box_pair_task`，把 5×5 箱垛箱号、侧吸/顶吸模式和箱墙参数转换为左右目标 Pose 与 carried box，再调用 `/robot_motion/run_dual_arm_pose_task`。
+- `box_pair_task_adapter_node`：提供 `/robot_motion/run_box_pair_task`，把当前 3×4 箱垛箱号、侧吸/顶吸模式和箱墙参数转换为左右目标 Pose 与 carried box，再调用 `/robot_motion/run_dual_arm_pose_task`。
 - `plan_extract_service_node`：提供 `/robot_motion/plan_extract`。轻量模式是 deterministic shortcut；完整栈下会调用 `/robot_motion/check_collision` 并使用请求 scene 或 `/robot_motion/scene` 过滤候选轨迹。后续要把 C++ 抽离 rollout 迁入。
 - `plan_loaded_service_node`：提供 `/robot_motion/plan_loaded`。当前生成关节空间 shortcut；完整栈下会调用碰撞服务并使用请求 scene 或 `/robot_motion/scene` 过滤候选。后续要把 RRT/local-RRT 迁入。
 - `execute_trajectory_service_node`：提供 `/robot_motion/execute_trajectory`，可 dry-run 或转发到 FollowJointTrajectory action。

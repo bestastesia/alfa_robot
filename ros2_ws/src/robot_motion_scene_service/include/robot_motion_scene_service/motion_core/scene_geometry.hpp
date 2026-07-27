@@ -16,7 +16,7 @@ struct ContainerGeometryConfig
   double center_x = 0.0;
   double center_y = 0.0;
   double yaw = 0.0;  // 绕 Z 轴，弧度；集装箱相对 config.frame（world）的朝向
-  double width = 2.2;
+  double width = 1.8;
   double height = 2.4;
   double length = 8.0;
   double wall_thickness = 0.03;
@@ -28,23 +28,24 @@ struct BoxWallGeometryConfig
   double box_front_x = 0.625;
   double scene_y_shift = 0.0;
   double container_center_y = 0.0;
-  double container_width = 2.2;
+  double container_width = 1.8;
   double container_floor_z = 0.0;
-  double carried_box_width = 0.4;
-  double carried_box_height = 0.4;
-  double carried_box_depth = 0.3;
+  double carried_box_width = kBoxWidth;
+  double carried_box_height = kBoxHeight;
+  double carried_box_depth = kBoxDepth;
   double static_box_obstacle_inset = 0.002;
   bool rear_guard_enabled = true;
   double rear_guard_thickness = 0.01;
-  double rear_guard_clearance = 0.012;
+  double rear_guard_clearance = 0.03;
   double container_height = 2.4;
 };
 
 struct CarriedBoxGeometryConfig
 {
-  double carried_box_width = 0.4;
-  double carried_box_height = 0.4;
-  double carried_box_depth = 0.3;
+  double carried_box_width = kBoxWidth;
+  double carried_box_height = kBoxHeight;
+  double carried_box_depth = kBoxDepth;
+  double grasp_lateral_offset = kOuterBoxGraspLateralOffset;
 };
 
 std::vector<ContainerPanel> make_container_panels(const ContainerGeometryConfig& config);

@@ -4,7 +4,7 @@ alfa_execution_bridge:
     action_name: /alfa_execution/execute_joint_trajectory
     joint_state_topic: /joint_states
     publish_joint_states: true
-    update_hz: 50.0
+    update_hz: 250.0
     joint_names:
       - left_joint1
       - left_joint2

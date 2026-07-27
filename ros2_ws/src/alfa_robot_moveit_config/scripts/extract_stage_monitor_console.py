@@ -170,7 +170,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"ik_h_lower:={getattr(args, 'ik_h_lower', 0.0)}",
         f"ik_h_upper:={getattr(args, 'ik_h_upper', 0.7)}",
         f"ik_h_step:={getattr(args, 'ik_h_step', 0.01)}",
-        f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', False)).lower()}",
+        f"ik_full_h_range_scan:={str(getattr(args, 'ik_full_h_range_scan', True)).lower()}",
         f"ik_seed_count:={args.ik_seed_count}",
         f"ik_workers:={args.ik_workers}",
         f"ik_candidate_timeout:={args.ik_candidate_timeout}",
@@ -206,10 +206,12 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_monitor_build_final_replay:={str(getattr(args, 'extract_monitor_build_final_replay', True)).lower()}",
         f"extract_monitor_place_cycle_enabled:={str(getattr(args, 'place_cycle_enabled', False)).lower()}",
-        f"extract_monitor_place_updown:={getattr(args, 'place_updown', 0.20)}",
+        f"extract_monitor_place_updown:={getattr(args, 'place_updown', 0.10)}",
+        f"extract_monitor_place_transition_updown:={getattr(args, 'place_transition_updown', 0.10)}",
         f"extract_monitor_place_left_pose_deg:='{getattr(args, 'place_left_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
         f"extract_monitor_place_right_pose_deg:='{getattr(args, 'place_right_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
+        f"extract_top_updown_lift_distance:={getattr(args, 'extract_top_updown_lift_distance', 0.40)}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
         f"extract_box_pose_rrt_paths_per_arm:={getattr(args, 'extract_box_pose_rrt_paths_per_arm', 8)}",
@@ -245,7 +247,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_pre_lower_left_box_id:={args.pre_lower_left_box_id}",
         f"extract_loaded_pre_lower_right_box_id:={args.pre_lower_right_box_id}",
         f"extract_loaded_pre_lower_updown_delta:={args.pre_lower_updown_delta}",
-        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.3)}",
+        f"extract_loaded_target_updown:={getattr(args, 'loaded_updown', 0.1)}",
+        f"extract_loaded_preserve_lower_updown:={str(getattr(args, 'loaded_preserve_lower_updown', False)).lower()}",
         f"extract_loaded_planning_time:={args.loaded_planning_time}",
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
@@ -447,6 +450,7 @@ class ExtractMonitorServiceClient:
         right_top_suction: bool = False,
         left_target: dict[str, Any] | None = None,
         right_target: dict[str, Any] | None = None,
+        runtime_config: dict[str, Any] | None = None,
     ) -> tuple[bool, str, float]:
         start = time.monotonic()
         request = self._configure_type.Request()
@@ -456,6 +460,17 @@ class ExtractMonitorServiceClient:
         request.left_top_suction = bool(left_top_suction)
         request.right_top_suction = bool(right_top_suction)
         assign_explicit_targets(request, left_target, right_target)
+        if runtime_config is not None:
+            request.update_runtime_config = True
+            request.box_front_x = float(runtime_config["box_front_x"])
+            request.scene_y_shift = float(runtime_config["scene_y_shift"])
+            request.extract_rollout_mode = str(runtime_config["extract_rollout_mode"])
+            request.loaded_lateral_shift_enabled = bool(
+                runtime_config["loaded_lateral_shift_enabled"]
+            )
+            request.extract_box_pose_rrt_max_iterations = int(
+                runtime_config["extract_box_pose_rrt_max_iterations"]
+            )
         future = self.configure_client.call_async(request)
         self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
         elapsed = (time.monotonic() - start) * 1000.0
@@ -578,15 +593,15 @@ def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
 
 def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, float, float]]:
     rows = [
-        [(1, 0.8), (2, 0.4), (3, 0.0), (4, -0.4), (5, -0.8)],
-        [(6, 0.8), (7, 0.4), (8, 0.0), (9, -0.4), (10, -0.8)],
-        [(11, 0.8), (12, 0.4), (13, 0.0), (14, -0.4), (15, -0.8)],
-        [(16, 0.8), (17, 0.4), (18, 0.0), (19, -0.4), (20, -0.8)],
-        [(21, 0.8), (22, 0.4), (23, 0.0), (24, -0.4), (25, -0.8)],
+        [(1, 0.5), (2, 0.0), (3, -0.5)],
+        [(4, 0.5), (5, 0.0), (6, -0.5)],
+        [(7, 0.5), (8, 0.0), (9, -0.5)],
+        [(10, 0.5), (11, 0.0), (12, -0.5)],
+        [(13, 0.5), (14, 0.0), (15, -0.5)],
     ]
     out: dict[int, tuple[float, float, float]] = {}
     for row_i, row in enumerate(rows):
-        z = 0.2 + 0.4 * (len(rows) - 1 - row_i)
+        z = (len(rows) - row_i - 0.5) * 0.4
         for box_id, y in row:
             out[box_id] = (box_x, y + y_shift, z)
     return out
@@ -1033,10 +1048,10 @@ def main() -> int:
     run_start = time.monotonic()
     parser = argparse.ArgumentParser(description="交互式抽箱流程阶段监控台")
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
-    parser.add_argument("--left-box-id", type=int, default=2)
+    parser.add_argument("--left-box-id", type=int, default=1)
     parser.add_argument("--right-box-id", type=int, default=3)
     parser.add_argument("--box-front-x", type=float, default=0.925)
-    parser.add_argument("--scene-y-shift", type=float, default=None, help="场景相对机器人 y 偏移；机器人左移 0.4m 时通常传 -0.4")
+    parser.add_argument("--scene-y-shift", type=float, default=None, help="箱堆中心相对机器人 y 偏移；默认 0 表示机器人对准中间列")
     parser.add_argument("--box-stack-y-shift", type=float, default=None, help="兼容旧参数名；等同于 --scene-y-shift")
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
@@ -1046,9 +1061,9 @@ def main() -> int:
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)
     parser.add_argument("--top-z-reach-lower", type=float, default=0.0)
-    parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
+    parser.add_argument("--top-z-reach-upper", type=float, default=0.6)
     parser.add_argument("--top-suction-x-offset", type=float, default=0.15)
-    parser.add_argument("--top-suction-z-offset", type=float, default=0.2)
+    parser.add_argument("--top-suction-z-offset", type=float, default=0.25)
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)
@@ -1109,6 +1124,12 @@ def main() -> int:
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-updown", type=float, default=0.3)
+    parser.add_argument(
+        "--loaded-preserve-lower-updown",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="回负重姿态时仅把高于 --loaded-updown 的 updown 降到上限，低位保持不升高",
+    )
     parser.add_argument("--lateral-shift-enabled", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--lateral-shift-distance", type=float, default=0.5)
     parser.add_argument("--lateral-shift-step", type=float, default=0.01)

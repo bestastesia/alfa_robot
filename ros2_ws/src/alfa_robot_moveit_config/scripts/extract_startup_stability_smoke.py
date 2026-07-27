@@ -211,7 +211,7 @@ def main() -> int:
     parser.add_argument("--top-z-reach-lower", type=float, default=0.3)
     parser.add_argument("--top-z-reach-upper", type=float, default=0.45)
     parser.add_argument("--top-suction-x-offset", type=float, default=0.15)
-    parser.add_argument("--top-suction-z-offset", type=float, default=0.2)
+    parser.add_argument("--top-suction-z-offset", type=float, default=0.25)
     parser.add_argument("--ik-top-position-tolerance", type=float, default=0.04)
     parser.add_argument("--ik-top-orientation-tolerance-deg", type=float, default=7.0)
     parser.add_argument("--ik-h-candidate-count", type=int, default=64)

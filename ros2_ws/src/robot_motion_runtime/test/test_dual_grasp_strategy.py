@@ -11,11 +11,18 @@ from robot_motion_runtime.dual_grasp_strategy import (
     MIXED_DEGRADED_TO_FRONT,
     MIXED_DEGRADED_TO_FRONT_EQUAL,
     MIXED_DEGRADED_TO_FRONT_RIGHT_HIGH,
+    OUTER_BOX_GRASP_LATERAL_OFFSET_M,
+    OUTER_BOX_GRASP_TARGET_Y_M,
     Pose6DValue,
     classify_dual_grasp_strategy,
     degrade_top_target_to_front,
     resolve_dual_grasp_strategy,
 )
+
+
+def test_outer_box_grasp_uses_50cm_target_without_attachment_offset():
+    assert math.isclose(OUTER_BOX_GRASP_TARGET_Y_M, 0.50, abs_tol=1e-9)
+    assert math.isclose(OUTER_BOX_GRASP_LATERAL_OFFSET_M, 0.0, abs_tol=1e-9)
 
 
 def test_dual_front_requires_both_boxes_detached():

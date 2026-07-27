@@ -5,7 +5,6 @@ import copy
 import math
 import threading
 import time
-from dataclasses import dataclass
 
 import rclpy
 from control_msgs.action import FollowJointTrajectory
@@ -16,13 +15,10 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
 
 from alfa_robot_execution_bridge.joints import DEFAULT_JOINT_NAMES, direction_signs_for
-
-
-@dataclass(frozen=True)
-class TrajectorySample:
-    time_from_start: float
-    positions: list[float]
-    velocities: list[float]
+from alfa_robot_execution_bridge.trajectory_interpolation import (
+    TrajectorySample,
+    sample_trajectory,
+)
 
 
 def duration_to_seconds(duration) -> float:
@@ -38,20 +34,6 @@ def make_duration(seconds: float):
         msg.sec += 1
         msg.nanosec -= 1_000_000_000
     return msg
-
-
-def interpolate(a: TrajectorySample, b: TrajectorySample, now_s: float) -> tuple[list[float], list[float]]:
-    span = max(1e-9, b.time_from_start - a.time_from_start)
-    ratio = min(1.0, max(0.0, (now_s - a.time_from_start) / span))
-    positions = [
-        start + (end - start) * ratio
-        for start, end in zip(a.positions, b.positions)
-    ]
-    velocities = [
-        (end - start) / span
-        for start, end in zip(a.positions, b.positions)
-    ]
-    return positions, velocities
 
 
 def make_result(error_code: int, error_string: str = ''):
@@ -75,7 +57,7 @@ class ExecutionBridgeNode(Node):
         self.declare_parameter('action_name', '/alfa_execution/execute_joint_trajectory')
         self.declare_parameter('joint_state_topic', '/joint_states')
         self.declare_parameter('publish_joint_states', True)
-        self.declare_parameter('update_hz', 50.0)
+        self.declare_parameter('update_hz', 250.0)
         self.declare_parameter('joint_names', DEFAULT_JOINT_NAMES)
         self.declare_parameter('direction_signs', [])
         self.declare_parameter('apply_direction_signs', False)
@@ -207,12 +189,19 @@ class ExecutionBridgeNode(Node):
             if len(point.velocities) == len(trajectory.joint_names):
                 velocities = [float(point.velocities[index]) for index in canonical_indices]
             else:
-                velocities = [0.0] * len(self.joint_names)
+                velocities = None
+            if len(point.accelerations) == len(trajectory.joint_names):
+                accelerations = [
+                    float(point.accelerations[index]) for index in canonical_indices
+                ]
+            else:
+                accelerations = None
             samples.append(
                 TrajectorySample(
                     time_from_start=duration_to_seconds(point.time_from_start),
                     positions=positions,
                     velocities=velocities,
+                    accelerations=accelerations,
                 )
             )
         return samples
@@ -252,17 +241,25 @@ class ExecutionBridgeNode(Node):
                 TrajectorySample(
                     time_from_start=0.0,
                     positions=current_positions,
-                    velocities=[0.0] * len(self.joint_names),
+                    velocities=(
+                        [0.0] * len(self.joint_names)
+                        if samples[0].velocities is not None
+                        else None
+                    ),
+                    accelerations=(
+                        [0.0] * len(self.joint_names)
+                        if samples[0].accelerations is not None
+                        else None
+                    ),
                 ),
             )
 
         final_time = samples[-1].time_from_start
         start = time.monotonic()
         next_sleep = 1.0 / max(1.0, self.update_hz)
-        sample_index = 0
-
         self.get_logger().info(
-            f'execute mock trajectory: points={len(samples)}, duration={final_time:.3f}s'
+            f'execute mock trajectory with JTC-compatible spline: '
+            f'points={len(samples)}, duration={final_time:.3f}s, control={self.update_hz:.1f}Hz'
         )
 
         while rclpy.ok():
@@ -273,14 +270,9 @@ class ExecutionBridgeNode(Node):
                 return make_result(FollowJointTrajectory.Result.SUCCESSFUL, 'canceled')
 
             elapsed = min(final_time, time.monotonic() - start)
-            while sample_index + 1 < len(samples) and samples[sample_index + 1].time_from_start < elapsed:
-                sample_index += 1
-
-            if sample_index + 1 < len(samples):
-                positions, velocities = interpolate(samples[sample_index], samples[sample_index + 1], elapsed)
-            else:
-                positions = list(samples[-1].positions)
-                velocities = [0.0] * len(self.joint_names)
+            state = sample_trajectory(samples, elapsed)
+            positions = state.positions
+            velocities = state.velocities
 
             with self._lock:
                 self._positions = positions

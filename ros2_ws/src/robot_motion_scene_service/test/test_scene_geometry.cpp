@@ -11,7 +11,7 @@ int main()
   ContainerGeometryConfig container;
   container.center_x = 0.8;
   container.center_y = 0.0;
-  container.width = 2.2;
+  container.width = 1.8;
   container.height = 2.4;
   container.length = 4.0;
   container.wall_thickness = 0.02;
@@ -39,11 +39,11 @@ int main()
 
   BoxWallGeometryConfig wall;
   wall.box_front_x = 0.925;
-  wall.scene_y_shift = -0.4;
-  wall.container_center_y = -0.4;
-  wall.container_width = 2.2;
+  wall.scene_y_shift = 0.0;
+  wall.container_center_y = 0.0;
+  wall.container_width = 1.8;
   wall.container_floor_z = 0.0;
-  const auto obstacles = make_box_wall_obstacles_for_opening(6, 8, wall);
+  const auto obstacles = make_box_wall_obstacles_for_opening(4, 6, wall);
   for (const auto& obstacle : obstacles) {
     if (obstacle.id.find("_below") != std::string::npos) {
       std::cerr << "unexpected below-wall obstacle: " << obstacle.id << std::endl;
@@ -66,16 +66,22 @@ int main()
   }
   assert(found_rear_guard);
 
-  const auto left_box = make_attached_box_spec("left", 6, false, CarriedBoxGeometryConfig{});
-  assert(left_box.id == "carried_left_box_6");
+  const auto left_box = make_attached_box_spec("left", 4, false, CarriedBoxGeometryConfig{});
+  assert(left_box.id == "carried_left_box_4");
   assert(left_box.link_name == "left_tool0");
-  assert(left_box.size[0] > 0.0);
+  assert(left_box.size[0] == CarriedBoxGeometryConfig{}.carried_box_height);
+  assert(left_box.size[1] == CarriedBoxGeometryConfig{}.carried_box_width);
+  assert(left_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_depth);
+  assert(std::abs(
+    left_box.center_in_link[1] + CarriedBoxGeometryConfig{}.grasp_lateral_offset) < 1e-9);
   assert(left_box.center_in_link[2] > 0.0);
 
-  const auto top_box = make_attached_box_spec("left", 16, true, CarriedBoxGeometryConfig{});
-  assert(top_box.id == "carried_left_box_16");
+  const auto top_box = make_attached_box_spec("left", 10, true, CarriedBoxGeometryConfig{});
+  assert(top_box.id == "carried_left_box_10");
   assert(top_box.link_name == "left_tool0");
   assert(top_box.size[2] == CarriedBoxGeometryConfig{}.carried_box_height);
+  assert(std::abs(
+    top_box.center_in_link[1] + CarriedBoxGeometryConfig{}.grasp_lateral_offset) < 1e-9);
   assert(top_box.center_in_link[2] > 0.0);
 
   Eigen::Isometry3d rotated_box_transform = Eigen::Isometry3d::Identity();
@@ -101,66 +107,66 @@ int main()
 
   std::string reason;
   reason.clear();
-  const AxisAlignedBox source_box{{0.15, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  const AxisAlignedBox source_box{{0.15, 0.0, 0.25}, {0.3, 0.4, 0.5}};
   assert(!carried_box_detached_from_source_xz(
     source_box, source_box, 0.03, "carried_box", &reason));
   assert(reason.find("x-z projection still overlaps source box") != std::string::npos);
 
   reason.clear();
-  const AxisAlignedBox retreated_box{{-0.18, 0.0, 0.2}, {0.3, 0.4, 0.4}};
+  const AxisAlignedBox retreated_box{{-0.18, 0.0, 0.25}, {0.3, 0.4, 0.5}};
   assert(carried_box_detached_from_source_xz(
     retreated_box, source_box, 0.03, "carried_box", &reason));
   assert(reason.empty());
 
-  const AxisAlignedBox lifted_box{{0.15, 0.0, 0.63}, {0.3, 0.4, 0.4}};
+  const AxisAlignedBox lifted_box{{0.15, 0.0, 0.78}, {0.3, 0.4, 0.5}};
   assert(carried_box_detached_from_source_xz(
     lifted_box, source_box, 0.03, "carried_box", &reason));
 
   // 不等高侧吸：矮侧不仅要离开自己的原始侧面投影，还要离开正上方一层箱子的侧面投影。
-  // box 11 的中心 z=1.0，正上方 box 6 的中心 z=1.4。
+  // box 7 的中心 z=0.75，正上方 box 4 的中心 z=1.25。
   const AxisAlignedBox lower_front_box_lifted_into_upper_layer{
-    {0.15, 0.0, 1.44}, {0.3, 0.4, 0.4}};
+    {0.15, 0.0, 1.29}, {0.3, 0.4, 0.5}};
   reason.clear();
   assert(carried_box_detached_from_source_layers_xz(
     lower_front_box_lifted_into_upper_layer,
-    11,
+    7,
     0.0,
     0.0,
     0.4,
-    0.4,
+    0.5,
     0.3,
     0.03,
     1,
-    "carried_box_11",
+    "carried_box_7",
     &reason));
   reason.clear();
   assert(!carried_box_detached_from_source_layers_xz(
     lower_front_box_lifted_into_upper_layer,
-    11,
+    7,
     0.0,
     0.0,
     0.4,
-    0.4,
+    0.5,
     0.3,
     0.03,
     2,
-    "carried_box_11",
+    "carried_box_7",
     &reason));
-  assert(reason.find("source layer box 6") != std::string::npos);
+  assert(reason.find("source layer box 4") != std::string::npos);
 
-  const AxisAlignedBox lower_front_box_retreated{{-0.18, 0.0, 1.0}, {0.3, 0.4, 0.4}};
+  const AxisAlignedBox lower_front_box_retreated{{-0.18, 0.0, 0.75}, {0.3, 0.4, 0.5}};
   reason.clear();
   assert(carried_box_detached_from_source_layers_xz(
     lower_front_box_retreated,
-    11,
+    7,
     0.0,
     0.0,
     0.4,
-    0.4,
+    0.5,
     0.3,
     0.03,
     2,
-    "carried_box_11",
+    "carried_box_7",
     &reason));
 
   reason.clear();
@@ -178,10 +184,10 @@ int main()
   assert(reason.empty());
 
   const StaticBoxObstacle rear_guard{
-    "box_wall_L6_R8_rear_guard", {0.5, 0.0, 0.0}, {0.02, 2.2, 2.4}};
+    "box_wall_L4_R6_rear_guard", {0.5, 0.0, 0.0}, {0.02, 1.5, 2.0}};
   reason.clear();
   assert(!carried_box_clear_rear_guards(a, "carried_box", {static_obstacle, rear_guard}, &reason));
-  assert(reason == "carried_box overlaps box_wall_L6_R8_rear_guard");
+  assert(reason == "carried_box overlaps box_wall_L4_R6_rear_guard");
 
   reason.clear();
   assert(carried_box_clear_rear_guards(c, "carried_box", {static_obstacle, rear_guard}, &reason));

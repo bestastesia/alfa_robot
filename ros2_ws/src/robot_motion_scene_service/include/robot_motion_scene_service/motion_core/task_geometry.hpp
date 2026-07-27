@@ -9,6 +9,15 @@
 namespace alfa_robot::motion
 {
 
+inline constexpr int kBoxStackColumnCount = 3;
+inline constexpr int kBoxStackRowCount = 5;
+inline constexpr int kBoxStackBoxCount = kBoxStackColumnCount * kBoxStackRowCount;
+inline constexpr double kBoxDepth = 0.3;
+inline constexpr double kBoxWidth = 0.5;
+inline constexpr double kBoxHeight = 0.4;
+inline constexpr double kOuterBoxGraspTargetY = 0.50;
+inline constexpr double kOuterBoxGraspLateralOffset = kBoxWidth - kOuterBoxGraspTargetY;
+
 struct BoxSpec
 {
   int id = 0;
@@ -70,6 +79,10 @@ bool aabb_overlaps_oriented_box(const AxisAlignedBox& aabb, const OrientedBox& o
 std::string trim_copy(std::string value);
 
 std::map<int, BoxSpec> make_boxes(double front_x, double y_shift = 0.0);
+
+int box_column_from_left(int box_id);
+
+int box_row_from_top(int box_id);
 
 std::vector<std::pair<int, int>> parse_box_pair_list(const std::string& value);
 

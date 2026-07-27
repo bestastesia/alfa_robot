@@ -696,7 +696,7 @@
   <joint name="left_tool0_fixed" type="fixed">
     <parent link="left_joint6"/>
     <child link="left_tool0"/>
-    <origin xyz="0 0 0.209" rpy="0 0 0"/>
+    <origin xyz="0 0 0.259" rpy="0 0 0"/>
   </joint>
 
   <link name="right_tool0">
@@ -709,7 +709,7 @@
   <joint name="right_tool0_fixed" type="fixed">
     <parent link="right_joint6"/>
     <child link="right_tool0"/>
-    <origin xyz="0 0 0.209" rpy="0 0 0"/>
+    <origin xyz="0 0 0.259" rpy="0 0 0"/>
   </joint>
 
   <xacro:alfa_robot_ros2_control

@@ -57,11 +57,11 @@ struct UpdownAwareIkConfig
   // 采样阶段即限死，不生成越界候选。
   double h_lower = 0.0;
   double h_upper = 0.7;
-  bool full_h_range_scan = false;
+  bool full_h_range_scan = true;
 
   HSearchMode h_search_mode = HSearchMode::FixedDiscrete;
   double h_search_margin = 0.1;
-  double h_step = 0.1;
+  double h_step = 0.01;
   std::size_t h_candidate_count = 5;
   double max_updown_delta = std::numeric_limits<double>::infinity();
 

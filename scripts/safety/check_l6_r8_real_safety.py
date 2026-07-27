@@ -19,7 +19,7 @@ MOVE_ALL_COMPAT = ROOT / "scripts/lhy_dev/run_move_all_joints_abs.sh"
 EXPECTED_LEFT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_RIGHT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_PLACE_POSE = "[0.0,-55.0,-50.0,-60.0,0.0,0.0]"
-EXPECTED_PLACE_UPDOWN = "0.20"
+EXPECTED_PLACE_UPDOWN = "0.10"
 EXPECTED_SIGNS = {
     "left_joint1": 1.0,
     "left_joint2": 1.0,
@@ -153,16 +153,16 @@ def main() -> int:
     planner_text = PLANNER.read_text()
     if 'get_or_declare_parameter<int>("loaded_preferred_pose_index", 0)' not in planner_text:
         fail("planner node default loaded_preferred_pose_index must be 0")
-    if 'get_or_declare_parameter<double>("extract_monitor_place_updown", 0.20)' not in planner_text:
-        fail("planner default place updown must remain 0.20m")
+    if 'get_or_declare_parameter<double>("extract_monitor_place_updown", 0.10)' not in planner_text:
+        fail("planner default place updown must remain 0.10m")
     if planner_text.count(EXPECTED_PLACE_POSE) < 2:
         fail("planner default left/right place poses changed unexpectedly")
 
     launch_text = LAUNCH.read_text()
     if 'DeclareLaunchArgument("loaded_preferred_pose_index", default_value="0")' not in launch_text:
         fail("planner launch default loaded_preferred_pose_index must be 0")
-    if 'DeclareLaunchArgument("extract_monitor_place_updown", default_value="0.20")' not in launch_text:
-        fail("planner launch default place updown must remain 0.20m")
+    if 'DeclareLaunchArgument("extract_monitor_place_updown", default_value="0.10")' not in launch_text:
+        fail("planner launch default place updown must remain 0.10m")
 
     doc_text = DOC.read_text() if DOC.exists() else ""
     for required in [

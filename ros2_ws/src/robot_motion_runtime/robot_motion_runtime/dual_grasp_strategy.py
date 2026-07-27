@@ -18,6 +18,11 @@ MIXED_DEGRADED_TO_FRONT_RIGHT_HIGH = 9
 
 FRONT = "front"
 TOP_SUCTION = "top_suction"
+BOX_DEPTH_M = 0.3
+BOX_WIDTH_M = 0.5
+BOX_HEIGHT_M = 0.4
+OUTER_BOX_GRASP_TARGET_Y_M = 0.50
+OUTER_BOX_GRASP_LATERAL_OFFSET_M = BOX_WIDTH_M - OUTER_BOX_GRASP_TARGET_Y_M
 
 
 @dataclass(frozen=True)
@@ -211,8 +216,8 @@ def tool_z_axis(pose: Pose6DValue) -> tuple[float, float, float]:
 def degrade_top_target_to_front(
     pose: Pose6DValue,
     *,
-    box_depth_m: float = 0.3,
-    box_height_m: float = 0.4,
+    box_depth_m: float = BOX_DEPTH_M,
+    box_height_m: float = BOX_HEIGHT_M,
 ) -> Pose6DValue:
     top_normal = tool_z_axis(pose)
     box_center = (

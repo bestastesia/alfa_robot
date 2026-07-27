@@ -93,7 +93,7 @@ std::string make_test_urdf()
          << "<joint name=\"" << side << "_tool0_fixed\" type=\"fixed\">"
          << "<parent link=\"" << parent << "\"/>"
          << "<child link=\"" << side << "_tool0\"/>"
-         << "<origin xyz=\"0 0 0.209\" rpy=\"0 0 0\"/>"
+         << "<origin xyz=\"0 0 0.259\" rpy=\"0 0 0\"/>"
          << "</joint>\n";
   }
 

@@ -28,7 +28,7 @@ constexpr double kJoint5Y = 0.076;
 constexpr double kJoint5ZAbs = 0.058;
 constexpr double kJoint6X = 0.0825;
 constexpr double kJoint6Z = -0.058;
-constexpr double kTool0Z = 0.209;
+constexpr double kTool0Z = 0.259;
 
 double sideSign(ArmSide side)
 {

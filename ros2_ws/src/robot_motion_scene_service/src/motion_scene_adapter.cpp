@@ -27,6 +27,12 @@ void MotionSceneAdapter::updateContainerGeometry(ContainerGeometryConfig contain
   config_.container = std::move(container);
 }
 
+void MotionSceneAdapter::updateBoxWallGeometry(BoxWallGeometryConfig box_wall)
+{
+  config_.box_wall = std::move(box_wall);
+  current_static_box_obstacles_.clear();
+}
+
 moveit_msgs::msg::CollisionObject MotionSceneAdapter::makeCollisionObject(
   const std::string& id,
   const std::array<double, 3>& center,

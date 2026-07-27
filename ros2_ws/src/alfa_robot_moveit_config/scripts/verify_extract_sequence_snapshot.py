@@ -16,12 +16,12 @@ except ImportError as exc:
         "无法导入 alfa_robot_rerun；请先 source ros2_ws/install/setup.bash"
     ) from exc
 
-BOX_SIZE = np.array([0.3, 0.4, 0.4], dtype=float)
+BOX_SIZE = np.array([0.3, 0.4, 0.5], dtype=float)
 
 
 def box_center_z(box_id: int) -> float:
-    row_from_top = (box_id - 1) // 5
-    return 0.2 + 0.4 * (4 - row_from_top)
+    row_from_top = (box_id - 1) // 3
+    return (4 - row_from_top - 0.5) * 0.5
 
 
 def transformed_box_aabb(

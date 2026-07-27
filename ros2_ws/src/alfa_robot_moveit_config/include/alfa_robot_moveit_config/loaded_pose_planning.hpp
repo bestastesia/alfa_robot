@@ -44,6 +44,7 @@ struct LoadedPoseSelectorConfig
   size_t left_preferred_index = 0;
   size_t right_preferred_index = 0;
   double target_updown = 0.3;
+  bool preserve_lower_updown = false;
   const moveit::core::JointModelGroup* enforce_bounds_group = nullptr;
 };
 
@@ -171,7 +172,7 @@ struct LoadedPosePlannerConfig
   bool lateral_shift_enabled = false;
   double lateral_shift_distance = 0.4;
   double lateral_shift_step = 0.04;
-  int lateral_shift_column = 3;
+  int lateral_shift_column = 2;
   int pre_loaded_lower_left_box_id = 0;
   int pre_loaded_lower_right_box_id = 0;
   double pre_loaded_lower_updown_delta = 0.0;

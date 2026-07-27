@@ -109,5 +109,17 @@ int main()
   assert(std::abs(goal.getVariablePosition("left_joint1") - 1.0) < 1e-9);
   assert(std::abs(goal.getVariablePosition("right_joint1") + 1.0) < 1e-9);
 
+  config.target_updown = 0.45;
+  config.preserve_lower_updown = true;
+  LoadedPoseSelector capped_selector(config);
+  state->setVariablePosition("updown", 0.6);
+  state->update();
+  const auto capped_goal = capped_selector.makeGoalState(*state);
+  assert(std::abs(capped_goal.getVariablePosition("updown") - 0.45) < 1e-9);
+  state->setVariablePosition("updown", 0.35);
+  state->update();
+  const auto preserved_goal = capped_selector.makeGoalState(*state);
+  assert(std::abs(preserved_goal.getVariablePosition("updown") - 0.35) < 1e-9);
+
   return 0;
 }

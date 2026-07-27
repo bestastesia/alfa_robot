@@ -57,6 +57,10 @@ public:
   // 调用后需要重新调 applyContainerObstacles() 才会真正写入 planning scene。
   void updateContainerGeometry(ContainerGeometryConfig container);
 
+  // 更新箱墙几何，并使当前 opening 缓存失效。随后调用
+  // setStaticBoxWallOpening() 会删除旧碰撞体并按新几何重建。
+  void updateBoxWallGeometry(BoxWallGeometryConfig box_wall);
+
   bool applyContainerObstacles();
 
   bool setStaticBoxWallOpening(int left_box_id, int right_box_id);
