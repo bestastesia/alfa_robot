@@ -1,0 +1,25 @@
+# Current dual_arm_planner defaults for pair L1/R3:
+# box_front_x=0.925, scene_y_shift=-0.4, container floor_z=0.0.
+# Poses are [x, y, z, qw, qx, qy, qz] in the MoveIt/curobo world frame.
+cuboid:
+  container_left_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, 0.71, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_right_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, -1.51, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_ceiling:
+    dims: [4.0, 2.24, 0.02]
+    pose: [0.8, -0.4, 2.41, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R3_left_side:
+    dims: [0.3, 0.098, 0.4]
+    pose: [1.075, 0.651, 1.8, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R3_between:
+    dims: [0.3, 0.396, 0.4]
+    pose: [1.075, 0.0, 1.8, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R3_right_side:
+    dims: [0.3, 0.898, 0.4]
+    pose: [1.075, -1.051, 1.8, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R3_below:
+    dims: [0.3, 2.2, 1.598]
+    pose: [1.075, -0.4, 0.799, 1.0, 0.0, 0.0, 0.0]

@@ -336,7 +336,12 @@ class FlowLogger:
             self.helpers.log_robot_state(self.robot, joints, self.args.robot_path)
             stage_success = bool(
                 stage.get("extra", {}).get("valid", False)
-                and stage.get("extra", {}).get("stage_kind") == "post_extract_loaded_plan"
+                and stage.get("extra", {}).get("stage_kind")
+                in {
+                    "post_extract_loaded_plan",
+                    "monitor_loaded_plan_attempt_replay",
+                    "diagnostic_shortcut_local_curobo_repair",
+                }
             )
             log_attached_boxes(self.robot, joints, stage.get("attached_boxes", []), success=stage_success)
             log_stage_text(stage, point_index, len(points))

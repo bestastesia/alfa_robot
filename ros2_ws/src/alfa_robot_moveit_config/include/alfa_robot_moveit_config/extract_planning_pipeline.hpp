@@ -120,6 +120,7 @@ struct ExtractRolloutTiming
   double right_final_pitch_deg = 0.0;
   std::string failure_reason;
   std::string loaded_plan_failure_reason;
+  nlohmann::json loaded_local_repair_diagnostics = nlohmann::json::object();
   moveit::core::RobotStatePtr final_state;
   std::vector<nlohmann::json> rollout_records;
   moveit::planning_interface::MoveGroupInterface::Plan loaded_plan;

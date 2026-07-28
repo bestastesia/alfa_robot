@@ -1636,3 +1636,9 @@
 - 改了哪里：统一任务入口、运行时策略和场景核心的横向目标；末端现在位于箱体横向中心，因此附着箱相对tool的横向偏移同步由0.05m改为0m，避免附着箱被错误外移后与箱墙立即碰撞。
 - 验证结果：场景、MoveIt规划和runtime共52项测试通过；常驻planner严格碰撞复跑A1~A5、B1~B5仍为10/10成功，算法内部平均687.3ms/任务。单次测试数据已按仓库清理要求删除，结论保留在本日志。
 - 留给下个 AI：旧的`20260727_161515`结果0/10是附着箱仍保留5cm横向偏移造成的合同错位，不应作为1m间距的真实成功率结论。
+
+## 2026-07-28 运控 / Codex / local-cuRobo 选择性移植到 feature 分支
+- 做了什么：以 `origin/v5_dev@c47fcc7` 为基线，把负重 shortcut 碰撞后的局部 cuRobo 13轴联合修补选择性合入 `feature/local_curobo`；保留最新分支的取消、候选选择、场景几何、local-RRT/OMPL fallback 和最终 PlanningScene/FCL，cuRobo 默认关闭。服务端新增对 interpolated trajectory 的逐点 cuRobo 可行性检查，C++ 端继续做局部和最终整轨迹 FCL。
+- 改了哪里：新增 `PlanJointSegment.srv`、可选 `robot_motion_curobo` 常驻服务包和 C++ service adapter；扩展 transition/loaded planner、节点参数、阶段 JSON/Rerun、mock/CPU 测试及 `docs/运控/LOCAL_CUROBO_VALIDATION_20260724.md`。当前 ROS 权威关节名使用 `left_joint*/right_joint*`，backend 仅在旧 cuRobo YAML 边界兼容旧名称。
+- 验证结果：8个相关包 Release 构建通过；`robot_motion_curobo` 与 `alfa_robot_moveit_config` 共44项 colcon 测试零失败，源码 Python 测试26/26。新增插值门禁后的 RTX 3060 真 GPU smoke 3/3成功，wall P50/P95/P99=231.150/243.758/244.879ms，仍低于400ms目标。真实 PlanningScene 诊断确认不安全 cuRobo patch 会被 FCL 拒绝，local-RRT fallback 后最终FCL通过。
+- 留给下个 AI：仓库内 `scene_*_current.yml` 是旧验证几何快照，最新 launch 默认容器/后挡墙不同，不能只匹配 scene id；最新默认 L1/R3 在 loaded 前即因抽离候选失败，尚缺一组“默认完整流程中 cuRobo patch 直接通过生产 FCL”的新证据。提交时只暂存 local-cuRobo 清单，不要使用 `git add .`，也不要提交 `data/`、`build/`、`install/`、`log/`。

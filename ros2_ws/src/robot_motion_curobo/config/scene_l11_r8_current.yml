@@ -1,0 +1,28 @@
+# Current dual_arm_planner geometry for mixed-grasp pair L11/R8.
+# L11 uses top suction and R8 uses front suction. extract_sequence_rerun moves
+# the vehicle 0.30 m forward for any top-suction pair, so effective
+# box_front_x=0.625 with scene_y_shift=-0.4.
+# Generated from make_box_wall_obstacles_for_opening(11, 8):
+# L11 center=(0.625, 0.4, 1.0), R8 center=(0.625, -0.4, 1.4).
+cuboid:
+  container_left_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, 0.71, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_right_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, -1.51, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_ceiling:
+    dims: [4.0, 2.24, 0.02]
+    pose: [0.8, -0.4, 2.41, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L11_R8_left_side:
+    dims: [0.3, 0.098, 0.8]
+    pose: [0.775, 0.651, 1.2, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L11_R8_between:
+    dims: [0.3, 0.396, 0.8]
+    pose: [0.775, 0.0, 1.2, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L11_R8_right_side:
+    dims: [0.3, 0.898, 0.8]
+    pose: [0.775, -1.051, 1.2, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L11_R8_below:
+    dims: [0.3, 2.2, 0.798]
+    pose: [0.775, -0.4, 0.399, 1.0, 0.0, 0.0, 0.0]

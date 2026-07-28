@@ -9,6 +9,7 @@
  */
 
 #include "alfa_robot_moveit_config/box_stack_flow_orchestrator.hpp"
+#include "alfa_robot_moveit_config/curobo_segment_client.hpp"
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 #include "alfa_robot_moveit_config/extract_demo_orchestrator.hpp"
 #include "alfa_robot_moveit_config/extract_monitor_json.hpp"
@@ -46,6 +47,7 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include "alfa_robot_moveit_config/srv/configure_extract_monitor.hpp"
+#include "robot_motion_interfaces/srv/plan_joint_segment.hpp"
 
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/buffer.h>
@@ -78,6 +80,8 @@ namespace
 {
 
 using alfa_robot::motion::AttachedBoxSpec;
+using alfa_robot::motion::CuroboSegmentClient;
+using alfa_robot::motion::CuroboSegmentClientConfig;
 using alfa_robot::motion::ArmExtractPath;
 using alfa_robot::motion::ExtractBenchmarkRunner;
 using alfa_robot::motion::ExtractBenchmarkRunnerCallbacks;
@@ -575,10 +579,51 @@ public:
       get_or_declare_parameter<bool>("extract_loaded_use_direct_pipeline", false);
     extract_loaded_planning_mode_ =
       get_or_declare_parameter<std::string>("extract_loaded_planning_mode", "rrt");
+    extract_local_repair_backend_ =
+      get_or_declare_parameter<std::string>("extract_local_repair_backend", "curobo");
+    extract_local_curobo_enabled_ =
+      get_or_declare_parameter<bool>("extract_local_curobo_enabled", false);
+    extract_local_curobo_coupled_13d_ =
+      get_or_declare_parameter<bool>("extract_local_curobo_coupled_13d", true);
+    extract_local_curobo_service_ = get_or_declare_parameter<std::string>(
+      "extract_local_curobo_service", "/robot_motion/plan_joint_segment");
+    extract_local_curobo_scene_id_ =
+      get_or_declare_parameter<std::string>("extract_local_curobo_scene_id", "");
+    extract_local_curobo_timeout_s_ = std::max(
+      0.001, get_or_declare_parameter<double>("extract_local_curobo_timeout_s", 0.5));
+    extract_local_curobo_window_points_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("extract_local_curobo_window_points", 8)));
+    extract_local_curobo_boundary_backoff_points_ = static_cast<size_t>(std::max(
+      0, get_or_declare_parameter<int>("extract_local_curobo_boundary_backoff_points", 5)));
+    extract_local_curobo_max_segments_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("extract_local_curobo_max_segments", 4)));
+    extract_local_curobo_max_calls_per_plan_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("extract_local_curobo_max_calls_per_plan", 8)));
+    extract_local_curobo_max_attempts_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("extract_local_curobo_max_attempts", 3)));
+    extract_local_curobo_force_graph_ =
+      get_or_declare_parameter<bool>("extract_local_curobo_force_graph", true);
+    extract_local_curobo_fallback_to_rrt_ =
+      get_or_declare_parameter<bool>("extract_local_curobo_fallback_to_rrt", true);
+    if (extract_local_repair_backend_ != "curobo" && extract_local_repair_backend_ != "rrt") {
+      throw std::runtime_error(
+        "Unsupported extract_local_repair_backend '" + extract_local_repair_backend_ +
+        "'; expected 'curobo' or 'rrt'");
+    }
+    const bool local_rrt_selected =
+      extract_loaded_planning_mode_ == "shortcut" && extract_local_repair_backend_ == "rrt";
+    const bool local_curobo_needs_rrt_fallback =
+      extract_loaded_planning_mode_ == "shortcut" && extract_local_curobo_enabled_ &&
+      extract_local_repair_backend_ == "curobo" && extract_local_curobo_fallback_to_rrt_;
+    if (local_rrt_selected || local_curobo_needs_rrt_fallback) {
+      extract_loaded_use_direct_pipeline_ = true;
+    }
     extract_loaded_parallel_workers_ = static_cast<size_t>(
       std::max(1, get_or_declare_parameter<int>("extract_loaded_parallel_workers", 1)));
     extract_loaded_candidate_limit_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("extract_loaded_candidate_limit", 0)));
+    extract_loaded_candidate_order_filter_ =
+      get_or_declare_parameter<int>("extract_loaded_candidate_order_filter", -1);
     extract_loaded_sort_by_pose_distance_ =
       get_or_declare_parameter<bool>("extract_loaded_sort_by_pose_distance", false);
     extract_loaded_stop_on_first_success_ =
@@ -727,6 +772,28 @@ public:
         extract_loaded_planning_time_);
     }
 
+    if (extract_local_curobo_enabled_ && extract_local_repair_backend_ == "curobo") {
+      CuroboSegmentClientConfig client_config;
+      client_config.service_name = extract_local_curobo_service_;
+      client_config.scene_id = extract_local_curobo_scene_id_;
+      client_config.frame_id = ik_config_.base_frame;
+      client_config.joint_group = extract_loaded_planning_group_;
+      client_config.timeout_s = extract_local_curobo_timeout_s_;
+      client_config.max_attempts = extract_local_curobo_max_attempts_;
+      client_config.force_graph = extract_local_curobo_force_graph_;
+      curobo_segment_client_ = std::make_unique<CuroboSegmentClient>(*this, client_config);
+      RCLCPP_INFO(
+        get_logger(),
+        "Local cuRobo configured: service=%s mode=%s timeout=%.3fs window=%zu "
+        "max_segments=%zu max_calls=%zu fallback=%s",
+        extract_local_curobo_service_.c_str(),
+        extract_local_curobo_coupled_13d_ ? "coupled_13d" : "split_parallel",
+        extract_local_curobo_timeout_s_,
+        extract_local_curobo_window_points_, extract_local_curobo_max_segments_,
+        extract_local_curobo_max_calls_per_plan_,
+        extract_local_curobo_fallback_to_rrt_ ? "local_rrt" : "disabled");
+    }
+
     scene_adapter_ = std::make_unique<MotionSceneAdapter>(motion_scene_adapter_config());
     extract_motion_planner_ = std::make_unique<ExtractMotionPlanner>(extract_motion_planner_config());
     extract_candidate_scorer_ = std::make_unique<ExtractCandidateScorer>(extract_candidate_scorer_config());
@@ -828,6 +895,13 @@ public:
         const bool ok = configure_extract_monitor_task(*request, &message);
         response->success = ok;
         response->message = ok ? message : (message.empty() ? last_error_ : message);
+      });
+    local_segment_repair_srv_ = create_service<robot_motion_interfaces::srv::PlanJointSegment>(
+      "~/plan_local_segment_repair",
+      [this](
+        const std::shared_ptr<robot_motion_interfaces::srv::PlanJointSegment::Request> request,
+        std::shared_ptr<robot_motion_interfaces::srv::PlanJointSegment::Response> response) {
+        handle_local_segment_repair(*request, response.get());
       });
 
     RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
@@ -1460,10 +1534,184 @@ private:
         record_stage(stage_name, plan, start_state, goal_state, target_names, extra);
       }
     };
+    config.local_repair_backend = extract_local_repair_backend_;
+    config.local_curobo_coupled_13d = extract_local_curobo_coupled_13d_;
+    config.local_repair_window_points = extract_local_curobo_window_points_;
+    config.local_repair_boundary_backoff_points = extract_local_curobo_boundary_backoff_points_;
+    config.local_repair_max_segments = extract_local_curobo_max_segments_;
+    config.local_repair_max_calls = extract_local_curobo_max_calls_per_plan_;
+    config.local_repair_fallback_to_rrt = extract_local_curobo_fallback_to_rrt_;
+    if (extract_local_curobo_enabled_ && extract_local_repair_backend_ == "curobo" &&
+        curobo_segment_client_) {
+      config.local_repair_plan_callback = [this](
+        const std::string& stage_name,
+        const moveit::core::RobotState& start_state,
+        const moveit::core::RobotState& goal_state,
+        const std::vector<AttachedBoxSpec>& attached_boxes,
+        moveit::planning_interface::MoveGroupInterface::Plan* plan,
+        alfa_robot::motion::ExtractMonitorLocalPlanMetrics* metrics,
+        std::string* reason) {
+        return curobo_segment_client_->plan(
+          stage_name, start_state, goal_state, attached_boxes, plan, metrics, reason);
+      };
+    }
     config.top_suction_height_mismatch_callback = [this]() {
         return extract_monitor_top_height_mismatch_;
       };
     return config;
+  }
+
+  bool explicit_segment_state(
+    const sensor_msgs::msg::JointState& message,
+    moveit::core::RobotState* state,
+    std::string* reason) const
+  {
+    const auto names = dual_arm_with_updown_joint_names();
+    if (!state || message.name.size() != names.size() ||
+        message.position.size() != message.name.size()) {
+      if (reason) *reason = "explicit_segment_joint_state_size_mismatch";
+      return false;
+    }
+    std::map<std::string, double> values;
+    for (size_t i = 0; i < message.name.size(); ++i) {
+      if (!std::isfinite(message.position[i]) ||
+          !values.emplace(message.name[i], message.position[i]).second) {
+        if (reason) *reason = "explicit_segment_invalid_or_duplicate_joint";
+        return false;
+      }
+    }
+    state->setToDefaultValues();
+    for (const auto& name : names) {
+      const auto it = values.find(name);
+      if (it == values.end()) {
+        if (reason) *reason = "explicit_segment_missing_joint:" + name;
+        return false;
+      }
+      state->setVariablePosition(name, it->second);
+    }
+    state->update(true);
+    const auto* group = robot_model_->getJointModelGroup(extract_loaded_planning_group_);
+    if (!group || !state->satisfiesBounds(group, 1e-6)) {
+      if (reason) *reason = "explicit_segment_joint_bounds_violation";
+      return false;
+    }
+    return true;
+  }
+
+  static std::vector<AttachedBoxSpec> explicit_segment_boxes(
+    const std::vector<robot_motion_interfaces::msg::AttachedBox>& messages)
+  {
+    std::vector<AttachedBoxSpec> boxes;
+    boxes.reserve(messages.size());
+    for (const auto& message : messages) {
+      boxes.push_back({
+        message.id,
+        message.link_name,
+        {message.center_in_link.position.x,
+         message.center_in_link.position.y,
+         message.center_in_link.position.z},
+        {message.size.x, message.size.y, message.size.z},
+      });
+    }
+    return boxes;
+  }
+
+  void handle_local_segment_repair(
+    const robot_motion_interfaces::srv::PlanJointSegment::Request& request,
+    robot_motion_interfaces::srv::PlanJointSegment::Response* response)
+  {
+    const auto started = std::chrono::steady_clock::now();
+    if (!response) return;
+    const auto finish = [&]() {
+      response->total_time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+    };
+
+    moveit::core::RobotState start(robot_model_);
+    moveit::core::RobotState goal(robot_model_);
+    std::string reason;
+    if (!explicit_segment_state(request.start_state, &start, &reason) ||
+        !explicit_segment_state(request.goal_state, &goal, &reason)) {
+      response->message = reason;
+      finish();
+      return;
+    }
+    const auto boxes = explicit_segment_boxes(request.attached_boxes);
+    if (boxes.size() != 2) {
+      response->message = "explicit_segment_requires_two_payloads";
+      finish();
+      return;
+    }
+
+    ExtractMonitorTransitionPlanner repair_planner;
+    repair_planner.make_interpolated_plan = [this](
+      const auto& segment_start, const auto& segment_goal, double duration_s) {
+      return make_interpolated_joint_plan(segment_start, segment_goal, duration_s);
+    };
+    repair_planner.densify_plan = [this](const auto& candidate) {
+      return densify_joint_plan(candidate, 5.0 * M_PI / 180.0, extract_step_x_);
+    };
+    repair_planner.validate_plan = [this, &boxes](
+      const auto& candidate, const auto& segment_start, std::string* validation_reason) {
+      return planned_trajectory_clear_in_full_scene(
+        candidate, segment_start, boxes, validation_reason);
+    };
+    repair_planner.preferred_local_backend = "curobo";
+    repair_planner.local_window_points = extract_local_curobo_window_points_;
+    repair_planner.local_boundary_backoff_points = extract_local_curobo_boundary_backoff_points_;
+    repair_planner.local_max_segments = extract_local_curobo_max_segments_;
+    repair_planner.local_max_calls = extract_local_curobo_max_calls_per_plan_;
+    repair_planner.fallback_to_direct = extract_local_curobo_fallback_to_rrt_;
+    const std::string stage_name = request.context.request_id.empty()
+      ? "explicit_local_segment_repair"
+      : request.context.request_id;
+    if (curobo_segment_client_) {
+      repair_planner.preferred_local_plan = [this, &boxes, &stage_name](
+        const auto& segment_start, const auto& segment_goal, auto* plan,
+        auto* metrics, std::string* failure_reason) {
+        return curobo_segment_client_->plan(
+          stage_name + "/shortcut_local_curobo_patch",
+          segment_start, segment_goal, boxes, plan, metrics, failure_reason);
+      };
+    }
+    repair_planner.direct_plan = [this, &boxes, &stage_name](
+      const auto& segment_start, const auto& segment_goal, auto* plan,
+      std::string* failure_reason) {
+      return plan_loaded_pose_with_direct_pipeline(
+        stage_name + "/shortcut_local_rrt_patch",
+        segment_start, segment_goal, boxes, plan, failure_reason);
+    };
+    repair_planner.shortcut_plan = [this, &boxes](
+      const auto& candidate, const auto& segment_start, std::string* shortcut_reason) {
+      return shortcut_joint_plan(candidate, segment_start, boxes, shortcut_reason);
+    };
+
+    const auto result = repair_planner.plan(start, goal);
+    response->success = result.valid;
+    response->planner_method = result.method;
+    response->solve_time_ms = result.local_solve_ms;
+    response->queue_time_ms = result.local_queue_ms;
+    response->endpoint_check_time_ms = result.local_endpoint_check_ms;
+    response->graph_time_ms = result.local_graph_ms;
+    response->trajopt_time_ms = result.local_trajopt_ms;
+    response->interpolation_time_ms = result.local_interpolation_ms;
+    if (result.valid) {
+      response->trajectory = result.plan.trajectory_.joint_trajectory;
+      std::ostringstream message;
+      message << "ok; final_fcl_valid=true"
+              << "; local_curobo_calls=" << result.local_preferred_call_count
+              << "; local_curobo_segments=" << result.local_preferred_segment_count
+              << "; local_rrt_segments=" << result.local_fallback_segment_count
+              << "; fallback_used=" << (result.local_fallback_used ? "true" : "false")
+              << "; conversion_ms=" << result.local_conversion_ms
+              << "; stitch_ms=" << result.local_stitch_ms
+              << "; local_fcl_ms=" << result.local_fcl_validation_ms
+              << "; final_fcl_ms=" << result.final_fcl_validation_ms;
+      response->message = message.str();
+    } else {
+      response->message = result.failure_reason;
+    }
+    finish();
   }
 
   LoadedPoseBatchPlanOptions loaded_pose_batch_plan_options() const
@@ -1472,6 +1720,7 @@ private:
     options.enabled = extract_benchmark_plan_loaded_after_success_;
     options.sort_by_pose_distance = extract_loaded_sort_by_pose_distance_;
     options.stop_on_first_success = extract_loaded_stop_on_first_success_;
+    options.candidate_order_filter = extract_loaded_candidate_order_filter_;
     options.candidate_limit = extract_loaded_candidate_limit_;
     options.parallel_workers = extract_loaded_use_direct_pipeline_ ? extract_loaded_parallel_workers_ : 1;
     return options;
@@ -5909,8 +6158,22 @@ private:
   int extract_loaded_planning_attempts_ = 8;
   bool extract_loaded_use_direct_pipeline_ = false;
   std::string extract_loaded_planning_mode_ = "rrt";
+  std::string extract_local_repair_backend_ = "curobo";
+  bool extract_local_curobo_enabled_ = false;
+  bool extract_local_curobo_coupled_13d_ = true;
+  std::string extract_local_curobo_service_ = "/robot_motion/plan_joint_segment";
+  std::string extract_local_curobo_scene_id_;
+  double extract_local_curobo_timeout_s_ = 0.5;
+  size_t extract_local_curobo_window_points_ = 8;
+  size_t extract_local_curobo_boundary_backoff_points_ = 5;
+  size_t extract_local_curobo_max_segments_ = 4;
+  size_t extract_local_curobo_max_calls_per_plan_ = 8;
+  size_t extract_local_curobo_max_attempts_ = 3;
+  bool extract_local_curobo_force_graph_ = true;
+  bool extract_local_curobo_fallback_to_rrt_ = true;
   size_t extract_loaded_parallel_workers_ = 1;
   size_t extract_loaded_candidate_limit_ = 0;
+  int extract_loaded_candidate_order_filter_ = -1;
   bool extract_loaded_sort_by_pose_distance_ = false;
   bool extract_loaded_stop_on_first_success_ = false;
   double extract_loaded_target_updown_ = 0.3;
@@ -5968,6 +6231,7 @@ private:
   moveit::core::RobotStatePtr last_commanded_state_;
   std::unique_ptr<OptimizedDualIkSolver> optimized_dual_ik_solver_;
   std::unique_ptr<MotionFlowRecorder> recorder_;
+  std::unique_ptr<CuroboSegmentClient> curobo_segment_client_;
 
   ExtractMonitorController extract_monitor_controller_;
   ExtractMonitorState extract_monitor_state_;
@@ -5987,6 +6251,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_next_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
   rclcpp::Service<alfa_robot_moveit_config::srv::ConfigureExtractMonitor>::SharedPtr extract_monitor_config_srv_;
+  rclcpp::Service<robot_motion_interfaces::srv::PlanJointSegment>::SharedPtr local_segment_repair_srv_;
   rclcpp_action::Client<FollowJointTrajectory>::SharedPtr execution_action_client_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;

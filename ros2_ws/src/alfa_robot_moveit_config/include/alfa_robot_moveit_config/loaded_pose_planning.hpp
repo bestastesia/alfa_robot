@@ -25,6 +25,7 @@ namespace alfa_robot::motion
 class MotionSceneAdapter;
 class ExtractCandidateSolver;
 struct ExtractRolloutTiming;
+struct ExtractMonitorLocalPlanMetrics;
 
 struct LoadedPoseSelection
 {
@@ -115,6 +116,7 @@ struct LoadedPosePlanResult
   size_t plan_points = 0;
   double trajectory_joint_distance = std::numeric_limits<double>::infinity();
   std::string failure_reason;
+  nlohmann::json local_repair_diagnostics = nlohmann::json::object();
   LoadedPoseSelection selection;
   moveit::planning_interface::MoveGroupInterface::Plan plan;
   moveit::core::RobotStatePtr start_state;
@@ -127,6 +129,7 @@ struct LoadedPoseBatchPlanOptions
   bool enabled = false;
   bool sort_by_pose_distance = true;
   bool stop_on_first_success = false;
+  int candidate_order_filter = -1;
   size_t candidate_limit = 0;
   size_t parallel_workers = 1;
 };
@@ -159,6 +162,15 @@ using LoadedDirectPlanCallback = std::function<bool(
   moveit::planning_interface::MoveGroupInterface::Plan*,
   std::string*)>;
 
+using LoadedLocalRepairPlanCallback = std::function<bool(
+  const std::string&,
+  const moveit::core::RobotState&,
+  const moveit::core::RobotState&,
+  const std::vector<AttachedBoxSpec>&,
+  moveit::planning_interface::MoveGroupInterface::Plan*,
+  ExtractMonitorLocalPlanMetrics*,
+  std::string*)>;
+
 using LoadedPlanCancellationCheck = std::function<bool()>;
 using LoadedTopSuctionHeightMismatchCallback = std::function<bool()>;
 
@@ -184,6 +196,14 @@ struct LoadedPosePlannerConfig
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
   LoadedDirectPlanCallback direct_plan_callback;
+  LoadedLocalRepairPlanCallback local_repair_plan_callback;
+  std::string local_repair_backend = "rrt";
+  bool local_curobo_coupled_13d = true;
+  size_t local_repair_window_points = 8;
+  size_t local_repair_boundary_backoff_points = 5;
+  size_t local_repair_max_segments = 4;
+  size_t local_repair_max_calls = 8;
+  bool local_repair_fallback_to_rrt = true;
   LoadedTopSuctionHeightMismatchCallback top_suction_height_mismatch_callback;
 };
 

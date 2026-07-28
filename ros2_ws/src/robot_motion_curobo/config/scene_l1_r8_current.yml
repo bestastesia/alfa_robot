@@ -1,0 +1,23 @@
+# Current dual_arm_planner geometry for pair L1/R8.
+cuboid:
+  container_left_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, 0.71, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_right_wall:
+    dims: [4.0, 0.02, 2.4]
+    pose: [0.8, -1.51, 1.2, 1.0, 0.0, 0.0, 0.0]
+  container_ceiling:
+    dims: [4.0, 2.24, 0.02]
+    pose: [0.8, -0.4, 2.41, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R8_left_side:
+    dims: [0.3, 0.098, 0.8]
+    pose: [1.075, 0.651, 1.6, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R8_between:
+    dims: [0.3, 0.396, 0.8]
+    pose: [1.075, 0.0, 1.6, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R8_right_side:
+    dims: [0.3, 0.898, 0.8]
+    pose: [1.075, -1.051, 1.6, 1.0, 0.0, 0.0, 0.0]
+  box_wall_L1_R8_below:
+    dims: [0.3, 2.2, 1.198]
+    pose: [1.075, -0.4, 0.599, 1.0, 0.0, 0.0, 0.0]

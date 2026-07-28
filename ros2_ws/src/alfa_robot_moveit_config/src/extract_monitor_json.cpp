@@ -256,6 +256,7 @@ nlohmann::json extract_monitor_selected_loaded_plan_replay_extra(
     {"loaded_plan_ms", timing.loaded_plan_ms},
     {"loaded_plan_points", timing.loaded_plan_points},
     {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
+    {"local_repair", timing.loaded_local_repair_diagnostics},
     {"moveit_attached_box_count", 2}
   });
   return extra;
@@ -433,7 +434,8 @@ nlohmann::json extract_monitor_timing_json(
       {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
       {"loaded_plan_ms", timing.loaded_plan_ms},
       {"loaded_plan_points", timing.loaded_plan_points},
-      {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance}
+      {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
+      {"local_repair", timing.loaded_local_repair_diagnostics}
     });
     replay_stages.push_back(extract_monitor_stage_json(
       prefix + "/candidate_" + std::to_string(timing.candidate_order) + "/loaded_plan_attempt",
@@ -477,6 +479,7 @@ nlohmann::json extract_monitor_timing_json(
     {"loaded_plan_points", timing.loaded_plan_points},
     {"loaded_plan_trajectory_distance", timing.loaded_plan_trajectory_distance},
     {"loaded_plan_failure_reason", timing.loaded_plan_failure_reason},
+    {"loaded_local_repair_diagnostics", timing.loaded_local_repair_diagnostics},
     {"loaded_pose_distance_sum", timing.loaded_pose_distance_sum},
     {"loaded_pose_distance_l2", timing.loaded_pose_distance_l2},
     {"loaded_pose_max_joint_delta", timing.loaded_pose_max_joint_delta},

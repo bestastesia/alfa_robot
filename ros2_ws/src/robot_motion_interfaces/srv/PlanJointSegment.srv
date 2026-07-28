@@ -1,0 +1,22 @@
+# Plan one explicit 13-DoF joint-space segment.
+# Implementations must use start_state/goal_state exactly as supplied and must
+# reorder them by joint name rather than trusting message array order.
+MotionContext context
+sensor_msgs/JointState start_state
+sensor_msgs/JointState goal_state
+AttachedBox[] attached_boxes
+bool force_graph
+uint32 max_attempts
+float64 timeout_s
+---
+bool success
+string message
+string planner_method
+trajectory_msgs/JointTrajectory trajectory
+float64 total_time_ms
+float64 solve_time_ms
+float64 queue_time_ms
+float64 endpoint_check_time_ms
+float64 graph_time_ms
+float64 trajopt_time_ms
+float64 interpolation_time_ms

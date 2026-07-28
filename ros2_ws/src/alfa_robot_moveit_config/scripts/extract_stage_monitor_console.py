@@ -238,6 +238,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_rrt_goal_limit:={getattr(args, 'extract_rrt_goal_limit', 8)}",
         "extract_benchmark_plan_loaded_after_success:=true",
         f"extract_loaded_candidate_limit:={args.loaded_candidate_limit}",
+        f"extract_loaded_candidate_order_filter:={getattr(args, 'loaded_candidate_order_filter', -1)}",
         f"extract_loaded_sort_by_pose_distance:={str(getattr(args, 'loaded_sort_by_pose_distance', True)).lower()}",
         f"extract_loaded_stop_on_first_success:={str(getattr(args, 'loaded_stop_on_first_success', False)).lower()}",
         f"extract_loaded_lateral_shift_enabled:={str(args.lateral_shift_enabled).lower()}",
@@ -253,6 +254,18 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_loaded_planning_attempts:={args.loaded_planning_attempts}",
         "extract_loaded_use_direct_pipeline:=true",
         f"extract_loaded_planning_mode:={getattr(args, 'loaded_planning_mode', 'rrt')}",
+        f"extract_local_repair_backend:={getattr(args, 'local_repair_backend', 'rrt')}",
+        f"extract_local_curobo_enabled:={str(getattr(args, 'local_curobo_enabled', False)).lower()}",
+        f"extract_local_curobo_coupled_13d:={str(getattr(args, 'local_curobo_coupled_13d', True)).lower()}",
+        f"extract_local_curobo_service:={getattr(args, 'local_curobo_service', '/robot_motion/plan_joint_segment')}",
+        f"extract_local_curobo_timeout_s:={getattr(args, 'local_curobo_timeout', 0.5)}",
+        f"extract_local_curobo_window_points:={getattr(args, 'local_curobo_window_points', 8)}",
+        f"extract_local_curobo_boundary_backoff_points:={getattr(args, 'local_curobo_boundary_backoff_points', 5)}",
+        f"extract_local_curobo_max_segments:={getattr(args, 'local_curobo_max_segments', 4)}",
+        f"extract_local_curobo_max_calls_per_plan:={getattr(args, 'local_curobo_max_calls', 8)}",
+        f"extract_local_curobo_max_attempts:={getattr(args, 'local_curobo_max_attempts', 3)}",
+        f"extract_local_curobo_force_graph:={str(getattr(args, 'local_curobo_force_graph', True)).lower()}",
+        f"extract_local_curobo_fallback_to_rrt:={str(getattr(args, 'local_curobo_fallback_to_rrt', True)).lower()}",
         f"extract_loaded_parallel_workers:={args.loaded_workers}",
         f"loaded_preferred_pose_index:={getattr(args, 'loaded_preferred_pose_index', 0)}",
         f"loaded_left_pose_family_deg:='{getattr(args, 'loaded_left_pose_family_deg', DEFAULT_LOADED_POSE_FAMILY_DEG)}'",
@@ -267,6 +280,9 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
     loaded_planner_id = getattr(args, "loaded_planner_id", "")
     if loaded_planner_id:
         parts.append(f"extract_loaded_planner_id:={loaded_planner_id}")
+    local_curobo_scene_id = getattr(args, "local_curobo_scene_id", "")
+    if local_curobo_scene_id:
+        parts.append(f"extract_local_curobo_scene_id:={local_curobo_scene_id}")
     return " ".join(parts)
 
 

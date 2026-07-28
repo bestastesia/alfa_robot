@@ -65,6 +65,7 @@ target_link_libraries(alfa_robot_motion_core
 add_library(alfa_robot_motion_scene_adapter
   src/box_stack_flow_orchestrator.cpp
   src/box_pose_rrt_extract_planner.cpp
+  src/curobo_segment_client.cpp
   src/execution_trajectory_adapter.cpp
   src/extract_monitor_json.cpp
   src/extract_monitor_replay_builder.cpp
@@ -111,6 +112,7 @@ ament_target_dependencies(alfa_robot_motion_scene_adapter
   trajectory_msgs
   shape_msgs
   robot_motion_scene_service
+  robot_motion_interfaces
   robot_motion_core
   srdfdom
   urdf
@@ -300,9 +302,16 @@ if(BUILD_TESTING)
   add_test(NAME test_extract_monitor_state COMMAND test_extract_monitor_state)
 
   add_executable(test_extract_monitor_transition_planning test/test_extract_monitor_transition_planning.cpp)
+  target_compile_options(test_extract_monitor_transition_planning PRIVATE -UNDEBUG)
   target_link_libraries(test_extract_monitor_transition_planning alfa_robot_motion_scene_adapter)
   ament_target_dependencies(test_extract_monitor_transition_planning srdfdom urdf)
   add_test(NAME test_extract_monitor_transition_planning COMMAND test_extract_monitor_transition_planning)
+
+  add_executable(test_curobo_segment_client test/test_curobo_segment_client.cpp)
+  target_compile_options(test_curobo_segment_client PRIVATE -UNDEBUG)
+  target_link_libraries(test_curobo_segment_client alfa_robot_motion_scene_adapter)
+  ament_target_dependencies(test_curobo_segment_client rclcpp srdfdom urdf)
+  add_test(NAME test_curobo_segment_client COMMAND test_curobo_segment_client)
 
   add_executable(test_ik_candidate_selector test/test_ik_candidate_selector.cpp)
   target_link_libraries(test_ik_candidate_selector alfa_robot_motion_scene_adapter)
@@ -364,6 +373,7 @@ install(PROGRAMS
   scripts/extract_startup_stability_smoke.py
   scripts/extract_stage_monitor_console.py
   scripts/extract_sequence_rerun.py
+  scripts/compose_local_curobo_full_replay.py
   scripts/verify_extract_sequence_snapshot.py
   scripts/extract_failed_attempts_rerun.py
   scripts/execute_l6_r8_mock_live.py

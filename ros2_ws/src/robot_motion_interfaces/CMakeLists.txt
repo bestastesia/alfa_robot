@@ -24,6 +24,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ExecuteTrajectory.srv"
   "srv/PlanDualArmIk.srv"
   "srv/PlanExtract.srv"
+  "srv/PlanJointSegment.srv"
   "srv/PlanLoaded.srv"
   "srv/RunDualArmPoseTask.srv"
   "srv/RunBoxPairTask.srv"

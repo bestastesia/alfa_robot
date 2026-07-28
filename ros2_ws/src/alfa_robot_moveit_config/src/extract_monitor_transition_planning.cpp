@@ -7,6 +7,7 @@
 #include <trajectory_msgs/msg/joint_trajectory_point.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -22,8 +23,14 @@ namespace
 {
 
 using Plan = moveit::planning_interface::MoveGroupInterface::Plan;
+using Clock = std::chrono::steady_clock;
 
 constexpr double kMaxStageJointSpeedRadS = 20.0 * M_PI / 180.0;
+
+double elapsed_ms(const Clock::time_point& started)
+{
+  return std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+}
 
 bool transition_cancelled(const ExtractMonitorTransitionPlanner& planner)
 {
@@ -191,6 +198,95 @@ bool make_valid_local_rrt(
   if (reason) {
     reason->clear();
   }
+  return true;
+}
+
+bool trajectory_matches_endpoints(
+  const Plan& plan,
+  const moveit::core::RobotState& start_state,
+  const moveit::core::RobotState& goal_state,
+  std::string* reason)
+{
+  const auto& trajectory = plan.trajectory_.joint_trajectory;
+  if (trajectory.points.size() < 2 || trajectory.joint_names.empty()) {
+    if (reason) *reason = "local_backend_empty_trajectory";
+    return false;
+  }
+  constexpr double kEndpointTolerance = 1e-4;
+  const auto& model_variables = start_state.getRobotModel()->getVariableNames();
+  for (size_t joint_index = 0; joint_index < trajectory.joint_names.size(); ++joint_index) {
+    const auto& name = trajectory.joint_names[joint_index];
+    if (std::find(model_variables.begin(), model_variables.end(), name) == model_variables.end()) {
+      if (reason) *reason = "local_backend_unknown_joint:" + name;
+      return false;
+    }
+    const auto& first = trajectory.points.front();
+    const auto& last = trajectory.points.back();
+    if (joint_index >= first.positions.size() || joint_index >= last.positions.size()) {
+      if (reason) *reason = "local_backend_position_count_mismatch";
+      return false;
+    }
+    const double start_error = std::abs(
+      first.positions[joint_index] - start_state.getVariablePosition(name));
+    const double goal_error = std::abs(
+      last.positions[joint_index] - goal_state.getVariablePosition(name));
+    if (start_error > kEndpointTolerance || goal_error > kEndpointTolerance) {
+      if (reason) *reason = "local_backend_endpoint_mismatch:" + name;
+      return false;
+    }
+  }
+  if (reason) reason->clear();
+  return true;
+}
+
+bool make_valid_preferred_local_plan(
+  const ExtractMonitorTransitionPlanner& planner,
+  const moveit::core::RobotState& start_state,
+  const moveit::core::RobotState& goal_state,
+  Plan* plan,
+  ExtractMonitorLocalPlanMetrics* metrics,
+  double* validation_ms,
+  std::string* reason)
+{
+  if (reject_if_cancelled(planner, reason)) {
+    return false;
+  }
+  if (!planner.preferred_local_plan || !planner.densify_plan || !planner.validate_plan) {
+    if (reason) *reason = "transition_planner_missing_preferred_local_adapter";
+    return false;
+  }
+
+  Plan candidate;
+  std::string backend_reason;
+  if (!planner.preferred_local_plan(
+        start_state, goal_state, &candidate, metrics, &backend_reason)) {
+    if (reason) {
+      *reason = backend_reason.empty() ? "local_curobo_plan_failed" : backend_reason;
+    }
+    return false;
+  }
+  candidate = planner.densify_plan(candidate);
+  std::string contract_reason;
+  if (!trajectory_matches_endpoints(candidate, start_state, goal_state, &contract_reason)) {
+    if (reason) *reason = contract_reason;
+    return false;
+  }
+
+  std::string validation_reason;
+  const auto validation_started = Clock::now();
+  const bool valid = planner.validate_plan(candidate, start_state, &validation_reason);
+  if (validation_ms) *validation_ms += elapsed_ms(validation_started);
+  if (!valid) {
+    if (reason) {
+      *reason = validation_reason.empty()
+        ? "local_curobo_fcl_rejected"
+        : "local_curobo_fcl_rejected:" + validation_reason;
+    }
+    return false;
+  }
+
+  if (plan) *plan = std::move(candidate);
+  if (reason) reason->clear();
   return true;
 }
 
@@ -519,18 +615,41 @@ bool state_is_valid(
   return true;
 }
 
+struct LocalRepairStats
+{
+  size_t patched_segments = 0;
+  size_t preferred_calls = 0;
+  size_t preferred_segments = 0;
+  size_t fallback_segments = 0;
+  size_t window_from = std::numeric_limits<size_t>::max();
+  size_t window_to = std::numeric_limits<size_t>::max();
+  double service_ms = 0.0;
+  double solve_ms = 0.0;
+  double queue_ms = 0.0;
+  double endpoint_check_ms = 0.0;
+  double graph_ms = 0.0;
+  double trajopt_ms = 0.0;
+  double interpolation_ms = 0.0;
+  double conversion_ms = 0.0;
+  double stitch_ms = 0.0;
+  double fcl_validation_ms = 0.0;
+};
+
 bool repair_with_local_rrt(
   const ExtractMonitorTransitionPlanner& planner,
   const moveit::core::RobotState& start_state,
   const moveit::core::RobotState& goal_state,
   const Plan& reference_plan,
   Plan* repaired_plan,
-  size_t* local_rrt_segments,
+  LocalRepairStats* output_stats,
   std::string* reason)
 {
   if (reject_if_cancelled(planner, reason)) {
     return false;
   }
+  LocalRepairStats local_stats;
+  LocalRepairStats& stats = output_stats ? *output_stats : local_stats;
+  stats = LocalRepairStats{};
   const auto states = plan_states(reference_plan, start_state, goal_state);
   if (states.size() < 3) {
     if (reason) {
@@ -539,9 +658,10 @@ bool repair_with_local_rrt(
     return false;
   }
 
-  constexpr size_t kLocalWindow = 8;
-  constexpr size_t kPatchBacktrack = 5;
-  constexpr size_t kPatchForward = 5;
+  const size_t local_window = std::max<size_t>(1, planner.local_window_points);
+  const size_t patch_backtrack = planner.local_boundary_backoff_points;
+  const size_t patch_forward = planner.local_boundary_backoff_points;
+  const size_t max_segments = std::max<size_t>(1, planner.local_max_segments);
 
   size_t patched_segments = 0;
   std::vector<Plan> accepted_segments;
@@ -567,7 +687,7 @@ bool repair_with_local_rrt(
       return false;
     }
     const size_t current = current_index();
-    const size_t max_to = std::min(states.size() - 1, current + kLocalWindow);
+    const size_t max_to = std::min(states.size() - 1, current + local_window);
 
     bool advanced = false;
     for (size_t to = max_to; to > current; --to) {
@@ -610,8 +730,16 @@ bool repair_with_local_rrt(
       return false;
     }
 
-    const size_t patch_start = current > kPatchBacktrack ? current - kPatchBacktrack : 0;
-    size_t patch_target = std::min(states.size() - 1, first_safe_target + kPatchForward);
+    if (patched_segments >= max_segments) {
+      if (reason) {
+        *reason = "local_repair_max_segments_exceeded_at_waypoint_" +
+          std::to_string(current);
+      }
+      return false;
+    }
+
+    const size_t patch_start = current > patch_backtrack ? current - patch_backtrack : 0;
+    size_t patch_target = std::min(states.size() - 1, first_safe_target + patch_forward);
     while (patch_target > first_safe_target) {
       std::string target_reason;
       if (state_is_valid(planner, states[patch_target], &target_reason)) {
@@ -631,65 +759,173 @@ bool repair_with_local_rrt(
       return false;
     }
 
-    const size_t keep_count = rollback_prefix_count(patch_start);
-    if (keep_count == 0 || accepted_ends[keep_count - 1] > patch_start) {
-      if (reason) {
-        *reason = "local_rrt_failed_invalid_patch_prefix";
-      }
-      return false;
-    }
-    Plan prefix_segment;
-    const bool needs_prefix = accepted_ends[keep_count - 1] < patch_start;
-    if (needs_prefix) {
-      std::string prefix_reason;
-      if (!make_valid_interpolation(
-          planner,
-          states[accepted_ends[keep_count - 1]],
-          states[patch_start],
-          &prefix_segment,
-          &prefix_reason)) {
-        if (reason) {
-          *reason = "local_rrt_failed_patch_prefix: " + prefix_reason;
+    Plan segment;
+    std::string segment_reason;
+    bool solved = false;
+    size_t solved_patch_start = patch_start;
+    size_t solved_patch_target = patch_target;
+    std::string solver_tag;
+    std::string preferred_failure;
+    if (planner.preferred_local_plan) {
+      auto try_preferred = [&](size_t from, size_t to) {
+        if (reject_if_cancelled(planner, &segment_reason)) {
+          return false;
         }
-        return false;
+        if (stats.preferred_calls >= planner.local_max_calls) {
+          segment_reason = "local_curobo_max_calls_exceeded";
+          return false;
+        }
+        ExtractMonitorLocalPlanMetrics metrics;
+        ++stats.preferred_calls;
+        const bool valid = make_valid_preferred_local_plan(
+          planner,
+          states[from],
+          states[to],
+          &segment,
+          &metrics,
+          &stats.fcl_validation_ms,
+          &segment_reason);
+        stats.service_ms += metrics.roundtrip_ms;
+        stats.solve_ms += metrics.backend_solve_ms;
+        stats.queue_ms += metrics.backend_queue_ms;
+        stats.endpoint_check_ms += metrics.backend_endpoint_check_ms;
+        stats.graph_ms += metrics.backend_graph_ms;
+        stats.trajopt_ms += metrics.backend_trajopt_ms;
+        stats.interpolation_ms += metrics.backend_interpolation_ms;
+        stats.conversion_ms += metrics.response_conversion_ms;
+        return valid;
+      };
+
+      solved = try_preferred(patch_start, patch_target);
+      if (!solved &&
+          segment_reason.find("curobo_start_state_in_collision_or_bounds") !=
+            std::string::npos) {
+        const size_t max_extra_backoff = std::min(
+          patch_start, planner.local_boundary_backoff_points);
+        for (size_t backoff = 1;
+             backoff <= max_extra_backoff &&
+             stats.preferred_calls < planner.local_max_calls;
+             ++backoff) {
+          if (reject_if_cancelled(planner, &segment_reason)) {
+            break;
+          }
+          const size_t from = patch_start - backoff;
+          solved_patch_start = from;
+          if (try_preferred(from, patch_target)) {
+            solved = true;
+            break;
+          }
+          if (segment_reason.find("curobo_start_state_in_collision_or_bounds") ==
+              std::string::npos) {
+            break;
+          }
+        }
+      }
+      if (!solved &&
+          segment_reason.find("curobo_goal_state_in_collision_or_bounds") !=
+            std::string::npos) {
+        for (size_t to = patch_target + 1;
+             to < states.size() && stats.preferred_calls < planner.local_max_calls;
+             ++to) {
+          if (reject_if_cancelled(planner, &segment_reason)) {
+            break;
+          }
+          std::string target_reason;
+          if (!state_is_valid(planner, states[to], &target_reason)) continue;
+          solved_patch_target = to;
+          if (try_preferred(solved_patch_start, to)) {
+            solved = true;
+            break;
+          }
+          if (segment_reason.find("curobo_goal_state_in_collision_or_bounds") ==
+              std::string::npos) {
+            break;
+          }
+        }
+      }
+      if (solved) {
+        ++stats.preferred_segments;
+        solver_tag = planner.preferred_local_backend;
+      } else {
+        preferred_failure = segment_reason;
       }
     }
 
-    Plan segment;
-    std::string segment_reason;
-    bool solved = custom_local_rrt_bridge(
-      planner,
-      states[patch_start],
-      states[patch_target],
-      reference_plan.trajectory_.joint_trajectory.joint_names,
-      &segment,
-      &segment_reason);
-    std::string solver_tag = "custom";
-    if (!solved && !transition_cancelled(planner)) {
-      solved = make_valid_local_rrt(
-        planner, states[patch_start], states[patch_target], &segment, &segment_reason);
-      solver_tag = "moveit";
-    }
-    if (solved) {
-      accepted_segments.resize(keep_count - 1);
-      accepted_ends.resize(keep_count);
-      if (needs_prefix) {
-        append_accepted(std::move(prefix_segment), patch_start);
+    const bool fallback_allowed = !planner.preferred_local_plan || planner.fallback_to_direct;
+    if (!solved && fallback_allowed && !transition_cancelled(planner)) {
+      solved = custom_local_rrt_bridge(
+        planner,
+        states[patch_start],
+        states[patch_target],
+        reference_plan.trajectory_.joint_trajectory.joint_names,
+        &segment,
+        &segment_reason);
+      solver_tag = "custom_rrt";
+      if (!solved && !transition_cancelled(planner)) {
+        solved = make_valid_local_rrt(
+          planner, states[patch_start], states[patch_target], &segment, &segment_reason);
+        solver_tag = "moveit_rrt";
       }
-      append_accepted(std::move(segment), patch_target);
-      ++patched_segments;
-      advanced = true;
-      patch_notes.push_back(
-        solver_tag + ":" + std::to_string(patch_start) + "->" +
-        std::to_string(patch_target) + "/" + std::to_string(states.size() - 1));
+      if (solved) ++stats.fallback_segments;
+      solved_patch_start = patch_start;
+      solved_patch_target = patch_target;
+    }
+
+    if (solved) {
+      const size_t keep_count = rollback_prefix_count(solved_patch_start);
+      if (keep_count == 0 || accepted_ends[keep_count - 1] > solved_patch_start) {
+        solved = false;
+        segment_reason = "local_rrt_failed_invalid_patch_prefix";
+      }
+      Plan prefix_segment;
+      const bool needs_prefix = solved &&
+        accepted_ends[keep_count - 1] < solved_patch_start;
+      if (needs_prefix) {
+        std::string prefix_reason;
+        if (!make_valid_interpolation(
+            planner,
+            states[accepted_ends[keep_count - 1]],
+            states[solved_patch_start],
+            &prefix_segment,
+            &prefix_reason)) {
+          solved = false;
+          segment_reason = "local_rrt_failed_patch_prefix: " + prefix_reason;
+        }
+      }
+      if (!solved) {
+        last_rrt_reason = segment_reason;
+      } else {
+        accepted_segments.resize(keep_count - 1);
+        accepted_ends.resize(keep_count);
+        if (needs_prefix) {
+          append_accepted(std::move(prefix_segment), solved_patch_start);
+        }
+        append_accepted(std::move(segment), solved_patch_target);
+        ++patched_segments;
+        stats.window_from = std::min(stats.window_from, solved_patch_start);
+        stats.window_to = stats.window_to == std::numeric_limits<size_t>::max()
+          ? solved_patch_target
+          : std::max(stats.window_to, solved_patch_target);
+        advanced = true;
+        patch_notes.push_back(
+          solver_tag + ":" + std::to_string(solved_patch_start) + "->" +
+          std::to_string(solved_patch_target) + "/" + std::to_string(states.size() - 1));
+        if (!preferred_failure.empty()) {
+          patch_notes.push_back("curobo_failed:" + preferred_failure);
+        }
+      }
     } else {
-      last_rrt_reason = segment_reason;
+      last_rrt_reason = preferred_failure.empty() ? segment_reason : preferred_failure;
+      if (!preferred_failure.empty() && !segment_reason.empty() &&
+          preferred_failure != segment_reason) {
+        last_rrt_reason += "; fallback_failed:" + segment_reason;
+      }
     }
 
     if (!advanced) {
       if (reason) {
         std::ostringstream stream;
-        stream << "local_rrt_failed_at_waypoint_" << current;
+        stream << "local_repair_failed_at_waypoint_" << current;
         if (!last_rrt_reason.empty()) {
           stream << ": " << last_rrt_reason;
         }
@@ -701,19 +937,19 @@ bool repair_with_local_rrt(
 
   Plan combined;
   moveit::core::robotStateToRobotStateMsg(start_state, combined.start_state_, true);
+  const auto stitch_started = Clock::now();
   for (const auto& segment : accepted_segments) {
     append_segment(combined, segment);
   }
+  stats.stitch_ms += elapsed_ms(stitch_started);
   combined.planning_time_ = 0.0;
   if (repaired_plan) {
     *repaired_plan = std::move(combined);
   }
-  if (local_rrt_segments) {
-    *local_rrt_segments = patched_segments;
-  }
+  stats.patched_segments = patched_segments;
   if (reason) {
     std::ostringstream stream;
-    stream << "local_rrt_segments=" << patched_segments;
+    stream << "local_repair_segments=" << patched_segments;
     if (!patch_notes.empty()) {
       stream << " patched_to_waypoints=";
       for (size_t i = 0; i < patch_notes.size(); ++i) {
@@ -748,7 +984,10 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
     densify_plan(make_interpolated_plan(start_state, goal_state, 1.0)),
     start_state.getRobotModel(),
     kMaxStageJointSpeedRadS);
+  const auto initial_validation_started = Clock::now();
   result.valid = validate_plan(result.plan, start_state, &result.failure_reason);
+  result.final_fcl_validation_ms = elapsed_ms(initial_validation_started);
+  result.final_fcl_valid = result.valid;
   if (result.valid) {
     result.failure_reason.clear();
     return result;
@@ -760,25 +999,57 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   }
 
   const auto& reference_plan = result.plan;
-  const bool can_try_local_rrt =
-    direct_plan &&
+  const bool can_try_local_repair =
+    (preferred_local_plan || direct_plan) &&
     reference_plan.trajectory_.joint_trajectory.points.size() >= 2 &&
     !reference_plan.trajectory_.joint_trajectory.joint_names.empty();
-  if (can_try_local_rrt) {
+  if (can_try_local_repair) {
     const std::string original_failure = result.failure_reason;
-    size_t local_rrt_segments = 0;
+    LocalRepairStats repair_stats;
     std::string local_rrt_reason;
-    if (repair_with_local_rrt(
-          *this, start_state, goal_state, reference_plan,
-          &result.plan, &local_rrt_segments, &local_rrt_reason)) {
-      result.method = local_rrt_segments > 0 ? "shortcut_local_rrt" : "joint_interpolation";
+    const auto repair_started = Clock::now();
+    const bool repaired = repair_with_local_rrt(
+      *this, start_state, goal_state, reference_plan,
+      &result.plan, &repair_stats, &local_rrt_reason);
+    result.local_repair_total_ms = elapsed_ms(repair_started);
+    result.local_window_from = repair_stats.window_from;
+    result.local_window_to = repair_stats.window_to;
+    result.local_preferred_call_count = repair_stats.preferred_calls;
+    result.local_preferred_segment_count = repair_stats.preferred_segments;
+    result.local_fallback_segment_count = repair_stats.fallback_segments;
+    result.local_service_ms = repair_stats.service_ms;
+    result.local_solve_ms = repair_stats.solve_ms;
+    result.local_queue_ms = repair_stats.queue_ms;
+    result.local_endpoint_check_ms = repair_stats.endpoint_check_ms;
+    result.local_graph_ms = repair_stats.graph_ms;
+    result.local_trajopt_ms = repair_stats.trajopt_ms;
+    result.local_interpolation_ms = repair_stats.interpolation_ms;
+    result.local_conversion_ms = repair_stats.conversion_ms;
+    result.local_stitch_ms = repair_stats.stitch_ms;
+    result.local_fcl_validation_ms = repair_stats.fcl_validation_ms;
+    result.local_fallback_used = preferred_local_plan && repair_stats.fallback_segments > 0;
+    if (repaired) {
+      if (repair_stats.preferred_segments > 0 && repair_stats.fallback_segments == 0) {
+        result.method = "shortcut_local_curobo";
+        result.local_repair_backend = preferred_local_backend;
+      } else if (repair_stats.patched_segments > 0) {
+        result.method = "shortcut_local_rrt";
+        result.local_repair_backend = repair_stats.preferred_segments > 0
+          ? preferred_local_backend + "+rrt"
+          : "rrt";
+      } else {
+        result.method = "joint_interpolation";
+      }
       result.failure_reason = local_rrt_reason;
       result.plan = retime_plan_by_max_joint_speed(
         densify_plan(result.plan),
         start_state.getRobotModel(),
         kMaxStageJointSpeedRadS);
       std::string validation_reason;
+      const auto final_validation_started = Clock::now();
       result.valid = validate_plan(result.plan, start_state, &validation_reason);
+      result.final_fcl_validation_ms = elapsed_ms(final_validation_started);
+      result.final_fcl_valid = result.valid;
       if (!validation_reason.empty()) {
         result.failure_reason = result.failure_reason.empty()
           ? validation_reason
@@ -787,7 +1058,8 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
       return result;
     }
 
-    result.method = "shortcut_local_rrt";
+    result.method = preferred_local_plan ? "shortcut_local_curobo" : "shortcut_local_rrt";
+    result.local_repair_backend = preferred_local_plan ? preferred_local_backend : "rrt";
     result.valid = false;
     result.failure_reason = original_failure;
     if (!local_rrt_reason.empty()) {
@@ -822,7 +1094,10 @@ ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
     kMaxStageJointSpeedRadS);
 
   std::string validation_reason;
+  const auto final_validation_started = Clock::now();
   result.valid = validate_plan(result.plan, start_state, &validation_reason);
+  result.final_fcl_validation_ms = elapsed_ms(final_validation_started);
+  result.final_fcl_valid = result.valid;
   if (!result.failure_reason.empty() && !validation_reason.empty()) {
     result.failure_reason += "; " + validation_reason;
   } else if (!validation_reason.empty()) {

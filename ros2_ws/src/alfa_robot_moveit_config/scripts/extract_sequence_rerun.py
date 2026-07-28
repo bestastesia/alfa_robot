@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -83,6 +84,54 @@ def stage_kind(stage: dict[str, Any]) -> str:
     return "other"
 
 
+LOCAL_REPAIR_TIMING_KEYS = (
+    "local_service_ms",
+    "local_solve_ms",
+    "local_queue_ms",
+    "local_endpoint_check_ms",
+    "local_graph_ms",
+    "local_trajopt_ms",
+    "local_interpolation_ms",
+    "local_conversion_ms",
+    "local_stitch_ms",
+    "local_fcl_validation_ms",
+    "local_repair_total_ms",
+    "final_fcl_validation_ms",
+)
+
+
+def local_repair_stage_metrics(extra: Any) -> dict[str, Any]:
+    if not isinstance(extra, dict) or not isinstance(extra.get("local_repair"), dict):
+        return {}
+    repair = extra["local_repair"]
+    entries = [value for value in repair.values() if isinstance(value, dict)]
+    if not entries and any(key in repair for key in LOCAL_REPAIR_TIMING_KEYS):
+        entries = [repair]
+    metrics: dict[str, Any] = {
+        key: sum(float(entry.get(key, 0.0) or 0.0) for entry in entries)
+        for key in LOCAL_REPAIR_TIMING_KEYS
+    }
+    metrics["preferred_calls"] = sum(
+        int(entry.get("local_preferred_call_count", 0) or 0) for entry in entries
+    )
+    metrics["preferred_segments"] = sum(
+        int(entry.get("local_preferred_segment_count", 0) or 0) for entry in entries
+    )
+    metrics["fallback_segments"] = sum(
+        int(entry.get("local_fallback_segment_count", 0) or 0) for entry in entries
+    )
+    metrics["methods"] = sorted({
+        str(entry.get("method", "")) for entry in entries if entry.get("method")
+    })
+    metrics["final_goal_max_error_rad"] = float(
+        extra.get(
+            "final_goal_max_error_rad",
+            repair.get("final_goal_max_error_rad", 0.0),
+        ) or 0.0
+    )
+    return metrics
+
+
 def summarize_snapshot_motion(snapshot: dict[str, Any]) -> dict[str, Any]:
     totals = {
         "motion_total_axis_mixed": 0.0,
@@ -95,6 +144,14 @@ def summarize_snapshot_motion(snapshot: dict[str, Any]) -> dict[str, Any]:
         "motion_other_joint_rad": 0.0,
         "motion_point_count": 0,
         "motion_stage_count": 0,
+        "local_curobo_preferred_calls": 0,
+        "local_curobo_preferred_segments": 0,
+        "local_rrt_fallback_segments": 0,
+        "local_curobo_service_ms": 0.0,
+        "local_curobo_graph_ms": 0.0,
+        "local_curobo_trajopt_ms": 0.0,
+        "local_curobo_fcl_ms": 0.0,
+        "local_curobo_final_goal_max_error_rad": 0.0,
     }
     previous: dict[str, float] | None = None
     for stage in snapshot.get("replay_stages", []):
@@ -108,6 +165,22 @@ def summarize_snapshot_motion(snapshot: dict[str, Any]) -> dict[str, Any]:
         if not joint_names or not isinstance(points, list):
             continue
         totals["motion_stage_count"] += 1
+        repair_metrics = local_repair_stage_metrics(stage.get("extra", {}))
+        if repair_metrics:
+            totals["local_curobo_preferred_calls"] += repair_metrics["preferred_calls"]
+            totals["local_curobo_preferred_segments"] += repair_metrics["preferred_segments"]
+            totals["local_rrt_fallback_segments"] += repair_metrics["fallback_segments"]
+            totals["local_curobo_service_ms"] += repair_metrics["local_service_ms"]
+            totals["local_curobo_graph_ms"] += repair_metrics["local_graph_ms"]
+            totals["local_curobo_trajopt_ms"] += repair_metrics["local_trajopt_ms"]
+            totals["local_curobo_fcl_ms"] += (
+                repair_metrics["local_fcl_validation_ms"]
+                + repair_metrics["final_fcl_validation_ms"]
+            )
+            totals["local_curobo_final_goal_max_error_rad"] = max(
+                totals["local_curobo_final_goal_max_error_rad"],
+                repair_metrics["final_goal_max_error_rad"],
+            )
         kind = stage_kind(stage)
         bucket = {
             "pre_attach": "motion_pre_attach_joint_rad",
@@ -371,6 +444,7 @@ def make_pair_args(
         extract_ik_loaded_distance_order_weight=args.extract_ik_loaded_distance_order_weight,
         extract_monitor_build_final_replay=args.place_cycle_enabled or not args.no_rerun,
         loaded_candidate_limit=args.loaded_candidate_limit,
+        loaded_candidate_order_filter=args.loaded_candidate_order_filter,
         lateral_shift_enabled=lateral_shift_enabled,
         lateral_shift_distance=args.lateral_shift_distance,
         lateral_shift_step=args.lateral_shift_step,
@@ -382,6 +456,19 @@ def make_pair_args(
         loaded_preserve_lower_updown=args.loaded_preserve_lower_updown,
         loaded_planner_id=args.loaded_planner_id,
         loaded_planning_mode=args.loaded_planning_mode,
+        local_repair_backend=args.local_repair_backend,
+        local_curobo_enabled=args.local_curobo_enabled,
+        local_curobo_coupled_13d=args.local_curobo_coupled_13d,
+        local_curobo_service=args.local_curobo_service,
+        local_curobo_scene_id=args.local_curobo_scene_id,
+        local_curobo_timeout=args.local_curobo_timeout,
+        local_curobo_window_points=args.local_curobo_window_points,
+        local_curobo_boundary_backoff_points=args.local_curobo_boundary_backoff_points,
+        local_curobo_max_segments=args.local_curobo_max_segments,
+        local_curobo_max_calls=args.local_curobo_max_calls,
+        local_curobo_max_attempts=args.local_curobo_max_attempts,
+        local_curobo_force_graph=args.local_curobo_force_graph,
+        local_curobo_fallback_to_rrt=args.local_curobo_fallback_to_rrt,
         loaded_planning_time=args.loaded_planning_time,
         loaded_planning_attempts=args.loaded_planning_attempts,
         loaded_workers=args.loaded_workers,
@@ -1003,9 +1090,39 @@ def main() -> int:
     parser.add_argument("--extract-rrt-endpoint-per-arm-limit", type=int, default=8)
     parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
+    parser.add_argument(
+        "--loaded-candidate-order-filter",
+        type=int,
+        default=-1,
+        help="仅用于确定性复现：只规划指定 extract candidate_order；-1 保持自动选择",
+    )
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planner-id", default="")
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="shortcut")
+    parser.add_argument("--local-repair-backend", choices=["rrt", "curobo"], default="rrt")
+    parser.add_argument("--local-curobo-enabled", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--local-curobo-coupled-13d",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="loaded shortcut 使用一次 updown+双臂 13 轴联合 cuRobo",
+    )
+    parser.add_argument("--local-curobo-service", default="/robot_motion/plan_joint_segment")
+    parser.add_argument("--local-curobo-scene-id", default="")
+    parser.add_argument("--local-curobo-timeout", type=float, default=0.5)
+    parser.add_argument("--local-curobo-window-points", type=int, default=8)
+    parser.add_argument("--local-curobo-boundary-backoff-points", type=int, default=5)
+    parser.add_argument("--local-curobo-max-segments", type=int, default=4)
+    parser.add_argument("--local-curobo-max-calls", type=int, default=8)
+    parser.add_argument("--local-curobo-max-attempts", type=int, default=3)
+    parser.add_argument("--local-curobo-force-graph", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--local-curobo-fallback-to-rrt", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--start-local-curobo-service", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--local-curobo-robot-config", type=Path, default=None)
+    parser.add_argument("--local-curobo-scene-config", type=Path, default=None)
+    parser.add_argument("--local-curobo-python-root", type=Path, default=None)
+    parser.add_argument("--local-curobo-dependency-venv", type=Path, default=None)
+    parser.add_argument("--local-curobo-warmup-iterations", type=int, default=5)
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
@@ -1098,6 +1215,22 @@ def main() -> int:
     args = parser.parse_args()
     if args.repeat < 1:
         raise ValueError("--repeat must be >= 1")
+    if args.local_curobo_enabled:
+        args.local_repair_backend = "curobo"
+        args.loaded_planning_mode = "shortcut"
+    if args.start_local_curobo_service:
+        missing = [
+            name for name, value in (
+                ("--local-curobo-robot-config", args.local_curobo_robot_config),
+                ("--local-curobo-scene-config", args.local_curobo_scene_config),
+                ("--local-curobo-python-root", args.local_curobo_python_root),
+            ) if value is None
+        ]
+        if missing:
+            raise ValueError("local cuRobo service requires " + ", ".join(missing))
+        args.local_curobo_enabled = True
+        args.local_repair_backend = "curobo"
+        args.loaded_planning_mode = "shortcut"
     domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
     print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
@@ -1251,6 +1384,56 @@ def main() -> int:
             wait_until_service_gone(10.0)
             raise
 
+    curobo_process: subprocess.Popen[str] | None = None
+    if args.start_local_curobo_service:
+        curobo_log = run_root / "local_curobo_service.log"
+        command_parts = [
+            "ros2", "launch", "robot_motion_curobo", "joint_segment_planner.launch.py",
+            f"service_name:={args.local_curobo_service}",
+            f"robot_config_path:={args.local_curobo_robot_config.resolve()}",
+            f"scene_config_path:={args.local_curobo_scene_config.resolve()}",
+            f"expected_scene_id:={args.local_curobo_scene_id}",
+            f"curobo_python_root:={args.local_curobo_python_root.resolve()}",
+            f"dependency_venv:={args.local_curobo_dependency_venv.resolve() if args.local_curobo_dependency_venv else ''}",
+            f"warmup_iterations:={args.local_curobo_warmup_iterations}",
+            f"request_timeout_s:={args.local_curobo_timeout}",
+            "left_payload_link:=left_tool0",
+            "right_payload_link:=right_tool0",
+            "num_trajopt_seeds:=1",
+            "trajopt_num_iters:=26",
+            "trajopt_inner_iters:=10",
+            "trajopt_n_knots:=12",
+            "trajopt_finetune_attempts:=0",
+        ]
+        curobo_command = " ".join(shlex.quote(part) for part in command_parts)
+        (run_root / "local_curobo_launch_command.sh").write_text(
+            "#!/usr/bin/env bash\nset -e\n"
+            + (f"export ROS_DOMAIN_ID={os.environ['ROS_DOMAIN_ID']}\n" if "ROS_DOMAIN_ID" in os.environ else "")
+            + "source /opt/ros/humble/setup.bash\n"
+            + f"source {monitor.ROS_WS}/install/setup.bash\n"
+            + f"cd {monitor.ROS_WS}\n{curobo_command}\n"
+        )
+        print(f"启动 local cuRobo 服务，日志：{curobo_log}")
+        with curobo_log.open("w") as log_file:
+            curobo_process = subprocess.Popen(
+                monitor.bash_source_command(curobo_command),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                text=True,
+                preexec_fn=os.setsid,
+            )
+        try:
+            monitor.wait_for_service(
+                args.local_curobo_service,
+                curobo_process,
+                args.service_timeout,
+                curobo_log,
+            )
+        except Exception:
+            monitor.terminate_process(curobo_process)
+            curobo_process = None
+            raise
+
     try:
         group_index = 0
         task_global_index = 0
@@ -1354,6 +1537,8 @@ def main() -> int:
                 break
     finally:
         stop_current_planner()
+        if curobo_process is not None:
+            monitor.terminate_process(curobo_process)
 
     summary_path = run_root / "summary.json"
     summary_path.write_text(json.dumps(summaries, ensure_ascii=False, indent=2))
@@ -1392,6 +1577,14 @@ def main() -> int:
             "motion_extract_joint_rad",
             "motion_lateral_joint_rad",
             "motion_loaded_joint_rad",
+            "local_curobo_preferred_calls",
+            "local_curobo_preferred_segments",
+            "local_rrt_fallback_segments",
+            "local_curobo_service_ms",
+            "local_curobo_graph_ms",
+            "local_curobo_trajopt_ms",
+            "local_curobo_fcl_ms",
+            "local_curobo_final_goal_max_error_rad",
             "selected_loaded_plan_trajectory_distance",
             "selected_loaded_plan_rank",
             "selected_h",

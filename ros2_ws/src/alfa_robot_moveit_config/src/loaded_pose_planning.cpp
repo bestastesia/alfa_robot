@@ -566,10 +566,23 @@ ExtractMonitorTransitionPlanner make_loaded_transition_planner(
   };
   repair_planner.validate_plan =
     [&config, &carried_boxes](const auto& candidate, const auto& start, std::string* reason) {
-    return config.clearance_callback
-      ? config.clearance_callback(candidate, start, carried_boxes, reason)
-      : true;
+      return config.clearance_callback
+        ? config.clearance_callback(candidate, start, carried_boxes, reason)
+        : true;
   };
+  if (config.local_repair_plan_callback && config.local_repair_backend == "curobo") {
+    repair_planner.preferred_local_plan =
+      [&config, &stage_name, &carried_boxes](
+        const auto& start,
+        const auto& goal,
+        auto* repaired,
+        auto* metrics,
+        std::string* reason) {
+        return config.local_repair_plan_callback(
+          stage_name + "/shortcut_local_curobo_patch",
+          start, goal, carried_boxes, repaired, metrics, reason);
+      };
+  }
   repair_planner.direct_plan =
     [&config, &stage_name, &carried_boxes](
       const auto& start,
@@ -585,7 +598,64 @@ ExtractMonitorTransitionPlanner make_loaded_transition_planner(
       return config.direct_plan_callback(
         stage_name + "/shortcut_local_rrt_patch", start, goal, carried_boxes, repaired, reason);
     };
+  repair_planner.preferred_local_backend = config.local_repair_backend;
+  repair_planner.local_window_points = config.local_repair_window_points;
+  repair_planner.local_boundary_backoff_points = config.local_repair_boundary_backoff_points;
+  repair_planner.local_max_segments = config.local_repair_max_segments;
+  repair_planner.local_max_calls = config.local_repair_max_calls;
+  repair_planner.fallback_to_direct = config.local_repair_fallback_to_rrt;
   return repair_planner;
+}
+
+nlohmann::json transition_plan_diagnostics_json(
+  const ExtractMonitorTransitionPlanResult& result)
+{
+  nlohmann::json diagnostics = {
+    {"valid", result.valid},
+    {"method", result.method},
+    {"failure_reason", result.failure_reason},
+    {"local_repair_backend", result.local_repair_backend},
+    {"local_preferred_call_count", result.local_preferred_call_count},
+    {"local_preferred_segment_count", result.local_preferred_segment_count},
+    {"local_fallback_segment_count", result.local_fallback_segment_count},
+    {"local_fallback_used", result.local_fallback_used},
+    {"local_service_ms", result.local_service_ms},
+    {"local_solve_ms", result.local_solve_ms},
+    {"local_queue_ms", result.local_queue_ms},
+    {"local_endpoint_check_ms", result.local_endpoint_check_ms},
+    {"local_graph_ms", result.local_graph_ms},
+    {"local_trajopt_ms", result.local_trajopt_ms},
+    {"local_interpolation_ms", result.local_interpolation_ms},
+    {"local_conversion_ms", result.local_conversion_ms},
+    {"local_stitch_ms", result.local_stitch_ms},
+    {"local_fcl_validation_ms", result.local_fcl_validation_ms},
+    {"local_repair_total_ms", result.local_repair_total_ms},
+    {"final_fcl_validation_ms", result.final_fcl_validation_ms},
+    {"final_fcl_valid", result.final_fcl_valid},
+  };
+  if (result.local_window_from != std::numeric_limits<size_t>::max()) {
+    diagnostics["local_window_from"] = result.local_window_from;
+  }
+  if (result.local_window_to != std::numeric_limits<size_t>::max()) {
+    diagnostics["local_window_to"] = result.local_window_to;
+  }
+  return diagnostics;
+}
+
+double plan_endpoint_max_error(
+  const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+  const moveit::core::RobotState& goal_state)
+{
+  const auto& trajectory = plan.trajectory_.joint_trajectory;
+  if (trajectory.points.empty()) return std::numeric_limits<double>::infinity();
+  const auto& positions = trajectory.points.back().positions;
+  double max_error = 0.0;
+  for (size_t i = 0; i < trajectory.joint_names.size() && i < positions.size(); ++i) {
+    max_error = std::max(
+      max_error,
+      std::abs(positions[i] - goal_state.getVariablePosition(trajectory.joint_names[i])));
+  }
+  return max_error;
 }
 
 bool plan_loaded_fixed_updown_parallel_arms(
@@ -595,6 +665,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
   ExtractMonitorTransitionPlanner& repair_planner,
   const std::vector<AttachedBoxSpec>& carried_boxes,
   moveit::planning_interface::MoveGroupInterface::Plan* plan,
+  nlohmann::json* repair_diagnostics,
   std::string* reason)
 {
   moveit::core::RobotState arm_goal_state(goal_state);
@@ -610,11 +681,17 @@ bool plan_loaded_fixed_updown_parallel_arms(
   copy_arm_goal("right", arm_goal_state, right_goal_state);
 
   const auto left_result = repair_planner.plan(loaded_start_state, left_goal_state);
+  if (repair_diagnostics) {
+    (*repair_diagnostics)["left_arm"] = transition_plan_diagnostics_json(left_result);
+  }
   if (!left_result.valid) {
     if (reason) *reason = "left_loaded_arm_transition_failed: " + left_result.failure_reason;
     return false;
   }
   const auto right_result = repair_planner.plan(loaded_start_state, right_goal_state);
+  if (repair_diagnostics) {
+    (*repair_diagnostics)["right_arm"] = transition_plan_diagnostics_json(right_result);
+  }
   if (!right_result.valid) {
     if (reason) *reason = "right_loaded_arm_transition_failed: " + right_result.failure_reason;
     return false;
@@ -655,6 +732,39 @@ bool plan_loaded_fixed_updown_parallel_arms(
 
   if (plan) {
     *plan = std::move(combined);
+  }
+  if (reason) {
+    reason->clear();
+  }
+  return true;
+}
+
+bool plan_loaded_coupled_13d(
+  const moveit::core::RobotState& loaded_start_state,
+  const moveit::core::RobotState& goal_state,
+  const LoadedPosePlannerConfig& config,
+  ExtractMonitorTransitionPlanner& repair_planner,
+  moveit::planning_interface::MoveGroupInterface::Plan* plan,
+  nlohmann::json* repair_diagnostics,
+  std::string* reason)
+{
+  const auto coupled_result = repair_planner.plan(loaded_start_state, goal_state);
+  if (repair_diagnostics) {
+    (*repair_diagnostics)["planning_mode"] = "coupled_13d";
+    (*repair_diagnostics)["joint_count"] = config.target_joint_names.size();
+    (*repair_diagnostics)["includes_updown"] = std::find(
+      config.target_joint_names.begin(), config.target_joint_names.end(), "updown") !=
+      config.target_joint_names.end();
+    (*repair_diagnostics)["coupled_13d"] = transition_plan_diagnostics_json(coupled_result);
+  }
+  if (!coupled_result.valid) {
+    if (reason) {
+      *reason = "coupled_13d_loaded_transition_failed: " + coupled_result.failure_reason;
+    }
+    return false;
+  }
+  if (plan) {
+    *plan = coupled_result.plan;
   }
   if (reason) {
     reason->clear();
@@ -1135,14 +1245,28 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   if (config_.planning_mode == "shortcut") {
     ExtractMonitorTransitionPlanner repair_planner =
       make_loaded_transition_planner(config_, stage_name, carried_boxes, is_cancelled);
-    const bool shortcut_ok = plan_loaded_fixed_updown_parallel_arms(
-      loaded_start_state,
-      goal_state,
-      config_,
-      repair_planner,
-      carried_boxes,
-      &plan,
-      &direct_failure_reason);
+    const bool coupled_curobo =
+      config_.local_curobo_coupled_13d &&
+      config_.local_repair_backend == "curobo" &&
+      static_cast<bool>(config_.local_repair_plan_callback);
+    const bool shortcut_ok = coupled_curobo
+      ? plan_loaded_coupled_13d(
+          loaded_start_state,
+          goal_state,
+          config_,
+          repair_planner,
+          &plan,
+          &result.local_repair_diagnostics,
+          &direct_failure_reason)
+      : plan_loaded_fixed_updown_parallel_arms(
+          loaded_start_state,
+          goal_state,
+          config_,
+          repair_planner,
+          carried_boxes,
+          &plan,
+          &result.local_repair_diagnostics,
+          &direct_failure_reason);
     plan_result = shortcut_ok
       ? moveit::core::MoveItErrorCode::SUCCESS
       : moveit::core::MoveItErrorCode::FAILURE;
@@ -1194,6 +1318,8 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
         carried_collision_reason.find("rear guard") != std::string::npos;
       const ExtractMonitorTransitionPlanResult repaired =
         repair_planner.plan(loaded_start_state, goal_state);
+      result.local_repair_diagnostics["post_validation_repair"] =
+        transition_plan_diagnostics_json(repaired);
       if (repaired.valid) {
         set_result_plan(repaired.plan);
         result.carried_clear = true;
@@ -1516,12 +1642,16 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     }
   }
 
+  const double final_goal_error_rad = plan_endpoint_max_error(plan, goal_state);
+  result.local_repair_diagnostics["final_goal_max_error_rad"] = final_goal_error_rad;
   if (config_.record_callback) {
     const auto& left_family = config_.selector->leftPoseFamily();
     const auto& right_family = config_.selector->rightPoseFamily();
     nlohmann::json extra = {
       {"stage_kind", "post_extract_loaded_plan"},
       {"loaded_planning_mode", config_.planning_mode},
+      {"local_repair_backend", config_.local_repair_backend},
+      {"local_repair", result.local_repair_diagnostics},
       {"valid", result.carried_clear},
       {"lateral_shift_enabled", config_.lateral_shift_enabled},
       {"lateral_shift_attempted", result.lateral_shift_attempted},
@@ -1535,6 +1665,7 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
       {"start_updown", currentUpdown(validation_start_state)},
       {"planning_start_updown", currentUpdown(loaded_start_state)},
       {"target_updown", currentUpdown(goal_state)},
+      {"final_goal_max_error_rad", final_goal_error_rad},
       {"pre_loaded_top_lift_applied", has_pre_loaded_top_lift_prefix},
       {"pre_loaded_top_lift_height_mismatch", top_suction_height_mismatch},
       {"pre_loaded_top_lift_start_updown", pre_loaded_top_lift_start_updown},
@@ -1586,7 +1717,9 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
   }
 
   for (size_t i = 0; i < timings.size(); ++i) {
-    if (timings[i].success && timings[i].final_state) {
+    if (timings[i].success && timings[i].final_state &&
+        (options.candidate_order_filter < 0 ||
+         timings[i].candidate_order == static_cast<size_t>(options.candidate_order_filter))) {
       batch_result.plan_indices.push_back(i);
     }
   }
@@ -1650,6 +1783,7 @@ LoadedPoseBatchPlanResult LoadedPosePlanner::planBatch(
     timing.loaded_pose_distance_l2 = result.selection.distance_l2;
     timing.loaded_pose_max_joint_delta = result.selection.max_joint_delta;
     timing.loaded_plan_failure_reason = result.failure_reason;
+    timing.loaded_local_repair_diagnostics = result.local_repair_diagnostics;
     timing.lateral_shift_replay_stages = result.lateral_shift_replay_stages;
     if (result.start_state && result.goal_state) {
       timing.loaded_plan = result.plan;
