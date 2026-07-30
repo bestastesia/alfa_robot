@@ -59,7 +59,7 @@ DASHBOARD_HTML = """<!doctype html>
     </section>
   </main>
   <script>
-    const knownOrder = ["/robot_motion/set_state","/robot_motion/set_scene","/robot_motion/run_box_pair_task","/robot_motion/run_dual_arm_pose_task","/robot_motion/plan_dual_arm_ik","/robot_motion/solve_arm_ik","/robot_motion/plan_extract","/robot_motion/plan_loaded","/robot_motion/check_collision","/robot_motion/execute_trajectory","/robot_motion/run_task","/dual_arm_trajectory_controller/follow_joint_trajectory","/alfa_execution/execute_joint_trajectory"];
+    const knownOrder = ["/robot_motion/set_state","/robot_motion/set_scene","/robot_motion/run_box_pair_task","/robot_motion/run_dual_arm_pose_task","/robot_motion/plan_dual_arm_ik","/robot_motion/solve_arm_ik","/robot_motion/plan_extract","/robot_motion/plan_loaded","/robot_motion/check_collision","/robot_motion/execute_trajectory","/robot_motion/run_task","/dual_arm_jtc/follow_joint_trajectory","/alfa_execution/execute_joint_trajectory"];
     function esc(s){return String(s ?? "").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
     function serviceCard(s){
       const cls=s.available?"up":"down";
@@ -122,7 +122,7 @@ class MotionRuntimeDashboardNode(Node):
             "/robot_motion/check_collision",
             "/robot_motion/execute_trajectory",
             "/robot_motion/run_task",
-            "/dual_arm_trajectory_controller/follow_joint_trajectory",
+            "/dual_arm_jtc/follow_joint_trajectory",
             "/alfa_execution/execute_joint_trajectory",
         ]
 

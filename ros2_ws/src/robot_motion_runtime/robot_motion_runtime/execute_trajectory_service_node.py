@@ -22,8 +22,8 @@ from robot_motion_runtime.common import (
     duration_seconds,
     hardware_joint_name,
     resample_trajectory,
-    ros_to_ethercat_hardware_position,
 )
+from alfa_robot_execution_bridge.joints import RT_CONTROL_ACTION_NAME
 
 
 class ExecuteTrajectoryServiceNode(Node):
@@ -38,7 +38,7 @@ class ExecuteTrajectoryServiceNode(Node):
         self.declare_parameter("service_name", "/robot_motion/execute_trajectory")
         self.declare_parameter(
             "action_name",
-            "/dual_arm_trajectory_controller/follow_joint_trajectory",
+            RT_CONTROL_ACTION_NAME,
         )
         self.declare_parameter("forward_action", True)
         self.declare_parameter("wait_for_action_timeout_s", 2.0)
@@ -233,8 +233,7 @@ class ExecuteTrajectoryServiceNode(Node):
             if self.joint_changes(trajectory, source_index):
                 raise ValueError(
                     f"planned joint {trajectory.joint_names[source_index]} changes but cannot be "
-                    "forwarded to the 13-axis arm action; updown must use "
-                    "/canopen/updown_position_controller/commands"
+                    "forwarded to the fixed 14-axis rt-control action"
                 )
 
         out = JointTrajectory()
@@ -248,27 +247,15 @@ class ExecuteTrajectoryServiceNode(Node):
                 )
             point = JointTrajectoryPoint()
             point.time_from_start = source_point.time_from_start
-            for slot_index, (target_index, hold_value) in enumerate(zip(target_indices, hold_values)):
-                real_name = REAL_ARM_JOINT_NAMES[slot_index]
+            for target_index, hold_value in zip(target_indices, hold_values):
                 if target_index is None:
-                    # hold_value 来自 self.latest_joint_positions(直接读 /joint_states,
-                    # 已是硬件 EtherCAT 符号),原样保持,不再翻符号。
                     point.positions.append(float(hold_value))
                 else:
-                    # 规划出的轨迹是 ROS/URDF 符号;发给硬件 action 前翻成 EtherCAT 符号,
-                    # 与读取侧 ethercat_to_ros 对称(收口到 joints.py 单一方向表)。
-                    point.positions.append(
-                        ros_to_ethercat_hardware_position(
-                            real_name, float(source_point.positions[target_index])
-                        )
-                    )
+                    point.positions.append(float(source_point.positions[target_index]))
             if source_point.velocities:
-                for slot_index, (target_index, _) in enumerate(zip(target_indices, hold_values)):
-                    real_name = REAL_ARM_JOINT_NAMES[slot_index]
+                for target_index, _ in zip(target_indices, hold_values):
                     point.velocities.append(
-                        ros_to_ethercat_hardware_position(
-                            real_name, float(source_point.velocities[target_index])
-                        )
+                        float(source_point.velocities[target_index])
                         if target_index is not None and target_index < len(source_point.velocities)
                         else 0.0
                     )

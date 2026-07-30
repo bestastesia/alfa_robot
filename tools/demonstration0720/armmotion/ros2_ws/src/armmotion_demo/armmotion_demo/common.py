@@ -22,13 +22,16 @@ FRONT_TASKS = frozenset({1, 2, 3})
 DIRECT_LIFT_TASKS = frozenset({3, 4, 5})
 STAGE_LABELS = {
     1: "负重位到 IK 前 5cm 预吸附位",
-    2: "笛卡尔前进 5cm 并打开双侧电磁阀",
+    2: "笛卡尔前进 5cm 并打开双侧电磁阀和真空泵",
     3: "吸附后抽离并回负重姿态（updown 仅在高于0.45m时降至0.45m）",
-    4: "updown 单独下降到 0.1m",
-    5: "双臂运动到放置位",
-    6: "关闭双侧电磁阀",
-    7: "双臂与 updown 同步回负重位",
+    4: "双臂与 updown 同步运动到放置位",
+    5: "关闭双侧电磁阀和真空泵",
+    6: "双臂与 updown 同步回负重位",
 }
+STAGE_COUNT = len(STAGE_LABELS)
+GRASP_ENABLE_STAGE = 2
+GRASP_DISABLE_STAGE = 5
+FINAL_STAGE = STAGE_COUNT
 LOADED_ARM_POSE_DEG = (0.0, -45.0, 120.0, -75.0, 0.0, 0.0)
 
 
@@ -66,6 +69,9 @@ class MotionSample:
     updown_m: float
     context: dict[str, Any]
     joint_velocities: dict[str, float] = field(default_factory=dict)
+    updown_velocity_m_s: float = 0.0
+    joint_accelerations: dict[str, float] = field(default_factory=dict)
+    updown_acceleration_m_s2: float = 0.0
 
 
 @dataclass
@@ -147,6 +153,9 @@ def _copy_sample(sample: MotionSample, time_s: float | None = None) -> MotionSam
         updown_m=float(sample.updown_m),
         context=dict(sample.context),
         joint_velocities=dict(sample.joint_velocities),
+        updown_velocity_m_s=float(sample.updown_velocity_m_s),
+        joint_accelerations=dict(sample.joint_accelerations),
+        updown_acceleration_m_s2=float(sample.updown_acceleration_m_s2),
     )
 
 
@@ -171,21 +180,19 @@ def _prepend_boundary(current: list[MotionSample], previous: list[MotionSample])
     return [boundary, *current]
 
 
-def split_seven_stages(samples: list[MotionSample]) -> dict[int, list[list[MotionSample]]]:
+def split_execution_stages(samples: list[MotionSample]) -> dict[int, list[list[MotionSample]]]:
     pre_contact = _select_samples(samples, "/selected_pre_attach_loaded_to_pre_contact")
     contact = _select_samples(samples, "/selected_pre_attach_pre_contact_to_ik")
     extract = _select_extract_samples(samples)
     loaded = _select_samples(samples, "/selected_loaded_plan")
-    place_height = _select_samples(samples, "/selected_loaded_to_place_height")
-    place_arms = _select_samples(samples, "/selected_loaded_to_place_arms")
+    place = _select_samples(samples, "/selected_loaded_to_place")
     return_loaded = _select_samples(samples, "/selected_place_to_loaded")
     named = {
         "pre_contact": pre_contact,
         "contact": contact,
         "extract": extract,
         "loaded": loaded,
-        "place_height": place_height,
-        "place_arms": place_arms,
+        "place": place,
         "return_loaded": return_loaded,
     }
     missing = [name for name, stage in named.items() if not stage]
@@ -194,17 +201,15 @@ def split_seven_stages(samples: list[MotionSample]) -> dict[int, list[list[Motio
     contact = _prepend_boundary(contact, pre_contact)
     extract = _prepend_boundary(extract, contact)
     loaded = _prepend_boundary(loaded, extract)
-    place_height = _prepend_boundary(place_height, loaded)
-    place_arms = _prepend_boundary(place_arms, place_height)
-    return_loaded = _prepend_boundary(return_loaded, place_arms)
+    place = _prepend_boundary(place, loaded)
+    return_loaded = _prepend_boundary(return_loaded, place)
     return {
         1: [pre_contact],
         2: [contact],
         3: [extract, loaded],
-        4: [place_height],
-        5: [place_arms],
-        6: [],
-        7: [return_loaded],
+        4: [place],
+        5: [],
+        6: [return_loaded],
     }
 
 
@@ -225,15 +230,11 @@ def validate_stage_contracts(
     def flattened(stage_number: int) -> list[MotionSample]:
         return [sample for segment in stages[stage_number] for sample in segment]
 
-    for stage_number in (1, 2, 3, 4, 5, 7):
+    for stage_number in (1, 2, 3, 4, 6):
         if not flattened(stage_number):
             raise ValueError(f"第 {stage_number} 阶段为空")
     if not _constant(sample.updown_m for sample in flattened(2)):
         raise ValueError("第2阶段违反合同：预接触到吸附时 updown 发生运动")
-    if _max_joint_change(flattened(4)[0], flattened(4)[-1], joint_names) > 1e-6:
-        raise ValueError("第4阶段违反合同：updown 下降时双臂发生运动")
-    if not _constant(sample.updown_m for sample in flattened(5)):
-        raise ValueError("第5阶段违反合同：运动到放置位时 updown 发生运动")
     extract = stages[3][0]
     if task.index in DIRECT_LIFT_TASKS:
         if _max_joint_change(extract[0], extract[-1], joint_names) > 1e-6:
@@ -250,7 +251,7 @@ def validate_stage_contracts(
             f"第3阶段终点 updown={actual_stage3_updown:.4f}m，"
             f"期望 min(抽离终态, 0.45)={expected_stage3_updown:.4f}m"
         )
-    expected_updown = {4: 0.1, 5: 0.1, 7: 0.3}
+    expected_updown = {4: 0.1, 6: 0.3}
     for stage_number, target in expected_updown.items():
         actual = flattened(stage_number)[-1].updown_m
         if abs(actual - target) > 1e-4:
@@ -430,6 +431,117 @@ def _assign_continuous_joint_velocities(
             sample.joint_velocities[name] = candidates[index]
 
 
+def _assign_continuous_updown_velocities(
+    samples: list[MotionSample],
+    maximum_velocity: float,
+    maximum_acceleration: float,
+) -> None:
+    count = len(samples)
+    for sample in samples:
+        sample.updown_velocity_m_s = 0.0
+    if count <= 2:
+        return
+    candidates = [0.0] * count
+    forced_zero = [False] * count
+    forced_zero[0] = True
+    forced_zero[-1] = True
+    edge_changes = [
+        samples[index + 1].updown_m - samples[index].updown_m
+        for index in range(count - 1)
+    ]
+    for index in range(1, count - 1):
+        previous_dt = samples[index].time_s - samples[index - 1].time_s
+        next_dt = samples[index + 1].time_s - samples[index].time_s
+        previous_slope = (
+            samples[index].updown_m - samples[index - 1].updown_m
+        ) / previous_dt
+        next_slope = (
+            samples[index + 1].updown_m - samples[index].updown_m
+        ) / next_dt
+        previous_direction = next(
+            (
+                edge_changes[edge_index]
+                for edge_index in range(index - 1, -1, -1)
+                if abs(edge_changes[edge_index]) > 1e-10
+            ),
+            0.0,
+        )
+        next_direction = next(
+            (
+                edge_changes[edge_index]
+                for edge_index in range(index, len(edge_changes))
+                if abs(edge_changes[edge_index]) > 1e-10
+            ),
+            0.0,
+        )
+        if previous_direction * next_direction < 0.0:
+            forced_zero[index] = True
+            continue
+        if abs(previous_slope) <= 1e-12 or abs(next_slope) <= 1e-12:
+            velocity = (
+                samples[index + 1].updown_m - samples[index - 1].updown_m
+            ) / (previous_dt + next_dt)
+        else:
+            previous_weight = 2.0 * next_dt + previous_dt
+            next_weight = next_dt + 2.0 * previous_dt
+            velocity = (previous_weight + next_weight) / (
+                previous_weight / previous_slope + next_weight / next_slope
+            )
+        candidates[index] = max(-maximum_velocity, min(maximum_velocity, velocity))
+
+    for _ in range(4):
+        for index in range(1, count):
+            if forced_zero[index]:
+                candidates[index] = 0.0
+                continue
+            dt = samples[index].time_s - samples[index - 1].time_s
+            lower = candidates[index - 1] - maximum_acceleration * dt
+            upper = candidates[index - 1] + maximum_acceleration * dt
+            candidates[index] = max(lower, min(upper, candidates[index]))
+        for index in range(count - 2, -1, -1):
+            if forced_zero[index]:
+                candidates[index] = 0.0
+                continue
+            dt = samples[index + 1].time_s - samples[index].time_s
+            lower = candidates[index + 1] - maximum_acceleration * dt
+            upper = candidates[index + 1] + maximum_acceleration * dt
+            candidates[index] = max(lower, min(upper, candidates[index]))
+    for index, sample in enumerate(samples):
+        sample.updown_velocity_m_s = candidates[index]
+
+
+def _assign_accelerations(
+    samples: list[MotionSample],
+    joint_names: list[str],
+    maximum_joint_acceleration: float,
+    maximum_updown_acceleration: float,
+) -> None:
+    for sample in samples:
+        sample.joint_accelerations = {name: 0.0 for name in joint_names}
+        sample.updown_acceleration_m_s2 = 0.0
+    for index in range(1, len(samples) - 1):
+        duration = samples[index + 1].time_s - samples[index - 1].time_s
+        if duration <= 0.0:
+            continue
+        for name in joint_names:
+            acceleration = (
+                samples[index + 1].joint_velocities[name]
+                - samples[index - 1].joint_velocities[name]
+            ) / duration
+            samples[index].joint_accelerations[name] = max(
+                -maximum_joint_acceleration,
+                min(maximum_joint_acceleration, acceleration),
+            )
+        updown_acceleration = (
+            samples[index + 1].updown_velocity_m_s
+            - samples[index - 1].updown_velocity_m_s
+        ) / duration
+        samples[index].updown_acceleration_m_s2 = max(
+            -maximum_updown_acceleration,
+            min(maximum_updown_acceleration, updown_acceleration),
+        )
+
+
 def retime_segment(
     samples: list[MotionSample],
     joint_names: list[str],
@@ -439,6 +551,7 @@ def retime_segment(
     max_updown_speed_m_s: float,
     speed_scale: float = 1.0,
     max_joint_acceleration_deg_s2: float = 60.0,
+    max_updown_acceleration_m_s2: float = 0.05,
 ) -> list[MotionSample]:
     if len(samples) < 2:
         raise ValueError("轨迹段至少需要两个采样点")
@@ -446,6 +559,7 @@ def retime_segment(
         rate_hz <= 0.0
         or max_joint_speed_deg_s <= 0.0
         or max_joint_acceleration_deg_s2 <= 0.0
+        or max_updown_acceleration_m_s2 <= 0.0
         or max_updown_speed_m_s <= 0.0
         or speed_scale <= 0.0
     ):
@@ -453,11 +567,11 @@ def retime_segment(
     period = 1.0 / rate_hz
     effective_max_joint_speed = math.radians(max_joint_speed_deg_s) * speed_scale
     maximum_joint_acceleration = math.radians(max_joint_acceleration_deg_s2)
-    effective_max_updown_speed = max_updown_speed_m_s * speed_scale
+    effective_max_updown_speed = max_updown_speed_m_s
     control_samples = _simplify_collinear_samples(samples, joint_names)
     edge_durations: list[float] = []
     maximum_path_acceleration = math.inf
-    has_joint_motion = False
+    has_path_motion = False
     for start, goal in zip(control_samples, control_samples[1:]):
         original_dt = max(0.0, goal.time_s - start.time_s) / speed_scale
         maximum_joint_change = _max_joint_change(start, goal, joint_names)
@@ -472,17 +586,24 @@ def retime_segment(
         for name in joint_names:
             slope = abs(goal.joints[name] - start.joints[name]) / duration
             if slope > 1e-12:
-                has_joint_motion = True
+                has_path_motion = True
                 maximum_path_acceleration = min(
                     maximum_path_acceleration,
                     maximum_joint_acceleration / slope,
                 )
+        updown_slope = abs(updown_change) / duration
+        if updown_slope > 1e-12:
+            has_path_motion = True
+            maximum_path_acceleration = min(
+                maximum_path_acceleration,
+                max_updown_acceleration_m_s2 / updown_slope,
+            )
 
     path_offsets = [0.0]
     for duration in edge_durations:
         path_offsets.append(path_offsets[-1] + duration)
     path_length = path_offsets[-1]
-    if has_joint_motion:
+    if has_path_motion:
         duration = _minimum_trapezoid_duration(
             path_length,
             1.0,
@@ -496,7 +617,7 @@ def retime_segment(
     edge_index = 0
     for frame_index in range(frame_count + 1):
         elapsed = frame_index * period
-        if has_joint_motion:
+        if has_path_motion:
             path_position, _ = _trapezoid_state(
                 elapsed,
                 duration,
@@ -535,6 +656,17 @@ def retime_segment(
         effective_max_joint_speed,
         maximum_joint_acceleration,
     )
+    _assign_continuous_updown_velocities(
+        result,
+        effective_max_updown_speed,
+        max_updown_acceleration_m_s2,
+    )
+    _assign_accelerations(
+        result,
+        joint_names,
+        maximum_joint_acceleration,
+        max_updown_acceleration_m_s2,
+    )
     return result
 
 
@@ -547,6 +679,7 @@ def retime_all_stages(
     max_updown_speed_m_s: float,
     speed_scale: float = 1.0,
     max_joint_acceleration_deg_s2: float = 60.0,
+    max_updown_acceleration_m_s2: float = 0.05,
 ) -> dict[int, list[list[MotionSample]]]:
     return {
         stage_number: [
@@ -558,6 +691,7 @@ def retime_all_stages(
                 max_updown_speed_m_s=max_updown_speed_m_s,
                 speed_scale=speed_scale,
                 max_joint_acceleration_deg_s2=max_joint_acceleration_deg_s2,
+                max_updown_acceleration_m_s2=max_updown_acceleration_m_s2,
             )
             for segment in segments
         ]

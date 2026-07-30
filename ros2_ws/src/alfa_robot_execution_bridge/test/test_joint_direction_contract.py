@@ -7,6 +7,10 @@ from alfa_robot_execution_bridge.joints import (
     EXECUTION_JOINT_NAMES,
     FLIPPED_JOINT_NAMES,
     REAL_CONTROLLER_JOINT_NAMES,
+    RT_CONTROL_ACTION_NAME,
+    RT_CONTROL_DIRECTION_SIGN_BY_JOINT,
+    RT_CONTROL_JOINT_NAMES,
+    RT_CONTROL_POSITION_OFFSET_BY_JOINT,
     ROS_TO_ETHERCAT_SIGN_BY_JOINT,
     UPDOWN_LOGICAL_LOWER_M,
     UPDOWN_LOGICAL_UPPER_M,
@@ -17,9 +21,13 @@ from alfa_robot_execution_bridge.joints import (
     ethercat_zero_offset_for,
     ethercat_to_ros_position,
     logical_to_physical_updown,
+    model_to_rt_control_acceleration,
+    model_to_rt_control_position,
+    model_to_rt_control_velocity,
     physical_to_logical_updown,
     ros_to_ethercat_position,
     ros_to_ethercat_velocity,
+    rt_control_to_model_position,
 )
 from alfa_robot_execution_bridge.updown import (
     make_updown_command_data,
@@ -53,6 +61,31 @@ def test_joint_direction_contract_is_canonical():
     assert set(ETHERCAT_ZERO_OFFSET_BY_JOINT) == set(EXECUTION_JOINT_NAMES)
     assert ethercat_zero_offset_for('left_joint6') == pytest.approx(0.05235987755982989)
     assert ethercat_zero_offset_for('right_joint6') == pytest.approx(-0.03490658503988659)
+
+
+def test_rt_control_contract_is_full_14_axis():
+    assert RT_CONTROL_ACTION_NAME == '/dual_arm_jtc/follow_joint_trajectory'
+    assert RT_CONTROL_JOINT_NAMES == [*REAL_CONTROLLER_JOINT_NAMES, 'updown']
+
+
+def test_rt_control_public_boundary_applies_calibrated_direction_signs():
+    assert set(RT_CONTROL_DIRECTION_SIGN_BY_JOINT) == set(RT_CONTROL_JOINT_NAMES)
+    assert set(RT_CONTROL_POSITION_OFFSET_BY_JOINT) == set(RT_CONTROL_JOINT_NAMES)
+    assert RT_CONTROL_DIRECTION_SIGN_BY_JOINT == {
+        **ROS_TO_ETHERCAT_SIGN_BY_JOINT,
+        'updown': 1.0,
+    }
+    assert all(offset == 0.0 for offset in RT_CONTROL_POSITION_OFFSET_BY_JOINT.values())
+    for joint_name, sign in RT_CONTROL_DIRECTION_SIGN_BY_JOINT.items():
+        controller_position = model_to_rt_control_position(joint_name, 0.25)
+        assert controller_position == pytest.approx(0.25 * sign)
+        assert model_to_rt_control_velocity(joint_name, -0.5) == pytest.approx(-0.5 * sign)
+        assert model_to_rt_control_acceleration(joint_name, 0.75) == pytest.approx(0.75 * sign)
+        assert rt_control_to_model_position(joint_name, controller_position) == pytest.approx(0.25)
+    assert model_to_rt_control_position('left_joint6', 0.0) == pytest.approx(0.0)
+    assert model_to_rt_control_position('right_joint6', 0.0) == pytest.approx(0.0)
+    with pytest.raises(KeyError):
+        model_to_rt_control_position('unknown_joint', 0.0)
 
 
 def test_direction_conversion_round_trip():

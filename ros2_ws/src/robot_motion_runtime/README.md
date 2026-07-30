@@ -28,9 +28,8 @@
 
 终端 1：启动仿真 bringup。它会发布 `/joint_states`，并提供与生产执行层一致的执行接口：
 
-- action：`/dual_arm_trajectory_controller/follow_joint_trajectory`
-- topic：`/dual_arm_trajectory_controller/joint_trajectory`
-- updown：`/canopen/updown_position_controller/commands`
+- action：`/dual_arm_jtc/follow_joint_trajectory`
+- topic：`/dual_arm_jtc/joint_trajectory`
 - 兼容旧 action：`/alfa_execution/execute_joint_trajectory`
 
 仿真执行器按 250Hz 内部控制周期复现实机 `joint_trajectory_controller` 的 variable-degree spline，
@@ -54,7 +53,7 @@ source install/setup.bash
 ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
   subscribe_joint_states:=true \
   execute_forward_action:=true \
-  execution_action_name:=/dual_arm_trajectory_controller/follow_joint_trajectory \
+  execution_action_name:=/dual_arm_jtc/follow_joint_trajectory \
   execute_wait_for_goal_acceptance:=true \
   execute_wait_for_result:=true \
   execute_resample_before_forward:=true \
@@ -133,14 +132,13 @@ ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/Ru
 xdg-open http://127.0.0.1:8766
 ```
 
-如果要换真实执行层，终端 2 的算法栈默认已经指向生产 action
-`/dual_arm_trajectory_controller/follow_joint_trajectory`。真实执行层要求 13 轴顺序固定为
-`right_joint1..right_joint6,left_joint1..left_joint6,turn`，单位为 rad；updown 仍通过
-`/canopen/updown_position_controller/commands` 单独发送，固定消息为
-`[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]`。
-`execute_trajectory_service_node` 会把仓库模型名 `rightjoint*/leftjoint*` 适配成生产名
-`right_joint*/left_joint*`，并按 10Hz 重采样后发给生产 action；如果输入轨迹里 `updown` 发生变化，
-会拒绝转发，避免把无法同步的 updown 运动静默丢掉。
+如果要换真实执行层，先通过 `~/rt-control-current/tools/rt_control_ipc.sh` 完成现场确认，
+看到 `READY: rt-control 已启动并完成 /rt/enable。` 后，算法栈默认直接连接生产 action
+`/dual_arm_jtc/follow_joint_trajectory`。真实执行层禁止 partial goal，固定顺序为
+`right_joint1..right_joint6,left_joint1..left_joint6,turn,updown`；旋转轴单位为 rad，
+updown 单位为 m。`/joint_states` 和该 action 都是 ROS/URDF 模型语义，运控不得再做
+EtherCAT 方向或零点补偿。`execute_trajectory_service_node` 会按当前反馈补齐未规划轴，
+重排为完整 14 轴后发送。
 
 只启动运行时骨架：
 

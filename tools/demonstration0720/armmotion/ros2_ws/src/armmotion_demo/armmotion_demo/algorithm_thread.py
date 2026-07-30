@@ -8,13 +8,17 @@ from pathlib import Path
 from typing import Any
 
 import rclpy
-from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
+from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES, RT_CONTROL_ACTION_NAME
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 from .common import (
+    FINAL_STAGE,
+    GRASP_DISABLE_STAGE,
+    GRASP_ENABLE_STAGE,
+    STAGE_COUNT,
     STAGE_LABELS,
     MotionSample,
     decode_message,
@@ -53,9 +57,8 @@ class AlgorithmThread(Node):
         self.declare_parameter("execution_speed_scale", 1.0)
         self.declare_parameter("max_joint_speed_deg_s", 10.0)
         self.declare_parameter("max_joint_acceleration_deg_s2", 60.0)
-        self.declare_parameter("max_updown_speed_m_s", 0.05)
+        self.declare_parameter("max_updown_speed_m_s", 0.15)
         self.declare_parameter("updown_acceleration_m_s2", 0.05)
-        self.declare_parameter("updown_deceleration_m_s2", 0.05)
         self.declare_parameter("planner_timeout_s", 180.0)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
@@ -63,14 +66,11 @@ class AlgorithmThread(Node):
         self.declare_parameter("start_updown_tolerance_m", 0.015)
         self.declare_parameter(
             "action_name",
-            "/dual_arm_trajectory_controller/follow_joint_trajectory",
-        )
-        self.declare_parameter(
-            "updown_topic",
-            "/canopen/updown_position_controller/commands",
+            RT_CONTROL_ACTION_NAME,
         )
         self.declare_parameter("left_solenoid_service", "/plc/left_solenoid")
         self.declare_parameter("right_solenoid_service", "/plc/right_solenoid")
+        self.declare_parameter("vacuum_pump_service", "/plc/vacuum_pump")
 
         rate_hz = float(self.get_parameter("trajectory_rate_hz").value)
         max_joint_speed_deg_s = float(self.get_parameter("max_joint_speed_deg_s").value)
@@ -79,30 +79,13 @@ class AlgorithmThread(Node):
         )
         max_updown_speed_m_s = float(self.get_parameter("max_updown_speed_m_s").value)
         execution_speed_scale = float(self.get_parameter("execution_speed_scale").value)
-        self.planner = PlannerAdapter(
-            source_ws=Path(str(self.get_parameter("source_ws").value)),
-            output_root=Path(str(self.get_parameter("output_root").value)),
-            rate_hz=rate_hz,
-            max_joint_speed_deg_s=max_joint_speed_deg_s,
-            max_joint_acceleration_deg_s2=max_joint_acceleration_deg_s2,
-            max_updown_speed_m_s=max_updown_speed_m_s,
-            speed_scale=execution_speed_scale,
-            timeout_s=float(self.get_parameter("planner_timeout_s").value),
-        )
         self.hardware = HardwareExecutor(
             self,
             dry_run=bool(self.get_parameter("dry_run").value),
             action_name=str(self.get_parameter("action_name").value),
-            updown_topic=str(self.get_parameter("updown_topic").value),
             left_solenoid_service=str(self.get_parameter("left_solenoid_service").value),
             right_solenoid_service=str(self.get_parameter("right_solenoid_service").value),
-            max_updown_speed_m_s=max_updown_speed_m_s * execution_speed_scale,
-            updown_acceleration_m_s2=float(
-                self.get_parameter("updown_acceleration_m_s2").value
-            ),
-            updown_deceleration_m_s2=float(
-                self.get_parameter("updown_deceleration_m_s2").value
-            ),
+            vacuum_pump_service=str(self.get_parameter("vacuum_pump_service").value),
             wait_timeout_s=float(self.get_parameter("interface_timeout_s").value),
             joint_state_topic=str(self.get_parameter("joint_state_topic").value),
             start_joint_tolerance_deg=float(
@@ -111,6 +94,20 @@ class AlgorithmThread(Node):
             start_updown_tolerance_m=float(
                 self.get_parameter("start_updown_tolerance_m").value
             ),
+        )
+        self.hardware.verify_interfaces()
+        self.planner = PlannerAdapter(
+            source_ws=Path(str(self.get_parameter("source_ws").value)),
+            output_root=Path(str(self.get_parameter("output_root").value)),
+            rate_hz=rate_hz,
+            max_joint_speed_deg_s=max_joint_speed_deg_s,
+            max_joint_acceleration_deg_s2=max_joint_acceleration_deg_s2,
+            max_updown_speed_m_s=max_updown_speed_m_s,
+            max_updown_acceleration_m_s2=float(
+                self.get_parameter("updown_acceleration_m_s2").value
+            ),
+            speed_scale=execution_speed_scale,
+            timeout_s=float(self.get_parameter("planner_timeout_s").value),
         )
         self.status_publisher = self.create_publisher(String, "/armmotion/status", STATUS_QOS)
         self.create_subscription(String, "/armmotion/task_request", self._on_task_request, 10)
@@ -122,7 +119,6 @@ class AlgorithmThread(Node):
         self._plan = None
         self._request_id = ""
         self._completed_stage = 0
-        self.hardware.verify_interfaces()
         self._publish(
             "ready",
             dry_run=bool(self.get_parameter("dry_run").value),
@@ -131,7 +127,7 @@ class AlgorithmThread(Node):
             max_updown_speed_m_s=max_updown_speed_m_s,
             execution_speed_scale=execution_speed_scale,
             effective_max_joint_speed_deg_s=max_joint_speed_deg_s * execution_speed_scale,
-            effective_max_updown_speed_m_s=max_updown_speed_m_s * execution_speed_scale,
+            effective_max_updown_speed_m_s=max_updown_speed_m_s,
             planner_session_startup_ms=self.planner.startup_ms,
             planner_session_log=str(self.planner.session_log),
         )
@@ -139,7 +135,7 @@ class AlgorithmThread(Node):
             "算法线程已就绪："
             f"trajectory={rate_hz:.1f}Hz speed_scale={execution_speed_scale:.1f}x "
             f"joint_limit={max_joint_speed_deg_s * execution_speed_scale:.1f}deg/s "
-            f"updown_limit={max_updown_speed_m_s * execution_speed_scale:.3f}m/s；"
+            f"updown_limit={max_updown_speed_m_s:.3f}m/s；"
             "等待 A1..A5/B1..B5 任务"
         )
 
@@ -197,6 +193,9 @@ class AlgorithmThread(Node):
                 ),
                 max_updown_speed_m_s=float(
                     self.get_parameter("max_updown_speed_m_s").value
+                ),
+                max_updown_acceleration_m_s2=float(
+                    self.get_parameter("updown_acceleration_m_s2").value
                 ),
                 speed_scale=float(self.get_parameter("execution_speed_scale").value),
                 max_joint_acceleration_deg_s2=float(
@@ -365,7 +364,9 @@ class AlgorithmThread(Node):
             stage=stage_number,
             label=label,
         )
-        self.get_logger().info(f"[{plan.task.code}] 第{stage_number}/7步开始：{label}")
+        self.get_logger().info(
+            f"[{plan.task.code}] 第{stage_number}/{STAGE_COUNT}步开始：{label}"
+        )
         try:
             segment_metrics = []
             for segment_index, segment in enumerate(plan.stages[stage_number], start=1):
@@ -375,9 +376,9 @@ class AlgorithmThread(Node):
                         f"{plan.task.code} 第{stage_number}步/{segment_index}",
                     )
                 )
-            if stage_number == 2:
+            if stage_number == GRASP_ENABLE_STAGE:
                 self.hardware.set_grasp_solenoids(True)
-            elif stage_number == 6:
+            elif stage_number == GRASP_DISABLE_STAGE:
                 self.hardware.set_grasp_solenoids(False)
             wall_ms = (time.monotonic() - started) * 1000.0
             planned_duration_s = sum(
@@ -397,9 +398,9 @@ class AlgorithmThread(Node):
                 segment_metrics=segment_metrics,
             )
             self.get_logger().info(
-                f"[{plan.task.code}] 第{stage_number}/7步完成：wall={wall_ms:.1f}ms"
+                f"[{plan.task.code}] 第{stage_number}/{STAGE_COUNT}步完成：wall={wall_ms:.1f}ms"
             )
-            if stage_number == 7:
+            if stage_number == FINAL_STAGE:
                 self._publish(
                     "task_complete",
                     request_id=request_id,
@@ -410,7 +411,9 @@ class AlgorithmThread(Node):
                     self._plan = None
                     self._request_id = ""
                     self._completed_stage = 0
-                self.get_logger().info(f"[{plan.task.code}] 七步任务全部完成，等待下一任务")
+                self.get_logger().info(
+                    f"[{plan.task.code}] {STAGE_COUNT}步任务全部完成，等待下一任务"
+                )
         except Exception as exc:
             with self._lock:
                 self._executing = False

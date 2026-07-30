@@ -1636,3 +1636,19 @@
 - 改了哪里：统一任务入口、运行时策略和场景核心的横向目标；末端现在位于箱体横向中心，因此附着箱相对tool的横向偏移同步由0.05m改为0m，避免附着箱被错误外移后与箱墙立即碰撞。
 - 验证结果：场景、MoveIt规划和runtime共52项测试通过；常驻planner严格碰撞复跑A1~A5、B1~B5仍为10/10成功，算法内部平均687.3ms/任务。单次测试数据已按仓库清理要求删除，结论保留在本日志。
 - 留给下个 AI：旧的`20260727_161515`结果0/10是附着箱仍保留5cm横向偏移造成的合同错位，不应作为1m间距的真实成功率结论。
+## 2026-07-28 运控 / Codex / armmotion 接入 rt-control Domain 42
+- 做了什么：连续定位 `/dual_arm_jtc/follow_joint_trajectory` 不可用和“能发现 action、但等待接受超时”两个问题。第一层根因是 armmotion 原来在 Domain 0，而 rt-control 固定为 Domain 42；第二层根因是 root 容器与普通用户宿主进程的 Fast DDS SHM 文件权限不互通，发现通道可见但 action 数据面不通。
+- 改了哪里：armmotion 固定沿用 Domain 42，并用独立 Fast DDS UDPv4 profile 禁用宿主进程 SHM；算法线程把硬件检查提前到 planner 冷启动前；规划启动新增外部控制栈模式，只启动 `move_group`/规划节点，不再在真实控制域重复启动本地 `ros2_control`、RSP 和 `/controller_manager`。README 与错误诊断同步更新，代码已部署并构建到 `/home/ar/demostration0720/src/armmotion`。
+- 验证结果：本地 MoveIt 构建通过、armmotion 13/13 测试通过。工控机无运动烟测中 planner 6.6s 就绪；控制器列表仅保留 rt-control 的四个 active controller，`/joint_states` 仅一个发布者，action 恰好一个服务端 `/dual_arm_jtc` 和一个客户端 `/armmotion_algorithm_thread`；未发送轨迹或 PLC 命令。
+- 留给下个 AI：先按 `robot_system/rt_control/03-rt-control一键启动说明.md` 启动并看到 READY，再启动 armmotion；不要移除 UDP profile，也不要在 Domain 42 启动第二套 ros2_control。工控机旧 `/home/ar/lhy_dev/run_jog_to_pose.sh` 仍是旧控制器/旧方向转换语义，不得接到新 `/dual_arm_jtc`。
+
+## 2026-07-28 运控 / Codex / 实机轴向合同恢复
+- 做了什么：先补齐强制公共边界，armmotion 与 `jog_to_pose` 的全部14轴位置、速度、加速度和反馈均显式调用 `joint.py` 的 `model_to_rt_control_*` / `rt_control_to_model_position`，禁止只读取顺序后直接拼装消息。随后根据实机双臂同角度测试恢复原始四个反向轴：`left_joint3/5`、`right_joint2/4`；命令、速度、加速度和反馈使用同一方向表，J6公共边界偏置保持0。
+- 验证结果：本地及工控机合同与armmotion合计24/24通过并完成构建；工控机旧算法线程必须重启后才加载新模块。
+- 重要边界：`/home/ar/lhy_dev/run_rt_jog_to_pose.sh` 会把独立 Python 客户端复制进 rt-control 容器直接发送，完全不读取 armmotion 的 `joint.py`。该工具的同角度测试证明 rt-control 当前全轴 `direction: 1` 并未形成对称模型语义；它不能用于验证本次上层合同是否生效，除非后续也改为读取同一合同。
+
+## 2026-07-30 运控 / Codex / CSP 同步放置与解析 IK 性能恢复
+- 做了什么：将携箱负重位到放置位改为 updown 与双臂同一条 13 轴轨迹；直连失败时使用同时推进双臂和 updown 的安全中间状态，不再先完成升降再单独运动双臂。Rerun 默认只记录算法输出的 30Hz 原始轨迹，不再生成 250Hz 插值和 90Hz 抽样副本。
+- 根因：上一份 Rerun 误走独立序列脚本默认 `loaded_updown=0.10m`，没有使用算法线程的 `loaded_updown=0.45m + preserve_lower` 合同；本地解析 IK 和 MoveIt 包又曾在空 `CMAKE_BUILD_TYPE` 下编译，导致闭式解析核失去 `-O3`，性能退化约两个数量级。
+- 验证结果：Release 重编后解析 IK 回归循环（含 FK 校验）10000 次约 0.09s；十任务 10/10 成功，IK 阶段平均 21.5ms，完整计算平均 1.883s。所有任务的放置轨迹从第一个非起点帧开始同时改变 updown 和双臂。Rerun：`data/ik_benchmark/csp_sync_place_raw_rerun/ten_tasks_exact_raw_20260730.rrd`。
+- 留给下个 AI：手工构建这两个 C++ 包必须显式使用 `-DCMAKE_BUILD_TYPE=Release`；不要再用独立 `extract_sequence_rerun.py` 的默认参数替代 `PlannerAdapter` 生成当前算法线程验收 Rerun。

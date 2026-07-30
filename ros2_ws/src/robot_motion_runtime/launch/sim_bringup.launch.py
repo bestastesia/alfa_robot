@@ -20,21 +20,17 @@ def generate_launch_description():
             DeclareLaunchArgument("joint_state_topic", default_value="/joint_states"),
             DeclareLaunchArgument(
                 "execution_action_name",
-                default_value="/dual_arm_trajectory_controller/follow_joint_trajectory",
+                default_value="/dual_arm_jtc/follow_joint_trajectory",
             ),
             DeclareLaunchArgument("legacy_execution_action_name", default_value="/alfa_execution/execute_joint_trajectory"),
             DeclareLaunchArgument(
                 "trajectory_topic",
-                default_value="/dual_arm_trajectory_controller/joint_trajectory",
-            ),
-            DeclareLaunchArgument(
-                "updown_command_topic",
-                default_value="/canopen/updown_position_controller/commands",
+                default_value="/dual_arm_jtc/joint_trajectory",
             ),
             DeclareLaunchArgument("initial_updown", default_value="0.0"),
             DeclareLaunchArgument("joint_state_rate_hz", default_value="50.0"),
             DeclareLaunchArgument("control_rate_hz", default_value="250.0"),
-            DeclareLaunchArgument("publish_alias_joint_states", default_value="true"),
+            DeclareLaunchArgument("publish_alias_joint_states", default_value="false"),
             DeclareLaunchArgument("start_rerun", default_value="true"),
             DeclareLaunchArgument("rerun_rate_hz", default_value="15.0"),
             IncludeLaunchDescription(
@@ -54,7 +50,6 @@ def generate_launch_description():
                         "action_name": LaunchConfiguration("execution_action_name"),
                         "legacy_action_name": LaunchConfiguration("legacy_execution_action_name"),
                         "trajectory_topic": LaunchConfiguration("trajectory_topic"),
-                        "updown_command_topic": LaunchConfiguration("updown_command_topic"),
                         "publish_rate_hz": ParameterValue(
                             LaunchConfiguration("joint_state_rate_hz"), value_type=float
                         ),

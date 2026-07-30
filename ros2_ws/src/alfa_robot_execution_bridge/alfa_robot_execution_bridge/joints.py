@@ -1,15 +1,17 @@
-"""Joint naming and real-machine direction/updown contract for ALFA execution.
+"""Joint naming and execution-boundary contracts for ALFA motion.
 
 This module is the runtime single source of truth for:
 
 - execution-layer joint names
-- real EtherCAT controller joint order
-- ROS/Rerun semantics -> real EtherCAT command direction signs
+- legacy raw EtherCAT controller joint order
+- rt-control public 14-axis FollowJointTrajectory order
+- model-to-controller direction signs at the execution boundary
 - real EtherCAT zero offsets -> ROS/Rerun zero semantics
 - ROS/Rerun updown logical meters -> real updown controller physical meters
 
-Do not duplicate the sign/offset tables or the updown offset in launch files, demo
-scripts, or YAML configs. Import from here instead.
+The rt-control public action is the hardware command boundary. Encoder zero offsets
+remain owned by rt-control, while the four empirically verified mirrored-axis signs
+are applied here consistently to commands, derivatives, and feedback.
 """
 
 from __future__ import annotations
@@ -49,6 +51,12 @@ REAL_CONTROLLER_JOINT_NAMES = [
     'turn',
 ]
 
+RT_CONTROL_JOINT_NAMES = [
+    *REAL_CONTROLLER_JOINT_NAMES,
+    'updown',
+]
+RT_CONTROL_ACTION_NAME = '/dual_arm_jtc/follow_joint_trajectory'
+
 ROS_TO_ETHERCAT_SIGN_BY_JOINT = {
     'left_joint1': 1.0,
     'left_joint2': 1.0,
@@ -63,6 +71,14 @@ ROS_TO_ETHERCAT_SIGN_BY_JOINT = {
     'right_joint5': 1.0,
     'right_joint6': 1.0,
     'turn': 1.0,
+}
+
+RT_CONTROL_DIRECTION_SIGN_BY_JOINT = {
+    **ROS_TO_ETHERCAT_SIGN_BY_JOINT,
+    'updown': 1.0,
+}
+RT_CONTROL_POSITION_OFFSET_BY_JOINT = {
+    name: 0.0 for name in RT_CONTROL_JOINT_NAMES
 }
 
 # Raw EtherCAT command/feedback value that corresponds to ROS/URDF zero.
@@ -118,6 +134,44 @@ def ethercat_zero_offset_for(joint_name: str) -> float:
 
 def direction_signs_for(joint_names: Iterable[str]) -> list[float]:
     return [direction_sign_for(name) for name in joint_names]
+
+
+def require_rt_control_joint(joint_name: str) -> None:
+    if joint_name not in RT_CONTROL_JOINT_NAMES:
+        raise KeyError(f'unknown rt-control public joint: {joint_name}')
+
+
+def model_to_rt_control_position(joint_name: str, value: float) -> float:
+    """ROS/URDF model position -> rt-control public action position.
+
+    Encoder-zero conversion remains in rt-control. The mirrored-axis direction
+    table is applied here so every motion client shares one tested contract.
+    """
+    require_rt_control_joint(joint_name)
+    return (
+        float(value) * RT_CONTROL_DIRECTION_SIGN_BY_JOINT[joint_name]
+        + RT_CONTROL_POSITION_OFFSET_BY_JOINT[joint_name]
+    )
+
+
+def model_to_rt_control_velocity(joint_name: str, value: float) -> float:
+    """ROS/URDF model velocity -> rt-control public action velocity."""
+    require_rt_control_joint(joint_name)
+    return float(value) * RT_CONTROL_DIRECTION_SIGN_BY_JOINT[joint_name]
+
+
+def model_to_rt_control_acceleration(joint_name: str, value: float) -> float:
+    """ROS/URDF model acceleration -> rt-control public action acceleration."""
+    require_rt_control_joint(joint_name)
+    return float(value) * RT_CONTROL_DIRECTION_SIGN_BY_JOINT[joint_name]
+
+
+def rt_control_to_model_position(joint_name: str, value: float) -> float:
+    """rt-control public joint-state position -> ROS/URDF model position."""
+    require_rt_control_joint(joint_name)
+    return (
+        float(value) - RT_CONTROL_POSITION_OFFSET_BY_JOINT[joint_name]
+    ) * RT_CONTROL_DIRECTION_SIGN_BY_JOINT[joint_name]
 
 
 def ros_to_ethercat_position(joint_name: str, value: float) -> float:

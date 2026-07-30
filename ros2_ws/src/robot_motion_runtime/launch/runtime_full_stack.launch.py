@@ -21,7 +21,7 @@ def generate_launch_description():
             DeclareLaunchArgument("execute_forward_action", default_value="true"),
             DeclareLaunchArgument(
                 "execution_action_name",
-                default_value="/dual_arm_trajectory_controller/follow_joint_trajectory",
+                default_value="/dual_arm_jtc/follow_joint_trajectory",
             ),
             DeclareLaunchArgument("execute_wait_for_action_timeout_s", default_value="10.0"),
             DeclareLaunchArgument("execute_wait_for_goal_acceptance", default_value="false"),

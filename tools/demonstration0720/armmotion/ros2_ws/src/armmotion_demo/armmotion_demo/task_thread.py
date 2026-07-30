@@ -11,7 +11,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from .algorithm_thread import STATUS_QOS
-from .common import STAGE_LABELS, decode_message, encode_message, parse_task_code
+from .common import STAGE_COUNT, STAGE_LABELS, decode_message, encode_message, parse_task_code
 
 
 class TaskThread(Node):
@@ -203,8 +203,10 @@ def main(args=None) -> None:
             print_plan_summary(plan_event)
 
             task_failed = False
-            for stage in range(1, 8):
-                input(f"第{stage}/7步：{STAGE_LABELS[stage]}。直接回车执行：")
+            for stage in range(1, STAGE_COUNT + 1):
+                input(
+                    f"第{stage}/{STAGE_COUNT}步：{STAGE_LABELS[stage]}。直接回车执行："
+                )
                 node.publish_stage(request_id, stage)
                 stage_event = node.wait_for_event(
                     request_id,
@@ -223,7 +225,7 @@ def main(args=None) -> None:
                     f"规划时长 {float(stage_event.get('planned_duration_s', 0.0)):.3f}s"
                 )
             if not task_failed:
-                print(f"{task.code} 七步执行完成，可以发送下一任务。")
+                print(f"{task.code} {STAGE_COUNT}步执行完成，可以发送下一任务。")
     except KeyboardInterrupt:
         print("\n任务线程退出。")
     finally:

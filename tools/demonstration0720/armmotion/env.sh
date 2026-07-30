@@ -12,6 +12,7 @@ if [[ ! -f "${ARMMOTION_SOURCE_WS}/src/alfa_robot_moveit_config/scripts/extract_
 fi
 export ARMMOTION_OUTPUT_ROOT="${ARMMOTION_ROOT}/data"
 export ROS_LOG_DIR="${ARMMOTION_ROOT}/logs"
+ARMMOTION_ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 mkdir -p "${ARMMOTION_OUTPUT_ROOT}" "${ROS_LOG_DIR}"
 
 set +u
@@ -27,3 +28,8 @@ if [[ -f "${ARMMOTION_OVERLAY_WS}/install/setup.bash" ]]; then
   source "${ARMMOTION_OVERLAY_WS}/install/setup.bash"
 fi
 set -u
+
+export ROS_DOMAIN_ID="${ARMMOTION_ROS_DOMAIN_ID}"
+export RMW_IMPLEMENTATION="rmw_fastrtps_cpp"
+export FASTRTPS_DEFAULT_PROFILES_FILE="${ARMMOTION_ROOT}/config/fastdds_udp_only.xml"
+export FASTDDS_DEFAULT_PROFILES_FILE="${FASTRTPS_DEFAULT_PROFILES_FILE}"

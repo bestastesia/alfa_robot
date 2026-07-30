@@ -18,7 +18,7 @@ from .common import (
     MotionSample,
     TaskSpec,
     retime_all_stages,
-    split_seven_stages,
+    split_execution_stages,
     validate_stage_contracts,
 )
 
@@ -43,6 +43,7 @@ class PlannerAdapter:
         max_joint_speed_deg_s: float,
         max_joint_acceleration_deg_s2: float,
         max_updown_speed_m_s: float,
+        max_updown_acceleration_m_s2: float,
         speed_scale: float,
         timeout_s: float,
     ) -> None:
@@ -52,6 +53,7 @@ class PlannerAdapter:
         self.max_joint_speed_deg_s = float(max_joint_speed_deg_s)
         self.max_joint_acceleration_deg_s2 = float(max_joint_acceleration_deg_s2)
         self.max_updown_speed_m_s = float(max_updown_speed_m_s)
+        self.max_updown_acceleration_m_s2 = float(max_updown_acceleration_m_s2)
         self.speed_scale = float(speed_scale)
         if self.speed_scale <= 0.0:
             raise ValueError("speed_scale 必须为正数")
@@ -86,6 +88,7 @@ class PlannerAdapter:
             sys.executable,
             str(self.planner_script),
             "--planner-server",
+            "--external-control-stack",
             "--pair-sequence",
             "1,3",
             "--task-layout",
@@ -332,7 +335,7 @@ class PlannerAdapter:
             )
             for time_s, joint_map, context in raw_samples
         ]
-        stages = split_seven_stages(samples)
+        stages = split_execution_stages(samples)
         validate_stage_contracts(task, stages, EXECUTION_JOINT_NAMES)
         stages = retime_all_stages(
             stages,
@@ -342,6 +345,7 @@ class PlannerAdapter:
             max_joint_acceleration_deg_s2=self.max_joint_acceleration_deg_s2,
             max_updown_speed_m_s=self.max_updown_speed_m_s,
             speed_scale=self.speed_scale,
+            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
         )
         validate_stage_contracts(task, stages, EXECUTION_JOINT_NAMES)
         metrics = {
@@ -358,9 +362,7 @@ class PlannerAdapter:
                 self.max_joint_speed_deg_s * self.speed_scale
             ),
             "max_joint_acceleration_deg_s2": self.max_joint_acceleration_deg_s2,
-            "effective_max_updown_speed_m_s": (
-                self.max_updown_speed_m_s * self.speed_scale
-            ),
+            "effective_max_updown_speed_m_s": self.max_updown_speed_m_s,
         }
         return ExecutionPlan(
             task=task,

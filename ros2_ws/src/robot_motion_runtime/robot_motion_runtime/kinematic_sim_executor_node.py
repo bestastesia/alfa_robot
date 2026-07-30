@@ -12,15 +12,17 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
 from trajectory_msgs.msg import JointTrajectory
 
+from alfa_robot_execution_bridge.joints import (
+    RT_CONTROL_ACTION_NAME,
+    RT_CONTROL_JOINT_NAMES,
+)
 from alfa_robot_execution_bridge.trajectory_interpolation import (
     InterpolatedState,
     TrajectorySample,
     sample_trajectory,
 )
-from alfa_robot_execution_bridge.updown import validate_updown_command_data
 from robot_motion_runtime.common import (
     DEFAULT_MOTION_JOINTS,
     MODEL_TO_HARDWARE_JOINT_ALIASES,
@@ -47,16 +49,12 @@ class KinematicSimExecutorNode(Node):
     The node intentionally exposes the same high-level ROS contract as the
     current real hardware stack for arms/turn/updown:
 
-    - FollowJointTrajectory action:
-      /dual_arm_trajectory_controller/follow_joint_trajectory
-    - JointTrajectory topic:
-      /dual_arm_trajectory_controller/joint_trajectory
-    - Updown absolute-position topic:
-      /canopen/updown_position_controller/commands
+    - full 14-axis FollowJointTrajectory action:
+      /dual_arm_jtc/follow_joint_trajectory
 
     Internally it keeps the repository model joint names (left_joint1...) so
     robot_state_publisher and Rerun remain compatible, while also publishing
-    hardware aliases (left_joint1...) on /joint_states for client-side tests.
+    the same ROS/URDF joint semantics as rt-control on /joint_states.
     """
 
     def __init__(self) -> None:
@@ -64,27 +62,22 @@ class KinematicSimExecutorNode(Node):
         self.declare_parameter("joint_state_topic", "/joint_states")
         self.declare_parameter(
             "action_name",
-            "/dual_arm_trajectory_controller/follow_joint_trajectory",
+            RT_CONTROL_ACTION_NAME,
         )
         self.declare_parameter("legacy_action_name", "/alfa_execution/execute_joint_trajectory")
         self.declare_parameter(
             "trajectory_topic",
-            "/dual_arm_trajectory_controller/joint_trajectory",
-        )
-        self.declare_parameter(
-            "updown_command_topic",
-            "/canopen/updown_position_controller/commands",
+            "/dual_arm_jtc/joint_trajectory",
         )
         self.declare_parameter("publish_rate_hz", 50.0)
         self.declare_parameter("control_rate_hz", 250.0)
-        self.declare_parameter("publish_alias_joint_states", True)
+        self.declare_parameter("publish_alias_joint_states", False)
         self.declare_parameter("initial_updown", 0.0)
 
         self.joint_state_topic = str(self.get_parameter("joint_state_topic").value)
         self.action_name = str(self.get_parameter("action_name").value)
         self.legacy_action_name = str(self.get_parameter("legacy_action_name").value)
         self.trajectory_topic = str(self.get_parameter("trajectory_topic").value)
-        self.updown_command_topic = str(self.get_parameter("updown_command_topic").value)
         self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
         self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
         self.publish_alias_joint_states = bool(
@@ -107,13 +100,6 @@ class KinematicSimExecutorNode(Node):
             JointTrajectory,
             self.trajectory_topic,
             self.on_trajectory_topic,
-            10,
-            callback_group=self.callback_group,
-        )
-        self.updown_sub = self.create_subscription(
-            Float64MultiArray,
-            self.updown_command_topic,
-            self.on_updown_command,
             10,
             callback_group=self.callback_group,
         )
@@ -145,7 +131,6 @@ class KinematicSimExecutorNode(Node):
             f"joint_states={self.joint_state_topic}, "
             f"actions={self.unique_action_names()}, "
             f"trajectory_topic={self.trajectory_topic}, "
-            f"updown_topic={self.updown_command_topic}, "
             f"control={self.control_rate_hz:.1f}Hz, "
             f"joint_state={self.publish_rate_hz:.1f}Hz, "
             f"initial_updown={self.initial_updown:.3f}"
@@ -193,6 +178,11 @@ class KinematicSimExecutorNode(Node):
             raise ValueError("trajectory.points is empty")
 
         requested_names = [str(name) for name in trajectory.joint_names]
+        if requested_names != list(RT_CONTROL_JOINT_NAMES):
+            raise ValueError(
+                "rt-control requires the fixed full 14-axis order: "
+                f"expected={RT_CONTROL_JOINT_NAMES}, got={requested_names}"
+            )
         joint_names = [canonical_joint_name(name) for name in requested_names]
         unknown = [name for name in joint_names if name not in self.positions]
         if unknown:
@@ -330,7 +320,9 @@ class KinematicSimExecutorNode(Node):
         names = list(self.joint_names)
         if self.publish_alias_joint_states:
             names.extend(
-                real for model, real in MODEL_TO_HARDWARE_JOINT_ALIASES.items() if model in self.positions
+                real
+                for model, real in MODEL_TO_HARDWARE_JOINT_ALIASES.items()
+                if model in self.positions and real not in names
             )
         msg.name = names
         msg.position = [
@@ -354,20 +346,6 @@ class KinematicSimExecutorNode(Node):
             self.start_trajectory(msg, self.trajectory_topic)
         except ValueError as exc:
             self.get_logger().error(f"Rejecting trajectory topic message: {exc}")
-
-    def on_updown_command(self, msg: Float64MultiArray) -> None:
-        try:
-            target, velocity, acceleration, deceleration = validate_updown_command_data(msg.data)
-        except ValueError as exc:
-            self.get_logger().error(f"Rejecting updown command: {exc}")
-            return
-        with self.lock:
-            self.positions["updown"] = target
-        self.get_logger().info(
-            "Simulated updown profile target accepted: "
-            f"position={target:.4f}m velocity={velocity:.4f}m/s "
-            f"acceleration={acceleration:.4f}m/s^2 deceleration={deceleration:.4f}m/s^2"
-        )
 
     def execute_goal(self, goal_handle):
         trajectory = goal_handle.request.trajectory

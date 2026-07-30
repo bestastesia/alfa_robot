@@ -9,12 +9,16 @@ from armmotion_demo.common import (
     loaded_joint_map,
     parse_task_code,
     retime_segment,
-    split_seven_stages,
+    split_execution_stages,
     validate_stage_contracts,
 )
-from armmotion_demo.controller_interpolated_rerun import segment_controller_trace
+from armmotion_demo.controller_interpolated_rerun import (
+    segment_controller_trace,
+    segment_raw_trace,
+)
+from armmotion_demo import hardware_executor as hardware_executor_module
 from armmotion_demo.hardware_executor import HardwareExecutor
-from alfa_robot_execution_bridge.joints import REAL_CONTROLLER_JOINT_NAMES
+from alfa_robot_execution_bridge.joints import RT_CONTROL_JOINT_NAMES
 
 
 JOINT_NAMES = [f"left_joint{index}" for index in range(1, 7)] + [
@@ -41,10 +45,8 @@ def make_direct_lift_samples():
         sample("selected_extract_step_1", 3.0, 0.2, 0.6),
         sample("selected_loaded_plan", 3.0, 0.2, 0.6),
         sample("selected_loaded_plan", 4.0, 0.0, 0.45),
-        sample("selected_loaded_to_place_height", 4.0, 0.0, 0.45),
-        sample("selected_loaded_to_place_height", 5.0, 0.0, 0.1),
-        sample("selected_loaded_to_place_arms", 5.0, 0.0, 0.1),
-        sample("selected_loaded_to_place_arms", 6.0, -0.1, 0.1),
+        sample("selected_loaded_to_place", 4.0, 0.0, 0.45),
+        sample("selected_loaded_to_place", 6.0, -0.1, 0.1),
         sample("selected_place_to_loaded", 6.0, -0.1, 0.1),
         sample("selected_place_to_loaded", 7.0, 0.0, 0.3),
     ]
@@ -79,11 +81,11 @@ def test_loaded_pose_keeps_contract_names():
 
 def test_split_and_validate_direct_lift():
     task = parse_task_code("B3", 0.9, 0.7)
-    stages = split_seven_stages(make_direct_lift_samples())
+    stages = split_execution_stages(make_direct_lift_samples())
     validate_stage_contracts(task, stages, JOINT_NAMES)
-    assert len(stages) == 7
+    assert len(stages) == 6
     assert len(stages[3]) == 2
-    assert stages[6] == []
+    assert stages[5] == []
 
 
 def test_stage_three_preserves_extract_height_below_cap():
@@ -97,10 +99,10 @@ def test_stage_three_preserves_extract_height_below_cap():
             item.updown_m = 0.35
         if item.context["stage"].endswith("selected_loaded_plan"):
             item.updown_m = 0.35
-        if item.context["stage"].endswith("selected_loaded_to_place_height") and item.time_s == 4.0:
+        if item.context["stage"].endswith("selected_loaded_to_place") and item.time_s == 4.0:
             item.updown_m = 0.35
     task = parse_task_code("B1", 0.9, 0.7)
-    stages = split_seven_stages(samples)
+    stages = split_execution_stages(samples)
     validate_stage_contracts(task, stages, JOINT_NAMES)
     assert stages[3][-1][-1].updown_m == pytest.approx(0.35)
 
@@ -125,9 +127,10 @@ def test_retime_is_10hz_and_enforces_speed_limits():
     assert max(
         abs(item.joint_velocities[JOINT_NAMES[0]]) for item in result
     ) <= math.radians(10.0) + 1e-9
+    assert max(abs(item.updown_velocity_m_s) for item in result) <= 0.05 + 1e-9
 
 
-def test_retime_three_times_faster_respects_smooth_limits_at_30hz():
+def test_retime_30hz_respects_updown_speed_and_acceleration_limits():
     source = [
         sample("x", 0.0, 0.0, 0.3),
         sample("x", 0.1, math.radians(20.0), 0.4),
@@ -137,15 +140,17 @@ def test_retime_three_times_faster_respects_smooth_limits_at_30hz():
         JOINT_NAMES,
         rate_hz=30.0,
         max_joint_speed_deg_s=10.0,
-        max_updown_speed_m_s=0.05,
+        max_updown_speed_m_s=0.15,
         speed_scale=3.0,
     )
-    assert result[-1].time_s < 2.0
+    assert 2.8 <= result[-1].time_s <= 2.9
     for previous, current in zip(result, result[1:]):
         assert current.time_s - previous.time_s == pytest.approx(1.0 / 30.0)
     assert max(
         abs(item.joint_velocities[JOINT_NAMES[0]]) for item in result
     ) <= math.radians(30.0) + 1e-9
+    assert max(abs(item.updown_velocity_m_s) for item in result) <= 0.15 + 1e-9
+    assert max(abs(item.updown_acceleration_m_s2) for item in result) <= 0.05 + 1e-9
 
 
 def test_retime_populates_continuous_velocity_with_acceleration_limit():
@@ -220,11 +225,13 @@ def test_retime_does_not_stop_at_same_direction_rrt_corner():
     assert middle.joint_velocities[JOINT_NAMES[0]] > math.radians(1.0)
 
 
-def test_controller_rerun_trace_uses_250hz_cubic_samples_and_90hz_output():
+def test_controller_rerun_trace_uses_250hz_quintic_samples_and_90hz_output():
     start = sample("x", 0.0, 0.0, 0.3)
     goal = sample("x", 0.8, 1.0, 0.4)
     start.joint_velocities = {name: 0.0 for name in JOINT_NAMES}
     goal.joint_velocities = {name: 0.0 for name in JOINT_NAMES}
+    start.joint_accelerations = {name: 0.0 for name in JOINT_NAMES}
+    goal.joint_accelerations = {name: 0.0 for name in JOINT_NAMES}
 
     display, controller_count = segment_controller_trace(
         [start, goal],
@@ -239,7 +246,19 @@ def test_controller_rerun_trace_uses_250hz_cubic_samples_and_90hz_output():
         key=lambda item: abs(item.controller_state.time_from_start - 0.2),
     )
     assert quarter.controller_state.positions[0] < 0.2
-    assert quarter.updown_m == pytest.approx(0.325, abs=0.002)
+    assert quarter.updown_m == pytest.approx(0.310352, abs=0.002)
+
+
+def test_raw_rerun_trace_keeps_algorithm_samples_without_interpolation():
+    source = [
+        sample("x", 0.0, 0.0, 0.3),
+        sample("x", 0.1, 0.2, 0.35),
+        sample("x", 0.2, 0.4, 0.4),
+    ]
+    display, sample_count = segment_raw_trace(source)
+    assert sample_count == len(source)
+    assert [item.controller_state.time_from_start for item in display] == [0.0, 0.1, 0.2]
+    assert [item.updown_m for item in display] == pytest.approx([0.3, 0.35, 0.4])
 
 
 def test_retime_zeroes_only_the_joint_that_reverses_direction():
@@ -264,7 +283,38 @@ def test_retime_zeroes_only_the_joint_that_reverses_direction():
     assert middle.joint_velocities[JOINT_NAMES[1]] > 0.0
 
 
-def test_hardware_trajectory_contains_every_frame_velocity_without_zero_offset():
+def test_hardware_trajectory_crosses_joint_contract_as_full_14_axis(monkeypatch):
+    position_calls = []
+    velocity_calls = []
+    acceleration_calls = []
+
+    def contract_position(name, value):
+        position_calls.append(name)
+        return value
+
+    def contract_velocity(name, value):
+        velocity_calls.append(name)
+        return value
+
+    def contract_acceleration(name, value):
+        acceleration_calls.append(name)
+        return value
+
+    monkeypatch.setattr(
+        hardware_executor_module,
+        "model_to_rt_control_position",
+        contract_position,
+    )
+    monkeypatch.setattr(
+        hardware_executor_module,
+        "model_to_rt_control_velocity",
+        contract_velocity,
+    )
+    monkeypatch.setattr(
+        hardware_executor_module,
+        "model_to_rt_control_acceleration",
+        contract_acceleration,
+    )
     source = [
         sample("x", 0.0, 0.0, 0.3),
         sample("x", 0.2, math.radians(10.0), 0.3),
@@ -282,13 +332,22 @@ def test_hardware_trajectory_contains_every_frame_velocity_without_zero_offset()
     executor._state_lock = threading.Lock()
     executor._latest_joints = {}
     trajectory = executor._make_trajectory(samples)
-    assert trajectory.joint_names == list(REAL_CONTROLLER_JOINT_NAMES)
-    assert all(len(point.velocities) == len(REAL_CONTROLLER_JOINT_NAMES) for point in trajectory.points)
+    assert trajectory.joint_names == list(RT_CONTROL_JOINT_NAMES)
+    expected_calls = list(RT_CONTROL_JOINT_NAMES) * len(trajectory.points)
+    assert position_calls == expected_calls
+    assert velocity_calls == expected_calls
+    assert acceleration_calls == expected_calls
+    assert all(len(point.positions) == len(RT_CONTROL_JOINT_NAMES) for point in trajectory.points)
+    assert all(len(point.velocities) == len(RT_CONTROL_JOINT_NAMES) for point in trajectory.points)
+    assert all(len(point.accelerations) == len(RT_CONTROL_JOINT_NAMES) for point in trajectory.points)
     middle = trajectory.points[len(trajectory.points) // 2]
     left_joint6 = trajectory.joint_names.index("left_joint6")
     right_joint4 = trajectory.joint_names.index("right_joint4")
+    updown = trajectory.joint_names.index("updown")
     assert middle.velocities[left_joint6] > 0.0
-    assert middle.velocities[right_joint4] < 0.0
+    assert middle.velocities[right_joint4] > 0.0
+    assert middle.positions[left_joint6] == pytest.approx(samples[len(samples) // 2].joints["left_joint6"])
+    assert middle.positions[updown] == pytest.approx(samples[len(samples) // 2].updown_m)
     frame_deltas = [
         current.joints[JOINT_NAMES[0]] - previous.joints[JOINT_NAMES[0]]
         for previous, current in zip(samples, samples[1:])

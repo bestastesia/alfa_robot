@@ -18,7 +18,6 @@ exec ros2 run armmotion_demo algorithm_thread --ros-args \
   -p execution_speed_scale:=3.0 \
   -p max_joint_speed_deg_s:=10.0 \
   -p max_joint_acceleration_deg_s2:=60.0 \
-  -p max_updown_speed_m_s:=0.05 \
+  -p max_updown_speed_m_s:=0.15 \
   -p updown_acceleration_m_s2:=0.05 \
-  -p updown_deceleration_m_s2:=0.05 \
   "$@"

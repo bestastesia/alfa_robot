@@ -401,6 +401,7 @@ def make_pair_args(
         extract_only=args.extract_only,
         ik_only_raw=args.ik_only_raw,
         ik_scene_rejected=args.ik_scene_rejected,
+        start_support_nodes=not args.external_control_stack,
     )
 
 
@@ -883,6 +884,11 @@ def main() -> int:
         "--planner-server",
         action="store_true",
         help="只启动并预热 planner，保持进程常驻；任务由外部配置服务提交。",
+    )
+    parser.add_argument(
+        "--external-control-stack",
+        action="store_true",
+        help="使用外部真实控制栈的 /joint_states，不启动本地 ros2_control/RSP 支持节点。",
     )
     parser.add_argument("--pair-sequence", default=DEFAULT_SEQUENCE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)

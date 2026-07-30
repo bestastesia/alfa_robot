@@ -31,6 +31,10 @@ def generate_launch_description():
         DeclareLaunchArgument("execution_allow_hold_missing_target_joints", default_value="true"),
         DeclareLaunchArgument("execution_reject_unmapped_planned_joints", default_value="true"),
         DeclareLaunchArgument("start_move_group", default_value="true"),
+        DeclareLaunchArgument(
+            "start_support_nodes",
+            default_value=LaunchConfiguration("start_move_group"),
+        ),
         DeclareLaunchArgument("box_front_x", default_value="0.625"),
         DeclareLaunchArgument("scene_y_shift", default_value="0.0"),
         DeclareLaunchArgument("fixed_updown", default_value="0.45"),
@@ -476,8 +480,14 @@ def generate_launch_description():
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(launch_dir / "spawn_controllers.launch.py"))),
     ]
     move_group_stack = GroupAction(
-        actions=move_group_launch.entities + support_nodes,
+        actions=move_group_launch.entities,
         condition=IfCondition(LaunchConfiguration("start_move_group")),
     )
+    support_stack = GroupAction(
+        actions=support_nodes,
+        condition=IfCondition(LaunchConfiguration("start_support_nodes")),
+    )
 
-    return LaunchDescription(declared_arguments + [move_group_stack, dual_arm_planner])
+    return LaunchDescription(
+        declared_arguments + [move_group_stack, support_stack, dual_arm_planner]
+    )

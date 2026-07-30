@@ -153,6 +153,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "ros2 launch alfa_robot_moveit_config dual_arm_planner.launch.py",
         "execute:=false",
         "start_move_group:=true",
+        f"start_support_nodes:={str(getattr(args, 'start_support_nodes', True)).lower()}",
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
         f"world_to_base_z:={getattr(args, 'world_to_base_z', 0.202094)}",

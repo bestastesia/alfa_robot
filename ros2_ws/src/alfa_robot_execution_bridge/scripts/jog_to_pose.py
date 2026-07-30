@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-"""Jog/teaching tool: send an absolute 13-axis + updown pose in URDF/ROS semantics.
+"""Jog/teaching tool for the rt-control public 14-axis trajectory action.
 
-Direction and updown conversion is mandatory and happens at exactly two
-boundary points, both delegating to the single authoritative module
-alfa_robot_execution_bridge.joints:
-
-- after receiving /joint_states: ethercat_to_ros_position() / physical_to_logical_updown()
-- before sending a trajectory/updown command: ros_to_ethercat_position() / logical_to_physical_updown()
-
-No flag may disable this conversion. All CLI arguments, printed state, and
-Rerun visualization use ROS/URDF/MoveIt semantics only.
+rt-control owns encoder zero offsets. All ``/joint_states`` feedback and
+``/dual_arm_jtc`` commands pass through the shared ``joints.py`` contract, which
+applies the four calibrated mirrored-axis signs without repeating raw EtherCAT
+offset conversion.
 """
 from __future__ import annotations
 
@@ -26,26 +21,24 @@ from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
 from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from alfa_robot_execution_bridge.joints import (
     EXECUTION_JOINT_NAMES,
-    REAL_CONTROLLER_JOINT_NAMES,
+    RT_CONTROL_ACTION_NAME,
+    RT_CONTROL_JOINT_NAMES,
     UPDOWN_LOGICAL_LOWER_M,
     UPDOWN_LOGICAL_UPPER_M,
-    ethercat_to_ros_position,
-    logical_to_physical_updown,
-    physical_to_logical_updown,
+    model_to_rt_control_acceleration,
+    model_to_rt_control_position,
+    model_to_rt_control_velocity,
     require_updown_logical_in_range,
-    ros_to_ethercat_position,
+    rt_control_to_model_position,
 )
 from alfa_robot_execution_bridge.updown import (
     DEFAULT_UPDOWN_ACCELERATION_MPS2,
-    DEFAULT_UPDOWN_DECELERATION_MPS2,
     DEFAULT_UPDOWN_VELOCITY_MPS,
-    make_updown_command_data,
 )
 
 SMOOTHSTEP_MAX_VELOCITY_GAIN = 1.875
@@ -138,7 +131,6 @@ class JogToPose(Node):
         super().__init__('lhy_jog_to_pose')
         self.args = args
         self.action_client = ActionClient(self, FollowJointTrajectory, args.action_name)
-        self.updown_pub = self.create_publisher(Float64MultiArray, args.updown_topic, 10)
         self.plc_clients = {
             "left solenoid": self.create_client(SetBool, args.left_solenoid_service),
             "right solenoid": self.create_client(SetBool, args.right_solenoid_service),
@@ -163,9 +155,9 @@ class JogToPose(Node):
             if msg is None:
                 continue
             names = set(str(name) for name in msg.name)
-            if all(name in names for name in REAL_CONTROLLER_JOINT_NAMES):
+            if all(name in names for name in RT_CONTROL_JOINT_NAMES):
                 return msg
-        raise TimeoutError(f'timed out waiting for full 13-axis /joint_states on {self.args.joint_state_topic}')
+        raise TimeoutError(f'timed out waiting for full 14-axis /joint_states on {self.args.joint_state_topic}')
 
     def spin_for(self, seconds: float) -> None:
         """Keep processing /joint_states (and driving Rerun) for a fixed duration.
@@ -182,16 +174,11 @@ class JogToPose(Node):
 
     @staticmethod
     def ros_positions_from_joint_state(msg: JointState) -> tuple[dict[str, float], bool]:
-        """Read /joint_states (raw motor semantics) and convert to ROS/URDF semantics.
-
-        This is the mandatory read-side boundary: every value that leaves this
-        function is already in ROS semantics; nothing downstream may re-apply
-        or skip the conversion.
+        """Read the rt-control public /joint_states in ROS/URDF semantics.
 
         Returns (values, updown_out_of_contract). The physical-to-logical
         contract conversion always applies (the current calibrated offset is zero), but if the
-        result falls outside [UPDOWN_LOGICAL_LOWER_M, UPDOWN_LOGICAL_UPPER_M]
-        (e.g. updown still sitting at a pre-contract or old-wide-range value),
+        updown falls outside [UPDOWN_LOGICAL_LOWER_M, UPDOWN_LOGICAL_UPPER_M],
         the value is still reported so the operator can see current state and
         jog back into range, and updown_out_of_contract is set so callers can
         warn and refuse to use it as an implicit jog target.
@@ -202,11 +189,13 @@ class JogToPose(Node):
             name = str(name)
             if index >= len(msg.position):
                 continue
-            raw_value = float(msg.position[index])
+            if name not in RT_CONTROL_JOINT_NAMES:
+                continue
+            value = rt_control_to_model_position(name, msg.position[index])
             if name in EXECUTION_JOINT_NAMES:
-                values[name] = ethercat_to_ros_position(name, raw_value)
+                values[name] = value
             elif name == 'updown':
-                logical_m = physical_to_logical_updown(raw_value)
+                logical_m = value
                 values[name] = logical_m
                 if not (UPDOWN_LOGICAL_LOWER_M - 1e-9 <= logical_m <= UPDOWN_LOGICAL_UPPER_M + 1e-9):
                     updown_out_of_contract = True
@@ -260,17 +249,9 @@ class JogToPose(Node):
         }
 
     def make_trajectory(self, plan: TargetPlan) -> JointTrajectory:
-        """Build the trajectory in ROS semantics, then convert at the send boundary.
-
-        Every position/velocity/acceleration sample is computed in ROS/URDF
-        semantics first (interpolation, velocity/acceleration limiting all
-        happen in that frame). Only the final per-sample values written into
-        the message are converted via ros_to_ethercat_position(), immediately
-        before they leave this function. This is the single mandatory write
-        boundary; nothing else in this script may apply or skip that sign.
-        """
+        """Build one complete 14-axis trajectory in rt-control ROS semantics."""
         trajectory = JointTrajectory()
-        trajectory.joint_names = list(REAL_CONTROLLER_JOINT_NAMES)
+        trajectory.joint_names = list(RT_CONTROL_JOINT_NAMES)
         duration_s = self.trajectory_duration_s(plan)
         steps = max(1, int(math.ceil(duration_s * self.args.hz)))
         for step in range(steps + 1):
@@ -284,14 +265,36 @@ class JogToPose(Node):
             positions = []
             velocities = []
             accelerations = []
-            for name in REAL_CONTROLLER_JOINT_NAMES:
-                delta = plan.target[name] - plan.current[name]
-                ros_value = plan.current[name] + delta * ratio
-                ros_velocity = delta * velocity_scale / duration_s
-                ros_acceleration = delta * acceleration_scale / (duration_s * duration_s)
-                positions.append(ros_to_ethercat_position(name, ros_value))
-                velocities.append(ros_to_ethercat_position(name, ros_velocity))
-                accelerations.append(ros_to_ethercat_position(name, ros_acceleration))
+            for name in RT_CONTROL_JOINT_NAMES:
+                if name == 'updown':
+                    if plan.updown_current is None:
+                        raise RuntimeError("完整14轴轨迹缺少 updown 反馈")
+                    current_value = plan.updown_current
+                    target_value = (
+                        plan.updown_current
+                        if plan.updown_target is None
+                        else plan.updown_target
+                    )
+                else:
+                    current_value = plan.current[name]
+                    target_value = plan.target[name]
+                delta = target_value - current_value
+                positions.append(
+                    model_to_rt_control_position(
+                        name, current_value + delta * ratio
+                    )
+                )
+                velocities.append(
+                    model_to_rt_control_velocity(
+                        name, delta * velocity_scale / duration_s
+                    )
+                )
+                accelerations.append(
+                    model_to_rt_control_acceleration(
+                        name,
+                        delta * acceleration_scale / (duration_s * duration_s),
+                    )
+                )
             point.positions = positions
             if self.args.profile == 'smoothstep':
                 point.velocities = velocities
@@ -315,6 +318,17 @@ class JogToPose(Node):
                     duration_s,
                     math.sqrt(delta_deg * SMOOTHSTEP_MAX_ACCELERATION_GAIN / self.args.max_accel_deg_s2),
                 )
+        if plan.updown_current is not None and plan.updown_target is not None:
+            updown_delta_m = abs(plan.updown_target - plan.updown_current)
+            duration_s = max(
+                duration_s,
+                updown_delta_m * SMOOTHSTEP_MAX_VELOCITY_GAIN / self.args.updown_speed_mps,
+                math.sqrt(
+                    updown_delta_m
+                    * SMOOTHSTEP_MAX_ACCELERATION_GAIN
+                    / self.args.updown_acceleration_mps2
+                ),
+            )
         return duration_s
 
     def print_plan(self, plan: TargetPlan, trajectory: JointTrajectory) -> None:
@@ -325,8 +339,7 @@ class JogToPose(Node):
             current_text = 'UNKNOWN' if plan.updown_current is None else f'{plan.updown_current:.4f} m'
             print(f'  {"updown":12s} {current_text:>13s} -> {plan.updown_target:9.4f} m (logical)')
             print(
-                f'  updown contract logical={plan.updown_target:.4f} m '
-                f'-> physical={logical_to_physical_updown(plan.updown_target):.4f} m'
+                f'  updown rt-control target={plan.updown_target:.4f} m'
             )
         else:
             current_text = 'UNKNOWN' if plan.updown_current is None else f'{plan.updown_current:.4f} m'
@@ -346,13 +359,11 @@ class JogToPose(Node):
         if self.args.profile == 'smoothstep':
             print(f'  max_vel_limit={self.args.max_vel_deg_s:.3f}deg/s max_accel_limit={self.args.max_accel_deg_s2:.3f}deg/s^2')
         print(f'  max_arm_delta={math.degrees(max_delta):.3f}deg@{max_joint}')
-        print('  direction/updown conversion: MANDATORY (alfa_robot_execution_bridge.joints), not optional')
+        print('  rt-control boundary: shared joints.py direction contract; no raw EtherCAT offset conversion')
         if plan.updown_target is not None:
             print(
-                f'  updown_topic={self.args.updown_topic} '
-                f'profile=[velocity={self.args.updown_speed_mps:.4f}m/s, '
-                f'acceleration={self.args.updown_acceleration_mps2:.4f}m/s^2, '
-                f'deceleration={self.args.updown_deceleration_mps2:.4f}m/s^2]'
+                f'  updown limits=[velocity={self.args.updown_speed_mps:.4f}m/s, '
+                f'acceleration={self.args.updown_acceleration_mps2:.4f}m/s^2]'
             )
 
     def print_plc_plan(self) -> None:
@@ -363,19 +374,6 @@ class JogToPose(Node):
         print(f"\nPLC outputs ({self.args.plc_when}):")
         for label, enabled in outputs:
             print(f"  {label:14s} -> {'on' if enabled else 'off'}")
-
-    def publish_updown_once(self, target_logical_m: float) -> None:
-        msg = Float64MultiArray()
-        msg.data = make_updown_command_data(
-            target_logical_m,
-            self.args.updown_speed_mps,
-            self.args.updown_acceleration_mps2,
-            self.args.updown_deceleration_mps2,
-        )
-        for _ in range(max(1, self.args.updown_publish_repeats)):
-            self.updown_pub.publish(msg)
-            rclpy.spin_once(self, timeout_sec=0.02)
-            time.sleep(0.02)
 
     def apply_plc_outputs(self) -> bool:
         outputs = requested_plc_outputs(self.args)
@@ -404,9 +402,6 @@ class JogToPose(Node):
     def send(self, plan: TargetPlan, trajectory: JointTrajectory) -> int:
         if not self.action_client.wait_for_server(timeout_sec=self.args.action_timeout_s):
             raise TimeoutError(f'action server not available: {self.args.action_name}')
-
-        if plan.updown_target is not None:
-            self.publish_updown_once(plan.updown_target)
 
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
@@ -499,24 +494,17 @@ def add_joint_args(parser: argparse.ArgumentParser) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description='Jog/teaching tool: send an absolute 13-axis + updown pose in URDF/ROS semantics. '
+        description='Jog/teaching tool: send a complete rt-control 14-axis pose in URDF/ROS semantics. '
                     'Replaces run_move_all_joints_abs.sh / move_all_joints_abs.py. '
-                    'Direction and updown conversion is always applied via '
-                    'alfa_robot_execution_bridge.joints; there is no flag to disable it.',
+                    'The fixed controller order is imported from alfa_robot_execution_bridge.joints.',
     )
-    parser.add_argument('--action-name', default='/dual_arm_trajectory_controller/follow_joint_trajectory')
+    parser.add_argument('--action-name', default=RT_CONTROL_ACTION_NAME)
     parser.add_argument('--joint-state-topic', default='/joint_states')
-    parser.add_argument('--updown-topic', default='/canopen/updown_position_controller/commands')
     parser.add_argument('--updown-speed-mps', type=float, default=DEFAULT_UPDOWN_VELOCITY_MPS)
     parser.add_argument(
         '--updown-acceleration-mps2',
         type=float,
         default=DEFAULT_UPDOWN_ACCELERATION_MPS2,
-    )
-    parser.add_argument(
-        '--updown-deceleration-mps2',
-        type=float,
-        default=DEFAULT_UPDOWN_DECELERATION_MPS2,
     )
     parser.add_argument('--duration-s', type=float, default=5.0)
     parser.add_argument('--hz', type=float, default=10.0)
@@ -529,7 +517,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--result-timeout-s', type=float, default=60.0)
     parser.add_argument('--wait-result', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--send', action='store_true', help='Actually send commands. Without this, only prints the plan (dry run).')
-    parser.add_argument('--updown-publish-repeats', type=int, default=3)
     parser.add_argument('--left-solenoid', choices=['keep', 'on', 'off'], default='keep')
     parser.add_argument('--right-solenoid', choices=['keep', 'on', 'off'], default='keep')
     parser.add_argument('--vacuum-pump', choices=['keep', 'on', 'off'], default='keep')
@@ -580,12 +567,10 @@ def main() -> int:
         raise SystemExit('--max-vel-deg-s must be > 0')
     if args.max_accel_deg_s2 <= 0.0:
         raise SystemExit('--max-accel-deg-s2 must be > 0')
-    make_updown_command_data(
-        0.0,
-        args.updown_speed_mps,
-        args.updown_acceleration_mps2,
-        args.updown_deceleration_mps2,
-    )
+    if args.updown_speed_mps <= 0.0:
+        raise SystemExit('--updown-speed-mps must be > 0')
+    if args.updown_acceleration_mps2 <= 0.0:
+        raise SystemExit('--updown-acceleration-mps2 must be > 0')
     if args.plc_service_timeout_s <= 0.0:
         raise SystemExit('--plc-service-timeout-s must be > 0')
     if args.plc_only and not requested_plc_outputs(args):

@@ -1,6 +1,8 @@
 # alfa_robot_execution_bridge
 
-统一的 ALFA 机器人执行接口包。当前支持 `mock` 和 `ros2_control` 两种后端：前者用于无电机、无 EtherCAT 主栈时调通上层任务编排，后者把统一 action 转发给电控侧已有的 ros2_control 轨迹控制器。
+ALFA 轨迹插值、关节合同和历史执行兼容工具包。`/alfa_execution/execute_joint_trajectory`
+是旧 13 轴兼容接口，不是当前 rt-control 的生产入口；新代码应直接使用完整 14 轴
+`/dual_arm_jtc/follow_joint_trajectory`。
 
 ## 接口
 
@@ -38,9 +40,9 @@ source install/setup.bash
 ros2 run alfa_robot_execution_bridge send_mock_trajectory --duration-s 4 --amplitude-deg 15
 ```
 
-## 运行 ros2_control 转发后端
+## 历史 ros2_control 转发后端
 
-先启动电控侧 EtherCAT 主栈和 ros2_control，使 `/dual_arm_trajectory_controller/follow_joint_trajectory` 可用，然后运行：
+该入口仍用于回放旧环境，不能连接当前禁止 partial goal 的 rt-control 生产控制器。
 
 ```bash
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
@@ -63,36 +65,31 @@ ros2 launch alfa_robot_moveit_config dual_arm_planner.launch.py \
 
 该路径会把 MoveIt 里的 `leftjoint*` / `rightjoint*` 映射成执行接口里的 `left_joint*` / `right_joint*`，并默认带上 `turn` 保持当前值。若规划里有未映射且发生变化的轴，例如 `updown`，会默认拒绝执行，避免静默丢轴。
 
-## 方向关系
+## 当前 rt-control 方向关系
 
-`alfa_robot_execution_bridge/joints.py` 是当前实机方向标定的唯一真相源，包含 joint 顺序和 `ROS/Rerun -> EtherCAT` 方向映射。
+`alfa_robot_execution_bridge/joints.py` 提供 `RT_CONTROL_JOINT_NAMES` 固定顺序。J6编码器
+零点由 rt-control 硬件配置处理；实机低速对称姿态验证表明当前 rt-control 尚未统一四个
+机械反向轴，因此 `joints.py` 在公共边界补偿 `left_joint3/5`、`right_joint2/4`，其余轴
+为 `+1`，公共边界偏置保持为0。
+armmotion 和 `jog_to_pose` 的所有14轴位置、速度、加速度及反馈现在都必须显式经过
+`model_to_rt_control_*()` / `rt_control_to_model_position()`；禁止
+调用方绕过该边界直接拼装控制器语义。
 
 `config/*.yaml` 不再复制 `direction_signs`。默认 `apply_direction_signs=false`，表示电控侧 ros2_control / 硬件层已经处理方向；如果确认下游没有处理方向，再打开该参数，运行时会自动使用 `joints.py` 中的方向表，避免双重翻转和配置漂移。
 
-## updown 四字段命令合同
+## Updown 当前合同
 
-生产话题保持为 `/canopen/updown_position_controller/commands`，消息固定为：
-
-```text
-[position_m, velocity_mps, acceleration_mps2, deceleration_mps2]
-```
-
-旧的单元素 `[position_m]` 不再有效。`updown.py` 是运控侧构造和校验该消息的唯一入口；
-位置仍先经过 `joints.py` 的逻辑值到电机值换算。`run_jog_to_pose.sh` 可通过
-`--updown-speed-mps`、`--updown-acceleration-mps2`、`--updown-deceleration-mps2`
-设置 profile，默认均为 `0.05`。
+Updown 已并入完整 14 轴 FJT，单位为米。`run_jog_to_pose.sh` 的
+`--updown-speed-mps` 与 `--updown-acceleration-mps2` 现在用于生成同步轨迹，
+不再发布独立 PP 命令。
 
 ```bash
 /home/ar/lhy_dev/run_jog_to_pose.sh \
   --updown-m 0.15 \
   --updown-speed-mps 0.05 \
   --updown-acceleration-mps2 0.05 \
-  --updown-deceleration-mps2 0.05 \
   --send
 ```
-
-全流程执行脚本不再按 10Hz 连续重发 PP 位置点，而是在每个阶段开始时原子下发一次最终位置和
-profile 参数；速度根据该阶段位移/时长动态计算，并受 `--max-updown-speed-m-s` 上限约束。
 
 ## jog_to_pose PLC IO 联调
 
