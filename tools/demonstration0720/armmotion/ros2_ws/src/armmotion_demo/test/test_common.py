@@ -48,7 +48,7 @@ def make_direct_lift_samples():
         sample("selected_loaded_to_place", 4.0, 0.0, 0.45),
         sample("selected_loaded_to_place", 6.0, -0.1, 0.1),
         sample("selected_place_to_loaded", 6.0, -0.1, 0.1),
-        sample("selected_place_to_loaded", 7.0, 0.0, 0.3),
+        sample("selected_place_to_loaded", 7.0, 0.0, 0.45),
     ]
 
 
@@ -100,6 +100,8 @@ def test_stage_three_preserves_extract_height_below_cap():
         if item.context["stage"].endswith("selected_loaded_plan"):
             item.updown_m = 0.35
         if item.context["stage"].endswith("selected_loaded_to_place") and item.time_s == 4.0:
+            item.updown_m = 0.35
+        if item.context["stage"].endswith("selected_place_to_loaded") and item.time_s == 7.0:
             item.updown_m = 0.35
     task = parse_task_code("B1", 0.9, 0.7)
     stages = split_execution_stages(samples)

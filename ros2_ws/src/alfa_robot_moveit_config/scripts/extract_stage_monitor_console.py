@@ -51,9 +51,13 @@ def find_repo_root() -> Path:
 
 REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
+ROS_SETUP = Path(
+    os.environ.get("ALFA_ROS_SETUP", str(ROS_WS / "install/setup.bash"))
+).expanduser().resolve()
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
 DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 
 
 def wall_stamp() -> str:
@@ -76,7 +80,7 @@ def bash_source_command(command: str) -> list[str]:
         "bash",
         "-lc",
         "source /opt/ros/humble/setup.bash && "
-        f"source {ROS_WS}/install/setup.bash && "
+        f"source {ROS_SETUP} && "
         f"cd {ROS_WS} && "
         f"{command}",
     ]
@@ -209,10 +213,13 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_monitor_place_cycle_enabled:={str(getattr(args, 'place_cycle_enabled', False)).lower()}",
         f"extract_monitor_place_updown:={getattr(args, 'place_updown', 0.10)}",
         f"extract_monitor_place_transition_updown:={getattr(args, 'place_transition_updown', 0.10)}",
+        f"extract_monitor_pre_place_left_pose_deg:='{getattr(args, 'pre_place_left_pose_deg', DEFAULT_PRE_PLACE_POSE_DEG)}'",
+        f"extract_monitor_pre_place_right_pose_deg:='{getattr(args, 'pre_place_right_pose_deg', DEFAULT_PRE_PLACE_POSE_DEG)}'",
         f"extract_monitor_place_left_pose_deg:='{getattr(args, 'place_left_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
         f"extract_monitor_place_right_pose_deg:='{getattr(args, 'place_right_pose_deg', '[0.0,-55.0,-50.0,-60.0,0.0,0.0]')}'",
         f"extract_rollout_mode:={getattr(args, 'extract_rollout_mode', 'greedy')}",
         f"extract_top_updown_lift_distance:={getattr(args, 'extract_top_updown_lift_distance', 0.40)}",
+        f"extract_top_updown_retreat_distance:={getattr(args, 'extract_top_updown_retreat_distance', 0.0)}",
         f"extract_box_pose_rrt_edge_scene_collision:={str(getattr(args, 'extract_box_pose_rrt_edge_scene_collision', True)).lower()}",
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
         f"extract_box_pose_rrt_paths_per_arm:={getattr(args, 'extract_box_pose_rrt_paths_per_arm', 8)}",
@@ -594,11 +601,11 @@ def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
 
 def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, float, float]]:
     rows = [
-        [(1, 0.5), (2, 0.0), (3, -0.5)],
-        [(4, 0.5), (5, 0.0), (6, -0.5)],
-        [(7, 0.5), (8, 0.0), (9, -0.5)],
-        [(10, 0.5), (11, 0.0), (12, -0.5)],
-        [(13, 0.5), (14, 0.0), (15, -0.5)],
+        [(1, 0.4), (2, 0.0), (3, -0.4)],
+        [(4, 0.4), (5, 0.0), (6, -0.4)],
+        [(7, 0.4), (8, 0.0), (9, -0.4)],
+        [(10, 0.4), (11, 0.0), (12, -0.4)],
+        [(13, 0.4), (14, 0.0), (15, -0.4)],
     ]
     out: dict[int, tuple[float, float, float]] = {}
     for row_i, row in enumerate(rows):
@@ -608,7 +615,12 @@ def all_boxes(box_x: float, y_shift: float = 0.0) -> dict[int, tuple[float, floa
     return out
 
 
-def log_container_panels(panels: list[dict[str, Any]] | None, *, static: bool = False) -> None:
+def log_container_panels(
+    panels: list[dict[str, Any]] | None,
+    *,
+    static: bool = False,
+    collision_ids: set[str] | None = None,
+) -> None:
     """绘制集装箱壳碰撞几何。
 
     数据必须来自规划节点写入 snapshot 的 ``container_panels`` 字段——它就是
@@ -634,8 +646,13 @@ def log_container_panels(panels: list[dict[str, Any]] | None, *, static: bool = 
         half_sizes.append([float(value) * 0.5 for value in size])
         yaw = float(panel.get("yaw", 0.0))
         rotations.append(rr.RotationAxisAngle(axis=[0.0, 0.0, 1.0], radians=yaw))
-        colors.append([80, 170, 255, 45])
-        labels.append(str(panel.get("id", "container_panel")))
+        panel_id = str(panel.get("id", "container_panel"))
+        colors.append(
+            [255, 30, 30, 210]
+            if collision_ids and panel_id in collision_ids
+            else [80, 170, 255, 45]
+        )
+        labels.append(panel_id)
     rr.log(
         "monitor/scene/container",
         rr.Boxes3D(
@@ -649,7 +666,10 @@ def log_container_panels(panels: list[dict[str, Any]] | None, *, static: bool = 
     )
 
 
-def log_static_box_obstacles(config: dict[str, Any] | None) -> None:
+def log_static_box_obstacles(
+    config: dict[str, Any] | None,
+    collision_ids: set[str] | None = None,
+) -> None:
     if not config or not config.get("enabled", False):
         rr.log("monitor/scene/static_box_obstacles", rr.Boxes3D(centers=[], half_sizes=[]))
         return
@@ -664,8 +684,13 @@ def log_static_box_obstacles(config: dict[str, Any] | None) -> None:
             continue
         centers.append([float(value) for value in center])
         half_sizes.append([float(value) * 0.5 for value in size])
-        colors.append([170, 80, 255, 110])
-        labels.append(str(box.get("id", "static_box_obstacle")))
+        box_id = str(box.get("id", "static_box_obstacle"))
+        colors.append(
+            [255, 30, 30, 220]
+            if collision_ids and box_id in collision_ids
+            else [170, 80, 255, 110]
+        )
+        labels.append(box_id)
     rr.log("monitor/scene/static_box_obstacles", rr.Boxes3D(centers=centers, half_sizes=half_sizes, colors=colors, labels=labels))
 
 
@@ -767,12 +792,50 @@ def densify_stage_points(points: list[dict[str, Any]], max_joint_step_rad: float
 
 
 def playback_points_for_stage(stage: dict[str, Any]) -> list[dict[str, Any]]:
-    points = ensure_points_start_at_stage_start(stage, list(stage.get("trajectory", {}).get("points", [])))
-    points = ensure_points_end_at_stage_goal(stage, points)
+    points = list(stage.get("trajectory", {}).get("points", []))
+    extra = stage.get("extra", {})
+    failed_stage = isinstance(extra, dict) and extra.get("valid") is False
+    if failed_stage:
+        failure_reason = str(
+            extra.get("failure_reason")
+            or extra.get("loaded_plan_failure_reason")
+            or ""
+        )
+        match = re.search(r"trajectory point (\d+)", failure_reason)
+        if match:
+            points = points[: int(match.group(1)) + 1]
+    points = ensure_points_start_at_stage_start(stage, points)
+    if not failed_stage:
+        points = ensure_points_end_at_stage_goal(stage, points)
     return densify_stage_points(points)
 
 
-def log_attached_boxes(robot: Any, joints: dict[str, float], attached_boxes: list[dict[str, Any]]) -> None:
+def collision_ids_for_stage(stage: dict[str, Any]) -> set[str]:
+    extra = stage.get("extra", {})
+    if not isinstance(extra, dict) or extra.get("valid") is not False:
+        return set()
+    failure_reason = str(
+        extra.get("failure_reason")
+        or extra.get("loaded_plan_failure_reason")
+        or ""
+    )
+    match = re.search(r"collision:([^;)]+)", failure_reason)
+    if not match:
+        return set()
+    collision_ids: set[str] = set()
+    for pair in match.group(1).split(","):
+        collision_ids.update(
+            part.strip() for part in pair.split("<->") if part.strip()
+        )
+    return collision_ids
+
+
+def log_attached_boxes(
+    robot: Any,
+    joints: dict[str, float],
+    attached_boxes: list[dict[str, Any]],
+    collision_ids: set[str] | None = None,
+) -> None:
     if not attached_boxes:
         rr.log("monitor/scene/attached_boxes", rr.Clear(recursive=True))
         rr.log("monitor/scene/attached_box_debug", rr.Clear(recursive=True))
@@ -805,8 +868,13 @@ def log_attached_boxes(robot: Any, joints: dict[str, float], attached_boxes: lis
         centers.append(center)
         half_sizes.append([float(value) * 0.5 for value in size])
         quaternions.append(matrix_to_quaternion(link_tf[:3, :3]))
-        colors.append([40, 220, 90, 150])
-        labels.append(str(box.get("id", "carried_box")))
+        box_id = str(box.get("id", "carried_box"))
+        colors.append(
+            [255, 30, 30, 230]
+            if collision_ids and box_id in collision_ids
+            else [40, 220, 90, 150]
+        )
+        labels.append(box_id)
         tool_points.append(tool_origin)
         box_points.append(center)
         link_to_center_lines.append([tool_origin, center])
@@ -1124,7 +1192,7 @@ def main() -> int:
     parser.add_argument("--loaded-planning-attempts", type=int, default=8)
     parser.add_argument("--loaded-sort-by-pose-distance", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--loaded-stop-on-first-success", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--loaded-updown", type=float, default=0.3)
+    parser.add_argument("--loaded-updown", type=float, default=0.1)
     parser.add_argument(
         "--loaded-preserve-lower-updown",
         action=argparse.BooleanOptionalAction,
@@ -1232,7 +1300,7 @@ def main() -> int:
             "#!/usr/bin/env bash\nset -e\n"
             f"{domain_export}"
             "source /opt/ros/humble/setup.bash\n"
-            f"source {ROS_WS}/install/setup.bash\n"
+            f"source {ROS_SETUP}\n"
             f"cd {ROS_WS}\n{launch_command}\n"
         )
         log_event(f"启动 planner，日志：{launch_log}", run_start)

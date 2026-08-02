@@ -17,7 +17,7 @@ struct ContainerGeometryConfig
   double center_y = 0.0;
   double yaw = 0.0;  // 绕 Z 轴，弧度；集装箱相对 config.frame（world）的朝向
   double width = 1.8;
-  double height = 2.4;
+  double height = 2.2;
   double length = 8.0;
   double wall_thickness = 0.03;
   double floor_z = 0.0;
@@ -37,7 +37,7 @@ struct BoxWallGeometryConfig
   bool rear_guard_enabled = true;
   double rear_guard_thickness = 0.01;
   double rear_guard_clearance = 0.03;
-  double container_height = 2.4;
+  double container_height = 2.2;
 };
 
 struct CarriedBoxGeometryConfig
@@ -72,6 +72,12 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   int right_box_id,
   const BoxWallGeometryConfig& config);
 
+std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
+  const AxisAlignedBox& left_source_box,
+  const AxisAlignedBox& right_source_box,
+  const std::string& opening_label,
+  const BoxWallGeometryConfig& config);
+
 AttachedBoxSpec make_attached_box_spec(
   const std::string& side,
   int box_id,
@@ -97,6 +103,14 @@ bool carried_box_detached_from_source_xz(
   const std::string& carried_box_id,
   std::string* reason);
 
+bool carried_box_detached_from_reference_layer_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double reference_height_offset,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason);
+
 bool carried_box_detached_from_source_layers_xz(
   const AxisAlignedBox& carried_box,
   int box_id,
@@ -105,6 +119,15 @@ bool carried_box_detached_from_source_layers_xz(
   double carried_box_width,
   double carried_box_height,
   double carried_box_depth,
+  double margin,
+  size_t clearance_levels,
+  const std::string& carried_box_id,
+  std::string* reason);
+
+bool carried_box_detached_from_source_layers_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double source_layer_height,
   double margin,
   size_t clearance_levels,
   const std::string& carried_box_id,

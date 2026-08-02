@@ -65,6 +65,12 @@ public:
 
   bool setStaticBoxWallOpening(int left_box_id, int right_box_id);
 
+  bool setStaticBoxWallOpening(
+    int left_box_id,
+    int right_box_id,
+    const AxisAlignedBox& left_source_box,
+    const AxisAlignedBox& right_source_box);
+
   const std::vector<StaticBoxObstacle>& staticBoxObstacles() const { return current_static_box_obstacles_; }
 
   int activeStaticLeftBoxId() const { return active_static_left_box_id_; }

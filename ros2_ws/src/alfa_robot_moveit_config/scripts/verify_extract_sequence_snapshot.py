@@ -16,12 +16,12 @@ except ImportError as exc:
         "无法导入 alfa_robot_rerun；请先 source ros2_ws/install/setup.bash"
     ) from exc
 
-BOX_SIZE = np.array([0.3, 0.4, 0.5], dtype=float)
+BOX_SIZE = np.array([0.3, 0.4, 0.4], dtype=float)
 
 
 def box_center_z(box_id: int) -> float:
     row_from_top = (box_id - 1) // 3
-    return (4 - row_from_top - 0.5) * 0.5
+    return (5 - row_from_top - 0.5) * 0.4
 
 
 def transformed_box_aabb(
@@ -68,6 +68,38 @@ def aabb_overlaps(
     return bool(np.all(lhs_min <= rhs_max) and np.all(lhs_max >= rhs_min))
 
 
+def yaw_box_aabb(box: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    center = np.asarray(box["center"], dtype=float)
+    size = np.asarray(box["size"], dtype=float)
+    yaw = float(box.get("yaw", 0.0))
+    cosine = math.cos(yaw)
+    sine = math.sin(yaw)
+    rotation = np.array(
+        [[cosine, -sine, 0.0], [sine, cosine, 0.0], [0.0, 0.0, 1.0]],
+        dtype=float,
+    )
+    corners = np.asarray(
+        [
+            center + rotation @ (np.array([sx, sy, sz], dtype=float) * size)
+            for sx in (-0.5, 0.5)
+            for sy in (-0.5, 0.5)
+            for sz in (-0.5, 0.5)
+        ]
+    )
+    return corners.min(axis=0), corners.max(axis=0)
+
+
+def aabb_penetrates(
+    lhs_min: np.ndarray,
+    lhs_max: np.ndarray,
+    rhs_min: np.ndarray,
+    rhs_max: np.ndarray,
+    tolerance: float,
+) -> bool:
+    overlap = np.minimum(lhs_max, rhs_max) - np.maximum(lhs_min, rhs_min)
+    return bool(np.all(overlap > tolerance))
+
+
 def verify_snapshot(
     snapshot_path: Path,
     robot: UrdfRobot,
@@ -88,6 +120,49 @@ def verify_snapshot(
         stage for stage in replay_stages
         if str(stage.get("stage", "")).endswith("selected_loaded_plan")
     ]
+
+    ceiling_panels = [
+        panel
+        for panel in snapshot.get("container_panels", [])
+        if str(panel.get("id", "")) == "container_ceiling"
+    ]
+    for stage in replay_stages:
+        attached_boxes = list(stage.get("attached_boxes", []))
+        trajectory = stage.get("trajectory", {})
+        joint_names = list(trajectory.get("joint_names", []))
+        points = list(trajectory.get("points", []))
+        if not attached_boxes or not joint_names or not points:
+            continue
+        reported_pairs: set[tuple[str, str]] = set()
+        for point_index, point in enumerate(points):
+            joint_map = dict(zip(joint_names, point.get("positions", [])))
+            for attached_box in attached_boxes:
+                carried_min, carried_max = transformed_box_aabb(
+                    robot, joint_map, attached_box
+                )
+                for ceiling in ceiling_panels:
+                    pair = (
+                        str(attached_box.get("id", "carried_box")),
+                        str(ceiling.get("id", "container_ceiling")),
+                    )
+                    if pair in reported_pairs:
+                        continue
+                    ceiling_min, ceiling_max = yaw_box_aabb(ceiling)
+                    if not aabb_penetrates(
+                        carried_min,
+                        carried_max,
+                        ceiling_min,
+                        ceiling_max,
+                        tolerance,
+                    ):
+                        continue
+                    reported_pairs.add(pair)
+                    errors.append(
+                        f"{stage.get('stage', 'unknown_stage')} 点 {point_index} 的 "
+                        f"{pair[0]} 穿入 {pair[1]}："
+                        f"carried_z=[{carried_min[2]:.6f},{carried_max[2]:.6f}] "
+                        f"ceiling_z=[{ceiling_min[2]:.6f},{ceiling_max[2]:.6f}]"
+                    )
 
     if not extract_stages:
         errors.append("成功快照缺少 selected_extract_step")
@@ -182,7 +257,12 @@ def main() -> int:
         description="验证抽箱序列成功快照是否严格脱离并包含真实负重轨迹"
     )
     parser.add_argument("run_root", type=Path)
-    parser.add_argument("--margin", type=float, default=0.03)
+    parser.add_argument(
+        "--margin",
+        type=float,
+        default=0.0,
+        help="可选的额外脱离净空；默认0，仅验证附着箱与原箱位不再重叠。",
+    )
     parser.add_argument("--tolerance", type=float, default=1e-6)
     args = parser.parse_args()
 

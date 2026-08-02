@@ -1,0 +1,12 @@
+.git
+.git/**
+**/__pycache__
+**/.pytest_cache
+**/build
+**/install
+**/log
+**/logs
+data
+docker/motion/.workspace
+*.rrd
+*.pyc

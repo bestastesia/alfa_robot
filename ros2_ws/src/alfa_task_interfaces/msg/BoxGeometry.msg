@@ -1,0 +1,5 @@
+geometry_msgs/PoseWithCovarianceStamped body_pose
+geometry_msgs/PoseWithCovarianceStamped suction_surface_pose
+geometry_msgs/Vector3 size_m
+bool[3] size_valid
+uint8[3] size_source

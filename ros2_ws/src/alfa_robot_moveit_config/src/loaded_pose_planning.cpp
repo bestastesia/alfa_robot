@@ -381,21 +381,6 @@ double joint_variable_delta(
     : (goal - start);
 }
 
-double variable_delta_for_model(
-  const moveit::core::RobotModelConstPtr& robot_model,
-  const std::string& name,
-  double from,
-  double to)
-{
-  const auto* variable_joint = robot_model->getJointOfVariable(name);
-  const auto* revolute_joint =
-    dynamic_cast<const moveit::core::RevoluteJointModel*>(variable_joint);
-  const bool continuous_variable = revolute_joint && revolute_joint->isContinuous();
-  return continuous_variable
-    ? std::atan2(std::sin(to - from), std::cos(to - from))
-    : (to - from);
-}
-
 moveit::planning_interface::MoveGroupInterface::Plan make_interpolated_joint_plan(
   const moveit::core::RobotState& start_state,
   const moveit::core::RobotState& goal_state,
@@ -433,10 +418,7 @@ moveit::planning_interface::MoveGroupInterface::Plan make_interpolated_joint_pla
 double plan_duration_s(const moveit::planning_interface::MoveGroupInterface::Plan& plan)
 {
   const auto& points = plan.trajectory_.joint_trajectory.points;
-  if (points.empty()) {
-    return 0.0;
-  }
-  return rclcpp::Duration(points.back().time_from_start).seconds();
+  return points.empty() ? 0.0 : rclcpp::Duration(points.back().time_from_start).seconds();
 }
 
 moveit::core::RobotState state_from_plan_at_time(
@@ -457,37 +439,27 @@ moveit::core::RobotState state_from_plan_at_time(
          rclcpp::Duration(points[upper].time_from_start).seconds() < time_s) {
     ++upper;
   }
-
   const size_t lower = upper == 0 ? 0 : upper - 1;
   const double lower_t = rclcpp::Duration(points[lower].time_from_start).seconds();
   const double upper_t = rclcpp::Duration(points[upper].time_from_start).seconds();
   const double ratio = upper_t > lower_t + 1e-9
     ? std::clamp((time_s - lower_t) / (upper_t - lower_t), 0.0, 1.0)
     : 0.0;
-
   for (size_t index = 0; index < trajectory.joint_names.size(); ++index) {
-    if (index >= points[lower].positions.size() || index >= points[upper].positions.size()) {
-      continue;
-    }
+    if (index >= points[lower].positions.size() || index >= points[upper].positions.size()) continue;
     const std::string& name = trajectory.joint_names[index];
     const double from = points[lower].positions[index];
     const double to = points[upper].positions[index];
-    state.setVariablePosition(
-      name,
-      from + variable_delta_for_model(state.getRobotModel(), name, from, to) * ratio);
+    const auto* variable_joint = state.getRobotModel()->getJointOfVariable(name);
+    const auto* revolute_joint =
+      dynamic_cast<const moveit::core::RevoluteJointModel*>(variable_joint);
+    const double delta = revolute_joint && revolute_joint->isContinuous()
+      ? std::atan2(std::sin(to - from), std::cos(to - from))
+      : to - from;
+    state.setVariablePosition(name, from + delta * ratio);
   }
   state.update(true);
   return state;
-}
-
-bool is_left_arm_joint(const std::string& name)
-{
-  return name.rfind("left_joint", 0) == 0;
-}
-
-bool is_right_arm_joint(const std::string& name)
-{
-  return name.rfind("right_joint", 0) == 0;
 }
 
 void copy_arm_goal(
@@ -512,29 +484,23 @@ moveit::planning_interface::MoveGroupInterface::Plan merge_parallel_arm_plans(
   moveit::planning_interface::MoveGroupInterface::Plan merged;
   auto& trajectory = merged.trajectory_.joint_trajectory;
   trajectory.joint_names = joint_names;
-
   const double duration_s = std::max(plan_duration_s(left_plan), plan_duration_s(right_plan));
   constexpr double kSampleStepS = 0.05;
   const size_t steps = std::max<size_t>(
-    2,
-    static_cast<size_t>(std::ceil(duration_s / kSampleStepS)) + 1);
+    2, static_cast<size_t>(std::ceil(duration_s / kSampleStepS)) + 1);
   trajectory.points.reserve(steps);
-
   for (size_t step = 0; step < steps; ++step) {
     const double ratio = steps <= 1 ? 1.0 : static_cast<double>(step) / static_cast<double>(steps - 1);
     const double time_s = duration_s * ratio;
-    const moveit::core::RobotState left_state =
-      state_from_plan_at_time(left_plan, start_state, time_s);
-    const moveit::core::RobotState right_state =
-      state_from_plan_at_time(right_plan, start_state, time_s);
-
+    const auto left_state = state_from_plan_at_time(left_plan, start_state, time_s);
+    const auto right_state = state_from_plan_at_time(right_plan, start_state, time_s);
     trajectory_msgs::msg::JointTrajectoryPoint point;
     point.time_from_start = rclcpp::Duration::from_seconds(time_s);
     point.positions.reserve(joint_names.size());
     for (const auto& name : joint_names) {
-      if (is_left_arm_joint(name)) {
+      if (name.rfind("left_joint", 0) == 0) {
         point.positions.push_back(left_state.getVariablePosition(name));
-      } else if (is_right_arm_joint(name)) {
+      } else if (name.rfind("right_joint", 0) == 0) {
         point.positions.push_back(right_state.getVariablePosition(name));
       } else {
         point.positions.push_back(start_state.getVariablePosition(name));
@@ -542,7 +508,6 @@ moveit::planning_interface::MoveGroupInterface::Plan merge_parallel_arm_plans(
     }
     trajectory.points.push_back(std::move(point));
   }
-
   moveit::core::robotStateToRobotStateMsg(start_state, merged.start_state_, true);
   merged.planning_time_ = std::max(left_plan.planning_time_, right_plan.planning_time_);
   return merged;
@@ -588,7 +553,24 @@ ExtractMonitorTransitionPlanner make_loaded_transition_planner(
   return repair_planner;
 }
 
-bool plan_loaded_fixed_updown_parallel_arms(
+bool plan_loaded_synchronized_transition(
+  const moveit::core::RobotState& loaded_start_state,
+  const moveit::core::RobotState& goal_state,
+  ExtractMonitorTransitionPlanner& repair_planner,
+  moveit::planning_interface::MoveGroupInterface::Plan* plan,
+  std::string* reason)
+{
+  const auto transition = repair_planner.plan(loaded_start_state, goal_state);
+  if (plan) *plan = transition.plan;
+  if (!transition.valid) {
+    if (reason) *reason = "synchronized_loaded_transition_failed: " + transition.failure_reason;
+    return false;
+  }
+  if (reason) reason->clear();
+  return true;
+}
+
+bool plan_loaded_staged_fallback(
   const moveit::core::RobotState& loaded_start_state,
   const moveit::core::RobotState& goal_state,
   const LoadedPosePlannerConfig& config,
@@ -599,8 +581,7 @@ bool plan_loaded_fixed_updown_parallel_arms(
 {
   moveit::core::RobotState arm_goal_state(goal_state);
   arm_goal_state.setVariablePosition(
-    "updown",
-    loaded_start_state.getVariablePosition("updown"));
+    "updown", loaded_start_state.getVariablePosition("updown"));
   arm_goal_state.enforceBounds();
   arm_goal_state.update(true);
 
@@ -608,57 +589,38 @@ bool plan_loaded_fixed_updown_parallel_arms(
   copy_arm_goal("left", arm_goal_state, left_goal_state);
   moveit::core::RobotState right_goal_state(loaded_start_state);
   copy_arm_goal("right", arm_goal_state, right_goal_state);
-
-  const auto left_result = repair_planner.plan(loaded_start_state, left_goal_state);
-  if (!left_result.valid) {
-    if (reason) *reason = "left_loaded_arm_transition_failed: " + left_result.failure_reason;
+  const auto left_transition = repair_planner.plan(loaded_start_state, left_goal_state);
+  if (!left_transition.valid) {
+    if (reason) *reason = "staged_left_loaded_arm_transition_failed: " + left_transition.failure_reason;
     return false;
   }
-  const auto right_result = repair_planner.plan(loaded_start_state, right_goal_state);
-  if (!right_result.valid) {
-    if (reason) *reason = "right_loaded_arm_transition_failed: " + right_result.failure_reason;
+  const auto right_transition = repair_planner.plan(loaded_start_state, right_goal_state);
+  if (!right_transition.valid) {
+    if (reason) *reason = "staged_right_loaded_arm_transition_failed: " + right_transition.failure_reason;
     return false;
   }
-
   auto combined = merge_parallel_arm_plans(
-    loaded_start_state,
-    left_result.plan,
-    right_result.plan,
-    config.target_joint_names);
-  std::string arm_clearance_reason;
+    loaded_start_state, left_transition.plan, right_transition.plan, config.target_joint_names);
+  std::string arm_reason;
   if (config.clearance_callback &&
-      !config.clearance_callback(combined, loaded_start_state, carried_boxes, &arm_clearance_reason)) {
-    if (reason) *reason = "parallel_loaded_arm_transition_collision: " + arm_clearance_reason;
+      !config.clearance_callback(combined, loaded_start_state, carried_boxes, &arm_reason)) {
+    if (reason) *reason = "staged_parallel_loaded_arm_collision: " + arm_reason;
     return false;
   }
-
-  if (std::abs(
-        goal_state.getVariablePosition("updown") -
-        arm_goal_state.getVariablePosition("updown")) > 1e-6) {
-    auto updown_segment = make_interpolated_joint_plan(
-      arm_goal_state, goal_state, config.target_joint_names, 0.4);
-    std::string updown_reason;
-    if (config.clearance_callback &&
-        !config.clearance_callback(updown_segment, arm_goal_state, carried_boxes, &updown_reason)) {
-      if (reason) *reason = "loaded_final_updown_transition_failed: " + updown_reason;
-      return false;
-    }
-    append_plan_segment(combined, updown_segment);
+  const auto updown_transition = repair_planner.plan(arm_goal_state, goal_state);
+  if (!updown_transition.valid) {
+    if (reason) *reason = "staged_loaded_updown_transition_failed: " + updown_transition.failure_reason;
+    return false;
   }
-
+  append_plan_segment(combined, updown_transition.plan);
   std::string combined_reason;
   if (config.clearance_callback &&
       !config.clearance_callback(combined, loaded_start_state, carried_boxes, &combined_reason)) {
-    if (reason) *reason = "parallel_loaded_plan_validation_failed: " + combined_reason;
+    if (reason) *reason = "staged_loaded_plan_collision: " + combined_reason;
     return false;
   }
-
-  if (plan) {
-    *plan = std::move(combined);
-  }
-  if (reason) {
-    reason->clear();
-  }
+  if (plan) *plan = std::move(combined);
+  if (reason) reason->clear();
   return true;
 }
 
@@ -1046,77 +1008,10 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   loaded_start_state = shifted_state;
   const moveit::core::RobotState validation_start_state(loaded_start_state);
 
-  moveit::planning_interface::MoveGroupInterface::Plan pre_loaded_top_lift_prefix;
-  bool has_pre_loaded_top_lift_prefix = false;
-  double pre_loaded_top_lift_start_updown = currentUpdown(loaded_start_state);
-  double pre_loaded_top_lift_target_updown = pre_loaded_top_lift_start_updown;
-  const bool both_top_suction =
-    carried_boxes.size() == 2 &&
-    std::all_of(carried_boxes.begin(), carried_boxes.end(), box_uses_top_suction);
-  const bool top_suction_height_mismatch =
-    both_top_suction &&
-    config_.top_suction_height_mismatch_callback &&
-    config_.top_suction_height_mismatch_callback();
-  const auto& loaded_variable_names = loaded_start_state.getRobotModel()->getVariableNames();
-  const bool has_updown_variable = std::find(
-    loaded_variable_names.begin(), loaded_variable_names.end(), "updown") != loaded_variable_names.end();
-  if (top_suction_height_mismatch && has_updown_variable) {
-    std::vector<double> lift_deltas{0.4, 0.5, 0.6, 0.7};
-    lift_deltas.push_back(kUpdownLogicalUpperM - pre_loaded_top_lift_start_updown);
-    std::string last_lift_reason;
-    for (const double lift_delta : lift_deltas) {
-      if (cancelled()) {
-        return cancel_result();
-      }
-      if (lift_delta <= 1e-6) continue;
-      const double lifted_updown = std::min(
-        kUpdownLogicalUpperM, pre_loaded_top_lift_start_updown + lift_delta);
-      if (lifted_updown <= pre_loaded_top_lift_start_updown + 1e-6) continue;
-
-      moveit::core::RobotState lifted_state(loaded_start_state);
-      lifted_state.setVariablePosition("updown", lifted_updown);
-      lifted_state.enforceBounds();
-      lifted_state.update(true);
-
-      auto lift_segment = make_interpolated_joint_plan(
-        loaded_start_state, lifted_state, config_.target_joint_names, 0.4);
-      std::string lift_reason;
-      if (config_.clearance_callback &&
-          !config_.clearance_callback(lift_segment, loaded_start_state, carried_boxes, &lift_reason)) {
-        last_lift_reason = lift_reason;
-        continue;
-      }
-
-      pre_loaded_top_lift_prefix = std::move(lift_segment);
-      has_pre_loaded_top_lift_prefix = true;
-      pre_loaded_top_lift_target_updown = currentUpdown(lifted_state);
-      loaded_start_state = std::move(lifted_state);
-      break;
-    }
-    if (!has_pre_loaded_top_lift_prefix) {
-      result.failure_reason = "pre_loaded_top_suction_updown_lift_failed";
-      if (!last_lift_reason.empty()) {
-        result.failure_reason += ": " + last_lift_reason;
-      }
-      restore_boxes();
-      return result;
-    }
-  }
-
   moveit::planning_interface::MoveGroupInterface::Plan plan;
-  auto prepend_pre_loaded_top_lift =
-    [&](const moveit::planning_interface::MoveGroupInterface::Plan& segment) {
-      if (!has_pre_loaded_top_lift_prefix) {
-        return segment;
-      }
-      auto combined = pre_loaded_top_lift_prefix;
-      append_plan_segment(combined, segment);
-      return combined;
-    };
-
   auto set_result_plan = [&](const moveit::planning_interface::MoveGroupInterface::Plan& segment) {
     plan = retime_plan_by_max_joint_speed(
-      prepend_pre_loaded_top_lift(segment),
+      segment,
       validation_start_state.getRobotModel(),
       kMaxStageJointSpeedRadS);
     result.plan = plan;
@@ -1135,14 +1030,32 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   if (config_.planning_mode == "shortcut") {
     ExtractMonitorTransitionPlanner repair_planner =
       make_loaded_transition_planner(config_, stage_name, carried_boxes, is_cancelled);
-    const bool shortcut_ok = plan_loaded_fixed_updown_parallel_arms(
+    bool shortcut_ok = plan_loaded_synchronized_transition(
       loaded_start_state,
       goal_state,
-      config_,
       repair_planner,
-      carried_boxes,
       &plan,
       &direct_failure_reason);
+    if (!shortcut_ok) {
+      const auto synchronized_failed_plan = plan;
+      const std::string synchronized_failure = direct_failure_reason;
+      std::string staged_failure;
+      shortcut_ok = plan_loaded_staged_fallback(
+        loaded_start_state,
+        goal_state,
+        config_,
+        repair_planner,
+        carried_boxes,
+        &plan,
+        &staged_failure);
+      if (!shortcut_ok) {
+        plan = synchronized_failed_plan;
+        direct_failure_reason = synchronized_failure;
+        if (!staged_failure.empty()) {
+          direct_failure_reason += "; " + staged_failure;
+        }
+      }
+    }
     plan_result = shortcut_ok
       ? moveit::core::MoveItErrorCode::SUCCESS
       : moveit::core::MoveItErrorCode::FAILURE;
@@ -1535,10 +1448,6 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
       {"start_updown", currentUpdown(validation_start_state)},
       {"planning_start_updown", currentUpdown(loaded_start_state)},
       {"target_updown", currentUpdown(goal_state)},
-      {"pre_loaded_top_lift_applied", has_pre_loaded_top_lift_prefix},
-      {"pre_loaded_top_lift_height_mismatch", top_suction_height_mismatch},
-      {"pre_loaded_top_lift_start_updown", pre_loaded_top_lift_start_updown},
-      {"pre_loaded_top_lift_target_updown", pre_loaded_top_lift_target_updown},
       {"carried_box_count", carried_boxes.size()},
       {"moveit_attached_box_count", carried_boxes.size()},
       {"loaded_plan_rank", loaded_plan_rank},

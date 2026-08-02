@@ -319,7 +319,8 @@ nlohmann::json extract_monitor_selected_extract_replay_stage(
   size_t step,
   size_t candidate_order,
   const moveit::planning_interface::MoveGroupInterface::Plan& plan,
-  const moveit::core::RobotState& state,
+  const moveit::core::RobotState& start_state,
+  const moveit::core::RobotState& goal_state,
   int left_box_id,
   int right_box_id,
   const std::vector<std::string>& target_names,
@@ -335,12 +336,40 @@ nlohmann::json extract_monitor_selected_extract_replay_stage(
   return extract_monitor_stage_json(
     prefix + "/selected_extract_step_" + std::to_string(step),
     plan,
-    state,
-    state,
+    start_state,
+    goal_state,
     target_names,
     carried_boxes,
     static_box_obstacles,
     enriched);
+}
+
+nlohmann::json extract_monitor_selected_extract_replay_stage(
+  const std::string& prefix,
+  size_t step,
+  size_t candidate_order,
+  const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+  const moveit::core::RobotState& state,
+  int left_box_id,
+  int right_box_id,
+  const std::vector<std::string>& target_names,
+  const std::vector<AttachedBoxSpec>& carried_boxes,
+  const nlohmann::json& static_box_obstacles,
+  const nlohmann::json& extra)
+{
+  return extract_monitor_selected_extract_replay_stage(
+    prefix,
+    step,
+    candidate_order,
+    plan,
+    state,
+    state,
+    left_box_id,
+    right_box_id,
+    target_names,
+    carried_boxes,
+    static_box_obstacles,
+    extra);
 }
 
 nlohmann::json extract_monitor_selected_extract_replay_state_stage(

@@ -87,24 +87,71 @@ std::array<std::array<double, 2>, 4> rectangle_corners(
   return out;
 }
 
+std::pair<double, double> project_polygon(
+  const std::array<std::array<double, 2>, 4>& corners,
+  const std::array<double, 2>& axis)
+{
+  double minimum = corners.front()[0] * axis[0] + corners.front()[1] * axis[1];
+  double maximum = minimum;
+  for (const auto& corner : corners) {
+    const double projection = corner[0] * axis[0] + corner[1] * axis[1];
+    minimum = std::min(minimum, projection);
+    maximum = std::max(maximum, projection);
+  }
+  return {minimum, maximum};
+}
+
+bool polygons_overlap(
+  const std::array<std::array<double, 2>, 4>& lhs,
+  const std::array<std::array<double, 2>, 4>& rhs)
+{
+  std::array<std::array<double, 2>, 6> axes{{
+    {1.0, 0.0},
+    {0.0, 1.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+    {0.0, 0.0},
+  }};
+  for (size_t index = 0; index < lhs.size(); ++index) {
+    const auto& first = lhs[index];
+    const auto& second = lhs[(index + 1) % lhs.size()];
+    const double edge_x = second[0] - first[0];
+    const double edge_z = second[1] - first[1];
+    const double length = std::hypot(edge_x, edge_z);
+    axes[index + 2] = length > 1e-12 ?
+      std::array<double, 2>{-edge_z / length, edge_x / length} :
+      std::array<double, 2>{0.0, 0.0};
+  }
+
+  for (const auto& axis : axes) {
+    if (std::hypot(axis[0], axis[1]) <= 1e-12) continue;
+    const auto lhs_projection = project_polygon(lhs, axis);
+    const auto rhs_projection = project_polygon(rhs, axis);
+    if (!intervals_overlap(
+        lhs_projection.first, lhs_projection.second,
+        rhs_projection.first, rhs_projection.second)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool polygon_overlaps_source(
   const std::array<std::array<double, 2>, 4>& corners,
   const BoxPoseExtractRrtConfig& config)
 {
-  double min_x = corners.front()[0];
-  double max_x = corners.front()[0];
-  double min_z = corners.front()[1];
-  double max_z = corners.front()[1];
-  for (const auto& corner : corners) {
-    min_x = std::min(min_x, corner[0]);
-    max_x = std::max(max_x, corner[0]);
-    min_z = std::min(min_z, corner[1]);
-    max_z = std::max(max_z, corner[1]);
-  }
-
   const double margin = std::max(0.0, config.separation_margin);
-  return intervals_overlap(min_x, max_x, -margin, config.box_depth + margin) &&
-         intervals_overlap(min_z, max_z, -margin, config.box_height + margin);
+  const double source_min_z = config.source_reference_offset_z - margin;
+  const double source_max_z =
+    config.source_reference_offset_z + config.box_height + margin;
+  const std::array<std::array<double, 2>, 4> source{{
+    {-margin, source_min_z},
+    {config.box_depth + margin, source_min_z},
+    {config.box_depth + margin, source_max_z},
+    {-margin, source_max_z},
+  }};
+  return polygons_overlap(corners, source);
 }
 
 BoxPoseExtractState steer(
@@ -370,8 +417,11 @@ BoxPoseExtractState BoxPoseExtractRrt::nominalGoal() const
     std::min(
       config_.max_lift,
       std::max(
-        {config_.step_lift, config_.min_top_lift, config_.box_height + config_.separation_margin + 1e-4})),
-    config_.max_pitch,
+        {config_.step_lift,
+         config_.min_top_lift,
+         config_.source_reference_offset_z + config_.box_height +
+           config_.separation_margin + 1e-4})),
+    config_.top_goal_requires_max_pitch ? config_.max_pitch : config_.top_goal_min_pitch,
     0.0,
   };
 }
@@ -561,7 +611,20 @@ BoxPoseExtractRrtResult BoxPoseExtractRrt::plan(
         sample.pitch = pitch_sample(generator);
       } else {
         sample.lift = lift_sample(generator);
-        sample.pitch = pitch_sample(generator);
+        const double action_sample = unit(generator);
+        const double lift_only_rate = std::clamp(
+          config_.top_lift_only_sample_rate, 0.0, 1.0);
+        const double lift_pitch_rate = std::clamp(
+          config_.top_lift_pitch_sample_rate, 0.0, 1.0 - lift_only_rate);
+        if (action_sample < lift_only_rate) {
+          sample.retreat = 0.0;
+          sample.pitch = 0.0;
+        } else if (action_sample < lift_only_rate + lift_pitch_rate) {
+          sample.retreat = 0.0;
+          sample.pitch = pitch_sample(generator);
+        } else {
+          sample.pitch = pitch_sample(generator);
+        }
       }
     }
 

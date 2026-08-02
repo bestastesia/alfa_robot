@@ -1,0 +1,16 @@
+uint8 GRIP=1
+uint8 RELEASE=2
+uint8 CHANNEL_LEFT=1
+uint8 CHANNEL_RIGHT=2
+
+alfa_system_interfaces/TaskContext context
+uint8 command
+uint8[] channels
+string grip_profile_id
+---
+alfa_control_interfaces/VacuumChannelResult[] channels
+uint8 overall_verification_level
+alfa_system_interfaces/ErrorInfo error
+---
+std_msgs/Header header
+alfa_control_interfaces/VacuumChannelSample[] channels

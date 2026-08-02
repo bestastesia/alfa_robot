@@ -109,6 +109,10 @@ class PlannerAdapter:
             "--output-root",
             str(self.session_root),
             "--no-rerun",
+            "--service-timeout",
+            "15.0",
+            "--startup-retries",
+            "1",
             "--ros-domain-id",
             "inherit",
         ]
@@ -160,11 +164,12 @@ class PlannerAdapter:
         )
 
     def _target_args(self, task: TaskSpec) -> SimpleNamespace:
+        scene_y_shift = getattr(task, "scene_y_shift", None)
+        if scene_y_shift is None:
+            scene_y_shift = self.sequence_helpers.TASK_LAYOUT_Y_OFFSETS[task.task_layout]
         return SimpleNamespace(
             box_front_x=task.effective_distance_m,
-            scene_y_shift=float(
-                self.sequence_helpers.TASK_LAYOUT_Y_OFFSETS[task.task_layout]
-            ),
+            scene_y_shift=float(scene_y_shift),
             world_to_base_z=0.202094,
             top_suction_x_offset=0.15,
             top_suction_z_offset=0.2,
@@ -175,8 +180,12 @@ class PlannerAdapter:
             "box_front_x": task.effective_distance_m,
             "scene_y_shift": target_args.scene_y_shift,
             "extract_rollout_mode": task.extraction_mode,
-            "loaded_lateral_shift_enabled": task.grasp_family == "front",
-            "extract_box_pose_rrt_max_iterations": 400 if task.index == 5 else 160,
+            "loaded_lateral_shift_enabled": (
+                task.left_grasp_mode == "front" or task.right_grasp_mode == "front"
+            ),
+            "extract_box_pose_rrt_max_iterations": int(
+                getattr(task, "extract_box_pose_rrt_max_iterations", 400 if task.index == 5 else 160)
+            ),
         }
 
     def _summary_from_snapshot(
@@ -243,12 +252,30 @@ class PlannerAdapter:
         summary_path = request_root / "summary.json"
         target_args = self._target_args(task)
         runtime_config = self._runtime_config(task, target_args)
-        grasp_mode = task.grasp_family
+        left_grasp_mode = task.left_grasp_mode
+        right_grasp_mode = task.right_grasp_mode
+        explicit_targets = getattr(task, "explicit_targets", None)
+        left_target = (
+            explicit_targets["left"]
+            if explicit_targets is not None
+            else self.sequence_helpers.explicit_grasp_target(
+                target_args, task.left_box_id, left_grasp_mode
+            )
+        )
+        right_target = (
+            explicit_targets["right"]
+            if explicit_targets is not None
+            else self.sequence_helpers.explicit_grasp_target(
+                target_args, task.right_box_id, right_grasp_mode
+            )
+        )
         request_record = {
             "task_code": task.code,
             "left_box_id": task.left_box_id,
             "right_box_id": task.right_box_id,
-            "grasp_mode": grasp_mode,
+            "left_grasp_mode": left_grasp_mode,
+            "right_grasp_mode": right_grasp_mode,
+            "explicit_targets": explicit_targets,
             "runtime_config": runtime_config,
         }
         (request_root / "planner_request.json").write_text(
@@ -262,14 +289,10 @@ class PlannerAdapter:
             task.right_box_id,
             snapshot_path,
             self.timeout_s,
-            grasp_mode == "top_suction",
-            grasp_mode == "top_suction",
-            self.sequence_helpers.explicit_grasp_target(
-                target_args, task.left_box_id, grasp_mode
-            ),
-            self.sequence_helpers.explicit_grasp_target(
-                target_args, task.right_box_id, grasp_mode
-            ),
+            left_grasp_mode == "top_suction",
+            right_grasp_mode == "top_suction",
+            left_target,
+            right_target,
             runtime_config=runtime_config,
         )
         if not configure_ok:
@@ -352,8 +375,8 @@ class PlannerAdapter:
             **summary,
             "planner_wall_ms": planner_wall_ms,
             "planner_log": str(self.session_log),
-            "front_distance_m": task.front_distance_m,
-            "top_distance_m": task.top_distance_m,
+            "front_distance_m": float(getattr(task, "front_distance_m", task.effective_distance_m)),
+            "top_distance_m": float(getattr(task, "top_distance_m", task.effective_distance_m)),
             "effective_distance_m": task.effective_distance_m,
             "task_code": task.code,
             "trajectory_rate_hz": self.rate_hz,

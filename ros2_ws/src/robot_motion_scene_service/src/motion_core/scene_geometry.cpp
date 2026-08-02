@@ -106,40 +106,74 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   int right_box_id,
   const BoxWallGeometryConfig& config)
 {
-  std::vector<StaticBoxObstacle> obstacles;
-
   const auto boxes = make_boxes(config.box_front_x, config.scene_y_shift);
   const auto left_it = boxes.find(left_box_id);
   const auto right_it = boxes.find(right_box_id);
-  if (left_it == boxes.end() || right_it == boxes.end()) return obstacles;
+  if (left_it == boxes.end() || right_it == boxes.end()) return {};
 
   const BoxSpec& first = left_it->second;
   const BoxSpec& second = right_it->second;
-  const BoxSpec& positive_y_box = first.y >= second.y ? first : second;
-  const BoxSpec& negative_y_box = first.y >= second.y ? second : first;
+  const AxisAlignedBox left_source_box{{
+    first.x + 0.5 * config.carried_box_depth,
+    first.y,
+    first.z,
+  }, {
+    config.carried_box_depth,
+    config.carried_box_width,
+    config.carried_box_height,
+  }};
+  const AxisAlignedBox right_source_box{{
+    second.x + 0.5 * config.carried_box_depth,
+    second.y,
+    second.z,
+  }, {
+    config.carried_box_depth,
+    config.carried_box_width,
+    config.carried_box_height,
+  }};
+  return make_box_wall_obstacles_for_opening(
+    left_source_box,
+    right_source_box,
+    "L" + std::to_string(left_box_id) + "_R" + std::to_string(right_box_id),
+    config);
+}
 
-  const double half_width = config.carried_box_width * 0.5;
-  const double half_height = config.carried_box_height * 0.5;
+std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
+  const AxisAlignedBox& left_source_box,
+  const AxisAlignedBox& right_source_box,
+  const std::string& opening_label,
+  const BoxWallGeometryConfig& config)
+{
+  std::vector<StaticBoxObstacle> obstacles;
+  const AxisAlignedBox& positive_y_box =
+    left_source_box.center[1] >= right_source_box.center[1] ? left_source_box : right_source_box;
+  const AxisAlignedBox& negative_y_box =
+    left_source_box.center[1] >= right_source_box.center[1] ? right_source_box : left_source_box;
   const double inset = std::max(0.0, config.static_box_obstacle_inset);
-  const double x_min = std::min(first.x, second.x);
-  const double x_max = std::max(first.x, second.x) + config.carried_box_depth;
+  const double x_min = std::min(
+    left_source_box.center[0] - 0.5 * left_source_box.size[0],
+    right_source_box.center[0] - 0.5 * right_source_box.size[0]);
+  const double x_max = std::max(
+    left_source_box.center[0] + 0.5 * left_source_box.size[0],
+    right_source_box.center[0] + 0.5 * right_source_box.size[0]);
   const double inner_y_min = config.container_center_y - config.container_width * 0.5;
   const double inner_y_max = config.container_center_y + config.container_width * 0.5;
-  const double z_min = std::min(first.z, second.z) - half_height;
-  const double z_max = std::max(first.z, second.z) + half_height;
-  double stack_z_min = std::numeric_limits<double>::infinity();
-  double stack_z_max = -std::numeric_limits<double>::infinity();
-  for (const auto& [_, box] : boxes) {
-    stack_z_min = std::min(stack_z_min, box.z - half_height);
-    stack_z_max = std::max(stack_z_max, box.z + half_height);
-  }
+  const double z_min = std::min(
+    left_source_box.center[2] - 0.5 * left_source_box.size[2],
+    right_source_box.center[2] - 0.5 * right_source_box.size[2]);
+  const double z_max = std::max(
+    left_source_box.center[2] + 0.5 * left_source_box.size[2],
+    right_source_box.center[2] + 0.5 * right_source_box.size[2]);
+  const double stack_z_min = config.container_floor_z;
+  const double stack_z_max = std::min(
+    config.container_floor_z + config.container_height,
+    config.container_floor_z + kBoxStackRowCount * config.carried_box_height);
 
-  const double positive_hole_y_min = positive_y_box.y - half_width;
-  const double positive_hole_y_max = positive_y_box.y + half_width;
-  const double negative_hole_y_min = negative_y_box.y - half_width;
-  const double negative_hole_y_max = negative_y_box.y + half_width;
-  const std::string prefix = "box_wall_L" + std::to_string(left_box_id) +
-                             "_R" + std::to_string(right_box_id);
+  const double positive_hole_y_min = positive_y_box.center[1] - 0.5 * positive_y_box.size[1];
+  const double positive_hole_y_max = positive_y_box.center[1] + 0.5 * positive_y_box.size[1];
+  const double negative_hole_y_min = negative_y_box.center[1] - 0.5 * negative_y_box.size[1];
+  const double negative_hole_y_max = negative_y_box.center[1] + 0.5 * negative_y_box.size[1];
+  const std::string prefix = "box_wall_" + opening_label;
 
   add_static_wall_piece(
     obstacles, prefix + "_left_side",
@@ -163,7 +197,7 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   if (config.rear_guard_enabled) {
     const double thickness = std::max(1e-4, config.rear_guard_thickness);
     const double clearance = std::max(0.0, config.rear_guard_clearance);
-    const double guard_x_min = config.box_front_x + config.carried_box_depth + clearance;
+    const double guard_x_min = x_max + clearance;
     add_static_wall_piece(
       obstacles, prefix + "_rear_guard",
       guard_x_min, guard_x_min + thickness,
@@ -311,33 +345,73 @@ bool carried_box_detached_from_source_layers_xz(
   std::string* reason)
 {
   const auto boxes = make_boxes(box_front_x, scene_y_shift);
+  const auto source_it = boxes.find(box_id);
+  if (source_it == boxes.end()) {
+    if (reason) *reason = carried_box_id + " has invalid source box id";
+    return false;
+  }
+  const AxisAlignedBox source_box{{
+    source_it->second.x + carried_box_depth * 0.5,
+    source_it->second.y,
+    source_it->second.z,
+  }, {
+    carried_box_depth,
+    carried_box_width,
+    carried_box_height,
+  }};
+  return carried_box_detached_from_source_layers_xz(
+    carried_box,
+    source_box,
+    carried_box_height,
+    margin,
+    clearance_levels,
+    carried_box_id,
+    reason);
+}
+
+bool carried_box_detached_from_source_layers_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double source_layer_height,
+  double margin,
+  size_t clearance_levels,
+  const std::string& carried_box_id,
+  std::string* reason)
+{
   const size_t levels = std::max<size_t>(1, clearance_levels);
   for (size_t level = 0; level < levels; ++level) {
-    const int layer_box_id = box_id - static_cast<int>(kBoxStackColumnCount * level);
-    if (layer_box_id <= 0) continue;
-    const auto it = boxes.find(layer_box_id);
-    if (it == boxes.end()) continue;
-    const AxisAlignedBox source_layer{{
-      it->second.x + carried_box_depth * 0.5,
-      it->second.y,
-      it->second.z,
-    }, {
-      carried_box_depth,
-      carried_box_width,
-      carried_box_height,
-    }};
+    AxisAlignedBox source_layer = source_box;
+    source_layer.center[2] += static_cast<double>(level) * source_layer_height;
     std::string layer_reason;
     if (!carried_box_detached_from_source_xz(
         carried_box, source_layer, margin, carried_box_id, &layer_reason)) {
       if (reason) {
-        *reason = carried_box_id + " side face still overlaps source layer box " +
-          std::to_string(layer_box_id) + ": " + layer_reason;
+        *reason = carried_box_id + " side face still overlaps source layer " +
+          std::to_string(level) + ": " + layer_reason;
       }
       return false;
     }
   }
   if (reason) reason->clear();
   return true;
+}
+
+bool carried_box_detached_from_reference_layer_xz(
+  const AxisAlignedBox& carried_box,
+  const AxisAlignedBox& source_box,
+  double reference_height_offset,
+  double margin,
+  const std::string& carried_box_id,
+  std::string* reason)
+{
+  AxisAlignedBox reference_box = source_box;
+  reference_box.center[2] += reference_height_offset;
+  const bool detached = carried_box_detached_from_source_xz(
+    carried_box, reference_box, margin, carried_box_id, reason);
+  if (!detached && reason) {
+    *reason = carried_box_id + " still overlaps elevated reference box: " + *reason;
+  }
+  return detached;
 }
 
 bool carried_box_detached_from_neighbors(

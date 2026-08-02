@@ -1,0 +1,10 @@
+std_msgs/Header header
+bool connected
+bool data_fresh
+bool left_vacuum_established
+bool right_vacuum_established
+bool left_solenoid_on
+bool right_solenoid_on
+bool vacuum_pump_on
+uint16 io_alarm
+string error

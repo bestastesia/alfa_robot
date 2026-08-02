@@ -177,6 +177,29 @@ bool MotionSceneAdapter::setStaticBoxWallOpening(int left_box_id, int right_box_
   return applyStaticBoxObstacles();
 }
 
+bool MotionSceneAdapter::setStaticBoxWallOpening(
+  int left_box_id,
+  int right_box_id,
+  const AxisAlignedBox& left_source_box,
+  const AxisAlignedBox& right_source_box)
+{
+  if (!config_.enable_static_box_obstacles) {
+    current_static_box_obstacles_.clear();
+    active_static_left_box_id_ = 0;
+    active_static_right_box_id_ = 0;
+    return applyStaticBoxObstacles();
+  }
+
+  active_static_left_box_id_ = left_box_id;
+  active_static_right_box_id_ = right_box_id;
+  current_static_box_obstacles_ = make_box_wall_obstacles_for_opening(
+    left_source_box,
+    right_source_box,
+    "L" + std::to_string(left_box_id) + "_R" + std::to_string(right_box_id),
+    config_.box_wall);
+  return applyStaticBoxObstacles();
+}
+
 AttachedBoxSpec MotionSceneAdapter::makeCarriedBoxSpec(
   const std::string& side,
   int box_id,

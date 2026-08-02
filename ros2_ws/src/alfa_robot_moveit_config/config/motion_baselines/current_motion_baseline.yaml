@@ -73,7 +73,9 @@ extract_strategy:
 
 loaded_planning:
   planner: moveit_ompl_or_direct_pipeline
-  target_updown_m: 0.3
+  target_updown_m: 0.1
+  loaded_pose_deg: [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
+  pre_place_pose_deg: [0.0, -90.0, 120.0, -75.0, 0.0, 0.0]
   candidate_limit: 8
   parallel_workers: 8
   aabb_clearance_mode: diagnostic_only

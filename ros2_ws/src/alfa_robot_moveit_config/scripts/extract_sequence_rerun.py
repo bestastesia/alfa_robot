@@ -25,11 +25,11 @@ import numpy as np
 
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
-DEFAULT_SEQUENCE = "1,3;4,6;7,9;10,12;13,15"
+DEFAULT_SEQUENCE = "1,3;1,6;4,3;4,6;4,9;7,6;7,9;7,12;10,9;10,12;10,15;13,12;13,15"
 DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6, 7, 9}
-DIRECT_UPDOWN_LIFT_PAIRS = {(7, 9)}
-OUTER_GRASP_TARGET_Y_M = 0.50
+OUTER_GRASP_TARGET_Y_M = 0.40
 TASK_LAYOUT_Y_OFFSETS = {
     "centered": 0.0,
     "right_shift_0p1": 0.05,
@@ -199,17 +199,19 @@ def pair_vehicle_mode(left_mode: str, right_mode: str) -> str:
     return "top_suction" if "top_suction" in (left_mode, right_mode) else "front"
 
 
-def convert_mixed_grasp_modes_to_front(
+def promote_mixed_grasp_modes_to_top(
     left_modes: list[str],
     right_modes: list[str],
 ) -> tuple[list[str], list[str]]:
-    converted_left = list(left_modes)
-    converted_right = list(right_modes)
-    for index, (left_mode, right_mode) in enumerate(zip(converted_left, converted_right)):
-        if left_mode != right_mode and "top_suction" in (left_mode, right_mode):
-            converted_left[index] = "front"
-            converted_right[index] = "front"
-    return converted_left, converted_right
+    if len(left_modes) != len(right_modes):
+        raise ValueError("left/right grasp mode counts differ")
+    promoted_left = list(left_modes)
+    promoted_right = list(right_modes)
+    for index, (left_mode, right_mode) in enumerate(zip(left_modes, right_modes)):
+        if left_mode != right_mode:
+            promoted_left[index] = "top_suction"
+            promoted_right[index] = "top_suction"
+    return promoted_left, promoted_right
 
 
 def parse_arm_grasp_mode_sequence(value: str, pairs: list[tuple[int, int]], side: str) -> list[str]:
@@ -234,11 +236,13 @@ def extract_rollout_mode_for_pair(
     right_box_id: int,
     grasp_mode: str,
 ) -> str:
-    if (int(left_box_id), int(right_box_id)) in DIRECT_UPDOWN_LIFT_PAIRS:
-        return "direct_updown_lift"
+    del left_box_id, right_box_id
+    requested = str(args.extract_rollout_mode)
+    if requested == "auto":
+        return requested
     if grasp_mode == "top_suction":
         return str(args.top_extract_rollout_mode)
-    return str(args.extract_rollout_mode)
+    return requested
 
 
 def explicit_grasp_target(args: argparse.Namespace, box_id: int, grasp_mode: str) -> dict[str, Any]:
@@ -337,6 +341,7 @@ def make_pair_args(
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
         extract_rollout_mode=extract_rollout_mode_for_pair(args, left_id, right_id, mode),
         extract_top_updown_lift_distance=args.extract_top_updown_lift_distance,
+        extract_top_updown_retreat_distance=args.extract_top_updown_retreat_distance,
         extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
         extract_box_pose_rrt_max_iterations=(
             max(400, args.extract_box_pose_rrt_max_iterations)
@@ -393,6 +398,8 @@ def make_pair_args(
         place_cycle_enabled=args.place_cycle_enabled,
         place_updown=args.place_updown,
         place_transition_updown=args.place_transition_updown,
+        pre_place_left_pose_deg=args.pre_place_left_pose_deg,
+        pre_place_right_pose_deg=args.pre_place_right_pose_deg,
         place_left_pose_deg=args.place_left_pose_deg,
         place_right_pose_deg=args.place_right_pose_deg,
         service_timeout=args.service_timeout,
@@ -437,7 +444,13 @@ def log_robot_state_display(helpers: Any, robot: Any, joints: dict[str, float], 
         helpers.log_transform_matrix(f"{path}/{link_name}", base_tf @ transform)
 
 
-def log_attached_boxes_display(robot: Any, joints: dict[str, float], attached_boxes: list[dict[str, Any]], args: argparse.Namespace) -> None:
+def log_attached_boxes_display(
+    robot: Any,
+    joints: dict[str, float],
+    attached_boxes: list[dict[str, Any]],
+    args: argparse.Namespace,
+    collision_ids: set[str] | None = None,
+) -> None:
     if not attached_boxes:
         monitor.rr.log("monitor/scene/attached_boxes", monitor.rr.Clear(recursive=True))
         return
@@ -462,8 +475,13 @@ def log_attached_boxes_display(robot: Any, joints: dict[str, float], attached_bo
         centers.append(center[:3].tolist())
         half_sizes.append([float(value) * 0.5 for value in size])
         quaternions.append(monitor.matrix_to_quaternion(world_link_tf[:3, :3]))
-        colors.append([40, 220, 90, 150])
-        labels.append(str(box.get("id", "carried_box")))
+        box_id = str(box.get("id", "carried_box"))
+        colors.append(
+            [255, 30, 30, 230]
+            if collision_ids and box_id in collision_ids
+            else [40, 220, 90, 150]
+        )
+        labels.append(box_id)
     monitor.rr.log(
         "monitor/scene/attached_boxes",
         monitor.rr.Boxes3D(centers=centers, half_sizes=half_sizes, quaternions=quaternions, colors=colors, labels=labels),
@@ -528,12 +546,29 @@ def log_sequence_replay(
             selected_indices.append(len(points) - 1)
         for point_index in selected_indices:
             helpers.set_sample_time(sample)
-            monitor.log_container_panels(container_panels)
-            monitor.log_static_box_obstacles(stage.get("static_box_obstacles"))
+            collision_ids = (
+                monitor.collision_ids_for_stage(stage)
+                if point_index == selected_indices[-1]
+                else set()
+            )
+            monitor.log_container_panels(
+                container_panels,
+                collision_ids=collision_ids,
+            )
+            monitor.log_static_box_obstacles(
+                stage.get("static_box_obstacles"),
+                collision_ids,
+            )
             point = points[point_index]
             joints = monitor.joint_dict_from_stage_point(stage, point)
             log_robot_state_display(helpers, robot, joints, "monitor/robot", args)
-            log_attached_boxes_display(robot, joints, stage.get("attached_boxes", []), args)
+            log_attached_boxes_display(
+                robot,
+                joints,
+                stage.get("attached_boxes", []),
+                args,
+                collision_ids,
+            )
             monitor.rr.log(
                 "monitor/info",
                 monitor.rr.TextLog(
@@ -868,6 +903,8 @@ def run_one_pair(
                 "loaded_parallel_workers": int(snapshot.get("loaded_parallel_workers", 0)),
                 "final_ms": float(snapshot.get("final_elapsed_ms", 0.0)),
                 "loaded_to_place_ms": float(place_cycle.get("loaded_to_place_ms", 0.0)),
+                "loaded_to_pre_place_ms": float(place_cycle.get("loaded_to_pre_place_ms", 0.0)),
+                "pre_place_to_place_ms": float(place_cycle.get("pre_place_to_place_ms", 0.0)),
                 "place_to_loaded_ms": float(place_cycle.get("place_to_loaded_ms", 0.0)),
                 "samples": sample_count,
                 "failure_reason": "" if success else output,
@@ -879,7 +916,7 @@ def run_one_pair(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="生成 5 次等高双臂抽箱任务连续全流程 Rerun")
+    parser = argparse.ArgumentParser(description="生成 13 组等高/相邻层双臂抽箱任务连续全流程 Rerun")
     parser.add_argument(
         "--planner-server",
         action="store_true",
@@ -904,7 +941,7 @@ def main() -> int:
         "--task-layout",
         choices=["centered", "right_shift_0p1", "both"],
         default="centered",
-        help="横向布局：居中（目标y=+0.50/-0.50m）、偏差版（+0.55/-0.45m），或两套连续运行。",
+        help="横向布局：居中（目标y=+0.40/-0.40m）、偏差版（+0.45/-0.35m），或两套连续运行。",
     )
     parser.add_argument("--world-to-base-z", type=float, default=0.202094)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
@@ -956,6 +993,7 @@ def main() -> int:
     parser.add_argument(
         "--extract-rollout-mode",
         choices=[
+            "auto",
             "greedy",
             "box_pose_rrt",
             "moveit_rrt_legacy",
@@ -963,20 +1001,26 @@ def main() -> int:
             "top_updown_lift",
             "direct_updown_lift",
         ],
-        default="box_pose_rrt",
-        help="侧吸抽离策略；该序列实验默认使用箱体位姿 RRT",
+        default="auto",
+        help="抽离策略；默认由算法节点根据两个有效末端位姿和吸附方式自动分类",
     )
     parser.add_argument(
         "--top-extract-rollout-mode",
         choices=["box_pose_rrt", "top_lift_legacy", "top_updown_lift"],
-        default="top_updown_lift",
-        help="顶吸抽离策略；默认保持双臂关节不动，仅抬升 updown。",
+        default="box_pose_rrt",
+        help="顶吸抽离策略；默认采用有界 updown 抬升后接箱体位姿 RRT。",
     )
     parser.add_argument(
         "--extract-top-updown-lift-distance",
         type=float,
         default=0.40,
         help="top_updown_lift 模式固定抬升距离。",
+    )
+    parser.add_argument(
+        "--extract-top-updown-retreat-distance",
+        type=float,
+        default=0.0,
+        help="兼容参数；默认不在抬升阶段同步后抽，抬升结束后统一后抽半个箱深。",
     )
     parser.add_argument("--extract-rrt", action="store_true")
     parser.add_argument(
@@ -1000,7 +1044,7 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--extract-box-pose-rrt-top-goal-min-pitch-deg", type=float, default=5.0)
+    parser.add_argument("--extract-box-pose-rrt-top-goal-min-pitch-deg", type=float, default=0.0)
     parser.add_argument("--extract-box-pose-rrt-best-first-max-expansions", type=int, default=800)
     parser.add_argument("--extract-box-pose-rrt-best-first-heuristic-weight", type=float, default=1.0)
     parser.add_argument("--extract-rrt-planning-group", default="dual_arm")
@@ -1008,7 +1052,12 @@ def main() -> int:
     parser.add_argument("--extract-rrt-planning-attempts", type=int, default=1)
     parser.add_argument("--extract-rrt-endpoint-per-arm-limit", type=int, default=8)
     parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
-    parser.add_argument("--loaded-candidate-limit", type=int, default=8)
+    parser.add_argument(
+        "--loaded-candidate-limit",
+        type=int,
+        default=0,
+        help="负重规划候选总上限；0表示不硬截断，仍由--loaded-workers控制每批并行度",
+    )
     parser.add_argument("--loaded-workers", type=int, default=8)
     parser.add_argument("--loaded-planner-id", default="")
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="shortcut")
@@ -1051,6 +1100,8 @@ def main() -> int:
     )
     parser.add_argument("--place-updown", type=float, default=0.10)
     parser.add_argument("--place-transition-updown", type=float, default=0.10)
+    parser.add_argument("--pre-place-left-pose-deg", default=DEFAULT_PRE_PLACE_POSE_DEG)
+    parser.add_argument("--pre-place-right-pose-deg", default=DEFAULT_PRE_PLACE_POSE_DEG)
     parser.add_argument(
         "--place-left-pose-deg",
         default="[0.0,-55.0,-50.0,-60.0,0.0,0.0]",
@@ -1110,7 +1161,7 @@ def main() -> int:
     pairs = parse_pair_sequence(args.pair_sequence)
     left_grasp_modes = parse_arm_grasp_mode_sequence(args.left_grasp_mode_sequence, pairs, "left")
     right_grasp_modes = parse_arm_grasp_mode_sequence(args.right_grasp_mode_sequence, pairs, "right")
-    left_grasp_modes, right_grasp_modes = convert_mixed_grasp_modes_to_front(
+    left_grasp_modes, right_grasp_modes = promote_mixed_grasp_modes_to_top(
         left_grasp_modes, right_grasp_modes
     )
     if args.grasp_mode_sequence.strip():
@@ -1197,7 +1248,7 @@ def main() -> int:
             "#!/usr/bin/env bash\nset -e\n"
             f"{domain_export}"
             "source /opt/ros/humble/setup.bash\n"
-            f"source {monitor.ROS_WS}/install/setup.bash\n"
+            f"source {monitor.ROS_SETUP}\n"
             f"cd {monitor.ROS_WS}\n{launch_command}\n"
         )
         print(f"启动 planner[{group_label}]，日志：{launch_log}")

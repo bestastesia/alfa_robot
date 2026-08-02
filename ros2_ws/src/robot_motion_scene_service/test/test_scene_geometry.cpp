@@ -66,6 +66,36 @@ int main()
   }
   assert(found_rear_guard);
 
+  // 显式末端位姿还原出的源箱体可直接驱动箱墙；开口跟随源箱，而集装箱边界保持固定。
+  const AxisAlignedBox explicit_left_source{{1.05, 0.55, 1.0}, {0.3, 0.5, 0.4}};
+  const AxisAlignedBox explicit_right_source{{1.05, -0.45, 0.6}, {0.3, 0.5, 0.4}};
+  const auto explicit_obstacles = make_box_wall_obstacles_for_opening(
+    explicit_left_source,
+    explicit_right_source,
+    "L101_R202",
+    wall);
+  assert(!explicit_obstacles.empty());
+  bool found_explicit_left_side = false;
+  bool found_explicit_rear_guard = false;
+  for (const auto& obstacle : explicit_obstacles) {
+    if (obstacle.id == "box_wall_L101_R202_left_side") {
+      found_explicit_left_side = true;
+      const double y_max = obstacle.center[1] + 0.5 * obstacle.size[1];
+      assert(std::abs(y_max - 0.5 * wall.container_width) < 1e-9);
+    }
+    if (obstacle.id == "box_wall_L101_R202_rear_guard") {
+      found_explicit_rear_guard = true;
+      const double expected_guard_x_min =
+        explicit_left_source.center[0] + 0.5 * explicit_left_source.size[0] +
+        wall.rear_guard_clearance;
+      assert(std::abs(
+        obstacle.center[0] -
+        (expected_guard_x_min + 0.5 * wall.rear_guard_thickness)) < 1e-9);
+    }
+  }
+  assert(found_explicit_left_side);
+  assert(found_explicit_rear_guard);
+
   const auto left_box = make_attached_box_spec("left", 4, false, CarriedBoxGeometryConfig{});
   assert(left_box.id == "carried_left_box_4");
   assert(left_box.link_name == "left_tool0");
@@ -152,7 +182,35 @@ int main()
     2,
     "carried_box_7",
     &reason));
-  assert(reason.find("source layer box 4") != std::string::npos);
+  assert(reason.find("source layer 1") != std::string::npos);
+
+  reason.clear();
+  const AxisAlignedBox pose_driven_source{{0.15, 0.42, 0.75}, {0.3, 0.5, 0.4}};
+  const AxisAlignedBox pose_driven_carried_in_upper_layer{{0.15, 0.42, 1.15}, {0.3, 0.5, 0.4}};
+  assert(!carried_box_detached_from_source_layers_xz(
+    pose_driven_carried_in_upper_layer,
+    pose_driven_source,
+    0.4,
+    0.03,
+    2,
+    "pose_driven_carried_box",
+    &reason));
+  assert(reason.find("source layer 1") != std::string::npos);
+
+  // 新不等高策略只以高 0.40m 的参考箱为脱离目标，不再同时要求离开矮箱原位。
+  const AxisAlignedBox low_source{{0.15, 0.0, 0.20}, {0.3, 0.4, 0.4}};
+  reason.clear();
+  assert(carried_box_detached_from_reference_layer_xz(
+    low_source, low_source, 0.4, 0.0, "low_carried_box", &reason));
+  const AxisAlignedBox low_box_in_high_reference{{0.15, 0.0, 0.60}, {0.3, 0.4, 0.4}};
+  reason.clear();
+  assert(!carried_box_detached_from_reference_layer_xz(
+    low_box_in_high_reference, low_source, 0.4, 0.0, "low_carried_box", &reason));
+  assert(reason.find("elevated reference box") != std::string::npos);
+  const AxisAlignedBox low_box_above_high_reference{{0.15, 0.0, 1.01}, {0.3, 0.4, 0.4}};
+  reason.clear();
+  assert(carried_box_detached_from_reference_layer_xz(
+    low_box_above_high_reference, low_source, 0.4, 0.0, "low_carried_box", &reason));
 
   const AxisAlignedBox lower_front_box_retreated{{-0.18, 0.0, 0.75}, {0.3, 0.4, 0.5}};
   reason.clear();

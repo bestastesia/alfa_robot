@@ -103,7 +103,7 @@ int main()
          top_config.top_goal_min_pitch - top_config.goal_pitch_tolerance);
   assert(top_result.paths.front().states.back().lift >= top_config.box_height + top_config.separation_margin);
   assert(top_result.paths.front().states.back().retreat <= top_config.step_retreat + 1e-9);
-  assert(top_result.paths.front().states.back().pitch > 1.4);
+  assert(top_result.paths.front().states.back().pitch < 0.2);
   for (size_t index = 1; index < top_result.paths.front().states.size(); ++index) {
     assert(top_result.paths.front().states[index].retreat + 1e-9 >=
            top_result.paths.front().states[index - 1].retreat);
@@ -112,6 +112,26 @@ int main()
     assert(top_result.paths.front().states[index].pitch + 1e-9 >=
            top_result.paths.front().states[index - 1].pitch);
   }
+  BoxPoseExtractRrtConfig rotation_config = top_config;
+  rotation_config.top_goal_min_pitch = 0.0;
+  BoxPoseExtractRrt rotation_enabled(rotation_config);
+  assert(!rotation_enabled.goalReached({0.0, 0.38, 0.0, 0.0}));
+  assert(rotation_enabled.goalReached({0.0, 0.38, M_PI_2, 0.0}));
+
+  BoxPoseExtractRrtConfig elevated_reference_config = top_config;
+  elevated_reference_config.top_goal_min_pitch = 0.0;
+  elevated_reference_config.separation_margin = 0.0;
+  elevated_reference_config.source_reference_offset_z = 0.4;
+  BoxPoseExtractRrt elevated_reference(elevated_reference_config);
+  assert(!elevated_reference.goalReached({0.0, 0.4, 0.0, 0.0}));
+  assert(elevated_reference.goalReached({0.0, 0.81, 0.0, 0.0}));
+
+  BoxPoseExtractRrtConfig lifted_start_config = top_config;
+  lifted_start_config.top_goal_min_pitch = 0.0;
+  lifted_start_config.source_reference_offset_z = -0.28;
+  BoxPoseExtractRrt lifted_start(lifted_start_config);
+  assert(!lifted_start.goalReached({0.0, 0.14, 0.0, 0.0}));
+  assert(lifted_start.goalReached({0.0, 0.16, 0.0, 0.0}));
 
   return 0;
 }

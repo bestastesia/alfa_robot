@@ -232,12 +232,12 @@ def make_trajectory(
 
 
 LOADED_LEFT_POSE_FAMILY_DEG = [
-    [0.0, -45.0, 120.0, -75.0, 0.0, 0.0],
+    [0.0, -90.0, 120.0, -75.0, 0.0, 0.0],
     [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
     [33.87, 75.82, -135.08, 0.0, -59.25, -33.87],
 ]
 LOADED_RIGHT_POSE_FAMILY_DEG = [
-    [0.0, -45.0, 120.0, -75.0, 0.0, 0.0],
+    [0.0, -90.0, 120.0, -75.0, 0.0, 0.0],
     [0.0, -75.0, 135.0, 0.0, 60.0, 0.0],
     [-30.93, 74.17, -134.92, 0.0, -60.74, 30.93],
 ]
@@ -1019,7 +1019,7 @@ def parse_args(default_executor_mode: str = "mock") -> argparse.Namespace:
     parser.add_argument(
         "--loaded-updown",
         type=float,
-        default=0.3,
+        default=0.1,
         help="初始化及任务结束时的负重高度；与当前 IK 参考 fixed_updown 分离",
     )
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)

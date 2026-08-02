@@ -364,6 +364,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
 
   auto rrt_config = top_suction ? config_.top_rrt : config_.front_rrt;
   rrt_config.mode = top_suction ? BoxMode::TopTranslate : BoxMode::FrontPivot;
+  rrt_config.source_reference_offset_z = policy.detachment_reference_offset_z;
   rrt_config.max_solution_count = std::max<size_t>(1, config_.max_paths_per_arm);
   robot_motion::core::BoxPoseExtractRrt rrt(rrt_config);
   const Eigen::Isometry3d start_tip = start_state.getGlobalLinkTransform(tip);
@@ -458,8 +459,7 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
             }
               return false;
           }
-          final_detached = detached &&
-            (!top_suction || sample.pitch + rrt_config.goal_pitch_tolerance >= rrt_config.top_goal_min_pitch);
+          final_detached = top_suction ? rrt.goalReached(sample) : detached;
           final_detached_evaluated = true;
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
@@ -582,35 +582,11 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
   const auto arm_path_score = [&](const ArmPath& path) {
     double score = path.joint_motion;
     if (top_suction && !path.box_states.empty()) {
-      constexpr double pitch_deficit_weight = 2.0;
-      const double preferred_pitch = std::max(rrt_config.top_goal_min_pitch, 0.25 * rrt_config.max_pitch);
-      const double pitch_deficit = std::max(0.0, preferred_pitch - path.box_states.back().pitch);
-      score += pitch_deficit_weight * pitch_deficit;
+      const auto& final = path.box_states.back();
+      score += 5.0 * final.pitch + 100.0 * final.retreat;
     }
     return score;
   };
-  if (top_suction && !paths.empty()) {
-    const double preferred_pitch = std::max(rrt_config.top_goal_min_pitch, 0.25 * rrt_config.max_pitch);
-    constexpr double pitch_epsilon = 1e-6;
-    const double best_pitch = std::max_element(
-      paths.begin(), paths.end(),
-      [](const ArmPath& lhs, const ArmPath& rhs) {
-        const double lhs_pitch = lhs.box_states.empty() ? 0.0 : lhs.box_states.back().pitch;
-        const double rhs_pitch = rhs.box_states.empty() ? 0.0 : rhs.box_states.back().pitch;
-        return lhs_pitch < rhs_pitch;
-      })->box_states.back().pitch;
-    if (best_pitch >= preferred_pitch - pitch_epsilon) {
-      std::vector<ArmPath> preferred;
-      for (const auto& path : paths) {
-        if (!path.box_states.empty() && path.box_states.back().pitch + pitch_epsilon >= preferred_pitch) {
-          preferred.push_back(path);
-        }
-      }
-      if (!preferred.empty()) {
-        paths = std::move(preferred);
-      }
-    }
-  }
   std::sort(paths.begin(), paths.end(), [&](const ArmPath& lhs, const ArmPath& rhs) {
     return arm_path_score(lhs) < arm_path_score(rhs);
   });
@@ -645,12 +621,121 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
   timing.ik_score = ik_score;
   timing.ik_solve_ms = ik_solve_ms;
 
+  moveit::core::RobotState rrt_start_state(start_state);
+  std::vector<moveit::core::RobotStatePtr> common_updown_prefix;
+  common_updown_prefix.push_back(std::make_shared<moveit::core::RobotState>(start_state));
+  double achieved_common_updown_lift = 0.0;
+  std::string common_updown_stop_reason;
+  BoxPoseRrtArmPolicy adjusted_left_policy = left_policy;
+  BoxPoseRrtArmPolicy adjusted_right_policy = right_policy;
+  if (left_top_suction && right_top_suction) {
+    const auto& updown_bounds = start_state.getRobotModel()->getVariableBounds("updown");
+    const double initial_updown = start_state.getVariablePosition("updown");
+    if (!updown_bounds.position_bounded_ ||
+        initial_updown < updown_bounds.min_position_ - 1e-9 ||
+        initial_updown > updown_bounds.max_position_ + 1e-9) {
+      timing.failure_reason = "top_priority_updown_start_out_of_bounds";
+      timing.final_state = std::make_shared<moveit::core::RobotState>(start_state);
+      timing.rollout_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+      return timing;
+    }
+    const double available_lift = std::max(0.0, updown_bounds.max_position_ - initial_updown);
+    const double requested_lift = std::max(0.0, config_.top_common_updown_lift_distance);
+    const double bounded_lift = std::min(requested_lift, available_lift);
+    const double lift_step = std::max(0.001, config_.top_common_updown_step);
+    const size_t lift_steps = bounded_lift <= 1e-9 ? 0 :
+      std::max<size_t>(1, static_cast<size_t>(std::ceil(bounded_lift / lift_step)));
+
+    robot_motion::core::BoxPoseExtractRrtConfig left_detach_config = config_.top_rrt;
+    robot_motion::core::BoxPoseExtractRrtConfig right_detach_config = config_.top_rrt;
+    left_detach_config.mode = BoxMode::TopTranslate;
+    right_detach_config.mode = BoxMode::TopTranslate;
+    left_detach_config.source_reference_offset_z = left_policy.detachment_reference_offset_z;
+    right_detach_config.source_reference_offset_z = right_policy.detachment_reference_offset_z;
+    const robot_motion::core::BoxPoseExtractRrt left_detach_checker(left_detach_config);
+    const robot_motion::core::BoxPoseExtractRrt right_detach_checker(right_detach_config);
+
+    for (size_t step = 1; step <= lift_steps; ++step) {
+      const double lift = bounded_lift * static_cast<double>(step) /
+        static_cast<double>(lift_steps);
+      moveit::core::RobotState next_state(rrt_start_state);
+      next_state.setVariablePosition("updown", initial_updown + lift);
+      next_state.update(true);
+      bool ignored_left_detached = false;
+      bool ignored_right_detached = false;
+      std::string clear_reason;
+      if (!next_state.satisfiesBounds(config_.joint_group) ||
+          !config_.dual_clear_callback ||
+          !config_.dual_clear_callback(
+            next_state, left_box, left_box_id, right_box, right_box_id,
+            &ignored_left_detached, &ignored_right_detached, &clear_reason)) {
+        common_updown_stop_reason = clear_reason.empty() ?
+          "top_priority_updown_collision" : clear_reason;
+        break;
+      }
+      achieved_common_updown_lift = lift;
+      rrt_start_state = next_state;
+      common_updown_prefix.push_back(
+        std::make_shared<moveit::core::RobotState>(rrt_start_state));
+
+      const BoxState lifted_state{0.0, lift, 0.0, 0.0};
+      const bool left_detached = left_detach_checker.goalReached(lifted_state);
+      const bool right_detached = right_detach_checker.goalReached(lifted_state);
+      if ((!left_policy.require_full_detachment || left_detached) &&
+          (!right_policy.require_full_detachment || right_detached)) {
+        timing.success = true;
+        timing.accepted_steps = common_updown_prefix.size() - 1;
+        timing.final_lift_z = lift;
+        timing.right_final_lift_z = lift;
+        timing.final_state = std::make_shared<moveit::core::RobotState>(rrt_start_state);
+        if (record_step) {
+          for (size_t prefix_step = 0; prefix_step < common_updown_prefix.size(); ++prefix_step) {
+            const double prefix_lift =
+              common_updown_prefix[prefix_step]->getVariablePosition("updown") - initial_updown;
+            record_step(prefix_step, *common_updown_prefix[prefix_step], {
+              {"stage_kind", "top_priority_common_updown_lift"},
+              {"accepted", true},
+              {"common_updown_lift", prefix_lift},
+              {"common_updown_limit", updown_bounds.max_position_},
+              {"left_detached", left_detach_checker.goalReached({0.0, prefix_lift, 0.0, 0.0})},
+              {"right_detached", right_detach_checker.goalReached({0.0, prefix_lift, 0.0, 0.0})}
+            });
+          }
+        }
+        timing.rollout_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count();
+        return timing;
+      }
+    }
+
+    adjusted_left_policy.detachment_reference_offset_z -= achieved_common_updown_lift;
+    adjusted_right_policy.detachment_reference_offset_z -= achieved_common_updown_lift;
+    if (record_step) {
+      for (size_t prefix_step = 0; prefix_step < common_updown_prefix.size(); ++prefix_step) {
+        const double prefix_lift =
+          common_updown_prefix[prefix_step]->getVariablePosition("updown") - initial_updown;
+        record_step(prefix_step, *common_updown_prefix[prefix_step], {
+          {"stage_kind", "top_priority_common_updown_lift"},
+          {"accepted", true},
+          {"common_updown_lift", prefix_lift},
+          {"requested_common_updown_lift", requested_lift},
+          {"bounded_common_updown_lift", bounded_lift},
+          {"common_updown_limit", updown_bounds.max_position_},
+          {"stop_reason", common_updown_stop_reason}
+        });
+      }
+    }
+  }
+
   ArmPath left_diagnostic;
   ArmPath right_diagnostic;
   const auto left_paths = planArm(
-    "left", start_state, left_box, left_box_id, left_top_suction, left_policy, &left_diagnostic);
+    "left", rrt_start_state, left_box, left_box_id, left_top_suction,
+    adjusted_left_policy, &left_diagnostic);
   const auto right_paths = planArm(
-    "right", start_state, right_box, right_box_id, right_top_suction, right_policy, &right_diagnostic);
+    "right", rrt_start_state, right_box, right_box_id, right_top_suction,
+    adjusted_right_policy, &right_diagnostic);
   RCLCPP_INFO(
     config_.logger,
     "box-pose RRT arm paths: candidate=%zu left=%zu right=%zu modes=(%s,%s)",
@@ -665,7 +750,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     if (!diagnostic.states.empty()) {
       timing.failed_steps = diagnostic.states.size();
       for (size_t step = 0; step < diagnostic.states.size(); ++step) {
-        auto combined = std::make_shared<moveit::core::RobotState>(start_state);
+        auto combined = std::make_shared<moveit::core::RobotState>(rrt_start_state);
         if (left_failed) {
           copy_arm_state(config_.left_arm_group, *diagnostic.states[step], combined.get());
         } else {
@@ -726,7 +811,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       for (const auto& path : arm_paths) {
         bool path_clear = true;
         for (size_t step = 0; step < path.states.size(); ++step) {
-          auto combined = std::make_shared<moveit::core::RobotState>(start_state);
+          auto combined = std::make_shared<moveit::core::RobotState>(rrt_start_state);
           if (moving_side == "left") {
             copy_arm_state(config_.left_arm_group, *path.states[step], combined.get());
           } else {
@@ -804,7 +889,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       const size_t right_index = std::min(
         right.states.size() - 1,
         static_cast<size_t>(std::llround(progress * static_cast<double>(right.states.size() - 1))));
-      auto combined = std::make_shared<moveit::core::RobotState>(start_state);
+      auto combined = std::make_shared<moveit::core::RobotState>(rrt_start_state);
       copy_arm_state(config_.left_arm_group, *left.states[left_index], combined.get());
       copy_arm_state(config_.right_arm_group, *right.states[right_index], combined.get());
       combined->enforceBounds(config_.joint_group);
@@ -851,6 +936,20 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       combined_states.push_back(std::move(combined));
       combined_progresses.push_back(progress);
     }
+    if (collision_free && left_top_suction && !left.box_states.empty()) {
+      auto left_config = config_.top_rrt;
+      left_config.mode = BoxMode::TopTranslate;
+      left_config.source_reference_offset_z = adjusted_left_policy.detachment_reference_offset_z;
+      final_left_detached = robot_motion::core::BoxPoseExtractRrt(left_config).goalReached(
+        left.box_states.back());
+    }
+    if (collision_free && right_top_suction && !right.box_states.empty()) {
+      auto right_config = config_.top_rrt;
+      right_config.mode = BoxMode::TopTranslate;
+      right_config.source_reference_offset_z = adjusted_right_policy.detachment_reference_offset_z;
+      final_right_detached = robot_motion::core::BoxPoseExtractRrt(right_config).goalReached(
+        right.box_states.back());
+    }
     if (!collision_free) {
       failure_counts[failure_reason]++;
       continue;
@@ -878,13 +977,14 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     }
 
     timing.success = true;
-    timing.accepted_steps = combined_states.size();
+    timing.accepted_steps =
+      combined_states.size() + (common_updown_prefix.empty() ? 0 : common_updown_prefix.size() - 1);
     timing.final_state = combined_states.back();
     timing.final_retreat_x = left.box_states.back().retreat;
-    timing.final_lift_z = left.box_states.back().lift;
+    timing.final_lift_z = achieved_common_updown_lift + left.box_states.back().lift;
     timing.final_pitch_deg = left.box_states.back().pitch * 180.0 / M_PI;
     timing.right_final_retreat_x = right.box_states.back().retreat;
-    timing.right_final_lift_z = right.box_states.back().lift;
+    timing.right_final_lift_z = achieved_common_updown_lift + right.box_states.back().lift;
     timing.right_final_pitch_deg = right.box_states.back().pitch * 180.0 / M_PI;
     if (record_step) {
       for (size_t step = 0; step < combined_states.size(); ++step) {

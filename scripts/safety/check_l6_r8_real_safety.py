@@ -16,8 +16,8 @@ DOC = ROOT / "docs/ethercat/REAL_DIRECTION_SAFETY.md"
 SEND_SEQUENCE = ROOT / "scripts/lhy_dev/send_dual_grasp_sequence.py"
 MOVE_ALL_COMPAT = ROOT / "scripts/lhy_dev/run_move_all_joints_abs.sh"
 
-EXPECTED_LEFT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
-EXPECTED_RIGHT0 = [0.0, -45.0, 120.0, -75.0, 0.0, 0.0]
+EXPECTED_LEFT0 = [0.0, -90.0, 120.0, -75.0, 0.0, 0.0]
+EXPECTED_RIGHT0 = [0.0, -90.0, 120.0, -75.0, 0.0, 0.0]
 EXPECTED_PLACE_POSE = "[0.0,-55.0,-50.0,-60.0,0.0,0.0]"
 EXPECTED_PLACE_UPDOWN = "0.10"
 EXPECTED_SIGNS = {

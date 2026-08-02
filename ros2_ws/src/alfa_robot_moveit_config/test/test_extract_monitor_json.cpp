@@ -383,6 +383,32 @@ int main()
   assert(state_replay_stage.at("trajectory").at("points")[0].at("positions")[0] == 0.42);
   assert(state_replay_stage.at("trajectory").at("points")[0].at("positions")[1] == 0.0);
 
+  moveit::core::RobotState joint_goal_state(joint_state);
+  joint_goal_state.setVariablePosition("joint1", 0.62);
+  moveit::planning_interface::MoveGroupInterface::Plan transition_plan;
+  transition_plan.trajectory_.joint_trajectory.joint_names = {"joint1"};
+  trajectory_msgs::msg::JointTrajectoryPoint transition_start;
+  transition_start.positions = {0.42};
+  trajectory_msgs::msg::JointTrajectoryPoint transition_goal;
+  transition_goal.positions = {0.62};
+  transition_plan.trajectory_.joint_trajectory.points = {transition_start, transition_goal};
+  const auto transition_replay_stage = extract_monitor_selected_extract_replay_stage(
+    "extract_monitor_L6_R8",
+    7,
+    12,
+    transition_plan,
+    joint_state,
+    joint_goal_state,
+    6,
+    8,
+    {"joint1"},
+    {box},
+    nlohmann::json{{"boxes", nlohmann::json::array()}},
+    nlohmann::json{{"valid", true}});
+  assert(transition_replay_stage.at("trajectory").at("points").size() == 2);
+  assert(transition_replay_stage.at("start_state").at("joint_map").at("joint1") == 0.42);
+  assert(transition_replay_stage.at("goal_state").at("joint_map").at("joint1") == 0.62);
+
   const auto request_state_replay_stage = extract_monitor_selected_extract_replay_state_stage(
     ExtractMonitorSelectedExtractReplayStateRequest{
       "extract_monitor_L6_R8",

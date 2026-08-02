@@ -21,6 +21,8 @@ from robot_motion_runtime.dual_grasp_strategy import (
     BOX_HEIGHT_M,
     BOX_WIDTH_M,
     OUTER_BOX_GRASP_LATERAL_OFFSET_M,
+    OUTER_BOX_GRASP_TARGET_Y_M,
+    promote_mixed_grasp_modes_to_top,
 )
 
 
@@ -42,7 +44,7 @@ DEFAULT_JOINT_NAMES = [
     "right_joint6",
 ]
 
-FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6}
+FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6, 7, 9}
 
 
 @dataclass(frozen=True)
@@ -55,11 +57,11 @@ class BoxSpec:
 
 def make_boxes(front_x: float, y_shift: float) -> dict[int, BoxSpec]:
     rows_top_to_bottom = [
-        [(1, 0.5), (2, 0.0), (3, -0.5)],
-        [(4, 0.5), (5, 0.0), (6, -0.5)],
-        [(7, 0.5), (8, 0.0), (9, -0.5)],
-        [(10, 0.5), (11, 0.0), (12, -0.5)],
-        [(13, 0.5), (14, 0.0), (15, -0.5)],
+        [(1, OUTER_BOX_GRASP_TARGET_Y_M), (2, 0.0), (3, -OUTER_BOX_GRASP_TARGET_Y_M)],
+        [(4, OUTER_BOX_GRASP_TARGET_Y_M), (5, 0.0), (6, -OUTER_BOX_GRASP_TARGET_Y_M)],
+        [(7, OUTER_BOX_GRASP_TARGET_Y_M), (8, 0.0), (9, -OUTER_BOX_GRASP_TARGET_Y_M)],
+        [(10, OUTER_BOX_GRASP_TARGET_Y_M), (11, 0.0), (12, -OUTER_BOX_GRASP_TARGET_Y_M)],
+        [(13, OUTER_BOX_GRASP_TARGET_Y_M), (14, 0.0), (15, -OUTER_BOX_GRASP_TARGET_Y_M)],
     ]
     row_count = len(rows_top_to_bottom)
     boxes: dict[int, BoxSpec] = {}
@@ -390,6 +392,7 @@ class BoxPairTaskAdapterNode(Node):
 
             left_mode = normalize_grasp_mode(request.left_grasp_mode, request.left_box_id)
             right_mode = normalize_grasp_mode(request.right_grasp_mode, request.right_box_id)
+            left_mode, right_mode = promote_mixed_grasp_modes_to_top(left_mode, right_mode)
             left_pose = self.pose_for_box("left", boxes[request.left_box_id], left_mode, world_to_base_z, top_x_offset, top_z_offset)
             right_pose = self.pose_for_box("right", boxes[request.right_box_id], right_mode, world_to_base_z, top_x_offset, top_z_offset)
             response.left_target = self.pose_stamped(left_pose)

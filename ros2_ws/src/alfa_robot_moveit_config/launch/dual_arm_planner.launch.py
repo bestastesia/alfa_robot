@@ -10,6 +10,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 
 DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 
 
 def generate_launch_description():
@@ -98,7 +99,7 @@ def generate_launch_description():
         DeclareLaunchArgument("vehicle_drift_rotation_threshold_rad", default_value="0.02"),
         DeclareLaunchArgument("container_length", default_value="4.0"),
         DeclareLaunchArgument("container_width", default_value="1.8"),
-        DeclareLaunchArgument("container_height", default_value="2.4"),
+        DeclareLaunchArgument("container_height", default_value="2.2"),
         DeclareLaunchArgument("container_center_x", default_value="0.8"),
         DeclareLaunchArgument("container_center_y", default_value="0.0"),
         DeclareLaunchArgument("container_pose_dynamic", default_value="false"),
@@ -109,7 +110,7 @@ def generate_launch_description():
         DeclareLaunchArgument("container_wall_thickness", default_value="0.02"),
         DeclareLaunchArgument("enable_attached_box_collision", default_value="true"),
         DeclareLaunchArgument("carried_box_depth", default_value="0.3"),
-        DeclareLaunchArgument("carried_box_width", default_value="0.5"),
+        DeclareLaunchArgument("carried_box_width", default_value="0.4"),
         DeclareLaunchArgument("carried_box_height", default_value="0.4"),
         DeclareLaunchArgument("carried_box_grasp_lateral_offset", default_value="0.0"),
         DeclareLaunchArgument("attached_box_collision_padding", default_value="-0.002"),
@@ -119,7 +120,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_demo_right_box_id", default_value="3"),
         DeclareLaunchArgument(
             "extract_demo_pair_sequence",
-            default_value="1,3;4,6;7,9;10,12;13,15",
+            default_value="1,3;1,6;4,3;4,6;4,9;7,6;7,9;7,12;10,9;10,12;10,15;13,12;13,15",
         ),
         DeclareLaunchArgument("extract_demo_all_rows", default_value="false"),
         DeclareLaunchArgument("extract_monitor_top_suction", default_value="false"),
@@ -169,6 +170,14 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_monitor_place_updown", default_value="0.10"),
         DeclareLaunchArgument("extract_monitor_place_transition_updown", default_value="0.10"),
         DeclareLaunchArgument(
+            "extract_monitor_pre_place_left_pose_deg",
+            default_value=DEFAULT_PRE_PLACE_POSE_DEG,
+        ),
+        DeclareLaunchArgument(
+            "extract_monitor_pre_place_right_pose_deg",
+            default_value=DEFAULT_PRE_PLACE_POSE_DEG,
+        ),
+        DeclareLaunchArgument(
             "extract_monitor_place_left_pose_deg",
             default_value="[0.0,-55.0,-50.0,-60.0,0.0,0.0]",
         ),
@@ -178,6 +187,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("extract_rollout_mode", default_value="greedy"),
         DeclareLaunchArgument("extract_top_updown_lift_distance", default_value="0.40"),
+        DeclareLaunchArgument("extract_top_updown_retreat_distance", default_value="0.0"),
         DeclareLaunchArgument("extract_rrt_rollout_enabled", default_value="false"),
         DeclareLaunchArgument("extract_box_pose_rrt_max_iterations", default_value="160"),
         DeclareLaunchArgument("extract_box_pose_rrt_paths_per_arm", default_value="8"),
@@ -200,7 +210,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_fallback", default_value="true"),
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_first", default_value="false"),
         DeclareLaunchArgument("extract_box_pose_rrt_top_best_first_first", default_value="false"),
-        DeclareLaunchArgument("extract_box_pose_rrt_top_goal_min_pitch_deg", default_value="5.0"),
+        DeclareLaunchArgument("extract_box_pose_rrt_top_goal_min_pitch_deg", default_value="0.0"),
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_max_expansions", default_value="800"),
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_heuristic_weight", default_value="1.0"),
         DeclareLaunchArgument("extract_rrt_planning_group", default_value="dual_arm"),
@@ -219,7 +229,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_loaded_candidate_limit", default_value="0"),
         DeclareLaunchArgument("extract_loaded_sort_by_pose_distance", default_value="false"),
         DeclareLaunchArgument("extract_loaded_stop_on_first_success", default_value="true"),
-        DeclareLaunchArgument("extract_loaded_target_updown", default_value="0.3"),
+        DeclareLaunchArgument("extract_loaded_target_updown", default_value="0.1"),
         DeclareLaunchArgument("extract_loaded_preserve_lower_updown", default_value="false"),
         DeclareLaunchArgument("extract_loaded_lateral_shift_enabled", default_value="false"),
         DeclareLaunchArgument("extract_loaded_lateral_shift_distance", default_value="0.4"),
@@ -397,10 +407,13 @@ def generate_launch_description():
                 "extract_monitor_place_cycle_enabled": ParameterValue(LaunchConfiguration("extract_monitor_place_cycle_enabled"), value_type=bool),
                 "extract_monitor_place_updown": ParameterValue(LaunchConfiguration("extract_monitor_place_updown"), value_type=float),
                 "extract_monitor_place_transition_updown": ParameterValue(LaunchConfiguration("extract_monitor_place_transition_updown"), value_type=float),
+                "extract_monitor_pre_place_left_pose_deg": ParameterValue(LaunchConfiguration("extract_monitor_pre_place_left_pose_deg"), value_type=str),
+                "extract_monitor_pre_place_right_pose_deg": ParameterValue(LaunchConfiguration("extract_monitor_pre_place_right_pose_deg"), value_type=str),
                 "extract_monitor_place_left_pose_deg": ParameterValue(LaunchConfiguration("extract_monitor_place_left_pose_deg"), value_type=str),
                 "extract_monitor_place_right_pose_deg": ParameterValue(LaunchConfiguration("extract_monitor_place_right_pose_deg"), value_type=str),
                 "extract_rollout_mode": ParameterValue(LaunchConfiguration("extract_rollout_mode"), value_type=str),
                 "extract_top_updown_lift_distance": ParameterValue(LaunchConfiguration("extract_top_updown_lift_distance"), value_type=float),
+                "extract_top_updown_retreat_distance": ParameterValue(LaunchConfiguration("extract_top_updown_retreat_distance"), value_type=float),
                 "extract_rrt_rollout_enabled": ParameterValue(LaunchConfiguration("extract_rrt_rollout_enabled"), value_type=bool),
                 "extract_box_pose_rrt_max_iterations": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_max_iterations"), value_type=int),
                 "extract_box_pose_rrt_paths_per_arm": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_paths_per_arm"), value_type=int),

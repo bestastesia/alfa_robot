@@ -6,6 +6,8 @@ import threading
 import time
 from typing import Any
 
+from action_msgs.msg import GoalStatus
+from alfa_control_interfaces.action import VacuumGrip
 from alfa_robot_execution_bridge.joints import (
     RT_CONTROL_JOINT_NAMES,
     model_to_rt_control_acceleration,
@@ -59,11 +61,18 @@ class HardwareExecutor:
         joint_state_topic: str = "/joint_states",
         start_joint_tolerance_deg: float = 5.0,
         start_updown_tolerance_m: float = 0.015,
+        vacuum_action_name: str = "",
     ) -> None:
         self.node = node
         self.dry_run = bool(dry_run)
         self.action_name = str(action_name)
         self.action_client = ActionClient(node, FollowJointTrajectory, action_name)
+        self.vacuum_action_name = str(vacuum_action_name).strip()
+        self.vacuum_action_client = (
+            ActionClient(node, VacuumGrip, self.vacuum_action_name)
+            if self.vacuum_action_name
+            else None
+        )
         self.left_solenoid = node.create_client(SetBool, left_solenoid_service)
         self.right_solenoid = node.create_client(SetBool, right_solenoid_service)
         self.vacuum_pump = node.create_client(SetBool, vacuum_pump_service)
@@ -89,13 +98,17 @@ class HardwareExecutor:
                 f"双臂 FollowJointTrajectory action 不可用: {self.action_name}; "
                 f"ROS_DOMAIN_ID={os.environ.get('ROS_DOMAIN_ID', 'unset')}"
             )
-        for label, client in (
-            ("左电磁阀", self.left_solenoid),
-            ("右电磁阀", self.right_solenoid),
-            ("真空泵", self.vacuum_pump),
-        ):
-            if not client.wait_for_service(timeout_sec=self.wait_timeout_s):
-                raise RuntimeError(f"{label}服务不可用")
+        if self.vacuum_action_client is not None:
+            if not self.vacuum_action_client.wait_for_server(timeout_sec=self.wait_timeout_s):
+                raise RuntimeError(f"真空 Action 不可用: {self.vacuum_action_name}")
+        else:
+            for label, client in (
+                ("左电磁阀", self.left_solenoid),
+                ("右电磁阀", self.right_solenoid),
+                ("真空泵", self.vacuum_pump),
+            ):
+                if not client.wait_for_service(timeout_sec=self.wait_timeout_s):
+                    raise RuntimeError(f"{label}服务不可用")
 
     def execute_segment(self, samples: list[MotionSample], label: str) -> dict[str, float]:
         if len(samples) < 2:
@@ -140,6 +153,9 @@ class HardwareExecutor:
         if self.dry_run:
             self.node.get_logger().info(f"[DRY-RUN] 双侧电磁阀与真空泵同步 {state}")
             return
+        if self.vacuum_action_client is not None:
+            self._set_vacuum_action(enabled)
+            return
         futures: list[tuple[str, Any]] = []
         for label, client in (
             ("左电磁阀", self.left_solenoid),
@@ -156,6 +172,33 @@ class HardwareExecutor:
                 message = "无响应" if response is None else response.message
                 raise RuntimeError(f"{label}{state}失败: {message}")
         self.node.get_logger().info(f"双侧电磁阀与真空泵同步 {state} 完成")
+
+    def _set_vacuum_action(self, enabled: bool) -> None:
+        goal = VacuumGrip.Goal()
+        goal.context.request_id = f"motion-vacuum-{time.time_ns()}"
+        goal.context.task_id = goal.context.request_id
+        goal.command = VacuumGrip.Goal.GRIP if enabled else VacuumGrip.Goal.RELEASE
+        goal.channels = [VacuumGrip.Goal.CHANNEL_LEFT, VacuumGrip.Goal.CHANNEL_RIGHT]
+        goal.grip_profile_id = "current_demo_default"
+        send_future = self.vacuum_action_client.send_goal_async(goal)
+        self._wait_future(send_future, "等待真空 Action 接受")
+        goal_handle = send_future.result()
+        if goal_handle is None or not goal_handle.accepted:
+            raise RuntimeError("真空 Action 拒绝命令")
+        result_future = goal_handle.get_result_async()
+        self._wait_future(result_future, "等待真空 Action 完成", self.wait_timeout_s + 10.0)
+        wrapped = result_future.result()
+        result = wrapped.result
+        if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
+            raise RuntimeError(
+                f"真空 Action 未成功结束: status={wrapped.status} {result.error.message}"
+            )
+        if enabled and result.overall_verification_level != 1:
+            raise RuntimeError("真空 GRIP 未达到 ATTACHED_VERIFIED")
+        self.node.get_logger().info(
+            f"双侧真空 {'GRIP' if enabled else 'RELEASE'} 完成，"
+            f"verification={result.overall_verification_level}"
+        )
 
     def current_sample(self, timeout_s: float | None = None) -> MotionSample:
         if self.dry_run:

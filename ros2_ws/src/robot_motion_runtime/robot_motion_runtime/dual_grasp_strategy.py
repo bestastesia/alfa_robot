@@ -9,19 +9,22 @@ DUAL_FRONT = DUAL_FRONT_EQUAL
 DUAL_TOP_EQUAL = 2
 DUAL_TOP_LEFT_HIGH = 3
 DUAL_TOP_RIGHT_HIGH = 4
-MIXED_DEGRADED_TO_FRONT_EQUAL = 5
-MIXED_DEGRADED_TO_FRONT = MIXED_DEGRADED_TO_FRONT_EQUAL
+MIXED_EQUAL = 5
+MIXED_DEGRADED_TO_FRONT_EQUAL = MIXED_EQUAL
+MIXED_DEGRADED_TO_FRONT = MIXED_EQUAL
 DUAL_FRONT_LEFT_HIGH = 6
 DUAL_FRONT_RIGHT_HIGH = 7
-MIXED_DEGRADED_TO_FRONT_LEFT_HIGH = 8
-MIXED_DEGRADED_TO_FRONT_RIGHT_HIGH = 9
+MIXED_LEFT_HIGH = 8
+MIXED_RIGHT_HIGH = 9
+MIXED_DEGRADED_TO_FRONT_LEFT_HIGH = MIXED_LEFT_HIGH
+MIXED_DEGRADED_TO_FRONT_RIGHT_HIGH = MIXED_RIGHT_HIGH
 
 FRONT = "front"
 TOP_SUCTION = "top_suction"
 BOX_DEPTH_M = 0.3
-BOX_WIDTH_M = 0.5
+BOX_WIDTH_M = 0.4
 BOX_HEIGHT_M = 0.4
-OUTER_BOX_GRASP_TARGET_Y_M = 0.50
+OUTER_BOX_GRASP_TARGET_Y_M = 0.40
 OUTER_BOX_GRASP_LATERAL_OFFSET_M = BOX_WIDTH_M - OUTER_BOX_GRASP_TARGET_Y_M
 
 
@@ -69,16 +72,29 @@ def normalize_grasp_mode(value: str) -> str:
     return aliases[normalized]
 
 
+def promote_mixed_grasp_modes_to_top(
+    left_mode: str,
+    right_mode: str,
+) -> tuple[str, str]:
+    left_mode = normalize_grasp_mode(left_mode)
+    right_mode = normalize_grasp_mode(right_mode)
+    if left_mode != right_mode:
+        return TOP_SUCTION, TOP_SUCTION
+    return left_mode, right_mode
+
+
 def _front_policy(
     require_full_detachment: bool = True,
     front_clearance_levels: int = 1,
+    *,
+    lift_first: bool = False,
 ) -> ArmExtractPolicyValue:
     return ArmExtractPolicyValue(
         grasp_mode=FRONT,
         require_full_detachment=require_full_detachment,
         front_clearance_levels=max(1, int(front_clearance_levels)),
-        retreat_priority=3.0,
-        lift_priority=1.0,
+        retreat_priority=1.0 if lift_first else 3.0,
+        lift_priority=3.0 if lift_first else 1.0,
         pitch_priority=1.0,
     )
 
@@ -94,6 +110,19 @@ def _top_policy(require_full_detachment: bool = True) -> ArmExtractPolicyValue:
     )
 
 
+def _policy_for_mode(
+    mode: str,
+    *,
+    lower_side: bool = False,
+) -> ArmExtractPolicyValue:
+    if mode == TOP_SUCTION:
+        return _top_policy(require_full_detachment=True)
+    return _front_policy(
+        front_clearance_levels=2 if lower_side else 1,
+        lift_first=lower_side,
+    )
+
+
 def classify_dual_grasp_strategy(
     left_mode: str,
     right_mode: str,
@@ -106,47 +135,54 @@ def classify_dual_grasp_strategy(
     tolerance = max(0.0, float(equal_height_tolerance_m))
     height_difference = float(left_z) - float(right_z)
 
-    mixed_degraded = left_mode != right_mode
-    front_strategy = mixed_degraded or left_mode == FRONT
+    mixed = left_mode != right_mode
+    if mixed:
+        if abs(height_difference) <= tolerance:
+            return DualGraspStrategyValue(
+                task_type=MIXED_EQUAL,
+                name="mixed_equal",
+                left=_policy_for_mode(left_mode),
+                right=_policy_for_mode(right_mode),
+                height_difference_m=height_difference,
+            )
+        if height_difference > 0.0:
+            return DualGraspStrategyValue(
+                task_type=MIXED_LEFT_HIGH,
+                name="mixed_left_high",
+                left=_policy_for_mode(left_mode),
+                right=_policy_for_mode(right_mode, lower_side=True),
+                height_difference_m=height_difference,
+            )
+        return DualGraspStrategyValue(
+            task_type=MIXED_RIGHT_HIGH,
+            name="mixed_right_high",
+            left=_policy_for_mode(left_mode, lower_side=True),
+            right=_policy_for_mode(right_mode),
+            height_difference_m=height_difference,
+        )
+
+    front_strategy = left_mode == FRONT
     if front_strategy:
         if abs(height_difference) <= tolerance:
             return DualGraspStrategyValue(
-                task_type=(
-                    MIXED_DEGRADED_TO_FRONT_EQUAL
-                    if mixed_degraded else DUAL_FRONT_EQUAL
-                ),
-                name=(
-                    "mixed_degraded_to_front_equal"
-                    if mixed_degraded else "dual_front_equal"
-                ),
+                task_type=DUAL_FRONT_EQUAL,
+                name="dual_front_equal",
                 left=_front_policy(),
                 right=_front_policy(),
                 height_difference_m=height_difference,
             )
         if height_difference > 0.0:
             return DualGraspStrategyValue(
-                task_type=(
-                    MIXED_DEGRADED_TO_FRONT_LEFT_HIGH
-                    if mixed_degraded else DUAL_FRONT_LEFT_HIGH
-                ),
-                name=(
-                    "mixed_degraded_to_front_left_high"
-                    if mixed_degraded else "dual_front_left_high"
-                ),
+                task_type=DUAL_FRONT_LEFT_HIGH,
+                name="dual_front_left_high",
                 left=_front_policy(front_clearance_levels=1),
-                right=_front_policy(front_clearance_levels=2),
+                right=_front_policy(front_clearance_levels=2, lift_first=True),
                 height_difference_m=height_difference,
             )
         return DualGraspStrategyValue(
-            task_type=(
-                MIXED_DEGRADED_TO_FRONT_RIGHT_HIGH
-                if mixed_degraded else DUAL_FRONT_RIGHT_HIGH
-            ),
-            name=(
-                "mixed_degraded_to_front_right_high"
-                if mixed_degraded else "dual_front_right_high"
-            ),
-            left=_front_policy(front_clearance_levels=2),
+            task_type=DUAL_FRONT_RIGHT_HIGH,
+            name="dual_front_right_high",
+            left=_front_policy(front_clearance_levels=2, lift_first=True),
             right=_front_policy(front_clearance_levels=1),
             height_difference_m=height_difference,
         )
@@ -235,6 +271,28 @@ def degrade_top_target_to_front(
     )
 
 
+def promote_front_target_to_top(
+    pose: Pose6DValue,
+    *,
+    box_depth_m: float = BOX_DEPTH_M,
+    box_height_m: float = BOX_HEIGHT_M,
+) -> Pose6DValue:
+    front_normal = tool_z_axis(pose)
+    box_center = (
+        pose.x + 0.5 * box_depth_m * front_normal[0],
+        pose.y + 0.5 * box_depth_m * front_normal[1],
+        pose.z + 0.5 * box_depth_m * front_normal[2],
+    )
+    return Pose6DValue(
+        x=box_center[0],
+        y=box_center[1],
+        z=box_center[2] + 0.5 * box_height_m,
+        roll=math.pi,
+        pitch=0.0,
+        yaw=math.pi,
+    )
+
+
 def resolve_dual_grasp_strategy(
     left_mode: str,
     right_mode: str,
@@ -242,21 +300,24 @@ def resolve_dual_grasp_strategy(
     right_pose: Pose6DValue,
     equal_height_tolerance_m: float = 0.02,
 ) -> tuple[DualGraspStrategyValue, Pose6DValue, Pose6DValue]:
-    """Resolve effective front targets before comparing mixed-task heights."""
+    """Promote mixed front/top tasks to dual top suction before classification."""
     left_mode = normalize_grasp_mode(left_mode)
     right_mode = normalize_grasp_mode(right_mode)
     mixed = left_mode != right_mode
     effective_left = (
-        degrade_top_target_to_front(left_pose)
-        if mixed and left_mode == TOP_SUCTION else left_pose
+        promote_front_target_to_top(left_pose)
+        if mixed and left_mode == FRONT else left_pose
     )
     effective_right = (
-        degrade_top_target_to_front(right_pose)
-        if mixed and right_mode == TOP_SUCTION else right_pose
+        promote_front_target_to_top(right_pose)
+        if mixed and right_mode == FRONT else right_pose
+    )
+    effective_left_mode, effective_right_mode = promote_mixed_grasp_modes_to_top(
+        left_mode, right_mode
     )
     strategy = classify_dual_grasp_strategy(
-        left_mode,
-        right_mode,
+        effective_left_mode,
+        effective_right_mode,
         effective_left.z,
         effective_right.z,
         equal_height_tolerance_m,

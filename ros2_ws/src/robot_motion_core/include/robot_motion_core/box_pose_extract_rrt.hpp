@@ -29,13 +29,14 @@ struct BoxPoseExtractRrtConfig
   BoxPoseExtractMode mode = BoxPoseExtractMode::FrontPivot;
   double box_depth = 0.3;
   double box_height = 0.4;
+  double source_reference_offset_z = 0.0;
   double separation_margin = 0.03;
   double max_retreat = 0.45;
   double max_lift = 0.5;
   double max_pitch = 1.5707963267948966;
   double max_lateral = 0.0;
   double min_top_retreat = 0.03;
-  double min_top_lift = 0.03;
+  double min_top_lift = 0.0;
   double top_goal_min_pitch = 0.0;
   bool top_goal_requires_retreat = false;
   bool top_goal_requires_max_pitch = false;
@@ -52,6 +53,8 @@ struct BoxPoseExtractRrtConfig
   bool front_goal_requires_max_pitch = true;
   bool endpoint_only_edges = false;
   double goal_sample_rate = 0.2;
+  double top_lift_only_sample_rate = 0.45;
+  double top_lift_pitch_sample_rate = 0.35;
   size_t goal_connection_interval = 4;
   double retreat_distance_weight = 1.0;
   double lift_distance_weight = 1.0;

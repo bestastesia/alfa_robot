@@ -204,7 +204,7 @@ def main() -> int:
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--scene-y-shift", type=float, default=0.0)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
-    parser.add_argument("--loaded-updown", type=float, default=0.3)
+    parser.add_argument("--loaded-updown", type=float, default=0.1)
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
     parser.add_argument("--front-z-reach-lower", type=float, default=0.45)
     parser.add_argument("--front-z-reach-upper", type=float, default=1.25)

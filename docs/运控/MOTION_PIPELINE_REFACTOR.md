@@ -6,7 +6,7 @@
 
 ## 1. 当前流程总览
 
-当前固定版流程先到“负重位置”为止，暂未封装完整放置流程。
+当前固定版 monitor 流程支持完整放置循环；关闭 `extract_monitor_place_cycle_enabled` 时仍可只运行到负重位置。
 
 ```text
 箱子编号 / 视觉目标
@@ -16,6 +16,9 @@
   -> 抽离搜索：对候选 IK 做左右臂抽离 rollout，检查末端箱/机器人/集装箱/箱墙碰撞
   -> 负重姿态选择：对抽离成功结果选择最近的负重姿态族
   -> 负重规划：MoveIt 从抽离末态规划到负重 joint state，附着箱仍参与碰撞
+  -> 预放置规划：从原负重姿态 `[0,-45,120,-75,0,0]` 平滑经过预放置姿态 `[0,-90,120,-75,0,0]`
+  -> 放置与释放：继续规划到放置姿态，全程携带箱参与碰撞；到位后从 PlanningScene 和 RobotState 同时解除附着
+  -> 空载返程：从放置姿态规划回原负重姿态
   -> 记录：JSONL / CSV / Rerun 回放
 ```
 
@@ -38,7 +41,7 @@
 | `extract_monitor_state` | 交互式 monitor 的阶段状态机、候选缓存、候选任务调度、抽离/负重统计、最终候选选择 | `include/alfa_robot_moveit_config/extract_monitor_state.hpp` / `src/extract_monitor_state.cpp` |
 | `extract_monitor_json` | monitor 的候选、阶段、快照、replay extra 字段 schema | `include/alfa_robot_moveit_config/extract_monitor_json.hpp` / `src/extract_monitor_json.cpp` |
 | `ExtractMonitorSnapshotWriter` | monitor 快照文件读写，保证目录创建和 JSON 落盘错误集中处理 | `include/alfa_robot_moveit_config/extract_monitor_snapshot_writer.hpp` / `src/extract_monitor_snapshot_writer.cpp` |
-| `ExtractMonitorTransitionPlanner` | monitor 最终回放中“负重位 → IK 吸附位”的过渡规划策略：插值、densify、碰撞验证、失败后 RRT、shortcut、再次验证 | `include/alfa_robot_moveit_config/extract_monitor_transition_planning.hpp` / `src/extract_monitor_transition_planning.cpp` |
+| `ExtractMonitorTransitionPlanner` | monitor 最终回放中的通用关节过渡规划策略：插值、densify、碰撞验证、失败后局部 RRT/MoveIt 回退、shortcut、再次验证；用于负重→IK、负重→预放置→放置和空载返程 | `include/alfa_robot_moveit_config/extract_monitor_transition_planning.hpp` / `src/extract_monitor_transition_planning.cpp` |
 | `ExtractMonitorReplayBuilder` | monitor 最终采用方案的 Rerun/JSON 回放阶段组装：预吸附过渡、抽离记录、横向让位、负重规划按固定顺序合并 | `include/alfa_robot_moveit_config/extract_monitor_replay_builder.hpp` / `src/extract_monitor_replay_builder.cpp` |
 | `DualArmPlannerNode` | ROS 参数、MoveIt 后端、场景碰撞判定、service callback 装配 | `src/dual_arm_planner_node.cpp` |
 | 启动配置 | 暴露算法超参数和实验参数 | `launch/dual_arm_planner.launch.py` |
@@ -464,7 +467,13 @@ target_link_libraries(your_target
 | `extract_loaded_candidate_limit` | `0` | 进入负重规划的候选数限制；实验常用 `10` |
 | `extract_loaded_sort_by_pose_distance` | `false` | 是否按负重姿态距离排序 |
 | `extract_loaded_stop_on_first_success` | `false` | 负重规划是否首成功即停 |
-| `extract_loaded_target_updown` | `0.3` | 抽离后负重规划目标 updown |
+| `extract_loaded_target_updown` | `0.1` | 抽离后负重规划目标 updown |
+| `loaded_left_pose_family_deg` / `loaded_right_pose_family_deg` | `[0,-45,120,-75,0,0]` | 抽离后首先到达的原负重姿态族 |
+| `extract_monitor_place_cycle_enabled` | `false` | 是否在负重规划后继续执行预放置、放置、释放和空载返程 |
+| `extract_monitor_pre_place_left_pose_deg` / `extract_monitor_pre_place_right_pose_deg` | `[0,-90,120,-75,0,0]` | 负重到放置之间必须经过的预放置姿态 |
+| `extract_monitor_place_transition_updown` | `0.1` | 预放置姿态的 updown |
+| `extract_monitor_place_left_pose_deg` / `extract_monitor_place_right_pose_deg` | `[0,-55,-50,-60,0,0]` | 最终放置姿态 |
+| `extract_monitor_place_updown` | `0.1` | 最终放置姿态的 updown |
 | `start_move_group` | `true` | 是否由该 launch 启动 move_group 和支持节点；设为 `false` 时必须外部已有完整 MoveIt 栈，否则节点会等待 MoveGroupInterface 依赖 |
 
 ## 6. 复现实验命令

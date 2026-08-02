@@ -138,6 +138,12 @@ std::string direct_pipeline_failure_diagnostic(
       out << ";line=first_" << collision << "@" << step << "/" << kInterpolationSteps << "}";
       return out.str();
     }
+    const std::string full_collision = scene_collision_reason(scene, probe, nullptr);
+    if (!full_collision.empty()) {
+      out << ";line=first_full_" << full_collision << "@"
+          << step << "/" << kInterpolationSteps << "}";
+      return out.str();
+    }
   }
 
   out << ";line=straight_joint_interpolation_clear}";

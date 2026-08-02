@@ -237,6 +237,7 @@ struct ExtractCandidateSolveRequest
   double fixed_updown = 0.0;
   double min_tool_normal_z = std::numeric_limits<double>::quiet_NaN();
   bool top_suction = false;
+  size_t analytic_solution_index = 0;
 };
 
 class ExtractCandidateSolver
@@ -256,6 +257,7 @@ private:
     const Eigen::Isometry3d& target_world,
     double fixed_updown,
     bool top_suction,
+    size_t solution_index,
     moveit::core::RobotState& state) const;
 
   const moveit::core::JointModelGroup* groupForSide(const std::string& side) const;
@@ -525,6 +527,8 @@ struct BoxPoseRrtExtractPlannerConfig
   rclcpp::Logger logger = rclcpp::get_logger("box_pose_rrt_extract_planner");
   robot_motion::core::BoxPoseExtractRrtConfig front_rrt;
   robot_motion::core::BoxPoseExtractRrtConfig top_rrt;
+  double top_common_updown_lift_distance = 0.4;
+  double top_common_updown_step = 0.01;
   size_t max_paths_per_arm = 8;
   size_t max_path_pairs_to_validate = 64;
   bool diagnose_isolated_arm_paths = false;
@@ -540,6 +544,7 @@ struct BoxPoseRrtArmPolicy
   double retreat_priority = 1.0;
   double lift_priority = 1.0;
   double pitch_priority = 1.0;
+  double detachment_reference_offset_z = 0.0;
 };
 
 class BoxPoseRrtExtractPlanner

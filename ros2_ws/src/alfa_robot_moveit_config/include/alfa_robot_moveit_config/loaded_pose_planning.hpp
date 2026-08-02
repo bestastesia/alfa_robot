@@ -43,7 +43,7 @@ struct LoadedPoseSelectorConfig
   std::vector<std::vector<double>> right_pose_family;
   size_t left_preferred_index = 0;
   size_t right_preferred_index = 0;
-  double target_updown = 0.3;
+  double target_updown = 0.1;
   bool preserve_lower_updown = false;
   const moveit::core::JointModelGroup* enforce_bounds_group = nullptr;
 };
@@ -160,7 +160,6 @@ using LoadedDirectPlanCallback = std::function<bool(
   std::string*)>;
 
 using LoadedPlanCancellationCheck = std::function<bool()>;
-using LoadedTopSuctionHeightMismatchCallback = std::function<bool()>;
 
 struct LoadedPosePlannerConfig
 {
@@ -184,7 +183,6 @@ struct LoadedPosePlannerConfig
   LoadedPlanClearanceCallback clearance_callback;
   LoadedPlanRecordCallback record_callback;
   LoadedDirectPlanCallback direct_plan_callback;
-  LoadedTopSuctionHeightMismatchCallback top_suction_height_mismatch_callback;
 };
 
 class LoadedPosePlanner

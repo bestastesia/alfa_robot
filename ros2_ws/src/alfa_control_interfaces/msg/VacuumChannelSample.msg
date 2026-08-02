@@ -1,0 +1,5 @@
+uint8 channel
+float64 pressure_pa
+bool pump_enabled
+bool valve_commanded_open
+string observed_state

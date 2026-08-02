@@ -245,7 +245,7 @@ def main() -> int:
     parser.add_argument("--extract-rrt-goal-limit", type=int, default=8)
     parser.add_argument("--loaded-candidate-limit", type=int, default=8)
     parser.add_argument("--loaded-workers", type=int, default=8)
-    parser.add_argument("--loaded-updown", type=float, default=0.3)
+    parser.add_argument("--loaded-updown", type=float, default=0.1)
     parser.add_argument("--loaded-planner-id", default="")
     parser.add_argument("--loaded-planning-mode", choices=["rrt", "shortcut"], default="rrt")
     parser.add_argument("--loaded-planning-time", type=float, default=1.0)

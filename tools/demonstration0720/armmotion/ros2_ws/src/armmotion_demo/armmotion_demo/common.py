@@ -58,6 +58,26 @@ class TaskSpec:
         return "direct_updown_lift" if self.index in DIRECT_LIFT_TASKS else "box_pose_rrt"
 
     @property
+    def left_grasp_mode(self) -> str:
+        return self.grasp_family
+
+    @property
+    def right_grasp_mode(self) -> str:
+        return self.grasp_family
+
+    @property
+    def explicit_targets(self) -> None:
+        return None
+
+    @property
+    def scene_y_shift(self) -> None:
+        return None
+
+    @property
+    def extract_box_pose_rrt_max_iterations(self) -> int:
+        return 400 if self.index == 5 else 160
+
+    @property
     def effective_distance_m(self) -> float:
         return self.front_distance_m if self.index in FRONT_TASKS else self.top_distance_m
 
@@ -251,7 +271,7 @@ def validate_stage_contracts(
             f"第3阶段终点 updown={actual_stage3_updown:.4f}m，"
             f"期望 min(抽离终态, 0.45)={expected_stage3_updown:.4f}m"
         )
-    expected_updown = {4: 0.1, 6: 0.3}
+    expected_updown = {4: 0.1, 6: actual_stage3_updown}
     for stage_number, target in expected_updown.items():
         actual = flattened(stage_number)[-1].updown_m
         if abs(actual - target) > 1e-4:

@@ -1,0 +1,5 @@
+uint8 channel
+bool command_accepted
+bool valve_actuation_completed
+uint8 verification_level
+alfa_system_interfaces/ErrorInfo error

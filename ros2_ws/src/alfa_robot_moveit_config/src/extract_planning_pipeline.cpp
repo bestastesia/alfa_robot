@@ -169,6 +169,7 @@ bool ExtractCandidateSolver::solveAnalytic(
   const Eigen::Isometry3d& target_world,
   double fixed_updown,
   bool top_suction,
+  size_t solution_index,
   moveit::core::RobotState& state) const
 {
   if (!analytic_solver_) return false;
@@ -210,11 +211,11 @@ bool ExtractCandidateSolver::solveAnalytic(
       static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - analytic_started).count()), std::memory_order_relaxed);
   }
-  if (solutions.empty()) {
+  if (solution_index >= solutions.size()) {
     return false;
   }
 
-  const auto& best_solution = solutions.front();
+  const auto& best_solution = solutions[solution_index];
   for (size_t i = 0; i < best_solution.joints.size(); ++i) {
     state.setVariablePosition(side + "_joint" + std::to_string(i + 1), best_solution.joints[i]);
   }
@@ -255,6 +256,7 @@ bool ExtractCandidateSolver::solve(const ExtractCandidateSolveRequest& request, 
     target,
     request.fixed_updown,
     request.top_suction,
+    request.analytic_solution_index,
     *state);
   if (!ik_ok) {
     const Eigen::Isometry3d& current_tip = request.current_state->getGlobalLinkTransform(tip);

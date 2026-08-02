@@ -1,0 +1,56 @@
+services:
+  motion:
+    build:
+      context: ../..
+      dockerfile: docker/motion/Dockerfile
+      args:
+        ROS_BASE_IMAGE: "${MOTION_ROS_BASE_IMAGE:-docker.m.daocloud.io/osrf/ros:humble-desktop-full}"
+        UBUNTU_MIRROR: "${MOTION_UBUNTU_MIRROR:-https://mirrors.aliyun.com/ubuntu}"
+        ROS2_MIRROR: "${MOTION_ROS2_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ros2/ubuntu}"
+    image: alfa-motion-dev:humble
+    network_mode: host
+    user: "${MOTION_UID:-1000}:${MOTION_GID:-1000}"
+    environment:
+      HOME: /workspace/home
+      ROS_LOG_DIR: /workspace/ros_logs
+      ROS_DOMAIN_ID: "${MOTION_ROS_DOMAIN_ID:-142}"
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      FASTRTPS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
+      FASTDDS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
+      MOTION_ROLE: server
+      MOTION_RT_MODE: "${MOTION_RT_MODE:-external}"
+      MOTION_DRY_RUN: "${MOTION_DRY_RUN:-true}"
+      MOTION_SKIP_BUILD: "${MOTION_SKIP_BUILD:-false}"
+      MOTION_SOURCE_ROOT: /repo
+      MOTION_WORKSPACE: /workspace
+      MOTION_OUTPUT_ROOT: /motion_data
+    volumes:
+      - ../..:/repo:ro
+      - ./.workspace:/workspace
+      - ../../data/docker_motion:/motion_data
+      - ./fastdds_udp_only.xml:/etc/fastdds_udp_only.xml:ro
+    init: true
+    stop_grace_period: 20s
+
+  task:
+    image: alfa-motion-dev:humble
+    network_mode: host
+    user: "${MOTION_UID:-1000}:${MOTION_GID:-1000}"
+    environment:
+      HOME: /workspace/home
+      ROS_LOG_DIR: /workspace/ros_logs
+      ROS_DOMAIN_ID: "${MOTION_ROS_DOMAIN_ID:-142}"
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+      FASTRTPS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
+      FASTDDS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
+      MOTION_ROLE: task
+      MOTION_SKIP_BUILD: "true"
+      MOTION_SOURCE_ROOT: /repo
+      MOTION_WORKSPACE: /workspace
+      MOTION_OUTPUT_ROOT: /motion_data
+    volumes:
+      - ../..:/repo:ro
+      - ./.workspace:/workspace
+      - ../../data/docker_motion:/motion_data
+      - ./fastdds_udp_only.xml:/etc/fastdds_udp_only.xml:ro
+    profiles: ["manual"]

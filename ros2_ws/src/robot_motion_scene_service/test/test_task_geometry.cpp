@@ -14,13 +14,13 @@ int main()
   const auto boxes = make_boxes(0.925, 0.0);
   assert(boxes.size() == 15);
   assert(std::abs(boxes.at(1).x - 0.925) < 1e-9);
-  assert(std::abs(boxes.at(1).y - 0.5) < 1e-9);
+  assert(std::abs(boxes.at(1).y - 0.4) < 1e-9);
   assert(std::abs(boxes.at(1).z - 1.8) < 1e-9);
   assert(std::abs(boxes.at(5).y) < 1e-9);
   assert(std::abs(boxes.at(5).z - 1.4) < 1e-9);
-  assert(std::abs(boxes.at(15).y - (-0.5)) < 1e-9);
+  assert(std::abs(boxes.at(15).y - (-0.4)) < 1e-9);
   assert(std::abs(boxes.at(15).z - 0.2) < 1e-9);
-  assert(std::abs(kOuterBoxGraspTargetY - 0.50) < 1e-9);
+  assert(std::abs(kOuterBoxGraspTargetY - 0.40) < 1e-9);
   assert(std::abs(kOuterBoxGraspLateralOffset) < 1e-9);
   assert(box_column_from_left(1) == 1);
   assert(box_column_from_left(2) == 2);
