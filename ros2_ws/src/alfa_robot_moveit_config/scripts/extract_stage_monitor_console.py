@@ -459,6 +459,7 @@ class ExtractMonitorServiceClient:
         left_target: dict[str, Any] | None = None,
         right_target: dict[str, Any] | None = None,
         runtime_config: dict[str, Any] | None = None,
+        strategy: Any | None = None,
     ) -> tuple[bool, str, float]:
         start = time.monotonic()
         request = self._configure_type.Request()
@@ -468,6 +469,20 @@ class ExtractMonitorServiceClient:
         request.left_top_suction = bool(left_top_suction)
         request.right_top_suction = bool(right_top_suction)
         assign_explicit_targets(request, left_target, right_target)
+        if strategy is not None:
+            request.strategy.task_type = int(strategy.task_type)
+            request.strategy.name = str(strategy.name)
+            request.strategy.height_difference_m = float(strategy.height_difference_m)
+            for target, source in (
+                (request.strategy.left, strategy.left),
+                (request.strategy.right, strategy.right),
+            ):
+                target.grasp_mode = str(source.grasp_mode)
+                target.require_full_detachment = bool(source.require_full_detachment)
+                target.front_clearance_levels = int(source.front_clearance_levels)
+                target.retreat_priority = float(source.retreat_priority)
+                target.lift_priority = float(source.lift_priority)
+                target.pitch_priority = float(source.pitch_priority)
         if runtime_config is not None:
             request.update_runtime_config = True
             request.box_front_x = float(runtime_config["box_front_x"])

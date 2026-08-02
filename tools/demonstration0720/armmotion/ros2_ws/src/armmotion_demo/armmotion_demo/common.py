@@ -6,6 +6,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from robot_motion_runtime.dual_grasp_strategy import (
+    BOTTOM_ROW_FRONT_CENTER_Z_M,
+    BOX_DEPTH_M,
+    BOX_HEIGHT_M,
+    BOX_ROW_COUNT,
+    FRONT_TOOL_RPY,
+    OUTER_BOX_GRASP_TARGET_Y_M,
+    Pose6DValue,
+    ROW_MATCH_TOLERANCE_M,
+    TOP_SUCTION_FIRST_ROW,
+    quaternion_xyzw,
+    resolve_front_face_dual_grasp_strategy,
+)
+
 
 TASK_PAIRS = {
     1: (1, 3),
@@ -58,6 +72,10 @@ class TaskSpec:
         return "direct_updown_lift" if self.index in DIRECT_LIFT_TASKS else "box_pose_rrt"
 
     @property
+    def uses_direct_updown_lift(self) -> bool:
+        return self.index in DIRECT_LIFT_TASKS
+
+    @property
     def left_grasp_mode(self) -> str:
         return self.grasp_family
 
@@ -80,6 +98,85 @@ class TaskSpec:
     @property
     def effective_distance_m(self) -> float:
         return self.front_distance_m if self.index in FRONT_TASKS else self.top_distance_m
+
+
+@dataclass(frozen=True)
+class PoseTaskSpec:
+    code: str
+    left_front_face_pose: Pose6DValue
+    right_front_face_pose: Pose6DValue
+    left_row: int
+    right_row: int
+    left_row_residual_m: float
+    right_row_residual_m: float
+    left_grasp_mode: str
+    right_grasp_mode: str
+    left_tool_pose: Pose6DValue
+    right_tool_pose: Pose6DValue
+    strategy: Any
+    scene_y_shift: float
+    effective_distance_m: float
+
+    @property
+    def task_layout(self) -> str:
+        return "pose_driven"
+
+    @property
+    def layout(self) -> str:
+        return "pose_driven"
+
+    @property
+    def index(self) -> int:
+        return 0
+
+    @property
+    def left_scene_slot_id(self) -> int:
+        return 1
+
+    @property
+    def right_scene_slot_id(self) -> int:
+        return 3
+
+    @property
+    def left_box_id(self) -> int:
+        return self.left_scene_slot_id
+
+    @property
+    def right_box_id(self) -> int:
+        return self.right_scene_slot_id
+
+    @property
+    def grasp_family(self) -> str:
+        if self.left_grasp_mode != self.right_grasp_mode:
+            raise ValueError("算法内部吸附模式未收敛为双侧同模式")
+        return self.left_grasp_mode
+
+    @property
+    def extraction_mode(self) -> str:
+        return "direct_updown_lift" if self.uses_direct_updown_lift else "box_pose_rrt"
+
+    @property
+    def uses_direct_updown_lift(self) -> bool:
+        return self.grasp_family == "front" and max(self.left_row, self.right_row) >= 3
+
+    @property
+    def front_distance_m(self) -> float:
+        return self.effective_distance_m
+
+    @property
+    def top_distance_m(self) -> float:
+        return self.effective_distance_m
+
+    @property
+    def extract_box_pose_rrt_max_iterations(self) -> int:
+        return 400 if max(self.left_row, self.right_row) >= BOX_ROW_COUNT else 160
+
+    @property
+    def explicit_targets(self) -> dict[str, dict[str, Any]]:
+        return {
+            "left": pose6d_target_dict(self.left_tool_pose),
+            "right": pose6d_target_dict(self.right_tool_pose),
+        }
 
 
 @dataclass
@@ -130,6 +227,124 @@ def parse_task_code(
         front_distance_m=float(front_distance_m),
         top_distance_m=float(top_distance_m),
     )
+
+
+def pose6d_dict(pose: Pose6DValue) -> dict[str, float]:
+    return {
+        "x": pose.x,
+        "y": pose.y,
+        "z": pose.z,
+        "roll": pose.roll,
+        "pitch": pose.pitch,
+        "yaw": pose.yaw,
+    }
+
+
+def pose6d_from_dict(value: dict[str, Any], label: str) -> Pose6DValue:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} 必须是6D位姿对象")
+    try:
+        pose = Pose6DValue(
+            x=float(value["x"]),
+            y=float(value["y"]),
+            z=float(value["z"]),
+            roll=float(value["roll"]),
+            pitch=float(value["pitch"]),
+            yaw=float(value["yaw"]),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{label} 缺少合法的 x/y/z/roll/pitch/yaw: {exc}") from exc
+    if not all(math.isfinite(item) for item in pose.__dict__.values()):
+        raise ValueError(f"{label} 含非有限数值")
+    return pose
+
+
+def pose6d_target_dict(pose: Pose6DValue) -> dict[str, Any]:
+    orientation = quaternion_xyzw(pose)
+    return {
+        "frame_id": "base_link",
+        "position": [pose.x, pose.y, pose.z],
+        "orientation": list(orientation),
+    }
+
+
+def front_face_poses_for_task(task: TaskSpec) -> tuple[Pose6DValue, Pose6DValue]:
+    scene_y_shift = 0.05 if task.layout == "A" else 0.0
+
+    def make_pose(box_id: int, side: str) -> Pose6DValue:
+        row_from_top = (box_id - 1) // 3 + 1
+        center_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (
+            BOX_ROW_COUNT - row_from_top
+        ) * BOX_HEIGHT_M
+        lateral = OUTER_BOX_GRASP_TARGET_Y_M if side == "left" else -OUTER_BOX_GRASP_TARGET_Y_M
+        return Pose6DValue(
+            x=task.effective_distance_m,
+            y=lateral + scene_y_shift,
+            z=center_z,
+            roll=FRONT_TOOL_RPY[0],
+            pitch=FRONT_TOOL_RPY[1],
+            yaw=FRONT_TOOL_RPY[2],
+        )
+
+    return make_pose(task.left_box_id, "left"), make_pose(task.right_box_id, "right")
+
+
+def planning_task_from_front_face_poses(
+    request_id: str,
+    left_front_face_pose: Pose6DValue,
+    right_front_face_pose: Pose6DValue,
+    *,
+    row_count: int = BOX_ROW_COUNT,
+    box_height_m: float = BOX_HEIGHT_M,
+    box_depth_m: float = BOX_DEPTH_M,
+    bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
+    row_match_tolerance_m: float = ROW_MATCH_TOLERANCE_M,
+    top_suction_first_row: int = TOP_SUCTION_FIRST_ROW,
+) -> PoseTaskSpec:
+    resolution = resolve_front_face_dual_grasp_strategy(
+        left_front_face_pose,
+        right_front_face_pose,
+        row_count=row_count,
+        box_height_m=box_height_m,
+        box_depth_m=box_depth_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        row_match_tolerance_m=row_match_tolerance_m,
+        top_suction_first_row=top_suction_first_row,
+    )
+    scene_y_shift = 0.5 * (
+        left_front_face_pose.y - OUTER_BOX_GRASP_TARGET_Y_M
+        + right_front_face_pose.y + OUTER_BOX_GRASP_TARGET_Y_M
+    )
+    return PoseTaskSpec(
+        code=str(request_id),
+        left_front_face_pose=left_front_face_pose,
+        right_front_face_pose=right_front_face_pose,
+        left_row=resolution.left_row.row_from_top,
+        right_row=resolution.right_row.row_from_top,
+        left_row_residual_m=resolution.left_row.residual_m,
+        right_row_residual_m=resolution.right_row.residual_m,
+        left_grasp_mode=resolution.strategy.left.grasp_mode,
+        right_grasp_mode=resolution.strategy.right.grasp_mode,
+        left_tool_pose=resolution.left_tool_pose,
+        right_tool_pose=resolution.right_tool_pose,
+        strategy=resolution.strategy,
+        scene_y_shift=scene_y_shift,
+        effective_distance_m=0.5 * (
+            left_front_face_pose.x + right_front_face_pose.x
+        ),
+    )
+
+
+def front_face_task_request_fields(
+    request_id: str,
+    left_front_face_pose: Pose6DValue,
+    right_front_face_pose: Pose6DValue,
+) -> dict[str, Any]:
+    return {
+        "request_id": str(request_id),
+        "left": {"pose_6d": pose6d_dict(left_front_face_pose)},
+        "right": {"pose_6d": pose6d_dict(right_front_face_pose)},
+    }
 
 
 def encode_message(event: str, **fields: Any) -> str:
@@ -243,7 +458,7 @@ def _constant(values: Iterable[float], tolerance: float = 1e-6) -> bool:
 
 
 def validate_stage_contracts(
-    task: TaskSpec,
+    task: TaskSpec | PoseTaskSpec,
     stages: dict[int, list[list[MotionSample]]],
     joint_names: list[str],
 ) -> None:
@@ -256,14 +471,15 @@ def validate_stage_contracts(
     if not _constant(sample.updown_m for sample in flattened(2)):
         raise ValueError("第2阶段违反合同：预接触到吸附时 updown 发生运动")
     extract = stages[3][0]
-    if task.index in DIRECT_LIFT_TASKS:
-        if _max_joint_change(extract[0], extract[-1], joint_names) > 1e-6:
-            raise ValueError("直升抽离违反合同：12轴发生运动")
-        lift = extract[-1].updown_m - extract[0].updown_m
-        if abs(lift - 0.4) > 1e-4:
-            raise ValueError(f"直升抽离违反合同：updown 抬升 {lift:.4f}m，不是 0.4m")
-    elif not _constant(sample.updown_m for sample in extract):
-        raise ValueError("侧吸 RRT 抽离违反合同：updown 发生运动")
+    if isinstance(task, TaskSpec):
+        if task.uses_direct_updown_lift:
+            if _max_joint_change(extract[0], extract[-1], joint_names) > 1e-6:
+                raise ValueError("直升抽离违反合同：12轴发生运动")
+            lift = extract[-1].updown_m - extract[0].updown_m
+            if abs(lift - 0.4) > 1e-4:
+                raise ValueError(f"直升抽离违反合同：updown 抬升 {lift:.4f}m，不是 0.4m")
+        elif not _constant(sample.updown_m for sample in extract):
+            raise ValueError("侧吸 RRT 抽离违反合同：updown 发生运动")
     expected_stage3_updown = min(extract[-1].updown_m, 0.45)
     actual_stage3_updown = flattened(3)[-1].updown_m
     if abs(actual_stage3_updown - expected_stage3_updown) > 1e-4:

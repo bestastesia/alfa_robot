@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 DUAL_FRONT_EQUAL = 1
@@ -24,8 +24,14 @@ TOP_SUCTION = "top_suction"
 BOX_DEPTH_M = 0.3
 BOX_WIDTH_M = 0.4
 BOX_HEIGHT_M = 0.4
+BOX_ROW_COUNT = 5
+TOP_SUCTION_FIRST_ROW = 4
+BOTTOM_ROW_FRONT_CENTER_Z_M = -0.002094
+ROW_MATCH_TOLERANCE_M = 0.12
 OUTER_BOX_GRASP_TARGET_Y_M = 0.40
 OUTER_BOX_GRASP_LATERAL_OFFSET_M = BOX_WIDTH_M - OUTER_BOX_GRASP_TARGET_Y_M
+FRONT_TOOL_RPY = (math.pi, -math.pi / 2.0, 0.0)
+TOP_TOOL_RPY = (math.pi, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -55,6 +61,22 @@ class DualGraspStrategyValue:
     left: ArmExtractPolicyValue
     right: ArmExtractPolicyValue
     height_difference_m: float
+
+
+@dataclass(frozen=True)
+class BoxRowMatch:
+    row_from_top: int
+    center_z_m: float
+    residual_m: float
+
+
+@dataclass(frozen=True)
+class FrontFaceTaskResolution:
+    strategy: DualGraspStrategyValue
+    left_tool_pose: Pose6DValue
+    right_tool_pose: Pose6DValue
+    left_row: BoxRowMatch
+    right_row: BoxRowMatch
 
 
 def normalize_grasp_mode(value: str) -> str:
@@ -240,12 +262,150 @@ def quaternion_xyzw(pose: Pose6DValue) -> tuple[float, float, float, float]:
     )
 
 
+def normalize_quaternion_xyzw(
+    quaternion: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    norm = math.sqrt(sum(value * value for value in quaternion))
+    if norm <= 1e-12:
+        raise ValueError("quaternion norm is zero")
+    return tuple(value / norm for value in quaternion)
+
+
+def quaternion_multiply_xyzw(
+    left: tuple[float, float, float, float],
+    right: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    left_x, left_y, left_z, left_w = left
+    right_x, right_y, right_z, right_w = right
+    return (
+        left_w * right_x + left_x * right_w + left_y * right_z - left_z * right_y,
+        left_w * right_y - left_x * right_z + left_y * right_w + left_z * right_x,
+        left_w * right_z + left_x * right_y - left_y * right_x + left_z * right_w,
+        left_w * right_w - left_x * right_x - left_y * right_y - left_z * right_z,
+    )
+
+
+def rotate_vector_by_quaternion(
+    quaternion: tuple[float, float, float, float],
+    vector: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    quaternion = normalize_quaternion_xyzw(quaternion)
+    conjugate = (-quaternion[0], -quaternion[1], -quaternion[2], quaternion[3])
+    rotated = quaternion_multiply_xyzw(
+        quaternion_multiply_xyzw(quaternion, (*vector, 0.0)),
+        conjugate,
+    )
+    return rotated[0], rotated[1], rotated[2]
+
+
+def rpy_from_quaternion_xyzw(
+    quaternion: tuple[float, float, float, float],
+) -> tuple[float, float, float]:
+    x, y, z, w = normalize_quaternion_xyzw(quaternion)
+    sin_roll_cos_pitch = 2.0 * (w * x + y * z)
+    cos_roll_cos_pitch = 1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(sin_roll_cos_pitch, cos_roll_cos_pitch)
+    sin_pitch = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    pitch = math.asin(sin_pitch)
+    sin_yaw_cos_pitch = 2.0 * (w * z + x * y)
+    cos_yaw_cos_pitch = 1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(sin_yaw_cos_pitch, cos_yaw_cos_pitch)
+    return roll, pitch, yaw
+
+
 def tool_z_axis(pose: Pose6DValue) -> tuple[float, float, float]:
     x, y, z, w = quaternion_xyzw(pose)
     return (
         2.0 * (x * z + w * y),
         2.0 * (y * z - w * x),
         1.0 - 2.0 * (x * x + y * y),
+    )
+
+
+def match_box_row(
+    front_face_z_m: float,
+    *,
+    row_count: int = BOX_ROW_COUNT,
+    box_height_m: float = BOX_HEIGHT_M,
+    bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
+    tolerance_m: float = ROW_MATCH_TOLERANCE_M,
+) -> BoxRowMatch:
+    if row_count <= 0:
+        raise ValueError("row_count must be positive")
+    if not math.isfinite(box_height_m) or box_height_m <= 0.0:
+        raise ValueError("box_height_m must be finite and positive")
+    if not math.isfinite(front_face_z_m):
+        raise ValueError("front_face_z_m must be finite")
+    tolerance_m = float(tolerance_m)
+    if tolerance_m < 0.0 or tolerance_m >= 0.5 * box_height_m:
+        raise ValueError("row tolerance must be non-negative and smaller than half a row")
+    matches = [
+        BoxRowMatch(
+            row_from_top=row,
+            center_z_m=float(bottom_row_center_z_m) + float(row_count - row) * box_height_m,
+            residual_m=0.0,
+        )
+        for row in range(1, row_count + 1)
+    ]
+    nearest = min(matches, key=lambda match: abs(front_face_z_m - match.center_z_m))
+    nearest = replace(nearest, residual_m=front_face_z_m - nearest.center_z_m)
+    if abs(nearest.residual_m) > tolerance_m:
+        raise ValueError(
+            f"front-face z={front_face_z_m:.4f}m does not match a box row; "
+            f"nearest=row{nearest.row_from_top} center={nearest.center_z_m:.4f}m "
+            f"residual={nearest.residual_m:+.4f}m tolerance={tolerance_m:.4f}m"
+        )
+    return nearest
+
+
+def grasp_mode_for_row(
+    row_from_top: int,
+    *,
+    top_suction_first_row: int = TOP_SUCTION_FIRST_ROW,
+) -> str:
+    if row_from_top <= 0:
+        raise ValueError("row_from_top must be positive")
+    return TOP_SUCTION if row_from_top >= top_suction_first_row else FRONT
+
+
+def front_face_to_tool_contact(
+    front_face_pose: Pose6DValue,
+    grasp_mode: str,
+    *,
+    box_depth_m: float = BOX_DEPTH_M,
+    box_height_m: float = BOX_HEIGHT_M,
+) -> Pose6DValue:
+    grasp_mode = normalize_grasp_mode(grasp_mode)
+    if grasp_mode == FRONT:
+        return front_face_pose
+
+    front_quaternion = normalize_quaternion_xyzw(quaternion_xyzw(front_face_pose))
+    nominal_front = Pose6DValue(0.0, 0.0, 0.0, *FRONT_TOOL_RPY)
+    nominal_top = Pose6DValue(0.0, 0.0, 0.0, *TOP_TOOL_RPY)
+    nominal_front_quaternion = normalize_quaternion_xyzw(quaternion_xyzw(nominal_front))
+    nominal_top_quaternion = normalize_quaternion_xyzw(quaternion_xyzw(nominal_top))
+    nominal_front_inverse = (
+        -nominal_front_quaternion[0],
+        -nominal_front_quaternion[1],
+        -nominal_front_quaternion[2],
+        nominal_front_quaternion[3],
+    )
+    box_rotation = normalize_quaternion_xyzw(
+        quaternion_multiply_xyzw(front_quaternion, nominal_front_inverse)
+    )
+    inward = rotate_vector_by_quaternion(front_quaternion, (0.0, 0.0, 1.0))
+    upward = rotate_vector_by_quaternion(box_rotation, (0.0, 0.0, 1.0))
+    top_quaternion = normalize_quaternion_xyzw(
+        quaternion_multiply_xyzw(box_rotation, nominal_top_quaternion)
+    )
+    top_rpy = rpy_from_quaternion_xyzw(top_quaternion)
+    return Pose6DValue(
+        x=front_face_pose.x + 0.5 * box_depth_m * inward[0] + 0.5 * box_height_m * upward[0],
+        y=front_face_pose.y + 0.5 * box_depth_m * inward[1] + 0.5 * box_height_m * upward[1],
+        z=front_face_pose.z + 0.5 * box_depth_m * inward[2] + 0.5 * box_height_m * upward[2],
+        roll=top_rpy[0],
+        pitch=top_rpy[1],
+        yaw=top_rpy[2],
     )
 
 
@@ -265,9 +425,9 @@ def degrade_top_target_to_front(
         x=box_center[0] - 0.5 * box_depth_m,
         y=box_center[1],
         z=box_center[2],
-        roll=math.pi,
-        pitch=math.pi / 2.0,
-        yaw=math.pi,
+        roll=FRONT_TOOL_RPY[0],
+        pitch=FRONT_TOOL_RPY[1],
+        yaw=FRONT_TOOL_RPY[2],
     )
 
 
@@ -277,19 +437,77 @@ def promote_front_target_to_top(
     box_depth_m: float = BOX_DEPTH_M,
     box_height_m: float = BOX_HEIGHT_M,
 ) -> Pose6DValue:
-    front_normal = tool_z_axis(pose)
-    box_center = (
-        pose.x + 0.5 * box_depth_m * front_normal[0],
-        pose.y + 0.5 * box_depth_m * front_normal[1],
-        pose.z + 0.5 * box_depth_m * front_normal[2],
+    return front_face_to_tool_contact(
+        pose,
+        TOP_SUCTION,
+        box_depth_m=box_depth_m,
+        box_height_m=box_height_m,
     )
-    return Pose6DValue(
-        x=box_center[0],
-        y=box_center[1],
-        z=box_center[2] + 0.5 * box_height_m,
-        roll=math.pi,
-        pitch=0.0,
-        yaw=math.pi,
+
+
+def resolve_front_face_dual_grasp_strategy(
+    left_front_face_pose: Pose6DValue,
+    right_front_face_pose: Pose6DValue,
+    *,
+    row_count: int = BOX_ROW_COUNT,
+    box_height_m: float = BOX_HEIGHT_M,
+    box_depth_m: float = BOX_DEPTH_M,
+    bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
+    row_match_tolerance_m: float = ROW_MATCH_TOLERANCE_M,
+    top_suction_first_row: int = TOP_SUCTION_FIRST_ROW,
+) -> FrontFaceTaskResolution:
+    left_row = match_box_row(
+        left_front_face_pose.z,
+        row_count=row_count,
+        box_height_m=box_height_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        tolerance_m=row_match_tolerance_m,
+    )
+    right_row = match_box_row(
+        right_front_face_pose.z,
+        row_count=row_count,
+        box_height_m=box_height_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        tolerance_m=row_match_tolerance_m,
+    )
+    left_mode = grasp_mode_for_row(
+        left_row.row_from_top,
+        top_suction_first_row=top_suction_first_row,
+    )
+    right_mode = grasp_mode_for_row(
+        right_row.row_from_top,
+        top_suction_first_row=top_suction_first_row,
+    )
+    left_mode, right_mode = promote_mixed_grasp_modes_to_top(left_mode, right_mode)
+    left_tool_pose = front_face_to_tool_contact(
+        left_front_face_pose,
+        left_mode,
+        box_depth_m=box_depth_m,
+        box_height_m=box_height_m,
+    )
+    right_tool_pose = front_face_to_tool_contact(
+        right_front_face_pose,
+        right_mode,
+        box_depth_m=box_depth_m,
+        box_height_m=box_height_m,
+    )
+    strategy = classify_dual_grasp_strategy(
+        left_mode,
+        right_mode,
+        left_row.center_z_m,
+        right_row.center_z_m,
+        equal_height_tolerance_m=0.5 * box_height_m,
+    )
+    strategy = replace(
+        strategy,
+        height_difference_m=left_front_face_pose.z - right_front_face_pose.z,
+    )
+    return FrontFaceTaskResolution(
+        strategy=strategy,
+        left_tool_pose=left_tool_pose,
+        right_tool_pose=right_tool_pose,
+        left_row=left_row,
+        right_row=right_row,
     )
 
 

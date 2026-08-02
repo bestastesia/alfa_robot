@@ -6,7 +6,10 @@ import pytest
 from armmotion_demo.common import (
     DIRECT_LIFT_TASKS,
     MotionSample,
+    front_face_poses_for_task,
+    front_face_task_request_fields,
     loaded_joint_map,
+    planning_task_from_front_face_poses,
     parse_task_code,
     retime_segment,
     split_execution_stages,
@@ -70,6 +73,91 @@ def test_all_ten_task_codes_are_supported():
             assert task.extraction_mode == (
                 "box_pose_rrt" if index <= 2 else "direct_updown_lift"
             )
+
+
+def test_task_thread_contract_contains_only_front_face_poses():
+    fixture = parse_task_code("A4", 0.9, 0.7)
+    left_pose, right_pose = front_face_poses_for_task(fixture)
+    payload = front_face_task_request_fields("camera-request-42", left_pose, right_pose)
+    assert set(payload) == {"request_id", "left", "right"}
+    assert set(payload["left"]) == {"pose_6d"}
+    assert set(payload["right"]) == {"pose_6d"}
+    serialized = str(payload)
+    assert "box_id" not in serialized
+    assert "grasp_mode" not in serialized
+    assert "task_code" not in serialized
+
+
+def test_algorithm_derives_rows_and_modes_from_noisy_front_face_poses():
+    fixture = parse_task_code("B4", 0.9, 0.7)
+    left_pose, right_pose = front_face_poses_for_task(fixture)
+    left_pose = type(left_pose)(
+        x=left_pose.x + 0.03,
+        y=left_pose.y - 0.02,
+        z=left_pose.z + 0.04,
+        roll=left_pose.roll,
+        pitch=left_pose.pitch,
+        yaw=left_pose.yaw,
+    )
+    right_pose = type(right_pose)(
+        x=right_pose.x - 0.02,
+        y=right_pose.y + 0.01,
+        z=right_pose.z - 0.05,
+        roll=right_pose.roll,
+        pitch=right_pose.pitch,
+        yaw=right_pose.yaw,
+    )
+    task = planning_task_from_front_face_poses("camera-request-43", left_pose, right_pose)
+    assert (task.left_row, task.right_row) == (4, 4)
+    assert task.grasp_family == "top_suction"
+    assert task.left_front_face_pose == left_pose
+    assert task.right_front_face_pose == right_pose
+    assert task.left_tool_pose.x == pytest.approx(left_pose.x + 0.15)
+    assert task.left_tool_pose.z == pytest.approx(left_pose.z + 0.20)
+    assert task.extraction_mode == "box_pose_rrt"
+
+
+def test_algorithm_preserves_third_row_front_direct_lift_strategy():
+    fixture = parse_task_code("B3", 0.9, 0.7)
+    left_pose, right_pose = front_face_poses_for_task(fixture)
+    task = planning_task_from_front_face_poses("camera-request-row3", left_pose, right_pose)
+    assert (task.left_row, task.right_row) == (3, 3)
+    assert task.grasp_family == "front"
+    assert task.extraction_mode == "direct_updown_lift"
+
+
+def test_pose_task_validation_accepts_collision_planned_top_extract_motion():
+    fixture = parse_task_code("B4", 0.9, 0.7)
+    left_pose, right_pose = front_face_poses_for_task(fixture)
+    task = planning_task_from_front_face_poses("camera-request-top", left_pose, right_pose)
+    samples = make_direct_lift_samples()
+    extract_end = next(
+        item
+        for item in samples
+        if item.context["stage"].endswith("selected_extract_step_1")
+    )
+    extract_end.joints[JOINT_NAMES[0]] = math.radians(3.0)
+    stages = split_execution_stages(samples)
+    validate_stage_contracts(task, stages, JOINT_NAMES)
+
+
+def test_algorithm_rejects_height_between_rows_instead_of_guessing():
+    fixture = parse_task_code("B1", 0.9, 0.7)
+    left_pose, right_pose = front_face_poses_for_task(fixture)
+    ambiguous_left = type(left_pose)(
+        x=left_pose.x,
+        y=left_pose.y,
+        z=left_pose.z - 0.20,
+        roll=left_pose.roll,
+        pitch=left_pose.pitch,
+        yaw=left_pose.yaw,
+    )
+    with pytest.raises(ValueError, match="does not match a box row"):
+        planning_task_from_front_face_poses(
+            "camera-request-44",
+            ambiguous_left,
+            right_pose,
+        )
 
 
 def test_loaded_pose_keeps_contract_names():

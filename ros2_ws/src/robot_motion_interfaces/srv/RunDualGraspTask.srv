@@ -1,7 +1,7 @@
 # External dual-grasp task entry.
-# Both pose_6d targets are tool contact poses in base_link.
+# Both pose_6d targets are box front-face centre poses in base_link.
 # Position units are metres; roll/pitch/yaw units are radians.
-# Detailed IK, extraction, loaded planning and execution fields stay internal.
+# Box row, suction mode, tool contact pose and detailed planning fields stay internal.
 string request_id
 GraspTarget left
 GraspTarget right

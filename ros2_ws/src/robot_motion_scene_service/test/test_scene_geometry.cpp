@@ -66,6 +66,28 @@ int main()
   }
   assert(found_rear_guard);
 
+  // 标称正面位姿还原出的源箱体必须与历史箱号网格生成完全同源，避免切换任务合同后
+  // 动态箱墙悄悄改变碰撞口径。
+  const auto nominal_obstacles = make_box_wall_obstacles_for_opening(1, 3, wall);
+  const AxisAlignedBox nominal_left_source{{
+    wall.box_front_x + 0.5 * wall.carried_box_depth, 0.4, 1.8}, {
+    wall.carried_box_depth, wall.carried_box_width, wall.carried_box_height}};
+  const AxisAlignedBox nominal_right_source{{
+    wall.box_front_x + 0.5 * wall.carried_box_depth, -0.4, 1.8}, {
+    wall.carried_box_depth, wall.carried_box_width, wall.carried_box_height}};
+  const auto pose_driven_nominal_obstacles = make_box_wall_obstacles_for_opening(
+    nominal_left_source, nominal_right_source, "L1_R3", wall);
+  assert(nominal_obstacles.size() == pose_driven_nominal_obstacles.size());
+  for (size_t index = 0; index < nominal_obstacles.size(); ++index) {
+    const auto& legacy = nominal_obstacles[index];
+    const auto& pose_driven = pose_driven_nominal_obstacles[index];
+    assert(legacy.id == pose_driven.id);
+    for (size_t axis = 0; axis < 3; ++axis) {
+      assert(std::abs(legacy.center[axis] - pose_driven.center[axis]) < 1e-9);
+      assert(std::abs(legacy.size[axis] - pose_driven.size[axis]) < 1e-9);
+    }
+  }
+
   // 显式末端位姿还原出的源箱体可直接驱动箱墙；开口跟随源箱，而集装箱边界保持固定。
   const AxisAlignedBox explicit_left_source{{1.05, 0.55, 1.0}, {0.3, 0.5, 0.4}};
   const AxisAlignedBox explicit_right_source{{1.05, -0.45, 0.6}, {0.3, 0.5, 0.4}};

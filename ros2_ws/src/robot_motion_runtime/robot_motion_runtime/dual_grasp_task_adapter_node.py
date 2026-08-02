@@ -31,12 +31,15 @@ from robot_motion_runtime.dual_grasp_strategy import (
     ArmExtractPolicyValue,
     BOX_DEPTH_M,
     BOX_HEIGHT_M,
+    BOX_ROW_COUNT,
     BOX_WIDTH_M,
+    BOTTOM_ROW_FRONT_CENTER_Z_M,
     OUTER_BOX_GRASP_LATERAL_OFFSET_M,
+    ROW_MATCH_TOLERANCE_M,
+    TOP_SUCTION_FIRST_ROW,
     DualGraspStrategyValue,
-    normalize_grasp_mode,
     pose6d_value,
-    resolve_dual_grasp_strategy,
+    resolve_front_face_dual_grasp_strategy,
 )
 
 
@@ -115,7 +118,7 @@ class DualGraspTaskAdapterNode(Node):
     """External task adapter for whole-machine dual-grasp requests.
 
     Public contract:
-      RunDualGraspTask: two explicit 6D tool contact poses + two grasp modes.
+      RunDualGraspTask: two box front-face centre 6D poses.
       TaskReceipt: accepted/running/succeeded/failed state for the whole machine.
 
     Internal details remain hidden behind RunDualArmPoseTask.
@@ -138,7 +141,12 @@ class DualGraspTaskAdapterNode(Node):
         self.declare_parameter("default_planning_mode", "shortcut")
         self.declare_parameter("default_velocity_scale", 1.0)
         self.declare_parameter("default_acceleration_scale", 1.0)
-        self.declare_parameter("equal_height_tolerance_m", 0.02)
+        self.declare_parameter("box_row_count", BOX_ROW_COUNT)
+        self.declare_parameter("box_height_m", BOX_HEIGHT_M)
+        self.declare_parameter("box_depth_m", BOX_DEPTH_M)
+        self.declare_parameter("bottom_row_front_center_z_m", BOTTOM_ROW_FRONT_CENTER_Z_M)
+        self.declare_parameter("row_match_tolerance_m", ROW_MATCH_TOLERANCE_M)
+        self.declare_parameter("top_suction_first_row", TOP_SUCTION_FIRST_ROW)
 
         self.service_name = str(self.get_parameter("service_name").value)
         self.pose_task_service = str(self.get_parameter("pose_task_service").value)
@@ -153,7 +161,18 @@ class DualGraspTaskAdapterNode(Node):
         self.default_planning_mode = str(self.get_parameter("default_planning_mode").value)
         self.default_velocity_scale = float(self.get_parameter("default_velocity_scale").value)
         self.default_acceleration_scale = float(self.get_parameter("default_acceleration_scale").value)
-        self.equal_height_tolerance_m = float(self.get_parameter("equal_height_tolerance_m").value)
+        self.box_row_count = int(self.get_parameter("box_row_count").value)
+        self.box_height_m = float(self.get_parameter("box_height_m").value)
+        self.box_depth_m = float(self.get_parameter("box_depth_m").value)
+        self.bottom_row_front_center_z_m = float(
+            self.get_parameter("bottom_row_front_center_z_m").value
+        )
+        self.row_match_tolerance_m = float(
+            self.get_parameter("row_match_tolerance_m").value
+        )
+        self.top_suction_first_row = int(
+            self.get_parameter("top_suction_first_row").value
+        )
 
         self.callback_group = ReentrantCallbackGroup()
         self.latest_state: RobotMotionState | None = None
@@ -179,7 +198,7 @@ class DualGraspTaskAdapterNode(Node):
         self.status = RuntimeStatusPublisher(
             self,
             self.service_name,
-            "external dual-grasp task adapter; emits TaskReceipt and calls RunDualArmPoseTask",
+            "front-face 6D task adapter; derives rows/modes and calls RunDualArmPoseTask",
         )
         self.status.mark_ready(
             f"pose_task={self.pose_task_service}, receipt={self.receipt_topic}"
@@ -269,17 +288,21 @@ class DualGraspTaskAdapterNode(Node):
         self.publish_receipt(task_id, "accepted", "task accepted")
         self.status.mark_running(f"{task_id} execute={request.execute}")
         try:
-            left_mode = normalize_grasp_mode(request.left.grasp_mode)
-            right_mode = normalize_grasp_mode(request.right.grasp_mode)
-            left_pose = pose6d_value(request.left.pose_6d)
-            right_pose = pose6d_value(request.right.pose_6d)
-            strategy, effective_left_pose, effective_right_pose = resolve_dual_grasp_strategy(
-                left_mode,
-                right_mode,
-                left_pose,
-                right_pose,
-                self.equal_height_tolerance_m,
+            left_front_face_pose = pose6d_value(request.left.pose_6d)
+            right_front_face_pose = pose6d_value(request.right.pose_6d)
+            resolution = resolve_front_face_dual_grasp_strategy(
+                left_front_face_pose,
+                right_front_face_pose,
+                row_count=self.box_row_count,
+                box_height_m=self.box_height_m,
+                box_depth_m=self.box_depth_m,
+                bottom_row_center_z_m=self.bottom_row_front_center_z_m,
+                row_match_tolerance_m=self.row_match_tolerance_m,
+                top_suction_first_row=self.top_suction_first_row,
             )
+            strategy = resolution.strategy
+            effective_left_pose = resolution.left_tool_pose
+            effective_right_pose = resolution.right_tool_pose
             effective_left_mode = strategy.left.grasp_mode
             effective_right_mode = strategy.right.grasp_mode
 
@@ -310,7 +333,11 @@ class DualGraspTaskAdapterNode(Node):
             self.publish_receipt(
                 task_id,
                 "running",
-                f"task planning/execution started; strategy={strategy.name}",
+                f"task planning/execution started; strategy={strategy.name} "
+                f"rows=({resolution.left_row.row_from_top},"
+                f"{resolution.right_row.row_from_top}) "
+                f"row_residuals=({resolution.left_row.residual_m:+.3f},"
+                f"{resolution.right_row.residual_m:+.3f})m",
             )
             pose_response = self.call_pose_task(pose_request)
             response.success = bool(pose_response.success)

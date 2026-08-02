@@ -13,6 +13,14 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
+from robot_motion_runtime.dual_grasp_strategy import (
+    BOTTOM_ROW_FRONT_CENTER_Z_M,
+    BOX_DEPTH_M,
+    BOX_HEIGHT_M,
+    BOX_ROW_COUNT,
+    ROW_MATCH_TOLERANCE_M,
+    TOP_SUCTION_FIRST_ROW,
+)
 
 from .common import (
     FINAL_STAGE,
@@ -24,7 +32,9 @@ from .common import (
     decode_message,
     encode_message,
     loaded_joint_map,
-    parse_task_code,
+    planning_task_from_front_face_poses,
+    pose6d_from_dict,
+    pose6d_dict,
     retime_segment,
 )
 from .hardware_executor import ARM_JOINT_NAMES, HardwareExecutor
@@ -71,6 +81,12 @@ class AlgorithmThread(Node):
         self.declare_parameter("left_solenoid_service", "/plc/left_solenoid")
         self.declare_parameter("right_solenoid_service", "/plc/right_solenoid")
         self.declare_parameter("vacuum_pump_service", "/plc/vacuum_pump")
+        self.declare_parameter("box_row_count", BOX_ROW_COUNT)
+        self.declare_parameter("box_height_m", BOX_HEIGHT_M)
+        self.declare_parameter("box_depth_m", BOX_DEPTH_M)
+        self.declare_parameter("bottom_row_front_center_z_m", BOTTOM_ROW_FRONT_CENTER_Z_M)
+        self.declare_parameter("row_match_tolerance_m", ROW_MATCH_TOLERANCE_M)
+        self.declare_parameter("top_suction_first_row", TOP_SUCTION_FIRST_ROW)
 
         rate_hz = float(self.get_parameter("trajectory_rate_hz").value)
         max_joint_speed_deg_s = float(self.get_parameter("max_joint_speed_deg_s").value)
@@ -232,10 +248,30 @@ class AlgorithmThread(Node):
         try:
             request = decode_message(message.data)
             request_id = str(request["request_id"])
-            task = parse_task_code(
-                str(request["task_code"]),
-                float(request["front_distance_m"]),
-                float(request["top_distance_m"]),
+            left_front_face_pose = pose6d_from_dict(
+                request["left"]["pose_6d"],
+                "left.pose_6d",
+            )
+            right_front_face_pose = pose6d_from_dict(
+                request["right"]["pose_6d"],
+                "right.pose_6d",
+            )
+            task = planning_task_from_front_face_poses(
+                request_id,
+                left_front_face_pose,
+                right_front_face_pose,
+                row_count=int(self.get_parameter("box_row_count").value),
+                box_height_m=float(self.get_parameter("box_height_m").value),
+                box_depth_m=float(self.get_parameter("box_depth_m").value),
+                bottom_row_center_z_m=float(
+                    self.get_parameter("bottom_row_front_center_z_m").value
+                ),
+                row_match_tolerance_m=float(
+                    self.get_parameter("row_match_tolerance_m").value
+                ),
+                top_suction_first_row=int(
+                    self.get_parameter("top_suction_first_row").value
+                ),
             )
         except Exception as exc:
             self._publish("request_rejected", reason=str(exc))
@@ -245,7 +281,6 @@ class AlgorithmThread(Node):
                 self._publish(
                     "request_rejected",
                     request_id=request_id,
-                    task_code=task.code,
                     reason="上一任务尚未完成",
                 )
                 return
@@ -264,18 +299,23 @@ class AlgorithmThread(Node):
         self._publish(
             "planning_started",
             request_id=request_id,
-            task_code=task.code,
-            left_box_id=task.left_box_id,
-            right_box_id=task.right_box_id,
-            layout=task.layout,
+            left_front_face_pose_6d=pose6d_dict(task.left_front_face_pose),
+            right_front_face_pose_6d=pose6d_dict(task.right_front_face_pose),
+            left_row=task.left_row,
+            right_row=task.right_row,
+            left_row_residual_m=task.left_row_residual_m,
+            right_row_residual_m=task.right_row_residual_m,
+            left_grasp_mode=task.left_grasp_mode,
+            right_grasp_mode=task.right_grasp_mode,
+            strategy=task.strategy.name,
             grasp_family=task.grasp_family,
             extraction_mode=task.extraction_mode,
-            front_distance_m=task.front_distance_m,
-            top_distance_m=task.top_distance_m,
         )
         self.get_logger().info(
-            f"[{task.code}] 计算开始：L{task.left_box_id}/R{task.right_box_id} "
-            f"front={task.front_distance_m:.3f}m top={task.top_distance_m:.3f}m"
+            f"[{task.code}] 计算开始：rows=({task.left_row},{task.right_row}) "
+            f"modes=({task.left_grasp_mode},{task.right_grasp_mode}) "
+            f"residuals=({task.left_row_residual_m:+.3f},"
+            f"{task.right_row_residual_m:+.3f})m"
         )
         try:
             plan = self.planner.compute(task)
@@ -287,7 +327,6 @@ class AlgorithmThread(Node):
             self._publish(
                 "planning_complete",
                 request_id=request_id,
-                task_code=task.code,
                 wall_ms=wall_ms,
                 total_ms=float(metrics.get("total_ms", 0.0)),
                 ik_ms=float(metrics.get("ik_ms", 0.0)),
@@ -308,7 +347,6 @@ class AlgorithmThread(Node):
             self._publish(
                 "failed",
                 request_id=request_id,
-                task_code=task.code,
                 phase="planning",
                 reason=str(exc),
             )
@@ -360,7 +398,6 @@ class AlgorithmThread(Node):
         self._publish(
             "stage_started",
             request_id=request_id,
-            task_code=plan.task.code,
             stage=stage_number,
             label=label,
         )
@@ -390,7 +427,6 @@ class AlgorithmThread(Node):
             self._publish(
                 "stage_complete",
                 request_id=request_id,
-                task_code=plan.task.code,
                 stage=stage_number,
                 label=label,
                 wall_ms=wall_ms,
@@ -404,7 +440,6 @@ class AlgorithmThread(Node):
                 self._publish(
                     "task_complete",
                     request_id=request_id,
-                    task_code=plan.task.code,
                     snapshot=str(plan.snapshot_path),
                 )
                 with self._lock:
@@ -423,7 +458,6 @@ class AlgorithmThread(Node):
             self._publish(
                 "failed",
                 request_id=request_id,
-                task_code=plan.task.code,
                 phase="execution",
                 stage=stage_number,
                 reason=str(exc),

@@ -32,6 +32,9 @@ def generate_launch_description():
             DeclareLaunchArgument("execute_adapt_to_hardware_joint_order", default_value="true"),
             DeclareLaunchArgument("execute_hold_missing_from_joint_states", default_value="true"),
             DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
+            DeclareLaunchArgument(
+                "enable_legacy_box_pair_task_adapter", default_value="false"
+            ),
             DeclareLaunchArgument("run_dual_grasp_task_service_name", default_value="/robot_motion/run_dual_grasp_task"),
             DeclareLaunchArgument("task_receipt_topic", default_value="/robot_motion/task_receipt"),
             DeclareLaunchArgument("default_fixed_updown", default_value="0.0"),
@@ -64,6 +67,9 @@ def generate_launch_description():
                     "execute_adapt_to_hardware_joint_order": LaunchConfiguration("execute_adapt_to_hardware_joint_order"),
                     "execute_hold_missing_from_joint_states": LaunchConfiguration("execute_hold_missing_from_joint_states"),
                     "task_service_timeout_s": LaunchConfiguration("task_service_timeout_s"),
+                    "enable_legacy_box_pair_task_adapter": LaunchConfiguration(
+                        "enable_legacy_box_pair_task_adapter"
+                    ),
                     "run_dual_grasp_task_service_name": LaunchConfiguration("run_dual_grasp_task_service_name"),
                     "task_receipt_topic": LaunchConfiguration("task_receipt_topic"),
                     "default_fixed_updown": LaunchConfiguration("default_fixed_updown"),

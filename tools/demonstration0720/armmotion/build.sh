@@ -7,12 +7,17 @@ source /opt/ros/humble/setup.bash
 if [[ -f /home/ar/lhy_dev/env.sh ]]; then
   source /home/ar/lhy_dev/env.sh
 fi
+REPO_SOURCE_WS="$(cd "${ROOT}/../../.." && pwd)/ros2_ws"
+if [[ -f "${REPO_SOURCE_WS}/install/setup.bash" ]]; then
+  source "${REPO_SOURCE_WS}/install/setup.bash"
+fi
 set -u
 cd "${ROOT}/ros2_ws"
 ALL_PACKAGES=(
   robot_motion_core
   robot_motion_interfaces
   robot_motion_scene_service
+  robot_motion_runtime
   alfa_robot_analytic_ik
   alfa_robot_description
   alfa_robot_execution_bridge

@@ -11,7 +11,15 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from .algorithm_thread import STATUS_QOS
-from .common import STAGE_COUNT, STAGE_LABELS, decode_message, encode_message, parse_task_code
+from .common import (
+    STAGE_COUNT,
+    STAGE_LABELS,
+    decode_message,
+    encode_message,
+    front_face_poses_for_task,
+    front_face_task_request_fields,
+    parse_task_code,
+)
 
 
 class TaskThread(Node):
@@ -39,15 +47,12 @@ class TaskThread(Node):
                 self.algorithm_ready = True
             self._condition.notify_all()
 
-    def publish_task(self, request_id: str, task_code: str, front: float, top: float) -> None:
+    def publish_task(self, request_id: str, left_pose, right_pose) -> None:
         self._wait_for_subscriber(self.task_publisher, "/armmotion/task_request")
         message = String()
         message.data = encode_message(
             "task_request",
-            request_id=request_id,
-            task_code=task_code,
-            front_distance_m=front,
-            top_distance_m=top,
+            **front_face_task_request_fields(request_id, left_pose, right_pose),
         )
         self.task_publisher.publish(message)
 
@@ -181,16 +186,17 @@ def main(args=None) -> None:
                 print(f"输入错误：{exc}")
                 continue
             request_id = f"{task.code}-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+            left_front_face_pose, right_front_face_pose = front_face_poses_for_task(task)
             print(
                 f"发送 {task.code}: L{task.left_box_id}/R{task.right_box_id}，"
                 f"布局={task.layout}，吸附={task.grasp_family}，"
-                f"有效距离={task.effective_distance_m:.3f}m"
+                f"有效距离={task.effective_distance_m:.3f}m；"
+                "对算法仅发送左右箱体正面中心6D位姿"
             )
             node.publish_task(
                 request_id,
-                task.code,
-                front_distance_m,
-                top_distance_m,
+                left_front_face_pose,
+                right_front_face_pose,
             )
             plan_event = node.wait_for_event(
                 request_id,

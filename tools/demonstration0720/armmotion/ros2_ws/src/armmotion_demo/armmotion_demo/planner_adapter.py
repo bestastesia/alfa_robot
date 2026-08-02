@@ -16,11 +16,15 @@ from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
 from .common import (
     ExecutionPlan,
     MotionSample,
+    PoseTaskSpec,
     TaskSpec,
     retime_all_stages,
     split_execution_stages,
     validate_stage_contracts,
 )
+
+
+PlanningTask = TaskSpec | PoseTaskSpec
 
 
 def _load_script_module(name: str, path: Path):
@@ -163,7 +167,7 @@ class PlannerAdapter:
             flush=True,
         )
 
-    def _target_args(self, task: TaskSpec) -> SimpleNamespace:
+    def _target_args(self, task: PlanningTask) -> SimpleNamespace:
         scene_y_shift = getattr(task, "scene_y_shift", None)
         if scene_y_shift is None:
             scene_y_shift = self.sequence_helpers.TASK_LAYOUT_Y_OFFSETS[task.task_layout]
@@ -175,7 +179,7 @@ class PlannerAdapter:
             top_suction_z_offset=0.2,
         )
 
-    def _runtime_config(self, task: TaskSpec, target_args: SimpleNamespace) -> dict[str, Any]:
+    def _runtime_config(self, task: PlanningTask, target_args: SimpleNamespace) -> dict[str, Any]:
         return {
             "box_front_x": task.effective_distance_m,
             "scene_y_shift": target_args.scene_y_shift,
@@ -191,7 +195,7 @@ class PlannerAdapter:
     def _summary_from_snapshot(
         self,
         *,
-        task: TaskSpec,
+        task: PlanningTask,
         snapshot: dict[str, Any],
         snapshot_path: Path,
         configure_ms: float,
@@ -204,8 +208,8 @@ class PlannerAdapter:
         if not isinstance(place_cycle, dict):
             place_cycle = {}
         summary: dict[str, Any] = {
-            "left": task.left_box_id,
-            "right": task.right_box_id,
+            "left_row": getattr(task, "left_row", 0),
+            "right_row": getattr(task, "right_row", 0),
             "success": success,
             "startup_ms": 0.0,
             "planner_session_startup_ms": self.startup_ms,
@@ -238,7 +242,7 @@ class PlannerAdapter:
         summary.update(self.sequence_helpers.summarize_snapshot_motion(snapshot))
         return summary
 
-    def compute(self, task: TaskSpec) -> ExecutionPlan:
+    def compute(self, task: PlanningTask) -> ExecutionPlan:
         if self._planner_process is None or self._planner_process.poll() is not None:
             raise RuntimeError(
                 f"planner 长驻进程已退出; {self._log_tail(self.session_log)}"
@@ -269,10 +273,20 @@ class PlannerAdapter:
                 target_args, task.right_box_id, right_grasp_mode
             )
         )
+        left_scene_slot_id = int(getattr(task, "left_scene_slot_id", task.left_box_id))
+        right_scene_slot_id = int(getattr(task, "right_scene_slot_id", task.right_box_id))
         request_record = {
-            "task_code": task.code,
-            "left_box_id": task.left_box_id,
-            "right_box_id": task.right_box_id,
+            "request_id": task.code,
+            "left_front_face_pose_6d": getattr(
+                task, "left_front_face_pose", None
+            ).__dict__ if hasattr(task, "left_front_face_pose") else None,
+            "right_front_face_pose_6d": getattr(
+                task, "right_front_face_pose", None
+            ).__dict__ if hasattr(task, "right_front_face_pose") else None,
+            "derived_rows": [
+                int(getattr(task, "left_row", 0)),
+                int(getattr(task, "right_row", 0)),
+            ],
             "left_grasp_mode": left_grasp_mode,
             "right_grasp_mode": right_grasp_mode,
             "explicit_targets": explicit_targets,
@@ -285,8 +299,8 @@ class PlannerAdapter:
 
         started = time.monotonic()
         configure_ok, configure_output, configure_ms = self._service_client.configure(
-            task.left_box_id,
-            task.right_box_id,
+            left_scene_slot_id,
+            right_scene_slot_id,
             snapshot_path,
             self.timeout_s,
             left_grasp_mode == "top_suction",
@@ -294,12 +308,13 @@ class PlannerAdapter:
             left_target,
             right_target,
             runtime_config=runtime_config,
+            strategy=getattr(task, "strategy", None),
         )
         if not configure_ok:
             planner_wall_ms = (time.monotonic() - started) * 1000.0
             summary = {
-                "left": task.left_box_id,
-                "right": task.right_box_id,
+                "left_row": getattr(task, "left_row", 0),
+                "right_row": getattr(task, "right_row", 0),
                 "success": False,
                 "startup_ms": 0.0,
                 "planner_session_startup_ms": self.startup_ms,
@@ -378,7 +393,7 @@ class PlannerAdapter:
             "front_distance_m": float(getattr(task, "front_distance_m", task.effective_distance_m)),
             "top_distance_m": float(getattr(task, "top_distance_m", task.effective_distance_m)),
             "effective_distance_m": task.effective_distance_m,
-            "task_code": task.code,
+            "request_id": task.code,
             "trajectory_rate_hz": self.rate_hz,
             "execution_speed_scale": self.speed_scale,
             "effective_max_joint_speed_deg_s": (

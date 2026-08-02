@@ -12,7 +12,9 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
-- 当前分支：`feature/motion-architecture-boundary-refactor-20260710`，基于 `v5_dev` 做架构边界收口。
+- 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同。
+- 正式任务输入只包含 `request_id`、左右正面中心 `pose_6d` 和 `execute`；算法内部按高度容差识别排数、吸附方式和抽离策略，禁止从箱号或外部吸附模式获取帮助。
+- 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
 - 当前任务表只保留未完成/需确认事项：T-0030/T-0031/T-0032/T-0037。
 - 已完成/已同步 Linear 的长过程已归档到 `.ai_teamwork/archive/2026-05-18_v5_dev_collaboration_cleanup/`。
 - PM 必须持续把完成任务移出当前表，避免后续 AI 误认为仍需处理。

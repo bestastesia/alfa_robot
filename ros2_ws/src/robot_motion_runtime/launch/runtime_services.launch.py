@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -27,6 +28,9 @@ def generate_launch_description():
             DeclareLaunchArgument("execute_adapt_to_hardware_joint_order", default_value="true"),
             DeclareLaunchArgument("execute_hold_missing_from_joint_states", default_value="true"),
             DeclareLaunchArgument("task_service_timeout_s", default_value="30.0"),
+            DeclareLaunchArgument(
+                "enable_legacy_box_pair_task_adapter", default_value="false"
+            ),
             DeclareLaunchArgument("solve_arm_ik_service_name", default_value="/robot_motion/solve_arm_ik"),
             DeclareLaunchArgument("run_dual_arm_pose_task_service_name", default_value="/robot_motion/run_dual_arm_pose_task"),
             DeclareLaunchArgument("run_dual_grasp_task_service_name", default_value="/robot_motion/run_dual_grasp_task"),
@@ -88,6 +92,9 @@ def generate_launch_description():
                 executable="box_pair_task_adapter_node",
                 name="box_pair_task_adapter",
                 output="screen",
+                condition=IfCondition(
+                    LaunchConfiguration("enable_legacy_box_pair_task_adapter")
+                ),
                 parameters=[
                     {
                         "pose_task_service": LaunchConfiguration("run_dual_arm_pose_task_service_name"),

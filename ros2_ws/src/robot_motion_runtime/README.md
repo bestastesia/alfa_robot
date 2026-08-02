@@ -10,8 +10,8 @@
 | `motion_state_source_node` | `/robot_motion/set_state`、`/robot_motion/state` | 生产/仿真统一机器人状态事实源。真实机器人可订阅 `/joint_states`；仿真可先调用 `set_state` 固定初始姿态。 |
 | `motion_scene_source_node` | `/robot_motion/set_scene`、`/robot_motion/scene` | 生产/仿真统一场景事实源。仿真可先调用 `set_scene` 固定箱墙、集装箱等碰撞对象；Plan 服务会使用该场景做碰撞检查。 |
 | `dual_arm_ik_candidate_service_node` | `/robot_motion/plan_dual_arm_ik` | 调用左右两次 `SolveArmIk`，把目标位姿转成双臂 IK candidate states。 |
-| `box_pair_task_adapter_node` | `/robot_motion/run_box_pair_task` | 把箱号、吸附模式和箱墙几何转成左右目标 Pose 与附着箱，再调用 `/robot_motion/run_dual_arm_pose_task`。 |
-| `dual_grasp_task_adapter_node` | `/robot_motion/run_dual_grasp_task`、`/robot_motion/task_receipt` | 对外任务入口。整机只传左右末端 6D 接触位姿、吸附模式和执行开关；节点发布任务接收、执行中、成功或失败回执。 |
+| `box_pair_task_adapter_node` | `/robot_motion/run_box_pair_task` | 仅用于旧实验兼容，默认不启动；显式设置 `enable_legacy_box_pair_task_adapter:=true` 才会加载。 |
+| `dual_grasp_task_adapter_node` | `/robot_motion/run_dual_grasp_task`、`/robot_motion/task_receipt` | 对外任务入口。整机只传左右箱体正面中心 6D 位姿和执行开关；节点内部识别排数、吸附方式与任务策略，并发布任务回执。 |
 | `plan_extract_service_node` | `/robot_motion/plan_extract` | 独立 `PlanExtract` 服务。轻量模式是 deterministic shortcut；完整栈可调用 `/robot_motion/check_collision` 过滤候选轨迹。 |
 | `plan_loaded_service_node` | `/robot_motion/plan_loaded` | 独立 `PlanLoaded` 服务。按最近负重姿态族生成 shortcut 轨迹；完整栈可调用碰撞服务过滤候选。 |
 | `execute_trajectory_service_node` | `/robot_motion/execute_trajectory` | 把 service 形式的执行请求转成现有 FollowJointTrajectory action，或 dry-run 验证。 |
@@ -62,9 +62,11 @@ ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
   plan_check_collision:=true
 ```
 
-终端 3：发送一次简化末端任务。这个接口是给整机/上游调度对接用的正式入口；
-核心输入只有左右末端 6D 接触位姿、吸附模式和执行开关。位姿固定使用 `base_link`，
-位置单位为米，RPY 单位为弧度。任务状态通过 `/robot_motion/task_receipt` 回执：
+终端 3：发送一次双箱任务。这个接口是给整机/上游调度对接用的正式入口；
+核心输入只有左右箱体朝向机器人的正面中心 6D 位姿和执行开关。位姿固定使用
+`base_link`，位置单位为米，RPY 单位为弧度，局部 `+Z` 从机器人指向箱内。
+算法根据高度映射箱体排数，并在内部生成侧吸或顶吸工具接触位姿。任务状态通过
+`/robot_motion/task_receipt` 回执：
 
 ```bash
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
@@ -73,18 +75,16 @@ source install/setup.bash
 ros2 service call /robot_motion/run_dual_grasp_task robot_motion_interfaces/srv/RunDualGraspTask "{
   request_id: 'manual_dual_grasp_6_8',
   left: {
-    pose_6d: {x: 0.925, y: 0.400, z: 1.197906, roll: 3.14159265359, pitch: 1.57079632679, yaw: 3.14159265359},
-    grasp_mode: 'front'
+    pose_6d: {x: 0.925, y: 0.400, z: 1.197906, roll: 3.14159265359, pitch: -1.57079632679, yaw: 0.0}
   },
   right: {
-    pose_6d: {x: 0.925, y: -0.400, z: 1.197906, roll: 3.14159265359, pitch: 1.57079632679, yaw: 3.14159265359},
-    grasp_mode: 'front'
+    pose_6d: {x: 0.925, y: -0.400, z: 1.197906, roll: 3.14159265359, pitch: -1.57079632679, yaw: 0.0}
   },
   execute: true
 }"
 ```
 
-五类任务策略、混合吸附坐标换算和完整 C++ 算法边界见
+排数识别、吸附坐标换算和完整 C++ 算法边界见
 `docs/运控/双抓取6D任务合同与策略.md`。
 
 任务回执监听：
@@ -96,7 +96,8 @@ ros2 topic echo /robot_motion/task_receipt
 回执状态只面向整机控制，核心状态为 `accepted`、`running`、`succeeded`、`failed`、`cancelled`、`stopped`。
 内部 IK/抽离/负重规划调试信息继续留在 `/robot_motion/runtime_status` 和各服务返回值里。
 
-旧箱号任务入口仍保留，便于本地复现实验。这个请求会走完整链路：
+旧箱号任务入口仅保留为显式兼容模式，默认正式栈不会创建该节点。先在启动命令中增加
+`enable_legacy_box_pair_task_adapter:=true`，才能使用下面的请求。这个请求会走完整链路：
 `RunBoxPairTask -> RunDualArmPoseTask -> PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
 
 ```bash
@@ -260,7 +261,7 @@ ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/Ru
 - `PlanExtract` 已经独立成服务，完整栈会调用碰撞服务过滤 shortcut 候选；碰撞场景来自请求字段或 `/robot_motion/scene`；但还不是最终 C++ 抽离 rollout。
 - `PlanLoaded` 已经独立成服务，完整栈会调用碰撞服务过滤 shortcut 候选；碰撞场景来自请求字段或 `/robot_motion/scene`；RRT/local-RRT 仍需继续从 `loaded_pose_planning` 迁入。
 - `RunDualArmPoseTask` 已经把左右目标位姿接进服务链。
-- `RunBoxPairTask` 已经提供第一版箱号 adapter；后续还要把真实感知箱体、动态箱墙 scene update 和完整抽离/RRT 策略继续迁入服务链。
+- `RunBoxPairTask` 只保留为默认关闭的旧实验 adapter；正式入口只接受左右正面中心 6D 位姿。
 - 前端显示 ROS graph 与 runtime_status，不直接控制机器人。
 
 ## 本轮验证口径
