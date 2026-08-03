@@ -20,7 +20,7 @@ def source_files(root: Path):
     package_roots = [
         path
         for path in source_root.iterdir()
-        if path.is_dir() and path.name != "bio_ik"
+        if path.is_dir()
     ]
     suffixes = {".cpp", ".hpp", ".h", ".py", ".xml", ".txt"}
     for package_root in package_roots:

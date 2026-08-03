@@ -6,7 +6,7 @@
 
 ## 主要关注路径
 
-- `ros2_ws/src/alfa_robot_hardware/`
+- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_system/rt_control/`
 - `docs/CONTROL_LAYER_HARDCODED_PARAMS.md`
 - `docs/REFACTOR_ARCHITECTURE_NOTES.md`
 

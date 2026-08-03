@@ -201,30 +201,6 @@ window.SYSTEM_PORTAL_DATA = {
       statusNotes: ["真实硬件方向和 ros2_control 方向必须避免双重翻转。", "mock 后端适合联调，不等于真实执行安全验证。"]
     },
     {
-      id: "alfa_robot_bringup",
-      name: "alfa_robot_bringup",
-      layer: "启动装配",
-      status: "运行入口",
-      maturity: "active",
-      responsibility: "只装配 robot_state_publisher、ros2_control、controller、runtime 和选定执行 adapter；不包含任务或算法逻辑。",
-      consumes: ["robot_description", "controller yaml", "hardware plugin 参数"],
-      produces: ["controller_manager", "joint_state_broadcaster", "controller command topics"],
-      keyFiles: ["ros2_ws/src/alfa_robot_bringup/launch/alfa_robot.launch.py", "ros2_ws/src/alfa_robot_bringup/launch/moveit_real_execute.launch.py", "ros2_ws/src/alfa_robot_bringup/config"],
-      statusNotes: ["启动顺序和 controller 名称是硬约束。", "正式入口与测试入口必须分离；launch 只能组合节点和参数，不能计算任务。"]
-    },
-    {
-      id: "alfa_robot_hardware",
-      name: "alfa_robot_hardware",
-      layer: "硬件控制",
-      status: "实机底座",
-      maturity: "active-risky",
-      responsibility: "作为 ros2_control SystemInterface 连接真实电机总线、读写关节状态和命令。",
-      consumes: ["controller command interface", "hardware parameters", "CAN/CANopen/RMD 反馈"],
-      produces: ["state interface", "电机命令", "硬件生命周期状态"],
-      keyFiles: ["ros2_ws/src/alfa_robot_hardware/src", "docs/CONTROL_LAYER_HARDCODED_PARAMS.md", "docs/ethercat/joint_direction_calibration.md"],
-      statusNotes: ["总线节点、方向、减速比、安全停机仍有硬编码风险。", "重构必须保留首帧命令初始化、turn 软件零点等行为。"]
-    },
-    {
       id: "alfa_robot_rerun",
       name: "alfa_robot_rerun",
       layer: "可视化",
@@ -235,18 +211,6 @@ window.SYSTEM_PORTAL_DATA = {
       produces: ["Rerun viewer", ".rrd recording", "共享 UrdfRobot/FK API"],
       keyFiles: ["ros2_ws/src/alfa_robot_rerun/alfa_robot_rerun/visualize_rerun.py", "ros2_ws/src/alfa_robot_rerun/alfa_robot_rerun/joint_state_viewer_node.py", "ros2_ws/src/alfa_robot_rerun/launch/basic_robot_viewer.launch.py"],
       statusNotes: ["当前只读，不替代 RViz/MoveIt 交互，也不参与算法成功判定。", "benchmark 旧路径只保留兼容包装，不再保存第二份实现。"]
-    },
-    {
-      id: "bio_ik",
-      name: "bio_ik",
-      layer: "第三方 IK",
-      status: "保留依赖",
-      maturity: "legacy-support",
-      responsibility: "提供 BioIK MoveIt 插件，主要用于历史双末端随机 IK 对比和兼容。",
-      consumes: ["MoveIt IK request", "随机种子/timeout"],
-      produces: ["IK solution"],
-      keyFiles: ["ros2_ws/src/bio_ik/README.md", "ros2_ws/src/bio_ik"],
-      statusNotes: ["随机性强，已不是当前稳定流程唯一能力来源。", "保留用于对照和历史实验。"]
     }
   ],
   nonRosAssets: [
@@ -351,15 +315,15 @@ window.SYSTEM_PORTAL_DATA = {
       {
         index: "05",
         name: "适配器层",
-        modules: "alfa_robot_moveit_config / alfa_robot_execution_bridge / alfa_robot_hardware / alfa_robot_rerun",
-        owns: "MoveIt/FCL、执行后端、真实硬件、只读可视化适配",
+        modules: "alfa_robot_moveit_config / alfa_robot_execution_bridge / alfa_robot_rerun",
+        owns: "MoveIt/FCL、执行后端和只读可视化适配",
         mustNot: "保存业务状态机或产生第二份事实状态"
       },
       {
         index: "06",
-        name: "装配层",
-        modules: "alfa_robot_bringup",
-        owns: "选择 adapter、加载参数、启动顺序、生命周期",
+        name: "部署层",
+        modules: "robot_motion_runtime/launch / docker/motion / 外部 rt-control",
+        owns: "选择 adapter、加载参数和启动顺序；硬件生命周期归外部 rt-control",
         mustNot: "计算任务、修改轨迹、包含业务判断"
       }
     ],
@@ -380,7 +344,7 @@ window.SYSTEM_PORTAL_DATA = {
       { stage: "正式流程", location: "robot_motion_runtime", gate: "任务状态机只编排能力服务，不复制算法。" }
     ],
     migration: [
-      { phase: "A · 立即约束", result: "清理跨部门旧包；Bringup 只装配；门户记录唯一官方入口。" },
+      { phase: "A · 立即约束", result: "清理跨部门旧包；部署层只装配；门户记录唯一官方入口。" },
       { phase: "B · 抽出规划能力", result: "已建立 robot_motion_core 并迁入 IK 候选公共接口；继续迁移排序、去重、rollout 与评分，ROS 节点迁入 planning service。" },
       { phase: "C · 收窄 MoveIt 包", result: "alfa_robot_moveit_config 只保留 SRDF、规划器配置、MoveIt/FCL adapter。" },
       { phase: "D · 建立系统测试", result: "独立 system_tests 通过服务启动、注入 state/scene、运行任务并验证回执，不导入私有实现。" },

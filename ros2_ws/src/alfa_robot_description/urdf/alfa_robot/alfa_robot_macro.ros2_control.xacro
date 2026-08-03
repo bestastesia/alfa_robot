@@ -6,7 +6,7 @@
                prefix
                use_mock_hardware:=false
                mock_sensor_commands:=false
-               real_hardware_plugin:=alfa_robot_hardware/AlfaRobotHW
+               real_hardware_plugin:=mock_components/GenericSystem
                canopen_profile_velocity:=50000
                canopen_profile_accel:=50000
                pitch_initial:=0.0

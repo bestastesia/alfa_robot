@@ -28,7 +28,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 - 一个 issue 只对创建时的验收目标负责；后续探索/测试应拆新 issue 或放 Backlog，不要让已达标 issue 永远开着。
 - `alfa_robot_moveit_config` 已不再编译或包含 `scripts/ik_benchmark/` 的头文件；公共 IK 候选类型已迁入 `robot_motion_core`，Rerun 公共实现已迁入 `alfa_robot_rerun`。
 - `dual_arm_planner_node` 仍承载完整候选排序、抽离和负重规划适配；这些实现尚未全部迁入独立 core/planning service。
-- `bio_ik/` 仍服务于当前兼容流程；替代链路验证完成前保留。
+- 历史 `bio_ik`、仓库内 `alfa_robot_hardware` 和旧 `alfa_robot_bringup` 已退出主线；实机硬件与生命周期由外部 `rt-control` 域负责。
 
 ## 当前主要模块速查
 
@@ -36,9 +36,9 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 - 纯算法公共核心：`ros2_ws/src/robot_motion_core/`
 - 核心运行时：`ros2_ws/src/robot_motion_runtime/`
 - 场景能力：`ros2_ws/src/robot_motion_scene_service/`
-- 运动算法与 MoveIt 适配：`ros2_ws/src/alfa_robot_analytic_ik/`、`ros2_ws/src/alfa_robot_moveit_config/`、`ros2_ws/src/bio_ik/`
-- 执行与硬件：`ros2_ws/src/alfa_robot_execution_bridge/`、`ros2_ws/src/alfa_robot_hardware/`
-- 模型与启动编排：`ros2_ws/src/alfa_robot_description/`、`ros2_ws/src/alfa_robot_bringup/`
+- 运动算法与 MoveIt 适配：`ros2_ws/src/alfa_robot_analytic_ik/`、`ros2_ws/src/alfa_robot_moveit_config/`
+- 执行适配：`ros2_ws/src/alfa_robot_execution_bridge/`；真实硬件由外部 `rt-control` 域负责
+- 模型与启动编排：`ros2_ws/src/alfa_robot_description/`、`ros2_ws/src/robot_motion_runtime/launch/`
 - 可视化：`ros2_ws/src/alfa_robot_rerun/`
 - 实验资产：`scripts/ik_benchmark/`，仅用于验证和迁移，不应反向成为运行时职责来源。
 

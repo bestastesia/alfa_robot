@@ -1740,3 +1740,9 @@
 - 根因修复：首轮显式位姿 B1 负重规划失败并非动态墙差异，而是正面姿态绕吸附法向误翻 180°，使 IK 进入完全不同腕部分支。标称姿态已恢复为 RPY `(π,-π/2,0)`；标称显式墙和旧箱号网格墙新增完全同源回归。
 - 验证结果：Release 相关包构建通过；场景2项、MoveIt17项、runtime23项、armmotion25项全部通过。相同长驻 planner 下旧 B1 与新6D B1均约0.75s成功，新6D B4完整成功约1.62s。默认完整栈实测11个显式进程、13个ROS图节点、14个话题、11个业务服务。
 - 留给下个 AI：本轮已合并到 `v5_dev`；旧 `/robot_motion/run_box_pair_task` 只有显式设置 `enable_legacy_box_pair_task_adapter:=true` 才会出现。
+
+## 2026-08-03 运控 / Codex / 清理退出主线的旧 ROS 包
+- 做了什么：删除当前正式运控、Motion Docker 和 rt-control 迁移链均不再使用的 `bio_ik`、`alfa_robot_bringup`、`alfa_robot_hardware` 三个源码包。
+- 改了哪里：解析 IK 默认值、包边界测试、description 的 mock 硬件默认值、AI 协作入口和系统架构门户同步去除旧包；真实硬件和生命周期明确归外部 rt-control 域。
+- 验证结果：从全新临时 build/install 目录完成 9 包 Release 构建；xacro 与 `check_urdf` 通过；解析 IK、core、scene、MoveIt 和 runtime 共45项测试通过。
+- 留给下个 AI：`scripts/ik_benchmark` 和历史文档仍可能提到 BioIK，仅作为历史实验记录，不属于正式构建依赖；旧仓库内 real-hardware/bringup 启动方式不再提供。
