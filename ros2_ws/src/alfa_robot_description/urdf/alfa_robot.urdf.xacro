@@ -10,6 +10,7 @@
   <xacro:arg name="canopen_profile_accel" default="50000"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_arm.xacro"/>
 
   <link name="world"/>
   <joint name="world_to_base" type="fixed">
@@ -110,6 +111,8 @@
     </collision>
   </link>
 
+  <!-- 旧 6 轴双臂仅保留为历史结构参考，不再输出到机器人模型。 -->
+  <xacro:if value="false">
   <!-- ========== LEFT ARM mapped to project names ========== -->
   <link name="left_arm_base">
     <inertial>
@@ -511,6 +514,10 @@
     <axis xyz="0 0 1" />
     <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
   </joint>
+  </xacro:if>
+
+  <xacro:robot_v3_arm prefix="left" parent="updown" mount_xyz="0.095 0.26 0.2" mirrored="false"/>
+  <xacro:robot_v3_arm prefix="right" parent="updown" mount_xyz="0.095 -0.26 0.2" mirrored="true"/>
 
   <link name="front_sensor">
     <inertial>
@@ -687,6 +694,7 @@
     <axis xyz="0 0 0" />
   </joint>
 
+  <xacro:if value="false">
   <link name="left_tool0">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -712,6 +720,7 @@
     <child link="right_tool0"/>
     <origin xyz="0 0 0.259" rpy="0 0 0"/>
   </joint>
+  </xacro:if>
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

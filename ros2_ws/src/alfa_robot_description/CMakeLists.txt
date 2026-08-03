@@ -21,19 +21,15 @@ install(
   DESTINATION share/${PROJECT_NAME}/meshes
 )
 
-# install 后用 xacro 生成 URDF（供 ik_benchmark 等离线工具使用）
-find_package(xacro REQUIRED)
-xacro_add_files(
-  urdf/alfa_robot.urdf.xacro
-  INSTALL DESTINATION share/${PROJECT_NAME}/urdf
+install(
+  DIRECTORY meshes/robot_v3_0_1
+  DESTINATION share/${PROJECT_NAME}/meshes
 )
 
+# 根 xacro 已随 urdf/ 目录安装；运行时按需展开，避免首次构建时自查找本包失败。
 if(BUILD_TESTING)
-find_package(ament_cmake_pytest REQUIRED)
-
+  find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_alfa_robot_urdf_xacro test/alfa_robot_test_urdf_xacro.py)
-find_package(ament_cmake_pytest REQUIRED)
-
 endif()
 
 ament_package()

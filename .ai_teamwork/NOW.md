@@ -12,7 +12,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
-- 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同。
+- 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同；功能分支正在接入 V3 七轴双臂模型。
+- V3 模型工作跟踪：Linear `MOTION-94`。外观使用 `robot_v3.0.1_visual` 高精度网格，碰撞继续使用 `robot_v3.0.1` 低面数网格。
 - 正式任务输入只包含 `request_id`、左右正面中心 `pose_6d` 和 `execute`；算法内部按高度容差识别排数、吸附方式和抽离策略，禁止从箱号或外部吸附模式获取帮助。
 - 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
 - 当前任务表只保留未完成/需确认事项：T-0030/T-0031/T-0032/T-0037。
@@ -23,12 +24,13 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前仍需注意
 
-- 不要删除 `ros2_ws/src/alfa_robot_description/meshes/alfa_robot_v2_arm_v5/`，当前 URDF 仍依赖 description 包内 mesh。
-- Linear/Git 关联提交标题优先使用 `Refs TIM-xx: ...`；只写 `TIM-xx:` 不稳定。
+- V3 模型的外观与碰撞网格职责分离，均由 `ros2_ws/src/alfa_robot_description/meshes/robot_v3_0_1/` 管理，不能只保留其中一套。
+- Linear/Git 关联提交标题优先使用 `Refs MOTION-xx: ...`；只写 `MOTION-xx:` 不稳定。
 - 一个 issue 只对创建时的验收目标负责；后续探索/测试应拆新 issue 或放 Backlog，不要让已达标 issue 永远开着。
 - `alfa_robot_moveit_config` 已不再编译或包含 `scripts/ik_benchmark/` 的头文件；公共 IK 候选类型已迁入 `robot_motion_core`，Rerun 公共实现已迁入 `alfa_robot_rerun`。
 - `dual_arm_planner_node` 仍承载完整候选排序、抽离和负重规划适配；这些实现尚未全部迁入独立 core/planning service。
 - 历史 `bio_ik`、仓库内 `alfa_robot_hardware` 和旧 `alfa_robot_bringup` 已退出主线；实机硬件与生命周期由外部 `rt-control` 域负责。
+- 当前 V3 七轴模型只完成 description、ros2_control、MoveIt Demo 和 KDL 数值 IK 适配；旧结构解析 IK 与完整抓取算法尚未迁移，禁止将本轮模型展示验证描述成全流程验收。
 
 ## 当前主要模块速查
 

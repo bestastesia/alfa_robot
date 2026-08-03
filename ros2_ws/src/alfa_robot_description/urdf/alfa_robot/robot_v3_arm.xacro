@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro">
+
+  <xacro:macro name="robot_v3_arm_link" params="name visual_mesh collision_mesh collision_xyz collision_rpy">
+    <link name="${name}">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${visual_mesh}"/>
+        </geometry>
+        <material name="robot_v3_arm_white">
+          <color rgba="0.82 0.82 0.82 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="${collision_xyz}" rpy="${collision_rpy}"/>
+        <geometry>
+          <mesh filename="${collision_mesh}"/>
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="robot_v3_arm_joint" params="name parent child xyz rpy axis">
+    <joint name="${name}" type="revolute">
+      <parent link="${parent}"/>
+      <child link="${child}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+      <axis xyz="${axis}"/>
+      <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="robot_v3_arm" params="prefix parent mount_xyz mirrored:=false">
+    <xacro:property name="variant" value="${'right' if mirrored else 'left'}"/>
+    <xacro:property name="collision_mesh_root" value="package://alfa_robot_description/meshes/robot_v3_0_1/${variant}"/>
+    <xacro:property name="visual_mesh_root" value="package://alfa_robot_description/meshes/robot_v3_0_1/visual/${variant}"/>
+
+    <xacro:robot_v3_arm_link name="${prefix}_arm_base" visual_mesh="${visual_mesh_root}/base_link.stl" collision_mesh="${collision_mesh_root}/base_link.stl" collision_xyz="0 0 0" collision_rpy="0 0 0"/>
+    <joint name="${prefix}_arm_mount" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${prefix}_arm_base"/>
+      <origin xyz="${mount_xyz}" rpy="0 0 3.14159265"/>
+    </joint>
+
+    <xacro:unless value="${mirrored}">
+      <xacro:robot_v3_arm_link name="${prefix}_joint1" visual_mesh="${visual_mesh_root}/Link_1.stl" collision_mesh="${collision_mesh_root}/Link_1.stl" collision_xyz="0.000522813 -0.000361729 0.002117818" collision_rpy="-0.000054774 -0.001816128 -0.100210370"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint2" visual_mesh="${visual_mesh_root}/Link_2.stl" collision_mesh="${collision_mesh_root}/Link_2.stl" collision_xyz="0.000770099 -0.000300398 -0.023978220" collision_rpy="0.001031215 -0.000739591 0.142567923"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint3" visual_mesh="${visual_mesh_root}/Link_3.stl" collision_mesh="${collision_mesh_root}/Link_3.stl" collision_xyz="0.012124727 0.018730189 0.004397036" collision_rpy="-0.023666759 0.003048467 0.152665621"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint4" visual_mesh="${visual_mesh_root}/Link_4.stl" collision_mesh="${collision_mesh_root}/Link_4.stl" collision_xyz="-0.004113276 0.000530688 -0.006223374" collision_rpy="-0.015067397 0.031826793 -0.000710309"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint5" visual_mesh="${visual_mesh_root}/Link_5.stl" collision_mesh="${collision_mesh_root}/Link_5.stl" collision_xyz="0.007248149 0.003483586 0.002682465" collision_rpy="0.018444782 -0.039168674 -0.031123433"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint6" visual_mesh="${visual_mesh_root}/Link_6.stl" collision_mesh="${collision_mesh_root}/Link_6.stl" collision_xyz="-0.000709350 0.000725282 -0.004991800" collision_rpy="0.002501622 -0.002350798 -0.000022510"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint7" visual_mesh="${visual_mesh_root}/Link_7.stl" collision_mesh="${collision_mesh_root}/Link_7.stl" collision_xyz="0.009192134 -0.024103896 -0.020348427" collision_rpy="0.001263973 -0.001366502 -0.086546196"/>
+
+      <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0.00001172 0.00004065 0.016" rpy="0 0 3.14159265" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="-0.05925684 -0.00523679 0.112" rpy="1.57079633 0 -1.48265083" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="-0.23925372 0.05721594 -0.06129979" rpy="-1.57079633 -0.0205517 1.33606144" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.15474281 -0.07084206 0.14699994" rpy="1.57079633 1.33563993 0.08156114" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="-0.04593775 -0.00239318 -0.06299914" rpy="1.57079638 -1.51138059 -1.51874803" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="0.04449757 0.000388 0.283" rpy="-1.5707965 1.51883841 -1.56207717" axis="0 0 1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="-0.00194278 0.06096906 -0.04450033" rpy="-1.57079623 -0.10521384 0.03185501" axis="0 0 1"/>
+    </xacro:unless>
+
+    <xacro:if value="${mirrored}">
+      <xacro:robot_v3_arm_link name="${prefix}_joint1" visual_mesh="${visual_mesh_root}/Link_1.stl" collision_mesh="${collision_mesh_root}/Link_1.stl" collision_xyz="0.000522813 0.000361729 0.002117818" collision_rpy="0.000054774 -0.001816128 0.100210370"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint2" visual_mesh="${visual_mesh_root}/Link_2.stl" collision_mesh="${collision_mesh_root}/Link_2.stl" collision_xyz="0.000770099 0.000300398 -0.023978220" collision_rpy="-0.001031215 -0.000739591 -0.142567923"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint3" visual_mesh="${visual_mesh_root}/Link_3.stl" collision_mesh="${collision_mesh_root}/Link_3.stl" collision_xyz="0.012124727 -0.018730189 0.004397036" collision_rpy="0.023666759 0.003048467 -0.152665621"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint4" visual_mesh="${visual_mesh_root}/Link_4.stl" collision_mesh="${collision_mesh_root}/Link_4.stl" collision_xyz="-0.004113276 -0.000530688 -0.006223374" collision_rpy="0.015067397 0.031826793 0.000710309"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint5" visual_mesh="${visual_mesh_root}/Link_5.stl" collision_mesh="${collision_mesh_root}/Link_5.stl" collision_xyz="0.007248149 -0.003483586 0.002682465" collision_rpy="-0.018444782 -0.039168674 0.031123433"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint6" visual_mesh="${visual_mesh_root}/Link_6.stl" collision_mesh="${collision_mesh_root}/Link_6.stl" collision_xyz="-0.000709350 -0.000725282 -0.004991800" collision_rpy="-0.002501622 -0.002350798 0.000022510"/>
+      <xacro:robot_v3_arm_link name="${prefix}_joint7" visual_mesh="${visual_mesh_root}/Link_7.stl" collision_mesh="${collision_mesh_root}/Link_7.stl" collision_xyz="0.009192134 0.024103896 -0.020348427" collision_rpy="-0.001263973 -0.001366502 0.086546196"/>
+
+      <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0.00001172 -0.00004065 0.016" rpy="0 0 -3.14159265" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="-0.05925684 0.00523679 0.112" rpy="-1.57079633 0 1.48265083" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="-0.23925372 -0.05721594 -0.06129979" rpy="1.57079633 -0.0205517 -1.33606144" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.15474281 0.07084206 0.14699994" rpy="-1.57079633 1.33563993 -0.08156114" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="-0.04593775 0.00239318 -0.06299914" rpy="-1.57079638 -1.51138059 1.51874803" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="0.04449757 -0.000388 0.283" rpy="1.5707965 1.51883841 1.56207717" axis="0 0 -1"/>
+      <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="-0.00194278 -0.06096906 -0.04450033" rpy="1.57079623 -0.10521384 -0.03185501" axis="0 0 -1"/>
+    </xacro:if>
+
+    <link name="${prefix}_tool0"/>
+    <joint name="${prefix}_tool0_fixed" type="fixed">
+      <parent link="${prefix}_joint7"/>
+      <child link="${prefix}_tool0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+  </xacro:macro>
+
+</robot>

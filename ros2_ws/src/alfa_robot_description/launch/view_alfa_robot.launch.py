@@ -94,12 +94,14 @@ def generate_launch_description():
                     "zeros.left_joint4": 0.0,
                     "zeros.left_joint5": 0.0,
                     "zeros.left_joint6": 0.0,
+                    "zeros.left_joint7": 0.0,
                     "zeros.right_joint1": 0.0,
                     "zeros.right_joint2": 0.0,
                     "zeros.right_joint3": 0.0,
                     "zeros.right_joint4": 0.0,
                     "zeros.right_joint5": 0.0,
                     "zeros.right_joint6": 0.0,
+                    "zeros.right_joint7": 0.0,
                 }
             )
         return [

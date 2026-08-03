@@ -63,6 +63,12 @@
                   <param name="initial_value">${initial_positions['left_joint6']}</param>
                 </state_interface>
             </joint>
+            <joint name="left_joint7">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['left_joint7']}</param>
+                </state_interface>
+            </joint>
             <joint name="right_joint1">
                 <command_interface name="position"/>
                 <state_interface name="position">
@@ -97,6 +103,12 @@
                 <command_interface name="position"/>
                 <state_interface name="position">
                   <param name="initial_value">${initial_positions['right_joint6']}</param>
+                </state_interface>
+            </joint>
+            <joint name="right_joint7">
+                <command_interface name="position"/>
+                <state_interface name="position">
+                  <param name="initial_value">${initial_positions['right_joint7']}</param>
                 </state_interface>
             </joint>
         </ros2_control>

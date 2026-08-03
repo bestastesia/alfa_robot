@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 
 from ament_index_python.packages import get_package_share_directory
 
@@ -74,6 +75,30 @@ def test_urdf_xacro():
         assert (
             check_urdf_process.returncode == 0
         ), "\n --- URDF check failed! --- \nYour xacro does not unfold into a proper urdf robot description. Please check your xacro file."
+
+        robot = ET.parse(tmp_urdf_output_file).getroot()
+        joints = {joint.attrib["name"]: joint for joint in robot.findall("joint")}
+        links = {link.attrib["name"]: link for link in robot.findall("link")}
+        for side, mesh_variant in (("left", "left"), ("right", "right")):
+            for index in range(1, 8):
+                name = f"{side}_joint{index}"
+                assert name in joints
+                visual_mesh = links[name].find("visual/geometry/mesh")
+                collision_mesh = links[name].find("collision/geometry/mesh")
+                assert visual_mesh is not None
+                assert collision_mesh is not None
+                assert (
+                    f"/meshes/robot_v3_0_1/visual/{mesh_variant}/"
+                    in visual_mesh.attrib["filename"]
+                )
+                assert (
+                    f"/meshes/robot_v3_0_1/{mesh_variant}/"
+                    in collision_mesh.attrib["filename"]
+                )
+                assert "/visual/" not in collision_mesh.attrib["filename"]
+
+            tool_joint = joints[f"{side}_tool0_fixed"]
+            assert tool_joint.find("parent").attrib["link"] == f"{side}_joint7"
 
     finally:
         os.remove(tmp_urdf_output_file)

@@ -1746,3 +1746,10 @@
 - 改了哪里：解析 IK 默认值、包边界测试、description 的 mock 硬件默认值、AI 协作入口和系统架构门户同步去除旧包；真实硬件和生命周期明确归外部 rt-control 域。
 - 验证结果：从全新临时 build/install 目录完成 9 包 Release 构建；xacro 与 `check_urdf` 通过；解析 IK、core、scene、MoveIt 和 runtime 共45项测试通过。
 - 留给下个 AI：`scripts/ik_benchmark` 和历史文档仍可能提到 BioIK，仅作为历史实验记录，不属于正式构建依赖；旧仓库内 real-hardware/bringup 启动方式不再提供。
+
+## 2026-08-03 运控 / Codex / V3 七轴双臂外观与碰撞模型接入
+- 做了什么：接入 `robot_v3.0.1_visual` 高精度外观网格，保留 `robot_v3.0.1` 低面数碰撞网格；右臂由左臂严格镜像生成，关节骨架采用外观版 URDF，补齐双臂第7轴、控制器、SRDF 和 MoveIt KDL 配置。
+- 模型口径：外观与碰撞网格分目录管理；碰撞低模逐链接刚体配准到外观模型。左右肩部轴线共点 RMS 约 `0.740mm`，腕部 Joint5/6/7 共点 RMS 约 `0.000439mm`，20组随机姿态镜像 FK 最大位置误差约 `5.03e-9m`。
+- 验证结果：7包 Release 构建通过；description `44/44` 测试通过；MoveIt Demo 正常启动且14轴臂控制器激活；左右单臂非零目标 FK→KDL IK 回归均成功，位置回代误差低于 `2e-8m`。
+- 清理：删除已退出主线的 `bio_ik`、`alfa_robot_hardware`、`alfa_robot_bringup` 残留 build/install 与忽略文件，避免插件扫描污染。
+- 跟踪：创建 Linear `MOTION-94`；本轮只验收模型、控制器、Demo 与数值 IK，旧解析 IK 和完整抓取流程尚未适配 V3 七轴结构。
