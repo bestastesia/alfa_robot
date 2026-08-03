@@ -22,7 +22,7 @@ install(
 )
 
 install(
-  DIRECTORY meshes/robot_v3_0_1
+  DIRECTORY meshes/robot_v3_0_2
   DESTINATION share/${PROJECT_NAME}/meshes
 )
 

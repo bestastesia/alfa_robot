@@ -87,15 +87,10 @@ def test_urdf_xacro():
                 collision_mesh = links[name].find("collision/geometry/mesh")
                 assert visual_mesh is not None
                 assert collision_mesh is not None
-                assert (
-                    f"/meshes/robot_v3_0_1/visual/{mesh_variant}/"
-                    in visual_mesh.attrib["filename"]
-                )
-                assert (
-                    f"/meshes/robot_v3_0_1/{mesh_variant}/"
-                    in collision_mesh.attrib["filename"]
-                )
-                assert "/visual/" not in collision_mesh.attrib["filename"]
+                expected_mesh_root = f"/meshes/robot_v3_0_2/{mesh_variant}/"
+                assert expected_mesh_root in visual_mesh.attrib["filename"]
+                assert expected_mesh_root in collision_mesh.attrib["filename"]
+                assert visual_mesh.attrib["filename"] == collision_mesh.attrib["filename"]
 
             tool_joint = joints[f"{side}_tool0_fixed"]
             assert tool_joint.find("parent").attrib["link"] == f"{side}_joint7"

@@ -1753,3 +1753,9 @@
 - 验证结果：7包 Release 构建通过；description `44/44` 测试通过；MoveIt Demo 正常启动且14轴臂控制器激活；左右单臂非零目标 FK→KDL IK 回归均成功，位置回代误差低于 `2e-8m`。
 - 清理：删除已退出主线的 `bio_ik`、`alfa_robot_hardware`、`alfa_robot_bringup` 残留 build/install 与忽略文件，避免插件扫描污染。
 - 跟踪：创建 Linear `MOTION-94`；本轮只验收模型、控制器、Demo 与数值 IK，旧解析 IK 和完整抓取流程尚未适配 V3 七轴结构。
+
+## 2026-08-03 运控 / Codex / V3.0.2 双臂模型对比分支
+- 做了什么：在独立试验分支将 V3.0.1 双套网格替换为 `robot_v3.0.2` 单套网格；visual 与 collision 严格使用同一文件，关节链同步采用 V3.0.2 源 URDF，右臂由左臂镜像生成。
+- 模型检查：源 URDF 可被 `check_urdf` 正常解析；腕部 Joint5/6/7 轴线共点 RMS 约 `0.138mm`；100组随机七轴姿态的左右镜像 FK 位置和旋转误差均为0。
+- 验证结果：7包 Release 构建通过，description `44/44` 测试通过；MoveIt Demo 正常启动，左右单臂非零目标 FK→KDL IK 均成功，位置回代误差约 `1.9e-7m`。
+- 分支边界：该提交用于 V3.0.1 与 V3.0.2 外观、关节结构和 Demo 对比，未宣称完整抓取算法已经适配。
