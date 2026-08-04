@@ -1,79 +1,74 @@
 import pytest
 
-from alfa_task_interfaces.msg import PickTarget
-from builtin_interfaces.msg import Time
-from armmotion_demo.domain_contract import task_spec_from_pick_targets
-from armmotion_demo.manual_domain_task import ManualDomainTask, _quaternion_from_rpy
+from alfa_motion_interfaces.action import ExecuteMotionStage
+from alfa_motion_interfaces.msg import MotionPoseTarget
+from armmotion_demo.manual_domain_task import _quaternion_from_rpy
+from armmotion_demo.stage_contract import (
+    planning_task_from_stage_goal,
+    validate_stage_pose_targets,
+)
 
 
-def target(arm_id, box_id, row, column, y, mode="front"):
-    message = PickTarget()
-    message.arm_id = arm_id
-    message.box_id = box_id
-    message.row = row
-    message.column = column
-    message.suction_mode = mode
-    for stamped in (
-        message.refined_geometry.body_pose,
-        message.refined_geometry.suction_surface_pose,
+def goal(left_y=0.5, right_y=-0.5):
+    message = ExecuteMotionStage.Goal()
+    message.context.request_id = "request-1"
+    message.context.task_id = "task-1"
+    message.context.sequence_id = 1
+    message.stage = ExecuteMotionStage.Goal.MOVE_TO_PREGRASP
+    for target, y in (
+        (message.left_target, left_y),
+        (message.right_target, right_y),
     ):
+        target.grasp_mode = MotionPoseTarget.SIDE_SUCTION
+        stamped = target.pose
         stamped.header.frame_id = "base_link"
-        stamped.header.stamp.sec = 10
-        stamped.pose.pose.position.x = 0.9
-        stamped.pose.pose.position.y = y
-        stamped.pose.pose.position.z = 0.8
-        stamped.pose.pose.orientation.w = 1.0
-    message.refined_geometry.size_m.x = 0.3
-    message.refined_geometry.size_m.y = 0.4
-    message.refined_geometry.size_m.z = 0.4
-    message.refined_geometry.size_valid = [True, True, True]
+        stamped.pose.position.x = 0.9
+        stamped.pose.position.y = y
+        stamped.pose.position.z = 1.6
+        stamped.pose.orientation.x = 0.70710678
+        stamped.pose.orientation.z = 0.70710678
     return message
 
 
 def test_domain_task_uses_explicit_left_right_poses():
-    left = target(PickTarget.ARM_LEFT, 1, 1, 1, 0.5)
-    right = target(PickTarget.ARM_RIGHT, 3, 1, 3, -0.5)
-    task = task_spec_from_pick_targets("request-1", "task-1", 1, [left, right])
-    assert task.task_id == "task-1"
-    assert task.sequence_id == 1
+    task = planning_task_from_stage_goal(goal())
+    assert task.code == "task-1"
     assert task.effective_distance_m == pytest.approx(0.9)
     assert task.scene_y_shift == pytest.approx(0.0)
-    assert task.explicit_targets["left"]["position"] == pytest.approx([0.9, 0.5, 0.8])
-
-
-def test_domain_task_rejects_reversed_arm_order():
-    left = target(PickTarget.ARM_LEFT, 1, 1, 1, 0.5)
-    right = target(PickTarget.ARM_RIGHT, 3, 1, 3, -0.5)
-    with pytest.raises(ValueError, match="LEFT、RIGHT"):
-        task_spec_from_pick_targets("request-1", "task-1", 1, [right, left])
+    assert task.left_front_face_pose.y == pytest.approx(0.5)
+    assert task.right_front_face_pose.y == pytest.approx(-0.5)
 
 
 def test_domain_task_rejects_non_base_link_body_pose():
-    left = target(PickTarget.ARM_LEFT, 1, 1, 1, 0.5)
-    right = target(PickTarget.ARM_RIGHT, 3, 1, 3, -0.5)
-    left.refined_geometry.body_pose.header.frame_id = "map"
-    with pytest.raises(ValueError, match="body_pose"):
-        task_spec_from_pick_targets("request-1", "task-1", 1, [left, right])
+    message = goal()
+    message.left_target.pose.header.frame_id = "map"
+    with pytest.raises(ValueError, match="left_target.pose"):
+        planning_task_from_stage_goal(message)
 
 
-def test_domain_task_rejects_invalid_size_evidence():
-    left = target(PickTarget.ARM_LEFT, 1, 1, 1, 0.5)
-    right = target(PickTarget.ARM_RIGHT, 3, 1, 3, -0.5)
-    left.refined_geometry.size_valid = [True, False, True]
-    with pytest.raises(ValueError, match="size_valid"):
-        task_spec_from_pick_targets("request-1", "task-1", 1, [left, right])
+def test_domain_task_rejects_zero_quaternion():
+    message = goal()
+    message.left_target.pose.pose.orientation.x = 0.0
+    message.left_target.pose.pose.orientation.y = 0.0
+    message.left_target.pose.pose.orientation.z = 0.0
+    message.left_target.pose.pose.orientation.w = 0.0
+    with pytest.raises(ValueError, match="四元数为零"):
+        planning_task_from_stage_goal(message)
 
 
-def test_direct_top_pose_reconstructs_box_center():
-    geometry = ManualDomainTask._geometry_from_suction_pose(
-        [0.85, -0.4, 1.2, 0.0, 0.0, 0.0],
-        "top_suction",
-        Time(),
-    )
-    center = geometry.body_pose.pose.pose.position
-    assert (center.x, center.y, center.z) == pytest.approx((0.70, -0.4, 1.0))
-    suction = geometry.suction_surface_pose.pose.pose.position
-    assert (suction.x, suction.y, suction.z) == pytest.approx((0.85, -0.4, 1.2))
+def test_recapture_pair_accepts_mode_field_without_changing_pose_validation():
+    message = goal()
+    message.stage = ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE
+    message.left_target.grasp_mode = MotionPoseTarget.NO_MOVE
+    message.right_target.grasp_mode = MotionPoseTarget.TOP_SUCTION
+    validate_stage_pose_targets(message)
+
+
+def test_pose_target_rejects_unknown_mode():
+    message = goal()
+    message.left_target.grasp_mode = 99
+    with pytest.raises(ValueError, match="grasp_mode"):
+        validate_stage_pose_targets(message)
 
 
 def test_rpy_is_converted_to_normalized_quaternion():

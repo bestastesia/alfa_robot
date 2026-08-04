@@ -4,7 +4,8 @@
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_mock_hardware" default="true"/>
   <xacro:arg name="mock_sensor_commands" default="true"/>
-  <xacro:arg name="real_hardware_plugin" default="alfa_robot_hardware/AlfaRobotHW"/>
+  <!-- 实机硬件由外部 rt-control 域管理；本仓库模型默认只提供 mock ros2_control。 -->
+  <xacro:arg name="real_hardware_plugin" default="mock_components/GenericSystem"/>
   <xacro:arg name="canopen_profile_velocity" default="50000"/>
   <xacro:arg name="canopen_profile_accel" default="50000"/>
 

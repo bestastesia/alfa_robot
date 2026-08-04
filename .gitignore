@@ -82,6 +82,7 @@ install_manifest.txt
 *.bag.active
 *.bag.db3
 *.srv
+!ros2_ws/src/alfa_robot_moveit_config/srv/PlanRecapture.srv
 !ros2_ws/src/alfa_robot_moveit_config/srv/
 !ros2_ws/src/alfa_robot_moveit_config/srv/ConfigureExtractMonitor.srv
 !ros2_ws/src/robot_motion_interfaces/srv/

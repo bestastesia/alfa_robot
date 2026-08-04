@@ -460,6 +460,8 @@ class ExtractMonitorServiceClient:
         right_target: dict[str, Any] | None = None,
         runtime_config: dict[str, Any] | None = None,
         strategy: Any | None = None,
+        start_joint_positions: dict[str, float] | None = None,
+        start_updown: float | None = None,
     ) -> tuple[bool, str, float]:
         start = time.monotonic()
         request = self._configure_type.Request()
@@ -494,6 +496,19 @@ class ExtractMonitorServiceClient:
             request.extract_box_pose_rrt_max_iterations = int(
                 runtime_config["extract_box_pose_rrt_max_iterations"]
             )
+        if start_joint_positions is not None and start_updown is not None:
+            request.use_explicit_start_state = True
+            request.start_state.name = [
+                "updown",
+                "left_joint1", "left_joint2", "left_joint3",
+                "left_joint4", "left_joint5", "left_joint6",
+                "right_joint1", "right_joint2", "right_joint3",
+                "right_joint4", "right_joint5", "right_joint6",
+            ]
+            request.start_state.position = [
+                float(start_updown),
+                *(float(start_joint_positions[name]) for name in request.start_state.name[1:]),
+            ]
         future = self.configure_client.call_async(request)
         self._rclpy.spin_until_future_complete(self.node, future, timeout_sec=timeout)
         elapsed = (time.monotonic() - start) * 1000.0

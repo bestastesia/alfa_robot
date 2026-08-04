@@ -1740,3 +1740,25 @@
 - 根因修复：首轮显式位姿 B1 负重规划失败并非动态墙差异，而是正面姿态绕吸附法向误翻 180°，使 IK 进入完全不同腕部分支。标称姿态已恢复为 RPY `(π,-π/2,0)`；标称显式墙和旧箱号网格墙新增完全同源回归。
 - 验证结果：Release 相关包构建通过；场景2项、MoveIt17项、runtime23项、armmotion25项全部通过。相同长驻 planner 下旧 B1 与新6D B1均约0.75s成功，新6D B4完整成功约1.62s。默认完整栈实测11个显式进程、13个ROS图节点、14个话题、11个业务服务。
 - 留给下个 AI：本轮已合并到 `v5_dev`；旧 `/robot_motion/run_box_pair_task` 只有显式设置 `enable_legacy_box_pair_task_adapter:=true` 才会出现。
+
+## 2026-08-03 运控 / Codex / 清理退出主线的旧 ROS 包
+- 做了什么：删除当前正式运控、Motion Docker 和 rt-control 迁移链均不再使用的 `bio_ik`、`alfa_robot_bringup`、`alfa_robot_hardware` 三个源码包。
+- 改了哪里：解析 IK 默认值、包边界测试、description 的 mock 硬件默认值、AI 协作入口和系统架构门户同步去除旧包；真实硬件和生命周期明确归外部 rt-control 域。
+- 验证结果：从全新临时 build/install 目录完成 9 包 Release 构建；xacro 与 `check_urdf` 通过；解析 IK、core、scene、MoveIt 和 runtime 共45项测试通过。
+- 留给下个 AI：`scripts/ik_benchmark` 和历史文档仍可能提到 BioIK，仅作为历史实验记录，不属于正式构建依赖；旧仓库内 real-hardware/bringup 启动方式不再提供。
+
+## 2026-08-04 运控 / Codex / Motion 接口包与阶段入口收口
+- 删除：移除无正式消费者的 `alfa_control_interfaces`、临时复制的 `robot_interfaces`、跨域接口快照 `alfa_system_interfaces`，以及旧 Pick/Place 任务消息和 Action；删除只为旧五域迁移存在的 rt-control/PLC 适配节点。
+- 收口：新建 Motion 自有公开包 `alfa_motion_interfaces`，只保留 `/motion/execute_stage` 使用的 `ExecuteMotionStage` 及其任务上下文、错误和就绪状态；阶段固定为重拍、预抓取、靠近吸附、放置、返回初始位，预抓取只接收左右箱体正面中心 `base_link` 位姿。
+- 边界：正式 Motion 服务仅消费 `/joint_states`、向 `/dual_arm_jtc/follow_joint_trajectory` 下发轨迹并发布 `/motion/readiness`；不再操作 `/plc/*` 或真空接口。历史双线程实机 Demo 仍保留 PLC 直控，仅用于旧实验复现。
+- 验证：纯净系统环境下 11 包 Release 构建通过，阶段合同 23 项 pytest 通过；旧四个接口包在纯净 install 中均不可发现。隔离 ROS Domain 的既有 Mock 冒烟确认阶段 Action、轨迹 Action、关节状态和就绪话题可见，图中无 PLC/真空接口；完整任务冒烟在 IK 阶段返回结构化规划失败，未作为算法成功验收。
+## 2026-08-04 运控 / Codex / Motion 新阶段接口部署到工控机开发容器
+- 做了什么：将当前 `feature/motion-stage-interface-cleanup-20260804` 未提交工作树快照同步到工控机 `/home/ar/motion-control-dev/repo`，更新 `alfa-motion-dev:humble` 镜像并清理旧接口构建缓存；未启动或操作真实 `rt-control`。
+- 改了哪里：远端源码、`docker/motion` 配置、宿主持久化 `docker/motion/.workspace`；部署指纹写入远端 `DEPLOYED_FROM.txt`。
+- 验证结果：工控机容器内 Release 干净构建 11 个包通过；`/motion/execute_stage` 与 `/motion/readiness` 类型正确；Domain 142 Mock 完整走通预抓取、靠近吸附、放置和返回初始位。验证后已停止 Mock 容器，源码、镜像和构建目录保留。
+- 留给下个 AI：远端 `/repo` 是宿主源码的只读 bind mount，修改必须落到 `/home/ar/motion-control-dev/repo`；`docker compose down` 或容器重启不会删除源码与 `.workspace`，只有手工删除宿主目录才会丢失。实机启动前仍必须独立确认 `rt-control` READY，并使用 `MOTION_HARDWARE_CONFIRM=ENABLE_MOTION_HARDWARE`。
+
+## 2026-08-04 运控 / Codex / 双批左右6D目标与重拍过渡
+- 接口：一次逻辑任务使用同一 `task_id` 分两次发送左右目标对；第一批 `MOVE_TO_RECAPTURE` 是左右重拍末端 `base_link` 6D 位姿，第二批 `MOVE_TO_PREGRASP` 是精定位后的左右箱体正面中心 `base_link` 6D 位姿。每个目标新增 `grasp_mode={NO_MOVE,SIDE_SUCTION,TOP_SUCTION}`，本版只校验，不改变现有策略。
+- 规划：新增重拍位双臂 IK/碰撞规划服务，优先选择 `updown` 最接近 `0.3m` 的合法解；重拍执行完成后读取真实 `/joint_states`，作为第二次完整抓取规划的显式起点，消除重拍到预抓取的状态突变。
+- 验证：阶段合同 pytest 6项通过；本机 Domain 146 与工控机 Domain 147 Mock 均完整走通重拍、预抓取、靠近吸附、放置和返回初始位。工控机重拍规划约0.110s，第二次完整规划约0.892s；快照确认完整规划起点与重拍执行真实末态一致。远端仅更新 `/home/ar/motion-control-dev/repo` 并运行隔离 Mock，未启动或操作真实 `rt-control`；首次镜像构建受失效代理 `127.0.0.1:17897` 阻断，随后复用已存在镜像完成源码增量构建。

@@ -10,9 +10,7 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from robot_interfaces.msg import PlcIoState
 from sensor_msgs.msg import JointState
-from std_srvs.srv import SetBool
 
 from .common import loaded_joint_map
 
@@ -24,7 +22,6 @@ class MockCurrentRtControl(Node):
         super().__init__("mock_current_rt_control")
         self.declare_parameter("trajectory_action", "/dual_arm_jtc/follow_joint_trajectory")
         self.declare_parameter("joint_state_topic", "/joint_states")
-        self.declare_parameter("plc_state_topic", "/plc/io_state")
         self.declare_parameter("execution_time_scale", 0.0)
         self._callback_group = ReentrantCallbackGroup()
         model_loaded = loaded_joint_map(
@@ -36,9 +33,6 @@ class MockCurrentRtControl(Node):
             for name in RT_CONTROL_JOINT_NAMES
         }
         self._lock = threading.Lock()
-        self._left_solenoid = False
-        self._right_solenoid = False
-        self._vacuum_pump = False
         self._trajectory_server = ActionServer(
             self,
             FollowJointTrajectory,
@@ -48,36 +42,12 @@ class MockCurrentRtControl(Node):
             cancel_callback=lambda _: CancelResponse.ACCEPT,
             callback_group=self._callback_group,
         )
-        self.create_service(
-            SetBool,
-            "/plc/left_solenoid",
-            lambda request, response: self._set_output("left", request, response),
-            callback_group=self._callback_group,
-        )
-        self.create_service(
-            SetBool,
-            "/plc/right_solenoid",
-            lambda request, response: self._set_output("right", request, response),
-            callback_group=self._callback_group,
-        )
-        self.create_service(
-            SetBool,
-            "/plc/vacuum_pump",
-            lambda request, response: self._set_output("pump", request, response),
-            callback_group=self._callback_group,
-        )
         self._joint_pub = self.create_publisher(
             JointState,
             str(self.get_parameter("joint_state_topic").value),
             10,
         )
-        self._plc_pub = self.create_publisher(
-            PlcIoState,
-            str(self.get_parameter("plc_state_topic").value),
-            10,
-        )
         self.create_timer(0.02, self._publish_joint_state)
-        self.create_timer(0.1, self._publish_plc_state)
         self.get_logger().warning("已启动非硬件 rt-control Mock，禁止把该节点用于实机")
 
     def _validate_trajectory(self, request) -> GoalResponse:
@@ -111,18 +81,6 @@ class MockCurrentRtControl(Node):
         goal_handle.succeed()
         return result
 
-    def _set_output(self, output: str, request, response):
-        with self._lock:
-            if output == "left":
-                self._left_solenoid = bool(request.data)
-            elif output == "right":
-                self._right_solenoid = bool(request.data)
-            else:
-                self._vacuum_pump = bool(request.data)
-        response.success = True
-        response.message = f"mock {output}={bool(request.data)}"
-        return response
-
     def _publish_joint_state(self) -> None:
         message = JointState()
         message.header.stamp = self.get_clock().now().to_msg()
@@ -130,21 +88,6 @@ class MockCurrentRtControl(Node):
         with self._lock:
             message.position = [self._positions[name] for name in message.name]
         self._joint_pub.publish(message)
-
-    def _publish_plc_state(self) -> None:
-        message = PlcIoState()
-        message.header.stamp = self.get_clock().now().to_msg()
-        message.header.frame_id = "plc"
-        message.connected = True
-        message.data_fresh = True
-        with self._lock:
-            message.left_solenoid_on = self._left_solenoid
-            message.right_solenoid_on = self._right_solenoid
-            message.vacuum_pump_on = self._vacuum_pump
-            message.left_vacuum_established = self._left_solenoid and self._vacuum_pump
-            message.right_vacuum_established = self._right_solenoid and self._vacuum_pump
-        self._plc_pub.publish(message)
-
 
 def main(args=None) -> None:
     rclpy.init(args=args)

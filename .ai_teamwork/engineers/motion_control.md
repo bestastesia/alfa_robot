@@ -12,9 +12,8 @@
 - `ros2_ws/src/alfa_robot_analytic_ik/`
 - `ros2_ws/src/alfa_robot_moveit_config/`
 - `ros2_ws/src/alfa_robot_execution_bridge/`
-- `ros2_ws/src/alfa_robot_hardware/`
-- `ros2_ws/src/alfa_robot_bringup/`
 - `ros2_ws/src/alfa_robot_rerun/`
+- `docker/motion/`
 - `docs/运控/系统架构与包职责边界.md`
 - `docs/CONTROL_LAYER_HARDCODED_PARAMS.md`
 - `docs/REFACTOR_ARCHITECTURE_NOTES.md`

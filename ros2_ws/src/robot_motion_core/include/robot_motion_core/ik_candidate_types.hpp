@@ -40,7 +40,7 @@ struct UpdownAwareIkConfig
 
   std::string fixed_group = "dual_arm";
   std::string free_group = "dual_arm_with_base";
-  std::string solver_plugin = "bio_ik/BioIKKinematicsPlugin";
+  std::string solver_plugin = "analytic_three_parallel";
   std::string base_frame = "base_link";
   std::string left_tip = "left_tool0";
   std::string right_tip = "right_tool0";

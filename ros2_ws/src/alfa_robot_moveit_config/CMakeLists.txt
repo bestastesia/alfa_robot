@@ -34,7 +34,8 @@ find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
-  DEPENDENCIES geometry_msgs robot_motion_interfaces
+  "srv/PlanRecapture.srv"
+  DEPENDENCIES geometry_msgs robot_motion_interfaces sensor_msgs trajectory_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
 
