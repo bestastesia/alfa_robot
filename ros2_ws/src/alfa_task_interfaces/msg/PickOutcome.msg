@@ -1,7 +1,0 @@
-int32 box_id
-uint8 arm_id
-bool pick_motion_completed
-bool grip_command_completed
-bool retreat_completed
-uint8 verification_level
-alfa_system_interfaces/ErrorInfo error

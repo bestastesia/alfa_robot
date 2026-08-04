@@ -12,12 +12,14 @@ from types import SimpleNamespace
 from typing import Any
 
 from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
+from geometry_msgs.msg import PoseStamped
 
 from .common import (
     ExecutionPlan,
     MotionSample,
     PoseTaskSpec,
     TaskSpec,
+    retime_segment,
     retime_all_stages,
     split_execution_stages,
     validate_stage_contracts,
@@ -84,6 +86,7 @@ class PlannerAdapter:
         self.session_log = self.session_root / "planner_session.log"
         self._planner_process: subprocess.Popen[str] | None = None
         self._service_client = None
+        self._recapture_client = None
         self.startup_ms = 0.0
         self._start_session()
 
@@ -160,6 +163,15 @@ class PlannerAdapter:
             timeout=self.timeout_s,
             node_name="armmotion_persistent_planner_client",
         )
+        from alfa_robot_moveit_config.srv import PlanRecapture
+
+        self._recapture_type = PlanRecapture
+        self._recapture_client = self._service_client.node.create_client(
+            PlanRecapture,
+            "/dual_arm_planner/plan_recapture",
+        )
+        if not self._recapture_client.wait_for_service(timeout_sec=self.timeout_s):
+            raise TimeoutError("service /dual_arm_planner/plan_recapture not available")
         self.startup_ms = (time.monotonic() - started) * 1000.0
         print(
             f"planner 长驻会话已就绪：startup={self.startup_ms:.1f}ms "
@@ -242,7 +254,101 @@ class PlannerAdapter:
         summary.update(self.sequence_helpers.summarize_snapshot_motion(snapshot))
         return summary
 
-    def compute(self, task: PlanningTask) -> ExecutionPlan:
+    def plan_recapture(
+        self,
+        left_target: PoseStamped,
+        right_target: PoseStamped,
+        current: MotionSample,
+        *,
+        preferred_updown: float = 0.3,
+    ) -> tuple[list[MotionSample], dict[str, Any]]:
+        if self._recapture_client is None:
+            raise RuntimeError("recapture planner client 未初始化")
+        request = self._recapture_type.Request()
+        request.left_target = left_target
+        request.right_target = right_target
+        request.preferred_updown = float(preferred_updown)
+        request.start_state.name = [
+            "updown",
+            "left_joint1", "left_joint2", "left_joint3",
+            "left_joint4", "left_joint5", "left_joint6",
+            "right_joint1", "right_joint2", "right_joint3",
+            "right_joint4", "right_joint5", "right_joint6",
+        ]
+        request.start_state.position = [
+            float(current.updown_m),
+            *(float(current.joints[name]) for name in request.start_state.name[1:]),
+        ]
+        started = time.monotonic()
+        future = self._recapture_client.call_async(request)
+        self._service_client._rclpy.spin_until_future_complete(
+            self._service_client.node,
+            future,
+            timeout_sec=self.timeout_s,
+        )
+        wall_ms = (time.monotonic() - started) * 1000.0
+        if not future.done():
+            raise TimeoutError(f"重拍位规划超时 {self.timeout_s:.1f}s")
+        response = future.result()
+        if response is None:
+            raise RuntimeError(f"重拍位规划调用失败: {future.exception()}")
+        if not response.success:
+            raise RuntimeError("重拍位规划失败: " + response.message)
+
+        joint_map = dict(current.joints)
+        updown = float(current.updown_m)
+        raw_samples = [
+            MotionSample(
+                time_s=0.0,
+                joints=dict(joint_map),
+                updown_m=updown,
+                context={"stage": "recapture/current", "updown": updown},
+            )
+        ]
+        trajectory = response.trajectory
+        for point in trajectory.points:
+            for index, name in enumerate(trajectory.joint_names):
+                if index >= len(point.positions):
+                    continue
+                if name == "updown":
+                    updown = float(point.positions[index])
+                elif name in joint_map:
+                    joint_map[name] = float(point.positions[index])
+            stamp = float(point.time_from_start.sec) + float(point.time_from_start.nanosec) * 1e-9
+            raw_samples.append(
+                MotionSample(
+                    time_s=max(0.001, stamp),
+                    joints=dict(joint_map),
+                    updown_m=updown,
+                    context={"stage": "recapture/planned", "updown": updown},
+                )
+            )
+        if len(raw_samples) < 2:
+            raise RuntimeError("重拍位规划成功但轨迹为空")
+        samples = retime_segment(
+            raw_samples,
+            EXECUTION_JOINT_NAMES,
+            rate_hz=self.rate_hz,
+            max_joint_speed_deg_s=self.max_joint_speed_deg_s,
+            max_joint_acceleration_deg_s2=self.max_joint_acceleration_deg_s2,
+            max_updown_speed_m_s=self.max_updown_speed_m_s,
+            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
+            speed_scale=self.speed_scale,
+        )
+        return samples, {
+            "wall_ms": wall_ms,
+            "ik_ms": float(response.ik_time_ms),
+            "planning_ms": float(response.planning_time_ms),
+            "selected_updown": float(response.selected_updown),
+            "message": response.message,
+        }
+
+    def compute(
+        self,
+        task: PlanningTask,
+        *,
+        initial_sample: MotionSample | None = None,
+    ) -> ExecutionPlan:
         if self._planner_process is None or self._planner_process.poll() is not None:
             raise RuntimeError(
                 f"planner 长驻进程已退出; {self._log_tail(self.session_log)}"
@@ -309,6 +415,8 @@ class PlannerAdapter:
             right_target,
             runtime_config=runtime_config,
             strategy=getattr(task, "strategy", None),
+            start_joint_positions=(initial_sample.joints if initial_sample is not None else None),
+            start_updown=(initial_sample.updown_m if initial_sample is not None else None),
         )
         if not configure_ok:
             planner_wall_ms = (time.monotonic() - started) * 1000.0
@@ -358,8 +466,12 @@ class PlannerAdapter:
 
         raw_samples = self.execution_helpers.trajectory_from_snapshot_preserve_timing(
             snapshot,
-            initial=self.execution_helpers.loaded_joint_map(0),
-            initial_updown=0.3,
+            initial=(
+                dict(initial_sample.joints)
+                if initial_sample is not None
+                else self.execution_helpers.loaded_joint_map(0)
+            ),
+            initial_updown=(initial_sample.updown_m if initial_sample is not None else 0.3),
             hz=self.rate_hz / self.speed_scale,
             max_joint_speed_deg_s=self.max_joint_speed_deg_s,
             max_updown_speed_m_s=self.max_updown_speed_m_s,
@@ -414,6 +526,7 @@ class PlannerAdapter:
         if self._service_client is not None:
             self._service_client.close()
             self._service_client = None
+        self._recapture_client = None
         process = self._planner_process
         self._planner_process = None
         if process is None or process.poll() is not None:

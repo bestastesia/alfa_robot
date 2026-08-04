@@ -1,139 +1,95 @@
 # Motion 域 Docker 开发联调
 
-## 1. 目标与边界
+## 1. 职责边界
 
-本版只验证一条最小闭环：外部客户端发送五域规范的 M-02/M-03，Motion 容器长驻计算并通过 M-04/M-05 控制已独立 READY 的 rt-control。
+Motion 只负责：接收运动阶段、计算/缓存计划、下发完整十四轴轨迹、发布阶段结果和就绪状态。
 
-权威定义只引用：
+Motion 不负责：打开/关闭电磁阀、控制真空泵、判定真空阈值、启动或使能 rt-control。上述吸附流程由 Autonomy 编排 RT-Control。
 
-- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_system_docs/拆垛机器人五域接口规范/02-Motion域接口规范.md`
-- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_system_docs/拆垛机器人五域接口规范/04-RT-Control域接口规范.md`
-- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_system_docs/rt_control/03-rt-control一键启动说明.md`
-
-Motion 不启动、使能、复位或停止 rt-control，不直接访问 EtherCAT/CANopen 设备。
-
-## 2. 系统形态
+## 2. 数据流
 
 ```text
-手工任务客户端（仅测试）
+Autonomy/测试客户端
         |
-        | M-02 / M-03（五域合同）
+        | /motion/execute_stage
         v
 Motion 域服务
-  - 任务校验、去重放、串行仲裁
-  - 长驻 Planner 和动态 PlanningScene
-  - 分段执行抓取、抽离、转运、释放、撤离
+  - 阶段顺序校验
+  - 长驻 Planner / PlanningScene
+  - 轨迹生成与执行
         |
-        | M-04 / M-05（五域合同）
+        | /dual_arm_jtc/follow_joint_trajectory
         v
-现行 rt-control 迁移桥
-  - /whole_body_jtc/* -> /dual_arm_jtc/*
-  - /vacuum/grip -> 现行 PLC SetBool + /plc/io_state
+rt-control Docker
         |
-        v
-rt-control Docker（独立 READY）
-```
+        +---- /joint_states ----> Motion
 
-Mock 模式只把最后一层替换为本地假控制器。
+Autonomy -----------------------> RT-Control 吸附接口
+```
 
 ## 3. 对外接口
 
-| ID | ROS 名称 | 类型 | 生产者 → 消费者 |
-|---|---|---|---|
-| M-02 | `/motion/plan_and_execute_pick` | `alfa_task_interfaces/action/PlanAndExecutePick` | Autonomy/测试客户端 → Motion |
-| M-03 | `/motion/plan_and_execute_place` | `alfa_task_interfaces/action/PlanAndExecutePlace` | Autonomy/测试客户端 → Motion |
-| M-04 | `/whole_body_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → RT-Control |
-| M-05 | `/vacuum/grip` | `alfa_control_interfaces/action/VacuumGrip` | Motion → RT-Control |
-| M-06 | `/motion/readiness` | `alfa_system_interfaces/msg/DomainReadiness` | Motion → Autonomy/观测工具 |
+| ROS 名称 | 类型 | 生产者 → 消费者 |
+|---|---|---|
+| `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
+| `/motion/readiness` | `alfa_motion_interfaces/msg/MotionReadiness` | Motion → Autonomy/观测工具 |
+| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → RT-Control |
+| `/joint_states` | `sensor_msgs/msg/JointState` | RT-Control → Motion |
 
-M-02 请求的核心数据：
+阶段固定为：
 
-```text
-context: request_id + task_id + sequence_id
-targets: 恰好两个，顺序必须 LEFT、RIGHT
-  box_id + row + column + arm_id + suction_mode
-  refined_geometry:
-    body_pose(base_link, 带时间戳)
-    suction_surface_pose(base_link, 带时间戳)
-    size_m
-motion_profile_id + grip_profile_id
-expected_map_version + max_pose_age
-expected_gate_owner + expected_gate_token
-```
+1. `MOVE_TO_RECAPTURE`
+2. `MOVE_TO_PREGRASP`
+3. `APPROACH_SUCTION`
+4. `MOVE_TO_PLACE`
+5. `RETURN_INITIAL`
 
-M-03 只接受与上一次成功 M-02 同 `task_id + sequence_id + 箱体集合 + 顺序` 的请求，放置位由 Motion 版本化配置决定，上层不传坐标。
+`MOVE_TO_PREGRASP` 必须提供左右箱体正面中心 `base_link` 位姿；算法内部判断箱体排数、吸附方式和抽离策略。后续阶段必须使用同一 `task_id` 且严格按顺序调用。吸附和释放的确认不混入 Motion Action，由 Autonomy 在阶段之间等待 RT-Control 回执。
 
-M-04 每个 Goal 必须包含完整 14 轴，禁止 partial goal。M-02/M-03 同一时刻只执行一个，失败或通信未知时不自动重放。
+### 阶段语义
 
-## 4. 现行 rt-control 适配
+| 阶段 | Motion 执行内容 | 完成后的外部动作 |
+|---|---|---|
+| `MOVE_TO_RECAPTURE` | 从当前状态运动到第一批左右重拍末端 6D 位姿 | Autonomy 触发感知精定位 |
+| `MOVE_TO_PREGRASP` | 根据左右正面中心 6D 位姿计算完整计划，并执行到预抓取位 | Autonomy 请求下一阶段 |
+| `APPROACH_SUCTION` | 从预抓取位沿接触方向靠近吸附位；Motion 不打开气路 | Autonomy 命令 RT-Control 打开吸附通路并等待真空条件 |
+| `MOVE_TO_PLACE` | 执行抽离、负重过渡、预放置和放置轨迹；Motion 不关闭气路 | Autonomy 命令 RT-Control 释放并等待释放条件 |
+| `RETURN_INITIAL` | 从放置位返回初始/负重待机位并清除本任务计划 | Autonomy 进入下一任务或结束 |
 
-工控机已部署 wire 与五域目标 wire 尚不一致，因此容器内暂时启动 `current_rt_control_adapter`：
+### Action 数据合同
 
-| 五域目标 | 现行 rt-control |
-|---|---|
-| `/whole_body_jtc/follow_joint_trajectory` | `/dual_arm_jtc/follow_joint_trajectory` |
-| `/vacuum/grip` | `/plc/left_solenoid`、`/plc/right_solenoid`、`/plc/vacuum_pump` |
-| M-05 真空验证 | `/plc/io_state` 的 `*_vacuum_established` |
+- Goal 公共字段：`MotionTaskContext(request_id, task_id, sequence_id)` 和 `stage`。
+- 一次任务分两次发送左右目标对，并保持同一 `task_id`：`MOVE_TO_RECAPTURE` 发送左右重拍末端 6D 位姿，`MOVE_TO_PREGRASP` 发送左右精定位箱体正面中心 6D 位姿。
+- 两个阶段都使用 `left_target`、`right_target`，类型为 `MotionPoseTarget`；`pose` 必须是 `PoseStamped(base_link)`，`grasp_mode` 可取 `NO_MOVE`、`SIDE_SUCTION`、`TOP_SUCTION`。本版仅校验该字段，暂不改变既有策略。
+- 第二次完整规划必须使用第一次重拍执行后的真实 `/joint_states` 作为起点，禁止回退为固定负重位。
+- Goal 不包含箱号、排号、预计算策略、PLC 指令或 `execute/dry_run` 开关；每个 6D 目标携带的 `grasp_mode` 仅作为正式接口字段保留。
+- Result 返回阶段成功、计划 ID、规划/执行耗时和 `MotionErrorInfo`；阶段真正完成后才返回 ROS Action `SUCCEEDED`。
+- Feedback 只报告当前阶段、内部状态和进度，不作为吸附、释放或安全判据。
+- `dry_run` 是 Motion 进程级测试配置，不能由单个任务临时切换。
 
-该桥只是迁移层。它无法代替规范要求的新鲜原始表压 `<= -50 kPa` 验证，不能作为五域生产验收证据。
+`/motion/readiness` 使用 `MotionReadiness`，只发布 Motion 是否可接收任务、当前状态和模型/标定/接口版本摘要；它不代替 Action Result 或 RT-Control 安全状态。
 
-## 5. Docker 开发模式
+## 4. 接口包
 
-- 基础镜像只含 ROS 2 Humble、MoveIt 和构建依赖。
-- 源码只读挂载到 `/repo`。
-- `build/install/log` 放在 `docker/motion/.workspace`，不污染源码树。
-- 容器启动时使用 Release `-O3` 增量构建，适合频繁修改源码。
-- `network_mode: host`，实机使用 `ROS_DOMAIN_ID=42`。
-- Fast DDS 仅使用 UDPv4，不使用 root 容器与宿主普通用户之间曾出现权限不一致的 SHM。
+- `alfa_motion_interfaces`：只保存 Motion 对外公开的阶段 Action、任务上下文、错误和就绪状态。
+- `robot_motion_interfaces`：当前仓库内部规划服务合同，尚未完成去 ROS 化，不能作为五域公共接口。
 
-详细命令见 `docker/motion/README.md`。
+Motion 不再维护 `alfa_system_interfaces`、`alfa_control_interfaces` 或 `robot_interfaces` 的副本。
 
-## 6. 启动与联调
+## 5. Docker
 
-本机 Mock：
+- ROS 2 Humble + MoveIt 基础镜像。
+- 源码只读挂载 `/repo`。
+- Release 构建产物写入 `docker/motion/.workspace`。
+- 实机使用 `ROS_DOMAIN_ID=42`、host network、Fast DDS UDPv4。
+- Motion 不启动、使能、复位或停止 rt-control。
 
-```bash
-tools/motion_domain_docker.sh build
-tools/motion_domain_docker.sh start-mock
-tools/motion_domain_docker.sh status
-tools/motion_domain_docker.sh task \
-  --left-box-id 1 --right-box-id 3 \
-  --left-mode front --right-mode front \
-  --left 0.90 0.40 1.60 3.1415926 -1.5707963 0.0 \
-  --right 0.90 -0.40 1.60 3.1415926 -1.5707963 0.0 \
-  --yes-execute
-tools/motion_domain_docker.sh stop
-```
+启动命令与 Mock 示例见 `docker/motion/README.md`。
 
-工控机实机：
+## 6. 未完成项
 
-```bash
-cd ~/rt-control-current
-./tools/rt_control_ipc.sh
-# 看到 READY 后，在 Motion 仓库执行：
-MOTION_HARDWARE_CONFIRM=ENABLE_MOTION_HARDWARE \
-  tools/motion_domain_docker.sh start-external
-```
-
-然后使用额外终端运行测试客户端。它可以传入 A1..B5 仅作测试夹具，也可直接传入左右 `base_link` 下的 6D 吸附位姿。任务编号不会进入 Motion 对外算法接口。
-
-## 7. 首版未完成项
-
-- M-01 相机视角运动。
-- N-03 Gate、SafetyState、RobotModelInfo、CalibrationInfo 准入。
-- M-07 底盘行驶准备状态。
-- 生产级 Motion 唯一事实源与完整启动状态机。
-- M-04/M-05 在通信失联、取消和不可逆边界上的全量故障注入。
-- 统一 interfaces 仓库。当前 `alfa_*_interfaces` 是权威 Markdown 的首版 IDL 快照，必须在全域同批替换，禁止新旧主版本混跑。
-
-`allow_partial_domain_test=true` 是明确的开发绕过，只保证本文所述的最小闭环，不得标记为五域 Demo 验收通过。
-
-## 8. 已验证基线
-
-- 容器内 Release 增量构建：13 个依赖包约 2 s。
-- Planner 长驻会话启动：约 6.7 s，启动后任务复用同一会话。
-- Mock 闭环：直接 6D 双箱 M-02/M-03 完整成功，覆盖接近、吸附、抽离、转运、释放和撤离。
-- 线路语义：M-03 RELEASE 后左右电磁阀关闭，真空泵保持开启。
-- 合同回归：20 项测试通过。
-
-容器必须显式使用容器工作区的 `install/setup.bash`，不得二次加载只读挂载的宿主 `ros2_ws/install`，否则会混用两套 MoveIt ABI。
+- `grasp_mode` 对算法策略的正式驱动逻辑；当前只校验和透传该字段。
+- Gate、SafetyState、模型版本和标定版本准入。
+- 生产级故障恢复、任务取消和通信未知状态验收。
+- 将 `robot_motion_interfaces` 的内部服务图进一步收回进程内算法接口。
+- 外部五域规范仍保留旧 M-01/M-02/M-03 与 Motion 控真空描述，需要由整机架构文档同步到本阶段合同。

@@ -59,17 +59,15 @@ case "${MOTION_ROLE:-server}" in
     exec bash "$@"
     ;;
   server)
-    adapter_pid=""
     mock_pid=""
     server_pid=""
     cleanup() {
       trap - EXIT INT TERM
-      [[ -z "${adapter_pid}" ]] || kill -INT "${adapter_pid}" 2>/dev/null || true
       [[ -z "${mock_pid}" ]] || kill -INT "${mock_pid}" 2>/dev/null || true
       [[ -z "${server_pid}" ]] || kill -INT "${server_pid}" 2>/dev/null || true
       for _ in $(seq 1 50); do
         running=false
-        for pid in "${adapter_pid}" "${mock_pid}" "${server_pid}"; do
+        for pid in "${mock_pid}" "${server_pid}"; do
           if [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null; then
             running=true
           fi
@@ -77,7 +75,7 @@ case "${MOTION_ROLE:-server}" in
         [[ "${running}" == "true" ]] || break
         sleep 0.1
       done
-      for pid in "${adapter_pid}" "${mock_pid}" "${server_pid}"; do
+      for pid in "${mock_pid}" "${server_pid}"; do
         [[ -z "${pid}" ]] || kill -KILL "${pid}" 2>/dev/null || true
       done
       wait 2>/dev/null || true
@@ -89,8 +87,6 @@ case "${MOTION_ROLE:-server}" in
         -p execution_time_scale:="${MOTION_MOCK_TIME_SCALE:-0.0}" &
       mock_pid=$!
     fi
-    ros2 run armmotion_demo current_rt_control_adapter &
-    adapter_pid=$!
     dry_run="${MOTION_DRY_RUN:-true}"
     ros2 run armmotion_demo domain_motion_server --ros-args \
       -p dry_run:="${dry_run}" \

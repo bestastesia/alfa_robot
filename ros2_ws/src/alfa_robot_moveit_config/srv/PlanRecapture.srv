@@ -1,0 +1,12 @@
+geometry_msgs/PoseStamped left_target
+geometry_msgs/PoseStamped right_target
+sensor_msgs/JointState start_state
+float64 preferred_updown
+---
+bool success
+string message
+sensor_msgs/JointState selected_state
+trajectory_msgs/JointTrajectory trajectory
+float64 selected_updown
+float64 ik_time_ms
+float64 planning_time_ms

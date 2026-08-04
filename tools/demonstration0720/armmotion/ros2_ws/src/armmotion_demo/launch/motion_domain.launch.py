@@ -23,11 +23,6 @@ def generate_launch_description():
             ),
             Node(
                 package="armmotion_demo",
-                executable="current_rt_control_adapter",
-                output="screen",
-            ),
-            Node(
-                package="armmotion_demo",
                 executable="domain_motion_server",
                 output="screen",
                 parameters=[

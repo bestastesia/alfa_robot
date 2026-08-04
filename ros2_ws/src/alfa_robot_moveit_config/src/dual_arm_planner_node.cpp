@@ -46,6 +46,7 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include "alfa_robot_moveit_config/srv/configure_extract_monitor.hpp"
+#include "alfa_robot_moveit_config/srv/plan_recapture.hpp"
 
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/buffer.h>
@@ -852,14 +853,23 @@ public:
         response->message = ok ? message : (message.empty() ? last_error_ : message);
       });
 
+    recapture_plan_srv_ = create_service<alfa_robot_moveit_config::srv::PlanRecapture>(
+      "~/plan_recapture",
+      [this](
+        const std::shared_ptr<alfa_robot_moveit_config::srv::PlanRecapture::Request> request,
+        std::shared_ptr<alfa_robot_moveit_config::srv::PlanRecapture::Response> response) {
+        std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
+        plan_recapture(*request, response.get());
+      });
+
     RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
     RCLCPP_INFO(get_logger(), "  group=%s execute=%s backend=%s box_front_x=%.3f max_rounds=%d include_top=%s",
                 planning_group_.c_str(), execute_ ? "true" : "false", execution_backend_.c_str(),
                 box_front_x_, max_rounds_,
                 include_top_suction_ ? "true" : "false");
     RCLCPP_INFO(get_logger(),
-                "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected",
-                get_name(), get_name(), get_name(), get_name(), get_name());
+                "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected, /%s/plan_recapture",
+                get_name(), get_name(), get_name(), get_name(), get_name(), get_name());
     RCLCPP_INFO(get_logger(),
                 "  IK strategy=analytic_three_parallel_fixed_h h=%zu root_samples=%zu collision=%s",
                 ik_config_.h_candidate_count, ik_analytic_root_samples_,
@@ -4916,6 +4926,165 @@ private:
       message);
   }
 
+  moveit::core::RobotStatePtr robot_state_from_joint_state_message(
+    const sensor_msgs::msg::JointState& message,
+    std::string* reason) const
+  {
+    if (!robot_model_) {
+      if (reason) *reason = "robot model is not initialized";
+      return nullptr;
+    }
+    if (message.name.size() != message.position.size()) {
+      if (reason) *reason = "start_state name/position length mismatch";
+      return nullptr;
+    }
+    auto state = std::make_shared<moveit::core::RobotState>(robot_model_);
+    state->setToDefaultValues();
+    std::unordered_set<std::string> assigned;
+    for (size_t index = 0; index < message.name.size(); ++index) {
+      const auto& name = message.name[index];
+      if (!is_robot_variable(name) || !std::isfinite(message.position[index])) {
+        continue;
+      }
+      state->setVariablePosition(name, message.position[index]);
+      assigned.insert(name);
+    }
+    for (const auto& name : dual_arm_with_updown_joint_names()) {
+      if (assigned.find(name) == assigned.end()) {
+        if (reason) *reason = "start_state missing joint " + name;
+        return nullptr;
+      }
+    }
+    state->update(true);
+    const std::string bounds = group_bounds_reason(*state, joint_group_);
+    if (!bounds.empty()) {
+      if (reason) *reason = "start_state out of bounds (" + bounds + ")";
+      return nullptr;
+    }
+    return state;
+  }
+
+  bool plan_recapture(
+    const alfa_robot_moveit_config::srv::PlanRecapture::Request& request,
+    alfa_robot_moveit_config::srv::PlanRecapture::Response* response)
+  {
+    if (!response) return false;
+    const auto started = std::chrono::steady_clock::now();
+    response->success = false;
+    const auto valid_frame = [](const geometry_msgs::msg::PoseStamped& target) {
+      return target.header.frame_id == "base_link";
+    };
+    if (!valid_frame(request.left_target) || !valid_frame(request.right_target)) {
+      response->message = "recapture target frame must be base_link";
+      return false;
+    }
+    std::string start_reason;
+    auto start_state = robot_state_from_joint_state_message(request.start_state, &start_reason);
+    if (!start_state) {
+      response->message = start_reason;
+      return false;
+    }
+    if (!ensure_optimized_ik_solver()) {
+      response->message = "optimized IK solver is not initialized";
+      return false;
+    }
+
+    moveit::core::RobotState ik_seed(*start_state);
+    const double preferred_updown = std::isfinite(request.preferred_updown)
+      ? request.preferred_updown
+      : current_updown(*start_state);
+    ik_seed.setVariablePosition("updown", preferred_updown);
+    ik_seed.enforceBounds(joint_group_);
+    ik_seed.update(true);
+    const auto solved = optimized_dual_ik_solver_->solve(
+      OptimizedDualIkSolveRequest{
+        "recapture",
+        request.left_target.pose,
+        request.right_target.pose,
+        false,
+        &ik_seed,
+        false,
+        false,
+        true},
+      "recapture_pose_pair");
+    response->ik_time_ms = solved.ik_result.wall_ms;
+    if (!solved.ik_result.success) {
+      response->message = solved.failure_reason;
+      return false;
+    }
+
+    std::vector<const robot_motion::core::UpdownAwareIkCandidate*> candidates;
+    for (const auto& candidate : solved.ik_result.candidates) {
+      if (candidate.legal) candidates.push_back(&candidate);
+    }
+    std::sort(
+      candidates.begin(), candidates.end(),
+      [preferred_updown](const auto* lhs, const auto* rhs) {
+        const double lhs_h = std::abs(lhs->h - preferred_updown);
+        const double rhs_h = std::abs(rhs->h - preferred_updown);
+        if (lhs_h != rhs_h) return lhs_h < rhs_h;
+        if (lhs->joint_delta != rhs->joint_delta) return lhs->joint_delta < rhs->joint_delta;
+        if (lhs->joint_limit_margin_cost != rhs->joint_limit_margin_cost) {
+          return lhs->joint_limit_margin_cost < rhs->joint_limit_margin_cost;
+        }
+        return lhs->score < rhs->score;
+      });
+
+    std::map<std::string, size_t> rejection_counts;
+    for (const auto* candidate : candidates) {
+      moveit::core::RobotState goal_state = robot_state_from_ik_candidate(
+        *start_state, *candidate, joint_group_);
+      auto scene = make_full_scene_snapshot(*start_state, {});
+      std::string goal_reason;
+      if (!scene || !state_clear_in_full_scene(scene, goal_state, {}, &goal_reason)) {
+        rejection_counts[goal_reason.empty() ? "goal_state_collision" : goal_reason]++;
+        continue;
+      }
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      std::string planning_reason;
+      if (!plan_joint_space_with_direct_pipeline(
+          *start_state,
+          goal_state,
+          &plan,
+          &planning_reason,
+          {},
+          extract_loaded_planning_group_)) {
+        rejection_counts[planning_reason.empty() ? "planning_failed" : planning_reason]++;
+        continue;
+      }
+      std::string trajectory_reason;
+      if (!planned_trajectory_clear_in_full_scene(
+          plan, *start_state, {}, &trajectory_reason)) {
+        rejection_counts[trajectory_reason.empty() ? "trajectory_collision" : trajectory_reason]++;
+        continue;
+      }
+
+      response->selected_state.name = dual_arm_with_updown_joint_names();
+      response->selected_state.position.reserve(response->selected_state.name.size());
+      for (const auto& name : response->selected_state.name) {
+        response->selected_state.position.push_back(goal_state.getVariablePosition(name));
+      }
+      response->trajectory = plan.trajectory_.joint_trajectory;
+      response->selected_updown = candidate->h;
+      response->planning_time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() - response->ik_time_ms;
+      response->success = true;
+      response->message = "recapture planned at updown=" + std::to_string(candidate->h) +
+        " candidates=" + std::to_string(candidates.size());
+      return true;
+    }
+
+    std::ostringstream failure;
+    failure << "no collision-free recapture trajectory among " << candidates.size() << " IK candidates";
+    for (const auto& [reason, count] : rejection_counts) {
+      failure << "; " << reason << "=" << count;
+    }
+    response->message = failure.str();
+    response->planning_time_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - started).count() - response->ik_time_ms;
+    return false;
+  }
+
   bool configure_extract_monitor_task(
     const alfa_robot_moveit_config::srv::ConfigureExtractMonitor::Request& request,
     std::string* message)
@@ -4988,6 +5157,16 @@ private:
     extract_monitor_left_top_suction_ = request.left_top_suction;
     extract_monitor_right_top_suction_ = request.right_top_suction;
     extract_monitor_use_explicit_targets_ = request.use_explicit_targets;
+    extract_monitor_configured_start_state_.reset();
+    if (request.use_explicit_start_state) {
+      std::string start_reason;
+      extract_monitor_configured_start_state_ =
+        robot_state_from_joint_state_message(request.start_state, &start_reason);
+      if (!extract_monitor_configured_start_state_) {
+        if (message) *message = start_reason;
+        return fail("configure extract monitor: invalid explicit start state (" + start_reason + ")");
+      }
+    }
     extract_monitor_left_source_box_.reset();
     extract_monitor_right_source_box_.reset();
     if (extract_monitor_use_explicit_targets_) {
@@ -5207,6 +5386,10 @@ private:
         joint_group_,
         ExtractMonitorArmSeed{left_pregrasp_arm_, right_pregrasp_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_},
         ExtractMonitorArmSeed{left_loaded_arm_, right_loaded_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_}});
+    if (extract_monitor_configured_start_state_) {
+      extract_monitor_state_.loaded_start_state =
+        std::make_shared<moveit::core::RobotState>(*extract_monitor_configured_start_state_);
+    }
 
     moveit::core::RobotState selected_state(*extract_monitor_state_.seed_state);
     nlohmann::json ik_extra;
@@ -6820,6 +7003,7 @@ private:
 
   ExtractMonitorController extract_monitor_controller_;
   ExtractMonitorState extract_monitor_state_;
+  moveit::core::RobotStatePtr extract_monitor_configured_start_state_;
   std::mutex extract_monitor_mutex_;
   double extract_monitor_last_stage_ms_ = 0.0;
   mutable std::atomic<uint64_t> extract_collision_check_count_{0};
@@ -6836,6 +7020,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_next_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
   rclcpp::Service<alfa_robot_moveit_config::srv::ConfigureExtractMonitor>::SharedPtr extract_monitor_config_srv_;
+  rclcpp::Service<alfa_robot_moveit_config::srv::PlanRecapture>::SharedPtr recapture_plan_srv_;
   rclcpp_action::Client<FollowJointTrajectory>::SharedPtr execution_action_client_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;

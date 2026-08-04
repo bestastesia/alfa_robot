@@ -1,0 +1,20 @@
+uint8 MOVE_TO_RECAPTURE=1
+uint8 MOVE_TO_PREGRASP=2
+uint8 APPROACH_SUCTION=3
+uint8 MOVE_TO_PLACE=4
+uint8 RETURN_INITIAL=5
+
+alfa_motion_interfaces/MotionTaskContext context
+uint8 stage
+alfa_motion_interfaces/MotionPoseTarget left_target
+alfa_motion_interfaces/MotionPoseTarget right_target
+---
+bool success
+string plan_id
+float64 planning_time_s
+float64 execution_time_s
+alfa_motion_interfaces/MotionErrorInfo error
+---
+uint8 stage
+string state
+float32 progress_0_to_1

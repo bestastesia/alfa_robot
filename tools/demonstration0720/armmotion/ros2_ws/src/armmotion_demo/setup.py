@@ -24,7 +24,6 @@ setup(
     entry_points={
         "console_scripts": [
             "algorithm_thread = armmotion_demo.algorithm_thread:main",
-            "current_rt_control_adapter = armmotion_demo.current_rt_control_adapter:main",
             "controller_interpolated_rerun = armmotion_demo.controller_interpolated_rerun:main",
             "domain_motion_server = armmotion_demo.domain_motion_server:main",
             "manual_domain_task = armmotion_demo.manual_domain_task:main",

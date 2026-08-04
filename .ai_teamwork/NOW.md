@@ -13,7 +13,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 ## 当前推进重点
 
 - 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同。
-- 正式任务输入只包含 `request_id`、左右正面中心 `pose_6d` 和 `execute`；算法内部按高度容差识别排数、吸附方式和抽离策略，禁止从箱号或外部吸附模式获取帮助。
+- Motion 五域联调入口正在收口为单一 `/motion/execute_stage` 阶段 Action；正式入口只规划和执行轨迹，吸附通路由 Autonomy 编排 RT-Control。
+- 正式阶段输入包含任务上下文、阶段号和一对左右 `base_link` 6D 目标；同一任务先发送重拍目标对，再发送精定位抓取目标对。每个目标携带 `NO_MOVE/SIDE_SUCTION/TOP_SUCTION` 模式字段，本版只校验该字段，既有策略仍由位姿分类逻辑决定。
 - 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
 - 当前任务表只保留未完成/需确认事项：T-0030/T-0031/T-0032/T-0037。
 - 已完成/已同步 Linear 的长过程已归档到 `.ai_teamwork/archive/2026-05-18_v5_dev_collaboration_cleanup/`。
@@ -32,7 +33,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前主要模块速查
 
-- 接口契约：`ros2_ws/src/robot_motion_interfaces/`
+- Motion 公开阶段契约：`ros2_ws/src/alfa_motion_interfaces/`
+- 仓库内部规划服务契约：`ros2_ws/src/robot_motion_interfaces/`
 - 纯算法公共核心：`ros2_ws/src/robot_motion_core/`
 - 核心运行时：`ros2_ws/src/robot_motion_runtime/`
 - 场景能力：`ros2_ws/src/robot_motion_scene_service/`

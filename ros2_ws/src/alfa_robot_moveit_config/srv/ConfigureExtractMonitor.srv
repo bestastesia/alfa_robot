@@ -13,6 +13,8 @@ float64 scene_y_shift
 string extract_rollout_mode
 bool loaded_lateral_shift_enabled
 int32 extract_box_pose_rrt_max_iterations
+bool use_explicit_start_state
+sensor_msgs/JointState start_state
 ---
 bool success
 string message

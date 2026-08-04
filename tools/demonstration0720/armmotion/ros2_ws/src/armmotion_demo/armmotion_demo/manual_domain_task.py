@@ -8,21 +8,20 @@ import uuid
 
 import rclpy
 from action_msgs.msg import GoalStatus
-from alfa_task_interfaces.action import PlanAndExecutePick, PlanAndExecutePlace
-from alfa_task_interfaces.msg import BoxGeometry, PickTarget, PlaceTarget
+from alfa_motion_interfaces.action import ExecuteMotionStage
+from alfa_motion_interfaces.msg import MotionPoseTarget
+from geometry_msgs.msg import PoseStamped
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
-from .common import TASK_LAYOUTS, parse_task_code
-
-
-WORLD_TO_BASE_Z_M = 0.202094
-BOX_SIZE_M = (0.3, 0.4, 0.4)
-FRONT_ORIENTATION_XYZW = (0.70710678, 0.0, 0.70710678, 0.0)
-TOP_ORIENTATION_XYZW = (1.0, 0.0, 0.0, 0.0)
-LAYOUT_Y_SHIFT_M = {"A": 0.05, "B": 0.0}
+from .common import (
+    Pose6DValue,
+    front_face_poses_for_task,
+    parse_task_code,
+    pose6d_from_dict,
+)
 
 
 def _wait_future(future, timeout_s: float, label: str):
@@ -49,18 +48,38 @@ def _quaternion_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, 
     )
 
 
+def _pose_stamped(value: Pose6DValue, stamp) -> PoseStamped:
+    message = PoseStamped()
+    message.header.frame_id = "base_link"
+    message.header.stamp = stamp
+    message.pose.position.x = value.x
+    message.pose.position.y = value.y
+    message.pose.position.z = value.z
+    quaternion = _quaternion_from_rpy(value.roll, value.pitch, value.yaw)
+    (
+        message.pose.orientation.x,
+        message.pose.orientation.y,
+        message.pose.orientation.z,
+        message.pose.orientation.w,
+    ) = quaternion
+    return message
+
+
+TARGET_MODES = {
+    "no_move": MotionPoseTarget.NO_MOVE,
+    "front": MotionPoseTarget.SIDE_SUCTION,
+    "side_suction": MotionPoseTarget.SIDE_SUCTION,
+    "top_suction": MotionPoseTarget.TOP_SUCTION,
+}
+
+
 class ManualDomainTask(Node):
     def __init__(self) -> None:
         super().__init__("manual_motion_domain_task")
-        self.pick_client = ActionClient(
+        self.stage_client = ActionClient(
             self,
-            PlanAndExecutePick,
-            "/motion/plan_and_execute_pick",
-        )
-        self.place_client = ActionClient(
-            self,
-            PlanAndExecutePlace,
-            "/motion/plan_and_execute_place",
+            ExecuteMotionStage,
+            "/motion/execute_stage",
         )
         self.initialize_client = self.create_client(
             Trigger,
@@ -79,177 +98,44 @@ class ManualDomainTask(Node):
             raise RuntimeError("初始化失败: " + ("无响应" if response is None else response.message))
         print(response.message, flush=True)
 
-    @staticmethod
-    def _geometry(box_id: int, row: int, column: int, distance: float, layout: str, mode: str, stamp) -> BoxGeometry:
-        geometry = BoxGeometry()
-        y_shift = LAYOUT_Y_SHIFT_M[layout]
-        box_y = (2 - column) * BOX_SIZE_M[1] + y_shift
-        box_z_world = (5 - row + 0.5) * BOX_SIZE_M[2]
-        box_z_base = box_z_world - WORLD_TO_BASE_Z_M
-        geometry.body_pose.header.stamp = stamp
-        geometry.body_pose.header.frame_id = "base_link"
-        geometry.body_pose.pose.pose.position.x = distance
-        geometry.body_pose.pose.pose.position.y = box_y
-        geometry.body_pose.pose.pose.position.z = box_z_base
-        geometry.body_pose.pose.pose.orientation.w = 1.0
-        geometry.suction_surface_pose.header.stamp = stamp
-        geometry.suction_surface_pose.header.frame_id = "base_link"
-        pose = geometry.suction_surface_pose.pose.pose
-        if mode == "top_suction":
-            pose.position.x = distance + 0.15
-            pose.position.z = box_z_base + 0.20
-            orientation = TOP_ORIENTATION_XYZW
-        else:
-            pose.position.x = distance
-            pose.position.z = box_z_base
-            orientation = FRONT_ORIENTATION_XYZW
-        pose.position.y = box_y
-        pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w = orientation
-        geometry.size_m.x, geometry.size_m.y, geometry.size_m.z = BOX_SIZE_M
-        geometry.size_valid = [True, True, True]
-        geometry.size_source = [1, 1, 1]
-        return geometry
-
-    @staticmethod
-    def _geometry_from_suction_pose(
-        pose_6d: list[float],
-        mode: str,
-        stamp,
-    ) -> BoxGeometry:
-        x, y, z, roll, pitch, yaw = pose_6d
-        orientation = _quaternion_from_rpy(roll, pitch, yaw)
-        geometry = BoxGeometry()
-        geometry.suction_surface_pose.header.stamp = stamp
-        geometry.suction_surface_pose.header.frame_id = "base_link"
-        suction_pose = geometry.suction_surface_pose.pose.pose
-        suction_pose.position.x = x
-        suction_pose.position.y = y
-        suction_pose.position.z = z
-        (
-            suction_pose.orientation.x,
-            suction_pose.orientation.y,
-            suction_pose.orientation.z,
-            suction_pose.orientation.w,
-        ) = orientation
-
-        geometry.body_pose.header.stamp = stamp
-        geometry.body_pose.header.frame_id = "base_link"
-        body_pose = geometry.body_pose.pose.pose
-        body_pose.position.x = x - (0.15 if mode == "top_suction" else 0.0)
-        body_pose.position.y = y
-        body_pose.position.z = z - (0.20 if mode == "top_suction" else 0.0)
-        body_pose.orientation.w = 1.0
-        geometry.size_m.x, geometry.size_m.y, geometry.size_m.z = BOX_SIZE_M
-        geometry.size_valid = [True, True, True]
-        geometry.size_source = [1, 1, 1]
-        return geometry
-
-    @staticmethod
-    def _base_pick_goal(request_id: str, sequence_id: int):
-        goal = PlanAndExecutePick.Goal()
+    def make_goal(
+        self,
+        *,
+        request_id: str,
+        task_id: str,
+        sequence_id: int,
+        stage: int,
+        left: Pose6DValue | None = None,
+        right: Pose6DValue | None = None,
+        left_mode: str = "no_move",
+        right_mode: str = "no_move",
+    ):
+        goal = ExecuteMotionStage.Goal()
         goal.context.request_id = request_id
-        goal.context.task_id = request_id
-        goal.context.sequence_id = sequence_id
-        goal.motion_profile_id = "motion_demo_current"
-        goal.grip_profile_id = "current_plc_default"
-        goal.expected_map_version = "manual_box_stack"
-        goal.max_pose_age.sec = 10
+        goal.context.task_id = task_id
+        goal.context.sequence_id = int(sequence_id)
+        goal.stage = int(stage)
+        if left is not None and right is not None:
+            stamp = self.get_clock().now().to_msg()
+            goal.left_target.pose = _pose_stamped(left, stamp)
+            goal.right_target.pose = _pose_stamped(right, stamp)
+            goal.left_target.grasp_mode = TARGET_MODES[left_mode]
+            goal.right_target.grasp_mode = TARGET_MODES[right_mode]
         return goal
 
-    def make_pick_goal(self, task_code: str, front: float, top: float, request_id: str):
-        task = parse_task_code(task_code, front, top)
-        mode = task.grasp_family
-        distance = task.effective_distance_m
-        stamp = self.get_clock().now().to_msg()
-        goal = self._base_pick_goal(request_id, task.index)
-        for box_id, arm_id in (
-            (task.left_box_id, PickTarget.ARM_LEFT),
-            (task.right_box_id, PickTarget.ARM_RIGHT),
-        ):
-            target = PickTarget()
-            target.box_id = box_id
-            target.row = (box_id - 1) // 3 + 1
-            target.column = (box_id - 1) % 3 + 1
-            target.arm_id = arm_id
-            target.suction_mode = mode
-            target.refined_geometry = self._geometry(
-                box_id,
-                target.row,
-                target.column,
-                distance,
-                task.layout,
-                mode,
-                stamp,
-            )
-            goal.targets.append(target)
-        return task, goal
-
-    def make_direct_pick_goal(self, options, request_id: str):
-        stamp = self.get_clock().now().to_msg()
-        goal = self._base_pick_goal(request_id, options.sequence_id)
-        for pose_6d, box_id, row, column, arm_id, mode in (
-            (
-                options.left,
-                options.left_box_id,
-                options.left_row,
-                options.left_column,
-                PickTarget.ARM_LEFT,
-                options.left_mode,
-            ),
-            (
-                options.right,
-                options.right_box_id,
-                options.right_row,
-                options.right_column,
-                PickTarget.ARM_RIGHT,
-                options.right_mode,
-            ),
-        ):
-            target = PickTarget()
-            target.box_id = box_id
-            target.row = row
-            target.column = column
-            target.arm_id = arm_id
-            target.suction_mode = mode
-            target.refined_geometry = self._geometry_from_suction_pose(
-                pose_6d,
-                mode,
-                stamp,
-            )
-            goal.targets.append(target)
-        return goal
-
-    @staticmethod
-    def make_place_goal(pick_goal, request_id: str):
-        goal = PlanAndExecutePlace.Goal()
-        goal.context.request_id = request_id
-        goal.context.task_id = pick_goal.context.task_id
-        goal.context.sequence_id = pick_goal.context.sequence_id
-        goal.motion_profile_id = pick_goal.motion_profile_id
-        goal.placement_profile_id = "fixed_demo_place"
-        goal.grip_profile_id = pick_goal.grip_profile_id
-        for pick_target in pick_goal.targets:
-            target = PlaceTarget()
-            target.box_id = pick_target.box_id
-            target.row = pick_target.row
-            target.column = pick_target.column
-            target.arm_id = pick_target.arm_id
-            goal.targets.append(target)
-        return goal
-
-    def run_action(self, client, goal, label: str, timeout_s: float):
-        if not client.wait_for_server(timeout_sec=timeout_s):
-            raise RuntimeError(f"{label} Action 不可用")
+    def run_stage(self, goal, label: str, timeout_s: float):
+        if not self.stage_client.wait_for_server(timeout_sec=timeout_s):
+            raise RuntimeError("/motion/execute_stage Action 不可用")
 
         def feedback(message) -> None:
+            value = message.feedback
             print(
-                f"{label}: {message.feedback.stage} "
-                f"{100.0 * message.feedback.progress_0_to_1:.0f}%",
+                f"{label}: {value.state} {100.0 * value.progress_0_to_1:.0f}%",
                 flush=True,
             )
 
         goal_handle = _wait_future(
-            client.send_goal_async(goal, feedback_callback=feedback),
+            self.stage_client.send_goal_async(goal, feedback_callback=feedback),
             timeout_s,
             f"{label} Goal 应答",
         )
@@ -260,39 +146,63 @@ class ManualDomainTask(Node):
             raise RuntimeError(
                 f"{label} 失败 status={wrapped.status}: {wrapped.result.error.message}"
             )
+        print(
+            f"{label} 完成 planning={wrapped.result.planning_time_s:.3f}s "
+            f"execution={wrapped.result.execution_time_s:.3f}s",
+            flush=True,
+        )
         return wrapped.result
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="五域 Motion Action 手工任务发布器")
-    parser.add_argument("--task", help="测试映射 A1..A5/B1..B5，仅发布器使用")
+    parser = argparse.ArgumentParser(description="Motion 单阶段 Action 手工任务发布器")
+    parser.add_argument("--task", help="测试映射 A1..A5/B1..B5，仅测试客户端使用")
+    parser.add_argument(
+        "--recapture-left",
+        nargs=6,
+        type=float,
+        required=True,
+        metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
+        help="第一次发送的左重拍末端 base_link 6D位姿，角度单位rad",
+    )
+    parser.add_argument(
+        "--recapture-right",
+        nargs=6,
+        type=float,
+        required=True,
+        metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
+        help="第一次发送的右重拍末端 base_link 6D位姿，角度单位rad",
+    )
     parser.add_argument(
         "--left",
         nargs=6,
         type=float,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
-        help="左吸盘 base_link 下的6D吸附位姿，角度单位rad",
+        help="左箱正面中心 base_link 6D位姿，角度单位rad",
     )
     parser.add_argument(
         "--right",
         nargs=6,
         type=float,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
-        help="右吸盘 base_link 下的6D吸附位姿，角度单位rad",
+        help="右箱正面中心 base_link 6D位姿，角度单位rad",
     )
-    parser.add_argument("--left-box-id", type=int, default=1)
-    parser.add_argument("--right-box-id", type=int, default=3)
-    parser.add_argument("--left-row", type=int, default=1)
-    parser.add_argument("--right-row", type=int, default=1)
-    parser.add_argument("--left-column", type=int, default=1)
-    parser.add_argument("--right-column", type=int, default=3)
-    parser.add_argument("--left-mode", choices=("front", "top_suction"), default="front")
-    parser.add_argument("--right-mode", choices=("front", "top_suction"), default="front")
     parser.add_argument("--sequence-id", type=int, default=1)
     parser.add_argument("--front-distance", type=float, default=0.9)
     parser.add_argument("--top-distance", type=float, default=0.7)
     parser.add_argument("--initialize", action="store_true")
-    parser.add_argument("--skip-place", action="store_true")
+    for prefix, default in (
+        ("recapture-left", "no_move"),
+        ("recapture-right", "no_move"),
+        ("left", "front"),
+        ("right", "front"),
+    ):
+        parser.add_argument(
+            f"--{prefix}-mode",
+            choices=tuple(TARGET_MODES),
+            default=default,
+        )
+    parser.add_argument("--stop-after", choices=("pregrasp", "approach", "place", "return"))
     parser.add_argument("--yes-execute", action="store_true")
     parser.add_argument("--timeout", type=float, default=300.0)
     options = parser.parse_args()
@@ -308,6 +218,33 @@ def main(args=None) -> None:
     options = parse_args()
     if not options.yes_execute:
         raise SystemExit("拒绝发送：必须显式增加 --yes-execute")
+    if options.task:
+        task = parse_task_code(
+            options.task,
+            options.front_distance,
+            options.top_distance,
+        )
+        left, right = front_face_poses_for_task(task)
+        label = task.code
+    else:
+        left = pose6d_from_dict(
+            dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.left)),
+            "left",
+        )
+        right = pose6d_from_dict(
+            dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.right)),
+            "right",
+        )
+        label = "6D"
+    recapture_left = pose6d_from_dict(
+        dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.recapture_left)),
+        "recapture_left",
+    )
+    recapture_right = pose6d_from_dict(
+        dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.recapture_right)),
+        "recapture_right",
+    )
+
     rclpy.init(args=args)
     node = ManualDomainTask()
     executor = MultiThreadedExecutor(num_threads=2)
@@ -318,39 +255,62 @@ def main(args=None) -> None:
         if options.initialize:
             input("确认人员远离且 rt-control 已 READY，回车初始化到负重位：")
             node.initialize(options.timeout)
-        label = options.task.upper() if options.task else "6D"
-        request_id = f"manual-{label}-{uuid.uuid4().hex[:8]}"
-        if options.task:
-            task, pick_goal = node.make_pick_goal(
-                options.task,
-                options.front_distance,
-                options.top_distance,
-                request_id,
+        task_id = f"manual-{label}-{uuid.uuid4().hex[:8]}"
+        sequence_id = options.sequence_id
+        stages = [
+            (
+                ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE,
+                "重拍位",
+                recapture_left,
+                recapture_right,
+                options.recapture_left_mode,
+                options.recapture_right_mode,
+            ),
+            (
+                ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
+                "预抓取",
+                left,
+                right,
+                options.left_mode,
+                options.right_mode,
+            ),
+            (ExecuteMotionStage.Goal.APPROACH_SUCTION, "靠近吸附", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.MOVE_TO_PLACE, "放置", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.RETURN_INITIAL, "返回初始位", None, None, "no_move", "no_move"),
+        ]
+        stop_stage = {
+            "pregrasp": ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
+            "approach": ExecuteMotionStage.Goal.APPROACH_SUCTION,
+            "place": ExecuteMotionStage.Goal.MOVE_TO_PLACE,
+            "return": ExecuteMotionStage.Goal.RETURN_INITIAL,
+        }.get(options.stop_after)
+        for index, (
+            stage,
+            stage_label,
+            stage_left,
+            stage_right,
+            stage_left_mode,
+            stage_right_mode,
+        ) in enumerate(stages, start=1):
+            request_id = f"{task_id}-{index}"
+            print(f"发布阶段：{stage_label} request={request_id}", flush=True)
+            goal = node.make_goal(
+                request_id=request_id,
+                task_id=task_id,
+                sequence_id=sequence_id,
+                stage=stage,
+                left=stage_left,
+                right=stage_right,
+                left_mode=stage_left_mode,
+                right_mode=stage_right_mode,
             )
-            description = (
-                f"L{task.left_box_id}/R{task.right_box_id} "
-                f"mode={task.grasp_family} distance={task.effective_distance_m:.3f}m"
-            )
-        else:
-            pick_goal = node.make_direct_pick_goal(options, request_id)
-            description = (
-                f"L{options.left_box_id}/R{options.right_box_id} "
-                f"modes=({options.left_mode},{options.right_mode}) source=direct_6d"
-            )
-        print(f"发布 M-02: request={request_id} {description}", flush=True)
-        pick_result = node.run_action(node.pick_client, pick_goal, "M-02", options.timeout)
-        print(
-            f"M-02 完成 verification={pick_result.overall_verification_level}",
-            flush=True,
-        )
-        if not options.skip_place:
-            place_goal = node.make_place_goal(pick_goal, request_id + "-place")
-            print("发布 M-03", flush=True)
-            place_result = node.run_action(node.place_client, place_goal, "M-03", options.timeout)
-            print(
-                f"M-03 完成 verification={place_result.overall_verification_level}",
-                flush=True,
-            )
+            node.run_stage(goal, stage_label, options.timeout)
+            if stage == ExecuteMotionStage.Goal.APPROACH_SUCTION:
+                print("靠近完成；吸附通路与真空确认由 Autonomy/RT-Control 负责。", flush=True)
+            elif stage == ExecuteMotionStage.Goal.MOVE_TO_PLACE:
+                print("放置完成；释放通路与真空确认由 Autonomy/RT-Control 负责。", flush=True)
+            if stop_stage == stage:
+                break
     finally:
         executor.shutdown()
         spin_thread.join(timeout=2.0)

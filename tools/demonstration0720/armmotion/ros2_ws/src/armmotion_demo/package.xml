@@ -12,13 +12,10 @@
   <depend>alfa_robot_execution_bridge</depend>
   <depend>alfa_robot_rerun</depend>
   <depend>action_msgs</depend>
-  <depend>alfa_control_interfaces</depend>
-  <depend>alfa_system_interfaces</depend>
-  <depend>alfa_task_interfaces</depend>
+  <depend>alfa_motion_interfaces</depend>
   <depend>control_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>rclpy</depend>
-  <depend>robot_interfaces</depend>
   <depend>robot_motion_runtime</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
