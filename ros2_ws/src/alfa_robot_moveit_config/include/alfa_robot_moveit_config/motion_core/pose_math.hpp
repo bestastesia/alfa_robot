@@ -58,6 +58,10 @@ geometry_msgs::msg::Pose make_top_suction_pose(
 
 Eigen::Isometry3d pose_to_eigen(const geometry_msgs::msg::Pose& pose);
 
+Eigen::Isometry3d rotate_about_tool_z(
+  const Eigen::Isometry3d& pose,
+  double angle_rad);
+
 nlohmann::json pose_json(const geometry_msgs::msg::Pose& pose);
 
 nlohmann::json vector_json(const std::vector<double>& values);

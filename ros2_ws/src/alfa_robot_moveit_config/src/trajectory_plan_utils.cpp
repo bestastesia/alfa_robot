@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <unordered_set>
 
 namespace alfa_robot::motion
@@ -94,6 +95,22 @@ std::vector<double> sample_positions_at_time(
 
 }  // namespace
 
+TipFloorUpdownTarget tip_floor_updown_target(
+  double current_updown,
+  double current_min_tip_z,
+  double required_min_tip_z,
+  double min_updown,
+  double max_updown)
+{
+  TipFloorUpdownTarget result;
+  const double requested = current_updown + required_min_tip_z - current_min_tip_z;
+  result.position = std::clamp(requested, min_updown, max_updown);
+  result.resulting_min_tip_z = current_min_tip_z + result.position - current_updown;
+  result.clamped = std::abs(result.position - requested) > 1e-9;
+  result.feasible = result.resulting_min_tip_z >= required_min_tip_z - 1e-6;
+  return result;
+}
+
 moveit::planning_interface::MoveGroupInterface::Plan single_state_plan(
   const moveit::core::RobotState& state,
   const std::vector<std::string>& target_names,
@@ -117,6 +134,50 @@ moveit::planning_interface::MoveGroupInterface::Plan single_state_plan(
   moveit::planning_interface::MoveGroupInterface::Plan plan;
   plan.trajectory_.joint_trajectory = trajectory;
   return plan;
+}
+
+double nearest_equivalent_joint_position(
+  const moveit::core::RobotModelConstPtr& robot_model,
+  const std::string& joint_variable,
+  double reference_position,
+  double candidate_position)
+{
+  const auto* joint = robot_model ? robot_model->getJointOfVariable(joint_variable) : nullptr;
+  const auto* revolute_joint = dynamic_cast<const moveit::core::RevoluteJointModel*>(joint);
+  if (!revolute_joint) {
+    return candidate_position;
+  }
+  if (revolute_joint->isContinuous()) {
+    return reference_position + std::atan2(
+      std::sin(candidate_position - reference_position),
+      std::cos(candidate_position - reference_position));
+  }
+
+  const auto& bounds = robot_model->getVariableBounds(joint_variable);
+  if (!bounds.position_bounded_) {
+    return candidate_position;
+  }
+  constexpr double bounds_tolerance = 1e-8;
+  const long nearest_turn = std::lround(
+    (reference_position - candidate_position) / (2.0 * M_PI));
+  double best = candidate_position;
+  double best_distance = std::numeric_limits<double>::infinity();
+  for (long offset = -1; offset <= 1; ++offset) {
+    const double equivalent = candidate_position +
+      static_cast<double>(nearest_turn + offset) * 2.0 * M_PI;
+    if (equivalent < bounds.min_position_ - bounds_tolerance ||
+        equivalent > bounds.max_position_ + bounds_tolerance) {
+      continue;
+    }
+    const double bounded = std::clamp(
+      equivalent, bounds.min_position_, bounds.max_position_);
+    const double distance = std::abs(bounded - reference_position);
+    if (distance < best_distance) {
+      best = bounded;
+      best_distance = distance;
+    }
+  }
+  return best;
 }
 
 moveit::planning_interface::MoveGroupInterface::Plan retime_plan_by_max_joint_speed(

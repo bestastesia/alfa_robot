@@ -60,6 +60,10 @@ ROS_DOMAIN_ID=42 ros2 action list -t | grep -E 'motion/execute_stage|dual_arm_jt
 
 Motion 容器不访问 EtherCAT/CANopen，不调用 `/rt/enable`，不管理 rt-control 生命周期。源码只读挂载到 `/repo`，Release 构建产物保存在 `docker/motion/.workspace`。当前仍使用 host network + Fast DDS UDPv4，避免 root 容器与宿主普通用户的 SHM 权限不一致。
 
+## 轨迹缓存
+
+Motion 包内置默认Y下 `0.70～0.75m × 五排` 的30条已验证轨迹。距离按厘米向上取整；缓存文件、任务排数和起点状态同时匹配时直接跳过完整规划，否则透明回退实时 planner。缓存命中信息写入计划指标 `trajectory_cache_hit`、`trajectory_cache_path` 和 `trajectory_cache_distance_m`。
+
 ## 当前限制
 
 - `grasp_mode` 已进入正式消息，但本版尚未改变现有任务策略分类。

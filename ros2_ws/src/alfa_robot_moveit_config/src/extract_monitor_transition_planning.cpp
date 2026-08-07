@@ -194,14 +194,6 @@ bool make_valid_local_rrt(
   return true;
 }
 
-double variable_delta(const std::string& name, double from, double to)
-{
-  if (name == "updown") {
-    return to - from;
-  }
-  return std::atan2(std::sin(to - from), std::cos(to - from));
-}
-
 double state_distance(
   const moveit::core::RobotState& a,
   const moveit::core::RobotState& b,
@@ -209,8 +201,8 @@ double state_distance(
 {
   double squared = 0.0;
   for (const auto& name : variable_names) {
-    const double delta = variable_delta(
-      name, a.getVariablePosition(name), b.getVariablePosition(name));
+    const double delta = extract_transition_variable_delta(
+      a.getRobotModel(), name, a.getVariablePosition(name), b.getVariablePosition(name));
     squared += delta * delta;
   }
   return std::sqrt(squared);
@@ -227,7 +219,9 @@ moveit::core::RobotState steer_state(
   const double ratio = distance > max_step && distance > 1e-9 ? max_step / distance : 1.0;
   for (const auto& name : variable_names) {
     const double value = from.getVariablePosition(name) +
-      variable_delta(name, from.getVariablePosition(name), to.getVariablePosition(name)) * ratio;
+      extract_transition_variable_delta(
+        from.getRobotModel(), name,
+        from.getVariablePosition(name), to.getVariablePosition(name)) * ratio;
     out.setVariablePosition(name, value);
   }
   out.enforceBounds();
@@ -274,8 +268,9 @@ std::vector<std::string> custom_rrt_variable_names(
   std::string side;
   std::vector<std::string> rejected_non_arm_deltas;
   for (const auto& name : candidate_names) {
-    const double delta = std::abs(variable_delta(
-      name, start_state.getVariablePosition(name), goal_state.getVariablePosition(name)));
+    const double delta = std::abs(extract_transition_variable_delta(
+      start_state.getRobotModel(), name,
+      start_state.getVariablePosition(name), goal_state.getVariablePosition(name)));
     if (delta < 1e-6) {
       continue;
     }
@@ -422,7 +417,9 @@ bool custom_local_rrt_bridge(
     const double blend = (iter % 5 == 0) ? 1.0 : blend_distribution(rng);
     for (const auto& name : active_variable_names) {
       const double base = start_state.getVariablePosition(name) +
-        variable_delta(name, start_state.getVariablePosition(name), goal_state.getVariablePosition(name)) * blend;
+        extract_transition_variable_delta(
+          start_state.getRobotModel(), name,
+          start_state.getVariablePosition(name), goal_state.getVariablePosition(name)) * blend;
       const double offset = joint_offset_distribution(rng);
       sample.setVariablePosition(name, base + offset);
     }
@@ -729,6 +726,20 @@ bool repair_with_local_rrt(
 }
 
 }  // namespace
+
+double extract_transition_variable_delta(
+  const moveit::core::RobotModelConstPtr& robot_model,
+  const std::string& variable_name,
+  double from,
+  double to)
+{
+  const auto* joint = robot_model ? robot_model->getJointOfVariable(variable_name) : nullptr;
+  const auto* revolute_joint = dynamic_cast<const moveit::core::RevoluteJointModel*>(joint);
+  if (revolute_joint && revolute_joint->isContinuous()) {
+    return std::atan2(std::sin(to - from), std::cos(to - from));
+  }
+  return to - from;
+}
 
 ExtractMonitorTransitionPlanResult ExtractMonitorTransitionPlanner::plan(
   const moveit::core::RobotState& start_state,

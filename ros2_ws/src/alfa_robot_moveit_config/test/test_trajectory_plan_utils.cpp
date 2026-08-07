@@ -25,7 +25,7 @@ moveit::core::RobotModelPtr one_joint_model()
         <child link="link1"/>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
-        <limit lower="-3.14" upper="3.14" effort="1" velocity="1"/>
+        <limit lower="-3.14159265" upper="3.14159265" effort="1" velocity="1"/>
       </joint>
     </robot>)";
   auto urdf_model = std::make_shared<urdf::Model>();
@@ -72,8 +72,27 @@ moveit::core::RobotModelPtr revolute_and_updown_model()
 
 int main()
 {
+  using alfa_robot::motion::nearest_equivalent_joint_position;
   using alfa_robot::motion::single_state_plan;
+  using alfa_robot::motion::tip_floor_updown_target;
   using alfa_robot::motion::retime_plan_by_max_joint_speed;
+
+  const auto lowered_tip_floor = tip_floor_updown_target(0.3, 1.5, 1.3, 0.0, 0.7);
+  assert(lowered_tip_floor.feasible);
+  assert(!lowered_tip_floor.clamped);
+  assert(std::abs(lowered_tip_floor.position - 0.1) < 1e-9);
+  assert(std::abs(lowered_tip_floor.resulting_min_tip_z - 1.3) < 1e-9);
+
+  const auto lower_limit_tip_floor = tip_floor_updown_target(0.1, 1.5, 1.3, 0.0, 0.7);
+  assert(lower_limit_tip_floor.feasible);
+  assert(lower_limit_tip_floor.clamped);
+  assert(std::abs(lower_limit_tip_floor.position) < 1e-9);
+  assert(lower_limit_tip_floor.resulting_min_tip_z > 1.3);
+
+  const auto unreachable_tip_floor = tip_floor_updown_target(0.6, 1.0, 1.3, 0.0, 0.7);
+  assert(!unreachable_tip_floor.feasible);
+  assert(unreachable_tip_floor.clamped);
+  assert(std::abs(unreachable_tip_floor.position - 0.7) < 1e-9);
 
   moveit::core::RobotState state(one_joint_model());
   state.setToDefaultValues();
@@ -139,6 +158,16 @@ int main()
   const auto& updown_points = updown_retimed.trajectory_.joint_trajectory.points;
   assert(std::abs(rclcpp::Duration(updown_points.back().time_from_start).seconds() - 2.0) < 1e-9);
   assert(updown_points.size() == 21);
+
+  const auto boundary_model = one_joint_model();
+  const double lower = boundary_model->getVariableBounds("joint1").min_position_;
+  const double upper = boundary_model->getVariableBounds("joint1").max_position_;
+  const double continuous_boundary = nearest_equivalent_joint_position(
+    boundary_model, "joint1", upper, lower);
+  assert(std::abs(continuous_boundary - upper) < 1e-9);
+  const double non_equivalent_wrap = nearest_equivalent_joint_position(
+    boundary_model, "joint1", 3.0, -3.0);
+  assert(std::abs(non_equivalent_wrap + 3.0) < 1e-9);
 
   return 0;
 }

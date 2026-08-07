@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <sstream>
 
 namespace alfa_robot::motion
 {
@@ -485,7 +486,17 @@ bool carried_box_clear_obstacles(
   for (const auto& obstacle : static_obstacles) {
     const AxisAlignedBox obstacle_aabb{obstacle.center, obstacle.size};
     if (aabb_overlaps(carried_box, obstacle_aabb)) {
-      if (reason) *reason = carried_box_id + " overlaps " + obstacle.id;
+      if (reason) {
+        std::ostringstream stream;
+        stream << carried_box_id << " overlaps " << obstacle.id << " overlap_xyz=[";
+        for (size_t axis = 0; axis < 3; ++axis) {
+          if (axis > 0) stream << ',';
+          stream << 0.5 * (carried_box.size[axis] + obstacle_aabb.size[axis]) -
+            std::abs(carried_box.center[axis] - obstacle_aabb.center[axis]);
+        }
+        stream << ']';
+        *reason = stream.str();
+      }
       return false;
     }
   }

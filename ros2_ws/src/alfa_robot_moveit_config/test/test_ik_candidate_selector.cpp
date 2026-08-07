@@ -90,6 +90,7 @@ int main()
   using alfa_robot::motion::IkCandidateSelectorConfig;
   using alfa_robot::motion::ik_candidate_rejection_counts_json;
   using alfa_robot::motion::joint_limit_margin_cost;
+  using alfa_robot::motion::positive_joint_angle_penalty;
   using alfa_robot::motion::robot_state_from_ik_candidate;
 
   robot_motion::core::UpdownAwareIkResult result;
@@ -139,6 +140,9 @@ int main()
   const double joint5_cost = joint_limit_margin_cost(joint5_near_limit, *model, limit_weights, 0.6);
   assert(joint2_cost > joint5_cost);
   assert(joint5_cost > 0.0);
+  assert(std::abs(positive_joint_angle_penalty(-0.5, 8.0)) < 1e-12);
+  assert(std::abs(positive_joint_angle_penalty(0.0, 8.0)) < 1e-12);
+  assert(positive_joint_angle_penalty(0.5, 8.0) > positive_joint_angle_penalty(0.2, 8.0));
 
   moveit::core::RobotState seed(model);
   seed.setToDefaultValues();

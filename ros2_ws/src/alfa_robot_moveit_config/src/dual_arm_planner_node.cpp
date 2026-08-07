@@ -147,6 +147,8 @@ using alfa_robot::motion::ExtractMotionPlanner;
 using alfa_robot::motion::ExtractMotionPlannerConfig;
 using alfa_robot::motion::ExtractRolloutPlanner;
 using alfa_robot::motion::ExtractRolloutPlannerConfig;
+using alfa_robot::motion::ProjectedShortcutExtractPlanner;
+using alfa_robot::motion::ProjectedShortcutExtractPlannerConfig;
 using alfa_robot::motion::DualExtractStepCandidate;
 using alfa_robot::motion::ExtractCandidate;
 using alfa_robot::motion::ExtractRolloutTiming;
@@ -496,6 +498,39 @@ public:
       get_or_declare_parameter<double>("extract_monitor_place_updown", 0.10);
     extract_monitor_place_transition_updown_ =
       get_or_declare_parameter<double>("extract_monitor_place_transition_updown", 0.10);
+    auto left_projected_initial_family = parse_pose_family_degrees(get_or_declare_parameter<std::string>(
+      "extract_projected_initial_left_pose_deg",
+      "[0.0,-45.0,120.0,-75.0,0.0,0.0]"));
+    auto right_projected_initial_family = parse_pose_family_degrees(get_or_declare_parameter<std::string>(
+      "extract_projected_initial_right_pose_deg",
+      "[0.0,-45.0,120.0,-75.0,0.0,0.0]"));
+    if (left_projected_initial_family.size() != 1 || right_projected_initial_family.size() != 1 ||
+        left_projected_initial_family.front().size() != 6 ||
+        right_projected_initial_family.front().size() != 6) {
+      throw std::runtime_error(
+        "projected shortcut initial pose must contain exactly one six-axis pose per arm");
+    }
+    extract_projected_initial_left_arm_ = std::move(left_projected_initial_family.front());
+    extract_projected_initial_right_arm_ = std::move(right_projected_initial_family.front());
+    extract_projected_initial_joint_weights_ = get_or_declare_parameter<std::vector<double>>(
+      "extract_projected_initial_joint_weights",
+      std::vector<double>{1.0, 1.0, 2.0, 1.0, 1.0, 1.0});
+    extract_projected_joint4_positive_penalty_weight_ = std::max(
+      0.0,
+      get_or_declare_parameter<double>(
+        "extract_projected_joint4_positive_penalty_weight", 2.0));
+    if (extract_projected_initial_joint_weights_.size() != 6 ||
+        std::none_of(
+          extract_projected_initial_joint_weights_.begin(),
+          extract_projected_initial_joint_weights_.end(),
+          [](double weight) { return std::isfinite(weight) && weight > 0.0; }) ||
+        std::any_of(
+          extract_projected_initial_joint_weights_.begin(),
+          extract_projected_initial_joint_weights_.end(),
+          [](double weight) { return !std::isfinite(weight) || weight < 0.0; })) {
+      throw std::runtime_error(
+        "extract projected initial joint weights must contain six finite non-negative values with at least one positive value");
+    }
     auto left_pre_place_family = parse_pose_family_degrees(get_or_declare_parameter<std::string>(
       "extract_monitor_pre_place_left_pose_deg",
       "[0.0,-90.0,120.0,-75.0,0.0,0.0]"));
@@ -540,6 +575,8 @@ public:
       get_or_declare_parameter<double>("extract_box_pose_rrt_max_retreat", 0.55);
     extract_box_pose_rrt_max_lift_ =
       get_or_declare_parameter<double>("extract_box_pose_rrt_max_lift", 0.55);
+    extract_box_pose_rrt_max_pitch_deg_ =
+      std::max(0.0, get_or_declare_parameter<double>("extract_box_pose_rrt_max_pitch_deg", 90.0));
     extract_box_pose_rrt_separation_margin_ =
       get_or_declare_parameter<double>("extract_box_pose_rrt_separation_margin", 0.03);
     extract_box_pose_rrt_analytic_root_samples_ = static_cast<size_t>(
@@ -566,6 +603,9 @@ public:
       get_or_declare_parameter<bool>("extract_box_pose_rrt_front_free_motion", true);
     extract_box_pose_rrt_front_goal_requires_max_pitch_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_front_goal_requires_max_pitch", false);
+    extract_box_pose_rrt_front_goal_requires_horizontal_detachment_ =
+      get_or_declare_parameter<bool>(
+        "extract_box_pose_rrt_front_goal_requires_horizontal_detachment", true);
     extract_box_pose_rrt_best_first_fallback_ =
       get_or_declare_parameter<bool>("extract_box_pose_rrt_best_first_fallback", true);
     extract_box_pose_rrt_best_first_first_ =
@@ -626,22 +666,22 @@ public:
     enforce_loaded_plan_aabb_clearance_ =
       get_or_declare_parameter<bool>("enforce_loaded_plan_aabb_clearance", false);
     enforce_loaded_static_box_wall_aabb_clearance_ =
-      get_or_declare_parameter<bool>("enforce_loaded_static_box_wall_aabb_clearance", true);
+      get_or_declare_parameter<bool>("enforce_loaded_static_box_wall_aabb_clearance", false);
     record_tip_error_ik_candidates_ = get_or_declare_parameter<bool>("record_tip_error_ik_candidates", false);
     record_tip_error_ik_candidate_limit_ = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("record_tip_error_ik_candidate_limit", 80)));
 
     left_loaded_pose_family_ = parse_pose_family_degrees(get_or_declare_parameter<std::string>(
       "loaded_left_pose_family_deg",
-      "[0.0,0.0,0.0,0.0,0.0,0.0]"));
+      "[0.0,-90.0,120.0,-75.0,0.0,0.0]"));
     right_loaded_pose_family_ = parse_pose_family_degrees(get_or_declare_parameter<std::string>(
       "loaded_right_pose_family_deg",
-      "[0.0,0.0,0.0,0.0,0.0,0.0]"));
+      "[0.0,-90.0,120.0,-75.0,0.0,0.0]"));
     if (left_loaded_pose_family_.empty()) {
-      left_loaded_pose_family_.push_back(deg_to_rad({0, 0, 0, 0, 0, 0}));
+      left_loaded_pose_family_.push_back(deg_to_rad({0, -90, 120, -75, 0, 0}));
     }
     if (right_loaded_pose_family_.empty()) {
-      right_loaded_pose_family_.push_back(deg_to_rad({0, 0, 0, 0, 0, 0}));
+      right_loaded_pose_family_.push_back(deg_to_rad({0, -90, 120, -75, 0, 0}));
     }
     const size_t loaded_preferred_index = static_cast<size_t>(
       std::max(0, get_or_declare_parameter<int>("loaded_preferred_pose_index", 0)));
@@ -775,6 +815,8 @@ public:
     extract_rollout_planner_ = std::make_unique<ExtractRolloutPlanner>(extract_rollout_planner_config());
     box_pose_rrt_extract_planner_ =
       std::make_unique<BoxPoseRrtExtractPlanner>(box_pose_rrt_extract_planner_config());
+    projected_shortcut_extract_planner_ =
+      std::make_unique<ProjectedShortcutExtractPlanner>(projected_shortcut_extract_planner_config());
     ik_candidate_selector_ = std::make_unique<IkCandidateSelector>(ik_candidate_selector_config());
     apply_container_obstacles();
     set_static_box_wall_opening(extract_demo_left_box_id_, extract_demo_right_box_id_, "initial");
@@ -1026,6 +1068,10 @@ private:
       if (!result.contacts.empty()) {
         const auto& pair = result.contacts.begin()->first;
         *reason += ": " + pair.first + " <-> " + pair.second;
+        const auto& contacts = result.contacts.begin()->second;
+        if (!contacts.empty()) {
+          *reason += " depth=" + std::to_string(contacts.front().depth);
+        }
       }
     }
     return false;
@@ -1239,6 +1285,48 @@ private:
     return config;
   }
 
+  ProjectedShortcutExtractPlannerConfig projected_shortcut_extract_planner_config()
+  {
+    ProjectedShortcutExtractPlannerConfig config;
+    config.joint_group = joint_group_;
+    config.left_arm_group = left_arm_group_;
+    config.right_arm_group = right_arm_group_;
+    config.target_joint_names = dual_arm_with_updown_joint_names();
+    config.left_initial_reference_goal_arm = extract_projected_initial_left_arm_;
+    config.right_initial_reference_goal_arm = extract_projected_initial_right_arm_;
+    config.left_tip = left_tip_;
+    config.right_tip = right_tip_;
+    config.reference_joint_step = 2.0 * M_PI / 180.0;
+    config.max_projected_joint_delta = extract_max_joint_delta_;
+    config.position_tolerance = extract_position_tolerance_;
+    config.orientation_tolerance = extract_orientation_tolerance_;
+    config.analytic_root_samples = extract_box_pose_rrt_analytic_root_samples_;
+    config.outward_recovery_rrt_planner = box_pose_rrt_extract_planner_.get();
+    config.dual_clear_callback =
+      [this](
+        const moveit::core::RobotState& state,
+        const AttachedBoxSpec& left_box,
+        int left_box_id,
+        const AttachedBoxSpec& right_box,
+        int right_box_id,
+        bool* left_detached,
+        bool* right_detached,
+        std::string* reason) {
+        return state_clear_for_dual_extract(
+          state, left_box, left_box_id, right_box, right_box_id,
+          left_detached, right_detached, reason);
+      };
+    config.trajectory_clear_callback =
+      [this](
+        const moveit::planning_interface::MoveGroupInterface::Plan& plan,
+        const moveit::core::RobotState& start_state,
+        const std::vector<AttachedBoxSpec>& attached_boxes,
+        std::string* reason) {
+        return planned_trajectory_clear_in_full_scene(plan, start_state, attached_boxes, reason);
+      };
+    return config;
+  }
+
   BoxPoseRrtExtractPlannerConfig box_pose_rrt_extract_planner_config()
   {
     BoxPoseRrtExtractPlannerConfig config;
@@ -1259,12 +1347,14 @@ private:
     config.front_rrt.separation_margin = extract_box_pose_rrt_separation_margin_;
     config.front_rrt.max_retreat = extract_box_pose_rrt_max_retreat_;
     config.front_rrt.max_lift = extract_box_pose_rrt_max_lift_;
-    config.front_rrt.max_pitch = M_PI_2;
+    config.front_rrt.max_pitch = extract_box_pose_rrt_max_pitch_deg_ * M_PI / 180.0;
     config.front_rrt.max_lateral = extract_box_pose_rrt_max_lateral_;
     config.front_rrt.step_lateral = extract_box_pose_rrt_step_lateral_;
     config.front_rrt.edge_resolution_lateral = extract_box_pose_rrt_step_lateral_;
     config.front_rrt.front_free_motion = extract_box_pose_rrt_front_free_motion_;
     config.front_rrt.front_goal_requires_max_pitch = extract_box_pose_rrt_front_goal_requires_max_pitch_;
+    config.front_rrt.front_goal_requires_horizontal_detachment =
+      extract_box_pose_rrt_front_goal_requires_horizontal_detachment_;
     config.front_rrt.endpoint_only_edges = true;
     config.front_rrt.max_iterations = extract_box_pose_rrt_max_iterations_;
     config.front_rrt.max_solution_count = extract_box_pose_rrt_paths_per_arm_;
@@ -1463,6 +1553,9 @@ private:
     config.pre_loaded_lower_updown_delta = extract_loaded_pre_lower_updown_delta_;
     config.fixed_updown = extract_loaded_target_updown_;
     config.planning_mode = extract_loaded_planning_mode_;
+    config.route_via_initial_pose = true;
+    config.initial_left_arm = left_pregrasp_arm_;
+    config.initial_right_arm = right_pregrasp_arm_;
     config.min_tool_normal_z = extract_min_tool_normal_z_;
     config.max_joint_delta = extract_max_joint_delta_;
     config.lateral_shift_solver = extract_candidate_solver_.get();
@@ -2940,7 +3033,8 @@ private:
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
     robot_motion::core::UpdownAwareIkResult* result_out = nullptr,
-    bool capture_pre_score_candidates = false)
+    bool capture_pre_score_candidates = false,
+    bool allow_front_tool_roll_pi_symmetry = false)
   {
     return solve_dual_tip_ik_state(
       stage_name,
@@ -2952,7 +3046,8 @@ private:
       goal_state,
       extra_out,
       result_out,
-      capture_pre_score_candidates);
+      capture_pre_score_candidates,
+      allow_front_tool_roll_pi_symmetry);
   }
 
   bool solve_dual_tip_ik_state(
@@ -2965,7 +3060,8 @@ private:
     moveit::core::RobotState* goal_state,
     nlohmann::json* extra_out,
     robot_motion::core::UpdownAwareIkResult* result_out = nullptr,
-    bool capture_pre_score_candidates = false)
+    bool capture_pre_score_candidates = false,
+    bool allow_front_tool_roll_pi_symmetry = false)
   {
     if (!ensure_optimized_ik_solver()) {
       return fail(stage_name + ": optimized IK solver is not initialized");
@@ -2988,7 +3084,8 @@ private:
         &seed_state,
         left_top_suction,
         right_top_suction,
-        capture_pre_score_candidates},
+        capture_pre_score_candidates,
+        allow_front_tool_roll_pi_symmetry},
       "optimized_dual_tip_ik_direct_seed");
     const auto& result = solved.ik_result;
     if (result_out) {
@@ -3392,6 +3489,34 @@ private:
     const robot_motion::core::UpdownAwareIkCandidate& ik_candidate,
     const std::function<void(size_t, const moveit::core::RobotState&, const nlohmann::json&)>& record_step = {}) const
   {
+    if (extract_rollout_mode_ == "projected_shortcut") {
+      if (!projected_shortcut_extract_planner_) {
+        ExtractRolloutTiming timing;
+        timing.candidate_order = candidate_order;
+        timing.h_index = ik_candidate.h_index;
+        timing.seed_index = ik_candidate.seed_index;
+        timing.h = ik_candidate.h;
+        timing.ik_score = ik_candidate.score;
+        timing.ik_solve_ms = ik_candidate.solve_ms;
+        timing.failure_reason = "projected_shortcut_planner_not_initialized";
+        return timing;
+      }
+      return projected_shortcut_extract_planner_->rolloutDual(
+        start_state,
+        left_box,
+        left_box_id,
+        right_box,
+        right_box_id,
+        extract_monitor_require_left_detached_,
+        extract_monitor_require_right_detached_,
+        candidate_order,
+        ik_candidate.h_index,
+        ik_candidate.seed_index,
+        ik_candidate.h,
+        ik_candidate.score,
+        ik_candidate.solve_ms,
+        record_step);
+    }
     if (extract_rollout_mode_ == "box_pose_rrt") {
       if (!box_pose_rrt_extract_planner_) {
         ExtractRolloutTiming timing;
@@ -4722,6 +4847,24 @@ private:
     IkCandidateSelectionStats* stats,
     bool defer_candidate_limit = false) const
   {
+    if (extract_rollout_mode_ == "projected_shortcut") {
+      std::vector<robot_motion::core::UpdownAwareIkCandidate> legal_candidates;
+      legal_candidates.reserve(ik_result.candidates.size());
+      for (const auto& candidate : ik_result.candidates) {
+        if (candidate.legal) {
+          legal_candidates.push_back(candidate);
+        }
+      }
+      std::stable_sort(
+        legal_candidates.begin(), legal_candidates.end(),
+        [](const auto& lhs, const auto& rhs) {
+          if (lhs.h_index != rhs.h_index) return lhs.h_index < rhs.h_index;
+          return lhs.seed_index < rhs.seed_index;
+        });
+      auto config = ik_candidate_selector_config();
+      config.candidate_limit = 0;
+      return IkCandidateSelector(config).select(legal_candidates, stats);
+    }
     if (defer_candidate_limit) {
       auto config = ik_candidate_selector_config();
       config.candidate_limit = 0;
@@ -4838,13 +4981,39 @@ private:
     *states = std::move(limited_states);
   }
 
-  void reorder_extract_ik_candidates_by_loaded_distance(
+  double projected_initial_pose_distance(const moveit::core::RobotState& state) const
+  {
+    double distance = 0.0;
+    const auto arm_distance = [this, &state](
+      const std::string& side,
+      const std::vector<double>& reference) {
+      if (reference.size() != 6 || extract_projected_initial_joint_weights_.size() != 6) {
+        return std::numeric_limits<double>::infinity();
+      }
+      double squared_sum = 0.0;
+      for (size_t joint_index = 0; joint_index < 6; ++joint_index) {
+        const std::string name = side + "_joint" + std::to_string(joint_index + 1);
+        const double delta = shortest_angular_distance(
+          state.getVariablePosition(name), reference[joint_index]);
+        squared_sum += extract_projected_initial_joint_weights_[joint_index] * delta * delta;
+      }
+      return std::sqrt(squared_sum) + alfa_robot::motion::positive_joint_angle_penalty(
+        state.getVariablePosition(side + "_joint4"),
+        extract_projected_joint4_positive_penalty_weight_);
+    };
+    distance += arm_distance("left", extract_projected_initial_left_arm_);
+    distance += arm_distance("right", extract_projected_initial_right_arm_);
+    return distance;
+  }
+
+  void reorder_extract_ik_candidates_by_reference_distance(
     std::vector<robot_motion::core::UpdownAwareIkCandidate>* candidates,
     std::vector<moveit::core::RobotStatePtr>* states) const
   {
+    const bool loaded_distance_only = extract_rollout_mode_ == "projected_shortcut";
     if (!candidates || !states || candidates->size() != states->size() ||
         candidates->empty() || !loaded_pose_selector_ ||
-        extract_ik_loaded_distance_order_weight_ <= 0.0) {
+        (!loaded_distance_only && extract_ik_loaded_distance_order_weight_ <= 0.0)) {
       return;
     }
 
@@ -4858,12 +5027,29 @@ private:
     order.reserve(candidates->size());
     for (size_t index = 0; index < candidates->size(); ++index) {
       const auto& state = (*states)[index];
-      const double loaded_distance = state
-        ? loaded_pose_selector_->select(*state).distance_sum
-        : std::numeric_limits<double>::infinity();
+      double loaded_distance = std::numeric_limits<double>::infinity();
+      if (state) {
+        if (loaded_distance_only) {
+          loaded_distance = projected_initial_pose_distance(*state);
+        } else {
+          const auto& left_family = loaded_pose_selector_->leftPoseFamily();
+          const auto& right_family = loaded_pose_selector_->rightPoseFamily();
+          loaded_distance =
+            loaded_pose_selector_->armPoseDistance(
+              *state,
+              "left",
+              left_family[loaded_pose_selector_->leftPreferredIndex()]) +
+            loaded_pose_selector_->armPoseDistance(
+              *state,
+              "right",
+              right_family[loaded_pose_selector_->rightPreferredIndex()]);
+        }
+      }
       order.push_back({
         index,
-        (*candidates)[index].score + extract_ik_loaded_distance_order_weight_ * loaded_distance,
+        loaded_distance_only
+          ? loaded_distance
+          : (*candidates)[index].score + extract_ik_loaded_distance_order_weight_ * loaded_distance,
         loaded_distance});
     }
     std::stable_sort(order.begin(), order.end(), [](const auto& lhs, const auto& rhs) {
@@ -4878,6 +5064,9 @@ private:
     candidates->reserve(order.size());
     states->reserve(order.size());
     for (const auto& item : order) {
+      if (loaded_distance_only) {
+        old_candidates[item.index].score = item.loaded_distance;
+      }
       candidates->push_back(std::move(old_candidates[item.index]));
       states->push_back(std::move(old_states[item.index]));
     }
@@ -5102,6 +5291,7 @@ private:
       }
       static const std::unordered_set<std::string> supported_rollout_modes{
         "greedy",
+        "projected_shortcut",
         "box_pose_rrt",
         "moveit_rrt_legacy",
         "top_lift_legacy",
@@ -5385,9 +5575,22 @@ private:
         robot_model_,
         joint_group_,
         ExtractMonitorArmSeed{left_pregrasp_arm_, right_pregrasp_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_},
-        ExtractMonitorArmSeed{left_loaded_arm_, right_loaded_arm_, extract_grasp_ik_home_updown_, extract_monitor_turn_}});
+        ExtractMonitorArmSeed{
+          left_loaded_arm_,
+          right_loaded_arm_,
+          extract_grasp_ik_home_updown_,
+          extract_monitor_turn_}});
+    extract_monitor_state_.replay_start_state = std::make_shared<moveit::core::RobotState>(
+      make_extract_monitor_joint_state(
+        robot_model_,
+        joint_group_,
+        ExtractMonitorArmSeed{
+          extract_projected_initial_left_arm_,
+          extract_projected_initial_right_arm_,
+          extract_grasp_ik_home_updown_,
+          extract_monitor_turn_}));
     if (extract_monitor_configured_start_state_) {
-      extract_monitor_state_.loaded_start_state =
+      extract_monitor_state_.replay_start_state =
         std::make_shared<moveit::core::RobotState>(*extract_monitor_configured_start_state_);
     }
 
@@ -5410,7 +5613,8 @@ private:
           &selected_state,
           &ik_extra,
           &ik_result,
-          extract_monitor_capture_raw_ik_)) {
+          extract_monitor_capture_raw_ik_,
+          extract_rollout_mode_ == "projected_shortcut")) {
       *message = "IK阶段失败: " + last_error_;
       return false;
     }
@@ -5495,19 +5699,29 @@ private:
       const size_t accepted_limit = extract_benchmark_candidate_limit_ == 0
         ? 0
         : extract_benchmark_candidate_limit_ + extract_ik_candidate_reserve_limit_;
-      if (!extract_ik_stratified_limit_enabled_ &&
+      if (extract_rollout_mode_ != "projected_shortcut" &&
+          !extract_ik_stratified_limit_enabled_ &&
           accepted_limit > 0 &&
           extract_monitor_state_.legal_candidates.size() >= accepted_limit) {
         break;
       }
     }
     const size_t scene_filter_accepted_before_limit = extract_monitor_state_.legal_candidates.size();
-    apply_extract_ik_candidate_limit(
-      &extract_monitor_state_.legal_candidates,
-      &extract_monitor_state_.candidate_states);
-    reorder_extract_ik_candidates_by_loaded_distance(
-      &extract_monitor_state_.legal_candidates,
-      &extract_monitor_state_.candidate_states);
+    if (extract_rollout_mode_ == "projected_shortcut") {
+      reorder_extract_ik_candidates_by_reference_distance(
+        &extract_monitor_state_.legal_candidates,
+        &extract_monitor_state_.candidate_states);
+      apply_extract_ik_candidate_limit(
+        &extract_monitor_state_.legal_candidates,
+        &extract_monitor_state_.candidate_states);
+    } else {
+      apply_extract_ik_candidate_limit(
+        &extract_monitor_state_.legal_candidates,
+        &extract_monitor_state_.candidate_states);
+      reorder_extract_ik_candidates_by_reference_distance(
+        &extract_monitor_state_.legal_candidates,
+        &extract_monitor_state_.candidate_states);
+    }
     dedup_stats.selected_count = extract_monitor_state_.legal_candidates.size();
 
     const nlohmann::json records = extract_monitor_candidate_records_json(
@@ -5545,6 +5759,16 @@ private:
     snapshot["extract_ik_candidate_reserve_stratified"] = extract_ik_candidate_reserve_stratified_;
     snapshot["extract_ik_candidate_reserve_interleave_stride"] = extract_ik_candidate_reserve_interleave_stride_;
     snapshot["extract_ik_loaded_distance_order_weight"] = extract_ik_loaded_distance_order_weight_;
+    snapshot["ik_score_mode"] = extract_rollout_mode_ == "projected_shortcut"
+      ? "weighted_initial_pose_distance_after_dedup_and_scene_filter"
+      : "configured_ik_cost";
+    if (extract_rollout_mode_ == "projected_shortcut") {
+      snapshot["ik_initial_reference_left_rad"] = extract_projected_initial_left_arm_;
+      snapshot["ik_initial_reference_right_rad"] = extract_projected_initial_right_arm_;
+      snapshot["ik_initial_reference_joint_weights"] = extract_projected_initial_joint_weights_;
+      snapshot["ik_joint4_positive_penalty_weight"] =
+        extract_projected_joint4_positive_penalty_weight_;
+    }
     snapshot["scene_filter_rejections"] = failure_counts_json(scene_filter_rejections);
     snapshot["scene_rejected_records"] = std::move(scene_rejected_records);
     snapshot["attached_boxes"] = attached_boxes_json(
@@ -5892,7 +6116,7 @@ private:
 
   bool extract_monitor_pre_attach_transition_is_smooth(const ExtractRolloutTiming& timing)
   {
-    if (!extract_monitor_state_.loaded_start_state ||
+    if (!extract_monitor_state_.replay_start_state ||
         extract_monitor_state_.candidate_states.empty()) {
       return false;
     }
@@ -5902,7 +6126,7 @@ private:
     }
     std::string pre_contact_reason;
     const auto pre_contact_state = build_extract_monitor_pre_contact_state(
-      *extract_monitor_state_.loaded_start_state, *ik_state, &pre_contact_reason);
+      *extract_monitor_state_.replay_start_state, *ik_state, &pre_contact_reason);
     const auto transition_clear = [this](
       const moveit::core::RobotState& start,
       const moveit::core::RobotState& goal) {
@@ -5911,13 +6135,13 @@ private:
       return planned_trajectory_clear_in_full_scene(plan, start, {}, &reason);
     };
     if (pre_contact_state) {
-      return transition_clear(*extract_monitor_state_.loaded_start_state, *pre_contact_state) &&
+      return transition_clear(*extract_monitor_state_.replay_start_state, *pre_contact_state) &&
         transition_clear(*pre_contact_state, *ik_state);
     }
 
-    auto plan = make_interpolated_joint_plan(*extract_monitor_state_.loaded_start_state, *ik_state, 1.0);
+    auto plan = make_interpolated_joint_plan(*extract_monitor_state_.replay_start_state, *ik_state, 1.0);
     std::string reason;
-    return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.loaded_start_state, {}, &reason);
+    return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.replay_start_state, {}, &reason);
   }
 
   moveit::core::RobotStatePtr build_extract_monitor_pre_contact_state(
@@ -6103,6 +6327,23 @@ private:
         extract_monitor_pre_place_right_arm_[index]);
     }
     goal_state.setVariablePosition("updown", extract_monitor_place_transition_updown_);
+    goal_state.enforceBounds();
+    goal_state.update(true);
+    return goal_state;
+  }
+
+  moveit::core::RobotState make_extract_monitor_initial_goal_state(
+    const moveit::core::RobotState& reference_state,
+    double updown) const
+  {
+    moveit::core::RobotState goal_state(reference_state);
+    for (size_t index = 0; index < 6; ++index) {
+      goal_state.setVariablePosition(
+        "left_joint" + std::to_string(index + 1), left_pregrasp_arm_[index]);
+      goal_state.setVariablePosition(
+        "right_joint" + std::to_string(index + 1), right_pregrasp_arm_[index]);
+    }
+    goal_state.setVariablePosition("updown", updown);
     goal_state.enforceBounds();
     goal_state.update(true);
     return goal_state;
@@ -6383,6 +6624,7 @@ private:
         {"loaded_to_pre_place_method", loaded_to_pre_place.method},
         {"pre_place_to_place_method", pre_place_to_place.method},
         {"pre_place_waypoint_index", pre_place_waypoint_index},
+        {"pre_place_target", "loaded_pose"},
         {"pre_place_updown", pre_place_state.getVariablePosition("updown")},
         {"release_after_stage", true},
         {"place_updown", extract_monitor_place_updown_},
@@ -6408,14 +6650,16 @@ private:
     moveit::core::RobotState released_place_state(place_state);
     released_place_state.clearAttachedBodies();
     released_place_state.update(true);
-    moveit::core::RobotState return_loaded_state(loaded_state);
-    return_loaded_state.clearAttachedBodies();
-    return_loaded_state.enforceBounds();
-    return_loaded_state.update(true);
+    moveit::core::RobotState return_initial_state =
+      make_extract_monitor_initial_goal_state(
+        released_place_state, extract_grasp_ik_home_updown_);
+    return_initial_state.clearAttachedBodies();
+    return_initial_state.enforceBounds();
+    return_initial_state.update(true);
     const auto return_start = std::chrono::steady_clock::now();
     const auto return_plan = extract_monitor_transition_planner(
       {}, extract_monitor_state_.prefix + "/selected_place_to_loaded").plan(
-      released_place_state, return_loaded_state);
+      released_place_state, return_initial_state);
     const double return_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - return_start).count();
     if (!return_plan.valid) {
@@ -6447,7 +6691,7 @@ private:
       extract_monitor_state_.prefix + "/selected_place_to_loaded",
       return_plan.plan,
       released_place_state,
-      return_loaded_state,
+      return_initial_state,
       target_names,
       {},
       static_obstacles,
@@ -6457,7 +6701,8 @@ private:
         {"method", return_plan.method},
         {"transition_ms", return_ms},
         {"boxes_released", true},
-        {"loaded_updown", return_loaded_state.getVariablePosition("updown")},
+        {"return_target", "initial_pose"},
+        {"initial_updown", return_initial_state.getVariablePosition("updown")},
       }));
     if (metrics) {
       *metrics = {
@@ -6470,6 +6715,10 @@ private:
         {"pre_place_to_place_method", pre_place_to_place.method},
         {"place_to_loaded_ms", return_ms},
         {"place_to_loaded_method", return_plan.method},
+        {"place_to_initial_ms", return_ms},
+        {"place_to_initial_method", return_plan.method},
+        {"pre_place_target", "loaded_pose"},
+        {"return_target", "initial_pose"},
         {"place_updown", extract_monitor_place_updown_},
       };
     }
@@ -6823,7 +7072,7 @@ private:
   double carried_box_grasp_lateral_offset_ = 0.0;
   double attached_box_collision_padding_ = -0.002;
   bool enforce_loaded_plan_aabb_clearance_ = false;
-  bool enforce_loaded_static_box_wall_aabb_clearance_ = true;
+  bool enforce_loaded_static_box_wall_aabb_clearance_ = false;
   bool enable_static_box_obstacles_ = true;
   double static_box_obstacle_inset_ = 0.002;
   int extract_demo_left_box_id_ = 1;
@@ -6898,6 +7147,10 @@ private:
   double extract_monitor_place_transition_updown_ = 0.10;
   std::vector<double> extract_monitor_pre_place_left_arm_;
   std::vector<double> extract_monitor_pre_place_right_arm_;
+  std::vector<double> extract_projected_initial_left_arm_;
+  std::vector<double> extract_projected_initial_right_arm_;
+  std::vector<double> extract_projected_initial_joint_weights_;
+  double extract_projected_joint4_positive_penalty_weight_ = 2.0;
   std::vector<double> extract_monitor_place_left_arm_;
   std::vector<double> extract_monitor_place_right_arm_;
   std::string extract_rollout_mode_requested_ = "greedy";
@@ -6910,6 +7163,7 @@ private:
   size_t extract_box_pose_rrt_path_pair_limit_ = 64;
   double extract_box_pose_rrt_max_retreat_ = 0.55;
   double extract_box_pose_rrt_max_lift_ = 0.55;
+  double extract_box_pose_rrt_max_pitch_deg_ = 90.0;
   double extract_box_pose_rrt_separation_margin_ = 0.03;
   size_t extract_box_pose_rrt_analytic_root_samples_ = 12;
   bool extract_box_pose_rrt_diagnostics_ = false;
@@ -6923,6 +7177,7 @@ private:
   double extract_box_pose_rrt_step_lateral_ = 0.02;
   bool extract_box_pose_rrt_front_free_motion_ = true;
   bool extract_box_pose_rrt_front_goal_requires_max_pitch_ = false;
+  bool extract_box_pose_rrt_front_goal_requires_horizontal_detachment_ = true;
   bool extract_box_pose_rrt_best_first_fallback_ = true;
   bool extract_box_pose_rrt_best_first_first_ = false;
   bool extract_box_pose_rrt_top_best_first_first_ = false;
@@ -6985,6 +7240,7 @@ private:
   std::unique_ptr<ExtractCandidateSolver> pre_contact_candidate_solver_;
   std::unique_ptr<ExtractRolloutPlanner> extract_rollout_planner_;
   std::unique_ptr<BoxPoseRrtExtractPlanner> box_pose_rrt_extract_planner_;
+  std::unique_ptr<ProjectedShortcutExtractPlanner> projected_shortcut_extract_planner_;
   std::unique_ptr<IkCandidateSelector> ik_candidate_selector_;
   std::unique_ptr<MotionSceneAdapter> scene_adapter_;
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;

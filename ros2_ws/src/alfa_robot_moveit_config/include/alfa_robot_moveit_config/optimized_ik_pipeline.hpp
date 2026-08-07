@@ -27,6 +27,7 @@ struct OptimizedDualIkSolveRequest
   bool left_top_suction = false;
   bool right_top_suction = false;
   bool capture_pre_score_candidates = false;
+  bool allow_front_tool_roll_pi_symmetry = false;
 };
 
 struct OptimizedDualIkSolveResult
@@ -55,6 +56,8 @@ double joint_limit_margin_cost(
   const moveit::core::RobotModel& robot_model,
   const std::vector<double>& joint_weights,
   double free_ratio);
+
+double positive_joint_angle_penalty(double joint_angle_rad, double weight);
 
 class OptimizedDualIkSolver
 {

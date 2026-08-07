@@ -6,6 +6,7 @@ import csv
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -26,9 +27,9 @@ import numpy as np
 
 DEFAULT_OUTPUT_ROOT = Path("/mnt/mydisk/ALFA/alfa_robot/data/ik_benchmark/extract_sequence_rerun")
 DEFAULT_SEQUENCE = "1,3;1,6;4,3;4,6;4,9;7,6;7,9;7,12;10,9;10,12;10,15;13,12;13,15"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
-FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6, 7, 9}
+FRONT_SUCTION_BOX_IDS = {1, 3, 4, 6}
 OUTER_GRASP_TARGET_Y_M = 0.40
 TASK_LAYOUT_Y_OFFSETS = {
     "centered": 0.0,
@@ -236,16 +237,64 @@ def extract_rollout_mode_for_pair(
     right_box_id: int,
     grasp_mode: str,
 ) -> str:
-    del left_box_id, right_box_id
     requested = str(args.extract_rollout_mode)
     if requested == "auto":
         return requested
+    if requested == "equal_height_five_row_hybrid":
+        if grasp_mode == "top_suction":
+            if {int(left_box_id), int(right_box_id)} == {7, 9}:
+                return "box_pose_rrt"
+            return str(args.top_extract_rollout_mode)
+        if {int(left_box_id), int(right_box_id)} == {1, 3}:
+            return "box_pose_rrt"
+        return "projected_shortcut"
     if grasp_mode == "top_suction":
         return str(args.top_extract_rollout_mode)
     return requested
 
 
-def explicit_grasp_target(args: argparse.Namespace, box_id: int, grasp_mode: str) -> dict[str, Any]:
+def extract_search_limits_for_pair(
+    args: argparse.Namespace,
+    rollout_mode: str,
+) -> tuple[int, float]:
+    success_quorum = int(args.extract_success_quorum)
+    max_joint_delta = float(args.extract_max_joint_delta)
+    if str(args.extract_rollout_mode) != "equal_height_five_row_hybrid":
+        return success_quorum, max_joint_delta
+    if rollout_mode == "projected_shortcut":
+        if success_quorum > 0:
+            success_quorum = max(3, success_quorum)
+        max_joint_delta = min(max_joint_delta, math.radians(10.0))
+    elif success_quorum > 0:
+        success_quorum = 1
+    return success_quorum, max_joint_delta
+
+
+def sample_l1_position_jitter(
+    rng: np.random.Generator,
+    max_l1_m: float,
+) -> list[float]:
+    if max_l1_m <= 0.0:
+        return [0.0, 0.0, 0.0]
+    weights = rng.exponential(1.0, size=3)
+    weights /= float(np.sum(weights))
+    radius = float(max_l1_m) * float(rng.random()) ** (1.0 / 3.0)
+    signs = rng.choice(np.array([-1.0, 1.0]), size=3)
+    return [float(value) for value in radius * weights * signs]
+
+
+def safe_y_fallback_position_jitter(position_jitter: list[float]) -> list[float]:
+    if len(position_jitter) != 3:
+        raise ValueError("position_jitter must contain x/y/z")
+    return [float(position_jitter[0]), 0.0, float(position_jitter[2])]
+
+
+def explicit_grasp_target(
+    args: argparse.Namespace,
+    box_id: int,
+    grasp_mode: str,
+    position_jitter: list[float] | None = None,
+) -> dict[str, Any]:
     boxes = monitor.all_boxes(float(args.box_front_x), float(args.scene_y_shift))
     if box_id not in boxes:
         raise ValueError(f"unknown box id: {box_id}")
@@ -263,6 +312,13 @@ def explicit_grasp_target(args: argparse.Namespace, box_id: int, grasp_mode: str
     position[1] = (
         OUTER_GRASP_TARGET_Y_M if box_id % 3 == 1 else -OUTER_GRASP_TARGET_Y_M
     ) + float(args.scene_y_shift)
+    if position_jitter is not None:
+        if len(position_jitter) != 3:
+            raise ValueError("position_jitter must contain x/y/z")
+        position = [
+            value + float(delta)
+            for value, delta in zip(position, position_jitter)
+        ]
     return {
         "frame_id": "base_link",
         "position": position,
@@ -289,16 +345,21 @@ def make_pair_args(
     loaded_preferred_pose_index = args.loaded_preferred_pose_index
     loaded_left_pose_family_deg = args.loaded_left_pose_family_deg
     loaded_right_pose_family_deg = args.loaded_right_pose_family_deg
-    if mode == "top_suction":
-        loaded_preferred_pose_index = args.top_loaded_preferred_pose_index
-        loaded_left_pose_family_deg = args.top_loaded_left_pose_family_deg or loaded_left_pose_family_deg
-        loaded_right_pose_family_deg = args.top_loaded_right_pose_family_deg or loaded_right_pose_family_deg
+    if args.top_loaded_left_pose_family_deg or args.top_loaded_right_pose_family_deg:
+        raise ValueError(
+            "顶吸不再使用独立负重姿态族；所有任务统一先经过初始位，再到 --loaded-*-pose-family-deg"
+        )
+    rollout_mode = extract_rollout_mode_for_pair(args, left_id, right_id, mode)
+    extract_success_quorum, extract_max_joint_delta = extract_search_limits_for_pair(
+        args, rollout_mode
+    )
     return SimpleNamespace(
         box_front_x=effective_box_front_x(args, mode),
         top_box_front_x=effective_box_front_x(args, mode),
         top_approach_forward=0.0,
         scene_y_shift=args.scene_y_shift if scene_y_shift is None else scene_y_shift,
         task_layout=task_layout,
+        container_height=args.container_height,
         world_to_base_z=args.world_to_base_z,
         fixed_updown=args.fixed_updown,
         turn_rad=math.radians(args.turn_deg),
@@ -326,20 +387,21 @@ def make_pair_args(
         optimized_ik_check_collision=args.optimized_ik_check_collision,
         left_box_id=left_id,
         right_box_id=right_id,
+        target_y_fallback_enabled=args.target_y_fallback_enabled,
         extract_workers=args.extract_workers,
-        extract_success_quorum=args.extract_success_quorum,
+        extract_success_quorum=extract_success_quorum,
         extract_quality_success_quorum=args.extract_quality_success_quorum,
         extract_quality_loaded_distance_sum=args.extract_quality_loaded_distance_sum,
         candidate_limit=args.candidate_limit,
         extract_step_x=args.extract_step_x,
-        extract_max_joint_delta=args.extract_max_joint_delta,
+        extract_max_joint_delta=extract_max_joint_delta,
         extract_rrt=args.extract_rrt,
         extract_rrt_planning_group=args.extract_rrt_planning_group,
         extract_rrt_planning_time=args.extract_rrt_planning_time,
         extract_rrt_planning_attempts=args.extract_rrt_planning_attempts,
         extract_rrt_endpoint_per_arm_limit=args.extract_rrt_endpoint_per_arm_limit,
         extract_rrt_goal_limit=args.extract_rrt_goal_limit,
-        extract_rollout_mode=extract_rollout_mode_for_pair(args, left_id, right_id, mode),
+        extract_rollout_mode=rollout_mode,
         extract_top_updown_lift_distance=args.extract_top_updown_lift_distance,
         extract_top_updown_retreat_distance=args.extract_top_updown_retreat_distance,
         extract_box_pose_rrt_edge_scene_collision=args.extract_box_pose_rrt_edge_scene_collision,
@@ -350,6 +412,8 @@ def make_pair_args(
         ),
         extract_box_pose_rrt_paths_per_arm=args.extract_box_pose_rrt_paths_per_arm,
         extract_box_pose_rrt_path_pair_limit=args.extract_box_pose_rrt_path_pair_limit,
+        extract_box_pose_rrt_max_lift=args.extract_box_pose_rrt_max_lift,
+        extract_box_pose_rrt_max_pitch_deg=args.extract_box_pose_rrt_max_pitch_deg,
         extract_box_pose_rrt_parent_candidates=args.extract_box_pose_rrt_parent_candidates,
         extract_box_pose_rrt_parent_diverse_candidates=args.extract_box_pose_rrt_parent_diverse_candidates,
         extract_box_pose_rrt_parent_endpoint_score_weight=args.extract_box_pose_rrt_parent_endpoint_score_weight,
@@ -359,6 +423,9 @@ def make_pair_args(
         extract_box_pose_rrt_step_lateral=args.extract_box_pose_rrt_step_lateral,
         extract_box_pose_rrt_front_free_motion=args.extract_box_pose_rrt_front_free_motion,
         extract_box_pose_rrt_front_goal_requires_max_pitch=args.extract_box_pose_rrt_front_goal_requires_max_pitch,
+        extract_box_pose_rrt_front_goal_requires_horizontal_detachment=(
+            args.extract_box_pose_rrt_front_goal_requires_horizontal_detachment
+        ),
         extract_box_pose_rrt_best_first_fallback=args.extract_box_pose_rrt_best_first_fallback,
         extract_box_pose_rrt_best_first_first=args.extract_box_pose_rrt_best_first_first,
         extract_box_pose_rrt_top_best_first_first=args.extract_box_pose_rrt_top_best_first_first,
@@ -374,6 +441,7 @@ def make_pair_args(
         extract_ik_candidate_reserve_stratified=args.extract_ik_candidate_reserve_stratified,
         extract_ik_candidate_reserve_interleave_stride=args.extract_ik_candidate_reserve_interleave_stride,
         extract_ik_loaded_distance_order_weight=args.extract_ik_loaded_distance_order_weight,
+        extract_projected_joint4_positive_penalty_weight=args.extract_projected_joint4_positive_penalty_weight,
         extract_monitor_build_final_replay=args.place_cycle_enabled or not args.no_rerun,
         loaded_candidate_limit=args.loaded_candidate_limit,
         lateral_shift_enabled=lateral_shift_enabled,
@@ -762,6 +830,7 @@ def run_one_pair(
     run_dir = run_root / f"{task_index:02d}_L{left_id}_R{right_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
     snapshot_path = run_dir / "stage_snapshot.json"
+    primary_failure_snapshot_path = run_dir / "stage_snapshot_primary_failure.json"
     print(
         f"\n===== 任务 {task_index}/{pair_count}: "
         f"[{getattr(args, 'task_layout', 'centered')}] L{left_id}/R{right_id} ====="
@@ -774,8 +843,18 @@ def run_one_pair(
             args.service_timeout,
             args.left_grasp_mode == "top_suction",
             args.right_grasp_mode == "top_suction",
-            explicit_grasp_target(args, left_id, args.left_grasp_mode),
-            explicit_grasp_target(args, right_id, args.right_grasp_mode),
+            explicit_grasp_target(
+                args,
+                left_id,
+                args.left_grasp_mode,
+                args.left_target_position_jitter,
+            ),
+            explicit_grasp_target(
+                args,
+                right_id,
+                args.right_grasp_mode,
+                args.right_target_position_jitter,
+            ),
         )
         print(config_output)
         print(f"任务配置完成：success={config_ok} configure={config_ms:.1f}ms snapshot={snapshot_path}")
@@ -789,12 +868,28 @@ def run_one_pair(
                 "service_ms": 0.0,
                 "wall_ms": 0.0,
                 "snapshot": str(snapshot_path),
+                "left_target_dx_m": float(args.left_target_position_jitter[0]),
+                "left_target_dy_m": float(args.left_target_position_jitter[1]),
+                "left_target_dz_m": float(args.left_target_position_jitter[2]),
+                "left_target_l1_m": float(sum(abs(value) for value in args.left_target_position_jitter)),
+                "right_target_dx_m": float(args.right_target_position_jitter[0]),
+                "right_target_dy_m": float(args.right_target_position_jitter[1]),
+                "right_target_dz_m": float(args.right_target_position_jitter[2]),
+                "right_target_l1_m": float(sum(abs(value) for value in args.right_target_position_jitter)),
                 "failure_reason": config_output,
             }
             return False, 1, summary
 
         ik_stage_ms = 0.0
         extract_stage_ms = 0.0
+        primary_success = False
+        primary_failure_reason = ""
+        primary_service_ms = 0.0
+        fallback_attempted = False
+        fallback_success = False
+        fallback_configure_ms = 0.0
+        fallback_service_ms = 0.0
+        fallback_failure_reason = ""
         if args.extract_only:
             print("计算开始：IK → 抽离（抽离完成即结束）")
             start = time.monotonic()
@@ -822,12 +917,77 @@ def run_one_pair(
             if args.ik_only_raw:
                 print("计算开始：仅生成代价函数前的全部合法 IK 解")
             else:
-                print("计算开始：负重初始位 → 预接触 → IK吸附位 → 抽离 → 负重位 → 放置位 → 回负重位")
+                print("计算开始：初始位 → 预接触 → IK吸附位 → 抽离 → 负重位 → 放置位 → 回初始位")
             start = time.monotonic()
             success, output, elapsed_ms = service_client.trigger(args.service_timeout)
+            primary_success = success
+            primary_service_ms = elapsed_ms
+            if not success:
+                primary_failure_reason = output
+            can_fallback_y = (
+                bool(args.target_y_fallback_enabled)
+                and (
+                    abs(float(args.left_target_position_jitter[1])) > 1e-12
+                    or abs(float(args.right_target_position_jitter[1])) > 1e-12
+                )
+            )
+            if not success and can_fallback_y:
+                fallback_attempted = True
+                if snapshot_path.exists():
+                    shutil.copy2(snapshot_path, primary_failure_snapshot_path)
+                fallback_left_jitter = safe_y_fallback_position_jitter(
+                    args.left_target_position_jitter
+                )
+                fallback_right_jitter = safe_y_fallback_position_jitter(
+                    args.right_target_position_jitter
+                )
+                print(
+                    "原始6D目标失败，启用安全Y降级："
+                    f"left_dy={args.left_target_position_jitter[1]:+.4f}->0.0000m "
+                    f"right_dy={args.right_target_position_jitter[1]:+.4f}->0.0000m；"
+                    "x/z/姿态保持不变"
+                )
+                fallback_config_ok, fallback_config_output, fallback_configure_ms = (
+                    service_client.configure(
+                        left_id,
+                        right_id,
+                        snapshot_path,
+                        args.service_timeout,
+                        args.left_grasp_mode == "top_suction",
+                        args.right_grasp_mode == "top_suction",
+                        explicit_grasp_target(
+                            args,
+                            left_id,
+                            args.left_grasp_mode,
+                            fallback_left_jitter,
+                        ),
+                        explicit_grasp_target(
+                            args,
+                            right_id,
+                            args.right_grasp_mode,
+                            fallback_right_jitter,
+                        ),
+                    )
+                )
+                print(fallback_config_output)
+                if fallback_config_ok:
+                    fallback_success, fallback_output, fallback_service_ms = (
+                        service_client.trigger(args.service_timeout)
+                    )
+                    success = fallback_success
+                    output = fallback_output
+                else:
+                    success = False
+                    output = fallback_config_output
+                if not success:
+                    fallback_failure_reason = output
+                elapsed_ms = primary_service_ms + fallback_service_ms
             wall_ms = (time.monotonic() - start) * 1000.0
             print(output)
-            print(f"计算结束：success={success} service={elapsed_ms:.1f}ms wall={wall_ms:.1f}ms")
+            print(
+                f"计算结束：success={success} service={elapsed_ms:.1f}ms "
+                f"wall={wall_ms:.1f}ms fallback={fallback_attempted}"
+            )
         returned_snapshot = monitor.extract_snapshot_path_from_service_output(output)
         if returned_snapshot is not None and returned_snapshot != snapshot_path:
             raise RuntimeError(f"服务连到了旧 planner：expected={snapshot_path}, got={returned_snapshot}")
@@ -841,7 +1001,26 @@ def run_one_pair(
             "configure_ms": config_ms,
             "service_ms": elapsed_ms,
             "wall_ms": wall_ms,
+            "primary_success": primary_success,
+            "primary_service_ms": primary_service_ms,
+            "primary_failure_reason": primary_failure_reason,
+            "fallback_attempted": fallback_attempted,
+            "fallback_success": fallback_success,
+            "fallback_configure_ms": fallback_configure_ms,
+            "fallback_service_ms": fallback_service_ms,
+            "fallback_failure_reason": fallback_failure_reason,
+            "primary_failure_snapshot": (
+                str(primary_failure_snapshot_path) if fallback_attempted else ""
+            ),
             "snapshot": str(snapshot_path),
+            "left_target_dx_m": float(args.left_target_position_jitter[0]),
+            "left_target_dy_m": float(args.left_target_position_jitter[1]),
+            "left_target_dz_m": float(args.left_target_position_jitter[2]),
+            "left_target_l1_m": float(sum(abs(value) for value in args.left_target_position_jitter)),
+            "right_target_dx_m": float(args.right_target_position_jitter[0]),
+            "right_target_dy_m": float(args.right_target_position_jitter[1]),
+            "right_target_dz_m": float(args.right_target_position_jitter[2]),
+            "right_target_l1_m": float(sum(abs(value) for value in args.right_target_position_jitter)),
         }
         snapshot: dict[str, Any] | None = None
         sample_count = 0
@@ -875,6 +1054,7 @@ def run_one_pair(
                     "final_ms": 0.0,
                     "loaded_to_place_ms": 0.0,
                     "place_to_loaded_ms": 0.0,
+                    "place_to_initial_ms": 0.0,
                     "samples": sample_count,
                     "failure_reason": output,
                 }
@@ -906,6 +1086,9 @@ def run_one_pair(
                 "loaded_to_pre_place_ms": float(place_cycle.get("loaded_to_pre_place_ms", 0.0)),
                 "pre_place_to_place_ms": float(place_cycle.get("pre_place_to_place_ms", 0.0)),
                 "place_to_loaded_ms": float(place_cycle.get("place_to_loaded_ms", 0.0)),
+                "place_to_initial_ms": float(
+                    place_cycle.get("place_to_initial_ms", place_cycle.get("place_to_loaded_ms", 0.0))
+                ),
                 "samples": sample_count,
                 "failure_reason": "" if success else output,
             }
@@ -932,11 +1115,35 @@ def main() -> int:
     parser.add_argument("--save", type=Path, default=None)
     parser.add_argument("--no-rerun", action="store_true", help="不生成 Rerun，只保存 snapshot/summary/stats CSV")
     parser.add_argument("--repeat", type=int, default=1, help="重复运行整组 pair sequence 的次数")
+    parser.add_argument(
+        "--target-position-jitter-max",
+        type=float,
+        default=0.0,
+        help="左右末端各自独立的三维位置随机误差上限；约束 |dx|+|dy|+|dz| 不超过该值",
+    )
+    parser.add_argument(
+        "--target-position-jitter-seed",
+        type=int,
+        default=20260807,
+        help="末端位置随机误差种子，保证鲁棒性测试可复现",
+    )
+    parser.add_argument(
+        "--target-y-fallback-enabled",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="完整任务失败后仅把左右目标Y恢复到标称安全值，保留请求X/Z和姿态并完整重算",
+    )
     parser.add_argument("--stats-csv", type=Path, default=None, help="统计 CSV 输出路径；默认写入 run_root/stats.csv")
     parser.add_argument("--box-front-x", type=float, default=0.90)
     parser.add_argument("--top-approach-forward", type=float, default=0.0, help="顶吸额外前移量；默认0，侧吸顶吸统一使用box-front-x")
     parser.add_argument("--top-box-front-x", type=float, default=0.70, help="顶吸专用箱墙前表面 x；默认 0.70m")
     parser.add_argument("--scene-y-shift", type=float, default=0.0)
+    parser.add_argument(
+        "--container-height",
+        type=float,
+        default=2.2,
+        help="集装箱内部高度；诊断无顶板约束时可临时设为较大值",
+    )
     parser.add_argument(
         "--task-layout",
         choices=["centered", "right_shift_0p1", "both"],
@@ -995,14 +1202,20 @@ def main() -> int:
         choices=[
             "auto",
             "greedy",
+            "projected_shortcut",
             "box_pose_rrt",
+            "equal_height_five_row_hybrid",
             "moveit_rrt_legacy",
             "top_lift_legacy",
             "top_updown_lift",
             "direct_updown_lift",
         ],
         default="auto",
-        help="抽离策略；默认由算法节点根据两个有效末端位姿和吸附方式自动分类",
+        help=(
+            "抽离策略；projected_shortcut 将负重关节直连投影为箱体Y固定的X/Z解析IK轨迹；"
+            "equal_height_five_row_hybrid 对第一排使用箱体位姿RRT、第二排使用投影Shortcut、"
+            "第三排使用updown优先顶吸箱体位姿RRT、第四五排使用顶吸箱体位姿RRT"
+        ),
     )
     parser.add_argument(
         "--top-extract-rollout-mode",
@@ -1032,6 +1245,8 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
     parser.add_argument("--extract-box-pose-rrt-paths-per-arm", type=int, default=8)
     parser.add_argument("--extract-box-pose-rrt-path-pair-limit", type=int, default=64)
+    parser.add_argument("--extract-box-pose-rrt-max-lift", type=float, default=0.55)
+    parser.add_argument("--extract-box-pose-rrt-max-pitch-deg", type=float, default=90.0)
     parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
     parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
     parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
@@ -1041,6 +1256,7 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-horizontal-detachment", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)
@@ -1096,7 +1312,7 @@ def main() -> int:
         "--place-cycle-enabled",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="负重后规划到放置姿态，释放箱体，再返回负重姿态。",
+        help="负重后规划到放置姿态（不再绕初始位），释放箱体，再返回初始姿态。",
     )
     parser.add_argument("--place-updown", type=float, default=0.10)
     parser.add_argument("--place-transition-updown", type=float, default=0.10)
@@ -1127,6 +1343,7 @@ def main() -> int:
     parser.add_argument("--extract-ik-candidate-reserve-stratified", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-ik-candidate-reserve-interleave-stride", type=int, default=4)
     parser.add_argument("--extract-ik-loaded-distance-order-weight", type=float, default=0.0)
+    parser.add_argument("--extract-projected-joint4-positive-penalty-weight", type=float, default=2.0)
     parser.add_argument("--service-timeout", type=float, default=120.0)
     parser.add_argument("--startup-retries", type=int, default=1, help="planner 启动超时后的重试次数")
     parser.add_argument("--stride", type=int, default=1)
@@ -1155,6 +1372,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.repeat < 1:
         raise ValueError("--repeat must be >= 1")
+    if args.target_position_jitter_max < 0.0:
+        raise ValueError("--target-position-jitter-max must be >= 0")
+    jitter_rng = np.random.default_rng(args.target_position_jitter_seed)
     domain = process_lifecycle.configure_ros_domain(args.ros_domain_id)
     print(f"ROS_DOMAIN_ID={domain if domain is not None else 'unset'}")
 
@@ -1288,11 +1508,13 @@ def main() -> int:
                     initial_args,
                     left_id,
                     initial_args.left_grasp_mode,
+                    initial_args.left_target_position_jitter,
                 ),
                 explicit_grasp_target(
                     initial_args,
                     right_id,
                     initial_args.right_grasp_mode,
+                    initial_args.right_target_position_jitter,
                 ),
             )
             print(prewarm_output)
@@ -1336,6 +1558,21 @@ def main() -> int:
                         right_mode,
                         task_layout=layout_name,
                         scene_y_shift=layout_scene_y_shift,
+                    )
+                    pair_args.left_target_position_jitter = sample_l1_position_jitter(
+                        jitter_rng,
+                        args.target_position_jitter_max,
+                    )
+                    pair_args.right_target_position_jitter = sample_l1_position_jitter(
+                        jitter_rng,
+                        args.target_position_jitter_max,
+                    )
+                    print(
+                        "末端位置误差："
+                        f"left={pair_args.left_target_position_jitter} "
+                        f"L1={sum(abs(value) for value in pair_args.left_target_position_jitter):.4f}m; "
+                        f"right={pair_args.right_target_position_jitter} "
+                        f"L1={sum(abs(value) for value in pair_args.right_target_position_jitter):.4f}m"
                     )
                     group_key = f"{layout_name}:{mode}:{pair_args.extract_rollout_mode}"
                     group_label = f"{layout_name}_{mode}_{pair_args.extract_rollout_mode}"
@@ -1430,6 +1667,12 @@ def main() -> int:
             "configure_ms",
             "service_ms",
             "wall_ms",
+            "primary_success",
+            "primary_service_ms",
+            "fallback_attempted",
+            "fallback_success",
+            "fallback_configure_ms",
+            "fallback_service_ms",
             "total_ms",
             "ik_ms",
             "extract_ms",
@@ -1437,6 +1680,7 @@ def main() -> int:
             "final_ms",
             "loaded_to_place_ms",
             "place_to_loaded_ms",
+            "place_to_initial_ms",
             "loaded_plan_batch_wall_ms",
             "loaded_plan_candidate_count",
             "loaded_plan_attempted_count",
@@ -1454,7 +1698,18 @@ def main() -> int:
             "selected_h",
             "selected_h_index",
             "selected_seed_index",
+            "left_target_dx_m",
+            "left_target_dy_m",
+            "left_target_dz_m",
+            "left_target_l1_m",
+            "right_target_dx_m",
+            "right_target_dy_m",
+            "right_target_dz_m",
+            "right_target_l1_m",
             "failure_reason",
+            "primary_failure_reason",
+            "fallback_failure_reason",
+            "primary_failure_snapshot",
             "snapshot",
         ]
         stats_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1473,7 +1728,7 @@ def main() -> int:
             f"total={item.get('total_ms', 0.0):.1f}ms "
             f"loaded_batch={item.get('loaded_plan_batch_wall_ms', 0.0):.1f}ms "
             f"place={item.get('loaded_to_place_ms', 0.0):.1f}ms "
-            f"return={item.get('place_to_loaded_ms', 0.0):.1f}ms "
+            f"return_initial={item.get('place_to_initial_ms', item.get('place_to_loaded_ms', 0.0)):.1f}ms "
             f"samples={item.get('samples', 0)}"
         )
     if not args.no_rerun:

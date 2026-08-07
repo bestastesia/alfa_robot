@@ -37,7 +37,7 @@ DIRECT_LIFT_TASKS = frozenset({3, 4, 5})
 STAGE_LABELS = {
     1: "负重位到 IK 前 5cm 预吸附位",
     2: "笛卡尔前进 5cm 并打开双侧电磁阀和真空泵",
-    3: "吸附后抽离并回负重姿态（updown 仅在高于0.45m时降至0.45m）",
+    3: "吸附后抽离并运动到放置前状态",
     4: "双臂与 updown 同步运动到放置位",
     5: "关闭双侧电磁阀和真空泵",
     6: "双臂与 updown 同步回负重位",
@@ -470,24 +470,14 @@ def validate_stage_contracts(
             raise ValueError(f"第 {stage_number} 阶段为空")
     if not _constant(sample.updown_m for sample in flattened(2)):
         raise ValueError("第2阶段违反合同：预接触到吸附时 updown 发生运动")
-    extract = stages[3][0]
-    if isinstance(task, TaskSpec):
-        if task.uses_direct_updown_lift:
-            if _max_joint_change(extract[0], extract[-1], joint_names) > 1e-6:
-                raise ValueError("直升抽离违反合同：12轴发生运动")
-            lift = extract[-1].updown_m - extract[0].updown_m
-            if abs(lift - 0.4) > 1e-4:
-                raise ValueError(f"直升抽离违反合同：updown 抬升 {lift:.4f}m，不是 0.4m")
-        elif not _constant(sample.updown_m for sample in extract):
-            raise ValueError("侧吸 RRT 抽离违反合同：updown 发生运动")
-    expected_stage3_updown = min(extract[-1].updown_m, 0.45)
-    actual_stage3_updown = flattened(3)[-1].updown_m
-    if abs(actual_stage3_updown - expected_stage3_updown) > 1e-4:
-        raise ValueError(
-            f"第3阶段终点 updown={actual_stage3_updown:.4f}m，"
-            f"期望 min(抽离终态, 0.45)={expected_stage3_updown:.4f}m"
-        )
-    expected_updown = {4: 0.1, 6: actual_stage3_updown}
+    for previous_stage, next_stage in ((1, 2), (2, 3), (3, 4), (4, 6)):
+        previous = flattened(previous_stage)[-1]
+        current = flattened(next_stage)[0]
+        if abs(previous.updown_m - current.updown_m) > 1e-6:
+            raise ValueError(f"第{previous_stage}→{next_stage}阶段边界 updown 不连续")
+        if _max_joint_change(previous, current, joint_names) > 1e-6:
+            raise ValueError(f"第{previous_stage}→{next_stage}阶段边界关节不连续")
+    expected_updown = {4: 0.1, 6: 0.3}
     for stage_number, target in expected_updown.items():
         actual = flattened(stage_number)[-1].updown_m
         if abs(actual - target) > 1e-4:

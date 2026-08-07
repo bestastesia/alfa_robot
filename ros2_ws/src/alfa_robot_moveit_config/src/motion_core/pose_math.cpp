@@ -187,6 +187,15 @@ Eigen::Isometry3d pose_to_eigen(const geometry_msgs::msg::Pose& pose)
   return tf;
 }
 
+Eigen::Isometry3d rotate_about_tool_z(
+  const Eigen::Isometry3d& pose,
+  double angle_rad)
+{
+  Eigen::Isometry3d rotated = pose;
+  rotated.linear() = pose.linear() * Eigen::AngleAxisd(angle_rad, Eigen::Vector3d::UnitZ());
+  return rotated;
+}
+
 nlohmann::json pose_json(const geometry_msgs::msg::Pose& pose)
 {
   return {

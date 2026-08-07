@@ -233,6 +233,7 @@ int main()
   assert(state.right_box.id == "right_box");
   assert(!state.seed_state);
   assert(!state.loaded_start_state);
+  assert(!state.replay_start_state);
 
   const auto seed_model = monitor_seed_test_model();
   const ExtractMonitorArmSeed arm_seed{
@@ -264,6 +265,7 @@ int main()
   assert(initialized_state.prefix == "extract_monitor_L7_R9");
   assert(initialized_state.seed_state);
   assert(initialized_state.loaded_start_state);
+  assert(initialized_state.replay_start_state == initialized_state.loaded_start_state);
   assert(initialized_state.seed_state->getVariablePosition("updown") == 0.35);
   assert(initialized_state.loaded_start_state->getVariablePosition("updown") == 0.45);
   assert(initialized_state.loaded_start_state->getVariablePosition("left_joint1") == 1.1);

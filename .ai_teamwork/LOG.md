@@ -1762,3 +1762,56 @@
 - 接口：一次逻辑任务使用同一 `task_id` 分两次发送左右目标对；第一批 `MOVE_TO_RECAPTURE` 是左右重拍末端 `base_link` 6D 位姿，第二批 `MOVE_TO_PREGRASP` 是精定位后的左右箱体正面中心 `base_link` 6D 位姿。每个目标新增 `grasp_mode={NO_MOVE,SIDE_SUCTION,TOP_SUCTION}`，本版只校验，不改变现有策略。
 - 规划：新增重拍位双臂 IK/碰撞规划服务，优先选择 `updown` 最接近 `0.3m` 的合法解；重拍执行完成后读取真实 `/joint_states`，作为第二次完整抓取规划的显式起点，消除重拍到预抓取的状态突变。
 - 验证：阶段合同 pytest 6项通过；本机 Domain 146 与工控机 Domain 147 Mock 均完整走通重拍、预抓取、靠近吸附、放置和返回初始位。工控机重拍规划约0.110s，第二次完整规划约0.892s；快照确认完整规划起点与重拍执行真实末态一致。远端仅更新 `/home/ar/motion-control-dev/repo` 并运行隔离 Mock，未启动或操作真实 `rt-control`；首次镜像构建受失效代理 `127.0.0.1:17897` 阻断，随后复用已存在镜像完成源码增量构建。
+
+## 2026-08-05 运控 / Codex / 负重近邻投影 Shortcut 实验
+- 分支：旧双向 X/Z RRT 实验已以 `2c44aa2` 保留；新实验位于 `feature/loaded-shortcut-cartesian-projection-20260805`，基于干净 `v5_dev` 开发。
+- 调整：IK 合法解先去重、再使用完整场景过滤，随后只按与首选负重姿态 `[0,-45,120,-75,0,0]°` 的双臂关节距离排序；抽离阶段改为从吸附解到同 updown 负重姿态生成关节 Shortcut，逐点保留参考轨迹的末端 X/Z/朝向，将 Y 投影为吸附箱中心 Y，再枚举解析 IK 分支并选取离参考 Shortcut 最近的解。每帧继续检查 10° 跳变、完整 PlanningScene/FCL 和附着箱动态墙碰撞。
+- 验证：Release 构建通过，相关 45 项测试全部通过；在 `box_front_x=0.75m` 对等高侧吸 `L1/R3、L4/R6、L7/R9` 尝试全部去重且场景合法的 `665、833、181` 个吸附 IK，完整成功 `0/3`。算法内部耗时分别约 `431.9、399.9、119.1ms`。
+- 结论：约八成候选在 Shortcut 第1步改变腕部朝向时，将紧贴的附着箱扫入左右/中间动态箱墙；绕过首步碰撞的候选主要在中途进入解析不可达区或超过 10° 分支跳变。说明“按负重距离选 IK”有效扩大了尝试集合，但“吸附后立即沿负重 Shortcut 改朝向”不适合拥挤箱墙。失败回放：`/tmp/projected_shortcut_loaded_pose_20260805/equal_height_three_tasks.rrd`；统计：`/tmp/projected_shortcut_loaded_pose_20260805/sequence_20260805_214014/summary.json`。
+- 二次约束：投影改为仅继承 Shortcut 的 X/Z，工具 Y 与朝向全程锁定吸附瞬间；任一箱体未完全脱离前不得低于初始箱高。只复测上一轮第2、3组 `L4/R6、L7/R9`，仍为 `0/2`：分别尝试全部 `833、181` 个合法去重候选，主要被“未脱离前下降”拒绝，其余为解析不可达、关节跳变、自碰撞或后挡墙碰撞。算法内部耗时约 `768.0、252.3ms`；回放：`/tmp/projected_shortcut_fixed_pose_tasks23_20260805/tasks_2_3_fixed_pose_no_drop.rrd`。
+- 三次约束：将空间投影 Shortcut 的参考终点从初始朝前负重位改为旧负重/预放置姿态 `[0,-90,120,-75,0,0]°`，但仍锁定吸附时 Y 与朝向，只沿参考路径 X/Z 逐点解析 IK。`L4/R6、L7/R9` 仍为 `0/2`；最长分别走到参考路径第 `29/90、32/90` 步，随后左臂解析 IK 无解。失败分类分别为：下降 `429/73`、解析无解 `183/38`、碰撞 `130/67`、跳变 `91/3`。回放：`/tmp/projected_shortcut_minus90_tasks23_20260805/tasks_2_3_projected_to_minus90.rrd`。
+- 旋转故障修复：旧回放中解析 IK 将同一 J6 边界姿态交替写成 `+180°/-180°`；最短角跳变检查误判为0°，但 Rerun 和真实轨迹按数值插值会形成360°旋转。现将每个解析分支先映射为关节限位内距上一帧最近的等价角，按真实数值差淘汰超过10°的分支，再按参考 Shortcut 距离选优；无连续分支时保留上一合法帧，不再把错误姿态写入轨迹。修复后两组回放最大原始相邻关节差均为 `6.76°`，J6维持约0°且无跨π帧。持久回放：`data/ik_benchmark/projected_shortcut_minus90_branch_fixed_20260806/tasks_2_3_continuous_branches.rrd`；45项测试通过。
+- 动态分段实验：当旧 Shortcut 下一投影点存在解析解但没有10°内连续分支，并且当前段已经前进时，保留最后合法状态、丢弃旧剩余路径，从当前状态重新向 `-90°` 目标生成 Shortcut；新段首点仍失败或累计32次重建则终止。`L4/R6` 有17个候选触发18次重建，但最大进展仍为27步；`L7/R9` 的连续分支失败主要发生在首步，没有可用于重建的前进状态。两组仍 `0/2`，持久回放：`data/ik_benchmark/projected_shortcut_resegmented_20260806/tasks_2_3_resegmented.rrd`；45项测试通过。
+- 回退决定：动态重分段没有提高最大进展，已按用户要求从代码中完整移除，恢复为单条静态投影 Shortcut；实验 Rerun 仅保留为历史证据。回退后 Release 构建通过，相关45项测试全部通过。
+- 两段投影实验：按用户要求将抽离参考改为“吸附位→初始负重位 `[0,-45,120,-75,0,0]°`→预放置位 `[0,-90,120,-75,0,0]°`”两段；两段均保持吸附瞬间工具 Y/朝向、固定 updown、10° 连续解析分支和完整场景碰撞检查。`box_front_x=0.75m` 复测 `L4/R6、L7/R9` 均未完成第一段：最远候选都接受38步、在初始负重参考第39步左臂解析无解，没有候选进入第二段。Rerun：`/tmp/projected_shortcut_two_stage_system_python_20260806/tasks_2_3_two_stage.rrd`；45项测试通过。
+
+## 2026-08-06 运控 / Codex / 投影失败点补抽并切换真实负重规划
+- 调整：投影 Shortcut 只负责从吸附位逼近初始负重参考 `[0,-45,120,-75,0,0]°`；中途失败且尚未脱离时，从最后合法状态按 5mm 步长向车侧继续补抽。补抽优先保持完整末端姿态；若进入局部运动学边界，仅放开侧视平面内俯仰，仍锁定 Y、Z、滚转和偏航。每步同时比较闭式分支、局部微分分支和俯仰自由分支的左右组合，选择完整场景碰撞通过且关节变化最小的组合，最大补抽 0.36m。
+- 切换：一旦附着箱与原箱位侧面不再重合，立即结束投影抽离；后续不再做空间映射，而是交给既有 `LoadedPosePlanner`，以真实 shortcut + 局部 RRT 修补规划到 `[0,-90,120,-75,0,0]°` 负重位。
+- 验证：`box_front_x=0.75m` 下 `L4/R6` 完整成功，选中候选 `236`，投影后补抽 `0.325m`，总抽离关节阶段69步；负重规划194点、约1.10s，完整算法约2.14s。`L7/R9` 仍失败在补抽入口的 `joint2↔joint5/joint6` 自碰撞或局部IK无解，未进入负重规划。
+- 数据：Rerun：`/tmp/projected_shortcut_outward36_pitchfree_to_minus90_20260806/tasks_2_3_outward36_pitchfree_to_minus90.rrd`；统计：`/tmp/projected_shortcut_outward36_pitchfree_to_minus90_20260806/sequence_20260806_164547/summary.json`。Release构建通过，相关45项测试全部通过。
+
+## 2026-08-06 运控 / Codex / 初始位选优与2cm补抽复测
+- 根因：上一轮测试通过命令将后续负重目标覆写为 `[0,-90,120,-75,0,0]°`，节点又把这组负重目标同时用于回放起点和投影模式 IK 排序，导致回放并非从规定初始位出发，IK 也没有按初始位舒适度选优。
+- 调整：投影模式的回放起点与 IK 排序参考统一改为独立初始位 `[0,-45,120,-75,0,0]°`，后续负重目标仍保持 `Joint2=-90°`；IK 排序使用双臂到初始位的加权关节距离，权重为 `[1,1,2,1,1,1]`，将 Joint3 从等权提高为双倍；投影失败后的向车侧补抽步长由 `5mm` 改为 `20mm`。
+- 验证：`box_front_x=0.75m` 复测 `L4/R6、L7/R9` 均完整成功，总耗时分别为 `915.8ms、1246.4ms`，其中 IK `271.3ms、102.5ms`，抽离 `113.9ms、715.4ms`，负重阶段 `212.6ms、207.4ms`。两组回放首帧均严格为初始位，先经过 `30/62` 帧初始位到预接触，再经过6帧到吸附位后才进入抽离；全程最大相邻关节变化约 `2°`。
+- 数据：Rerun：`/tmp/projected_shortcut_initial_weighted_step2cm_20260806_retry/tasks_2_3_initial_weighted_step2cm.rrd`；统计：`/tmp/projected_shortcut_initial_weighted_step2cm_20260806_retry/sequence_20260806_173226/summary.json`。Release构建和相关45项测试全部通过。
+
+## 2026-08-06 运控 / Codex / 第一排无顶板横向抽离诊断
+- 做了什么：撤销“双臂共同抬升时强制下降 updown”的未完成实验；测试入口增加 `--container-height`、侧吸 RRT 最大 lift/pitch 诊断参数。实验只把顶板从 `2.2m` 抬到 `10m`，侧墙、动态箱墙、自碰撞和附着箱碰撞保持不变。
+- 纠正：首轮投影 Shortcut 虽有14个成功候选，但最终上抬约 `0.42～0.44m`，属于纵向抽离，不满足用户要求，不能作为横向抽离成功证据。
+- 严格横向结果：锁定箱体 Z、姿态和 updown，仅允许向车侧平移，`L1/R3` 的665个合法去重 IK 全部失败；每个候选最多前进约 `0.20m`，未达到约 `0.33m` 的完全脱离距离。左臂主因分布为解析无解430、自碰撞/场景碰撞107、关节跳变104、限位角分支24；说明移除顶板后，纯横向抽离仍受运动学连续性和自碰撞限制。
+- 最终口径：允许搜索过程抬升和仰角，但侧吸成功必须满足携带箱在 X 方向完全越过原箱位侧面；新增 `front_goal_requires_horizontal_detachment`，不再允许单靠竖直分离判成功。无顶板复测 `L1/R3` 的665个候选得到2个真实横向成功，首选左右箱最终 X 向净脱离约 `33.2mm/37.4mm`，同时分别抬升 `0.24m/0.28m`、仰角 `65°/70°`；抽离搜索总耗时 `71.743s`。
+- 数据：严格纯横向快照 `/tmp/pure_horizontal_no_ceiling_20260806/sequence_20260806_220558/01_L1_R3/stage_snapshot.json`；允许抬升但要求最终横向抽离的快照 `/tmp/horizontal_goal_free_lift_no_ceiling_20260806/sequence_20260806_221939/01_L1_R3/stage_snapshot.json`；成功 Rerun `/tmp/horizontal_goal_free_lift_no_ceiling_20260806/L1_R3_horizontal_goal_with_lift_success.rrd`，已通过 `rerun rrd verify`。
+- 逐帧 updown 补偿：双臂侧吸 RRT 路径合并后，以吸附起点两末端较低者的 Z 为硬下限；每帧统一调整 updown，使较低末端回到该高度，updown 触及下限时允许末端更高但绝不更低，随后使用同一动态场景和附着箱重新检查碰撞。无顶板复测26帧最低末端始终不低于 `1.800000m`，updown 从 `0.14m` 降至 `0m`；恢复 `2.2m` 真实顶板后 `L1/R3` 仍得到4个成功候选，首选27帧 updown 为 `0.15～0.0862m`、最低末端全程保持 `1.800000m`，抽离耗时 `8.459s`。
+- 补偿数据：真实顶板快照 `/tmp/horizontal_goal_tip_floor_updown_ceiling_20260807/sequence_20260807_021311/01_L1_R3/stage_snapshot.json`；Rerun `/tmp/horizontal_goal_tip_floor_updown_ceiling_20260807/L1_R3_tip_floor_updown_real_ceiling_success.rrd`，已通过 `rerun rrd verify`。Release 构建及相关测试全部通过。
+
+## 2026-08-07 运控 / Codex / 第三排吸附 IK 的 Joint4 负区间偏好
+- 纠正：撤回上一轮针对“第三排末端旋转”误诊加入的负重轨迹端点去摆动处理，并恢复负重规划原有的同步优先、分臂兜底顺序；保留此前已经验证的回放初始位和有界关节真实角差修复。
+- 调整：投影 Shortcut 的吸附 IK 排序在原有初始位加权关节距离之外，增加 Joint4 正角线性惩罚；Joint4 小于等于0时不加罚，正角越大代价越高。默认权重最终取 `2.0`，避免权重 `8.0` 过度排斥仍有后续规划价值的候选。
+- 验证：`box_front_x=0.70m` 的 `L7/R9` 最终采用吸附候选 Joint4 由旧约 `+20.72°` 调整为左右约 `-15.08°`；五排任务 `L1/R3、L4/R6、L7/R9、L10/R12、L13/R15` 完整流程 `5/5` 成功。Rerun：`data/ik_benchmark/equal_height_five_row_hybrid_20260807/joint4_negative_cost_full70_v3/five_rows_070m_joint4_negative_cost.rrd`；统计：`data/ik_benchmark/equal_height_five_row_hybrid_20260807/joint4_negative_cost_full70_v3/sequence_20260807_143742/summary.json`。Release 构建及17项测试全部通过。
+
+## 2026-08-07 运控 / Codex / 第三排改为 Updown 优先顶吸抽离
+- 调整：第三排 `L7/R9` 从侧吸投影 Shortcut 改为双顶吸箱体位姿 RRT；公共 `updown` 先请求上升 `0.4m`，受 `0.7m` 上限约束后，双臂 RRT 补足剩余竖直脱离量，并允许必要的向车侧退让；抽离后继续使用既有 Shortcut + 局部 RRT 到负重位。
+- 验证：选中候选 `updown=0.52m`，公共升降轴实际上升至 `0.70m`（`+0.18m`），双臂把最终抬升补到约 `0.44m` 并后退 `0.16m`；完整流程成功，总耗时 `2190.9ms`，其中 IK `11.9ms`、抽离 `891.3ms`、负重规划 `1221.3ms`。
+- 数据：单任务成功回放 `data/ik_benchmark/equal_height_five_row_hybrid_20260807/third_row_top_lift_full70/L7_R9_third_row_top_lift_success.rrd`，五排回放 `data/ik_benchmark/equal_height_five_row_hybrid_20260807/third_row_top_lift_full70/five_rows_third_row_top_lift.rrd`，第三排快照 `data/ik_benchmark/equal_height_five_row_hybrid_20260807/third_row_top_lift_full70/sequence_20260807_152651/03_L7_R9/stage_snapshot.json`；Rerun 校验通过，MoveIt 配置包45项测试全部通过。
+
+## 2026-08-07 运控 / Codex / 默认横向位置 X 距离查表网格验证
+- 验证：默认安全 Y、无位置抖动下，对 `box_front_x=0.70～0.75m` 按 `0.01m` 步长运行五排完整流程，共 `6×5=30` 个任务，结果 `30/30` 成功，未触发安全 Y 降级。
+- 性能：六档距离算法总耗时 `108.387s`，单任务平均 `3.613s`，最慢 `9.222s`；适合作为离线查表生成，不宜在线重复完整搜索。
+- 数据：汇总位于 `data/ik_benchmark/equal_height_five_row_hybrid_20260807/x_lookup_070_075_default_y/grid_summary.json` 和 `grid_task_results.json`。后续输入距离可向上取整到厘米档选择轨迹骨架，但真实吸附末段仍应按实际 6D 位姿校正并复核碰撞，避免最多 `1cm` 的直接回放端点误差。
+
+## 2026-08-07 运控 / Codex / 六档五排轨迹查表缓存
+- 做了什么：把六档距离、五排任务的30条成功全过程轨迹压缩为约0.8MB版本化资产；`PlannerAdapter` 在默认Y、同排任务和起点一致时按厘米向上取整命中，例如 `0.725m→0.73m`，命中后不启动 planner、不再计算 IK/RRT。
+- 边界：横向布局或起点不一致、距离超出 `0.70～0.75m`、高低排任务均自动回退实时规划；缓存执行前继续按当前30Hz和速度/加速度合同重定时。
+- 验证结果：30条缓存全部可重建四段执行计划，30/30命中，平均加载及重定时约 `112.8ms`、最慢约 `192.3ms`；运行时31项、核心规划45项测试全部通过。

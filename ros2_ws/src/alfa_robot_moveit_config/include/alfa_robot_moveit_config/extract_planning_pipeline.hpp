@@ -23,6 +23,7 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -495,6 +496,59 @@ private:
   ExtractRolloutPlannerConfig config_;
 };
 
+class BoxPoseRrtExtractPlanner;
+
+struct ProjectedShortcutExtractPlannerConfig
+{
+  const moveit::core::JointModelGroup* joint_group = nullptr;
+  const moveit::core::JointModelGroup* left_arm_group = nullptr;
+  const moveit::core::JointModelGroup* right_arm_group = nullptr;
+  std::vector<std::string> target_joint_names;
+  std::vector<double> left_initial_reference_goal_arm;
+  std::vector<double> right_initial_reference_goal_arm;
+  std::string left_tip = "left_tool0";
+  std::string right_tip = "right_tool0";
+  double reference_joint_step = 2.0 * M_PI / 180.0;
+  double max_projected_joint_delta = 10.0 * M_PI / 180.0;
+  double outward_recovery_step = 0.02;
+  double outward_recovery_max_distance = 0.36;
+  size_t outward_recovery_min_projected_steps = 1;
+  double outward_recovery_position_tolerance = 1e-7;
+  double outward_recovery_orientation_tolerance = 1e-7;
+  double position_tolerance = 0.01;
+  double orientation_tolerance = 0.05;
+  size_t analytic_root_samples = 12;
+  const BoxPoseRrtExtractPlanner* outward_recovery_rrt_planner = nullptr;
+  ExtractDualClearCallback dual_clear_callback;
+  ExtractTrajectoryClearCallback trajectory_clear_callback;
+};
+
+class ProjectedShortcutExtractPlanner
+{
+public:
+  explicit ProjectedShortcutExtractPlanner(ProjectedShortcutExtractPlannerConfig config);
+
+  ExtractRolloutTiming rolloutDual(
+    const moveit::core::RobotState& start_state,
+    const AttachedBoxSpec& left_box,
+    int left_box_id,
+    const AttachedBoxSpec& right_box,
+    int right_box_id,
+    bool require_left_detached,
+    bool require_right_detached,
+    size_t candidate_order,
+    size_t h_index,
+    size_t seed_index,
+    double h,
+    double ik_score,
+    double ik_solve_ms,
+    const ExtractRecordStepCallback& record_step = {}) const;
+
+private:
+  ProjectedShortcutExtractPlannerConfig config_;
+  alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk analytic_solver_;
+};
+
 struct BoxPoseRrtExtractPlannerConfig
 {
   struct Profile
@@ -529,6 +583,7 @@ struct BoxPoseRrtExtractPlannerConfig
   robot_motion::core::BoxPoseExtractRrtConfig top_rrt;
   double top_common_updown_lift_distance = 0.4;
   double top_common_updown_step = 0.01;
+  bool front_tip_floor_updown_compensation = true;
   size_t max_paths_per_arm = 8;
   size_t max_path_pairs_to_validate = 64;
   bool diagnose_isolated_arm_paths = false;
@@ -545,6 +600,8 @@ struct BoxPoseRrtArmPolicy
   double lift_priority = 1.0;
   double pitch_priority = 1.0;
   double detachment_reference_offset_z = 0.0;
+  std::optional<bool> require_horizontal_detachment;
+  std::optional<bool> tip_floor_updown_compensation;
 };
 
 class BoxPoseRrtExtractPlanner

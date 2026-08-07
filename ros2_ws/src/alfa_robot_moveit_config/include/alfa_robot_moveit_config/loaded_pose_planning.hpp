@@ -106,6 +106,7 @@ struct LoadedPosePlanResult
   bool success = false;
   bool attempted = false;
   bool carried_clear = false;
+  bool used_initial_pose_route = false;
   bool lateral_shift_attempted = false;
   bool lateral_shift_success = false;
   double lateral_shift_ms = 0.0;
@@ -177,6 +178,9 @@ struct LoadedPosePlannerConfig
   double pre_loaded_lower_updown_delta = 0.0;
   double fixed_updown = 0.3;
   std::string planning_mode = "rrt";
+  bool route_via_initial_pose = false;
+  std::vector<double> initial_left_arm;
+  std::vector<double> initial_right_arm;
   double min_tool_normal_z = -1e-4;
   double max_joint_delta = 0.0;
   ExtractCandidateSolver* lateral_shift_solver = nullptr;

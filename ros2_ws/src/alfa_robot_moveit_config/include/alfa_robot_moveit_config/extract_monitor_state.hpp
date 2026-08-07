@@ -62,6 +62,7 @@ struct ExtractMonitorState
   AttachedBoxSpec right_box;
   moveit::core::RobotStatePtr seed_state;
   moveit::core::RobotStatePtr loaded_start_state;
+  moveit::core::RobotStatePtr replay_start_state;
   robot_motion::core::UpdownAwareIkResult ik_result;
   std::vector<robot_motion::core::UpdownAwareIkCandidate> legal_candidates;
   std::vector<moveit::core::RobotStatePtr> candidate_states;

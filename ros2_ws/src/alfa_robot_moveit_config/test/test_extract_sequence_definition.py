@@ -24,7 +24,7 @@ def main() -> int:
     ]
     pairs = MODULE.parse_pair_sequence(MODULE.DEFAULT_SEQUENCE)
     assert pairs == expected_pairs, pairs
-    assert MODULE.DEFAULT_LOADED_POSE_FAMILY_DEG == "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+    assert MODULE.DEFAULT_LOADED_POSE_FAMILY_DEG == "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
     assert MODULE.DEFAULT_PRE_PLACE_POSE_DEG == "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
     assert MODULE.OUTER_GRASP_TARGET_Y_M == 0.40
     assert MODULE.TASK_LAYOUT_Y_OFFSETS == {
@@ -39,6 +39,37 @@ def main() -> int:
         -MODULE.OUTER_GRASP_TARGET_Y_M + MODULE.TASK_LAYOUT_Y_OFFSETS["right_shift_0p1"],
         -0.35,
     )
+    jitter_rng = MODULE.np.random.default_rng(1234)
+    jitter_samples = [
+        MODULE.sample_l1_position_jitter(jitter_rng, 0.05)
+        for _ in range(100)
+    ]
+    assert all(sum(abs(value) for value in sample) <= 0.05 + 1e-12 for sample in jitter_samples)
+    deterministic_rng = MODULE.np.random.default_rng(1234)
+    assert jitter_samples[0] == MODULE.sample_l1_position_jitter(deterministic_rng, 0.05)
+    assert MODULE.safe_y_fallback_position_jitter([0.01, -0.02, 0.03]) == [0.01, 0.0, 0.03]
+    target_args = SimpleNamespace(
+        box_front_x=0.75,
+        scene_y_shift=0.0,
+        top_suction_x_offset=0.15,
+        top_suction_z_offset=0.2,
+        world_to_base_z=0.202094,
+    )
+    nominal_target = MODULE.explicit_grasp_target(target_args, 1, "front")
+    jittered_target = MODULE.explicit_grasp_target(
+        target_args,
+        1,
+        "front",
+        [0.01, -0.02, 0.015],
+    )
+    assert all(
+        math.isclose(jittered - nominal, delta)
+        for jittered, nominal, delta in zip(
+            jittered_target["position"],
+            nominal_target["position"],
+            [0.01, -0.02, 0.015],
+        )
+    )
 
     left_modes = MODULE.parse_arm_grasp_mode_sequence("", pairs, "left")
     right_modes = MODULE.parse_arm_grasp_mode_sequence("", pairs, "right")
@@ -46,14 +77,14 @@ def main() -> int:
         left_modes, right_modes
     )
     raw_left_modes = [
-        "front", "front", "front", "front", "front", "front", "front",
+        "front", "front", "front", "front", "top_suction", "top_suction",
         "top_suction", "top_suction", "top_suction", "top_suction", "top_suction",
-        "top_suction",
+        "top_suction", "top_suction",
     ]
     raw_right_modes = [
-        "front", "front", "front", "front", "front", "front", "front",
+        "front", "front", "front", "front", "top_suction", "top_suction",
         "top_suction", "top_suction", "top_suction", "top_suction", "top_suction",
-        "top_suction",
+        "top_suction", "top_suction",
     ]
     assert left_modes == raw_left_modes, left_modes
     assert right_modes == raw_right_modes, right_modes
@@ -68,8 +99,8 @@ def main() -> int:
         MODULE.pair_vehicle_mode(left_mode, right_mode)
         for left_mode, right_mode in zip(left_modes, right_modes)
     ]
-    assert vehicle_modes.count("front") == 7, vehicle_modes
-    assert vehicle_modes.count("top_suction") == 6, vehicle_modes
+    assert vehicle_modes.count("front") == 4, vehicle_modes
+    assert vehicle_modes.count("top_suction") == 9, vehicle_modes
     rollout_args = SimpleNamespace(
         extract_rollout_mode="auto",
         top_extract_rollout_mode="top_updown_lift",
@@ -78,6 +109,26 @@ def main() -> int:
         assert MODULE.extract_rollout_mode_for_pair(
             rollout_args, left_id, right_id, mode
         ) == "auto"
+
+    hybrid_args = SimpleNamespace(
+        extract_rollout_mode="equal_height_five_row_hybrid",
+        top_extract_rollout_mode="box_pose_rrt",
+    )
+    assert MODULE.extract_rollout_mode_for_pair(hybrid_args, 1, 3, "front") == "box_pose_rrt"
+    assert MODULE.extract_rollout_mode_for_pair(hybrid_args, 4, 6, "front") == "projected_shortcut"
+    assert MODULE.extract_rollout_mode_for_pair(hybrid_args, 7, 9, "top_suction") == "box_pose_rrt"
+    assert MODULE.extract_rollout_mode_for_pair(hybrid_args, 10, 12, "top_suction") == "box_pose_rrt"
+    assert MODULE.extract_rollout_mode_for_pair(hybrid_args, 13, 15, "top_suction") == "box_pose_rrt"
+    hybrid_args.extract_success_quorum = 1
+    hybrid_args.extract_max_joint_delta = math.radians(20.0)
+    assert MODULE.extract_search_limits_for_pair(
+        hybrid_args, "box_pose_rrt"
+    ) == (1, math.radians(20.0))
+    projected_quorum, projected_delta = MODULE.extract_search_limits_for_pair(
+        hybrid_args, "projected_shortcut"
+    )
+    assert projected_quorum == 3
+    assert math.isclose(projected_delta, math.radians(10.0))
 
     parser_source = SCRIPT.read_text()
     assert '"--loaded-candidate-limit",\n        type=int,\n        default=0' in parser_source
@@ -93,6 +144,8 @@ def main() -> int:
     assert '"--pre-place-right-pose-deg"' in parser_source
     assert 'default=True,\n        help="负重后规划到放置姿态' in parser_source
     assert '"--extract-only"' in parser_source
+    assert '"--target-y-fallback-enabled"' in parser_source
+    assert 'target_y_fallback_enabled=args.target_y_fallback_enabled' in parser_source
     assert 'default=False,\n        help="只计算 IK 和抽离' in parser_source
     assert 'default="auto"' in parser_source
     assert 'default="box_pose_rrt"' in parser_source

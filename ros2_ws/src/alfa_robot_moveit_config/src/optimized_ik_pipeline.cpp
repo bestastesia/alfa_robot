@@ -95,6 +95,23 @@ struct AnalyticHeightPlan
   std::vector<double> candidates;
 };
 
+struct ToolTargetVariant
+{
+  Eigen::Isometry3d target = Eigen::Isometry3d::Identity();
+  std::string label;
+};
+
+std::vector<ToolTargetVariant> tool_target_variants(
+  const Eigen::Isometry3d& target,
+  bool allow_roll_pi)
+{
+  std::vector<ToolTargetVariant> variants{{target, "normal"}};
+  if (allow_roll_pi) {
+    variants.push_back({rotate_about_tool_z(target, M_PI), "roll_pi"});
+  }
+  return variants;
+}
+
 std::pair<double, double> target_h_interval(
   const Eigen::Isometry3d& target,
   robot_motion::core::UpdownAwareIkRequest::GraspMode grasp_mode,
@@ -333,6 +350,11 @@ double joint_limit_margin_cost(
   return cost;
 }
 
+double positive_joint_angle_penalty(double joint_angle_rad, double weight)
+{
+  return std::max(0.0, weight) * std::max(0.0, joint_angle_rad);
+}
+
 OptimizedDualIkSolver::OptimizedDualIkSolver(OptimizedDualIkSolverConfig config)
 : config_(std::move(config))
 {}
@@ -391,6 +413,12 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
   } else {
     const auto left_seed = arm_seed_from_state(*request.seed_state, "left");
     const auto right_seed = arm_seed_from_state(*request.seed_state, "right");
+    const auto left_target_variants = tool_target_variants(
+      ik_request.left_target,
+      request.allow_front_tool_roll_pi_symmetry && !left_top_suction);
+    const auto right_target_variants = tool_target_variants(
+      ik_request.right_target,
+      request.allow_front_tool_roll_pi_symmetry && !right_top_suction);
     const double left_position_tolerance = left_top_suction
       ? ik_config.top_suction_position_tolerance
       : ik_config.position_tolerance;
@@ -406,87 +434,106 @@ OptimizedDualIkSolveResult OptimizedDualIkSolver::solve(
     size_t seed_index = 0;
     for (size_t h_index = 0; h_index < height_plan.candidates.size(); ++h_index) {
       const double h = height_plan.candidates[h_index];
-      const auto left_solutions = analytic_solver_.solveInBaseLink(
-        alfa_robot::analytic_ik::ArmSide::Left,
-        ik_request.left_target,
-        h,
-        left_seed,
-        std::max(1e-5, left_position_tolerance),
-        std::max(1e-5, left_orientation_tolerance),
-        config_.analytic_root_samples);
-      const auto right_solutions = analytic_solver_.solveInBaseLink(
-        alfa_robot::analytic_ik::ArmSide::Right,
-        ik_request.right_target,
-        h,
-        right_seed,
-        std::max(1e-5, right_position_tolerance),
-        std::max(1e-5, right_orientation_tolerance),
-        config_.analytic_root_samples);
-      if (left_solutions.empty() || right_solutions.empty()) {
+      using ArmSolutions = std::vector<alfa_robot::analytic_ik::ArmAnalyticIkSolution>;
+      std::vector<std::pair<const ToolTargetVariant*, ArmSolutions>> left_variant_solutions;
+      std::vector<std::pair<const ToolTargetVariant*, ArmSolutions>> right_variant_solutions;
+      for (const auto& variant : left_target_variants) {
+        auto solutions = analytic_solver_.solveInBaseLink(
+          alfa_robot::analytic_ik::ArmSide::Left,
+          variant.target,
+          h,
+          left_seed,
+          std::max(1e-5, left_position_tolerance),
+          std::max(1e-5, left_orientation_tolerance),
+          config_.analytic_root_samples);
+        if (!solutions.empty()) {
+          left_variant_solutions.emplace_back(&variant, std::move(solutions));
+        }
+      }
+      for (const auto& variant : right_target_variants) {
+        auto solutions = analytic_solver_.solveInBaseLink(
+          alfa_robot::analytic_ik::ArmSide::Right,
+          variant.target,
+          h,
+          right_seed,
+          std::max(1e-5, right_position_tolerance),
+          std::max(1e-5, right_orientation_tolerance),
+          config_.analytic_root_samples);
+        if (!solutions.empty()) {
+          right_variant_solutions.emplace_back(&variant, std::move(solutions));
+        }
+      }
+      if (left_variant_solutions.empty() || right_variant_solutions.empty()) {
         output.ik_result.candidates.push_back(make_rejected_candidate(
           h, height_plan.center, height_plan.lower, height_plan.upper, h_index,
-          left_solutions.empty() ? "left_analytic_no_solution" : "right_analytic_no_solution"));
+          left_variant_solutions.empty() ? "left_analytic_no_solution" : "right_analytic_no_solution"));
         continue;
       }
-      for (const auto& left_solution : left_solutions) {
-        for (const auto& right_solution : right_solutions) {
-          robot_motion::core::UpdownAwareIkCandidate candidate;
-          candidate.legal = true;
-          candidate.collision_free = true;
-          candidate.solver_path = "analytic_fixed_h";
-          candidate.target_order = "normal";
-          candidate.h = h;
-          candidate.h_center = height_plan.center;
-          candidate.h_range_lower = height_plan.lower;
-          candidate.h_range_upper = height_plan.upper;
-          candidate.h_index = h_index;
-          candidate.seed_index = seed_index++;
-          candidate.updown_delta = std::abs(h - ik_request.current_h);
-          candidate.joint_names = fixed_variable_names();
-          candidate.joint_values.reserve(candidate.joint_names.size());
-          for (double value : left_solution.joints) candidate.joint_values.push_back(value);
-          for (double value : right_solution.joints) candidate.joint_values.push_back(value);
-          candidate.full_joint_names = fixed_full_variable_names();
-          candidate.full_joint_values.reserve(candidate.full_joint_names.size());
-          candidate.full_joint_values.push_back(h);
-          candidate.full_joint_values.insert(
-            candidate.full_joint_values.end(),
-            candidate.joint_values.begin(),
-            candidate.joint_values.end());
-          const auto candidate_state =
-            robot_state_from_ik_candidate(*request.seed_state, candidate, config_.enforce_bounds_group);
-          const Eigen::Isometry3d left_actual = tip_pose_in_base_link(candidate_state, "left_tool0");
-          const Eigen::Isometry3d right_actual = tip_pose_in_base_link(candidate_state, "right_tool0");
-          const double left_pos_error = pose_position_error(ik_request.left_target, left_actual);
-          const double right_pos_error = pose_position_error(ik_request.right_target, right_actual);
-          const double left_ori_error = pose_orientation_error(ik_request.left_target, left_actual);
-          const double right_ori_error = pose_orientation_error(ik_request.right_target, right_actual);
-          candidate.direct_pos_error = std::max(left_pos_error, right_pos_error);
-          candidate.direct_ori_error = std::max(left_ori_error, right_ori_error);
-          if (left_pos_error > left_position_tolerance) {
-            candidate.legal = false;
-            candidate.rejection_reason = "left_analytic_moveit_fk_position_error";
-          } else if (right_pos_error > right_position_tolerance) {
-            candidate.legal = false;
-            candidate.rejection_reason = "right_analytic_moveit_fk_position_error";
-          } else if (left_ori_error > left_orientation_tolerance) {
-            candidate.legal = false;
-            candidate.rejection_reason = "left_analytic_moveit_fk_orientation_error";
-          } else if (right_ori_error > right_orientation_tolerance) {
-            candidate.legal = false;
-            candidate.rejection_reason = "right_analytic_moveit_fk_orientation_error";
+      for (const auto& [left_variant, left_solutions] : left_variant_solutions) {
+        for (const auto& [right_variant, right_solutions] : right_variant_solutions) {
+          for (const auto& left_solution : left_solutions) {
+            for (const auto& right_solution : right_solutions) {
+              robot_motion::core::UpdownAwareIkCandidate candidate;
+              candidate.legal = true;
+              candidate.collision_free = true;
+              candidate.solver_path = "analytic_fixed_h";
+              candidate.target_order = left_variant->label == "normal" && right_variant->label == "normal"
+                ? "normal"
+                : "left_" + left_variant->label + "_right_" + right_variant->label;
+              candidate.h = h;
+              candidate.h_center = height_plan.center;
+              candidate.h_range_lower = height_plan.lower;
+              candidate.h_range_upper = height_plan.upper;
+              candidate.h_index = h_index;
+              candidate.seed_index = seed_index++;
+              candidate.updown_delta = std::abs(h - ik_request.current_h);
+              candidate.joint_names = fixed_variable_names();
+              candidate.joint_values.reserve(candidate.joint_names.size());
+              for (double value : left_solution.joints) candidate.joint_values.push_back(value);
+              for (double value : right_solution.joints) candidate.joint_values.push_back(value);
+              candidate.full_joint_names = fixed_full_variable_names();
+              candidate.full_joint_values.reserve(candidate.full_joint_names.size());
+              candidate.full_joint_values.push_back(h);
+              candidate.full_joint_values.insert(
+                candidate.full_joint_values.end(),
+                candidate.joint_values.begin(),
+                candidate.joint_values.end());
+              const auto candidate_state =
+                robot_state_from_ik_candidate(*request.seed_state, candidate, config_.enforce_bounds_group);
+              const Eigen::Isometry3d left_actual = tip_pose_in_base_link(candidate_state, "left_tool0");
+              const Eigen::Isometry3d right_actual = tip_pose_in_base_link(candidate_state, "right_tool0");
+              const double left_pos_error = pose_position_error(left_variant->target, left_actual);
+              const double right_pos_error = pose_position_error(right_variant->target, right_actual);
+              const double left_ori_error = pose_orientation_error(left_variant->target, left_actual);
+              const double right_ori_error = pose_orientation_error(right_variant->target, right_actual);
+              candidate.direct_pos_error = std::max(left_pos_error, right_pos_error);
+              candidate.direct_ori_error = std::max(left_ori_error, right_ori_error);
+              if (left_pos_error > left_position_tolerance) {
+                candidate.legal = false;
+                candidate.rejection_reason = "left_analytic_moveit_fk_position_error";
+              } else if (right_pos_error > right_position_tolerance) {
+                candidate.legal = false;
+                candidate.rejection_reason = "right_analytic_moveit_fk_position_error";
+              } else if (left_ori_error > left_orientation_tolerance) {
+                candidate.legal = false;
+                candidate.rejection_reason = "left_analytic_moveit_fk_orientation_error";
+              } else if (right_ori_error > right_orientation_tolerance) {
+                candidate.legal = false;
+                candidate.rejection_reason = "right_analytic_moveit_fk_orientation_error";
+              }
+              candidate.joint_delta = full_joint_delta(candidate, ik_request.current_full_joints);
+              candidate.joint_limit_margin_cost = joint_limit_margin_cost(
+                candidate,
+                *config_.robot_model,
+                ik_config.joint_limit_weights,
+                ik_config.joint_limit_free_ratio);
+              if (request.capture_pre_score_candidates && candidate.legal) {
+                output.ik_result.pre_score_candidates.push_back(candidate);
+              }
+              candidate.score = score_analytic_candidate(candidate, ik_request, ik_config);
+              output.ik_result.candidates.push_back(std::move(candidate));
+            }
           }
-          candidate.joint_delta = full_joint_delta(candidate, ik_request.current_full_joints);
-          candidate.joint_limit_margin_cost = joint_limit_margin_cost(
-            candidate,
-            *config_.robot_model,
-            ik_config.joint_limit_weights,
-            ik_config.joint_limit_free_ratio);
-          if (request.capture_pre_score_candidates && candidate.legal) {
-            output.ik_result.pre_score_candidates.push_back(candidate);
-          }
-          candidate.score = score_analytic_candidate(candidate, ik_request, ik_config);
-          output.ik_result.candidates.push_back(std::move(candidate));
         }
       }
     }

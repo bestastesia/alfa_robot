@@ -6,6 +6,7 @@
 #include <urdf/model.h>
 
 #include <cassert>
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -25,6 +26,35 @@ moveit::core::RobotModelPtr empty_model()
   return std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
 }
 
+moveit::core::RobotModelPtr angular_model()
+{
+  const std::string urdf_xml = R"(
+    <robot name="angular_robot">
+      <link name="world"/>
+      <link name="bounded_link"/>
+      <link name="continuous_link"/>
+      <joint name="bounded_joint" type="revolute">
+        <parent link="world"/>
+        <child link="bounded_link"/>
+        <axis xyz="0 0 1"/>
+        <limit lower="-3.141592653589793" upper="3.141592653589793" effort="1" velocity="1"/>
+      </joint>
+      <joint name="continuous_joint" type="continuous">
+        <parent link="bounded_link"/>
+        <child link="continuous_link"/>
+        <axis xyz="0 0 1"/>
+        <limit effort="1" velocity="1"/>
+      </joint>
+    </robot>)";
+  auto urdf_model = std::make_shared<urdf::Model>();
+  const bool urdf_ok = urdf_model->initString(urdf_xml);
+  assert(urdf_ok);
+  auto srdf_model = std::make_shared<srdf::Model>();
+  const bool srdf_ok = srdf_model->initString(*urdf_model, R"(<robot name="angular_robot"/>)");
+  assert(srdf_ok);
+  return std::make_shared<moveit::core::RobotModel>(urdf_model, srdf_model);
+}
+
 moveit::planning_interface::MoveGroupInterface::Plan tagged_plan(double planning_time)
 {
   moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -37,6 +67,17 @@ moveit::planning_interface::MoveGroupInterface::Plan tagged_plan(double planning
 int main()
 {
   using alfa_robot::motion::ExtractMonitorTransitionPlanner;
+  using alfa_robot::motion::extract_transition_variable_delta;
+
+  const auto joints_model = angular_model();
+  const double from = 170.0 * M_PI / 180.0;
+  const double to = -170.0 * M_PI / 180.0;
+  assert(std::abs(
+    extract_transition_variable_delta(joints_model, "bounded_joint", from, to) +
+    340.0 * M_PI / 180.0) < 1e-9);
+  assert(std::abs(
+    extract_transition_variable_delta(joints_model, "continuous_joint", from, to) -
+    20.0 * M_PI / 180.0) < 1e-9);
 
   const auto model = empty_model();
   moveit::core::RobotState start(model);

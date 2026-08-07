@@ -35,6 +35,13 @@ int main()
   assert_near(front.orientation.y, 0.0);
   assert_near(front.orientation.z, 0.70710678);
 
+  const auto front_eigen = alfa_robot::motion::pose_to_eigen(front);
+  const auto front_roll_pi = alfa_robot::motion::rotate_about_tool_z(front_eigen, M_PI);
+  assert((front_roll_pi.translation() - front_eigen.translation()).norm() < 1e-12);
+  assert((front_roll_pi.linear().col(2) - front_eigen.linear().col(2)).norm() < 1e-12);
+  assert((front_roll_pi.linear().col(0) + front_eigen.linear().col(0)).norm() < 1e-12);
+  assert((front_roll_pi.linear().col(1) + front_eigen.linear().col(1)).norm() < 1e-12);
+
   const auto top = make_top_suction_pose(box, 0.202, 0.15, 0.209);
   assert_near(top.position.x, 1.075);
   assert_near(top.position.y, -0.4);

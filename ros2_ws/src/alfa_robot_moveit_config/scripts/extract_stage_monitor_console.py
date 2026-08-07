@@ -56,7 +56,7 @@ ROS_SETUP = Path(
 ).expanduser().resolve()
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 
 
@@ -160,6 +160,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"start_support_nodes:={str(getattr(args, 'start_support_nodes', True)).lower()}",
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
+        f"container_height:={getattr(args, 'container_height', 2.2)}",
         f"world_to_base_z:={getattr(args, 'world_to_base_z', 0.202094)}",
         f"fixed_updown:={args.fixed_updown}",
         f"extract_monitor_turn:={getattr(args, 'turn_rad', 0.0)}",
@@ -208,6 +209,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_ik_candidate_reserve_stratified:={str(getattr(args, 'extract_ik_candidate_reserve_stratified', True)).lower()}",
         f"extract_ik_candidate_reserve_interleave_stride:={getattr(args, 'extract_ik_candidate_reserve_interleave_stride', 4)}",
         f"extract_ik_loaded_distance_order_weight:={getattr(args, 'extract_ik_loaded_distance_order_weight', 0.0)}",
+        f"extract_projected_joint4_positive_penalty_weight:={getattr(args, 'extract_projected_joint4_positive_penalty_weight', 2.0)}",
         f"extract_monitor_capture_raw_ik:={str(getattr(args, 'ik_only_raw', False)).lower()}",
         f"extract_monitor_build_final_replay:={str(getattr(args, 'extract_monitor_build_final_replay', True)).lower()}",
         f"extract_monitor_place_cycle_enabled:={str(getattr(args, 'place_cycle_enabled', False)).lower()}",
@@ -224,6 +226,8 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_box_pose_rrt_max_iterations:={getattr(args, 'extract_box_pose_rrt_max_iterations', 160)}",
         f"extract_box_pose_rrt_paths_per_arm:={getattr(args, 'extract_box_pose_rrt_paths_per_arm', 8)}",
         f"extract_box_pose_rrt_path_pair_limit:={getattr(args, 'extract_box_pose_rrt_path_pair_limit', 64)}",
+        f"extract_box_pose_rrt_max_lift:={getattr(args, 'extract_box_pose_rrt_max_lift', 0.55)}",
+        f"extract_box_pose_rrt_max_pitch_deg:={getattr(args, 'extract_box_pose_rrt_max_pitch_deg', 90.0)}",
         f"extract_box_pose_rrt_parent_candidates:={getattr(args, 'extract_box_pose_rrt_parent_candidates', 8)}",
         f"extract_box_pose_rrt_parent_diverse_candidates:={getattr(args, 'extract_box_pose_rrt_parent_diverse_candidates', 0)}",
         f"extract_box_pose_rrt_parent_endpoint_score_weight:={getattr(args, 'extract_box_pose_rrt_parent_endpoint_score_weight', 0.05)}",
@@ -233,6 +237,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"extract_box_pose_rrt_step_lateral:={getattr(args, 'extract_box_pose_rrt_step_lateral', 0.02)}",
         f"extract_box_pose_rrt_front_free_motion:={str(getattr(args, 'extract_box_pose_rrt_front_free_motion', True)).lower()}",
         f"extract_box_pose_rrt_front_goal_requires_max_pitch:={str(getattr(args, 'extract_box_pose_rrt_front_goal_requires_max_pitch', False)).lower()}",
+        f"extract_box_pose_rrt_front_goal_requires_horizontal_detachment:={str(getattr(args, 'extract_box_pose_rrt_front_goal_requires_horizontal_detachment', False)).lower()}",
         f"extract_box_pose_rrt_best_first_fallback:={str(getattr(args, 'extract_box_pose_rrt_best_first_fallback', True)).lower()}",
         f"extract_box_pose_rrt_best_first_first:={str(getattr(args, 'extract_box_pose_rrt_best_first_first', False)).lower()}",
         f"extract_box_pose_rrt_top_best_first_first:={str(getattr(args, 'extract_box_pose_rrt_top_best_first_first', False)).lower()}",
@@ -1152,6 +1157,7 @@ def main() -> int:
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--scene-y-shift", type=float, default=None, help="箱堆中心相对机器人 y 偏移；默认 0 表示机器人对准中间列")
     parser.add_argument("--box-stack-y-shift", type=float, default=None, help="兼容旧参数名；等同于 --scene-y-shift")
+    parser.add_argument("--container-height", type=float, default=2.2)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")
@@ -1181,7 +1187,7 @@ def main() -> int:
     parser.add_argument("--extract-max-joint-delta", type=float, default=10.0 * math.pi / 180.0)
     parser.add_argument(
         "--extract-rollout-mode",
-        choices=["greedy", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
+        choices=["greedy", "projected_shortcut", "box_pose_rrt", "moveit_rrt_legacy", "top_lift_legacy"],
         default="greedy",
         help="抽离策略；box_pose_rrt 为箱体位姿 RRT，greedy 为稳定旧策略。",
     )
@@ -1195,6 +1201,8 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-max-iterations", type=int, default=160)
     parser.add_argument("--extract-box-pose-rrt-paths-per-arm", type=int, default=8)
     parser.add_argument("--extract-box-pose-rrt-path-pair-limit", type=int, default=64)
+    parser.add_argument("--extract-box-pose-rrt-max-lift", type=float, default=0.55)
+    parser.add_argument("--extract-box-pose-rrt-max-pitch-deg", type=float, default=90.0)
     parser.add_argument("--extract-box-pose-rrt-parent-candidates", type=int, default=8)
     parser.add_argument("--extract-box-pose-rrt-parent-diverse-candidates", type=int, default=0)
     parser.add_argument("--extract-box-pose-rrt-parent-endpoint-score-weight", type=float, default=0.05)
@@ -1204,6 +1212,7 @@ def main() -> int:
     parser.add_argument("--extract-box-pose-rrt-step-lateral", type=float, default=0.02)
     parser.add_argument("--extract-box-pose-rrt-front-free-motion", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-front-goal-requires-max-pitch", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--extract-box-pose-rrt-front-goal-requires-horizontal-detachment", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-fallback", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--extract-box-pose-rrt-best-first-first", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--extract-box-pose-rrt-top-best-first-first", action=argparse.BooleanOptionalAction, default=False)

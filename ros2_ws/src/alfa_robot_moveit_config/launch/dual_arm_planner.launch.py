@@ -9,7 +9,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
-DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-45.0,120.0,-75.0,0.0,0.0]"
+DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 DEFAULT_PRE_PLACE_POSE_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
 
 
@@ -164,6 +164,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_ik_candidate_reserve_stratified", default_value="true"),
         DeclareLaunchArgument("extract_ik_candidate_reserve_interleave_stride", default_value="4"),
         DeclareLaunchArgument("extract_ik_loaded_distance_order_weight", default_value="0.0"),
+        DeclareLaunchArgument("extract_projected_joint4_positive_penalty_weight", default_value="2.0"),
         DeclareLaunchArgument("extract_monitor_capture_raw_ik", default_value="false"),
         DeclareLaunchArgument("extract_monitor_build_final_replay", default_value="true"),
         DeclareLaunchArgument("extract_monitor_place_cycle_enabled", default_value="false"),
@@ -194,6 +195,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_box_pose_rrt_path_pair_limit", default_value="64"),
         DeclareLaunchArgument("extract_box_pose_rrt_max_retreat", default_value="0.55"),
         DeclareLaunchArgument("extract_box_pose_rrt_max_lift", default_value="0.55"),
+        DeclareLaunchArgument("extract_box_pose_rrt_max_pitch_deg", default_value="90.0"),
         DeclareLaunchArgument("extract_box_pose_rrt_separation_margin", default_value="0.03"),
         DeclareLaunchArgument("extract_box_pose_rrt_analytic_root_samples", default_value="12"),
         DeclareLaunchArgument("extract_box_pose_rrt_diagnostics", default_value="false"),
@@ -207,6 +209,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_box_pose_rrt_step_lateral", default_value="0.02"),
         DeclareLaunchArgument("extract_box_pose_rrt_front_free_motion", default_value="true"),
         DeclareLaunchArgument("extract_box_pose_rrt_front_goal_requires_max_pitch", default_value="false"),
+        DeclareLaunchArgument("extract_box_pose_rrt_front_goal_requires_horizontal_detachment", default_value="true"),
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_fallback", default_value="true"),
         DeclareLaunchArgument("extract_box_pose_rrt_best_first_first", default_value="false"),
         DeclareLaunchArgument("extract_box_pose_rrt_top_best_first_first", default_value="false"),
@@ -239,7 +242,7 @@ def generate_launch_description():
         DeclareLaunchArgument("extract_loaded_pre_lower_right_box_id", default_value="0"),
         DeclareLaunchArgument("extract_loaded_pre_lower_updown_delta", default_value="0.0"),
         DeclareLaunchArgument("enforce_loaded_plan_aabb_clearance", default_value="false"),
-        DeclareLaunchArgument("enforce_loaded_static_box_wall_aabb_clearance", default_value="true"),
+        DeclareLaunchArgument("enforce_loaded_static_box_wall_aabb_clearance", default_value="false"),
         DeclareLaunchArgument("record_tip_error_ik_candidates", default_value="false"),
         DeclareLaunchArgument("record_tip_error_ik_candidate_limit", default_value="80"),
         DeclareLaunchArgument(
@@ -402,6 +405,7 @@ def generate_launch_description():
                 "extract_ik_candidate_reserve_stratified": ParameterValue(LaunchConfiguration("extract_ik_candidate_reserve_stratified"), value_type=bool),
                 "extract_ik_candidate_reserve_interleave_stride": ParameterValue(LaunchConfiguration("extract_ik_candidate_reserve_interleave_stride"), value_type=int),
                 "extract_ik_loaded_distance_order_weight": ParameterValue(LaunchConfiguration("extract_ik_loaded_distance_order_weight"), value_type=float),
+                "extract_projected_joint4_positive_penalty_weight": ParameterValue(LaunchConfiguration("extract_projected_joint4_positive_penalty_weight"), value_type=float),
                 "extract_monitor_capture_raw_ik": ParameterValue(LaunchConfiguration("extract_monitor_capture_raw_ik"), value_type=bool),
                 "extract_monitor_build_final_replay": ParameterValue(LaunchConfiguration("extract_monitor_build_final_replay"), value_type=bool),
                 "extract_monitor_place_cycle_enabled": ParameterValue(LaunchConfiguration("extract_monitor_place_cycle_enabled"), value_type=bool),
@@ -420,6 +424,7 @@ def generate_launch_description():
                 "extract_box_pose_rrt_path_pair_limit": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_path_pair_limit"), value_type=int),
                 "extract_box_pose_rrt_max_retreat": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_max_retreat"), value_type=float),
                 "extract_box_pose_rrt_max_lift": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_max_lift"), value_type=float),
+                "extract_box_pose_rrt_max_pitch_deg": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_max_pitch_deg"), value_type=float),
                 "extract_box_pose_rrt_separation_margin": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_separation_margin"), value_type=float),
                 "extract_box_pose_rrt_analytic_root_samples": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_analytic_root_samples"), value_type=int),
                 "extract_box_pose_rrt_diagnostics": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_diagnostics"), value_type=bool),
@@ -433,6 +438,7 @@ def generate_launch_description():
                 "extract_box_pose_rrt_step_lateral": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_step_lateral"), value_type=float),
                 "extract_box_pose_rrt_front_free_motion": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_front_free_motion"), value_type=bool),
                 "extract_box_pose_rrt_front_goal_requires_max_pitch": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_front_goal_requires_max_pitch"), value_type=bool),
+                "extract_box_pose_rrt_front_goal_requires_horizontal_detachment": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_front_goal_requires_horizontal_detachment"), value_type=bool),
                 "extract_box_pose_rrt_best_first_fallback": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_best_first_fallback"), value_type=bool),
                 "extract_box_pose_rrt_best_first_first": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_best_first_first"), value_type=bool),
                 "extract_box_pose_rrt_top_best_first_first": ParameterValue(LaunchConfiguration("extract_box_pose_rrt_top_best_first_first"), value_type=bool),

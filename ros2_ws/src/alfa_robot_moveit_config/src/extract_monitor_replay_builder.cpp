@@ -18,7 +18,9 @@ ExtractMonitorReplayBuildRequest make_extract_monitor_replay_request(
   request.target_names = target_names;
   request.carried_boxes = {state.left_box, state.right_box};
   request.static_box_obstacles = static_box_obstacles;
-  request.loaded_start_state = state.loaded_start_state;
+  request.loaded_start_state = state.replay_start_state
+    ? state.replay_start_state
+    : state.loaded_start_state;
   request.ik_goal_state = std::move(ik_goal_state);
   return request;
 }

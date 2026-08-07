@@ -144,6 +144,7 @@ int main()
   monitor_state.left_box = left_box;
   monitor_state.right_box = right_box;
   monitor_state.loaded_start_state = start_state;
+  monitor_state.replay_start_state = ik_state;
   const auto factory_request = make_extract_monitor_replay_request(
     monitor_state,
     {"updown", "left_joint1"},
@@ -154,7 +155,7 @@ int main()
   assert(factory_request.right_box_id == 2);
   assert(factory_request.target_names.size() == 2);
   assert(factory_request.carried_boxes.size() == 2);
-  assert(factory_request.loaded_start_state == start_state);
+  assert(factory_request.loaded_start_state == ik_state);
   assert(factory_request.ik_goal_state == ik_state);
   assert(factory_request.static_box_obstacles.at("boxes").is_array());
 

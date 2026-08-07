@@ -1,6 +1,7 @@
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
 
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
+#include "alfa_robot_moveit_config/trajectory_plan_utils.hpp"
 
 #include <moveit/robot_model/joint_model_group.h>
 
@@ -241,6 +242,57 @@ SmoothedCombinedPath smooth_combined_extract_path(
   return smoothed;
 }
 
+struct TipFloorUpdownAdjustment
+{
+  bool valid = false;
+  bool clamped = false;
+  double floor_z = 0.0;
+  double min_tip_z_before = 0.0;
+  double min_tip_z_after = 0.0;
+  double updown_before = 0.0;
+  double updown_after = 0.0;
+};
+
+TipFloorUpdownAdjustment adjust_updown_to_tip_floor(
+  const BoxPoseRrtExtractPlannerConfig& config,
+  double floor_z,
+  moveit::core::RobotState* state)
+{
+  TipFloorUpdownAdjustment result;
+  result.floor_z = floor_z;
+  if (!state || !config.left_arm_group || !config.right_arm_group ||
+      !state->knowsFrameTransform(config.left_tip) ||
+      !state->knowsFrameTransform(config.right_tip)) {
+    return result;
+  }
+  const auto& variable_names = state->getRobotModel()->getVariableNames();
+  if (std::find(variable_names.begin(), variable_names.end(), "updown") == variable_names.end()) {
+    return result;
+  }
+
+  state->update(true);
+  result.updown_before = state->getVariablePosition("updown");
+  result.min_tip_z_before = std::min(
+    state->getGlobalLinkTransform(config.left_tip).translation().z(),
+    state->getGlobalLinkTransform(config.right_tip).translation().z());
+  const auto& bounds = state->getRobotModel()->getVariableBounds("updown");
+  const double min_updown = bounds.position_bounded_ ?
+    bounds.min_position_ : -std::numeric_limits<double>::infinity();
+  const double max_updown = bounds.position_bounded_ ?
+    bounds.max_position_ : std::numeric_limits<double>::infinity();
+  const auto target = tip_floor_updown_target(
+    result.updown_before, result.min_tip_z_before, floor_z, min_updown, max_updown);
+  result.clamped = target.clamped;
+  result.updown_after = target.position;
+  state->setVariablePosition("updown", target.position);
+  state->update(true);
+  result.min_tip_z_after = std::min(
+    state->getGlobalLinkTransform(config.left_tip).translation().z(),
+    state->getGlobalLinkTransform(config.right_tip).translation().z());
+  result.valid = target.feasible && result.min_tip_z_after >= floor_z - 1e-6;
+  return result;
+}
+
 void copy_arm_state(
   const moveit::core::JointModelGroup* group,
   const moveit::core::RobotState& source,
@@ -365,6 +417,10 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
   auto rrt_config = top_suction ? config_.top_rrt : config_.front_rrt;
   rrt_config.mode = top_suction ? BoxMode::TopTranslate : BoxMode::FrontPivot;
   rrt_config.source_reference_offset_z = policy.detachment_reference_offset_z;
+  if (!top_suction && policy.require_horizontal_detachment.has_value()) {
+    rrt_config.front_goal_requires_horizontal_detachment =
+      *policy.require_horizontal_detachment;
+  }
   rrt_config.max_solution_count = std::max<size_t>(1, config_.max_paths_per_arm);
   robot_motion::core::BoxPoseExtractRrt rrt(rrt_config);
   const Eigen::Isometry3d start_tip = start_state.getGlobalLinkTransform(tip);
@@ -459,7 +515,8 @@ std::vector<BoxPoseRrtExtractPlanner::ArmPath> BoxPoseRrtExtractPlanner::planArm
             }
               return false;
           }
-          final_detached = top_suction ? rrt.goalReached(sample) : detached;
+          final_detached = top_suction || rrt_config.front_goal_requires_horizontal_detachment ?
+            rrt.goalReached(sample) : detached;
           final_detached_evaluated = true;
         }
         motion += arm_joint_motion(arm_group, current, *candidate.state);
@@ -867,6 +924,14 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
 
   std::map<std::string, size_t> failure_counts;
   bool collision_diagnostic_recorded = false;
+  const bool compensate_front_tip_floor =
+    config_.front_tip_floor_updown_compensation &&
+    left_policy.tip_floor_updown_compensation.value_or(true) &&
+    right_policy.tip_floor_updown_compensation.value_or(true) &&
+    !left_top_suction && !right_top_suction;
+  const double initial_min_tip_z = std::min(
+    rrt_start_state.getGlobalLinkTransform(config_.left_tip).translation().z(),
+    rrt_start_state.getGlobalLinkTransform(config_.right_tip).translation().z());
   const auto pair_validation_started = std::chrono::steady_clock::now();
   for (size_t pair_rank = 0; pair_rank < pairs.size(); ++pair_rank) {
     const auto& left = left_paths[pairs[pair_rank].left];
@@ -874,8 +939,10 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
     const size_t step_count = std::max(left.states.size(), right.states.size());
     std::vector<moveit::core::RobotStatePtr> combined_states;
     std::vector<double> combined_progresses;
+    std::vector<TipFloorUpdownAdjustment> updown_adjustments;
     combined_states.reserve(step_count);
     combined_progresses.reserve(step_count);
+    updown_adjustments.reserve(step_count);
     bool collision_free = true;
     bool final_left_detached = false;
     bool final_right_detached = false;
@@ -894,6 +961,17 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       copy_arm_state(config_.right_arm_group, *right.states[right_index], combined.get());
       combined->enforceBounds(config_.joint_group);
       combined->update(true);
+      TipFloorUpdownAdjustment updown_adjustment;
+      if (compensate_front_tip_floor) {
+        updown_adjustment = adjust_updown_to_tip_floor(
+          config_, initial_min_tip_z, combined.get());
+        if (!updown_adjustment.valid) {
+          collision_free = false;
+          failure_reason = "box_pose_rrt_tip_floor_updown_unreachable first_step=" +
+            std::to_string(step);
+          break;
+        }
+      }
       bool left_detached = false;
       bool right_detached = false;
       std::string reason;
@@ -935,6 +1013,7 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       final_right_detached = right_detached;
       combined_states.push_back(std::move(combined));
       combined_progresses.push_back(progress);
+      updown_adjustments.push_back(updown_adjustment);
     }
     if (collision_free && left_top_suction && !left.box_states.empty()) {
       auto left_config = config_.top_rrt;
@@ -976,15 +1055,49 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
       }
     }
 
+    if (compensate_front_tip_floor) {
+      updown_adjustments.clear();
+      updown_adjustments.reserve(combined_states.size());
+      for (size_t step = 0; step < combined_states.size(); ++step) {
+        const auto adjustment = adjust_updown_to_tip_floor(
+          config_, initial_min_tip_z, combined_states[step].get());
+        bool ignored_left_detached = false;
+        bool ignored_right_detached = false;
+        std::string reason;
+        if (!adjustment.valid || !config_.dual_clear_callback ||
+            !config_.dual_clear_callback(
+              *combined_states[step], left_box, left_box_id, right_box, right_box_id,
+              &ignored_left_detached, &ignored_right_detached, &reason)) {
+          collision_free = false;
+          failure_reason = !adjustment.valid ?
+            "box_pose_rrt_smoothed_tip_floor_updown_unreachable first_step=" +
+              std::to_string(step) :
+            (reason.empty() ? "box_pose_rrt_smoothed_tip_floor_collision" : reason) +
+              " first_step=" + std::to_string(step);
+          break;
+        }
+        updown_adjustments.push_back(adjustment);
+      }
+      if (!collision_free) {
+        failure_counts[failure_reason]++;
+        continue;
+      }
+    }
+
     timing.success = true;
     timing.accepted_steps =
       combined_states.size() + (common_updown_prefix.empty() ? 0 : common_updown_prefix.size() - 1);
     timing.final_state = combined_states.back();
+    const double final_updown_delta =
+      combined_states.back()->getVariablePosition("updown") -
+      rrt_start_state.getVariablePosition("updown");
     timing.final_retreat_x = left.box_states.back().retreat;
-    timing.final_lift_z = achieved_common_updown_lift + left.box_states.back().lift;
+    timing.final_lift_z =
+      achieved_common_updown_lift + left.box_states.back().lift + final_updown_delta;
     timing.final_pitch_deg = left.box_states.back().pitch * 180.0 / M_PI;
     timing.right_final_retreat_x = right.box_states.back().retreat;
-    timing.right_final_lift_z = achieved_common_updown_lift + right.box_states.back().lift;
+    timing.right_final_lift_z =
+      achieved_common_updown_lift + right.box_states.back().lift + final_updown_delta;
     timing.right_final_pitch_deg = right.box_states.back().pitch * 180.0 / M_PI;
     if (record_step) {
       for (size_t step = 0; step < combined_states.size(); ++step) {
@@ -997,6 +1110,8 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
         const size_t right_index = std::min(
           right.box_states.size() - 1,
           static_cast<size_t>(std::llround(progress * static_cast<double>(right.box_states.size() - 1))));
+        const TipFloorUpdownAdjustment adjustment =
+          step < updown_adjustments.size() ? updown_adjustments[step] : TipFloorUpdownAdjustment{};
         record_step(step, *combined_states[step], {
           {"stage_kind", "box_pose_rrt_extract_step"},
           {"path_pair_rank", pair_rank + 1},
@@ -1016,7 +1131,14 @@ ExtractRolloutTiming BoxPoseRrtExtractPlanner::rolloutDual(
           {"left_detachment_required", left_policy.require_full_detachment},
           {"right_detachment_required", right_policy.require_full_detachment},
           {"left_front_clearance_levels", left_policy.front_clearance_levels},
-          {"right_front_clearance_levels", right_policy.front_clearance_levels}
+          {"right_front_clearance_levels", right_policy.front_clearance_levels},
+          {"tip_floor_updown_compensation", compensate_front_tip_floor},
+          {"tip_floor_z", adjustment.floor_z},
+          {"min_tip_z_before_updown_compensation", adjustment.min_tip_z_before},
+          {"min_tip_z_after_updown_compensation", adjustment.min_tip_z_after},
+          {"updown_before_compensation", adjustment.updown_before},
+          {"updown_after_compensation", adjustment.updown_after},
+          {"updown_compensation_clamped", adjustment.clamped}
         });
       }
     }

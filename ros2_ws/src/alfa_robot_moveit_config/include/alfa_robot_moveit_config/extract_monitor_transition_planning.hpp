@@ -9,6 +9,12 @@
 namespace alfa_robot::motion
 {
 
+double extract_transition_variable_delta(
+  const moveit::core::RobotModelConstPtr& robot_model,
+  const std::string& variable_name,
+  double from,
+  double to);
+
 struct ExtractMonitorTransitionPlanResult
 {
   moveit::planning_interface::MoveGroupInterface::Plan plan;

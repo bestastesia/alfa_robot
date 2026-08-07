@@ -82,6 +82,12 @@ int main()
   assert(free_front.goalReached({free_front_config.box_depth + 0.04, 0.0, 0.0}));
   assert(free_front.goalReached({0.0, free_front_config.box_height + 0.04, 0.0}));
   assert(!free_front.goalReached({0.01, 0.01, 0.0}));
+
+  auto horizontal_front_config = free_front_config;
+  horizontal_front_config.front_goal_requires_horizontal_detachment = true;
+  BoxPoseExtractRrt horizontal_front(horizontal_front_config);
+  assert(horizontal_front.goalReached({horizontal_front_config.box_depth + 0.04, 0.0, 0.0}));
+  assert(!horizontal_front.goalReached({0.0, horizontal_front_config.box_height + 0.04, 0.0}));
   const auto free_front_result = free_front.plan(BoxPoseExtractState{}, bidirectional_free_edge);
   assert(free_front_result.success);
   assert(!free_front_result.paths.empty());

@@ -1030,29 +1030,83 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
   if (config_.planning_mode == "shortcut") {
     ExtractMonitorTransitionPlanner repair_planner =
       make_loaded_transition_planner(config_, stage_name, carried_boxes, is_cancelled);
-    bool shortcut_ok = plan_loaded_synchronized_transition(
-      loaded_start_state,
-      goal_state,
-      repair_planner,
-      &plan,
-      &direct_failure_reason);
-    if (!shortcut_ok) {
-      const auto synchronized_failed_plan = plan;
-      const std::string synchronized_failure = direct_failure_reason;
+    const auto plan_shortcut_segment = [&] (
+      const moveit::core::RobotState& segment_start,
+      const moveit::core::RobotState& segment_goal,
+      moveit::planning_interface::MoveGroupInterface::Plan* segment_plan,
+      std::string* segment_reason) {
+      bool segment_ok = plan_loaded_synchronized_transition(
+        segment_start, segment_goal, repair_planner, segment_plan, segment_reason);
+      if (segment_ok) return true;
+
+      const auto synchronized_failed_plan = *segment_plan;
+      const std::string synchronized_failure = *segment_reason;
       std::string staged_failure;
-      shortcut_ok = plan_loaded_staged_fallback(
-        loaded_start_state,
-        goal_state,
+      segment_ok = plan_loaded_staged_fallback(
+        segment_start,
+        segment_goal,
         config_,
         repair_planner,
         carried_boxes,
-        &plan,
+        segment_plan,
         &staged_failure);
-      if (!shortcut_ok) {
-        plan = synchronized_failed_plan;
-        direct_failure_reason = synchronized_failure;
+      if (!segment_ok) {
+        *segment_plan = synchronized_failed_plan;
+        *segment_reason = synchronized_failure;
         if (!staged_failure.empty()) {
-          direct_failure_reason += "; " + staged_failure;
+          *segment_reason += "; " + staged_failure;
+        }
+      }
+      return segment_ok;
+    };
+
+    bool shortcut_ok = plan_shortcut_segment(
+      loaded_start_state, goal_state, &plan, &direct_failure_reason);
+    if (!shortcut_ok && config_.route_via_initial_pose) {
+      const auto direct_failed_plan = plan;
+      const std::string direct_failed_reason = direct_failure_reason;
+      if (config_.initial_left_arm.size() != 6 || config_.initial_right_arm.size() != 6) {
+        direct_failure_reason = direct_failed_reason +
+          "; loaded_initial_pose_requires_six_joints_per_arm";
+      } else {
+        moveit::core::RobotState initial_state(loaded_start_state);
+        for (size_t index = 0; index < 6; ++index) {
+          initial_state.setVariablePosition(
+            "left_joint" + std::to_string(index + 1), config_.initial_left_arm[index]);
+          initial_state.setVariablePosition(
+            "right_joint" + std::to_string(index + 1), config_.initial_right_arm[index]);
+        }
+        initial_state.setVariablePosition("updown", config_.fixed_updown);
+        initial_state.enforceBounds();
+        initial_state.update(true);
+
+        moveit::planning_interface::MoveGroupInterface::Plan to_initial_plan;
+        std::string to_initial_reason;
+        if (!plan_shortcut_segment(
+            loaded_start_state,
+            initial_state,
+            &to_initial_plan,
+            &to_initial_reason)) {
+          plan = direct_failed_plan;
+          direct_failure_reason = direct_failed_reason +
+            "; loaded_via_initial_first_segment_failed: " + to_initial_reason;
+        } else {
+          moveit::planning_interface::MoveGroupInterface::Plan initial_to_loaded_plan;
+          std::string initial_to_loaded_reason;
+          if (!plan_shortcut_segment(
+              initial_state,
+              goal_state,
+              &initial_to_loaded_plan,
+              &initial_to_loaded_reason)) {
+            plan = direct_failed_plan;
+            direct_failure_reason = direct_failed_reason +
+              "; loaded_via_initial_second_segment_failed: " + initial_to_loaded_reason;
+          } else {
+            plan = std::move(to_initial_plan);
+            append_plan_segment(plan, initial_to_loaded_plan);
+            result.used_initial_pose_route = true;
+            shortcut_ok = true;
+          }
         }
       }
     }
@@ -1435,6 +1489,9 @@ LoadedPosePlanResult LoadedPosePlanner::planInternal(
     nlohmann::json extra = {
       {"stage_kind", "post_extract_loaded_plan"},
       {"loaded_planning_mode", config_.planning_mode},
+      {"route_via_initial_pose", config_.route_via_initial_pose},
+      {"used_initial_pose_route", result.used_initial_pose_route},
+      {"initial_pose_updown", config_.fixed_updown},
       {"valid", result.carried_clear},
       {"lateral_shift_enabled", config_.lateral_shift_enabled},
       {"lateral_shift_attempted", result.lateral_shift_attempted},

@@ -1,7 +1,11 @@
 #include "alfa_robot_moveit_config/extract_planning_pipeline.hpp"
+#include "alfa_robot_moveit_config/trajectory_plan_utils.hpp"
+
+#include <Eigen/Cholesky>
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <utility>
 
 namespace alfa_robot::motion
@@ -1424,6 +1428,917 @@ ExtractRolloutTiming ExtractRolloutPlanner::rolloutDual(
 
 namespace alfa_robot::motion
 {
+
+namespace
+{
+
+std::string projected_shortcut_joint_name(const std::string& side, size_t index)
+{
+  return side + "_joint" + std::to_string(index + 1);
+}
+
+std::array<double, 6> projected_shortcut_arm_values(
+  const moveit::core::RobotState& state,
+  const std::string& side)
+{
+  std::array<double, 6> values{};
+  for (size_t index = 0; index < values.size(); ++index) {
+    values[index] = state.getVariablePosition(projected_shortcut_joint_name(side, index));
+  }
+  return values;
+}
+
+double projected_shortcut_signed_delta(double from, double to)
+{
+  return std::atan2(std::sin(to - from), std::cos(to - from));
+}
+
+size_t projected_shortcut_reference_step_count(
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to,
+  double reference_step)
+{
+  double maximum_reference_delta = 0.0;
+  for (const auto& side : {std::string("left"), std::string("right")}) {
+    for (size_t index = 0; index < 6; ++index) {
+      const std::string name = projected_shortcut_joint_name(side, index);
+      maximum_reference_delta = std::max(
+        maximum_reference_delta,
+        std::abs(projected_shortcut_signed_delta(
+          from.getVariablePosition(name), to.getVariablePosition(name))));
+    }
+  }
+  return std::max<size_t>(
+    1, static_cast<size_t>(std::ceil(maximum_reference_delta / reference_step)));
+}
+
+double projected_shortcut_max_arm_delta(
+  const moveit::core::RobotState& from,
+  const moveit::core::RobotState& to)
+{
+  double maximum = 0.0;
+  for (const auto& side : {std::string("left"), std::string("right")}) {
+    for (size_t index = 0; index < 6; ++index) {
+      const std::string name = projected_shortcut_joint_name(side, index);
+      maximum = std::max(
+        maximum,
+        std::abs(to.getVariablePosition(name) - from.getVariablePosition(name)));
+    }
+  }
+  return maximum;
+}
+
+Eigen::Isometry3d projected_shortcut_target(
+  const moveit::core::RobotState& reference_state,
+  const std::string& tip,
+  const Eigen::Isometry3d& fixed_tip_pose)
+{
+  Eigen::Isometry3d target = reference_state.getGlobalLinkTransform(tip);
+  target.translation().y() = fixed_tip_pose.translation().y();
+  target.linear() = fixed_tip_pose.linear();
+  return target;
+}
+
+Eigen::Vector3d projected_shortcut_box_center(
+  const moveit::core::RobotState& state,
+  const std::string& tip,
+  const AttachedBoxSpec& box)
+{
+  const Eigen::Vector3d center_in_tip(
+    box.center_in_link[0], box.center_in_link[1], box.center_in_link[2]);
+  return state.getGlobalLinkTransform(tip) * center_in_tip;
+}
+
+enum class ProjectedShortcutOrientationConstraint
+{
+  Full,
+  PitchFree,
+};
+
+std::optional<std::array<double, 6>> projected_shortcut_local_differential_ik(
+  const moveit::core::RobotState& seed_state,
+  const moveit::core::JointModelGroup* arm_group,
+  const std::string& tip,
+  const Eigen::Isometry3d& target_world,
+  double position_tolerance,
+  double orientation_tolerance,
+  ProjectedShortcutOrientationConstraint orientation_constraint)
+{
+  if (!arm_group || arm_group->getVariableCount() != 6) {
+    return std::nullopt;
+  }
+  const auto* tip_link = seed_state.getRobotModel()->getLinkModel(tip);
+  if (!tip_link) {
+    return std::nullopt;
+  }
+  const auto& variable_names = arm_group->getVariableNames();
+  moveit::core::RobotState state(seed_state);
+  std::array<double, 6> seed_values{};
+  for (size_t index = 0; index < seed_values.size(); ++index) {
+    seed_values[index] = seed_state.getVariablePosition(variable_names[index]);
+  }
+
+  constexpr size_t max_iterations = 500;
+  constexpr double damping = 1e-6;
+  constexpr double max_iteration_delta = 1.0 * M_PI / 180.0;
+  for (size_t iteration = 0; iteration < max_iterations; ++iteration) {
+    state.update(true);
+    const Eigen::Isometry3d& current_world = state.getGlobalLinkTransform(tip_link);
+    const Eigen::Vector3d translation_error =
+      target_world.translation() - current_world.translation();
+    const Eigen::AngleAxisd rotation_error(
+      target_world.linear() * current_world.linear().transpose());
+    const Eigen::Vector3d angular_error = rotation_error.axis() * rotation_error.angle();
+    const bool orientation_converged =
+      orientation_constraint == ProjectedShortcutOrientationConstraint::Full
+      ? std::abs(rotation_error.angle()) <= orientation_tolerance
+      : std::hypot(angular_error.x(), angular_error.z()) <= orientation_tolerance;
+    if (translation_error.norm() <= position_tolerance && orientation_converged) {
+      std::array<double, 6> solution{};
+      for (size_t index = 0; index < solution.size(); ++index) {
+        solution[index] = nearest_equivalent_joint_position(
+          seed_state.getRobotModel(), variable_names[index], seed_values[index],
+          state.getVariablePosition(variable_names[index]));
+      }
+      return solution;
+    }
+
+    Eigen::MatrixXd jacobian;
+    if (!state.getJacobian(
+          arm_group, tip_link, Eigen::Vector3d::Zero(), jacobian, false) ||
+        jacobian.rows() != 6 || jacobian.cols() != 6) {
+      return std::nullopt;
+    }
+    Eigen::VectorXd delta;
+    if (orientation_constraint == ProjectedShortcutOrientationConstraint::Full) {
+      Eigen::Matrix<double, 6, 1> error;
+      error.head<3>() = translation_error;
+      error.tail<3>() = angular_error;
+      const Eigen::Matrix<double, 6, 6> regularized =
+        jacobian * jacobian.transpose() +
+        damping * damping * Eigen::Matrix<double, 6, 6>::Identity();
+      delta = jacobian.transpose() * regularized.ldlt().solve(error);
+    } else {
+      Eigen::Matrix<double, 5, 6> pitch_free_jacobian;
+      pitch_free_jacobian.topRows<3>() = jacobian.topRows<3>();
+      pitch_free_jacobian.row(3) = jacobian.row(3);
+      pitch_free_jacobian.row(4) = jacobian.row(5);
+      Eigen::Matrix<double, 5, 1> pitch_free_error;
+      pitch_free_error.head<3>() = translation_error;
+      pitch_free_error[3] = angular_error.x();
+      pitch_free_error[4] = angular_error.z();
+      const Eigen::Matrix<double, 5, 5> regularized =
+        pitch_free_jacobian * pitch_free_jacobian.transpose() +
+        damping * damping * Eigen::Matrix<double, 5, 5>::Identity();
+      delta = pitch_free_jacobian.transpose() * regularized.ldlt().solve(pitch_free_error);
+    }
+    if (!delta.allFinite()) {
+      return std::nullopt;
+    }
+    const double maximum_delta = delta.cwiseAbs().maxCoeff();
+    if (maximum_delta > max_iteration_delta) {
+      delta *= max_iteration_delta / maximum_delta;
+    }
+    for (size_t index = 0; index < seed_values.size(); ++index) {
+      state.setVariablePosition(
+        variable_names[index], state.getVariablePosition(variable_names[index]) + delta[index]);
+    }
+    state.enforceBounds(arm_group);
+  }
+  return std::nullopt;
+}
+
+void projected_shortcut_append_point(
+  const moveit::core::RobotState& state,
+  const std::vector<std::string>& joint_names,
+  double time_s,
+  moveit::planning_interface::MoveGroupInterface::Plan* plan)
+{
+  if (!plan) return;
+  auto& trajectory = plan->trajectory_.joint_trajectory;
+  trajectory_msgs::msg::JointTrajectoryPoint point;
+  point.time_from_start = rclcpp::Duration::from_seconds(time_s);
+  point.positions.reserve(joint_names.size());
+  for (const auto& name : joint_names) {
+    point.positions.push_back(state.getVariablePosition(name));
+  }
+  trajectory.points.push_back(std::move(point));
+}
+
+}  // namespace
+
+ProjectedShortcutExtractPlanner::ProjectedShortcutExtractPlanner(
+  ProjectedShortcutExtractPlannerConfig config)
+: config_(std::move(config))
+{}
+
+ExtractRolloutTiming ProjectedShortcutExtractPlanner::rolloutDual(
+  const moveit::core::RobotState& start_state,
+  const AttachedBoxSpec& left_box,
+  int left_box_id,
+  const AttachedBoxSpec& right_box,
+  int right_box_id,
+  bool require_left_detached,
+  bool require_right_detached,
+  size_t candidate_order,
+  size_t h_index,
+  size_t seed_index,
+  double h,
+  double ik_score,
+  double ik_solve_ms,
+  const ExtractRecordStepCallback& record_step) const
+{
+  ExtractRolloutTiming timing;
+  timing.candidate_order = candidate_order;
+  timing.h_index = h_index;
+  timing.seed_index = seed_index;
+  timing.h = h;
+  timing.ik_score = ik_score;
+  timing.ik_solve_ms = ik_solve_ms;
+  const auto started = std::chrono::steady_clock::now();
+
+  if (!config_.joint_group || !config_.left_arm_group || !config_.right_arm_group ||
+      config_.target_joint_names.empty() ||
+      config_.left_initial_reference_goal_arm.size() != 6 ||
+      config_.right_initial_reference_goal_arm.size() != 6) {
+    timing.failure_reason = "projected_shortcut_planner_not_initialized";
+    return timing;
+  }
+
+  moveit::core::RobotState initial_loaded_reference_goal(start_state);
+  for (size_t index = 0; index < 6; ++index) {
+    initial_loaded_reference_goal.setVariablePosition(
+      projected_shortcut_joint_name("left", index),
+      config_.left_initial_reference_goal_arm[index]);
+    initial_loaded_reference_goal.setVariablePosition(
+      projected_shortcut_joint_name("right", index),
+      config_.right_initial_reference_goal_arm[index]);
+  }
+  const double fixed_updown = start_state.getVariablePosition("updown");
+  initial_loaded_reference_goal.setVariablePosition("updown", fixed_updown);
+  initial_loaded_reference_goal.enforceBounds(config_.joint_group);
+  initial_loaded_reference_goal.update(true);
+
+  const double reference_step = std::max(1e-4, config_.reference_joint_step);
+  struct ReferenceStage
+  {
+    std::string name;
+    const moveit::core::RobotState* from = nullptr;
+    const moveit::core::RobotState* to = nullptr;
+    size_t step_count = 0;
+  };
+  const std::array<ReferenceStage, 1> reference_stages{{
+    {
+      "initial_loaded",
+      &start_state,
+      &initial_loaded_reference_goal,
+      projected_shortcut_reference_step_count(
+        start_state, initial_loaded_reference_goal, reference_step)
+    }
+  }};
+  size_t total_reference_steps = 0;
+  for (const auto& reference_stage : reference_stages) {
+    total_reference_steps += reference_stage.step_count;
+  }
+  const Eigen::Isometry3d left_fixed_tip_pose =
+    start_state.getGlobalLinkTransform(config_.left_tip);
+  const Eigen::Isometry3d right_fixed_tip_pose =
+    start_state.getGlobalLinkTransform(config_.right_tip);
+  const Eigen::Vector3d left_initial_box_center = projected_shortcut_box_center(
+    start_state, config_.left_tip, left_box);
+  const Eigen::Vector3d right_initial_box_center = projected_shortcut_box_center(
+    start_state, config_.right_tip, right_box);
+
+  moveit::planning_interface::MoveGroupInterface::Plan projected_plan;
+  projected_plan.trajectory_.joint_trajectory.joint_names = config_.target_joint_names;
+  projected_shortcut_append_point(start_state, config_.target_joint_names, 0.0, &projected_plan);
+  moveit::core::RobotState previous_state(start_state);
+  bool left_detached = false;
+  bool right_detached = false;
+  const auto required_detachment_reached = [&]() {
+    return (!require_left_detached || left_detached) &&
+           (!require_right_detached || right_detached);
+  };
+  struct ContinuousSolution
+  {
+    std::array<double, 6> joints{};
+    double reference_distance = std::numeric_limits<double>::infinity();
+    double continuity_distance = std::numeric_limits<double>::infinity();
+    bool differential_ik = false;
+    bool relaxed_orientation = false;
+  };
+  const auto select_continuous_solution = [&]
+    (const auto& solutions, const std::string& side, const std::array<double, 6>& reference)
+    -> std::optional<ContinuousSolution> {
+      std::optional<ContinuousSolution> selected;
+      for (const auto& solution : solutions) {
+        ContinuousSolution candidate;
+        double reference_squared = 0.0;
+        double continuity_squared = 0.0;
+        double maximum_delta = 0.0;
+        for (size_t index = 0; index < candidate.joints.size(); ++index) {
+          const std::string name = projected_shortcut_joint_name(side, index);
+          const double previous = previous_state.getVariablePosition(name);
+          const double continuous = nearest_equivalent_joint_position(
+            previous_state.getRobotModel(), name, previous, solution.joints[index]);
+          const double delta = continuous - previous;
+          candidate.joints[index] = continuous;
+          maximum_delta = std::max(maximum_delta, std::abs(delta));
+          continuity_squared += delta * delta;
+          const double reference_delta = projected_shortcut_signed_delta(
+            reference[index], continuous);
+          reference_squared += reference_delta * reference_delta;
+        }
+        if (config_.max_projected_joint_delta > 0.0 &&
+            maximum_delta > config_.max_projected_joint_delta) {
+          continue;
+        }
+        candidate.reference_distance = std::sqrt(reference_squared);
+        candidate.continuity_distance = std::sqrt(continuity_squared);
+        if (!selected ||
+            candidate.reference_distance < selected->reference_distance - 1e-12 ||
+            (std::abs(candidate.reference_distance - selected->reference_distance) <= 1e-12 &&
+             candidate.continuity_distance < selected->continuity_distance)) {
+          selected = candidate;
+        }
+      }
+      return selected;
+    };
+  if (record_step) {
+    record_step(0, start_state, {
+      {"stage_kind", "dual_projected_shortcut_start"},
+      {"candidate_order", candidate_order},
+      {"h_index", h_index},
+      {"seed_index", seed_index},
+      {"h", h},
+      {"ik_score", ik_score},
+      {"reference_steps", total_reference_steps},
+      {"reference_stage_count", reference_stages.size()},
+      {"fixed_updown", fixed_updown},
+      {"left_fixed_tool_y", left_fixed_tip_pose.translation().y()},
+      {"right_fixed_tool_y", right_fixed_tip_pose.translation().y()},
+      {"left_initial_box_z", left_initial_box_center.z()},
+      {"right_initial_box_z", right_initial_box_center.z()},
+      {"reference_goal_kind", "initial_loaded_then_outward_recovery"},
+      {"accepted", true}
+    });
+  }
+
+  size_t global_step = 0;
+  for (const auto& reference_stage : reference_stages) {
+    for (size_t stage_step = 1; stage_step <= reference_stage.step_count; ++stage_step) {
+      ++global_step;
+      const double ratio =
+        static_cast<double>(stage_step) / static_cast<double>(reference_stage.step_count);
+      moveit::core::RobotState reference_state(*reference_stage.from);
+      for (const auto& side : {std::string("left"), std::string("right")}) {
+        for (size_t index = 0; index < 6; ++index) {
+          const std::string name = projected_shortcut_joint_name(side, index);
+          const double from = reference_stage.from->getVariablePosition(name);
+          const double to = reference_stage.to->getVariablePosition(name);
+          reference_state.setVariablePosition(
+            name, from + projected_shortcut_signed_delta(from, to) * ratio);
+        }
+      }
+      reference_state.setVariablePosition("updown", fixed_updown);
+      reference_state.enforceBounds(config_.joint_group);
+      reference_state.update(true);
+
+      const Eigen::Isometry3d left_target_world = projected_shortcut_target(
+        reference_state, config_.left_tip, left_fixed_tip_pose);
+      const Eigen::Isometry3d right_target_world = projected_shortcut_target(
+        reference_state, config_.right_tip, right_fixed_tip_pose);
+      const Eigen::Isometry3d world_to_base =
+        reference_state.getGlobalLinkTransform("base_link").inverse();
+      const auto left_reference = projected_shortcut_arm_values(reference_state, "left");
+      const auto right_reference = projected_shortcut_arm_values(reference_state, "right");
+      const auto left_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Left,
+        world_to_base * left_target_world,
+        fixed_updown,
+        left_reference,
+        config_.position_tolerance,
+        config_.orientation_tolerance,
+        config_.analytic_root_samples);
+      const auto right_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Right,
+        world_to_base * right_target_world,
+        fixed_updown,
+        right_reference,
+        config_.position_tolerance,
+        config_.orientation_tolerance,
+        config_.analytic_root_samples);
+
+      auto left_best = select_continuous_solution(
+        left_solutions, "left", left_reference);
+      auto right_best = select_continuous_solution(
+        right_solutions, "right", right_reference);
+      const auto bridge_continuity = [&]
+        (const moveit::core::JointModelGroup* arm_group,
+         const std::string& tip,
+         const Eigen::Isometry3d& target_world,
+         const std::string& side,
+         const std::array<double, 6>& reference,
+         std::optional<ContinuousSolution>* selected) {
+          if (!selected || *selected) return;
+          const auto differential_solution = projected_shortcut_local_differential_ik(
+            previous_state,
+            arm_group,
+            tip,
+            target_world,
+            config_.position_tolerance,
+            config_.orientation_tolerance,
+            ProjectedShortcutOrientationConstraint::Full);
+          if (!differential_solution) return;
+          alfa_robot::analytic_ik::ArmAnalyticIkSolution raw;
+          raw.joints = *differential_solution;
+          const std::vector<alfa_robot::analytic_ik::ArmAnalyticIkSolution> singleton{raw};
+          auto bridged = select_continuous_solution(singleton, side, reference);
+          if (bridged) {
+            bridged->differential_ik = true;
+            *selected = *bridged;
+          }
+        };
+      bridge_continuity(
+        config_.left_arm_group, config_.left_tip, left_target_world,
+        "left", left_reference, &left_best);
+      bridge_continuity(
+        config_.right_arm_group, config_.right_tip, right_target_world,
+        "right", right_reference, &right_best);
+      if (!left_best || !right_best) {
+        ++timing.failed_steps;
+        const bool left_failed = !left_best;
+        const bool analytic_empty = left_failed ? left_solutions.empty() : right_solutions.empty();
+        timing.failure_reason =
+          "projected_shortcut_" + std::string(left_failed ? "left" : "right") +
+          (analytic_empty ? "_analytic_no_solution_stage_" : "_no_continuous_analytic_branch_stage_") +
+          reference_stage.name + "_step_" + std::to_string(stage_step);
+        if (record_step) {
+          record_step(global_step, previous_state, {
+            {"stage_kind", "dual_projected_shortcut_failed_step"},
+            {"candidate_order", candidate_order},
+            {"step", global_step},
+            {"reference_stage", reference_stage.name},
+            {"reference_stage_step", stage_step},
+            {"reference_stage_steps", reference_stage.step_count},
+            {"reference_ratio", ratio},
+            {"failure_reason", timing.failure_reason},
+            {"accepted", false}
+          });
+        }
+        break;
+      }
+
+      moveit::core::RobotState projected_state(previous_state);
+      for (size_t index = 0; index < 6; ++index) {
+        const std::string left_name = projected_shortcut_joint_name("left", index);
+        const std::string right_name = projected_shortcut_joint_name("right", index);
+        projected_state.setVariablePosition(left_name, left_best->joints[index]);
+        projected_state.setVariablePosition(right_name, right_best->joints[index]);
+      }
+      projected_state.setVariablePosition("updown", fixed_updown);
+      projected_state.enforceBounds(config_.joint_group);
+      projected_state.update(true);
+
+      const double projected_joint_delta = projected_shortcut_max_arm_delta(
+        previous_state, projected_state);
+      const Eigen::Vector3d left_box_center = projected_shortcut_box_center(
+        projected_state, config_.left_tip, left_box);
+      const Eigen::Vector3d right_box_center = projected_shortcut_box_center(
+        projected_state, config_.right_tip, right_box);
+      std::string state_reason;
+      bool state_clear = projected_state.satisfiesBounds(config_.joint_group);
+      if (!state_clear) {
+        state_reason = "projected_shortcut_state_out_of_bounds";
+      } else if (config_.max_projected_joint_delta > 0.0 &&
+                 projected_joint_delta > config_.max_projected_joint_delta) {
+        state_clear = false;
+        state_reason = "projected_shortcut_joint_delta_too_large";
+      } else if (!left_detached && left_box_center.z() < left_initial_box_center.z() - 1e-6) {
+        state_clear = false;
+        state_reason = "projected_shortcut_left_box_drops_before_detachment";
+      } else if (!right_detached && right_box_center.z() < right_initial_box_center.z() - 1e-6) {
+        state_clear = false;
+        state_reason = "projected_shortcut_right_box_drops_before_detachment";
+      } else if (config_.dual_clear_callback) {
+        state_clear = config_.dual_clear_callback(
+          projected_state,
+          left_box,
+          left_box_id,
+          right_box,
+          right_box_id,
+          &left_detached,
+          &right_detached,
+          &state_reason);
+      }
+      if (!state_clear) {
+        ++timing.failed_steps;
+        timing.failure_reason = state_reason.empty()
+          ? "projected_shortcut_state_invalid_stage_" + reference_stage.name +
+            "_step_" + std::to_string(stage_step)
+          : "projected_shortcut_state_invalid_stage_" + reference_stage.name +
+            "_step_" + std::to_string(stage_step) + ": " + state_reason;
+        if (record_step) {
+          record_step(global_step, projected_state, {
+            {"stage_kind", "dual_projected_shortcut_failed_step"},
+            {"candidate_order", candidate_order},
+            {"step", global_step},
+            {"reference_stage", reference_stage.name},
+            {"reference_stage_step", stage_step},
+            {"reference_stage_steps", reference_stage.step_count},
+            {"reference_ratio", ratio},
+            {"projected_joint_delta_deg", projected_joint_delta * 180.0 / M_PI},
+            {"failure_reason", timing.failure_reason},
+            {"accepted", false}
+          });
+        }
+        break;
+      }
+
+      ++timing.accepted_steps;
+      projected_shortcut_append_point(
+        projected_state,
+        config_.target_joint_names,
+        0.1 * static_cast<double>(global_step),
+        &projected_plan);
+      if (record_step) {
+        record_step(global_step, projected_state, {
+          {"stage_kind", "dual_projected_shortcut_step"},
+          {"candidate_order", candidate_order},
+          {"step", global_step},
+          {"reference_stage", reference_stage.name},
+          {"reference_stage_step", stage_step},
+          {"reference_stage_steps", reference_stage.step_count},
+          {"reference_ratio", ratio},
+          {"left_reference_distance", left_best->reference_distance},
+          {"right_reference_distance", right_best->reference_distance},
+          {"left_continuity_distance", left_best->continuity_distance},
+          {"right_continuity_distance", right_best->continuity_distance},
+          {"left_differential_ik", left_best->differential_ik},
+          {"right_differential_ik", right_best->differential_ik},
+          {"projected_joint_delta_deg", projected_joint_delta * 180.0 / M_PI},
+          {"left_box_z", left_box_center.z()},
+          {"right_box_z", right_box_center.z()},
+          {"left_detached_from_neighbors", left_detached},
+          {"right_detached_from_neighbors", right_detached},
+          {"accepted", true}
+        });
+      }
+      previous_state = projected_state;
+      if (required_detachment_reached()) {
+        break;
+      }
+    }
+    if (!timing.failure_reason.empty() || required_detachment_reached()) {
+      break;
+    }
+  }
+
+  const std::string projection_failure_reason = timing.failure_reason;
+  const bool recovery_allowed =
+    !required_detachment_reached() &&
+    timing.accepted_steps >= config_.outward_recovery_min_projected_steps &&
+    config_.outward_recovery_step > 1e-6 &&
+    config_.outward_recovery_max_distance >= config_.outward_recovery_step;
+  if (recovery_allowed) {
+    timing.failure_reason.clear();
+    const moveit::core::RobotState recovery_start(previous_state);
+    const Eigen::Isometry3d left_recovery_start =
+      recovery_start.getGlobalLinkTransform(config_.left_tip);
+    const Eigen::Isometry3d right_recovery_start =
+      recovery_start.getGlobalLinkTransform(config_.right_tip);
+    const size_t recovery_steps = static_cast<size_t>(std::ceil(
+      config_.outward_recovery_max_distance / config_.outward_recovery_step));
+
+    for (size_t recovery_step = 1; recovery_step <= recovery_steps; ++recovery_step) {
+      ++global_step;
+      const double retreat = std::min(
+        config_.outward_recovery_max_distance,
+        config_.outward_recovery_step * static_cast<double>(recovery_step));
+      Eigen::Isometry3d left_target_world(left_recovery_start);
+      Eigen::Isometry3d right_target_world(right_recovery_start);
+      left_target_world.translation().x() -= retreat;
+      right_target_world.translation().x() -= retreat;
+      const Eigen::Isometry3d world_to_base =
+        previous_state.getGlobalLinkTransform("base_link").inverse();
+      const auto left_reference = projected_shortcut_arm_values(previous_state, "left");
+      const auto right_reference = projected_shortcut_arm_values(previous_state, "right");
+      auto left_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Left,
+        world_to_base * left_target_world,
+        fixed_updown,
+        left_reference,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        config_.analytic_root_samples);
+      auto right_solutions = analytic_solver_.solveInBaseLink(
+        alfa_robot::analytic_ik::ArmSide::Right,
+        world_to_base * right_target_world,
+        fixed_updown,
+        right_reference,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        config_.analytic_root_samples);
+      const auto left_differential_solution = projected_shortcut_local_differential_ik(
+        previous_state, config_.left_arm_group, config_.left_tip, left_target_world,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        ProjectedShortcutOrientationConstraint::Full);
+      const auto right_differential_solution = projected_shortcut_local_differential_ik(
+        previous_state, config_.right_arm_group, config_.right_tip, right_target_world,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        ProjectedShortcutOrientationConstraint::Full);
+      const auto left_relaxed_solution = projected_shortcut_local_differential_ik(
+        previous_state, config_.left_arm_group, config_.left_tip, left_target_world,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        ProjectedShortcutOrientationConstraint::PitchFree);
+      const auto right_relaxed_solution = projected_shortcut_local_differential_ik(
+        previous_state, config_.right_arm_group, config_.right_tip, right_target_world,
+        config_.outward_recovery_position_tolerance,
+        config_.outward_recovery_orientation_tolerance,
+        ProjectedShortcutOrientationConstraint::PitchFree);
+      const auto make_options = [&]
+        (const auto& analytic_solutions,
+         const auto& differential_solution,
+         const auto& relaxed_solution,
+         const std::string& side,
+         const std::array<double, 6>& reference) {
+          std::vector<ContinuousSolution> options;
+          const auto append = [&](const std::array<double, 6>& joints,
+                                  bool differential_ik,
+                                  bool relaxed_orientation) {
+            alfa_robot::analytic_ik::ArmAnalyticIkSolution raw;
+            raw.joints = joints;
+            const std::vector<alfa_robot::analytic_ik::ArmAnalyticIkSolution> singleton{raw};
+            auto option = select_continuous_solution(singleton, side, reference);
+            if (!option) return;
+            option->differential_ik = differential_ik;
+            option->relaxed_orientation = relaxed_orientation;
+            const bool duplicate = std::any_of(
+              options.begin(), options.end(), [&](const ContinuousSolution& kept) {
+                double maximum_delta = 0.0;
+                for (size_t index = 0; index < kept.joints.size(); ++index) {
+                  maximum_delta = std::max(
+                    maximum_delta,
+                    std::abs(projected_shortcut_signed_delta(
+                      kept.joints[index], option->joints[index])));
+                }
+                return maximum_delta <= 1e-6;
+              });
+            if (!duplicate) options.push_back(*option);
+          };
+          for (const auto& solution : analytic_solutions) {
+            append(solution.joints, false, false);
+          }
+          if (differential_solution) append(*differential_solution, true, false);
+          if (relaxed_solution) append(*relaxed_solution, true, true);
+          std::sort(
+            options.begin(), options.end(),
+            [](const ContinuousSolution& lhs, const ContinuousSolution& rhs) {
+              if (lhs.continuity_distance != rhs.continuity_distance) {
+                return lhs.continuity_distance < rhs.continuity_distance;
+              }
+              return lhs.reference_distance < rhs.reference_distance;
+            });
+          constexpr size_t max_options_per_arm = 6;
+          if (options.size() > max_options_per_arm) options.resize(max_options_per_arm);
+          return options;
+        };
+      const auto left_options = make_options(
+        left_solutions, left_differential_solution, left_relaxed_solution,
+        "left", left_reference);
+      const auto right_options = make_options(
+        right_solutions, right_differential_solution, right_relaxed_solution,
+        "right", right_reference);
+      if (left_options.empty() || right_options.empty()) {
+        timing.failure_reason = left_options.empty()
+          ? "projected_shortcut_outward_recovery_left_no_local_ik_step_" +
+            std::to_string(recovery_step)
+          : "projected_shortcut_outward_recovery_right_no_local_ik_step_" +
+            std::to_string(recovery_step);
+        ++timing.failed_steps;
+        if (record_step) {
+          record_step(global_step, previous_state, {
+            {"stage_kind", "dual_projected_shortcut_outward_recovery_failed_step"},
+            {"candidate_order", candidate_order},
+            {"step", global_step},
+            {"recovery_step", recovery_step},
+            {"recovery_retreat_x", retreat},
+            {"projection_failure_reason", projection_failure_reason},
+            {"failure_reason", timing.failure_reason},
+            {"accepted", false}
+          });
+        }
+        break;
+      }
+
+      moveit::core::RobotStatePtr recovery_state;
+      std::optional<ContinuousSolution> left_best;
+      std::optional<ContinuousSolution> right_best;
+      double recovery_joint_delta = 0.0;
+      double best_option_score = std::numeric_limits<double>::infinity();
+      std::string first_recovery_reason;
+      moveit::core::RobotStatePtr first_rejected_state;
+      bool selected_left_detached = left_detached;
+      bool selected_right_detached = right_detached;
+      for (const auto& left_option : left_options) {
+        for (const auto& right_option : right_options) {
+          auto candidate_state = std::make_shared<moveit::core::RobotState>(previous_state);
+          for (size_t index = 0; index < 6; ++index) {
+            candidate_state->setVariablePosition(
+              projected_shortcut_joint_name("left", index), left_option.joints[index]);
+            candidate_state->setVariablePosition(
+              projected_shortcut_joint_name("right", index), right_option.joints[index]);
+          }
+          candidate_state->setVariablePosition("updown", fixed_updown);
+          candidate_state->enforceBounds(config_.joint_group);
+          candidate_state->update(true);
+          const double candidate_joint_delta = projected_shortcut_max_arm_delta(
+            previous_state, *candidate_state);
+          std::string candidate_reason;
+          bool candidate_clear = candidate_state->satisfiesBounds(config_.joint_group);
+          bool candidate_left_detached = left_detached;
+          bool candidate_right_detached = right_detached;
+          if (!candidate_clear) {
+            candidate_reason = "projected_shortcut_outward_recovery_state_out_of_bounds";
+          } else if (config_.max_projected_joint_delta > 0.0 &&
+                     candidate_joint_delta > config_.max_projected_joint_delta) {
+            candidate_clear = false;
+            candidate_reason = "projected_shortcut_outward_recovery_joint_delta_too_large";
+          } else if (config_.dual_clear_callback) {
+            candidate_clear = config_.dual_clear_callback(
+              *candidate_state,
+              left_box,
+              left_box_id,
+              right_box,
+              right_box_id,
+              &candidate_left_detached,
+              &candidate_right_detached,
+              &candidate_reason);
+          }
+          if (!candidate_clear) {
+            if (!first_rejected_state) {
+              first_rejected_state = candidate_state;
+              first_recovery_reason = candidate_reason;
+            }
+            continue;
+          }
+          const double option_score =
+            left_option.continuity_distance + right_option.continuity_distance;
+          if (option_score >= best_option_score) continue;
+          best_option_score = option_score;
+          recovery_state = candidate_state;
+          left_best = left_option;
+          right_best = right_option;
+          recovery_joint_delta = candidate_joint_delta;
+          selected_left_detached = candidate_left_detached;
+          selected_right_detached = candidate_right_detached;
+        }
+      }
+      if (!recovery_state || !left_best || !right_best) {
+        const std::string recovery_reason = first_recovery_reason;
+        timing.failure_reason = recovery_reason.empty()
+          ? "projected_shortcut_outward_recovery_state_invalid_step_" +
+            std::to_string(recovery_step)
+          : "projected_shortcut_outward_recovery_state_invalid_step_" +
+            std::to_string(recovery_step) + ": " + recovery_reason;
+        ++timing.failed_steps;
+        if (record_step) {
+          record_step(global_step, first_rejected_state ? *first_rejected_state : previous_state, {
+            {"stage_kind", "dual_projected_shortcut_outward_recovery_failed_step"},
+            {"candidate_order", candidate_order},
+            {"step", global_step},
+            {"recovery_step", recovery_step},
+            {"recovery_retreat_x", retreat},
+            {"projection_failure_reason", projection_failure_reason},
+            {"failure_reason", timing.failure_reason},
+            {"accepted", false}
+          });
+        }
+        break;
+      }
+      left_detached = selected_left_detached;
+      right_detached = selected_right_detached;
+
+      ++timing.accepted_steps;
+      projected_shortcut_append_point(
+        *recovery_state,
+        config_.target_joint_names,
+        0.1 * static_cast<double>(global_step),
+        &projected_plan);
+      if (record_step) {
+        record_step(global_step, *recovery_state, {
+          {"stage_kind", "dual_projected_shortcut_outward_recovery_step"},
+          {"candidate_order", candidate_order},
+          {"step", global_step},
+          {"recovery_step", recovery_step},
+          {"recovery_retreat_x", retreat},
+          {"projection_failure_reason", projection_failure_reason},
+          {"projected_joint_delta_deg", recovery_joint_delta * 180.0 / M_PI},
+          {"left_used_differential_ik", left_best->differential_ik},
+          {"right_used_differential_ik", right_best->differential_ik},
+          {"left_relaxed_orientation", left_best->relaxed_orientation},
+          {"right_relaxed_orientation", right_best->relaxed_orientation},
+          {"left_option_count", left_options.size()},
+          {"right_option_count", right_options.size()},
+          {"left_detached_from_neighbors", left_detached},
+          {"right_detached_from_neighbors", right_detached},
+          {"accepted", true}
+        });
+      }
+      previous_state = *recovery_state;
+      if (required_detachment_reached()) {
+        timing.failure_reason.clear();
+        break;
+      }
+    }
+
+    if (timing.failure_reason.empty() && !required_detachment_reached()) {
+      timing.failure_reason = "projected_shortcut_outward_recovery_reached_max_without_detachment";
+      ++timing.failed_steps;
+    }
+  }
+
+  if (!required_detachment_reached() &&
+      !timing.failure_reason.empty() &&
+      config_.outward_recovery_rrt_planner &&
+      timing.accepted_steps >= config_.outward_recovery_min_projected_steps) {
+    const std::string local_recovery_failure = timing.failure_reason;
+    BoxPoseRrtArmPolicy left_recovery_policy{require_left_detached};
+    BoxPoseRrtArmPolicy right_recovery_policy{require_right_detached};
+    left_recovery_policy.require_horizontal_detachment = false;
+    right_recovery_policy.require_horizontal_detachment = false;
+    left_recovery_policy.tip_floor_updown_compensation = false;
+    right_recovery_policy.tip_floor_updown_compensation = false;
+    const auto rrt_recovery = config_.outward_recovery_rrt_planner->rolloutDual(
+      previous_state,
+      left_box,
+      left_box_id,
+      right_box,
+      right_box_id,
+      candidate_order,
+      h_index,
+      seed_index,
+      h,
+      ik_score,
+      ik_solve_ms,
+      false,
+      false,
+      left_recovery_policy,
+      right_recovery_policy,
+      record_step);
+    timing.failed_steps += rrt_recovery.failed_steps;
+    if (rrt_recovery.success && rrt_recovery.final_state) {
+      timing.accepted_steps += rrt_recovery.accepted_steps;
+      timing.final_retreat_x += rrt_recovery.final_retreat_x;
+      timing.final_lift_z += rrt_recovery.final_lift_z;
+      timing.final_pitch_deg += rrt_recovery.final_pitch_deg;
+      timing.right_final_retreat_x += rrt_recovery.right_final_retreat_x;
+      timing.right_final_lift_z += rrt_recovery.right_final_lift_z;
+      timing.right_final_pitch_deg += rrt_recovery.right_final_pitch_deg;
+      previous_state = *rrt_recovery.final_state;
+      left_detached = require_left_detached;
+      right_detached = require_right_detached;
+      timing.failure_reason.clear();
+    } else {
+      timing.failure_reason = local_recovery_failure +
+        "; outward_rrt=" + rrt_recovery.failure_reason;
+    }
+  }
+
+  if (timing.failure_reason.empty()) {
+    std::string trajectory_reason;
+    if (config_.trajectory_clear_callback &&
+        !config_.trajectory_clear_callback(
+          projected_plan, start_state, {left_box, right_box}, &trajectory_reason)) {
+      timing.failure_reason = trajectory_reason.empty()
+        ? "projected_shortcut_trajectory_collision"
+        : "projected_shortcut_trajectory_collision: " + trajectory_reason;
+      ++timing.failed_steps;
+    } else if ((require_left_detached && !left_detached) ||
+               (require_right_detached && !right_detached)) {
+      timing.failure_reason = "projected_shortcut_reached_goal_without_required_detachment";
+      ++timing.failed_steps;
+    } else {
+      timing.success = true;
+      timing.final_state = std::make_shared<moveit::core::RobotState>(previous_state);
+      const Eigen::Isometry3d& left_start_tip = start_state.getGlobalLinkTransform(config_.left_tip);
+      const Eigen::Isometry3d& right_start_tip = start_state.getGlobalLinkTransform(config_.right_tip);
+      const Eigen::Isometry3d& left_final_tip = previous_state.getGlobalLinkTransform(config_.left_tip);
+      const Eigen::Isometry3d& right_final_tip = previous_state.getGlobalLinkTransform(config_.right_tip);
+      timing.final_retreat_x = left_start_tip.translation().x() - left_final_tip.translation().x();
+      timing.right_final_retreat_x = right_start_tip.translation().x() - right_final_tip.translation().x();
+      timing.final_lift_z = left_final_tip.translation().z() - left_start_tip.translation().z();
+      timing.right_final_lift_z = right_final_tip.translation().z() - right_start_tip.translation().z();
+    }
+  }
+
+  timing.rollout_ms = std::chrono::duration<double, std::milli>(
+    std::chrono::steady_clock::now() - started).count();
+  return timing;
+}
 
 ExtractBenchmarkSummary summarize_extract_timings(
   const std::vector<ExtractRolloutTiming>& timings)

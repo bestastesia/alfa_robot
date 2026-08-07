@@ -154,6 +154,17 @@ bool polygon_overlaps_source(
   return polygons_overlap(corners, source);
 }
 
+bool polygon_horizontally_detached_from_source(
+  const std::array<std::array<double, 2>, 4>& corners,
+  const BoxPoseExtractRrtConfig& config)
+{
+  const double current_max_x = std::max_element(
+    corners.begin(), corners.end(), [](const auto& lhs, const auto& rhs) {
+      return lhs[0] < rhs[0];
+    })->at(0);
+  return current_max_x <= -std::max(0.0, config.separation_margin) + 1e-9;
+}
+
 BoxPoseExtractState steer(
   const BoxPoseExtractState& from,
   const BoxPoseExtractState& to,
@@ -370,7 +381,13 @@ bool BoxPoseExtractRrt::detachedFromSource(const BoxPoseExtractState& state) con
 
 bool BoxPoseExtractRrt::goalReached(const BoxPoseExtractState& state) const
 {
-  if (!stateWithinBounds(state) || !detachedFromSource(state)) return false;
+  if (!stateWithinBounds(state)) return false;
+  const auto corners = rectangle_corners(state, config_);
+  const bool detached = config_.mode == BoxPoseExtractMode::FrontPivot &&
+      config_.front_goal_requires_horizontal_detachment ?
+    polygon_horizontally_detached_from_source(corners, config_) :
+    !polygon_overlaps_source(corners, config_);
+  if (!detached) return false;
   if (config_.mode == BoxPoseExtractMode::FrontPivot) {
     return !config_.front_goal_requires_max_pitch ||
            state.pitch + config_.goal_pitch_tolerance >= config_.max_pitch;

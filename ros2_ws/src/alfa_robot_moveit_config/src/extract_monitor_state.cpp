@@ -76,6 +76,7 @@ ExtractMonitorState make_extract_monitor_initial_state(
   state.prefix = extract_monitor_prefix(left_box_id, right_box_id);
   state.seed_state = std::move(seed_state);
   state.loaded_start_state = std::move(loaded_start_state);
+  state.replay_start_state = state.loaded_start_state;
   return state;
 }
 

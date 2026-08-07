@@ -47,11 +47,11 @@ def make_direct_lift_samples():
         sample("selected_extract_step_0", 2.0, 0.2, 0.2),
         sample("selected_extract_step_1", 3.0, 0.2, 0.6),
         sample("selected_loaded_plan", 3.0, 0.2, 0.6),
-        sample("selected_loaded_plan", 4.0, 0.0, 0.45),
-        sample("selected_loaded_to_place", 4.0, 0.0, 0.45),
+        sample("selected_loaded_plan", 4.0, 0.0, 0.1),
+        sample("selected_loaded_to_place", 4.0, 0.0, 0.1),
         sample("selected_loaded_to_place", 6.0, -0.1, 0.1),
         sample("selected_place_to_loaded", 6.0, -0.1, 0.1),
-        sample("selected_place_to_loaded", 7.0, 0.0, 0.45),
+        sample("selected_place_to_loaded", 7.0, 0.0, 0.3),
     ]
 
 
@@ -176,7 +176,7 @@ def test_split_and_validate_direct_lift():
     assert stages[5] == []
 
 
-def test_stage_three_preserves_extract_height_below_cap():
+def test_stage_three_accepts_current_loaded_transition_height():
     samples = make_direct_lift_samples()
     for item in samples:
         if item.context["stage"].endswith("selected_pre_attach_loaded_to_pre_contact") and item.time_s == 1.0:
@@ -186,15 +186,15 @@ def test_stage_three_preserves_extract_height_below_cap():
         if "selected_extract_step_" in item.context["stage"]:
             item.updown_m = 0.35
         if item.context["stage"].endswith("selected_loaded_plan"):
-            item.updown_m = 0.35
+            item.updown_m = 0.1
         if item.context["stage"].endswith("selected_loaded_to_place") and item.time_s == 4.0:
-            item.updown_m = 0.35
+            item.updown_m = 0.1
         if item.context["stage"].endswith("selected_place_to_loaded") and item.time_s == 7.0:
-            item.updown_m = 0.35
+            item.updown_m = 0.3
     task = parse_task_code("B1", 0.9, 0.7)
     stages = split_execution_stages(samples)
     validate_stage_contracts(task, stages, JOINT_NAMES)
-    assert stages[3][-1][-1].updown_m == pytest.approx(0.35)
+    assert stages[3][-1][-1].updown_m == pytest.approx(0.1)
 
 
 def test_retime_is_10hz_and_enforces_speed_limits():

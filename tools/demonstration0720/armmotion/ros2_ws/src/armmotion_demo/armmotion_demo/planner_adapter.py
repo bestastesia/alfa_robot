@@ -24,6 +24,7 @@ from .common import (
     split_execution_stages,
     validate_stage_contracts,
 )
+from .trajectory_cache import TrajectoryCache
 
 
 PlanningTask = TaskSpec | PoseTaskSpec
@@ -52,6 +53,8 @@ class PlannerAdapter:
         max_updown_acceleration_m_s2: float,
         speed_scale: float,
         timeout_s: float,
+        trajectory_cache_enabled: bool = True,
+        trajectory_cache_root: Path | None = None,
     ) -> None:
         self.source_ws = source_ws.resolve()
         self.output_root = output_root.resolve()
@@ -64,6 +67,10 @@ class PlannerAdapter:
         if self.speed_scale <= 0.0:
             raise ValueError("speed_scale 必须为正数")
         self.timeout_s = float(timeout_s)
+        self.trajectory_cache = TrajectoryCache(
+            trajectory_cache_root,
+            enabled=trajectory_cache_enabled,
+        )
         self.scripts_dir = self.source_ws / "src/alfa_robot_moveit_config/scripts"
         self.planner_script = self.scripts_dir / "extract_sequence_rerun.py"
         self.execution_script = self.scripts_dir / "execute_l6_r8_mock_live.py"
@@ -88,6 +95,10 @@ class PlannerAdapter:
         self._service_client = None
         self._recapture_client = None
         self.startup_ms = 0.0
+
+    def _ensure_session(self) -> None:
+        if self._planner_process is not None and self._planner_process.poll() is None:
+            return
         self._start_session()
 
     def _start_session(self) -> None:
@@ -107,8 +118,8 @@ class PlannerAdapter:
             "--fixed-updown",
             "0.3",
             "--loaded-updown",
-            "0.45",
-            "--loaded-preserve-lower-updown",
+            "0.1",
+            "--no-loaded-preserve-lower-updown",
             "--place-updown",
             "0.1",
             "--place-transition-updown",
@@ -262,6 +273,7 @@ class PlannerAdapter:
         *,
         preferred_updown: float = 0.3,
     ) -> tuple[list[MotionSample], dict[str, Any]]:
+        self._ensure_session()
         if self._recapture_client is None:
             raise RuntimeError("recapture planner client 未初始化")
         request = self._recapture_type.Request()
@@ -349,13 +361,6 @@ class PlannerAdapter:
         *,
         initial_sample: MotionSample | None = None,
     ) -> ExecutionPlan:
-        if self._planner_process is None or self._planner_process.poll() is not None:
-            raise RuntimeError(
-                f"planner 长驻进程已退出; {self._log_tail(self.session_log)}"
-            )
-        if self._service_client is None:
-            raise RuntimeError("planner service client 未初始化")
-
         request_root = self.output_root / f"{task.code}_{int(time.time() * 1000)}"
         request_root.mkdir(parents=True, exist_ok=False)
         snapshot_path = request_root / "stage_snapshot.json"
@@ -381,6 +386,8 @@ class PlannerAdapter:
         )
         left_scene_slot_id = int(getattr(task, "left_scene_slot_id", task.left_box_id))
         right_scene_slot_id = int(getattr(task, "right_scene_slot_id", task.right_box_id))
+        cache_started = time.monotonic()
+        cache_match = self.trajectory_cache.find(task, initial_sample)
         request_record = {
             "request_id": task.code,
             "left_front_face_pose_6d": getattr(
@@ -403,48 +410,63 @@ class PlannerAdapter:
             encoding="utf-8",
         )
 
-        started = time.monotonic()
-        configure_ok, configure_output, configure_ms = self._service_client.configure(
-            left_scene_slot_id,
-            right_scene_slot_id,
-            snapshot_path,
-            self.timeout_s,
-            left_grasp_mode == "top_suction",
-            right_grasp_mode == "top_suction",
-            left_target,
-            right_target,
-            runtime_config=runtime_config,
-            strategy=getattr(task, "strategy", None),
-            start_joint_positions=(initial_sample.joints if initial_sample is not None else None),
-            start_updown=(initial_sample.updown_m if initial_sample is not None else None),
-        )
-        if not configure_ok:
-            planner_wall_ms = (time.monotonic() - started) * 1000.0
-            summary = {
-                "left_row": getattr(task, "left_row", 0),
-                "right_row": getattr(task, "right_row", 0),
-                "success": False,
-                "startup_ms": 0.0,
-                "planner_session_startup_ms": self.startup_ms,
-                "configure_ms": configure_ms,
-                "service_ms": 0.0,
-                "wall_ms": planner_wall_ms,
-                "snapshot": str(snapshot_path),
-                "failure_reason": configure_output,
-            }
-            summary_path.write_text(
-                json.dumps([summary], ensure_ascii=False, indent=2),
+        if cache_match is not None:
+            snapshot = cache_match.snapshot
+            snapshot_path.write_text(
+                json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),
                 encoding="utf-8",
             )
-            raise RuntimeError(f"{task.code} planner 配置失败: {configure_output}")
+            configure_ms = 0.0
+            service_ms = 0.0
+            planner_wall_ms = (time.monotonic() - cache_started) * 1000.0
+            success = True
+            service_output = "trajectory cache hit"
+        else:
+            self._ensure_session()
+            if self._service_client is None:
+                raise RuntimeError("planner service client 未初始化")
+            started = time.monotonic()
+            configure_ok, configure_output, configure_ms = self._service_client.configure(
+                left_scene_slot_id,
+                right_scene_slot_id,
+                snapshot_path,
+                self.timeout_s,
+                left_grasp_mode == "top_suction",
+                right_grasp_mode == "top_suction",
+                left_target,
+                right_target,
+                runtime_config=runtime_config,
+                strategy=getattr(task, "strategy", None),
+                start_joint_positions=(initial_sample.joints if initial_sample is not None else None),
+                start_updown=(initial_sample.updown_m if initial_sample is not None else None),
+            )
+            if not configure_ok:
+                planner_wall_ms = (time.monotonic() - started) * 1000.0
+                summary = {
+                    "left_row": getattr(task, "left_row", 0),
+                    "right_row": getattr(task, "right_row", 0),
+                    "success": False,
+                    "startup_ms": 0.0,
+                    "planner_session_startup_ms": self.startup_ms,
+                    "configure_ms": configure_ms,
+                    "service_ms": 0.0,
+                    "wall_ms": planner_wall_ms,
+                    "snapshot": str(snapshot_path),
+                    "failure_reason": configure_output,
+                }
+                summary_path.write_text(
+                    json.dumps([summary], ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+                raise RuntimeError(f"{task.code} planner 配置失败: {configure_output}")
 
-        success, service_output, service_ms = self._service_client.trigger(self.timeout_s)
-        planner_wall_ms = (time.monotonic() - started) * 1000.0
-        snapshot = (
-            json.loads(snapshot_path.read_text(encoding="utf-8"))
-            if snapshot_path.is_file()
-            else {}
-        )
+            success, service_output, service_ms = self._service_client.trigger(self.timeout_s)
+            planner_wall_ms = (time.monotonic() - started) * 1000.0
+            snapshot = (
+                json.loads(snapshot_path.read_text(encoding="utf-8"))
+                if snapshot_path.is_file()
+                else {}
+            )
         summary = self._summary_from_snapshot(
             task=task,
             snapshot=snapshot,
@@ -513,6 +535,11 @@ class PlannerAdapter:
             ),
             "max_joint_acceleration_deg_s2": self.max_joint_acceleration_deg_s2,
             "effective_max_updown_speed_m_s": self.max_updown_speed_m_s,
+            "trajectory_cache_hit": cache_match is not None,
+            "trajectory_cache_path": str(cache_match.path) if cache_match is not None else "",
+            "trajectory_cache_distance_m": (
+                cache_match.distance_cm / 100.0 if cache_match is not None else 0.0
+            ),
         }
         return ExecutionPlan(
             task=task,
