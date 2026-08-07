@@ -1,20 +1,18 @@
-uint8 MOVE_TO_RECAPTURE=1
-uint8 MOVE_TO_PREGRASP=2
-uint8 APPROACH_SUCTION=3
-uint8 MOVE_TO_PLACE=4
-uint8 RETURN_INITIAL=5
+uint8 EXECUTION_STAGE_UNSPECIFIED=0
+uint8 EXECUTION_STAGE_CAMERA_VIEW=1
+uint8 EXECUTION_STAGE_PREGRASP=2
+uint8 EXECUTION_STAGE_APPROACH=3
+uint8 EXECUTION_STAGE_PLACE=4
+uint8 EXECUTION_STAGE_HOME=5
 
-alfa_motion_interfaces/MotionTaskContext context
-uint8 stage
-alfa_motion_interfaces/MotionPoseTarget left_target
-alfa_motion_interfaces/MotionPoseTarget right_target
+uint8 execution_stage
+alfa_motion_interfaces/DualArmPoseTargets targets
 ---
-bool success
-string plan_id
-float64 planning_time_s
-float64 execution_time_s
-alfa_motion_interfaces/MotionErrorInfo error
+string diagnostic
 ---
-uint8 stage
-string state
-float32 progress_0_to_1
+uint8 MOTION_STATE_UNSPECIFIED=0
+uint8 MOTION_STATE_PLANNING=1
+uint8 MOTION_STATE_EXECUTING=2
+uint8 MOTION_STATE_SETTLING=3
+
+uint8 motion_state

@@ -9,6 +9,7 @@ from armmotion_demo.common import (
     front_face_poses_for_task,
     front_face_task_request_fields,
     loaded_joint_map,
+    nearest_equivalent_angle,
     planning_task_from_front_face_poses,
     parse_task_code,
     retime_segment,
@@ -21,6 +22,7 @@ from armmotion_demo.controller_interpolated_rerun import (
 )
 from armmotion_demo import hardware_executor as hardware_executor_module
 from armmotion_demo.hardware_executor import HardwareExecutor
+from armmotion_demo.domain_motion_server import DomainMotionServer
 from alfa_robot_execution_bridge.joints import RT_CONTROL_JOINT_NAMES
 
 
@@ -165,6 +167,22 @@ def test_loaded_pose_keeps_contract_names():
     assert math.degrees(result["left_joint2"]) == pytest.approx(-45.0)
     assert math.degrees(result["right_joint3"]) == pytest.approx(120.0)
     assert result["turn"] == pytest.approx(0.0)
+
+
+def test_nearest_equivalent_angle_avoids_full_turn():
+    current = math.radians(269.0)
+    target = nearest_equivalent_angle(current, math.radians(-90.0))
+    assert math.degrees(target) == pytest.approx(270.0)
+    assert math.degrees(target - current) == pytest.approx(1.0)
+
+
+def test_planning_sample_masks_physical_turn():
+    source = sample("x", 0.0, 0.2, 0.3)
+    source.joints["turn"] = math.radians(-90.0)
+    masked = DomainMotionServer._mask_turn_for_planning(source)
+    assert masked.joints["turn"] == pytest.approx(0.0)
+    assert masked.joints["left_joint1"] == pytest.approx(0.2)
+    assert source.joints["turn"] == pytest.approx(math.radians(-90.0))
 
 
 def test_split_and_validate_direct_lift():
@@ -445,3 +463,33 @@ def test_hardware_trajectory_crosses_joint_contract_as_full_14_axis(monkeypatch)
     assert min(frame_deltas) >= -1e-12
     assert frame_deltas[0] < max(frame_deltas)
     assert frame_deltas[-1] < max(frame_deltas)
+
+
+def test_hardware_holds_turn_unless_explicitly_commanded():
+    source = [
+        sample("x", 0.0, 0.0, 0.3),
+        sample("x", 0.2, 0.0, 0.3),
+    ]
+    source[-1].joints["turn"] = math.radians(-90.0)
+    samples = retime_segment(
+        source,
+        JOINT_NAMES,
+        rate_hz=30.0,
+        max_joint_speed_deg_s=10.0,
+        max_joint_acceleration_deg_s2=60.0,
+        max_updown_speed_m_s=0.05,
+        speed_scale=1.0,
+    )
+    executor = HardwareExecutor.__new__(HardwareExecutor)
+    executor._state_lock = threading.Lock()
+    executor._latest_joints = {"turn": math.radians(12.0)}
+    held = executor._make_trajectory(samples)
+    commanded = executor._make_trajectory(samples, command_turn=True)
+    turn_index = held.joint_names.index("turn")
+    assert all(
+        point.positions[turn_index] == pytest.approx(math.radians(12.0))
+        for point in held.points
+    )
+    assert all(point.velocities[turn_index] == pytest.approx(0.0) for point in held.points)
+    assert commanded.points[-1].positions[turn_index] == pytest.approx(math.radians(-90.0))
+    assert max(abs(point.velocities[turn_index]) for point in commanded.points) > 0.0

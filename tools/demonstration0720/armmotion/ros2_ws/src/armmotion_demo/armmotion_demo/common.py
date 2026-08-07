@@ -200,6 +200,13 @@ class ExecutionPlan:
     metrics: dict[str, Any]
 
 
+def nearest_equivalent_angle(current: float, target: float) -> float:
+    """Return the target's nearest 2*pi-equivalent angle from current."""
+    if not math.isfinite(current) or not math.isfinite(target):
+        raise ValueError("角度必须为有限值")
+    return float(current) + math.remainder(float(target) - float(current), 2.0 * math.pi)
+
+
 def parse_task_code(
     raw_code: str,
     front_distance_m: float,

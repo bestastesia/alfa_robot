@@ -20,7 +20,7 @@ setup(
     zip_safe=True,
     maintainer="Sevenova Motion Control Team",
     maintainer_email="motion@example.com",
-    description="Isolated two-thread ALFA arm planning and staged execution demo.",
+    description="ALFA Motion domain staged planning and execution runtime.",
     license="Proprietary",
     entry_points={
         "console_scripts": [

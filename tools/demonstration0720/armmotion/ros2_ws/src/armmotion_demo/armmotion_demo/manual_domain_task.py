@@ -4,13 +4,12 @@ import argparse
 import math
 import threading
 import time
-import uuid
 
 import rclpy
 from action_msgs.msg import GoalStatus
 from alfa_motion_interfaces.action import ExecuteMotionStage
-from alfa_motion_interfaces.msg import MotionPoseTarget
-from geometry_msgs.msg import PoseStamped
+from alfa_motion_interfaces.msg import DualArmPoseTargets
+from geometry_msgs.msg import Pose
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -48,28 +47,26 @@ def _quaternion_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, 
     )
 
 
-def _pose_stamped(value: Pose6DValue, stamp) -> PoseStamped:
-    message = PoseStamped()
-    message.header.frame_id = "base_link"
-    message.header.stamp = stamp
-    message.pose.position.x = value.x
-    message.pose.position.y = value.y
-    message.pose.position.z = value.z
+def _pose(value: Pose6DValue) -> Pose:
+    message = Pose()
+    message.position.x = value.x
+    message.position.y = value.y
+    message.position.z = value.z
     quaternion = _quaternion_from_rpy(value.roll, value.pitch, value.yaw)
     (
-        message.pose.orientation.x,
-        message.pose.orientation.y,
-        message.pose.orientation.z,
-        message.pose.orientation.w,
+        message.orientation.x,
+        message.orientation.y,
+        message.orientation.z,
+        message.orientation.w,
     ) = quaternion
     return message
 
 
 TARGET_MODES = {
-    "no_move": MotionPoseTarget.NO_MOVE,
-    "front": MotionPoseTarget.SIDE_SUCTION,
-    "side_suction": MotionPoseTarget.SIDE_SUCTION,
-    "top_suction": MotionPoseTarget.TOP_SUCTION,
+    "no_move": DualArmPoseTargets.STAGE_NO_MOVE,
+    "front": DualArmPoseTargets.STAGE_SIDE_SUCTION,
+    "side_suction": DualArmPoseTargets.STAGE_SIDE_SUCTION,
+    "top_suction": DualArmPoseTargets.STAGE_TOP_SUCTION,
 }
 
 
@@ -101,9 +98,6 @@ class ManualDomainTask(Node):
     def make_goal(
         self,
         *,
-        request_id: str,
-        task_id: str,
-        sequence_id: int,
         stage: int,
         left: Pose6DValue | None = None,
         right: Pose6DValue | None = None,
@@ -111,16 +105,12 @@ class ManualDomainTask(Node):
         right_mode: str = "no_move",
     ):
         goal = ExecuteMotionStage.Goal()
-        goal.context.request_id = request_id
-        goal.context.task_id = task_id
-        goal.context.sequence_id = int(sequence_id)
-        goal.stage = int(stage)
+        goal.execution_stage = int(stage)
         if left is not None and right is not None:
-            stamp = self.get_clock().now().to_msg()
-            goal.left_target.pose = _pose_stamped(left, stamp)
-            goal.right_target.pose = _pose_stamped(right, stamp)
-            goal.left_target.grasp_mode = TARGET_MODES[left_mode]
-            goal.right_target.grasp_mode = TARGET_MODES[right_mode]
+            goal.targets.left_pose = _pose(left)
+            goal.targets.right_pose = _pose(right)
+            goal.targets.left_stage = TARGET_MODES[left_mode]
+            goal.targets.right_stage = TARGET_MODES[right_mode]
         return goal
 
     def run_stage(self, goal, label: str, timeout_s: float):
@@ -129,8 +119,13 @@ class ManualDomainTask(Node):
 
         def feedback(message) -> None:
             value = message.feedback
+            state = {
+                ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING: "PLANNING",
+                ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING: "EXECUTING",
+                ExecuteMotionStage.Feedback.MOTION_STATE_SETTLING: "SETTLING",
+            }.get(int(value.motion_state), "UNSPECIFIED")
             print(
-                f"{label}: {value.state} {100.0 * value.progress_0_to_1:.0f}%",
+                f"{label}: {state}",
                 flush=True,
             )
 
@@ -144,13 +139,9 @@ class ManualDomainTask(Node):
         wrapped = _wait_future(goal_handle.get_result_async(), timeout_s, f"{label} Result")
         if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
             raise RuntimeError(
-                f"{label} 失败 status={wrapped.status}: {wrapped.result.error.message}"
+                f"{label} 失败 status={wrapped.status}: {wrapped.result.diagnostic}"
             )
-        print(
-            f"{label} 完成 planning={wrapped.result.planning_time_s:.3f}s "
-            f"execution={wrapped.result.execution_time_s:.3f}s",
-            flush=True,
-        )
+        print(f"{label} 完成: {wrapped.result.diagnostic}", flush=True)
         return wrapped.result
 
 
@@ -187,13 +178,17 @@ def parse_args():
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
         help="右箱正面中心 base_link 6D位姿，角度单位rad",
     )
-    parser.add_argument("--sequence-id", type=int, default=1)
     parser.add_argument("--front-distance", type=float, default=0.9)
     parser.add_argument("--top-distance", type=float, default=0.7)
     parser.add_argument("--initialize", action="store_true")
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="每个阶段发送前等待回车，便于手工协调吸附与释放",
+    )
     for prefix, default in (
-        ("recapture-left", "no_move"),
-        ("recapture-right", "no_move"),
+        ("recapture-left", "side_suction"),
+        ("recapture-right", "side_suction"),
         ("left", "front"),
         ("right", "front"),
     ):
@@ -255,11 +250,9 @@ def main(args=None) -> None:
         if options.initialize:
             input("确认人员远离且 rt-control 已 READY，回车初始化到负重位：")
             node.initialize(options.timeout)
-        task_id = f"manual-{label}-{uuid.uuid4().hex[:8]}"
-        sequence_id = options.sequence_id
         stages = [
             (
-                ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE,
+                ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
                 "重拍位",
                 recapture_left,
                 recapture_right,
@@ -267,22 +260,22 @@ def main(args=None) -> None:
                 options.recapture_right_mode,
             ),
             (
-                ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
+                ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
                 "预抓取",
                 left,
                 right,
                 options.left_mode,
                 options.right_mode,
             ),
-            (ExecuteMotionStage.Goal.APPROACH_SUCTION, "靠近吸附", None, None, "no_move", "no_move"),
-            (ExecuteMotionStage.Goal.MOVE_TO_PLACE, "放置", None, None, "no_move", "no_move"),
-            (ExecuteMotionStage.Goal.RETURN_INITIAL, "返回初始位", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH, "靠近吸附", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE, "放置", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME, "返回初始位", None, None, "no_move", "no_move"),
         ]
         stop_stage = {
-            "pregrasp": ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
-            "approach": ExecuteMotionStage.Goal.APPROACH_SUCTION,
-            "place": ExecuteMotionStage.Goal.MOVE_TO_PLACE,
-            "return": ExecuteMotionStage.Goal.RETURN_INITIAL,
+            "pregrasp": ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
+            "approach": ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH,
+            "place": ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE,
+            "return": ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME,
         }.get(options.stop_after)
         for index, (
             stage,
@@ -292,12 +285,10 @@ def main(args=None) -> None:
             stage_left_mode,
             stage_right_mode,
         ) in enumerate(stages, start=1):
-            request_id = f"{task_id}-{index}"
-            print(f"发布阶段：{stage_label} request={request_id}", flush=True)
+            if options.interactive:
+                input(f"确认外部条件满足，回车发送阶段：{stage_label}；Ctrl-C取消：")
+            print(f"发布阶段：{stage_label}", flush=True)
             goal = node.make_goal(
-                request_id=request_id,
-                task_id=task_id,
-                sequence_id=sequence_id,
                 stage=stage,
                 left=stage_left,
                 right=stage_right,
@@ -305,10 +296,18 @@ def main(args=None) -> None:
                 right_mode=stage_right_mode,
             )
             node.run_stage(goal, stage_label, options.timeout)
-            if stage == ExecuteMotionStage.Goal.APPROACH_SUCTION:
-                print("靠近完成；吸附通路与真空确认由 Autonomy/RT-Control 负责。", flush=True)
-            elif stage == ExecuteMotionStage.Goal.MOVE_TO_PLACE:
-                print("放置完成；释放通路与真空确认由 Autonomy/RT-Control 负责。", flush=True)
+            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH:
+                print(
+                    "靠近完成；请由 Autonomy/RT-Control 打开吸附通路并确认真空，"
+                    "确认前不要发送放置阶段。",
+                    flush=True,
+                )
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE:
+                print(
+                    "放置完成；请由 Autonomy/RT-Control 关闭吸附通路并确认释放，"
+                    "确认前不要发送返回阶段。",
+                    flush=True,
+                )
             if stop_stage == stage:
                 break
     finally:

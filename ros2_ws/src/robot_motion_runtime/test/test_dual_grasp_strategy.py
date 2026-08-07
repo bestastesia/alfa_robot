@@ -23,7 +23,16 @@ from robot_motion_runtime.dual_grasp_strategy import (
     resolve_front_face_dual_grasp_strategy,
     resolve_dual_grasp_strategy,
     quaternion_xyzw,
+    rpy_from_quaternion_xyzw,
 )
+
+
+def test_front_quaternion_survives_gimbal_lock_rpy_round_trip():
+    expected = (math.sqrt(0.5), 0.0, math.sqrt(0.5), 0.0)
+    roll, pitch, yaw = rpy_from_quaternion_xyzw(expected)
+    actual = quaternion_xyzw(Pose6DValue(0.0, 0.0, 0.0, roll, pitch, yaw))
+    dot = sum(left * right for left, right in zip(expected, actual))
+    assert abs(dot) == pytest.approx(1.0)
 
 
 def test_outer_box_grasp_uses_40cm_target_without_attachment_offset():

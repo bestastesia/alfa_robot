@@ -4,9 +4,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 set +u
 source /opt/ros/humble/setup.bash
-if [[ -f /home/ar/lhy_dev/env.sh ]]; then
-  source /home/ar/lhy_dev/env.sh
-fi
 REPO_SOURCE_WS="$(cd "${ROOT}/../../.." && pwd)/ros2_ws"
 if [[ -f "${REPO_SOURCE_WS}/install/setup.bash" ]]; then
   source "${REPO_SOURCE_WS}/install/setup.bash"
@@ -14,6 +11,7 @@ fi
 set -u
 cd "${ROOT}/ros2_ws"
 ALL_PACKAGES=(
+  alfa_motion_interfaces
   robot_motion_core
   robot_motion_interfaces
   robot_motion_scene_service

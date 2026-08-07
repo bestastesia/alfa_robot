@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 import threading
 import time
 from pathlib import Path
@@ -8,7 +9,8 @@ from pathlib import Path
 import rclpy
 from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
 from alfa_motion_interfaces.action import ExecuteMotionStage
-from alfa_motion_interfaces.msg import MotionErrorInfo, MotionReadiness
+from alfa_motion_interfaces.msg import DualArmPoseTargets, MotionErrorInfo, MotionReadiness
+from geometry_msgs.msg import PoseStamped
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -16,7 +18,12 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_srvs.srv import Trigger
 
-from .common import MotionSample, loaded_joint_map, retime_segment
+from .common import (
+    MotionSample,
+    loaded_joint_map,
+    nearest_equivalent_angle,
+    retime_segment,
+)
 from .hardware_executor import ARM_JOINT_NAMES, HardwareExecutor
 from .planner_adapter import PlannerAdapter
 from .stage_contract import planning_task_from_stage_goal, validate_stage_pose_targets
@@ -46,6 +53,9 @@ class DomainMotionServer(Node):
         self.declare_parameter("max_joint_acceleration_deg_s2", 60.0)
         self.declare_parameter("max_updown_speed_m_s", 0.05)
         self.declare_parameter("updown_acceleration_m_s2", 0.05)
+        self.declare_parameter("recapture_turn_target_deg", -90.0)
+        self.declare_parameter("recapture_turn_tolerance_deg", 1.0)
+        self.declare_parameter("recapture_preferred_updown_m", 0.3)
         self.declare_parameter("planner_timeout_s", 180.0)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
@@ -56,7 +66,7 @@ class DomainMotionServer(Node):
         self.declare_parameter("stage_action", "/motion/execute_stage")
         self.declare_parameter("readiness_topic", "/motion/readiness")
         self.declare_parameter("initialize_service", "/motion/dev/initialize_loaded_pose")
-        self.declare_parameter("interface_version", "motion-stage-v2")
+        self.declare_parameter("interface_version", "autonomy-motion-action-v1")
         self.declare_parameter("model_version", "alfa_robot_current")
         self.declare_parameter("calibration_version", "rt_control_current")
         self.declare_parameter("allow_partial_domain_test", False)
@@ -77,9 +87,10 @@ class DomainMotionServer(Node):
         self._goal_reserved = False
         self._scene_unknown = False
         self._active_plan = None
-        self._active_task_id = ""
         self._recapture_sample = None
-        self._next_stage = ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE
+        self._cycle_serial = 0
+        self._cycle_id = ""
+        self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
         self._last_error = self._error(MotionErrorInfo.SUCCESS)
         self._hardware = HardwareExecutor(
             self,
@@ -165,7 +176,11 @@ class DomainMotionServer(Node):
                 message.ready = False
             elif self._busy or self._goal_reserved:
                 message.state = "BUSY"
-            elif self._active_plan is None and not self._active_task_id:
+            elif (
+                self._active_plan is None
+                and self._recapture_sample is None
+                and not self._cycle_id
+            ):
                 message.state = "DEVELOPMENT_READY" if partial_test else "INTEGRATION_BLOCKED"
             else:
                 message.state = self._stage_name(self._next_stage)
@@ -178,11 +193,11 @@ class DomainMotionServer(Node):
     @staticmethod
     def _stage_name(stage: int) -> str:
         return {
-            ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE: "WAITING_RECAPTURE",
-            ExecuteMotionStage.Goal.MOVE_TO_PREGRASP: "WAITING_PREGRASP",
-            ExecuteMotionStage.Goal.APPROACH_SUCTION: "WAITING_APPROACH_SUCTION",
-            ExecuteMotionStage.Goal.MOVE_TO_PLACE: "WAITING_PLACE",
-            ExecuteMotionStage.Goal.RETURN_INITIAL: "WAITING_RETURN_INITIAL",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW: "WAITING_CAMERA_VIEW",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP: "WAITING_PREGRASP",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH: "WAITING_APPROACH",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE: "WAITING_PLACE",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME: "WAITING_HOME",
         }.get(int(stage), "UNKNOWN_STAGE")
 
     def _accept_stage_goal(self, request) -> GoalResponse:
@@ -194,24 +209,29 @@ class DomainMotionServer(Node):
         with self._lock:
             if self._busy or self._goal_reserved or self._scene_unknown:
                 return GoalResponse.REJECT
-            if int(request.stage) == ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE:
-                if self._active_plan is not None or self._active_task_id:
+            stage = int(request.execution_stage)
+            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
+                if (
+                    self._active_plan is not None
+                    or self._recapture_sample is not None
+                    or self._cycle_id
+                ):
                     return GoalResponse.REJECT
-                if int(self._next_stage) != ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE:
+                if int(self._next_stage) != ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
                     return GoalResponse.REJECT
-            elif int(request.stage) == ExecuteMotionStage.Goal.MOVE_TO_PREGRASP:
-                if self._active_plan is not None or self._recapture_sample is None:
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
+                if (
+                    self._active_plan is not None
+                    or self._recapture_sample is None
+                    or not self._cycle_id
+                ):
                     return GoalResponse.REJECT
-                if request.context.task_id != self._active_task_id:
-                    return GoalResponse.REJECT
-                if int(self._next_stage) != ExecuteMotionStage.Goal.MOVE_TO_PREGRASP:
+                if int(self._next_stage) != ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
                     return GoalResponse.REJECT
             else:
                 if self._active_plan is None:
                     return GoalResponse.REJECT
-                if request.context.task_id != self._active_task_id:
-                    return GoalResponse.REJECT
-                if int(request.stage) != int(self._next_stage):
+                if stage != int(self._next_stage):
                     return GoalResponse.REJECT
             self._goal_reserved = True
         self._publish_readiness()
@@ -220,34 +240,38 @@ class DomainMotionServer(Node):
     def _validate_stage_request(self, request) -> None:
         if not bool(self.get_parameter("allow_partial_domain_test").value):
             raise ValueError("当前开发入口未开启部分域联调许可")
-        if not request.context.request_id or not request.context.task_id:
-            raise ValueError("context.request_id/task_id 不能为空")
-        if int(request.context.sequence_id) <= 0:
-            raise ValueError("context.sequence_id 必须从1开始")
         valid_stages = {
-            ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE,
-            ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
-            ExecuteMotionStage.Goal.APPROACH_SUCTION,
-            ExecuteMotionStage.Goal.MOVE_TO_PLACE,
-            ExecuteMotionStage.Goal.RETURN_INITIAL,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME,
         }
-        if int(request.stage) not in valid_stages:
-            raise ValueError(f"不支持的 Motion 阶段: {request.stage}")
-        if int(request.stage) in {
-            ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE,
-            ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
+        stage = int(request.execution_stage)
+        if stage not in valid_stages:
+            raise ValueError(f"不支持的 Motion 阶段: {request.execution_stage}")
+        if stage in {
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
         }:
             validate_stage_pose_targets(request)
-        if int(request.stage) == ExecuteMotionStage.Goal.MOVE_TO_PREGRASP:
-            planning_task_from_stage_goal(request)
+            if int(request.targets.left_stage) == DualArmPoseTargets.STAGE_NO_MOVE:
+                raise ValueError("当前双臂流程暂不支持左臂 NO_MOVE")
+            if int(request.targets.right_stage) == DualArmPoseTargets.STAGE_NO_MOVE:
+                raise ValueError("当前双臂流程暂不支持右臂 NO_MOVE")
 
     @staticmethod
-    def _feedback(stage: int, state: str, progress: float):
+    def _feedback(state: int):
         feedback = ExecuteMotionStage.Feedback()
-        feedback.stage = int(stage)
-        feedback.state = str(state)
-        feedback.progress_0_to_1 = float(progress)
+        feedback.motion_state = int(state)
         return feedback
+
+    @staticmethod
+    def _base_link_pose_stamped(pose) -> PoseStamped:
+        target = PoseStamped()
+        target.header.frame_id = "base_link"
+        target.pose = pose
+        return target
 
     def _run_plan_stage(self, goal_handle, plan_stage: int, label: str) -> float:
         with self._lock:
@@ -261,9 +285,73 @@ class DomainMotionServer(Node):
             self._hardware.execute_segment(segment, f"{label}/{index}")
         return time.monotonic() - started
 
+    def _align_turn_for_recapture(
+        self,
+        current: MotionSample,
+    ) -> tuple[MotionSample, float]:
+        target_angle = nearest_equivalent_angle(
+            current.joints["turn"],
+            math.radians(float(self.get_parameter("recapture_turn_target_deg").value)),
+        )
+        tolerance = math.radians(
+            float(self.get_parameter("recapture_turn_tolerance_deg").value)
+        )
+        if abs(target_angle - current.joints["turn"]) <= tolerance:
+            return current, 0.0
+        target_joints = dict(current.joints)
+        target_joints["turn"] = target_angle
+        target = MotionSample(
+            time_s=0.1,
+            joints=target_joints,
+            updown_m=current.updown_m,
+            context={
+                "stage": "recapture/align_turn",
+                "updown": current.updown_m,
+            },
+        )
+        samples = retime_segment(
+            [current, target],
+            list(EXECUTION_JOINT_NAMES),
+            **self._retime_parameters,
+        )
+        duration = float(
+            self._hardware.execute_segment(
+                samples,
+                "重拍前旋转 turn",
+                command_turn=True,
+            )["duration_s"]
+        )
+        self.get_logger().info(
+            "重拍前 turn 对齐完成："
+            f"{math.degrees(current.joints['turn']):.2f}deg -> "
+            f"{math.degrees(target_angle):.2f}deg"
+        )
+        if self._hardware.dry_run:
+            return samples[-1], duration
+        return self._hardware.current_sample(), duration
+
+    @staticmethod
+    def _mask_turn_for_planning(sample: MotionSample) -> MotionSample:
+        joints = dict(sample.joints)
+        joints["turn"] = 0.0
+        velocities = dict(sample.joint_velocities)
+        velocities["turn"] = 0.0
+        accelerations = dict(sample.joint_accelerations)
+        accelerations["turn"] = 0.0
+        return MotionSample(
+            time_s=sample.time_s,
+            joints=joints,
+            updown_m=sample.updown_m,
+            context={**sample.context, "planning_turn_masked": True},
+            joint_velocities=velocities,
+            updown_velocity_m_s=sample.updown_velocity_m_s,
+            joint_accelerations=accelerations,
+            updown_acceleration_m_s2=sample.updown_acceleration_m_s2,
+        )
+
     def _execute_stage(self, goal_handle):
         request = goal_handle.request
-        stage = int(request.stage)
+        stage = int(request.execution_stage)
         result = ExecuteMotionStage.Result()
         planning_time_s = 0.0
         execution_time_s = 0.0
@@ -272,15 +360,25 @@ class DomainMotionServer(Node):
             self._goal_reserved = False
         self._publish_readiness()
         try:
-            if stage == ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE:
-                goal_handle.publish_feedback(self._feedback(stage, "PLANNING_RECAPTURE", 0.05))
+            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
                 current = self._current_sample_for_planning()
+                current, turn_execution_time_s = self._align_turn_for_recapture(current)
+                execution_time_s += turn_execution_time_s
+                current = self._mask_turn_for_planning(current)
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
+                )
                 started = time.monotonic()
                 samples, metrics = self._planner.plan_recapture(
-                    request.left_target.pose,
-                    request.right_target.pose,
+                    self._base_link_pose_stamped(request.targets.left_pose),
+                    self._base_link_pose_stamped(request.targets.right_pose),
                     current,
-                    preferred_updown=0.3,
+                    preferred_updown=float(
+                        self.get_parameter("recapture_preferred_updown_m").value
+                    ),
                 )
                 planning_time_s = time.monotonic() - started
                 self.get_logger().info(
@@ -288,18 +386,29 @@ class DomainMotionServer(Node):
                     f"updown={metrics['selected_updown']:.3f}m "
                     f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms"
                 )
-                goal_handle.publish_feedback(self._feedback(stage, "EXECUTING_RECAPTURE", 0.7))
-                execution_time_s = float(
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
+                execution_time_s += float(
                     self._hardware.execute_segment(samples, "重拍位")["duration_s"]
                 )
-                recapture_sample = samples[-1] if self._hardware.dry_run else self._hardware.current_sample()
+                recapture_sample = (
+                    samples[-1]
+                    if self._hardware.dry_run
+                    else self._mask_turn_for_planning(self._hardware.current_sample())
+                )
                 with self._lock:
+                    self._cycle_serial += 1
+                    self._cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
                     self._recapture_sample = recapture_sample
-                    self._active_task_id = request.context.task_id
-                    self._next_stage = ExecuteMotionStage.Goal.MOVE_TO_PREGRASP
-            elif stage == ExecuteMotionStage.Goal.MOVE_TO_PREGRASP:
-                goal_handle.publish_feedback(self._feedback(stage, "PLANNING", 0.05))
-                task = planning_task_from_stage_goal(request)
+                    self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
+                )
+                with self._lock:
+                    cycle_id = self._cycle_id
+                task = planning_task_from_stage_goal(request, cycle_id)
                 started = time.monotonic()
                 with self._lock:
                     recapture_sample = self._recapture_sample
@@ -309,62 +418,69 @@ class DomainMotionServer(Node):
                 planning_time_s = time.monotonic() - started
                 with self._lock:
                     self._active_plan = plan
-                    self._active_task_id = request.context.task_id
-                goal_handle.publish_feedback(self._feedback(stage, "EXECUTING", 0.7))
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
                 execution_time_s = self._run_plan_stage(
                     goal_handle,
                     1,
                     "预抓取",
                 )
-                self._next_stage = ExecuteMotionStage.Goal.APPROACH_SUCTION
-            elif stage == ExecuteMotionStage.Goal.APPROACH_SUCTION:
-                goal_handle.publish_feedback(self._feedback(stage, "EXECUTING", 0.2))
+                self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH:
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
                 execution_time_s = self._run_plan_stage(goal_handle, 2, "靠近吸附")
-                self._next_stage = ExecuteMotionStage.Goal.MOVE_TO_PLACE
-            elif stage == ExecuteMotionStage.Goal.MOVE_TO_PLACE:
-                goal_handle.publish_feedback(self._feedback(stage, "EXTRACTING", 0.1))
+                self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE:
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
                 execution_time_s += self._run_plan_stage(goal_handle, 3, "抽离到负重")
-                goal_handle.publish_feedback(self._feedback(stage, "PLACING", 0.65))
                 execution_time_s += self._run_plan_stage(goal_handle, 4, "负重到放置")
-                self._next_stage = ExecuteMotionStage.Goal.RETURN_INITIAL
+                self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME
             else:
-                goal_handle.publish_feedback(self._feedback(stage, "RETURNING", 0.2))
+                goal_handle.publish_feedback(
+                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+                )
                 execution_time_s = self._run_plan_stage(goal_handle, 6, "返回初始位")
                 with self._lock:
                     self._active_plan = None
-                    self._active_task_id = ""
                     self._recapture_sample = None
-                self._next_stage = ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE
+                    self._cycle_id = ""
+                self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
 
-            result.success = True
-            result.plan_id = request.context.task_id
-            result.planning_time_s = planning_time_s
-            result.execution_time_s = execution_time_s
-            result.error = self._error(MotionErrorInfo.SUCCESS)
-            goal_handle.publish_feedback(self._feedback(stage, "COMPLETE", 1.0))
+            result.diagnostic = (
+                f"{self._stage_name(stage)} complete; "
+                f"planning={planning_time_s:.3f}s execution={execution_time_s:.3f}s"
+            )
+            goal_handle.publish_feedback(
+                self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_SETTLING)
+            )
             goal_handle.succeed()
             with self._lock:
                 self._last_error = self._error(MotionErrorInfo.SUCCESS)
         except InterruptedError as exc:
-            result.error = self._error(MotionErrorInfo.EXECUTION_FAILED, str(exc))
+            error = self._error(MotionErrorInfo.EXECUTION_FAILED, str(exc))
+            result.diagnostic = str(exc)
             goal_handle.canceled()
-            self._handle_stage_failure(stage, result.error)
+            self._handle_stage_failure(stage, error)
         except Exception as exc:
             error_code = (
                 MotionErrorInfo.PLANNING_FAILED
                 if stage in {
-                    ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE,
-                    ExecuteMotionStage.Goal.MOVE_TO_PREGRASP,
+                    ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
+                    ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
                 }
                 else MotionErrorInfo.EXECUTION_FAILED
             )
-            result.error = self._error(error_code, str(exc))
+            error = self._error(error_code, str(exc))
+            result.diagnostic = str(exc)
             goal_handle.abort()
-            self._handle_stage_failure(stage, result.error)
+            self._handle_stage_failure(stage, error)
             self.get_logger().error(f"Motion 阶段失败 stage={stage}: {exc}")
         finally:
-            result.planning_time_s = planning_time_s
-            result.execution_time_s = execution_time_s
             with self._lock:
                 self._busy = False
                 self._goal_reserved = False
@@ -374,13 +490,13 @@ class DomainMotionServer(Node):
     def _handle_stage_failure(self, stage: int, error: MotionErrorInfo) -> None:
         with self._lock:
             self._last_error = error
-            if stage >= ExecuteMotionStage.Goal.APPROACH_SUCTION:
+            if stage >= ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH:
                 self._scene_unknown = True
             else:
                 self._active_plan = None
-                self._active_task_id = ""
                 self._recapture_sample = None
-                self._next_stage = ExecuteMotionStage.Goal.MOVE_TO_RECAPTURE
+                self._cycle_id = ""
+                self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
 
     def _current_sample_for_planning(self) -> MotionSample:
         if not self._hardware.dry_run:

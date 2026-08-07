@@ -8,10 +8,9 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "action/ExecuteMotionStage.action"
+  "msg/DualArmPoseTargets.msg"
   "msg/MotionErrorInfo.msg"
-  "msg/MotionPoseTarget.msg"
   "msg/MotionReadiness.msg"
-  "msg/MotionTaskContext.msg"
   DEPENDENCIES geometry_msgs std_msgs
 )
 

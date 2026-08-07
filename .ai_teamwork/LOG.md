@@ -1815,3 +1815,10 @@
 - 做了什么：把六档距离、五排任务的30条成功全过程轨迹压缩为约0.8MB版本化资产；`PlannerAdapter` 在默认Y、同排任务和起点一致时按厘米向上取整命中，例如 `0.725m→0.73m`，命中后不启动 planner、不再计算 IK/RRT。
 - 边界：横向布局或起点不一致、距离超出 `0.70～0.75m`、高低排任务均自动回退实时规划；缓存执行前继续按当前30Hz和速度/加速度合同重定时。
 - 验证结果：30条缓存全部可重建四段执行计划，30/30命中，平均加载及重定时约 `112.8ms`、最慢约 `192.3ms`；运行时31项、核心规划45项测试全部通过。
+
+## 2026-08-07 运控 / Codex / 双批6D目标单Action分阶段运行时
+- 接口：`ExecuteMotionStage` 按整机合同精简为 `execution_stage + DualArmPoseTargets`；删除任务上下文和带 frame 的旧目标消息。Action UUID 负责请求身份，Pose 固定为 `base_link`，结果和反馈使用 Action 原生终态、`diagnostic` 与 `PLANNING/EXECUTING/SETTLING`。
+- 流程：单一 Motion 服务维护 `CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME` 状态机。第一批重拍6D目标完成 turn 对齐与重拍规划；第二批箱体正面中心6D目标从重拍真实末态计算完整计划，随后按 Autonomy 的阶段 Action 逐段执行。
+- Turn：重拍前专用轨迹可保持其余13轴不动，把实体 turn 转到最近等价的 -90°；IK、场景和普通规划始终使用虚拟 turn=0，普通十四轴轨迹发送时用最新反馈锁定实体 turn。修复了 `pitch=-90°` 四元数经欧拉角奇异点往返后姿态改变的问题。
+- 安全：每段轨迹不仅校验真实起点，控制器返回成功后还等待 `/joint_states` 到达末态，再允许下一阶段规划或执行，避免反馈延迟造成轨迹首帧跳变。
+- 验证：本地 runtime 24项、Motion 33项测试通过；本地与工控机隔离 Mock 均完整走通五阶段。工控机部署在 `/home/ar/motion_domain_current`，11包 Release 构建通过；第二轮复用长驻 planner 后重拍规划墙钟由冷启动约15.96s降至0.123s，验证后无残留进程，未操作真实硬件。

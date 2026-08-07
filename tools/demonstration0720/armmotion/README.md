@@ -1,6 +1,8 @@
-# demonstration0720 双线程机械臂演示
+# demonstration0720 Motion 联调工具
 
 > 本目录根部的 `algorithm_thread` / `task_thread` 是历史实机双线程演示，会直接操作 PLC，仅用于旧实验复现。正式 Motion 域入口是 `/motion/execute_stage`，不拥有电磁阀、真空泵或真空阈值控制权；正式边界见 `docs/运控/Motion域Docker开发联调.md`。
+
+正式入口只有一个 Motion 服务：`./run_motion_domain.sh --mock|--hardware`。`./run_manual_motion_task.sh` 只是开发阶段模拟 Autonomy 的 Action 客户端，不属于生产运行进程。
 
 该目录是独立覆盖层，不修改 `/home/ar/lhy_dev` 中同事维护的代码。它只提供两个用户线程：
 

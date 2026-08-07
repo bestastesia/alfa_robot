@@ -302,10 +302,15 @@ def rpy_from_quaternion_xyzw(
     quaternion: tuple[float, float, float, float],
 ) -> tuple[float, float, float]:
     x, y, z, w = normalize_quaternion_xyzw(quaternion)
+    sin_pitch = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
+    if abs(sin_pitch) >= 1.0 - 1e-10:
+        pitch = math.copysign(math.pi / 2.0, sin_pitch)
+        roll = 2.0 * math.atan2(x, w)
+        roll = math.atan2(math.sin(roll), math.cos(roll))
+        return roll, pitch, 0.0
     sin_roll_cos_pitch = 2.0 * (w * x + y * z)
     cos_roll_cos_pitch = 1.0 - 2.0 * (x * x + y * y)
     roll = math.atan2(sin_roll_cos_pitch, cos_roll_cos_pitch)
-    sin_pitch = max(-1.0, min(1.0, 2.0 * (w * y - z * x)))
     pitch = math.asin(sin_pitch)
     sin_yaw_cos_pitch = 2.0 * (w * z + x * y)
     cos_yaw_cos_pitch = 1.0 - 2.0 * (y * y + z * z)

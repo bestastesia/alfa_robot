@@ -1,102 +1,132 @@
-# Motion 域 Docker 开发联调
+# Motion 域分阶段运行与联调
 
-## 1. 职责边界
+## 1. 进程职责
 
-Motion 只负责：接收运动阶段、计算/缓存计划、下发完整十四轴轨迹、发布阶段结果和就绪状态。
+对使用者只有一个 Motion 服务进程。它内部维护长驻 planner、当前任务计划和阶段状态机，负责 IK、碰撞规划、轨迹整形、轨迹下发及阶段回执。
 
-Motion 不负责：打开/关闭电磁阀、控制真空泵、判定真空阈值、启动或使能 rt-control。上述吸附流程由 Autonomy 编排 RT-Control。
-
-## 2. 数据流
+Motion 不控制吸附通路、真空泵和真空阈值，不启动或使能 rt-control。Autonomy 在 Motion 阶段之间直接编排 rt-control。
 
 ```text
 Autonomy/测试客户端
         |
         | /motion/execute_stage
         v
-Motion 域服务
-  - 阶段顺序校验
+Motion 服务
+  - 阶段状态机
   - 长驻 Planner / PlanningScene
-  - 轨迹生成与执行
+  - 轨迹缓存与实时规划
+  - 十四轴轨迹执行
         |
         | /dual_arm_jtc/follow_joint_trajectory
         v
-rt-control Docker
+rt-control
         |
         +---- /joint_states ----> Motion
 
-Autonomy -----------------------> RT-Control 吸附接口
+Autonomy -----------------------> rt-control 吸附接口
 ```
 
-## 3. 对外接口
+## 2. 公共接口
 
 | ROS 名称 | 类型 | 生产者 → 消费者 |
 |---|---|---|
-| `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
+| `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy → Motion |
 | `/motion/readiness` | `alfa_motion_interfaces/msg/MotionReadiness` | Motion → Autonomy/观测工具 |
-| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → RT-Control |
-| `/joint_states` | `sensor_msgs/msg/JointState` | RT-Control → Motion |
+| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → rt-control |
+| `/joint_states` | `sensor_msgs/msg/JointState` | rt-control → Motion |
 
-阶段固定为：
+Action Goal：
 
-1. `MOVE_TO_RECAPTURE`
-2. `MOVE_TO_PREGRASP`
-3. `APPROACH_SUCTION`
-4. `MOVE_TO_PLACE`
-5. `RETURN_INITIAL`
+```text
+uint8 execution_stage
+DualArmPoseTargets targets
+```
 
-`MOVE_TO_PREGRASP` 必须提供左右箱体正面中心 `base_link` 位姿；算法内部判断箱体排数、吸附方式和抽离策略。后续阶段必须使用同一 `task_id` 且严格按顺序调用。吸附和释放的确认不混入 Motion Action，由 Autonomy 在阶段之间等待 RT-Control 回执。
+`DualArmPoseTargets`：
 
-### 阶段语义
+```text
+STAGE_TOP_SUCTION=1
+STAGE_SIDE_SUCTION=2
+STAGE_NO_MOVE=3
 
-| 阶段 | Motion 执行内容 | 完成后的外部动作 |
+uint8 left_stage
+geometry_msgs/Pose left_pose
+uint8 right_stage
+geometry_msgs/Pose right_pose
+```
+
+Pose 固定在 `base_link` 下，位置单位米、姿态为归一化四元数。Goal 不包含任务号、箱号、frame、时间戳、关节角、轨迹或 PLC 指令；ROS Action Goal UUID 负责请求身份。
+
+Result 只有 `diagnostic`。成功、失败和取消使用 Action 原生终态；Feedback 只有 `PLANNING/EXECUTING/SETTLING`。
+
+接口源码：
+
+- `ros2_ws/src/alfa_motion_interfaces/action/ExecuteMotionStage.action`
+- `ros2_ws/src/alfa_motion_interfaces/msg/DualArmPoseTargets.msg`
+
+## 3. 阶段状态机
+
+阶段必须严格按以下顺序调用：
+
+| 阶段 | Motion 行为 | 成功后 Autonomy 行为 |
 |---|---|---|
-| `MOVE_TO_RECAPTURE` | 从当前状态运动到第一批左右重拍末端 6D 位姿 | Autonomy 触发感知精定位 |
-| `MOVE_TO_PREGRASP` | 根据左右正面中心 6D 位姿计算完整计划，并执行到预抓取位 | Autonomy 请求下一阶段 |
-| `APPROACH_SUCTION` | 从预抓取位沿接触方向靠近吸附位；Motion 不打开气路 | Autonomy 命令 RT-Control 打开吸附通路并等待真空条件 |
-| `MOVE_TO_PLACE` | 执行抽离、负重过渡、预放置和放置轨迹；Motion 不关闭气路 | Autonomy 命令 RT-Control 释放并等待释放条件 |
-| `RETURN_INITIAL` | 从放置位返回初始/负重待机位并清除本任务计划 | Autonomy 进入下一任务或结束 |
+| `CAMERA_VIEW` | 接收第一对重拍 Pose，执行 turn 对齐、IK、碰撞规划和重拍位轨迹 | 触发感知重拍和精定位 |
+| `PREGRASP` | 接收第二对箱体正面中心 Pose，从重拍真实末态计算完整计划并执行到预抓取位 | 请求靠近阶段 |
+| `APPROACH` | 执行 5cm 靠近吸附轨迹 | 打开吸附通路并等待真空条件 |
+| `PLACE` | 执行抽离、负重过渡、预放置和放置轨迹 | 关闭吸附通路并等待释放条件 |
+| `HOME` | 执行放置位到初始位轨迹并清除计划 | 进入下一任务或结束 |
 
-### Action 数据合同
+`CAMERA_VIEW/PREGRASP` 必须提供两侧有效目标；`APPROACH/PLACE/HOME` 完全忽略 `targets`。当前完整规划要求双臂都参与，不接受单侧 `NO_MOVE`。
 
-- Goal 公共字段：`MotionTaskContext(request_id, task_id, sequence_id)` 和 `stage`。
-- 一次任务分两次发送左右目标对，并保持同一 `task_id`：`MOVE_TO_RECAPTURE` 发送左右重拍末端 6D 位姿，`MOVE_TO_PREGRASP` 发送左右精定位箱体正面中心 6D 位姿。
-- 两个阶段都使用 `left_target`、`right_target`，类型为 `MotionPoseTarget`；`pose` 必须是 `PoseStamped(base_link)`，`grasp_mode` 可取 `NO_MOVE`、`SIDE_SUCTION`、`TOP_SUCTION`。本版仅校验该字段，暂不改变既有策略。
-- 第二次完整规划必须使用第一次重拍执行后的真实 `/joint_states` 作为起点，禁止回退为固定负重位。
-- Goal 不包含箱号、排号、预计算策略、PLC 指令或 `execute/dry_run` 开关；每个 6D 目标携带的 `grasp_mode` 仅作为正式接口字段保留。
-- Result 返回阶段成功、计划 ID、规划/执行耗时和 `MotionErrorInfo`；阶段真正完成后才返回 ROS Action `SUCCEEDED`。
-- Feedback 只报告当前阶段、内部状态和进度，不作为吸附、释放或安全判据。
-- `dry_run` 是 Motion 进程级测试配置，不能由单个任务临时切换。
+每个 Action 只有在对应轨迹被 rt-control 接受并返回成功后才返回 `SUCCEEDED`。顺序错误、服务忙、场景未知或目标非法时 Goal 被拒绝或返回 `ABORTED`。
 
-`/motion/readiness` 使用 `MotionReadiness`，只发布 Motion 是否可接收任务、当前状态和模型/标定/接口版本摘要；它不代替 Action Result 或 RT-Control 安全状态。
+## 4. Turn 语义
 
-## 4. 接口包
+- 重拍前若实体 `turn` 未到 `-90°`，Motion 先保持另外 13 轴不动，将它转到距离当前角度最近的等价 `-90°`，避免额外整圈旋转。
+- IK、碰撞场景和后续规划始终使用虚拟 `turn=0`，算法不感知实体 turn。
+- 除专用对齐轨迹外，发送到 rt-control 的每条十四轴轨迹都用最新 `/joint_states` 中的真实 turn 覆盖规划值，因此 turn 静默保持。
+- 第二批完整规划的起点来自重拍执行后的真实双臂和 updown 反馈，只有 turn 在传入 planner 前被置零。
 
-- `alfa_motion_interfaces`：只保存 Motion 对外公开的阶段 Action、任务上下文、错误和就绪状态。
-- `robot_motion_interfaces`：当前仓库内部规划服务合同，尚未完成去 ROS 化，不能作为五域公共接口。
+## 5. 轨迹缓存
 
-Motion 不再维护 `alfa_system_interfaces`、`alfa_control_interfaces` 或 `robot_interfaces` 的副本。
+- 当前保存 `0.70～0.75m` 六档距离、五个等高任务共 30 条完整轨迹，距离按厘米向上取整。
+- 只有默认横向布局、同排双抓且缓存起点与当前起点一致时命中；重拍末态不同会自动回退实时规划。
+- 命中后跳过 IK、抽离和负重规划，但仍按当前速度、加速度和 30Hz 合同重新定时。
+- 模型、箱体尺寸、场景、关节合同或算法版本变化后必须重建缓存。
 
-### 轨迹查表缓存
+## 6. 原生联调
 
-- 当前保存 `0.70～0.75m` 六档距离、五个等高任务共30条完整轨迹，运行时按厘米向上取整，例如 `0.725m` 命中 `0.73m`。
-- 只有默认横向布局、同排双抓且缓存起点与当前关节状态一致时才直接命中；否则自动回到实时规划，不允许从不一致起点直接跳入缓存轨迹。
-- 命中后跳过 IK、抽离和负重规划，也不启动长驻 planner；仍会按当前速度、加速度和30Hz执行合同重新定时。
-- 缓存是当前机器人模型、碰撞场景和算法版本的验收资产；模型、箱体尺寸、场景或关节合同变化后必须重新生成，不能跨版本盲用。
+Mock：
 
-## 5. Docker
+```bash
+cd tools/demonstration0720/armmotion
+./run_motion_domain.sh --mock
+```
 
-- ROS 2 Humble + MoveIt 基础镜像。
-- 源码只读挂载 `/repo`。
-- Release 构建产物写入 `docker/motion/.workspace`。
-- 实机使用 `ROS_DOMAIN_ID=42`、host network、Fast DDS UDPv4。
-- Motion 不启动、使能、复位或停止 rt-control。
+另一个终端模拟 Autonomy：
 
-启动命令与 Mock 示例见 `docker/motion/README.md`。
+```bash
+cd tools/demonstration0720/armmotion
+./run_manual_motion_task.sh \
+  --recapture-left 0.70 0.40 1.597906 3.1415926 -1.5707963 0 \
+  --recapture-right 0.70 -0.40 1.597906 3.1415926 -1.5707963 0 \
+  --task B1 --front-distance 0.70 --top-distance 0.70 \
+  --interactive --yes-execute
+```
 
-## 6. 未完成项
+实机必须先由 rt-control 自己的受控入口启动并确认 `READY`，再执行：
 
-- `grasp_mode` 对算法策略的正式驱动逻辑；当前只校验和透传该字段。
-- Gate、SafetyState、模型版本和标定版本准入。
-- 生产级故障恢复、任务取消和通信未知状态验收。
-- 将 `robot_motion_interfaces` 的内部服务图进一步收回进程内算法接口。
-- 外部五域规范仍保留旧 M-01/M-02/M-03 与 Motion 控真空描述，需要由整机架构文档同步到本阶段合同。
+```bash
+./run_motion_domain.sh --hardware
+```
+
+测试发送器仅模拟 Autonomy。生产系统直接调用 `/motion/execute_stage`，不启动测试发送器。
+`--interactive` 会在每个 Action Goal 前等待回车；靠近后先由外部打开吸附通路并确认真空，放置后先关闭吸附通路并确认释放，再继续下一阶段。
+
+## 7. 当前限制
+
+- `left_stage/right_stage` 已进入并校验公共合同，但现有抓取策略仍主要由箱体正面中心高度推导。
+- Gate、安全状态、模型/标定版本强制准入尚未完成。
+- Action 取消当前只保证在轨迹段边界收敛，尚未完成生产级中途制动策略。
+- 长驻 planner 仍由历史 MoveIt 规划进程承载，是 Motion 内部实现细节，后续可替换而不修改公共 Action。
+- Docker 联调说明见 `docker/motion/README.md`。

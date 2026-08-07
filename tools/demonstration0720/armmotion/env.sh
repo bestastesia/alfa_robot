@@ -17,9 +17,6 @@ mkdir -p "${ARMMOTION_OUTPUT_ROOT}" "${ROS_LOG_DIR}"
 
 set +u
 source /opt/ros/humble/setup.bash
-if [[ -f /home/ar/lhy_dev/env.sh ]]; then
-  source /home/ar/lhy_dev/env.sh
-fi
 if [[ "${ARMMOTION_SOURCE_WS}" != "${ARMMOTION_OVERLAY_WS}" \
       && -f "${ARMMOTION_SOURCE_WS}/install/setup.bash" ]]; then
   source "${ARMMOTION_SOURCE_WS}/install/setup.bash"

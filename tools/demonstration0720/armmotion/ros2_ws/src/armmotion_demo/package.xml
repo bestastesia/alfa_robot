@@ -3,7 +3,7 @@
 <package format="3">
   <name>armmotion_demo</name>
   <version>0.1.0</version>
-  <description>Isolated two-thread ALFA arm planning and staged execution demo.</description>
+  <description>ALFA Motion domain staged planning and execution runtime.</description>
   <maintainer email="motion@example.com">Sevenova Motion Control Team</maintainer>
   <license>Proprietary</license>
 

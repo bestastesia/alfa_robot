@@ -1,22 +1,27 @@
 # Motion 域 Docker 开发联调
 
-本目录验证 Motion 的单一阶段动作入口。Motion 只负责运动规划、轨迹执行和阶段回执；吸附通路、真空泵及真空阈值由 Autonomy 编排 RT-Control，不再经过 Motion。
+本目录只封装 Motion 运行环境。Motion 通过 ROS 2 原生接口连接 Autonomy 和 rt-control，不通过 Docker 私有通信，也不拥有电磁阀、真空泵或真空阈值控制权。
 
-## 当前接口
+## 对外接口
 
 | 名称 | 类型 | 方向 |
 |---|---|---|
 | `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
 | `/motion/readiness` | `alfa_motion_interfaces/msg/MotionReadiness` | Motion → Autonomy/观测工具 |
-| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → RT-Control |
-| `/joint_states` | `sensor_msgs/msg/JointState` | RT-Control → Motion |
+| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → rt-control |
+| `/joint_states` | `sensor_msgs/msg/JointState` | rt-control → Motion |
 
-`ExecuteMotionStage` 固定五个阶段：重拍位、预抓取、靠近吸附、放置、返回初始位。一次任务必须先后发送两批目标，且两批使用同一 `task_id`：
+`ExecuteMotionStage` 固定五个阶段：
 
-1. `MOVE_TO_RECAPTURE`：左右各一个重拍末端 `PoseStamped(base_link)`；Motion 完成解析 IK、碰撞规划和执行。
-2. `MOVE_TO_PREGRASP`：左右各一个精定位后的箱体正面中心 `PoseStamped(base_link)`；Motion 从重拍执行后的真实关节状态开始完整规划。
+1. `CAMERA_VIEW`：接收第一对重拍末端 Pose，必要时先将实体 `turn` 对齐到最近等价的 `-90°`，再规划并执行重拍位。
+2. `PREGRASP`：接收第二对箱体正面中心 Pose，计算完整计划并立即执行到预抓取位。
+3. `APPROACH`：执行预抓取到吸附位的 5cm 靠近轨迹。
+4. `PLACE`：执行抽离、负重过渡和放置轨迹。
+5. `HOME`：执行放置位到初始位轨迹，完成后清除本轮计划。
 
-每个目标使用 `MotionPoseTarget`，包含 `pose` 和 `grasp_mode`。模式枚举为 `NO_MOVE`、`SIDE_SUCTION`、`TOP_SUCTION`；本版只完成接口接收和合法性校验，策略仍按现有位姿分类逻辑运行。后续阶段通过同一 `task_id` 使用已缓存计划。Goal 不包含箱号或 PLC 指令。Motion 不订阅或发布 `/plc/*`，也不提供 `/vacuum/grip`。
+两批 Pose 都固定表达在 `base_link`，消息不带 frame、时间戳、任务号或箱号。Action Goal UUID 是请求身份。`APPROACH/PLACE/HOME` 的 `targets` 被忽略。
+
+规划算法始终把 `turn` 视为 `0`。除 `CAMERA_VIEW` 开头的专用对齐轨迹外，Motion 下发所有十四轴轨迹时都把 `turn` 锁定为最新真实反馈值。
 
 ## 本机 Mock
 
@@ -28,23 +33,20 @@ MOTION_RT_MODE=mock MOTION_DRY_RUN=false \
 docker compose up --build motion
 ```
 
-另一个终端发送测试位姿：
+另一个终端模拟 Autonomy：
 
 ```bash
 MOTION_UID=$(id -u) MOTION_GID=$(id -g) MOTION_ROS_DOMAIN_ID=142 \
 docker compose --profile manual run --rm task \
-  --recapture-left 0.75 0.50 1.60 3.1415926 -1.5707963 0.0 \
-  --recapture-right 0.75 -0.50 1.60 3.1415926 -1.5707963 0.0 \
-  --left 0.90 0.50 1.60 3.1415926 -1.5707963 0.0 \
-  --right 0.90 -0.50 1.60 3.1415926 -1.5707963 0.0 \
-  --yes-execute
+  --recapture-left 0.70 0.40 1.597906 3.1415926 -1.5707963 0.0 \
+  --recapture-right 0.70 -0.40 1.597906 3.1415926 -1.5707963 0.0 \
+  --task B1 --front-distance 0.70 --top-distance 0.70 \
+  --interactive --yes-execute
 ```
-
-测试客户端只模拟 Autonomy 发送 Motion 阶段，不操作吸附通路。
 
 ## 实机联调
 
-1. 独立启动 rt-control，确认 READY。
+1. 独立启动 rt-control，确认其输出 `READY`。
 2. 启动 Motion：
 
 ```bash
@@ -52,20 +54,21 @@ MOTION_HARDWARE_CONFIRM=ENABLE_MOTION_HARDWARE \
   tools/motion_domain_docker.sh start-external
 ```
 
-3. 确认接口：
+3. 查看接口：
 
 ```bash
 ROS_DOMAIN_ID=42 ros2 action list -t | grep -E 'motion/execute_stage|dual_arm_jtc'
 ```
 
-Motion 容器不访问 EtherCAT/CANopen，不调用 `/rt/enable`，不管理 rt-control 生命周期。源码只读挂载到 `/repo`，Release 构建产物保存在 `docker/motion/.workspace`。当前仍使用 host network + Fast DDS UDPv4，避免 root 容器与宿主普通用户的 SHM 权限不一致。
+Motion 不启动、使能、复位或停止 rt-control。源码只读挂载到 `/repo`，Release 构建产物保存在 `docker/motion/.workspace`。当前使用 host network + Fast DDS UDPv4，规避 root 容器与宿主普通用户间的 SHM 权限问题。
 
 ## 轨迹缓存
 
-Motion 包内置默认Y下 `0.70～0.75m × 五排` 的30条已验证轨迹。距离按厘米向上取整；缓存文件、任务排数和起点状态同时匹配时直接跳过完整规划，否则透明回退实时 planner。缓存命中信息写入计划指标 `trajectory_cache_hit`、`trajectory_cache_path` 和 `trajectory_cache_distance_m`。
+Motion 包内置默认 Y、`0.70～0.75m × 五排` 的 30 条已验证轨迹。距离按厘米向上取整；缓存文件、排数和起点状态同时匹配时跳过完整规划，否则自动回退实时 planner。模型、场景或关节合同变化后必须重新生成缓存。
 
 ## 当前限制
 
-- `grasp_mode` 已进入正式消息，但本版尚未改变现有任务策略分类。
-- N-03 Gate、SafetyState、模型/标定版本准入尚未接入。
-- `allow_partial_domain_test=true` 仅用于开发联调，不代表生产验收。
+- `left_stage/right_stage` 已校验，但现有策略仍主要由正面中心高度分类。
+- 当前双臂全流程不支持单侧 `NO_MOVE`。
+- Gate、安全状态、模型/标定版本强制准入尚未接入。
+- `allow_partial_domain_test=true` 只用于开发联调。
