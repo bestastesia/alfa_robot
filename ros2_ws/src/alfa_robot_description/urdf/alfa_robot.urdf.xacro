@@ -8,6 +8,21 @@
   <xacro:arg name="real_hardware_plugin" default="mock_components/GenericSystem"/>
   <xacro:arg name="canopen_profile_velocity" default="50000"/>
   <xacro:arg name="canopen_profile_accel" default="50000"/>
+  <xacro:arg name="updown_initial" default="0.3"/>
+  <xacro:arg name="left_joint1_initial" default="0.73513268"/>
+  <xacro:arg name="left_joint2_initial" default="0.75921822"/>
+  <xacro:arg name="left_joint3_initial" default="1.25332094"/>
+  <xacro:arg name="left_joint4_initial" default="-0.02879793"/>
+  <xacro:arg name="left_joint5_initial" default="1.13568574"/>
+  <xacro:arg name="left_joint6_initial" default="-0.09058259"/>
+  <xacro:arg name="left_joint7_initial" default="-0.23980824"/>
+  <xacro:arg name="right_joint1_initial" default="0.73513268"/>
+  <xacro:arg name="right_joint2_initial" default="0.75921822"/>
+  <xacro:arg name="right_joint3_initial" default="1.25332094"/>
+  <xacro:arg name="right_joint4_initial" default="-0.02879793"/>
+  <xacro:arg name="right_joint5_initial" default="1.13568574"/>
+  <xacro:arg name="right_joint6_initial" default="-0.09058259"/>
+  <xacro:arg name="right_joint7_initial" default="-0.23980824"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_arm.xacro"/>
@@ -729,6 +744,21 @@
     mock_sensor_commands="$(arg mock_sensor_commands)"
     real_hardware_plugin="$(arg real_hardware_plugin)"
     canopen_profile_velocity="$(arg canopen_profile_velocity)"
-    canopen_profile_accel="$(arg canopen_profile_accel)"/>
+    canopen_profile_accel="$(arg canopen_profile_accel)"
+    updown_initial="$(arg updown_initial)"
+    left_joint1_initial="$(arg left_joint1_initial)"
+    left_joint2_initial="$(arg left_joint2_initial)"
+    left_joint3_initial="$(arg left_joint3_initial)"
+    left_joint4_initial="$(arg left_joint4_initial)"
+    left_joint5_initial="$(arg left_joint5_initial)"
+    left_joint6_initial="$(arg left_joint6_initial)"
+    left_joint7_initial="$(arg left_joint7_initial)"
+    right_joint1_initial="$(arg right_joint1_initial)"
+    right_joint2_initial="$(arg right_joint2_initial)"
+    right_joint3_initial="$(arg right_joint3_initial)"
+    right_joint4_initial="$(arg right_joint4_initial)"
+    right_joint5_initial="$(arg right_joint5_initial)"
+    right_joint6_initial="$(arg right_joint6_initial)"
+    right_joint7_initial="$(arg right_joint7_initial)"/>
 
 </robot>

@@ -38,21 +38,21 @@
         <link name="right_tool0"/>
     </group>
     <group_state name="home" group="dual_arm_with_base">
-        <joint name="updown" value="0"/>
-        <joint name="left_joint1" value="0"/>
-        <joint name="left_joint2" value="0.0"/>
-        <joint name="left_joint3" value="0.0"/>
-        <joint name="left_joint4" value="0"/>
-        <joint name="left_joint5" value="0.0"/>
-        <joint name="left_joint6" value="0"/>
-        <joint name="left_joint7" value="0"/>
-        <joint name="right_joint1" value="0"/>
-        <joint name="right_joint2" value="0.0"/>
-        <joint name="right_joint3" value="0.0"/>
-        <joint name="right_joint4" value="0"/>
-        <joint name="right_joint5" value="0.0"/>
-        <joint name="right_joint6" value="0"/>
-        <joint name="right_joint7" value="0"/>
+        <joint name="updown" value="0.3"/>
+        <joint name="left_joint1" value="0.73513268"/>
+        <joint name="left_joint2" value="0.75921822"/>
+        <joint name="left_joint3" value="1.25332094"/>
+        <joint name="left_joint4" value="-0.02879793"/>
+        <joint name="left_joint5" value="1.13568574"/>
+        <joint name="left_joint6" value="-0.09058259"/>
+        <joint name="left_joint7" value="-0.23980824"/>
+        <joint name="right_joint1" value="0.73513268"/>
+        <joint name="right_joint2" value="0.75921822"/>
+        <joint name="right_joint3" value="1.25332094"/>
+        <joint name="right_joint4" value="-0.02879793"/>
+        <joint name="right_joint5" value="1.13568574"/>
+        <joint name="right_joint6" value="-0.09058259"/>
+        <joint name="right_joint7" value="-0.23980824"/>
     </group_state>
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>

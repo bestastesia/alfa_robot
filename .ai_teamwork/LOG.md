@@ -1759,3 +1759,13 @@
 - 模型检查：源 URDF 可被 `check_urdf` 正常解析；腕部 Joint5/6/7 轴线共点 RMS 约 `0.138mm`；100组随机七轴姿态的左右镜像 FK 位置和旋转误差均为0。
 - 验证结果：7包 Release 构建通过，description `44/44` 测试通过；MoveIt Demo 正常启动，左右单臂非零目标 FK→KDL IK 均成功，位置回代误差约 `1.9e-7m`。
 - 分支边界：该提交用于 V3.0.1 与 V3.0.2 外观、关节结构和 Demo 对比，未宣称完整抓取算法已经适配。
+## 2026-08-06 运控 / Codex / V3.0.2 整机单实例模型 Demo
+- 做了什么：基于既有 V3.0.2 双臂分支建立独立 worktree `alfa_robot_v3`，新增整机模型和 MoveIt 规划 Demo 的构建、启动入口。
+- 改了哪里：模型 RViz 只保留一个整机 `RobotModel`；MoveIt RViz 隐藏 Planning Request 起点和 Planned Path 的机器人外观，目标臂采用半透明预览并保留末端六自由度交互控制器，消除无意义的多套整机显示。
+- 验证结果：V3.0.2 左右各七轴安装到 updown 两侧；description 构建、URDF 树检查通过；MoveGroup、控制器和 RViz 正常启动，实际窗口确认只显示一套整机及一个当前规划组的末端控制球。
+- 留给下个 AI：本分支仅验证 V3.0.2 整机模型展示与 MoveIt 手动规划；旧结构解析 IK 和完整任务算法尚未迁移。
+
+## 2026-08-07 运控 / Codex / 修复 V3 MoveIt 目标预览与碰撞初始位
+- 根因：为消除重复模型曾把 MoveIt 目标状态透明度设为0，连带隐藏了拖动末端球后的目标臂和红色碰撞提示；同时 `initial_positions.yaml` 未接入整机 URDF 自带的 mock `ros2_control`，实际启动仍为全零碰撞姿态。
+- 调整：目标臂改为0.65半透明，仅继续隐藏起点和规划路径模型；筛选左右镜像无碰撞初始位并接入真实 xacro 参数链，同步 MoveIt YAML、SRDF `home` 和纯模型 Demo。
+- 验证：MoveIt 确认全零状态存在双臂及立柱碰撞；新姿态本体有效且无接触，±5°扰动120/120通过；末端2cm目标 KDL IK 成功，MoveIt 约14.8ms生成225点轨迹；description 回归测试通过。

@@ -95,6 +95,35 @@ def test_urdf_xacro():
             tool_joint = joints[f"{side}_tool0_fixed"]
             assert tool_joint.find("parent").attrib["link"] == f"{side}_joint7"
 
+        expected_initial_positions = {
+            "updown": 0.3,
+            "left_joint1": 0.73513268,
+            "left_joint2": 0.75921822,
+            "left_joint3": 1.25332094,
+            "left_joint4": -0.02879793,
+            "left_joint5": 1.13568574,
+            "left_joint6": -0.09058259,
+            "left_joint7": -0.23980824,
+            "right_joint1": 0.73513268,
+            "right_joint2": 0.75921822,
+            "right_joint3": 1.25332094,
+            "right_joint4": -0.02879793,
+            "right_joint5": 1.13568574,
+            "right_joint6": -0.09058259,
+            "right_joint7": -0.23980824,
+        }
+        ros2_control = robot.find("ros2_control")
+        assert ros2_control is not None
+        control_joints = {
+            joint.attrib["name"]: joint for joint in ros2_control.findall("joint")
+        }
+        for name, expected in expected_initial_positions.items():
+            initial_value = control_joints[name].find(
+                "state_interface[@name='position']/param[@name='initial_value']"
+            )
+            assert initial_value is not None
+            assert abs(float(initial_value.text) - expected) < 1e-9
+
     finally:
         os.remove(tmp_urdf_output_file)
 

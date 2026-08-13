@@ -84,24 +84,24 @@ def generate_launch_description():
         if use_model_initial_positions.perform(context).lower() not in ("false", "0", "no", "off"):
             # joint_state_publisher_gui does not read MoveIt's initial_positions.yaml.
             # These values mirror alfa_robot_moveit_config/config/initial_positions.yaml
-            # so the description-only preview starts from the same all-zero pose.
+            # so the description-only preview starts from the same collision-free pose.
             parameters.append(
                 {
-                    "zeros.updown": 0.0,
-                    "zeros.left_joint1": 0.0,
-                    "zeros.left_joint2": 0.0,
-                    "zeros.left_joint3": 0.0,
-                    "zeros.left_joint4": 0.0,
-                    "zeros.left_joint5": 0.0,
-                    "zeros.left_joint6": 0.0,
-                    "zeros.left_joint7": 0.0,
-                    "zeros.right_joint1": 0.0,
-                    "zeros.right_joint2": 0.0,
-                    "zeros.right_joint3": 0.0,
-                    "zeros.right_joint4": 0.0,
-                    "zeros.right_joint5": 0.0,
-                    "zeros.right_joint6": 0.0,
-                    "zeros.right_joint7": 0.0,
+                    "zeros.updown": 0.3,
+                    "zeros.left_joint1": 0.73513268,
+                    "zeros.left_joint2": 0.75921822,
+                    "zeros.left_joint3": 1.25332094,
+                    "zeros.left_joint4": -0.02879793,
+                    "zeros.left_joint5": 1.13568574,
+                    "zeros.left_joint6": -0.09058259,
+                    "zeros.left_joint7": -0.23980824,
+                    "zeros.right_joint1": 0.73513268,
+                    "zeros.right_joint2": 0.75921822,
+                    "zeros.right_joint3": 1.25332094,
+                    "zeros.right_joint4": -0.02879793,
+                    "zeros.right_joint5": 1.13568574,
+                    "zeros.right_joint6": -0.09058259,
+                    "zeros.right_joint7": -0.23980824,
                 }
             )
         return [
