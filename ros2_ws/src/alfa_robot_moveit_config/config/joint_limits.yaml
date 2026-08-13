@@ -1,134 +1,15 @@
-# Joint limits for MoveIt planning
-# Updated to match physical joint limits
-
 joint_limits:
-  pitch:
-    has_velocity_limits: true
-    max_velocity: 0.5
-    has_acceleration_limits: true
-    max_acceleration: 0.3
-  turn:
-    has_velocity_limits: true
-    max_velocity: 0.5
-    has_acceleration_limits: true
-    max_acceleration: 0.3
-  updown:
-    has_position_limits: true
-    min_position: 0.0
-    max_position: 0.7
-    has_velocity_limits: true
-    max_velocity: 0.5
-    has_acceleration_limits: true
-    max_acceleration: 0.3
-  left_joint1:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint2:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint3:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint4:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint5:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint6:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint1:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint2:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint3:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint4:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint5:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint6:
-    has_position_limits: true
-    min_position: -3.14159265
-    max_position: 3.14159265
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  left_joint7:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
-  right_joint7:
-    has_position_limits: true
-    min_position: -3.14159
-    max_position: 3.14159
-    has_velocity_limits: true
-    max_velocity: 1.0
-    has_acceleration_limits: true
-    max_acceleration: 1.0
+  left_joint1: &v3_joint {has_position_limits: true, min_position: -1.57, max_position: 1.57, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
+  left_joint2: *v3_joint
+  left_joint3: *v3_joint
+  left_joint4: *v3_joint
+  left_joint5: *v3_joint
+  left_joint6: *v3_joint
+  left_joint7: *v3_joint
+  right_joint1: *v3_joint
+  right_joint2: *v3_joint
+  right_joint3: *v3_joint
+  right_joint4: *v3_joint
+  right_joint5: *v3_joint
+  right_joint6: *v3_joint
+  right_joint7: *v3_joint

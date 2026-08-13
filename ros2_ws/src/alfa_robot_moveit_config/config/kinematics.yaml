@@ -1,5 +1,4 @@
-# robot_v3.0.2 为单链 7 自由度机械臂，先使用 MoveIt 通用 KDL IK 支撑
-# RViz 末端交互和 Demo 验证。双臂复合组仍由左右单臂分别求解。
+# V3.0.3 为单链 7 自由度机械臂，当前演示使用 MoveIt KDL IK。
 left_arm:
   kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
   kinematics_solver_search_resolution: 0.005

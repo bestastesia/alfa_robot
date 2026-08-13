@@ -1,21 +1,16 @@
-# Default collision-free preview positions for the V3.0.2 dual-arm model.
-# Both arms use the same joint values because the right arm is a strict mirror.
-
+# V3.0.3 侧装双臂立方体演示的零位。
 initial_positions:
-  pitch: 0
-  turn: 0
-  updown: 0.3
-  left_joint1: 0.73513268
-  left_joint2: 0.75921822
-  left_joint3: 1.25332094
-  left_joint4: -0.02879793
-  left_joint5: 1.13568574
-  left_joint6: -0.09058259
-  left_joint7: -0.23980824
-  right_joint1: 0.73513268
-  right_joint2: 0.75921822
-  right_joint3: 1.25332094
-  right_joint4: -0.02879793
-  right_joint5: 1.13568574
-  right_joint6: -0.09058259
-  right_joint7: -0.23980824
+  left_joint1: 0.0
+  left_joint2: 0.0
+  left_joint3: 0.0
+  left_joint4: 0.0
+  left_joint5: 0.0
+  left_joint6: 0.0
+  left_joint7: 0.0
+  right_joint1: 0.0
+  right_joint2: 0.0
+  right_joint3: 0.0
+  right_joint4: 0.0
+  right_joint5: 0.0
+  right_joint6: 0.0
+  right_joint7: 0.0

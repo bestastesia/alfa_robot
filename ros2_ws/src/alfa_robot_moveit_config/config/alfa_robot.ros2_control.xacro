@@ -5,112 +5,31 @@
 
         <ros2_control name="${name}" type="system">
             <hardware>
-                <!-- By default, set up controllers for simulation. This won't work on real hardware -->
                 <plugin>mock_components/GenericSystem</plugin>
                 <param name="mock_sensor_commands">true</param>
             </hardware>
-            <joint name="pitch">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['pitch']}</param>
-                </state_interface>
-            </joint>
-            <joint name="turn">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['turn']}</param>
-                </state_interface>
-            </joint>
-            <joint name="updown">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['updown']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint1">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint1']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint2">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint2']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint3">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint3']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint4">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint4']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint5">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint5']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint6">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint6']}</param>
-                </state_interface>
-            </joint>
-            <joint name="left_joint7">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['left_joint7']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint1">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint1']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint2">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint2']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint3">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint3']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint4">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint4']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint5">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint5']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint6">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint6']}</param>
-                </state_interface>
-            </joint>
-            <joint name="right_joint7">
-                <command_interface name="position"/>
-                <state_interface name="position">
-                  <param name="initial_value">${initial_positions['right_joint7']}</param>
-                </state_interface>
-            </joint>
+            <xacro:macro name="moveit_control_joint" params="joint_name">
+                <joint name="${joint_name}">
+                    <command_interface name="position"/>
+                    <state_interface name="position">
+                        <param name="initial_value">${initial_positions[joint_name]}</param>
+                    </state_interface>
+                </joint>
+            </xacro:macro>
+            <xacro:moveit_control_joint joint_name="left_joint1"/>
+            <xacro:moveit_control_joint joint_name="left_joint2"/>
+            <xacro:moveit_control_joint joint_name="left_joint3"/>
+            <xacro:moveit_control_joint joint_name="left_joint4"/>
+            <xacro:moveit_control_joint joint_name="left_joint5"/>
+            <xacro:moveit_control_joint joint_name="left_joint6"/>
+            <xacro:moveit_control_joint joint_name="left_joint7"/>
+            <xacro:moveit_control_joint joint_name="right_joint1"/>
+            <xacro:moveit_control_joint joint_name="right_joint2"/>
+            <xacro:moveit_control_joint joint_name="right_joint3"/>
+            <xacro:moveit_control_joint joint_name="right_joint4"/>
+            <xacro:moveit_control_joint joint_name="right_joint5"/>
+            <xacro:moveit_control_joint joint_name="right_joint6"/>
+            <xacro:moveit_control_joint joint_name="right_joint7"/>
         </ros2_control>
     </xacro:macro>
 </robot>

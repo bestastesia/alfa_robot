@@ -1,13 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot name="alfa_robot">
-    <group name="base_group">
-        <joint name="updown"/>
-    </group>
-    <group name="torso_group">
-        <joint name="pitch"/>
-        <joint name="turn"/>
-        <joint name="updown"/>
-    </group>
     <group name="left_arm">
         <chain base_link="left_arm_base" tip_link="left_tool0"/>
     </group>
@@ -18,62 +10,34 @@
         <group name="left_arm"/>
         <group name="right_arm"/>
     </group>
-    <group name="left_arm_with_base">
-        <joint name="updown"/>
-        <group name="left_arm"/>
-    </group>
-    <group name="right_arm_with_base">
-        <joint name="updown"/>
-        <group name="right_arm"/>
-    </group>
-    <group name="dual_arm_with_base">
-        <joint name="updown"/>
-        <group name="left_arm"/>
-        <group name="right_arm"/>
-    </group>
     <group name="left_tool_group">
         <link name="left_tool0"/>
     </group>
     <group name="right_tool_group">
         <link name="right_tool0"/>
     </group>
-    <group_state name="home" group="dual_arm_with_base">
-        <joint name="updown" value="0.3"/>
-        <joint name="left_joint1" value="0.73513268"/>
-        <joint name="left_joint2" value="0.75921822"/>
-        <joint name="left_joint3" value="1.25332094"/>
-        <joint name="left_joint4" value="-0.02879793"/>
-        <joint name="left_joint5" value="1.13568574"/>
-        <joint name="left_joint6" value="-0.09058259"/>
-        <joint name="left_joint7" value="-0.23980824"/>
-        <joint name="right_joint1" value="0.73513268"/>
-        <joint name="right_joint2" value="0.75921822"/>
-        <joint name="right_joint3" value="1.25332094"/>
-        <joint name="right_joint4" value="-0.02879793"/>
-        <joint name="right_joint5" value="1.13568574"/>
-        <joint name="right_joint6" value="-0.09058259"/>
-        <joint name="right_joint7" value="-0.23980824"/>
+    <group_state name="home" group="dual_arm">
+        <joint name="left_joint1" value="0"/>
+        <joint name="left_joint2" value="0"/>
+        <joint name="left_joint3" value="0"/>
+        <joint name="left_joint4" value="0"/>
+        <joint name="left_joint5" value="0"/>
+        <joint name="left_joint6" value="0"/>
+        <joint name="left_joint7" value="0"/>
+        <joint name="right_joint1" value="0"/>
+        <joint name="right_joint2" value="0"/>
+        <joint name="right_joint3" value="0"/>
+        <joint name="right_joint4" value="0"/>
+        <joint name="right_joint5" value="0"/>
+        <joint name="right_joint6" value="0"/>
+        <joint name="right_joint7" value="0"/>
     </group_state>
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>
-    <end_effector name="left_tool_with_base" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm_with_base"/>
-    <end_effector name="right_tool_with_base" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm_with_base"/>
-    <end_effector name="left_tool_dual_base" parent_link="left_tool0" group="left_tool_group" parent_group="dual_arm_with_base"/>
-    <end_effector name="right_tool_dual_base" parent_link="right_tool0" group="right_tool_group" parent_group="dual_arm_with_base"/>
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
-    <disable_collisions link1="base_link" link2="pitch" reason="Adjacent"/>
-    <disable_collisions link1="base_link" link2="turn" reason="Never"/>
-    <disable_collisions link1="pitch" link2="turn" reason="Adjacent"/>
-    <disable_collisions link1="turn" link2="updown" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="front_sensor" reason="Adjacent"/>
-    <disable_collisions link1="turn" link2="lidar_front" reason="Adjacent"/>
-    <disable_collisions link1="front_sensor" link2="lidar_front" reason="Never"/>
-    <disable_collisions link1="turn" link2="lidar_rear" reason="Adjacent"/>
-    <disable_collisions link1="turn" link2="cam_front" reason="Adjacent"/>
-    <disable_collisions link1="turn" link2="cam_rear" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="left_arm_base" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="right_arm_base" reason="Adjacent"/>
     <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="left_joint1" reason="Adjacent"/>
-    <disable_collisions link1="updown" link2="right_joint1" reason="Adjacent"/>
     <disable_collisions link1="left_joint1" link2="left_joint2" reason="Adjacent"/>
     <disable_collisions link1="left_joint2" link2="left_joint3" reason="Adjacent"/>
     <disable_collisions link1="left_joint3" link2="left_joint4" reason="Adjacent"/>
@@ -89,22 +53,4 @@
     <disable_collisions link1="right_joint5" link2="right_joint6" reason="Adjacent"/>
     <disable_collisions link1="right_joint6" link2="right_joint7" reason="Adjacent"/>
     <disable_collisions link1="right_joint7" link2="right_tool0" reason="Adjacent"/>
-    <!-- Arm vs Base collisions are intentionally enabled globally. -->
-    <!-- Suction/link6 vs own arm collisions are intentionally enabled. -->
-    <disable_collisions link1="left_tool0" link2="left_arm_base" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint1" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint2" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint3" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint4" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint5" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint6" reason="Never"/>
-    <disable_collisions link1="left_tool0" link2="left_joint7" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_arm_base" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint1" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint2" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint3" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint4" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint5" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint6" reason="Never"/>
-    <disable_collisions link1="right_tool0" link2="right_joint7" reason="Never"/>
 </robot>

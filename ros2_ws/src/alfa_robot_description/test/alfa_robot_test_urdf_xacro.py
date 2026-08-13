@@ -1,39 +1,3 @@
-# Copyright (c) 2025, b»robotized
-# Copyright (c) 2022 FZI Forschungszentrum Informatik
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#
-#    * Redistributions of source code must retain the above copyright
-#      notice, this list of conditions and the following disclaimer.
-#
-#    * Redistributions in binary form must reproduce the above copyright
-#      notice, this list of conditions and the following disclaimer in the
-#      documentation and/or other materials provided with the distribution.
-#
-#    * Neither the name of the FZI Forschungszentrum Informatik nor the names of its
-#      contributors may be used to endorse or promote products derived from
-#      this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-# POSSIBILITY OF SUCH DAMAGE.
-
-#
-# Source of this file is https://github.com/b-robotized/ros_team_workspace repository.
-# Modified from tests in https://github.com/UniversalRobots/Universal_Robots_ROS2_Description
-#
-# Author: Lukas Sackewitz
-# Author (template): Manuel Muth
-
 import os
 import shutil
 import subprocess
@@ -44,89 +8,72 @@ from ament_index_python.packages import get_package_share_directory
 
 
 def test_urdf_xacro():
-    # General Arguments
-    description_package = "alfa_robot_description"
-    description_file = "alfa_robot.urdf.xacro"
-
-    description_file_path = os.path.join(
-        get_package_share_directory(description_package), "urdf", description_file
+    description_path = os.path.join(
+        get_package_share_directory("alfa_robot_description"),
+        "urdf",
+        "alfa_robot.urdf.xacro",
     )
+    file_descriptor, output_path = tempfile.mkstemp(suffix=".urdf")
+    os.close(file_descriptor)
 
-    (_, tmp_urdf_output_file) = tempfile.mkstemp(suffix=".urdf")
-
-    # Compose `xacro` and `check_urdf` command
-    xacro_command = (
-        f"{shutil.which('xacro')}" f" {description_file_path}" f" > {tmp_urdf_output_file}"
-    )
-    check_urdf_command = f"{shutil.which('check_urdf')} {tmp_urdf_output_file}"
-
-    # Try to call processes but finally remove the temp file
     try:
         xacro_process = subprocess.run(
-            xacro_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+            [shutil.which("xacro"), description_path],
+            stdout=open(output_path, "w", encoding="utf-8"),
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
         )
+        assert xacro_process.returncode == 0, xacro_process.stderr
 
-        assert xacro_process.returncode == 0, " --- XACRO command failed ---"
-
-        check_urdf_process = subprocess.run(
-            check_urdf_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True
+        check_process = subprocess.run(
+            [shutil.which("check_urdf"), output_path],
+            capture_output=True,
+            text=True,
+            check=False,
         )
+        assert check_process.returncode == 0, check_process.stderr
 
-        assert (
-            check_urdf_process.returncode == 0
-        ), "\n --- URDF check failed! --- \nYour xacro does not unfold into a proper urdf robot description. Please check your xacro file."
-
-        robot = ET.parse(tmp_urdf_output_file).getroot()
+        robot = ET.parse(output_path).getroot()
         joints = {joint.attrib["name"]: joint for joint in robot.findall("joint")}
         links = {link.attrib["name"]: link for link in robot.findall("link")}
-        for side, mesh_variant in (("left", "left"), ("right", "right")):
+
+        cube = links["base_link"].find("visual/geometry/box")
+        assert cube is not None
+        assert cube.attrib["size"] == "0.4 0.5 0.5"
+
+        expected_mounts = {
+            "left": ("0 0.255 0.25", "-1.57079633 -1.57079633 0"),
+            "right": ("0 -0.255 0.25", "1.57079633 1.57079633 0"),
+        }
+        for side, (expected_xyz, expected_rpy) in expected_mounts.items():
+            mount_origin = joints[f"{side}_arm_mount"].find("origin")
+            assert mount_origin.attrib["xyz"] == expected_xyz
+            assert mount_origin.attrib["rpy"] == expected_rpy
+
             for index in range(1, 8):
                 name = f"{side}_joint{index}"
                 assert name in joints
+                assert joints[name].find("limit").attrib["lower"] == "-1.57"
+                assert joints[name].find("limit").attrib["upper"] == "1.57"
                 visual_mesh = links[name].find("visual/geometry/mesh")
                 collision_mesh = links[name].find("collision/geometry/mesh")
                 assert visual_mesh is not None
                 assert collision_mesh is not None
-                expected_mesh_root = f"/meshes/robot_v3_0_2/{mesh_variant}/"
-                assert expected_mesh_root in visual_mesh.attrib["filename"]
-                assert expected_mesh_root in collision_mesh.attrib["filename"]
+                assert "/meshes/robot_v3_0_3/" in visual_mesh.attrib["filename"]
                 assert visual_mesh.attrib["filename"] == collision_mesh.attrib["filename"]
+                assert visual_mesh.attrib["scale"] == "0.001 0.001 0.001"
 
-            tool_joint = joints[f"{side}_tool0_fixed"]
-            assert tool_joint.find("parent").attrib["link"] == f"{side}_joint7"
+            assert joints[f"{side}_tool0_fixed"].find("parent").attrib["link"] == f"{side}_joint7"
 
-        expected_initial_positions = {
-            "updown": 0.3,
-            "left_joint1": 0.73513268,
-            "left_joint2": 0.75921822,
-            "left_joint3": 1.25332094,
-            "left_joint4": -0.02879793,
-            "left_joint5": 1.13568574,
-            "left_joint6": -0.09058259,
-            "left_joint7": -0.23980824,
-            "right_joint1": 0.73513268,
-            "right_joint2": 0.75921822,
-            "right_joint3": 1.25332094,
-            "right_joint4": -0.02879793,
-            "right_joint5": 1.13568574,
-            "right_joint6": -0.09058259,
-            "right_joint7": -0.23980824,
-        }
         ros2_control = robot.find("ros2_control")
         assert ros2_control is not None
-        control_joints = {
-            joint.attrib["name"]: joint for joint in ros2_control.findall("joint")
+        control_joints = [joint.attrib["name"] for joint in ros2_control.findall("joint")]
+        assert len(control_joints) == 14
+        assert set(control_joints) == {
+            f"{side}_joint{index}"
+            for side in ("left", "right")
+            for index in range(1, 8)
         }
-        for name, expected in expected_initial_positions.items():
-            initial_value = control_joints[name].find(
-                "state_interface[@name='position']/param[@name='initial_value']"
-            )
-            assert initial_value is not None
-            assert abs(float(initial_value.text) - expected) < 1e-9
-
     finally:
-        os.remove(tmp_urdf_output_file)
-
-
-if __name__ == "__main__":
-    test_urdf_xacro()
+        os.remove(output_path)

@@ -23,9 +23,3 @@ dual_arm:
   planner_configs:
     - RRTConnectkConfigDefault
     - RRTstarkConfigDefault
-
-dual_arm_with_base:
-  default_planner_config: RRTConnectkConfigDefault
-  planner_configs:
-    - RRTConnectkConfigDefault
-    - RRTstarkConfigDefault

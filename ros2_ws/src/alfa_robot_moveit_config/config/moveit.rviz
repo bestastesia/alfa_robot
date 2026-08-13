@@ -105,15 +105,15 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          left_tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          pitch:
+          left_joint7:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
+          left_tool0:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
           right_arm_base:
             Alpha: 1
             Show Axes: false
@@ -148,16 +148,12 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          right_tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          turn:
+          right_joint7:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          updown:
+          right_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false
@@ -250,15 +246,15 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          left_tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          pitch:
+          left_joint7:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
+          left_tool0:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
           right_arm_base:
             Alpha: 1
             Show Axes: false
@@ -293,16 +289,12 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
             Value: true
-          right_tool0:
-            Alpha: 1
-            Show Axes: false
-            Show Trail: false
-          turn:
+          right_joint7:
             Alpha: 1
             Show Axes: false
             Show Trail: false
             Value: true
-          updown:
+          right_tool0:
             Alpha: 1
             Show Axes: false
             Show Trail: false
