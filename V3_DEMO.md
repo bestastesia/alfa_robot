@@ -24,4 +24,6 @@ cd /mnt/mydisk/ALFA/alfa_robot_v3
 
 在 RViz 的 MotionPlanning 面板选择 `left_arm` 或 `right_arm`，拖动末端交互球，然后依次点击 `Plan`、`Execute`。两组均使用 `kdl_kinematics_plugin/KDLKinematicsPlugin`。
 
+双臂共用一个14轴 mock轨迹控制器；单臂执行时允许发送对应侧的7轴部分目标，另一侧保持当前位置。
+
 模型 Demo 默认使用 `ROS_DOMAIN_ID=78`，MoveIt Demo 默认使用 `ROS_DOMAIN_ID=79`，避免其他测试节点污染 `/robot_description`、`/joint_states` 和 TF。

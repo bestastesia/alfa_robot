@@ -12,6 +12,8 @@ joint_state_broadcaster:
 
 dual_arm_controller:
   ros__parameters:
+    # MoveIt 单臂规划只发送对应侧的 7 个关节；未包含的另一臂保持当前位置。
+    allow_partial_joints_goal: true
     joints:
       - left_joint1
       - left_joint2
