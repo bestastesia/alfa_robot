@@ -168,7 +168,7 @@ std::vector<StaticBoxObstacle> make_box_wall_obstacles_for_opening(
   const double stack_z_min = config.container_floor_z;
   const double stack_z_max = std::min(
     config.container_floor_z + config.container_height,
-    config.container_floor_z + kBoxStackRowCount * config.carried_box_height);
+    config.container_floor_z + kBoxStackHeight);
 
   const double positive_hole_y_min = positive_y_box.center[1] - 0.5 * positive_y_box.size[1];
   const double positive_hole_y_max = positive_y_box.center[1] + 0.5 * positive_y_box.size[1];

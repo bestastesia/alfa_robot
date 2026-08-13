@@ -160,7 +160,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         f"start_support_nodes:={str(getattr(args, 'start_support_nodes', True)).lower()}",
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
-        f"container_height:={getattr(args, 'container_height', 2.2)}",
+        f"container_height:={getattr(args, 'container_height', 2.4)}",
         f"world_to_base_z:={getattr(args, 'world_to_base_z', 0.202094)}",
         f"fixed_updown:={args.fixed_updown}",
         f"extract_monitor_turn:={getattr(args, 'turn_rad', 0.0)}",
@@ -1157,7 +1157,7 @@ def main() -> int:
     parser.add_argument("--box-front-x", type=float, default=0.925)
     parser.add_argument("--scene-y-shift", type=float, default=None, help="箱堆中心相对机器人 y 偏移；默认 0 表示机器人对准中间列")
     parser.add_argument("--box-stack-y-shift", type=float, default=None, help="兼容旧参数名；等同于 --scene-y-shift")
-    parser.add_argument("--container-height", type=float, default=2.2)
+    parser.add_argument("--container-height", type=float, default=2.4)
     parser.add_argument("--fixed-updown", type=float, default=0.3)
     parser.add_argument("--turn-deg", type=float, default=0.0)
     parser.add_argument("--grasp-mode", choices=["front", "top_suction"], default="front")

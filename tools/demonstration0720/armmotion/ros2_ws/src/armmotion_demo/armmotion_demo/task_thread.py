@@ -16,9 +16,9 @@ from .common import (
     STAGE_LABELS,
     decode_message,
     encode_message,
-    front_face_poses_for_task,
-    front_face_task_request_fields,
     parse_task_code,
+    suction_surface_poses_for_task,
+    suction_surface_task_request_fields,
 )
 
 
@@ -47,12 +47,25 @@ class TaskThread(Node):
                 self.algorithm_ready = True
             self._condition.notify_all()
 
-    def publish_task(self, request_id: str, left_pose, right_pose) -> None:
+    def publish_task(
+        self,
+        request_id: str,
+        left_pose,
+        right_pose,
+        left_grasp_mode: str,
+        right_grasp_mode: str,
+    ) -> None:
         self._wait_for_subscriber(self.task_publisher, "/armmotion/task_request")
         message = String()
         message.data = encode_message(
             "task_request",
-            **front_face_task_request_fields(request_id, left_pose, right_pose),
+            **suction_surface_task_request_fields(
+                request_id,
+                left_pose,
+                right_pose,
+                left_grasp_mode,
+                right_grasp_mode,
+            ),
         )
         self.task_publisher.publish(message)
 
@@ -186,17 +199,19 @@ def main(args=None) -> None:
                 print(f"输入错误：{exc}")
                 continue
             request_id = f"{task.code}-{int(time.time())}-{uuid.uuid4().hex[:6]}"
-            left_front_face_pose, right_front_face_pose = front_face_poses_for_task(task)
+            left_suction_pose, right_suction_pose = suction_surface_poses_for_task(task)
             print(
                 f"发送 {task.code}: L{task.left_box_id}/R{task.right_box_id}，"
                 f"布局={task.layout}，吸附={task.grasp_family}，"
                 f"有效距离={task.effective_distance_m:.3f}m；"
-                "对算法仅发送左右箱体正面中心6D位姿"
+                "对算法仅发送左右实际吸附面中心6D位姿与吸附模式"
             )
             node.publish_task(
                 request_id,
-                left_front_face_pose,
-                right_front_face_pose,
+                left_suction_pose,
+                right_suction_pose,
+                task.left_grasp_mode,
+                task.right_grasp_mode,
             )
             plan_event = node.wait_for_event(
                 request_id,

@@ -99,7 +99,7 @@ def generate_launch_description():
         DeclareLaunchArgument("vehicle_drift_rotation_threshold_rad", default_value="0.02"),
         DeclareLaunchArgument("container_length", default_value="4.0"),
         DeclareLaunchArgument("container_width", default_value="1.8"),
-        DeclareLaunchArgument("container_height", default_value="2.2"),
+        DeclareLaunchArgument("container_height", default_value="2.4"),
         DeclareLaunchArgument("container_center_x", default_value="0.8"),
         DeclareLaunchArgument("container_center_y", default_value="0.0"),
         DeclareLaunchArgument("container_pose_dynamic", default_value="false"),

@@ -4,7 +4,11 @@ import threading
 import time
 
 import rclpy
-from alfa_robot_execution_bridge.joints import RT_CONTROL_JOINT_NAMES, model_to_rt_control_position
+from alfa_robot_execution_bridge.joints import (
+    RT_CONTROL_ACTION_NAME,
+    RT_CONTROL_JOINT_NAMES,
+    model_to_rt_control_position,
+)
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
@@ -20,7 +24,7 @@ class MockCurrentRtControl(Node):
 
     def __init__(self) -> None:
         super().__init__("mock_current_rt_control")
-        self.declare_parameter("trajectory_action", "/dual_arm_jtc/follow_joint_trajectory")
+        self.declare_parameter("trajectory_action", RT_CONTROL_ACTION_NAME)
         self.declare_parameter("joint_state_topic", "/joint_states")
         self.declare_parameter("execution_time_scale", 0.0)
         self._callback_group = ReentrantCallbackGroup()

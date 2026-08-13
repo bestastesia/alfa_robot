@@ -1141,7 +1141,7 @@ def main() -> int:
     parser.add_argument(
         "--container-height",
         type=float,
-        default=2.2,
+        default=2.4,
         help="集装箱内部高度；诊断无顶板约束时可临时设为较大值",
     )
     parser.add_argument(

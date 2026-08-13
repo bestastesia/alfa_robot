@@ -1822,3 +1822,47 @@
 - Turn：重拍前专用轨迹可保持其余13轴不动，把实体 turn 转到最近等价的 -90°；IK、场景和普通规划始终使用虚拟 turn=0，普通十四轴轨迹发送时用最新反馈锁定实体 turn。修复了 `pitch=-90°` 四元数经欧拉角奇异点往返后姿态改变的问题。
 - 安全：每段轨迹不仅校验真实起点，控制器返回成功后还等待 `/joint_states` 到达末态，再允许下一阶段规划或执行，避免反馈延迟造成轨迹首帧跳变。
 - 验证：本地 runtime 24项、Motion 33项测试通过；本地与工控机隔离 Mock 均完整走通五阶段。工控机部署在 `/home/ar/motion_domain_current`，11包 Release 构建通过；第二轮复用长驻 planner 后重拍规划墙钟由冷启动约15.96s降至0.123s，验证后无残留进程，未操作真实硬件。
+## 2026-08-08 运控 / Codex / Native rt-control 与 Action 诊断样例适配
+- 做了什么：正式 Motion 执行边界从旧 `/dual_arm_jtc/follow_joint_trajectory` 收口到 Native rt-control 的 `/whole_body_jtc/follow_joint_trajectory`，默认 ROS Domain 改为 `0`；实机、Mock、手动工具共用 `joints.py` 的 Action 常量，全部公有轴方向符号保持 `+1`。
+- 改了哪里：更新 `alfa_robot_execution_bridge/joints.py`、Motion 启动/launch/Mock/文档；新增 `run_dump_action_examples.sh`，可从30条缓存输出完整五阶段真实 Action Goal，并支持单臂 `NO_MOVE` 镜像样例。
+- 验证结果：本地定向测试30项通过，完整五阶段 Mock 成功；工控机 `/home/ar/motion_domain_current` Release 增量构建通过，Domain 208 Mock 完整成功。现场只读确认 Native rt-control 正在 Domain 0 运行，`/whole_body_jtc` 服务端1个、Motion客户端1个，旧 `/dual_arm_jtc` 服务端0个。
+- 留给下个 AI：工控机已生成 `data/motion_action_examples_30.json` 及 x72/row3 双臂、单左臂命令文件。当前真实 Motion 进程已经指向 `/whole_body_jtc`；部署后的源码若需完全重新加载，应在安全窗口只重启 Motion，不要停止 Native rt-control。
+
+## 2026-08-08 运控 / Codex / Turn 职责移除与30组完整Action回放
+- 做了什么：收紧30组 Action 样例的 wire Goal，只保留 `execution_stage + targets`；任务分组键、距离、排数、阶段标签和 Action 路由信息仅用于诊断，不进入 Goal。删除 Motion 重拍前 Turn 检测、对齐和主动控制，完整14轴轨迹仅复制最新 Turn 反馈并保持其速度、加速度为零。
+- 改了哪里：调整 `armmotion_demo/action_examples.py`、`domain_motion_server.py`、`hardware_executor.py`、launch、测试和联调文档；新增 `cached_action_grid_rerun.py` 与 `run_cached_action_grid_rerun.sh`。
+- 验证结果：本地 `armmotion_demo` 41项测试通过；30组缓存全部命中，完整生成 `CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME` 回放，共29778个原始轨迹点，Rerun 为 `data/ik_benchmark/motion_action_cache_30_full_flow/run_20260808_161728/motion_action_cache_30_full_flow.rrd`。工控机源码已同步并完成11包 Release 构建，隔离 Domain 208 的 B3 五阶段 Mock 完整通过且日志无 Turn 对齐；隔离进程已停止，Native rt-control 未操作。
+- 留给下个 AI：工控机正在运行的实机 Motion 进程仍是重启前已加载代码；要让 Turn 移除立即生效，需在安全窗口只重启 `/home/ar/motion_domain_current` 的 Motion 进程，禁止停止 Native rt-control。
+
+## 2026-08-08 运控 / Codex / 30组缓存五厘米抖动百次验证
+- 测试口径：30个 `70～75cm × 5排` 基准均至少覆盖一次，额外随机70组；左右臂分别施加三轴位置 L1 总量不超过 `5cm` 的抖动，姿态不变，并约束扰动后仍在缓存覆盖区间。全部按真实五阶段 Action 顺序在隔离 Mock 执行。
+- 验证结果：100/100命中缓存，99/100完成全部五阶段。唯一失败为第47组 `base=70cm,row=2→x_72cm_row_2`，在重拍真实末态桥接到缓存预抓取入口时，`box_wall_L4_R6_between↔right_joint6` 碰撞；同一输入重复两轮均在相同位置失败。
+- 性能：缓存查找平均 `3.41ms`；包含Action通信和Mock执行处理的整任务墙钟平均 `1.333s`，去除首任务冷启动后平均 `1.248s`，中位数 `0.664s`，P95 `5.781s`。统计：`data/ik_benchmark/motion_action_cache_jitter_100/run_20260808_full/summary.json`。
+## 2026-08-08 运控 / Codex / 正式 Motion 强制轨迹缓存
+- 做了什么：正式 PREGRASP 规划改为必须命中轨迹缓存，未命中直接返回诊断，禁止退回在线 IK/抽离/RRT；距离按厘米向上取整并夹紧到 `0.70～0.80m`，例如 `0.82m` 使用 `0.80m` 档。
+- 改了哪里：扩展 `armmotion_demo` 缓存策略、Motion 参数、缓存生成工具与 Action 样例；重新规划 `0.70～0.80m × 5排`，只写入真实成功轨迹。
+- 验证结果：目标55条中真实成功53条；`x=0.80m` 第3、4排失败未写入。工控机 `/home/ar/motion_domain_current` 11包构建通过，armmotion 47项测试通过。
+- 留给下个 AI：缺失缓存会立即失败并输出 Turn=0 后左右6D位姿、行号、距离桶和缓存路径，不会启动在线抽离规划。
+
+## 2026-08-09 运控 / Codex / Turn目标补偿与在线优先缓存降级
+- 做了什么：Turn=0 换算后的左右目标统一应用 `y=-0.10m` 标定补偿，重拍与正式抓取共用同一入口；正式 PREGRASP 改为先按修正后的左右独立6D目标在线规划，只有在线规划失败才尝试缓存降级。
+- 改了哪里：`armmotion_demo/turn_frame.py`、`domain_motion_server.py`、`planner_adapter.py`、Motion launch、README与回归测试；新增参数 `turn_zero_target_y_compensation_m=-0.10` 和 `trajectory_cache_fallback_on_planning_failure=true`。
+- 验证结果：样例 `turn=-81°` 修正后左右Y为 `0.274457/-0.548891m`；本地和工控机 `/home/ar/motion_domain_current` 均完成构建，完整 Motion 测试 `51 passed`。
+- 留给下个 AI：工控机已编译但正在运行的 Motion 进程需要重启才加载新逻辑；缓存降级使用规范缓存目标，只应作为在线规划失败后的兜底。
+
+## 2026-08-09 运控 / Codex / 在线目标位姿抖动压力测试
+- 测试口径：禁用缓存，五排每排5次；左右目标XYZ每轴独立随机 `±2cm`，姿态绕XYZ各随机 `±5°`，固定随机种子 `20260809`。
+- 验证结果：25/25均完成解析IK，完整流程21/25成功；第一排3次失败均为抽离RRT左臂无可达路径，第四排1次规划器成功但快照缺少 `pre_contact/contact` 阶段。完整流程平均墙钟 `2.809s`，IK中位数 `7.62ms`。
+- 缓存降级复核：第一排3个在线失败均被缓存接住；第四排失败类型为轨迹阶段组装 `ValueError`，当前只捕获在线规划 `RuntimeError`，因此未进入缓存降级。
+- 数据：`data/ik_benchmark/online_pose_jitter_2cm_5deg/20260809_005351/summary.json`；降级复核位于同目录 `fallback_recheck/summary.json`。
+
+## 2026-08-09 运控 / Codex / 正式抓取姿态标准化
+- 做了什么：正式 `PREGRASP` 输入完成 Turn=0 和Y标定补偿后，保留感知XYZ，按 `SIDE_SUCTION/TOP_SUCTION` 强制替换为标准侧吸/顶吸四元数；重拍位姿态保持原始输入，并记录左右姿态纠正角度。
+- 验证结果：本地 Motion 测试 `53 passed`、编译通过；复用同一批XYZ每轴 `±2cm`、姿态各轴 `±5°` 的25个纯在线样本，完整流程由 `21/25` 提升到 `25/25`，五排均为 `5/5`，平均墙钟 `3.031s`。
+- 数据：`data/ik_benchmark/online_pose_jitter_2cm_5deg/20260809_005351/orientation_projected_recheck/summary.json`。
+
+## 2026-08-09 运控 / Codex / 重拍数值 IK 改为最小误差近似解
+- 做了什么：重拍位解析 IK 失败后的数值 IK 不再用位置 `10mm`、姿态 `10°` 作为硬拒绝阈值；所有有限近似解按归一化位姿误差优先排序，updown 接近度和关节运动量仅作为同误差候选的次级条件，后续仍必须通过场景碰撞和轨迹规划检查。
+- 改了哪里：`alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`；`10mm/10°` 仅保留为位置与姿态误差的归一化尺度，不代表验收上限。
+- 验证结果：本地与工控机 `/home/ar/motion_domain_current` 均完成 `alfa_robot_moveit_config` Release 编译；未自动重启正在运行的实机 Motion，需安全重启后加载新二进制。
+- 留给下个 AI：该调整可能接受末端偏差明显但碰撞安全的重拍姿态，运行日志会输出最终 `position_error_mm` 和 `orientation_error_deg`，现场需据此判断是否另设宽松但有限的产品阈值。

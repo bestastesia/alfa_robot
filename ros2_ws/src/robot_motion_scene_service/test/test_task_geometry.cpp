@@ -15,11 +15,11 @@ int main()
   assert(boxes.size() == 15);
   assert(std::abs(boxes.at(1).x - 0.925) < 1e-9);
   assert(std::abs(boxes.at(1).y - 0.4) < 1e-9);
-  assert(std::abs(boxes.at(1).z - 1.8) < 1e-9);
+  assert(std::abs(boxes.at(1).z - 1.85) < 1e-9);
   assert(std::abs(boxes.at(5).y) < 1e-9);
-  assert(std::abs(boxes.at(5).z - 1.4) < 1e-9);
+  assert(std::abs(boxes.at(5).z - 1.44) < 1e-9);
   assert(std::abs(boxes.at(15).y - (-0.4)) < 1e-9);
-  assert(std::abs(boxes.at(15).z - 0.2) < 1e-9);
+  assert(std::abs(boxes.at(15).z - 0.21) < 1e-9);
   assert(std::abs(kOuterBoxGraspTargetY - 0.40) < 1e-9);
   assert(std::abs(kOuterBoxGraspLateralOffset) < 1e-9);
   assert(box_column_from_left(1) == 1);

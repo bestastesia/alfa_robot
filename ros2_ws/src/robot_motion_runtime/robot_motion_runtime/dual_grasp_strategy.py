@@ -24,9 +24,13 @@ TOP_SUCTION = "top_suction"
 BOX_DEPTH_M = 0.3
 BOX_WIDTH_M = 0.4
 BOX_HEIGHT_M = 0.4
+BOX_ROW_GAP_M = 0.01
+BOX_ROW_PITCH_M = BOX_HEIGHT_M + BOX_ROW_GAP_M
 BOX_ROW_COUNT = 5
-TOP_SUCTION_FIRST_ROW = 4
-BOTTOM_ROW_FRONT_CENTER_Z_M = -0.002094
+TOP_SUCTION_FIRST_ROW = 3
+WORLD_TO_BASE_Z_M = 0.202094
+BOTTOM_ROW_CENTER_WORLD_Z_M = 0.21
+BOTTOM_ROW_FRONT_CENTER_Z_M = BOTTOM_ROW_CENTER_WORLD_Z_M - WORLD_TO_BASE_Z_M
 ROW_MATCH_TOLERANCE_M = 0.12
 OUTER_BOX_GRASP_TARGET_Y_M = 0.40
 OUTER_BOX_GRASP_LATERAL_OFFSET_M = BOX_WIDTH_M - OUTER_BOX_GRASP_TARGET_Y_M
@@ -75,6 +79,19 @@ class FrontFaceTaskResolution:
     strategy: DualGraspStrategyValue
     left_tool_pose: Pose6DValue
     right_tool_pose: Pose6DValue
+    left_row: BoxRowMatch
+    right_row: BoxRowMatch
+
+
+@dataclass(frozen=True)
+class SuctionSurfaceTaskResolution:
+    strategy: DualGraspStrategyValue
+    left_tool_pose: Pose6DValue
+    right_tool_pose: Pose6DValue
+    left_box_center_pose: Pose6DValue
+    right_box_center_pose: Pose6DValue
+    left_front_face_pose: Pose6DValue
+    right_front_face_pose: Pose6DValue
     left_row: BoxRowMatch
     right_row: BoxRowMatch
 
@@ -331,23 +348,23 @@ def match_box_row(
     front_face_z_m: float,
     *,
     row_count: int = BOX_ROW_COUNT,
-    box_height_m: float = BOX_HEIGHT_M,
+    row_pitch_m: float = BOX_ROW_PITCH_M,
     bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
     tolerance_m: float = ROW_MATCH_TOLERANCE_M,
 ) -> BoxRowMatch:
     if row_count <= 0:
         raise ValueError("row_count must be positive")
-    if not math.isfinite(box_height_m) or box_height_m <= 0.0:
-        raise ValueError("box_height_m must be finite and positive")
+    if not math.isfinite(row_pitch_m) or row_pitch_m <= 0.0:
+        raise ValueError("row_pitch_m must be finite and positive")
     if not math.isfinite(front_face_z_m):
         raise ValueError("front_face_z_m must be finite")
     tolerance_m = float(tolerance_m)
-    if tolerance_m < 0.0 or tolerance_m >= 0.5 * box_height_m:
+    if tolerance_m < 0.0 or tolerance_m >= 0.5 * row_pitch_m:
         raise ValueError("row tolerance must be non-negative and smaller than half a row")
     matches = [
         BoxRowMatch(
             row_from_top=row,
-            center_z_m=float(bottom_row_center_z_m) + float(row_count - row) * box_height_m,
+            center_z_m=float(bottom_row_center_z_m) + float(row_count - row) * row_pitch_m,
             residual_m=0.0,
         )
         for row in range(1, row_count + 1)
@@ -414,6 +431,106 @@ def front_face_to_tool_contact(
     )
 
 
+def suction_surface_to_box_geometry(
+    suction_surface_pose: Pose6DValue,
+    grasp_mode: str,
+    *,
+    box_depth_m: float = BOX_DEPTH_M,
+    box_height_m: float = BOX_HEIGHT_M,
+) -> tuple[Pose6DValue, Pose6DValue]:
+    """Return box-center and front-face-center poses from an actual suction pose."""
+    grasp_mode = normalize_grasp_mode(grasp_mode)
+    quaternion = normalize_quaternion_xyzw(quaternion_xyzw(suction_surface_pose))
+    if grasp_mode == FRONT:
+        inward = rotate_vector_by_quaternion(quaternion, (0.0, 0.0, 1.0))
+        box_center = (
+            suction_surface_pose.x + 0.5 * box_depth_m * inward[0],
+            suction_surface_pose.y + 0.5 * box_depth_m * inward[1],
+            suction_surface_pose.z + 0.5 * box_depth_m * inward[2],
+        )
+    else:
+        downward = rotate_vector_by_quaternion(quaternion, (0.0, 0.0, 1.0))
+        inward = rotate_vector_by_quaternion(quaternion, (1.0, 0.0, 0.0))
+        box_center = (
+            suction_surface_pose.x + 0.5 * box_height_m * downward[0],
+            suction_surface_pose.y + 0.5 * box_height_m * downward[1],
+            suction_surface_pose.z + 0.5 * box_height_m * downward[2],
+        )
+    front_center = (
+        box_center[0] - 0.5 * box_depth_m * inward[0],
+        box_center[1] - 0.5 * box_depth_m * inward[1],
+        box_center[2] - 0.5 * box_depth_m * inward[2],
+    )
+    return (
+        Pose6DValue(*box_center, *FRONT_TOOL_RPY),
+        Pose6DValue(*front_center, *FRONT_TOOL_RPY),
+    )
+
+
+def resolve_suction_surface_dual_grasp_strategy(
+    left_suction_surface_pose: Pose6DValue,
+    right_suction_surface_pose: Pose6DValue,
+    left_grasp_mode: str,
+    right_grasp_mode: str,
+    *,
+    row_count: int = BOX_ROW_COUNT,
+    row_pitch_m: float = BOX_ROW_PITCH_M,
+    box_height_m: float = BOX_HEIGHT_M,
+    box_depth_m: float = BOX_DEPTH_M,
+    bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
+    row_match_tolerance_m: float = ROW_MATCH_TOLERANCE_M,
+) -> SuctionSurfaceTaskResolution:
+    left_grasp_mode = normalize_grasp_mode(left_grasp_mode)
+    right_grasp_mode = normalize_grasp_mode(right_grasp_mode)
+    left_center, left_front = suction_surface_to_box_geometry(
+        left_suction_surface_pose,
+        left_grasp_mode,
+        box_depth_m=box_depth_m,
+        box_height_m=box_height_m,
+    )
+    right_center, right_front = suction_surface_to_box_geometry(
+        right_suction_surface_pose,
+        right_grasp_mode,
+        box_depth_m=box_depth_m,
+        box_height_m=box_height_m,
+    )
+    left_row = match_box_row(
+        left_center.z,
+        row_count=row_count,
+        row_pitch_m=row_pitch_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        tolerance_m=row_match_tolerance_m,
+    )
+    right_row = match_box_row(
+        right_center.z,
+        row_count=row_count,
+        row_pitch_m=row_pitch_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        tolerance_m=row_match_tolerance_m,
+    )
+    strategy, left_tool_pose, right_tool_pose = resolve_dual_grasp_strategy(
+        left_grasp_mode,
+        right_grasp_mode,
+        left_suction_surface_pose,
+        right_suction_surface_pose,
+        equal_height_tolerance_m=0.5 * row_pitch_m,
+    )
+    return SuctionSurfaceTaskResolution(
+        strategy=replace(
+            strategy,
+            height_difference_m=left_center.z - right_center.z,
+        ),
+        left_tool_pose=left_tool_pose,
+        right_tool_pose=right_tool_pose,
+        left_box_center_pose=left_center,
+        right_box_center_pose=right_center,
+        left_front_face_pose=left_front,
+        right_front_face_pose=right_front,
+        left_row=left_row,
+        right_row=right_row,
+    )
+
+
 def degrade_top_target_to_front(
     pose: Pose6DValue,
     *,
@@ -455,6 +572,7 @@ def resolve_front_face_dual_grasp_strategy(
     right_front_face_pose: Pose6DValue,
     *,
     row_count: int = BOX_ROW_COUNT,
+    row_pitch_m: float = BOX_ROW_PITCH_M,
     box_height_m: float = BOX_HEIGHT_M,
     box_depth_m: float = BOX_DEPTH_M,
     bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
@@ -464,14 +582,14 @@ def resolve_front_face_dual_grasp_strategy(
     left_row = match_box_row(
         left_front_face_pose.z,
         row_count=row_count,
-        box_height_m=box_height_m,
+        row_pitch_m=row_pitch_m,
         bottom_row_center_z_m=bottom_row_center_z_m,
         tolerance_m=row_match_tolerance_m,
     )
     right_row = match_box_row(
         right_front_face_pose.z,
         row_count=row_count,
-        box_height_m=box_height_m,
+        row_pitch_m=row_pitch_m,
         bottom_row_center_z_m=bottom_row_center_z_m,
         tolerance_m=row_match_tolerance_m,
     )

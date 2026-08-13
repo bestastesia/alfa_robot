@@ -15,7 +15,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 - 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同。
 - Motion 五域联调入口正在收口为单一 `/motion/execute_stage` 阶段 Action；正式入口只规划和执行轨迹，吸附通路由 Autonomy 编排 RT-Control。
 - 正式阶段输入只包含执行阶段和一对左右 `base_link` 6D 目标，不再包含任务号、箱号、frame 或规划内部字段；Action UUID 作为请求身份。同一逻辑任务先发送重拍目标对，再发送精定位抓取目标对。每个目标携带 `NO_MOVE/SIDE_SUCTION/TOP_SUCTION` 模式字段，本版只校验该字段，既有策略仍由位姿分类逻辑决定。
-- Motion 对外只有 `/motion/execute_stage` 一个阶段 Action；`CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME` 必须顺序调用。规划侧始终使用虚拟 `turn=0`，重拍前可单独把实体 turn 对齐到 -90°，其余轨迹发送时保持真实 turn 不动。
+- Motion 对外只有 `/motion/execute_stage` 一个阶段 Action；`CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME` 必须顺序调用。Motion 不再检测、规划或主动改变实体 `turn`；规划内部仅使用固定虚拟值。因为 Native rt-control 的完整14轴 Action 禁止 partial goal，发送轨迹时只复制最新 `turn` 反馈并保持零速度、零加速度，Turn 所有权归其他域。
 - 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
 - 当前任务表只保留未完成/需确认事项：T-0030/T-0031/T-0032/T-0037。
 - 已完成/已同步 Linear 的长过程已归档到 `.ai_teamwork/archive/2026-05-18_v5_dev_collaboration_cleanup/`。

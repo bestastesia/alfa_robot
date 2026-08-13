@@ -11,13 +11,17 @@ from robot_motion_runtime.dual_grasp_strategy import (
     BOX_DEPTH_M,
     BOX_HEIGHT_M,
     BOX_ROW_COUNT,
+    BOX_ROW_PITCH_M,
     FRONT_TOOL_RPY,
     OUTER_BOX_GRASP_TARGET_Y_M,
     Pose6DValue,
     ROW_MATCH_TOLERANCE_M,
+    TOP_TOOL_RPY,
     TOP_SUCTION_FIRST_ROW,
     quaternion_xyzw,
     resolve_front_face_dual_grasp_strategy,
+    resolve_suction_surface_dual_grasp_strategy,
+    tool_z_axis,
 )
 
 
@@ -32,7 +36,7 @@ TASK_LAYOUTS = {
     "A": "right_shift_0p1",
     "B": "centered",
 }
-FRONT_TASKS = frozenset({1, 2, 3})
+FRONT_TASKS = frozenset({1, 2})
 DIRECT_LIFT_TASKS = frozenset({3, 4, 5})
 STAGE_LABELS = {
     1: "负重位到 IK 前 5cm 预吸附位",
@@ -47,6 +51,7 @@ GRASP_ENABLE_STAGE = 2
 GRASP_DISABLE_STAGE = 5
 FINAL_STAGE = STAGE_COUNT
 LOADED_ARM_POSE_DEG = (0.0, -45.0, 120.0, -75.0, 0.0, 0.0)
+RECAPTURE_CLEARANCE_M = 0.35
 
 
 @dataclass(frozen=True)
@@ -103,8 +108,12 @@ class TaskSpec:
 @dataclass(frozen=True)
 class PoseTaskSpec:
     code: str
+    left_suction_surface_pose: Pose6DValue
+    right_suction_surface_pose: Pose6DValue
     left_front_face_pose: Pose6DValue
     right_front_face_pose: Pose6DValue
+    left_box_center_pose: Pose6DValue
+    right_box_center_pose: Pose6DValue
     left_row: int
     right_row: int
     left_row_residual_m: float
@@ -131,11 +140,11 @@ class PoseTaskSpec:
 
     @property
     def left_scene_slot_id(self) -> int:
-        return 1
+        return (self.left_row - 1) * 3 + 1
 
     @property
     def right_scene_slot_id(self) -> int:
-        return 3
+        return (self.right_row - 1) * 3 + 3
 
     @property
     def left_box_id(self) -> int:
@@ -153,6 +162,11 @@ class PoseTaskSpec:
 
     @property
     def extraction_mode(self) -> str:
+        if (
+            self.grasp_family == "front"
+            and self.left_row == self.right_row == 2
+        ):
+            return "projected_shortcut"
         return "direct_updown_lift" if self.uses_direct_updown_lift else "box_pose_rrt"
 
     @property
@@ -198,13 +212,6 @@ class ExecutionPlan:
     summary_path: Path
     stages: dict[int, list[list[MotionSample]]]
     metrics: dict[str, Any]
-
-
-def nearest_equivalent_angle(current: float, target: float) -> float:
-    """Return the target's nearest 2*pi-equivalent angle from current."""
-    if not math.isfinite(current) or not math.isfinite(target):
-        raise ValueError("角度必须为有限值")
-    return float(current) + math.remainder(float(target) - float(current), 2.0 * math.pi)
 
 
 def parse_task_code(
@@ -282,7 +289,7 @@ def front_face_poses_for_task(task: TaskSpec) -> tuple[Pose6DValue, Pose6DValue]
         row_from_top = (box_id - 1) // 3 + 1
         center_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (
             BOX_ROW_COUNT - row_from_top
-        ) * BOX_HEIGHT_M
+        ) * BOX_ROW_PITCH_M
         lateral = OUTER_BOX_GRASP_TARGET_Y_M if side == "left" else -OUTER_BOX_GRASP_TARGET_Y_M
         return Pose6DValue(
             x=task.effective_distance_m,
@@ -296,12 +303,115 @@ def front_face_poses_for_task(task: TaskSpec) -> tuple[Pose6DValue, Pose6DValue]
     return make_pose(task.left_box_id, "left"), make_pose(task.right_box_id, "right")
 
 
+def suction_surface_poses_for_task(
+    task: TaskSpec,
+) -> tuple[Pose6DValue, Pose6DValue]:
+    left_front, right_front = front_face_poses_for_task(task)
+    if task.grasp_family == "front":
+        return left_front, right_front
+
+    def top_surface(front: Pose6DValue) -> Pose6DValue:
+        return Pose6DValue(
+            x=front.x + 0.5 * BOX_DEPTH_M,
+            y=front.y,
+            z=front.z + 0.5 * BOX_HEIGHT_M,
+            roll=TOP_TOOL_RPY[0],
+            pitch=TOP_TOOL_RPY[1],
+            yaw=TOP_TOOL_RPY[2],
+        )
+
+    return top_surface(left_front), top_surface(right_front)
+
+
+def camera_view_pose_from_suction_surface(
+    pose: Pose6DValue,
+    clearance_m: float = RECAPTURE_CLEARANCE_M,
+) -> Pose6DValue:
+    if not math.isfinite(clearance_m) or clearance_m <= 0.0:
+        raise ValueError("重拍距离必须为有限正数")
+    direction = tool_z_axis(pose)
+    return Pose6DValue(
+        x=pose.x - clearance_m * direction[0],
+        y=pose.y - clearance_m * direction[1],
+        z=pose.z - clearance_m * direction[2],
+        roll=pose.roll,
+        pitch=pose.pitch,
+        yaw=pose.yaw,
+    )
+
+
+def camera_view_poses_for_task(
+    task: TaskSpec,
+    clearance_m: float = RECAPTURE_CLEARANCE_M,
+) -> tuple[Pose6DValue, Pose6DValue]:
+    left, right = suction_surface_poses_for_task(task)
+    return (
+        camera_view_pose_from_suction_surface(left, clearance_m),
+        camera_view_pose_from_suction_surface(right, clearance_m),
+    )
+
+
+def planning_task_from_suction_surface_poses(
+    request_id: str,
+    left_suction_surface_pose: Pose6DValue,
+    right_suction_surface_pose: Pose6DValue,
+    left_grasp_mode: str,
+    right_grasp_mode: str,
+    *,
+    row_count: int = BOX_ROW_COUNT,
+    row_pitch_m: float = BOX_ROW_PITCH_M,
+    box_height_m: float = BOX_HEIGHT_M,
+    box_depth_m: float = BOX_DEPTH_M,
+    bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
+    row_match_tolerance_m: float = ROW_MATCH_TOLERANCE_M,
+) -> PoseTaskSpec:
+    resolution = resolve_suction_surface_dual_grasp_strategy(
+        left_suction_surface_pose,
+        right_suction_surface_pose,
+        left_grasp_mode,
+        right_grasp_mode,
+        row_count=row_count,
+        row_pitch_m=row_pitch_m,
+        box_height_m=box_height_m,
+        box_depth_m=box_depth_m,
+        bottom_row_center_z_m=bottom_row_center_z_m,
+        row_match_tolerance_m=row_match_tolerance_m,
+    )
+    scene_y_shift = 0.5 * (
+        resolution.left_front_face_pose.y - OUTER_BOX_GRASP_TARGET_Y_M
+        + resolution.right_front_face_pose.y + OUTER_BOX_GRASP_TARGET_Y_M
+    )
+    return PoseTaskSpec(
+        code=str(request_id),
+        left_suction_surface_pose=left_suction_surface_pose,
+        right_suction_surface_pose=right_suction_surface_pose,
+        left_front_face_pose=resolution.left_front_face_pose,
+        right_front_face_pose=resolution.right_front_face_pose,
+        left_box_center_pose=resolution.left_box_center_pose,
+        right_box_center_pose=resolution.right_box_center_pose,
+        left_row=resolution.left_row.row_from_top,
+        right_row=resolution.right_row.row_from_top,
+        left_row_residual_m=resolution.left_row.residual_m,
+        right_row_residual_m=resolution.right_row.residual_m,
+        left_grasp_mode=resolution.strategy.left.grasp_mode,
+        right_grasp_mode=resolution.strategy.right.grasp_mode,
+        left_tool_pose=resolution.left_tool_pose,
+        right_tool_pose=resolution.right_tool_pose,
+        strategy=resolution.strategy,
+        scene_y_shift=scene_y_shift,
+        effective_distance_m=0.5 * (
+            resolution.left_front_face_pose.x + resolution.right_front_face_pose.x
+        ),
+    )
+
+
 def planning_task_from_front_face_poses(
     request_id: str,
     left_front_face_pose: Pose6DValue,
     right_front_face_pose: Pose6DValue,
     *,
     row_count: int = BOX_ROW_COUNT,
+    row_pitch_m: float = BOX_ROW_PITCH_M,
     box_height_m: float = BOX_HEIGHT_M,
     box_depth_m: float = BOX_DEPTH_M,
     bottom_row_center_z_m: float = BOTTOM_ROW_FRONT_CENTER_Z_M,
@@ -312,6 +422,7 @@ def planning_task_from_front_face_poses(
         left_front_face_pose,
         right_front_face_pose,
         row_count=row_count,
+        row_pitch_m=row_pitch_m,
         box_height_m=box_height_m,
         box_depth_m=box_depth_m,
         bottom_row_center_z_m=bottom_row_center_z_m,
@@ -324,8 +435,22 @@ def planning_task_from_front_face_poses(
     )
     return PoseTaskSpec(
         code=str(request_id),
+        left_suction_surface_pose=resolution.left_tool_pose,
+        right_suction_surface_pose=resolution.right_tool_pose,
         left_front_face_pose=left_front_face_pose,
         right_front_face_pose=right_front_face_pose,
+        left_box_center_pose=Pose6DValue(
+            left_front_face_pose.x + 0.5 * box_depth_m,
+            left_front_face_pose.y,
+            left_front_face_pose.z,
+            *FRONT_TOOL_RPY,
+        ),
+        right_box_center_pose=Pose6DValue(
+            right_front_face_pose.x + 0.5 * box_depth_m,
+            right_front_face_pose.y,
+            right_front_face_pose.z,
+            *FRONT_TOOL_RPY,
+        ),
         left_row=resolution.left_row.row_from_top,
         right_row=resolution.right_row.row_from_top,
         left_row_residual_m=resolution.left_row.residual_m,
@@ -351,6 +476,26 @@ def front_face_task_request_fields(
         "request_id": str(request_id),
         "left": {"pose_6d": pose6d_dict(left_front_face_pose)},
         "right": {"pose_6d": pose6d_dict(right_front_face_pose)},
+    }
+
+
+def suction_surface_task_request_fields(
+    request_id: str,
+    left_suction_surface_pose: Pose6DValue,
+    right_suction_surface_pose: Pose6DValue,
+    left_grasp_mode: str,
+    right_grasp_mode: str,
+) -> dict[str, Any]:
+    return {
+        "request_id": str(request_id),
+        "left": {
+            "pose_6d": pose6d_dict(left_suction_surface_pose),
+            "grasp_mode": str(left_grasp_mode),
+        },
+        "right": {
+            "pose_6d": pose6d_dict(right_suction_surface_pose),
+            "grasp_mode": str(right_grasp_mode),
+        },
     }
 
 

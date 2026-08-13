@@ -11,6 +11,7 @@ from robot_motion_runtime.dual_grasp_strategy import (
     DUAL_TOP_LEFT_HIGH,
     DUAL_TOP_RIGHT_HIGH,
     BOTTOM_ROW_FRONT_CENTER_Z_M,
+    BOX_ROW_PITCH_M,
     FRONT_TOOL_RPY,
     OUTER_BOX_GRASP_LATERAL_OFFSET_M,
     OUTER_BOX_GRASP_TARGET_Y_M,
@@ -21,6 +22,7 @@ from robot_motion_runtime.dual_grasp_strategy import (
     match_box_row,
     promote_front_target_to_top,
     resolve_front_face_dual_grasp_strategy,
+    resolve_suction_surface_dual_grasp_strategy,
     resolve_dual_grasp_strategy,
     quaternion_xyzw,
     rpy_from_quaternion_xyzw,
@@ -156,12 +158,12 @@ def test_top_contact_conversion_preserves_measured_box_yaw():
 
 
 def test_row_match_accepts_measurement_offset_but_rejects_ambiguous_height():
-    row2_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 3.0 * 0.4
+    row2_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 3.0 * BOX_ROW_PITCH_M
     match = match_box_row(row2_center + 0.08)
     assert match.row_from_top == 2
     assert math.isclose(match.residual_m, 0.08, abs_tol=1e-9)
 
-    ambiguous = BOTTOM_ROW_FRONT_CENTER_Z_M + 0.2
+    ambiguous = BOTTOM_ROW_FRONT_CENTER_Z_M + 0.5 * BOX_ROW_PITCH_M
     try:
         match_box_row(ambiguous)
     except ValueError as exc:
@@ -171,8 +173,8 @@ def test_row_match_accepts_measurement_offset_but_rejects_ambiguous_height():
 
 
 def test_front_face_contract_derives_modes_and_preserves_position_offsets():
-    row3_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 2.0 * 0.4
-    row4_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 1.0 * 0.4
+    row3_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 2.0 * BOX_ROW_PITCH_M
+    row4_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 1.0 * BOX_ROW_PITCH_M
     left_front = Pose6DValue(
         0.93,
         0.44,
@@ -216,12 +218,12 @@ def test_thirteen_reference_tasks_are_classified_without_box_ids():
         (5, 4),
         (5, 5),
     ]
-    expected_modes = ["front"] * 7 + ["top_suction"] * 6
+    expected_modes = ["front"] * 4 + ["top_suction"] * 9
     for index, ((left_row, right_row), expected_mode) in enumerate(
         zip(pairs, expected_modes)
     ):
-        left_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (5 - left_row) * 0.4
-        right_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (5 - right_row) * 0.4
+        left_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (5 - left_row) * BOX_ROW_PITCH_M
+        right_z = BOTTOM_ROW_FRONT_CENTER_Z_M + (5 - right_row) * BOX_ROW_PITCH_M
         left = Pose6DValue(
             0.90 + 0.01 * ((index % 3) - 1),
             0.40 + 0.02 * ((index % 2) - 0.5),
@@ -239,3 +241,20 @@ def test_thirteen_reference_tasks_are_classified_without_box_ids():
         assert resolution.right_row.row_from_top == right_row
         assert resolution.strategy.left.grasp_mode == expected_mode
         assert resolution.strategy.right.grasp_mode == expected_mode
+
+
+def test_top_suction_surface_contract_recovers_box_row_and_front_distance():
+    row3_center = BOTTOM_ROW_FRONT_CENTER_Z_M + 2.0 * BOX_ROW_PITCH_M
+    left = Pose6DValue(0.88, 0.4, row3_center + 0.2, *TOP_TOOL_RPY)
+    right = Pose6DValue(0.88, -0.4, row3_center + 0.2, *TOP_TOOL_RPY)
+    resolution = resolve_suction_surface_dual_grasp_strategy(
+        left,
+        right,
+        "top_suction",
+        "top_suction",
+    )
+    assert resolution.left_row.row_from_top == 3
+    assert resolution.right_row.row_from_top == 3
+    assert resolution.left_box_center_pose.z == pytest.approx(row3_center)
+    assert resolution.left_front_face_pose.x == pytest.approx(0.73)
+    assert resolution.left_tool_pose == left

@@ -6,6 +6,8 @@
 #include <moveit/robot_model/joint_model.h>
 #include <moveit/robot_model/revolute_joint_model.h>
 
+#include <algorithm>
+#include <cmath>
 #include <sstream>
 
 namespace alfa_robot::motion
@@ -68,6 +70,34 @@ std::string group_bounds_reason(
     if (count >= 4) break;
   }
   return out.str();
+}
+
+bool clamp_variable_to_bounds_if_near(
+  moveit::core::RobotState* state,
+  const std::string& variable_name,
+  double tolerance)
+{
+  if (!state || !std::isfinite(tolerance) || tolerance < 0.0) return false;
+  const auto robot_model = state->getRobotModel();
+  if (!robot_model) return false;
+  const auto& variable_names = robot_model->getVariableNames();
+  if (std::find(variable_names.begin(), variable_names.end(), variable_name) ==
+      variable_names.end()) {
+    return false;
+  }
+  const auto& bounds = robot_model->getVariableBounds(variable_name);
+  if (!bounds.position_bounded_) return false;
+  const double value = state->getVariablePosition(variable_name);
+  if (!std::isfinite(value) ||
+      value < bounds.min_position_ - tolerance ||
+      value > bounds.max_position_ + tolerance ||
+      (value >= bounds.min_position_ && value <= bounds.max_position_)) {
+    return false;
+  }
+  state->setVariablePosition(
+    variable_name,
+    std::clamp(value, bounds.min_position_, bounds.max_position_));
+  return true;
 }
 
 std::string direct_pipeline_failure_diagnostic(

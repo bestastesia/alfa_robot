@@ -19,12 +19,14 @@ from .common import (
     MotionSample,
     PoseTaskSpec,
     TaskSpec,
+    planning_task_from_suction_surface_poses,
+    pose6d_from_dict,
     retime_segment,
     retime_all_stages,
     split_execution_stages,
     validate_stage_contracts,
 )
-from .trajectory_cache import TrajectoryCache
+from .trajectory_cache import TrajectoryCache, format_cache_miss_diagnostic
 
 
 PlanningTask = TaskSpec | PoseTaskSpec
@@ -54,6 +56,8 @@ class PlannerAdapter:
         speed_scale: float,
         timeout_s: float,
         trajectory_cache_enabled: bool = True,
+        trajectory_cache_required: bool = False,
+        trajectory_cache_fallback_on_planning_failure: bool = False,
         trajectory_cache_root: Path | None = None,
     ) -> None:
         self.source_ws = source_ws.resolve()
@@ -70,6 +74,10 @@ class PlannerAdapter:
         self.trajectory_cache = TrajectoryCache(
             trajectory_cache_root,
             enabled=trajectory_cache_enabled,
+        )
+        self.trajectory_cache_required = bool(trajectory_cache_required)
+        self.trajectory_cache_fallback_on_planning_failure = bool(
+            trajectory_cache_fallback_on_planning_failure
         )
         self.scripts_dir = self.source_ws / "src/alfa_robot_moveit_config/scripts"
         self.planner_script = self.scripts_dir / "extract_sequence_rerun.py"
@@ -115,6 +123,8 @@ class PlannerAdapter:
             "0.9",
             "--top-box-front-x",
             "0.7",
+            "--container-height",
+            "2.4",
             "--fixed-updown",
             "0.3",
             "--loaded-updown",
@@ -272,6 +282,8 @@ class PlannerAdapter:
         current: MotionSample,
         *,
         preferred_updown: float = 0.3,
+        exact_target: MotionSample | None = None,
+        context_stage: str = "recapture/planned",
     ) -> tuple[list[MotionSample], dict[str, Any]]:
         self._ensure_session()
         if self._recapture_client is None:
@@ -280,6 +292,7 @@ class PlannerAdapter:
         request.left_target = left_target
         request.right_target = right_target
         request.preferred_updown = float(preferred_updown)
+        request.use_exact_target_state = exact_target is not None
         request.start_state.name = [
             "updown",
             "left_joint1", "left_joint2", "left_joint3",
@@ -291,6 +304,15 @@ class PlannerAdapter:
             float(current.updown_m),
             *(float(current.joints[name]) for name in request.start_state.name[1:]),
         ]
+        if exact_target is not None:
+            request.exact_target_state.name = list(request.start_state.name)
+            request.exact_target_state.position = [
+                float(exact_target.updown_m),
+                *(
+                    float(exact_target.joints[name])
+                    for name in request.exact_target_state.name[1:]
+                ),
+            ]
         started = time.monotonic()
         future = self._recapture_client.call_async(request)
         self._service_client._rclpy.spin_until_future_complete(
@@ -314,7 +336,7 @@ class PlannerAdapter:
                 time_s=0.0,
                 joints=dict(joint_map),
                 updown_m=updown,
-                context={"stage": "recapture/current", "updown": updown},
+                context={"stage": context_stage, "updown": updown},
             )
         ]
         trajectory = response.trajectory
@@ -332,11 +354,14 @@ class PlannerAdapter:
                     time_s=max(0.001, stamp),
                     joints=dict(joint_map),
                     updown_m=updown,
-                    context={"stage": "recapture/planned", "updown": updown},
+                    context={"stage": context_stage, "updown": updown},
                 )
             )
         if len(raw_samples) < 2:
-            raise RuntimeError("重拍位规划成功但轨迹为空")
+            raise RuntimeError(
+                "重拍位规划成功但轨迹为空: "
+                f"response_points={len(trajectory.points)} message={response.message}"
+            )
         samples = retime_segment(
             raw_samples,
             EXECUTION_JOINT_NAMES,
@@ -355,41 +380,164 @@ class PlannerAdapter:
             "message": response.message,
         }
 
+    @staticmethod
+    def _cached_task(task: PlanningTask, cache_match) -> PoseTaskSpec:
+        targets = cache_match.canonical_targets
+        return planning_task_from_suction_surface_poses(
+            task.code,
+            pose6d_from_dict(targets["left"]["pose_6d"], "cache.left.pose_6d"),
+            pose6d_from_dict(targets["right"]["pose_6d"], "cache.right.pose_6d"),
+            str(targets["left"]["grasp_mode"]),
+            str(targets["right"]["grasp_mode"]),
+        )
+
+    @staticmethod
+    def _cached_pregrasp_sample(cache_match) -> MotionSample:
+        state = cache_match.pregrasp_state
+        joints = state.get("joints", {})
+        missing = [name for name in EXECUTION_JOINT_NAMES if name not in joints]
+        if missing:
+            raise ValueError(f"缓存预抓取状态缺少关节: {', '.join(missing)}")
+        updown = float(state["updown_m"])
+        return MotionSample(
+            time_s=0.0,
+            joints={name: float(joints[name]) for name in EXECUTION_JOINT_NAMES},
+            updown_m=updown,
+            context={"stage": "cache/pregrasp", "updown": updown},
+        )
+
+    def _resolve_cache_match(
+        self,
+        task: PlanningTask,
+        initial_sample: MotionSample | None,
+    ):
+        if initial_sample is None:
+            match = None
+            reason = "initial_sample_missing"
+        else:
+            match, reason = self.trajectory_cache.find_with_reason(task, initial_sample)
+        if match is None and self.trajectory_cache_required:
+            raise RuntimeError(
+                format_cache_miss_diagnostic(task, reason, self.trajectory_cache.root)
+            )
+        return match
+
+    @staticmethod
+    def _base_link_target(target: dict[str, Any]) -> PoseStamped:
+        message = PoseStamped()
+        message.header.frame_id = str(target.get("frame_id", "base_link"))
+        position = target["position"]
+        orientation = target["orientation"]
+        message.pose.position.x = float(position[0])
+        message.pose.position.y = float(position[1])
+        message.pose.position.z = float(position[2])
+        message.pose.orientation.x = float(orientation[0])
+        message.pose.orientation.y = float(orientation[1])
+        message.pose.orientation.z = float(orientation[2])
+        message.pose.orientation.w = float(orientation[3])
+        return message
+
     def compute(
         self,
         task: PlanningTask,
         *,
         initial_sample: MotionSample | None = None,
     ) -> ExecutionPlan:
-        request_root = self.output_root / f"{task.code}_{int(time.time() * 1000)}"
+        if (
+            self.trajectory_cache.enabled
+            and not self.trajectory_cache_required
+            and self.trajectory_cache_fallback_on_planning_failure
+        ):
+            try:
+                plan = self._compute_once(
+                    task,
+                    initial_sample=initial_sample,
+                    cache_match=None,
+                )
+                plan.metrics["cache_fallback_used"] = False
+                return plan
+            except RuntimeError as online_error:
+                cache_match = self._resolve_cache_match(task, initial_sample)
+                if cache_match is None:
+                    raise RuntimeError(
+                        f"在线规划失败且缓存未命中: {online_error}"
+                    ) from online_error
+                print(
+                    "在线规划失败，降级使用轨迹缓存："
+                    f"task={task.code} cache={cache_match.path} "
+                    f"reason={online_error}",
+                    flush=True,
+                )
+                try:
+                    plan = self._compute_once(
+                        task,
+                        initial_sample=initial_sample,
+                        cache_match=cache_match,
+                    )
+                except RuntimeError as cache_error:
+                    raise RuntimeError(
+                        "在线规划与缓存降级均失败: "
+                        f"online=({online_error}); cache=({cache_error})"
+                    ) from cache_error
+                plan.metrics["cache_fallback_used"] = True
+                plan.metrics["online_planning_failure"] = str(online_error)
+                return plan
+
+        cache_match = self._resolve_cache_match(task, initial_sample)
+        plan = self._compute_once(
+            task,
+            initial_sample=initial_sample,
+            cache_match=cache_match,
+        )
+        plan.metrics["cache_fallback_used"] = False
+        return plan
+
+    def _compute_once(
+        self,
+        task: PlanningTask,
+        *,
+        initial_sample: MotionSample | None,
+        cache_match,
+    ) -> ExecutionPlan:
+        request_root = self.output_root / f"{task.code}_{time.time_ns()}"
         request_root.mkdir(parents=True, exist_ok=False)
         snapshot_path = request_root / "stage_snapshot.json"
         summary_path = request_root / "summary.json"
-        target_args = self._target_args(task)
-        runtime_config = self._runtime_config(task, target_args)
-        left_grasp_mode = task.left_grasp_mode
-        right_grasp_mode = task.right_grasp_mode
-        explicit_targets = getattr(task, "explicit_targets", None)
+        cache_started = time.monotonic()
+        planning_task = self._cached_task(task, cache_match) if cache_match is not None else task
+        target_args = self._target_args(planning_task)
+        runtime_config = self._runtime_config(planning_task, target_args)
+        left_grasp_mode = planning_task.left_grasp_mode
+        right_grasp_mode = planning_task.right_grasp_mode
+        explicit_targets = getattr(planning_task, "explicit_targets", None)
         left_target = (
             explicit_targets["left"]
             if explicit_targets is not None
             else self.sequence_helpers.explicit_grasp_target(
-                target_args, task.left_box_id, left_grasp_mode
+                target_args, planning_task.left_box_id, left_grasp_mode
             )
         )
         right_target = (
             explicit_targets["right"]
             if explicit_targets is not None
             else self.sequence_helpers.explicit_grasp_target(
-                target_args, task.right_box_id, right_grasp_mode
+                target_args, planning_task.right_box_id, right_grasp_mode
             )
         )
-        left_scene_slot_id = int(getattr(task, "left_scene_slot_id", task.left_box_id))
-        right_scene_slot_id = int(getattr(task, "right_scene_slot_id", task.right_box_id))
-        cache_started = time.monotonic()
-        cache_match = self.trajectory_cache.find(task, initial_sample)
+        left_scene_slot_id = int(
+            getattr(planning_task, "left_scene_slot_id", planning_task.left_box_id)
+        )
+        right_scene_slot_id = int(
+            getattr(planning_task, "right_scene_slot_id", planning_task.right_box_id)
+        )
         request_record = {
             "request_id": task.code,
+            "left_suction_surface_pose_6d": getattr(
+                task, "left_suction_surface_pose", None
+            ).__dict__ if hasattr(task, "left_suction_surface_pose") else None,
+            "right_suction_surface_pose_6d": getattr(
+                task, "right_suction_surface_pose", None
+            ).__dict__ if hasattr(task, "right_suction_surface_pose") else None,
             "left_front_face_pose_6d": getattr(
                 task, "left_front_face_pose", None
             ).__dict__ if hasattr(task, "left_front_face_pose") else None,
@@ -404,6 +552,10 @@ class PlannerAdapter:
             "right_grasp_mode": right_grasp_mode,
             "explicit_targets": explicit_targets,
             "runtime_config": runtime_config,
+            "trajectory_cache_path": str(cache_match.path) if cache_match is not None else "",
+            "trajectory_cache_canonical_targets": (
+                cache_match.canonical_targets if cache_match is not None else None
+            ),
         }
         (request_root / "planner_request.json").write_text(
             json.dumps(request_record, ensure_ascii=False, indent=2),
@@ -411,16 +563,45 @@ class PlannerAdapter:
         )
 
         if cache_match is not None:
+            self._ensure_session()
+            if self._service_client is None:
+                raise RuntimeError("planner service client 未初始化")
+            configure_ok, configure_output, configure_ms = self._service_client.configure(
+                left_scene_slot_id,
+                right_scene_slot_id,
+                snapshot_path,
+                self.timeout_s,
+                left_grasp_mode == "top_suction",
+                right_grasp_mode == "top_suction",
+                left_target,
+                right_target,
+                runtime_config=runtime_config,
+                strategy=getattr(planning_task, "strategy", None),
+                start_joint_positions=initial_sample.joints,
+                start_updown=initial_sample.updown_m,
+            )
+            if not configure_ok:
+                raise RuntimeError(f"缓存场景配置失败: {configure_output}")
+            pregrasp_sample = self._cached_pregrasp_sample(cache_match)
+            cache_bridge, bridge_metrics = self.plan_recapture(
+                self._base_link_target(left_target),
+                self._base_link_target(right_target),
+                initial_sample,
+                preferred_updown=pregrasp_sample.updown_m,
+                exact_target=pregrasp_sample,
+                context_stage=(
+                    "cache_bridge/selected_pre_attach_loaded_to_pre_contact"
+                ),
+            )
             snapshot = cache_match.snapshot
             snapshot_path.write_text(
                 json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),
                 encoding="utf-8",
             )
-            configure_ms = 0.0
             service_ms = 0.0
             planner_wall_ms = (time.monotonic() - cache_started) * 1000.0
             success = True
-            service_output = "trajectory cache hit"
+            service_output = "trajectory cache hit with exact pregrasp bridge"
         else:
             self._ensure_session()
             if self._service_client is None:
@@ -468,7 +649,7 @@ class PlannerAdapter:
                 else {}
             )
         summary = self._summary_from_snapshot(
-            task=task,
+            task=planning_task,
             snapshot=snapshot,
             snapshot_path=snapshot_path,
             configure_ms=configure_ms,
@@ -489,11 +670,19 @@ class PlannerAdapter:
         raw_samples = self.execution_helpers.trajectory_from_snapshot_preserve_timing(
             snapshot,
             initial=(
-                dict(initial_sample.joints)
+                dict(pregrasp_sample.joints)
+                if cache_match is not None
+                else dict(initial_sample.joints)
                 if initial_sample is not None
                 else self.execution_helpers.loaded_joint_map(0)
             ),
-            initial_updown=(initial_sample.updown_m if initial_sample is not None else 0.3),
+            initial_updown=(
+                pregrasp_sample.updown_m
+                if cache_match is not None
+                else initial_sample.updown_m
+                if initial_sample is not None
+                else 0.3
+            ),
             hz=self.rate_hz / self.speed_scale,
             max_joint_speed_deg_s=self.max_joint_speed_deg_s,
             max_updown_speed_m_s=self.max_updown_speed_m_s,
@@ -507,6 +696,8 @@ class PlannerAdapter:
             )
             for time_s, joint_map, context in raw_samples
         ]
+        if cache_match is not None:
+            samples = [*cache_bridge, *samples]
         stages = split_execution_stages(samples)
         validate_stage_contracts(task, stages, EXECUTION_JOINT_NAMES)
         stages = retime_all_stages(
@@ -539,6 +730,9 @@ class PlannerAdapter:
             "trajectory_cache_path": str(cache_match.path) if cache_match is not None else "",
             "trajectory_cache_distance_m": (
                 cache_match.distance_cm / 100.0 if cache_match is not None else 0.0
+            ),
+            "trajectory_cache_bridge_ms": (
+                float(bridge_metrics["wall_ms"]) if cache_match is not None else 0.0
             ),
         }
         return ExecutionPlan(

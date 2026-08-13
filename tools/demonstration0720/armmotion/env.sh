@@ -12,7 +12,9 @@ if [[ ! -f "${ARMMOTION_SOURCE_WS}/src/alfa_robot_moveit_config/scripts/extract_
 fi
 export ARMMOTION_OUTPUT_ROOT="${ARMMOTION_ROOT}/data"
 export ROS_LOG_DIR="${ARMMOTION_ROOT}/logs"
-ARMMOTION_ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+ARMMOTION_ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+ARMMOTION_TRAJECTORY_ACTION="${ARMMOTION_TRAJECTORY_ACTION:-/whole_body_jtc/follow_joint_trajectory}"
+export ARMMOTION_TRAJECTORY_ACTION
 mkdir -p "${ARMMOTION_OUTPUT_ROOT}" "${ROS_LOG_DIR}"
 
 set +u

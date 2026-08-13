@@ -22,6 +22,8 @@ fi
 exec ros2 launch armmotion_demo motion_domain.launch.py \
   use_mock_rt_control:="${use_mock}" \
   dry_run:=false \
+  trajectory_action:="${ARMMOTION_TRAJECTORY_ACTION}" \
   source_ws:="${ARMMOTION_SOURCE_WS}" \
   output_root:="${ARMMOTION_OUTPUT_ROOT}/domain" \
+  max_updown_speed_m_s:="${ARMMOTION_MAX_UPDOWN_SPEED_M_S:-0.15}" \
   allow_partial_domain_test:=true

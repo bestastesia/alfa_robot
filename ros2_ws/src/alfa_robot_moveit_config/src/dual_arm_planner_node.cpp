@@ -52,6 +52,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
+#include <Eigen/Cholesky>
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <atomic>
@@ -188,6 +189,7 @@ using alfa_robot::motion::StaticBoxObstacle;
 using alfa_robot::motion::aabb_from_attached_box_transform;
 using alfa_robot::motion::carried_box_detached_from_neighbors;
 using alfa_robot::motion::carried_box_clear_rear_guards;
+using alfa_robot::motion::clamp_variable_to_bounds_if_near;
 using alfa_robot::motion::deg_to_rad;
 using alfa_robot::motion::direct_pipeline_failure_diagnostic;
 using alfa_robot::motion::format_degrees;
@@ -269,6 +271,159 @@ void attach_boxes_to_robot_state(
       box.link_name);
   }
   state.update(true);
+}
+
+struct ApproximateArmIkSolution
+{
+  std::array<double, 6> joints{};
+  double position_error = std::numeric_limits<double>::infinity();
+  double orientation_error = std::numeric_limits<double>::infinity();
+  double normalized_cost = std::numeric_limits<double>::infinity();
+};
+
+struct RecaptureNumericCandidate
+{
+  moveit::core::RobotStatePtr state;
+  double h = 0.0;
+  double position_error = std::numeric_limits<double>::infinity();
+  double orientation_error = std::numeric_limits<double>::infinity();
+  double joint_delta = std::numeric_limits<double>::infinity();
+  double score = std::numeric_limits<double>::infinity();
+};
+
+double approximate_pose_cost(
+  const Eigen::Isometry3d& target,
+  const Eigen::Isometry3d& actual,
+  double position_tolerance,
+  double orientation_tolerance,
+  double* position_error = nullptr,
+  double* orientation_error = nullptr)
+{
+  const double position = (target.translation() - actual.translation()).norm();
+  const Eigen::AngleAxisd rotation(target.linear() * actual.linear().transpose());
+  const double orientation = std::abs(rotation.angle());
+  if (position_error) *position_error = position;
+  if (orientation_error) *orientation_error = orientation;
+  const double normalized_position = position / std::max(1e-6, position_tolerance);
+  const double normalized_orientation = orientation / std::max(1e-6, orientation_tolerance);
+  return normalized_position * normalized_position +
+         normalized_orientation * normalized_orientation;
+}
+
+std::optional<ApproximateArmIkSolution> solve_approximate_arm_ik(
+  const moveit::core::RobotState& seed_state,
+  const moveit::core::JointModelGroup* arm_group,
+  const std::string& tip,
+  const Eigen::Isometry3d& target_in_base_link,
+  const std::array<double, 6>& arm_seed,
+  double position_tolerance,
+  double orientation_tolerance,
+  size_t max_iterations,
+  double max_iteration_delta,
+  bool require_tolerance_match)
+{
+  if (!arm_group || arm_group->getVariableCount() != 6) return std::nullopt;
+  const auto* tip_link = seed_state.getRobotModel()->getLinkModel(tip);
+  if (!tip_link) return std::nullopt;
+  const auto& names = arm_group->getVariableNames();
+  moveit::core::RobotState state(seed_state);
+  for (size_t index = 0; index < arm_seed.size(); ++index) {
+    state.setVariablePosition(names[index], arm_seed[index]);
+  }
+  state.enforceBounds(arm_group);
+  state.update(true);
+  const Eigen::Isometry3d target_world =
+    state.getGlobalLinkTransform("base_link") * target_in_base_link;
+  const double orientation_weight =
+    position_tolerance / std::max(1e-6, orientation_tolerance);
+  double damping = 1e-3;
+  size_t stagnant_iterations = 0;
+  ApproximateArmIkSolution best;
+
+  for (size_t iteration = 0; iteration < max_iterations; ++iteration) {
+    state.update(true);
+    const Eigen::Isometry3d current_world = state.getGlobalLinkTransform(tip_link);
+    double position_error = 0.0;
+    double orientation_error = 0.0;
+    const double current_cost = approximate_pose_cost(
+      target_world,
+      current_world,
+      position_tolerance,
+      orientation_tolerance,
+      &position_error,
+      &orientation_error);
+    if (current_cost + 1e-12 < best.normalized_cost) {
+      best.normalized_cost = current_cost;
+      best.position_error = position_error;
+      best.orientation_error = orientation_error;
+      for (size_t index = 0; index < best.joints.size(); ++index) {
+        best.joints[index] = state.getVariablePosition(names[index]);
+      }
+      stagnant_iterations = 0;
+    } else {
+      ++stagnant_iterations;
+    }
+    if (stagnant_iterations >= 40) break;
+
+    Eigen::MatrixXd jacobian;
+    if (!state.getJacobian(
+          arm_group, tip_link, Eigen::Vector3d::Zero(), jacobian, false) ||
+        jacobian.rows() != 6 || jacobian.cols() != 6) {
+      break;
+    }
+    const Eigen::Vector3d translation_error =
+      target_world.translation() - current_world.translation();
+    const Eigen::AngleAxisd rotation_error(
+      target_world.linear() * current_world.linear().transpose());
+    const Eigen::Vector3d angular_error = rotation_error.axis() * rotation_error.angle();
+    Eigen::Matrix<double, 6, 6> weighted_jacobian = jacobian;
+    weighted_jacobian.bottomRows<3>() *= orientation_weight;
+    Eigen::Matrix<double, 6, 1> weighted_error;
+    weighted_error.head<3>() = translation_error;
+    weighted_error.tail<3>() = orientation_weight * angular_error;
+    const Eigen::Matrix<double, 6, 6> regularized =
+      weighted_jacobian * weighted_jacobian.transpose() +
+      damping * damping * Eigen::Matrix<double, 6, 6>::Identity();
+    Eigen::Matrix<double, 6, 1> delta =
+      weighted_jacobian.transpose() * regularized.ldlt().solve(weighted_error);
+    if (!delta.allFinite()) break;
+    const double largest_delta = delta.cwiseAbs().maxCoeff();
+    if (largest_delta > max_iteration_delta) {
+      delta *= max_iteration_delta / largest_delta;
+    }
+
+    bool accepted = false;
+    for (double scale : {1.0, 0.5, 0.25, 0.125}) {
+      moveit::core::RobotState trial(state);
+      for (size_t index = 0; index < arm_seed.size(); ++index) {
+        trial.setVariablePosition(
+          names[index], state.getVariablePosition(names[index]) + scale * delta[index]);
+      }
+      trial.enforceBounds(arm_group);
+      trial.update(true);
+      const double trial_cost = approximate_pose_cost(
+        target_world,
+        trial.getGlobalLinkTransform(tip_link),
+        position_tolerance,
+        orientation_tolerance);
+      if (trial_cost + 1e-10 < current_cost) {
+        state = trial;
+        damping = std::max(1e-6, damping * 0.5);
+        accepted = true;
+        break;
+      }
+    }
+    if (!accepted) {
+      damping = std::min(1.0, damping * 10.0);
+      ++stagnant_iterations;
+    }
+  }
+  if (require_tolerance_match &&
+      (best.position_error > position_tolerance ||
+      best.orientation_error > orientation_tolerance)) {
+    return std::nullopt;
+  }
+  return best;
 }
 
 }  // namespace
@@ -385,6 +540,22 @@ public:
     ik_config_.fallback_seed_count = static_cast<size_t>(std::max(1, get_or_declare_parameter<int>("ik_fallback_seed_count", 64)));
     ik_config_.fallback_rounds = static_cast<size_t>(std::max(1, get_or_declare_parameter<int>("ik_fallback_rounds", 1)));
     ik_config_.fallback_timeout = get_or_declare_parameter<double>("ik_fallback_timeout", ik_config_.timeout);
+    recapture_numeric_fallback_enabled_ =
+      get_or_declare_parameter<bool>("recapture_numeric_fallback_enabled", true);
+    recapture_numeric_position_tolerance_ = std::max(
+      1e-4, get_or_declare_parameter<double>("recapture_numeric_position_tolerance", 0.01));
+    recapture_numeric_orientation_tolerance_ = std::max(
+      1e-4,
+      get_or_declare_parameter<double>("recapture_numeric_orientation_tolerance_deg", 10.0) *
+      M_PI / 180.0);
+    recapture_numeric_max_iterations_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("recapture_numeric_max_iterations", 400)));
+    recapture_numeric_max_candidates_ = static_cast<size_t>(std::max(
+      1, get_or_declare_parameter<int>("recapture_numeric_max_candidates", 64)));
+    recapture_numeric_max_step_ = std::max(
+      0.1,
+      get_or_declare_parameter<double>("recapture_numeric_max_step_deg", 3.0)) *
+      M_PI / 180.0;
 
     enable_container_obstacle_ = get_or_declare_parameter<bool>("enable_container_obstacle", true);
     container_frame_ = get_or_declare_parameter<std::string>("container_frame", "world");
@@ -396,7 +567,7 @@ public:
       get_or_declare_parameter<double>("vehicle_drift_rotation_threshold_rad", 0.02);
     container_length_ = get_or_declare_parameter<double>("container_length", 4.0);
     container_width_ = get_or_declare_parameter<double>("container_width", 1.8);
-    container_height_ = get_or_declare_parameter<double>("container_height", 2.2);
+    container_height_ = get_or_declare_parameter<double>("container_height", 2.4);
     container_center_x_ = get_or_declare_parameter<double>("container_center_x", 0.8);
     container_center_y_ = get_or_declare_parameter<double>("container_center_y", 0.0);
     container_pose_dynamic_ = get_or_declare_parameter<bool>("container_pose_dynamic", false);
@@ -5144,6 +5315,17 @@ private:
         return nullptr;
       }
     }
+    constexpr double kMeasuredUpdownBoundsToleranceM = 1.0e-4;
+    const double reported_updown = state->getVariablePosition("updown");
+    if (clamp_variable_to_bounds_if_near(
+        state.get(), "updown", kMeasuredUpdownBoundsToleranceM)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Clamped near-boundary updown from %.9f m to %.9f m (tolerance %.6f m)",
+        reported_updown,
+        state->getVariablePosition("updown"),
+        kMeasuredUpdownBoundsToleranceM);
+    }
     state->update(true);
     const std::string bounds = group_bounds_reason(*state, joint_group_);
     if (!bounds.empty()) {
@@ -5151,6 +5333,224 @@ private:
       return nullptr;
     }
     return state;
+  }
+
+  std::vector<RecaptureNumericCandidate> numeric_recapture_candidates(
+    const moveit::core::RobotState& start_state,
+    const geometry_msgs::msg::Pose& left_target,
+    const geometry_msgs::msg::Pose& right_target,
+    const std::vector<double>& raw_h_candidates,
+    double preferred_updown) const
+  {
+    if (!left_arm_group_ || !right_arm_group_) return {};
+    std::vector<double> h_candidates = raw_h_candidates;
+    if (h_candidates.empty()) {
+      for (double h = ik_config_.h_lower; h <= ik_config_.h_upper + 1e-9; h += ik_config_.h_step) {
+        h_candidates.push_back(std::min(h, ik_config_.h_upper));
+      }
+    }
+    std::sort(
+      h_candidates.begin(), h_candidates.end(),
+      [preferred_updown](double lhs, double rhs) {
+        const double lhs_distance = std::abs(lhs - preferred_updown);
+        const double rhs_distance = std::abs(rhs - preferred_updown);
+        if (std::abs(lhs_distance - rhs_distance) > 1e-12) {
+          return lhs_distance < rhs_distance;
+        }
+        return lhs < rhs;
+      });
+
+    const auto arm_values = [](const moveit::core::RobotState& state, const std::string& side) {
+      std::array<double, 6> values{};
+      for (size_t index = 0; index < values.size(); ++index) {
+        values[index] = state.getVariablePosition(
+          side + "_joint" + std::to_string(index + 1));
+      }
+      return values;
+    };
+    const auto vector_seed = [](const std::vector<double>& values) {
+      std::array<double, 6> seed{};
+      for (size_t index = 0; index < seed.size() && index < values.size(); ++index) {
+        seed[index] = values[index];
+      }
+      return seed;
+    };
+    const auto append_unique_seed = [](
+      std::vector<std::array<double, 6>>* seeds,
+      const std::array<double, 6>& candidate) {
+      if (!seeds) return;
+      const bool duplicate = std::any_of(
+        seeds->begin(), seeds->end(),
+        [&candidate](const auto& existing) {
+          double maximum = 0.0;
+          for (size_t index = 0; index < candidate.size(); ++index) {
+            maximum = std::max(maximum, std::abs(existing[index] - candidate[index]));
+          }
+          return maximum < 1e-6;
+        });
+      if (!duplicate) seeds->push_back(candidate);
+    };
+    const auto solution_distance = [](
+      const ApproximateArmIkSolution& solution,
+      const std::array<double, 6>& reference) {
+      double distance = 0.0;
+      for (size_t index = 0; index < reference.size(); ++index) {
+        distance += std::abs(std::remainder(
+          solution.joints[index] - reference[index], 2.0 * M_PI));
+      }
+      return distance;
+    };
+    const auto normalize_solutions = [&](
+      std::vector<ApproximateArmIkSolution>* solutions,
+      const std::array<double, 6>& reference) {
+      if (!solutions) return;
+      std::sort(
+        solutions->begin(), solutions->end(),
+        [&](const auto& lhs, const auto& rhs) {
+          if (std::abs(lhs.normalized_cost - rhs.normalized_cost) > 1e-12) {
+            return lhs.normalized_cost < rhs.normalized_cost;
+          }
+          return solution_distance(lhs, reference) < solution_distance(rhs, reference);
+        });
+      std::vector<ApproximateArmIkSolution> unique;
+      for (const auto& solution : *solutions) {
+        const bool duplicate = std::any_of(
+          unique.begin(), unique.end(),
+          [&solution](const auto& kept) {
+            double maximum = 0.0;
+            for (size_t index = 0; index < solution.joints.size(); ++index) {
+              maximum = std::max(maximum, std::abs(std::remainder(
+                solution.joints[index] - kept.joints[index], 2.0 * M_PI)));
+            }
+            return maximum < 1.0 * M_PI / 180.0;
+          });
+        if (!duplicate) unique.push_back(solution);
+        if (unique.size() >= 4) break;
+      }
+      *solutions = std::move(unique);
+    };
+
+    const auto left_reference = arm_values(start_state, "left");
+    const auto right_reference = arm_values(start_state, "right");
+    const auto left_pregrasp = vector_seed(left_pregrasp_arm_);
+    const auto right_pregrasp = vector_seed(right_pregrasp_arm_);
+    const std::array<double, 6> alternate_seed{
+      0.0, 45.0 * M_PI / 180.0, -120.0 * M_PI / 180.0,
+      75.0 * M_PI / 180.0, 0.0, 0.0};
+    const std::vector<std::array<double, 6>> front_numeric_seeds_deg{
+      {25.0, -39.0, 87.0, -48.0, 29.0, 0.0},
+      {25.0, 33.0, -72.0, 39.0, 29.0, 0.0},
+      {15.0, -54.0, 125.0, -72.0, 20.0, 0.0},
+      {15.0, -46.0, 168.0, -121.0, 20.0, 0.0},
+      {10.0, -35.0, 79.0, -43.0, 15.0, 0.0},
+    };
+    std::optional<std::array<double, 6>> left_continuation;
+    std::optional<std::array<double, 6>> right_continuation;
+    const Eigen::Isometry3d left_target_eigen = pose_to_eigen(left_target);
+    const Eigen::Isometry3d right_target_eigen = pose_to_eigen(right_target);
+    std::vector<RecaptureNumericCandidate> result;
+
+    for (double h : h_candidates) {
+      moveit::core::RobotState fixed_h_state(start_state);
+      fixed_h_state.setVariablePosition("updown", h);
+      fixed_h_state.enforceBounds(joint_group_);
+      fixed_h_state.update(true);
+      std::vector<std::array<double, 6>> left_seeds;
+      std::vector<std::array<double, 6>> right_seeds;
+      if (left_continuation) append_unique_seed(&left_seeds, *left_continuation);
+      if (right_continuation) append_unique_seed(&right_seeds, *right_continuation);
+      append_unique_seed(&left_seeds, left_reference);
+      append_unique_seed(&right_seeds, right_reference);
+      append_unique_seed(&left_seeds, left_pregrasp);
+      append_unique_seed(&right_seeds, right_pregrasp);
+      append_unique_seed(&left_seeds, alternate_seed);
+      append_unique_seed(&right_seeds, alternate_seed);
+      for (const auto& degrees : front_numeric_seeds_deg) {
+        std::array<double, 6> left_seed{};
+        std::array<double, 6> right_seed{};
+        for (size_t index = 0; index < degrees.size(); ++index) {
+          left_seed[index] = degrees[index] * M_PI / 180.0;
+          right_seed[index] = left_seed[index];
+        }
+        right_seed[0] = -right_seed[0];
+        right_seed[4] = -right_seed[4];
+        append_unique_seed(&left_seeds, left_seed);
+        append_unique_seed(&right_seeds, right_seed);
+      }
+
+      std::vector<ApproximateArmIkSolution> left_solutions;
+      std::vector<ApproximateArmIkSolution> right_solutions;
+      for (const auto& seed : left_seeds) {
+        const auto solution = solve_approximate_arm_ik(
+          fixed_h_state, left_arm_group_, left_tip_, left_target_eigen, seed,
+          recapture_numeric_position_tolerance_,
+          recapture_numeric_orientation_tolerance_,
+          recapture_numeric_max_iterations_,
+          recapture_numeric_max_step_,
+          false);
+        if (solution) left_solutions.push_back(*solution);
+      }
+      for (const auto& seed : right_seeds) {
+        const auto solution = solve_approximate_arm_ik(
+          fixed_h_state, right_arm_group_, right_tip_, right_target_eigen, seed,
+          recapture_numeric_position_tolerance_,
+          recapture_numeric_orientation_tolerance_,
+          recapture_numeric_max_iterations_,
+          recapture_numeric_max_step_,
+          false);
+        if (solution) right_solutions.push_back(*solution);
+      }
+      normalize_solutions(&left_solutions, left_reference);
+      normalize_solutions(&right_solutions, right_reference);
+      if (left_solutions.empty() || right_solutions.empty()) continue;
+      left_continuation = left_solutions.front().joints;
+      right_continuation = right_solutions.front().joints;
+      const auto& left_names = left_arm_group_->getVariableNames();
+      const auto& right_names = right_arm_group_->getVariableNames();
+      for (const auto& left : left_solutions) {
+        for (const auto& right : right_solutions) {
+          auto state = std::make_shared<moveit::core::RobotState>(fixed_h_state);
+          for (size_t index = 0; index < 6; ++index) {
+            state->setVariablePosition(left_names[index], left.joints[index]);
+            state->setVariablePosition(right_names[index], right.joints[index]);
+          }
+          state->enforceBounds(joint_group_);
+          state->update(true);
+          double joint_delta = 0.0;
+          for (const auto& name : left_names) {
+            joint_delta += std::abs(std::remainder(
+              state->getVariablePosition(name) - start_state.getVariablePosition(name),
+              2.0 * M_PI));
+          }
+          for (const auto& name : right_names) {
+            joint_delta += std::abs(std::remainder(
+              state->getVariablePosition(name) - start_state.getVariablePosition(name),
+              2.0 * M_PI));
+          }
+          RecaptureNumericCandidate candidate;
+          candidate.state = std::move(state);
+          candidate.h = h;
+          candidate.position_error = std::max(left.position_error, right.position_error);
+          candidate.orientation_error = std::max(left.orientation_error, right.orientation_error);
+          candidate.joint_delta = joint_delta;
+          candidate.score = left.normalized_cost + right.normalized_cost;
+          result.push_back(std::move(candidate));
+        }
+      }
+    }
+    std::sort(
+      result.begin(), result.end(),
+      [preferred_updown](const auto& lhs, const auto& rhs) {
+        if (std::abs(lhs.score - rhs.score) > 1e-12) return lhs.score < rhs.score;
+        const double lhs_h = std::abs(lhs.h - preferred_updown);
+        const double rhs_h = std::abs(rhs.h - preferred_updown);
+        if (std::abs(lhs_h - rhs_h) > 1e-12) return lhs_h < rhs_h;
+        return lhs.joint_delta < rhs.joint_delta;
+      });
+    if (result.size() > recapture_numeric_max_candidates_) {
+      result.resize(recapture_numeric_max_candidates_);
+    }
+    return result;
   }
 
   bool plan_recapture(
@@ -5172,6 +5572,73 @@ private:
     if (!start_state) {
       response->message = start_reason;
       return false;
+    }
+    if (request.use_exact_target_state) {
+      std::string goal_reason;
+      auto goal_state = robot_state_from_joint_state_message(
+        request.exact_target_state, &goal_reason);
+      if (!goal_state) {
+        response->message = "exact target " + goal_reason;
+        return false;
+      }
+      auto scene = make_full_scene_snapshot(*start_state, {});
+      if (!scene || !state_clear_in_full_scene(scene, *goal_state, {}, &goal_reason)) {
+        response->message = goal_reason.empty()
+          ? "exact target state collision"
+          : "exact target " + goal_reason;
+        return false;
+      }
+      moveit::planning_interface::MoveGroupInterface::Plan plan;
+      std::string planning_reason;
+      if (!plan_joint_space_with_direct_pipeline(
+          *start_state,
+          *goal_state,
+          &plan,
+          &planning_reason,
+          {},
+          extract_loaded_planning_group_)) {
+        response->message = planning_reason.empty()
+          ? "exact target planning failed"
+          : planning_reason;
+        return false;
+      }
+      auto& exact_trajectory = plan.trajectory_.joint_trajectory;
+      if (exact_trajectory.points.empty() ||
+          exact_trajectory.points.back().positions.size() != exact_trajectory.joint_names.size()) {
+        response->message = "exact target trajectory has invalid final point";
+        return false;
+      }
+      for (size_t index = 0; index < exact_trajectory.joint_names.size(); ++index) {
+        const auto& name = exact_trajectory.joint_names[index];
+        if (is_robot_variable(name)) {
+          exact_trajectory.points.back().positions[index] = goal_state->getVariablePosition(name);
+        }
+      }
+      exact_trajectory.points.back().velocities.clear();
+      exact_trajectory.points.back().accelerations.clear();
+      exact_trajectory.points.back().effort.clear();
+      plan = densify_joint_plan(plan, 5.0 * M_PI / 180.0, 0.01);
+      std::string trajectory_reason;
+      if (!planned_trajectory_clear_in_full_scene(
+          plan, *start_state, {}, &trajectory_reason)) {
+        response->message = trajectory_reason.empty()
+          ? "exact target trajectory collision"
+          : trajectory_reason;
+        return false;
+      }
+      response->selected_state.name = dual_arm_with_updown_joint_names();
+      response->selected_state.position.reserve(response->selected_state.name.size());
+      for (const auto& name : response->selected_state.name) {
+        response->selected_state.position.push_back(goal_state->getVariablePosition(name));
+      }
+      response->selected_updown = current_updown(*goal_state);
+      response->ik_time_ms = 0.0;
+      response->planning_time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+      response->trajectory = plan.trajectory_.joint_trajectory;
+      response->success = true;
+      response->message = "exact pregrasp joint transition planned";
+      return true;
     }
     if (!ensure_optimized_ik_solver()) {
       response->message = "optimized IK solver is not initialized";
@@ -5198,7 +5665,85 @@ private:
       "recapture_pose_pair");
     response->ik_time_ms = solved.ik_result.wall_ms;
     if (!solved.ik_result.success) {
-      response->message = solved.failure_reason;
+      if (!recapture_numeric_fallback_enabled_) {
+        response->message = solved.failure_reason;
+        return false;
+      }
+      const auto numeric_candidates = numeric_recapture_candidates(
+        *start_state,
+        request.left_target.pose,
+        request.right_target.pose,
+        solved.ik_result.h_candidates,
+        preferred_updown);
+      response->ik_time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+      if (numeric_candidates.empty()) {
+        response->message = solved.failure_reason + "; numeric_recapture_no_solution";
+        return false;
+      }
+
+      std::map<std::string, size_t> numeric_rejection_counts;
+      for (const auto& candidate : numeric_candidates) {
+        if (!candidate.state) continue;
+        auto scene = make_full_scene_snapshot(*start_state, {});
+        std::string goal_reason;
+        if (!scene || !state_clear_in_full_scene(scene, *candidate.state, {}, &goal_reason)) {
+          numeric_rejection_counts[
+            goal_reason.empty() ? "numeric_goal_state_collision" : goal_reason]++;
+          continue;
+        }
+        moveit::planning_interface::MoveGroupInterface::Plan plan;
+        std::string planning_reason;
+        if (!plan_joint_space_with_direct_pipeline(
+            *start_state,
+            *candidate.state,
+            &plan,
+            &planning_reason,
+            {},
+            extract_loaded_planning_group_)) {
+          numeric_rejection_counts[
+            planning_reason.empty() ? "numeric_planning_failed" : planning_reason]++;
+          continue;
+        }
+        std::string trajectory_reason;
+        if (!planned_trajectory_clear_in_full_scene(
+            plan, *start_state, {}, &trajectory_reason)) {
+          numeric_rejection_counts[
+            trajectory_reason.empty() ? "numeric_trajectory_collision" : trajectory_reason]++;
+          continue;
+        }
+
+        response->selected_state.name = dual_arm_with_updown_joint_names();
+        response->selected_state.position.reserve(response->selected_state.name.size());
+        for (const auto& name : response->selected_state.name) {
+          response->selected_state.position.push_back(
+            candidate.state->getVariablePosition(name));
+        }
+        response->trajectory = plan.trajectory_.joint_trajectory;
+        response->selected_updown = candidate.h;
+        response->planning_time_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count() - response->ik_time_ms;
+        response->success = true;
+        std::ostringstream message;
+        message << "recapture planned with numerical IK fallback at updown="
+                << candidate.h
+                << " candidates=" << numeric_candidates.size()
+                << " trajectory_points=" << response->trajectory.points.size()
+                << " position_error_mm=" << candidate.position_error * 1000.0
+                << " orientation_error_deg=" << candidate.orientation_error * 180.0 / M_PI;
+        response->message = message.str();
+        return true;
+      }
+
+      std::ostringstream failure;
+      failure << "no collision-free recapture trajectory among "
+              << numeric_candidates.size() << " numerical IK candidates";
+      for (const auto& [reason, count] : numeric_rejection_counts) {
+        failure << "; " << reason << "=" << count;
+      }
+      response->message = failure.str();
+      response->planning_time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count() - response->ik_time_ms;
       return false;
     }
 
@@ -5259,7 +5804,8 @@ private:
         std::chrono::steady_clock::now() - started).count() - response->ik_time_ms;
       response->success = true;
       response->message = "recapture planned at updown=" + std::to_string(candidate->h) +
-        " candidates=" + std::to_string(candidates.size());
+        " candidates=" + std::to_string(candidates.size()) +
+        " trajectory_points=" + std::to_string(response->trajectory.points.size());
       return true;
     }
 
@@ -7035,6 +7581,12 @@ private:
   bool prefer_commanded_state_ = true;
   bool include_top_suction_ = true;
   size_t ik_analytic_root_samples_ = 360;
+  bool recapture_numeric_fallback_enabled_ = true;
+  double recapture_numeric_position_tolerance_ = 0.01;
+  double recapture_numeric_orientation_tolerance_ = 10.0 * M_PI / 180.0;
+  size_t recapture_numeric_max_iterations_ = 400;
+  size_t recapture_numeric_max_candidates_ = 64;
+  double recapture_numeric_max_step_ = 3.0 * M_PI / 180.0;
   double fixed_updown_ = 0.45;
   double box_front_x_ = 0.625;
   double scene_y_shift_ = 0.0;
@@ -7055,7 +7607,7 @@ private:
   double vehicle_drift_rotation_threshold_rad_ = 0.02;
   double container_length_ = 4.0;
   double container_width_ = 1.8;
-  double container_height_ = 2.2;
+  double container_height_ = 2.4;
   double container_center_x_ = 0.8;
   double container_center_y_ = 0.0;
   bool container_pose_dynamic_ = false;

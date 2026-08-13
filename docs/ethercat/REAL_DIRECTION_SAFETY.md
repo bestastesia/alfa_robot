@@ -86,7 +86,7 @@ scripts/lhy_dev/send_dual_grasp_sequence.py  （--execute-backend planner-live�
 这条路径当前不是默认执行路径，风险敞口有限，但如果以后要切换默认 backend 或有人直接调用
 service 路径，必须先解决这个"参数被接受但不生效"的问题，否则调用方会误以为已经生效。
 
-## 方向映射唯一真相源（未变）
+## 方向合同唯一真相源
 
 仓库内方向映射唯一真相源仍是：
 
@@ -101,17 +101,18 @@ ros2_ws/src/alfa_robot_execution_bridge/alfa_robot_execution_bridge/joints.py
 - 不要在执行脚本、launch、YAML 或临时测试脚本里复制方向表。
 - `execute_l6_r8_mock_live.py` 必须从 `alfa_robot_execution_bridge.joints` 导入 joint 顺序和方向转换函数。
 - `alfa_robot_execution_bridge/config/*.yaml` 只允许配置是否应用方向映射，不允许复制 `direction_signs`。
-- 如果实机方向重新标定，只改 `joints.py`，然后运行 `scripts/safety/check_l6_r8_real_safety.py`。
+- 电机方向校准由 rt-control 控制层负责；Motion 仍必须经过 `joints.py`，但不再重复翻转。
+- 如果公共边界方向合同变化，只改 `joints.py`，然后运行 `scripts/safety/check_l6_r8_real_safety.py`。
 
 当前已验证正确的 direct-real 方向规则：
 
 | 关节 | 软件方向处理 |
 | --- | --- |
-| left_joint3 | 翻转 |
-| left_joint5 | 翻转 |
-| right_joint2 | 翻转 |
-| right_joint4 | 翻转 |
-| 其它 9 个关节 | 不翻转 |
+| left_joint3 | 正向；rt-control 已校准 |
+| left_joint5 | 正向；rt-control 已校准 |
+| right_joint2 | 正向；rt-control 已校准 |
+| right_joint4 | 正向；rt-control 已校准 |
+| 其它 9 个关节 | 正向 |
 
 负重姿态族：`loaded_preferred_pose_index=1` 对应 `[-75, 135, 60]` 肘型（历史上出现过方向反的
 问题源头之一）；当前实机唯一确认方向正确的是 `loaded_preferred_pose_index=0`。

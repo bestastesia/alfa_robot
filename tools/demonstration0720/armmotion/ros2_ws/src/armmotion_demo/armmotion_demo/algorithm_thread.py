@@ -18,6 +18,7 @@ from robot_motion_runtime.dual_grasp_strategy import (
     BOX_DEPTH_M,
     BOX_HEIGHT_M,
     BOX_ROW_COUNT,
+    BOX_ROW_PITCH_M,
     ROW_MATCH_TOLERANCE_M,
     TOP_SUCTION_FIRST_ROW,
 )
@@ -32,7 +33,7 @@ from .common import (
     decode_message,
     encode_message,
     loaded_joint_map,
-    planning_task_from_front_face_poses,
+    planning_task_from_suction_surface_poses,
     pose6d_from_dict,
     pose6d_dict,
     retime_segment,
@@ -83,6 +84,7 @@ class AlgorithmThread(Node):
         self.declare_parameter("vacuum_pump_service", "/plc/vacuum_pump")
         self.declare_parameter("box_row_count", BOX_ROW_COUNT)
         self.declare_parameter("box_height_m", BOX_HEIGHT_M)
+        self.declare_parameter("box_row_pitch_m", BOX_ROW_PITCH_M)
         self.declare_parameter("box_depth_m", BOX_DEPTH_M)
         self.declare_parameter("bottom_row_front_center_z_m", BOTTOM_ROW_FRONT_CENTER_Z_M)
         self.declare_parameter("row_match_tolerance_m", ROW_MATCH_TOLERANCE_M)
@@ -248,19 +250,22 @@ class AlgorithmThread(Node):
         try:
             request = decode_message(message.data)
             request_id = str(request["request_id"])
-            left_front_face_pose = pose6d_from_dict(
+            left_suction_pose = pose6d_from_dict(
                 request["left"]["pose_6d"],
                 "left.pose_6d",
             )
-            right_front_face_pose = pose6d_from_dict(
+            right_suction_pose = pose6d_from_dict(
                 request["right"]["pose_6d"],
                 "right.pose_6d",
             )
-            task = planning_task_from_front_face_poses(
+            task = planning_task_from_suction_surface_poses(
                 request_id,
-                left_front_face_pose,
-                right_front_face_pose,
+                left_suction_pose,
+                right_suction_pose,
+                str(request["left"]["grasp_mode"]),
+                str(request["right"]["grasp_mode"]),
                 row_count=int(self.get_parameter("box_row_count").value),
+                row_pitch_m=float(self.get_parameter("box_row_pitch_m").value),
                 box_height_m=float(self.get_parameter("box_height_m").value),
                 box_depth_m=float(self.get_parameter("box_depth_m").value),
                 bottom_row_center_z_m=float(
@@ -299,6 +304,8 @@ class AlgorithmThread(Node):
         self._publish(
             "planning_started",
             request_id=request_id,
+            left_suction_surface_pose_6d=pose6d_dict(task.left_suction_surface_pose),
+            right_suction_surface_pose_6d=pose6d_dict(task.right_suction_surface_pose),
             left_front_face_pose_6d=pose6d_dict(task.left_front_face_pose),
             right_front_face_pose_6d=pose6d_dict(task.right_front_face_pose),
             left_row=task.left_row,

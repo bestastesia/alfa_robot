@@ -80,7 +80,8 @@ std::map<int, BoxSpec> make_boxes(double front_x, double y_shift)
 {
   std::map<int, BoxSpec> boxes;
   for (int row = 0; row < kBoxStackRowCount; ++row) {
-    const double z = (static_cast<double>(kBoxStackRowCount - row) - 0.5) * kBoxHeight;
+    const double z = kBottomBoxCenterZ +
+      static_cast<double>(kBoxStackRowCount - row - 1) * kBoxRowPitch;
     for (int column = 0; column < kBoxStackColumnCount; ++column) {
       const int id = row * kBoxStackColumnCount + column + 1;
       const double y =

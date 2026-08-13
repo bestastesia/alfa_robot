@@ -5,13 +5,13 @@ This module is the runtime single source of truth for:
 - execution-layer joint names
 - legacy raw EtherCAT controller joint order
 - rt-control public 14-axis FollowJointTrajectory order
-- model-to-controller direction signs at the execution boundary
+- model-to-controller direction contract at the execution boundary
 - real EtherCAT zero offsets -> ROS/Rerun zero semantics
 - ROS/Rerun updown logical meters -> real updown controller physical meters
 
 The rt-control public action is the hardware command boundary. Encoder zero offsets
-remain owned by rt-control, while the four empirically verified mirrored-axis signs
-are applied here consistently to commands, derivatives, and feedback.
+and motor direction calibration are owned by rt-control. Motion still calls this
+contract for every command and feedback value, but every public-axis sign is +1.
 """
 
 from __future__ import annotations
@@ -55,19 +55,19 @@ RT_CONTROL_JOINT_NAMES = [
     *REAL_CONTROLLER_JOINT_NAMES,
     'updown',
 ]
-RT_CONTROL_ACTION_NAME = '/dual_arm_jtc/follow_joint_trajectory'
+RT_CONTROL_ACTION_NAME = '/whole_body_jtc/follow_joint_trajectory'
 
 ROS_TO_ETHERCAT_SIGN_BY_JOINT = {
     'left_joint1': 1.0,
     'left_joint2': 1.0,
-    'left_joint3': -1.0,
+    'left_joint3': 1.0,
     'left_joint4': 1.0,
-    'left_joint5': -1.0,
+    'left_joint5': 1.0,
     'left_joint6': 1.0,
     'right_joint1': 1.0,
-    'right_joint2': -1.0,
+    'right_joint2': 1.0,
     'right_joint3': 1.0,
-    'right_joint4': -1.0,
+    'right_joint4': 1.0,
     'right_joint5': 1.0,
     'right_joint6': 1.0,
     'turn': 1.0,
@@ -144,8 +144,8 @@ def require_rt_control_joint(joint_name: str) -> None:
 def model_to_rt_control_position(joint_name: str, value: float) -> float:
     """ROS/URDF model position -> rt-control public action position.
 
-    Encoder-zero conversion remains in rt-control. The mirrored-axis direction
-    table is applied here so every motion client shares one tested contract.
+    Encoder-zero and motor-direction conversion remain in rt-control. Motion still
+    passes through this tested contract, whose public-boundary signs are all +1.
     """
     require_rt_control_joint(joint_name)
     return (

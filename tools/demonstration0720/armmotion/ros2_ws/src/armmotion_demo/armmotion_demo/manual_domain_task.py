@@ -17,9 +17,10 @@ from std_srvs.srv import Trigger
 
 from .common import (
     Pose6DValue,
-    front_face_poses_for_task,
+    camera_view_poses_for_task,
     parse_task_code,
     pose6d_from_dict,
+    suction_surface_poses_for_task,
 )
 
 
@@ -106,11 +107,12 @@ class ManualDomainTask(Node):
     ):
         goal = ExecuteMotionStage.Goal()
         goal.execution_stage = int(stage)
-        if left is not None and right is not None:
+        goal.targets.left_stage = TARGET_MODES[left_mode]
+        goal.targets.right_stage = TARGET_MODES[right_mode]
+        if left is not None:
             goal.targets.left_pose = _pose(left)
+        if right is not None:
             goal.targets.right_pose = _pose(right)
-            goal.targets.left_stage = TARGET_MODES[left_mode]
-            goal.targets.right_stage = TARGET_MODES[right_mode]
         return goal
 
     def run_stage(self, goal, label: str, timeout_s: float):
@@ -152,7 +154,6 @@ def parse_args():
         "--recapture-left",
         nargs=6,
         type=float,
-        required=True,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
         help="第一次发送的左重拍末端 base_link 6D位姿，角度单位rad",
     )
@@ -160,7 +161,6 @@ def parse_args():
         "--recapture-right",
         nargs=6,
         type=float,
-        required=True,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
         help="第一次发送的右重拍末端 base_link 6D位姿，角度单位rad",
     )
@@ -169,14 +169,14 @@ def parse_args():
         nargs=6,
         type=float,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
-        help="左箱正面中心 base_link 6D位姿，角度单位rad",
+        help="左吸附面中心 base_link 6D位姿，角度单位rad",
     )
     parser.add_argument(
         "--right",
         nargs=6,
         type=float,
         metavar=("X", "Y", "Z", "ROLL", "PITCH", "YAW"),
-        help="右箱正面中心 base_link 6D位姿，角度单位rad",
+        help="右吸附面中心 base_link 6D位姿，角度单位rad",
     )
     parser.add_argument("--front-distance", type=float, default=0.9)
     parser.add_argument("--top-distance", type=float, default=0.7)
@@ -186,16 +186,11 @@ def parse_args():
         action="store_true",
         help="每个阶段发送前等待回车，便于手工协调吸附与释放",
     )
-    for prefix, default in (
-        ("recapture-left", "side_suction"),
-        ("recapture-right", "side_suction"),
-        ("left", "front"),
-        ("right", "front"),
-    ):
+    for prefix in ("recapture-left", "recapture-right", "left", "right"):
         parser.add_argument(
             f"--{prefix}-mode",
             choices=tuple(TARGET_MODES),
-            default=default,
+            default=None,
         )
     parser.add_argument("--stop-after", choices=("pregrasp", "approach", "place", "return"))
     parser.add_argument("--yes-execute", action="store_true")
@@ -204,8 +199,28 @@ def parse_args():
     direct_pose = options.left is not None or options.right is not None
     if options.task and direct_pose:
         parser.error("--task 与 --left/--right 不能同时使用")
-    if not options.task and (options.left is None or options.right is None):
-        parser.error("必须提供 --task，或同时提供 --left 与 --right")
+    if not options.task:
+        for prefix, default_mode in (
+            ("recapture_left", "side_suction"),
+            ("recapture_right", "side_suction"),
+            ("left", "front"),
+            ("right", "front"),
+        ):
+            pose = getattr(options, prefix)
+            mode_name = f"{prefix}_mode"
+            mode = getattr(options, mode_name)
+            if mode is None:
+                mode = default_mode if pose is not None else "no_move"
+                setattr(options, mode_name, mode)
+            if mode != "no_move" and pose is None:
+                parser.error(f"--{prefix.replace('_', '-')} 缺失，但对应 mode 不是 no_move")
+        if options.left_mode == "no_move" and options.right_mode == "no_move":
+            parser.error("抓取目标左右臂不能同时为 no_move")
+        if (
+            options.recapture_left_mode == "no_move"
+            and options.recapture_right_mode == "no_move"
+        ):
+            parser.error("重拍目标左右臂不能同时为 no_move")
     return options
 
 
@@ -219,26 +234,30 @@ def main(args=None) -> None:
             options.front_distance,
             options.top_distance,
         )
-        left, right = front_face_poses_for_task(task)
+        left, right = suction_surface_poses_for_task(task)
+        recapture_left, recapture_right = camera_view_poses_for_task(task)
+        left_mode = task.left_grasp_mode
+        right_mode = task.right_grasp_mode
+        recapture_left_mode = left_mode
+        recapture_right_mode = right_mode
         label = task.code
     else:
-        left = pose6d_from_dict(
-            dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.left)),
-            "left",
-        )
-        right = pose6d_from_dict(
-            dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.right)),
-            "right",
-        )
+        fields = ("x", "y", "z", "roll", "pitch", "yaw")
+
+        def optional_pose(values, label):
+            if values is None:
+                return None
+            return pose6d_from_dict(dict(zip(fields, values)), label)
+
+        left = optional_pose(options.left, "left")
+        right = optional_pose(options.right, "right")
+        recapture_left = optional_pose(options.recapture_left, "recapture_left")
+        recapture_right = optional_pose(options.recapture_right, "recapture_right")
+        left_mode = options.left_mode
+        right_mode = options.right_mode
+        recapture_left_mode = options.recapture_left_mode
+        recapture_right_mode = options.recapture_right_mode
         label = "6D"
-    recapture_left = pose6d_from_dict(
-        dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.recapture_left)),
-        "recapture_left",
-    )
-    recapture_right = pose6d_from_dict(
-        dict(zip(("x", "y", "z", "roll", "pitch", "yaw"), options.recapture_right)),
-        "recapture_right",
-    )
 
     rclpy.init(args=args)
     node = ManualDomainTask()
@@ -256,16 +275,16 @@ def main(args=None) -> None:
                 "重拍位",
                 recapture_left,
                 recapture_right,
-                options.recapture_left_mode,
-                options.recapture_right_mode,
+                recapture_left_mode,
+                recapture_right_mode,
             ),
             (
                 ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
                 "预抓取",
                 left,
                 right,
-                options.left_mode,
-                options.right_mode,
+                left_mode,
+                right_mode,
             ),
             (ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH, "靠近吸附", None, None, "no_move", "no_move"),
             (ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE, "放置", None, None, "no_move", "no_move"),

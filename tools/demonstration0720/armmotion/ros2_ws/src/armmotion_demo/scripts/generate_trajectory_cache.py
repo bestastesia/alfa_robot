@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import json
+import math
 from pathlib import Path
 
 
@@ -38,7 +39,16 @@ def slim_stage(stage: dict) -> dict:
     }
 
 
-def initial_state(snapshot: dict) -> dict:
+WORLD_TO_BASE_Z_M = 0.202094
+BOTTOM_ROW_CENTER_WORLD_Z_M = 0.21
+ROW_PITCH_M = 0.41
+BOX_DEPTH_M = 0.30
+BOX_HEIGHT_M = 0.40
+SIDE_RPY = (math.pi, -math.pi / 2.0, 0.0)
+TOP_RPY = (math.pi, 0.0, 0.0)
+
+
+def pregrasp_state(snapshot: dict) -> dict:
     stages = snapshot.get("replay_stages", [])
     if not stages:
         raise ValueError("snapshot replay_stages 为空")
@@ -47,7 +57,7 @@ def initial_state(snapshot: dict) -> dict:
     points = trajectory.get("points", [])
     if not points:
         raise ValueError("snapshot 首段轨迹为空")
-    positions = points[0].get("positions", [])
+    positions = points[-1].get("positions", [])
     values = dict(zip(names, positions))
     return {
         "joints": {name: float(values.get(name, 0.0)) for name in JOINT_NAMES},
@@ -55,8 +65,40 @@ def initial_state(snapshot: dict) -> dict:
     }
 
 
+def pose_dict(x: float, y: float, z: float, rpy: tuple[float, float, float]) -> dict:
+    return {
+        "x": float(x),
+        "y": float(y),
+        "z": float(z),
+        "roll": float(rpy[0]),
+        "pitch": float(rpy[1]),
+        "yaw": float(rpy[2]),
+    }
+
+
+def canonical_targets(distance_m: float, row: int) -> dict:
+    center_z = (
+        BOTTOM_ROW_CENTER_WORLD_Z_M
+        - WORLD_TO_BASE_Z_M
+        + (5 - row) * ROW_PITCH_M
+    )
+    mode = "front" if row <= 2 else "top_suction"
+    if mode == "front":
+        x = distance_m
+        z = center_z
+        rpy = SIDE_RPY
+    else:
+        x = distance_m + 0.5 * BOX_DEPTH_M
+        z = center_z + 0.5 * BOX_HEIGHT_M
+        rpy = TOP_RPY
+    return {
+        "left": {"pose_6d": pose_dict(x, 0.4, z, rpy), "grasp_mode": mode},
+        "right": {"pose_6d": pose_dict(x, -0.4, z, rpy), "grasp_mode": mode},
+    }
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="从六档五排验证快照生成运行时轨迹缓存")
+    parser = argparse.ArgumentParser(description="从十一档五排验证快照生成运行时轨迹缓存")
     parser.add_argument("source_root", type=Path)
     parser.add_argument("output_root", type=Path)
     args = parser.parse_args()
@@ -65,17 +107,21 @@ def main() -> int:
     generated = []
     for path in sorted(args.source_root.glob("x_*cm/sequence_*/??_L*_R*/stage_snapshot.json")):
         snapshot = json.loads(path.read_text(encoding="utf-8"))
-        pair = (int(snapshot["left_box_id"]), int(snapshot["right_box_id"]))
-        if pair not in TASK_ROWS:
+        try:
+            row = int(path.parent.name.split("_", 1)[0])
+        except (TypeError, ValueError):
+            continue
+        pair = next((pair for pair, pair_row in TASK_ROWS.items() if pair_row == row), None)
+        if pair is None:
             continue
         distance_cm = int(round(float(snapshot["box_front_x"]) * 100.0))
-        row = TASK_ROWS[pair]
         record = {
-            "schema_version": 1,
+            "schema_version": 2,
             "distance_cm": distance_cm,
             "row": row,
             "source_pair": list(pair),
-            "initial_state": initial_state(snapshot),
+            "pregrasp_state": pregrasp_state(snapshot),
+            "canonical_targets": canonical_targets(float(snapshot["box_front_x"]), row),
             "snapshot": {
                 "type": "trajectory_cache",
                 "success": True,
@@ -83,7 +129,9 @@ def main() -> int:
                 "scene_y_shift": float(snapshot.get("scene_y_shift", 0.0)),
                 "left_box_id": pair[0],
                 "right_box_id": pair[1],
-                "replay_stages": [slim_stage(stage) for stage in snapshot["replay_stages"]],
+                "replay_stages": [
+                    slim_stage(stage) for stage in snapshot["replay_stages"][1:]
+                ],
             },
         }
         target = args.output_root / f"x_{distance_cm:02d}cm_row_{row}.json.gz"
@@ -91,9 +139,10 @@ def main() -> int:
             json.dump(record, stream, ensure_ascii=False, separators=(",", ":"))
         generated.append(target)
 
-    if len(generated) != 30:
-        raise RuntimeError(f"期望生成30条缓存，实际 {len(generated)}")
-    print(f"生成轨迹缓存 {len(generated)} 条，总大小 {sum(path.stat().st_size for path in generated)} bytes")
+    print(
+        f"生成轨迹缓存 {len(generated)}/55 条，"
+        f"总大小 {sum(path.stat().st_size for path in generated)} bytes"
+    )
     return 0
 
 

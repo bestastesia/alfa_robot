@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Jog/teaching tool for the rt-control public 14-axis trajectory action.
 
-rt-control owns encoder zero offsets. All ``/joint_states`` feedback and
-``/dual_arm_jtc`` commands pass through the shared ``joints.py`` contract, which
-applies the four calibrated mirrored-axis signs without repeating raw EtherCAT
-offset conversion.
+rt-control owns encoder zero offsets and motor direction calibration. All
+``/joint_states`` feedback and ``/whole_body_jtc`` commands pass through the shared
+``joints.py`` contract, whose public-boundary direction signs are all positive.
 """
 from __future__ import annotations
 

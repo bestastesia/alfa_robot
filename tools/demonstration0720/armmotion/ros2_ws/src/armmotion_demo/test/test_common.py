@@ -9,11 +9,12 @@ from armmotion_demo.common import (
     front_face_poses_for_task,
     front_face_task_request_fields,
     loaded_joint_map,
-    nearest_equivalent_angle,
     planning_task_from_front_face_poses,
+    planning_task_from_suction_surface_poses,
     parse_task_code,
     retime_segment,
     split_execution_stages,
+    suction_surface_poses_for_task,
     validate_stage_contracts,
 )
 from armmotion_demo.controller_interpolated_rerun import (
@@ -63,7 +64,7 @@ def test_task_code_contract():
     assert (task.left_box_id, task.right_box_id) == (7, 9)
     assert task.index in DIRECT_LIFT_TASKS
     assert task.task_layout == "right_shift_0p1"
-    assert task.effective_distance_m == pytest.approx(0.9)
+    assert task.effective_distance_m == pytest.approx(0.7)
 
 
 def test_all_ten_task_codes_are_supported():
@@ -119,13 +120,19 @@ def test_algorithm_derives_rows_and_modes_from_noisy_front_face_poses():
     assert task.extraction_mode == "box_pose_rrt"
 
 
-def test_algorithm_preserves_third_row_front_direct_lift_strategy():
+def test_algorithm_uses_third_row_top_suction_strategy():
     fixture = parse_task_code("B3", 0.9, 0.7)
-    left_pose, right_pose = front_face_poses_for_task(fixture)
-    task = planning_task_from_front_face_poses("camera-request-row3", left_pose, right_pose)
+    left_pose, right_pose = suction_surface_poses_for_task(fixture)
+    task = planning_task_from_suction_surface_poses(
+        "camera-request-row3",
+        left_pose,
+        right_pose,
+        "top_suction",
+        "top_suction",
+    )
     assert (task.left_row, task.right_row) == (3, 3)
-    assert task.grasp_family == "front"
-    assert task.extraction_mode == "direct_updown_lift"
+    assert task.grasp_family == "top_suction"
+    assert task.effective_distance_m == pytest.approx(0.7)
 
 
 def test_pose_task_validation_accepts_collision_planned_top_extract_motion():
@@ -169,17 +176,10 @@ def test_loaded_pose_keeps_contract_names():
     assert result["turn"] == pytest.approx(0.0)
 
 
-def test_nearest_equivalent_angle_avoids_full_turn():
-    current = math.radians(269.0)
-    target = nearest_equivalent_angle(current, math.radians(-90.0))
-    assert math.degrees(target) == pytest.approx(270.0)
-    assert math.degrees(target - current) == pytest.approx(1.0)
-
-
-def test_planning_sample_masks_physical_turn():
+def test_planning_sample_ignores_external_turn():
     source = sample("x", 0.0, 0.2, 0.3)
     source.joints["turn"] = math.radians(-90.0)
-    masked = DomainMotionServer._mask_turn_for_planning(source)
+    masked = DomainMotionServer._planning_sample_without_external_turn(source)
     assert masked.joints["turn"] == pytest.approx(0.0)
     assert masked.joints["left_joint1"] == pytest.approx(0.2)
     assert source.joints["turn"] == pytest.approx(math.radians(-90.0))
@@ -465,7 +465,7 @@ def test_hardware_trajectory_crosses_joint_contract_as_full_14_axis(monkeypatch)
     assert frame_deltas[-1] < max(frame_deltas)
 
 
-def test_hardware_holds_turn_unless_explicitly_commanded():
+def test_hardware_always_holds_external_turn():
     source = [
         sample("x", 0.0, 0.0, 0.3),
         sample("x", 0.2, 0.0, 0.3),
@@ -484,12 +484,10 @@ def test_hardware_holds_turn_unless_explicitly_commanded():
     executor._state_lock = threading.Lock()
     executor._latest_joints = {"turn": math.radians(12.0)}
     held = executor._make_trajectory(samples)
-    commanded = executor._make_trajectory(samples, command_turn=True)
     turn_index = held.joint_names.index("turn")
     assert all(
         point.positions[turn_index] == pytest.approx(math.radians(12.0))
         for point in held.points
     )
     assert all(point.velocities[turn_index] == pytest.approx(0.0) for point in held.points)
-    assert commanded.points[-1].positions[turn_index] == pytest.approx(math.radians(-90.0))
-    assert max(abs(point.velocities[turn_index]) for point in commanded.points) > 0.0
+    assert all(point.accelerations[turn_index] == pytest.approx(0.0) for point in held.points)

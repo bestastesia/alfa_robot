@@ -17,7 +17,7 @@ struct ContainerGeometryConfig
   double center_y = 0.0;
   double yaw = 0.0;  // 绕 Z 轴，弧度；集装箱相对 config.frame（world）的朝向
   double width = 1.8;
-  double height = 2.2;
+  double height = 2.4;
   double length = 8.0;
   double wall_thickness = 0.03;
   double floor_z = 0.0;
@@ -37,7 +37,7 @@ struct BoxWallGeometryConfig
   bool rear_guard_enabled = true;
   double rear_guard_thickness = 0.01;
   double rear_guard_clearance = 0.03;
-  double container_height = 2.2;
+  double container_height = 2.4;
 };
 
 struct CarriedBoxGeometryConfig

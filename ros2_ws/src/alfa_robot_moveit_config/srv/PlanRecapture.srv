@@ -2,6 +2,10 @@ geometry_msgs/PoseStamped left_target
 geometry_msgs/PoseStamped right_target
 sensor_msgs/JointState start_state
 float64 preferred_updown
+# Internal cache bridge: when true, target poses are ignored and the exact
+# pregrasp joint state is planned without running IK again.
+bool use_exact_target_state
+sensor_msgs/JointState exact_target_state
 ---
 bool success
 string message

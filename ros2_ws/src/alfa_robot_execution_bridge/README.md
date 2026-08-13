@@ -2,7 +2,7 @@
 
 ALFA 轨迹插值、关节合同和历史执行兼容工具包。`/alfa_execution/execute_joint_trajectory`
 是旧 13 轴兼容接口，不是当前 rt-control 的生产入口；新代码应直接使用完整 14 轴
-`/dual_arm_jtc/follow_joint_trajectory`。
+`/whole_body_jtc/follow_joint_trajectory`。
 
 ## 接口
 
@@ -67,15 +67,16 @@ ros2 launch alfa_robot_moveit_config dual_arm_planner.launch.py \
 
 ## 当前 rt-control 方向关系
 
-`alfa_robot_execution_bridge/joints.py` 提供 `RT_CONTROL_JOINT_NAMES` 固定顺序。J6编码器
-零点由 rt-control 硬件配置处理；实机低速对称姿态验证表明当前 rt-control 尚未统一四个
-机械反向轴，因此 `joints.py` 在公共边界补偿 `left_joint3/5`、`right_joint2/4`，其余轴
-为 `+1`，公共边界偏置保持为0。
+`alfa_robot_execution_bridge/joints.py` 提供 `RT_CONTROL_JOINT_NAMES` 固定顺序。J6 编码器
+零点由 rt-control 硬件配置处理；电机方向校准也已统一下沉到 rt-control，因此 Motion
+公共边界所有方向符号均为 `+1`，公共边界偏置保持为 0。
 armmotion 和 `jog_to_pose` 的所有14轴位置、速度、加速度及反馈现在都必须显式经过
 `model_to_rt_control_*()` / `rt_control_to_model_position()`；禁止
 调用方绕过该边界直接拼装控制器语义。
 
-`config/*.yaml` 不再复制 `direction_signs`。默认 `apply_direction_signs=false`，表示电控侧 ros2_control / 硬件层已经处理方向；如果确认下游没有处理方向，再打开该参数，运行时会自动使用 `joints.py` 中的方向表，避免双重翻转和配置漂移。
+`config/*.yaml` 不再复制 `direction_signs`。默认 `apply_direction_signs=false`，表示电控侧
+ros2_control / 硬件层已经处理方向；运行时仍使用 `joints.py` 固定关节顺序和语义，禁止
+重新加入 Motion 侧方向翻转，避免双重校准。
 
 ## Updown 当前合同
 

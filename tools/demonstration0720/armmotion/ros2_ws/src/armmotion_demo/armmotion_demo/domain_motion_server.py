@@ -1,32 +1,41 @@
 from __future__ import annotations
 
-import os
+import copy
 import math
+import os
 import threading
 import time
 from pathlib import Path
 
 import rclpy
-from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
+from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES, RT_CONTROL_ACTION_NAME
 from alfa_motion_interfaces.action import ExecuteMotionStage
 from alfa_motion_interfaces.msg import DualArmPoseTargets, MotionErrorInfo, MotionReadiness
 from geometry_msgs.msg import PoseStamped
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.time import Time
 from std_srvs.srv import Trigger
+from tf2_ros import Buffer, TransformException, TransformListener
 
 from .common import (
     MotionSample,
     loaded_joint_map,
-    nearest_equivalent_angle,
     retime_segment,
 )
 from .hardware_executor import ARM_JOINT_NAMES, HardwareExecutor
 from .planner_adapter import PlannerAdapter
-from .stage_contract import planning_task_from_stage_goal, validate_stage_pose_targets
+from .stage_contract import (
+    canonicalize_grasp_pose_orientation,
+    planning_task_from_resolved_targets,
+    resolve_dual_stage_targets,
+    validate_stage_pose_targets,
+)
+from .turn_frame import compensate_pose_y, pose_at_zero_turn
 
 
 READINESS_QOS = QoSProfile(
@@ -35,6 +44,30 @@ READINESS_QOS = QoSProfile(
     history=HistoryPolicy.KEEP_LAST,
     depth=1,
 )
+
+
+def pregrasp_entry_mode(
+    *,
+    active_plan,
+    recapture_sample,
+    cycle_id: str,
+    next_stage: int,
+) -> str | None:
+    if active_plan is not None:
+        return None
+    if (
+        recapture_sample is not None
+        and bool(cycle_id)
+        and int(next_stage) == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP
+    ):
+        return "after_recapture"
+    if (
+        recapture_sample is None
+        and not cycle_id
+        and int(next_stage) == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
+    ):
+        return "skip_recapture"
+    return None
 
 
 class DomainMotionServer(Node):
@@ -51,17 +84,21 @@ class DomainMotionServer(Node):
         self.declare_parameter("execution_speed_scale", 3.0)
         self.declare_parameter("max_joint_speed_deg_s", 10.0)
         self.declare_parameter("max_joint_acceleration_deg_s2", 60.0)
-        self.declare_parameter("max_updown_speed_m_s", 0.05)
+        self.declare_parameter("max_updown_speed_m_s", 0.15)
         self.declare_parameter("updown_acceleration_m_s2", 0.05)
-        self.declare_parameter("recapture_turn_target_deg", -90.0)
-        self.declare_parameter("recapture_turn_tolerance_deg", 1.0)
         self.declare_parameter("recapture_preferred_updown_m", 0.3)
+        self.declare_parameter("turn_tf_frame", "turn")
+        self.declare_parameter("turn_tf_timeout_s", 1.0)
+        self.declare_parameter("turn_zero_target_y_compensation_m", 0.0)
         self.declare_parameter("planner_timeout_s", 180.0)
+        self.declare_parameter("enable_trajectory_cache", True)
+        self.declare_parameter("require_trajectory_cache_hit", False)
+        self.declare_parameter("trajectory_cache_fallback_on_planning_failure", True)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
         self.declare_parameter(
             "trajectory_action",
-            "/dual_arm_jtc/follow_joint_trajectory",
+            RT_CONTROL_ACTION_NAME,
         )
         self.declare_parameter("stage_action", "/motion/execute_stage")
         self.declare_parameter("readiness_topic", "/motion/readiness")
@@ -82,6 +119,8 @@ class DomainMotionServer(Node):
         interface_timeout = float(self.get_parameter("interface_timeout_s").value)
 
         self._callback_group = ReentrantCallbackGroup()
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
         self._lock = threading.RLock()
         self._busy = False
         self._goal_reserved = False
@@ -114,6 +153,17 @@ class DomainMotionServer(Node):
             max_updown_acceleration_m_s2=updown_acceleration,
             speed_scale=speed_scale,
             timeout_s=float(self.get_parameter("planner_timeout_s").value),
+            trajectory_cache_enabled=bool(
+                self.get_parameter("enable_trajectory_cache").value
+            ),
+            trajectory_cache_required=bool(
+                self.get_parameter("require_trajectory_cache_hit").value
+            ),
+            trajectory_cache_fallback_on_planning_failure=bool(
+                self.get_parameter(
+                    "trajectory_cache_fallback_on_planning_failure"
+                ).value
+            ),
         )
         self._retime_parameters = {
             "rate_hz": rate_hz,
@@ -220,13 +270,12 @@ class DomainMotionServer(Node):
                 if int(self._next_stage) != ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
                     return GoalResponse.REJECT
             elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
-                if (
-                    self._active_plan is not None
-                    or self._recapture_sample is None
-                    or not self._cycle_id
-                ):
-                    return GoalResponse.REJECT
-                if int(self._next_stage) != ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
+                if pregrasp_entry_mode(
+                    active_plan=self._active_plan,
+                    recapture_sample=self._recapture_sample,
+                    cycle_id=self._cycle_id,
+                    next_stage=self._next_stage,
+                ) is None:
                     return GoalResponse.REJECT
             else:
                 if self._active_plan is None:
@@ -255,10 +304,6 @@ class DomainMotionServer(Node):
             ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
         }:
             validate_stage_pose_targets(request)
-            if int(request.targets.left_stage) == DualArmPoseTargets.STAGE_NO_MOVE:
-                raise ValueError("当前双臂流程暂不支持左臂 NO_MOVE")
-            if int(request.targets.right_stage) == DualArmPoseTargets.STAGE_NO_MOVE:
-                raise ValueError("当前双臂流程暂不支持右臂 NO_MOVE")
 
     @staticmethod
     def _feedback(state: int):
@@ -273,6 +318,67 @@ class DomainMotionServer(Node):
         target.pose = pose
         return target
 
+    def _targets_for_zero_turn(self, request, current: MotionSample):
+        current_turn = float(current.joints.get("turn", 0.0))
+        corrected_request = copy.deepcopy(request)
+        base_to_turn = None
+        if abs(current_turn) > 1e-8:
+            try:
+                base_to_turn = self._tf_buffer.lookup_transform(
+                    "base_link",
+                    str(self.get_parameter("turn_tf_frame").value),
+                    Time(),
+                    timeout=Duration(
+                        seconds=float(self.get_parameter("turn_tf_timeout_s").value)
+                    ),
+                )
+            except TransformException as exc:
+                raise RuntimeError(f"无法将目标换算到 Turn=0：{exc}") from exc
+        y_compensation_m = float(
+            self.get_parameter("turn_zero_target_y_compensation_m").value
+        )
+        canonicalize_grasp_orientation = (
+            int(request.execution_stage)
+            == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP
+        )
+        orientation_deviations: dict[str, float] = {}
+        for side in ("left", "right"):
+            stage_value = int(getattr(corrected_request.targets, f"{side}_stage"))
+            if stage_value == DualArmPoseTargets.STAGE_NO_MOVE:
+                continue
+            original_pose = getattr(corrected_request.targets, f"{side}_pose")
+            corrected_pose = original_pose
+            if base_to_turn is not None:
+                corrected_pose = pose_at_zero_turn(
+                    corrected_pose,
+                    base_to_turn.transform,
+                    current_turn,
+                )
+            corrected_pose = compensate_pose_y(corrected_pose, y_compensation_m)
+            if canonicalize_grasp_orientation:
+                corrected_pose, deviation = canonicalize_grasp_pose_orientation(
+                    corrected_pose,
+                    stage_value,
+                )
+                orientation_deviations[side] = deviation
+            setattr(corrected_request.targets, f"{side}_pose", corrected_pose)
+        targets = resolve_dual_stage_targets(corrected_request)
+        self.get_logger().info(
+            "目标 Pose 已换算到 Turn=0："
+            f"actual_turn={current_turn:.6f}rad "
+            f"y_compensation={y_compensation_m:+.3f}m "
+            f"left=({targets.left_pose.position.x:.3f},"
+            f"{targets.left_pose.position.y:.3f},"
+            f"{targets.left_pose.position.z:.3f}) "
+            f"right=({targets.right_pose.position.x:.3f},"
+            f"{targets.right_pose.position.y:.3f},"
+            f"{targets.right_pose.position.z:.3f}) "
+            f"grasp_orientation_correction_deg="
+            f"L{math.degrees(orientation_deviations.get('left', 0.0)):.2f}/"
+            f"R{math.degrees(orientation_deviations.get('right', 0.0)):.2f}"
+        )
+        return targets
+
     def _run_plan_stage(self, goal_handle, plan_stage: int, label: str) -> float:
         with self._lock:
             plan = self._active_plan
@@ -285,53 +391,8 @@ class DomainMotionServer(Node):
             self._hardware.execute_segment(segment, f"{label}/{index}")
         return time.monotonic() - started
 
-    def _align_turn_for_recapture(
-        self,
-        current: MotionSample,
-    ) -> tuple[MotionSample, float]:
-        target_angle = nearest_equivalent_angle(
-            current.joints["turn"],
-            math.radians(float(self.get_parameter("recapture_turn_target_deg").value)),
-        )
-        tolerance = math.radians(
-            float(self.get_parameter("recapture_turn_tolerance_deg").value)
-        )
-        if abs(target_angle - current.joints["turn"]) <= tolerance:
-            return current, 0.0
-        target_joints = dict(current.joints)
-        target_joints["turn"] = target_angle
-        target = MotionSample(
-            time_s=0.1,
-            joints=target_joints,
-            updown_m=current.updown_m,
-            context={
-                "stage": "recapture/align_turn",
-                "updown": current.updown_m,
-            },
-        )
-        samples = retime_segment(
-            [current, target],
-            list(EXECUTION_JOINT_NAMES),
-            **self._retime_parameters,
-        )
-        duration = float(
-            self._hardware.execute_segment(
-                samples,
-                "重拍前旋转 turn",
-                command_turn=True,
-            )["duration_s"]
-        )
-        self.get_logger().info(
-            "重拍前 turn 对齐完成："
-            f"{math.degrees(current.joints['turn']):.2f}deg -> "
-            f"{math.degrees(target_angle):.2f}deg"
-        )
-        if self._hardware.dry_run:
-            return samples[-1], duration
-        return self._hardware.current_sample(), duration
-
     @staticmethod
-    def _mask_turn_for_planning(sample: MotionSample) -> MotionSample:
+    def _planning_sample_without_external_turn(sample: MotionSample) -> MotionSample:
         joints = dict(sample.joints)
         joints["turn"] = 0.0
         velocities = dict(sample.joint_velocities)
@@ -342,7 +403,7 @@ class DomainMotionServer(Node):
             time_s=sample.time_s,
             joints=joints,
             updown_m=sample.updown_m,
-            context={**sample.context, "planning_turn_masked": True},
+            context={**sample.context, "external_turn_ignored": True},
             joint_velocities=velocities,
             updown_velocity_m_s=sample.updown_velocity_m_s,
             joint_accelerations=accelerations,
@@ -361,20 +422,16 @@ class DomainMotionServer(Node):
         self._publish_readiness()
         try:
             if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
-                goal_handle.publish_feedback(
-                    self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
-                )
-                current = self._current_sample_for_planning()
-                current, turn_execution_time_s = self._align_turn_for_recapture(current)
-                execution_time_s += turn_execution_time_s
-                current = self._mask_turn_for_planning(current)
+                current_with_turn = self._current_sample_for_planning()
+                current = self._planning_sample_without_external_turn(current_with_turn)
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
                 )
+                targets = self._targets_for_zero_turn(request, current_with_turn)
                 started = time.monotonic()
                 samples, metrics = self._planner.plan_recapture(
-                    self._base_link_pose_stamped(request.targets.left_pose),
-                    self._base_link_pose_stamped(request.targets.right_pose),
+                    self._base_link_pose_stamped(targets.left_pose),
+                    self._base_link_pose_stamped(targets.right_pose),
                     current,
                     preferred_updown=float(
                         self.get_parameter("recapture_preferred_updown_m").value
@@ -384,7 +441,8 @@ class DomainMotionServer(Node):
                 self.get_logger().info(
                     "重拍位规划完成："
                     f"updown={metrics['selected_updown']:.3f}m "
-                    f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms"
+                    f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms "
+                    f"mirrored_from={targets.mirrored_from or 'none'}"
                 )
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
@@ -395,7 +453,9 @@ class DomainMotionServer(Node):
                 recapture_sample = (
                     samples[-1]
                     if self._hardware.dry_run
-                    else self._mask_turn_for_planning(self._hardware.current_sample())
+                    else self._planning_sample_without_external_turn(
+                        self._hardware.current_sample()
+                    )
                 )
                 with self._lock:
                     self._cycle_serial += 1
@@ -408,12 +468,34 @@ class DomainMotionServer(Node):
                 )
                 with self._lock:
                     cycle_id = self._cycle_id
-                task = planning_task_from_stage_goal(request, cycle_id)
-                started = time.monotonic()
-                with self._lock:
                     recapture_sample = self._recapture_sample
+                    entry_mode = pregrasp_entry_mode(
+                        active_plan=self._active_plan,
+                        recapture_sample=recapture_sample,
+                        cycle_id=cycle_id,
+                        next_stage=self._next_stage,
+                    )
+                if entry_mode is None:
+                    raise RuntimeError("PREGRASP 入口状态已失效")
+                if entry_mode == "skip_recapture":
+                    recapture_sample = self._planning_sample_without_external_turn(
+                        self._current_sample_for_planning()
+                    )
+                    with self._lock:
+                        self._cycle_serial += 1
+                        cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
+                        self._cycle_id = cycle_id
+                    self.get_logger().info(
+                        "PREGRASP 跳过重拍位，从当前机器人真实状态开始规划"
+                    )
                 if recapture_sample is None:
                     raise RuntimeError("缺少重拍阶段真实末态")
+                targets = self._targets_for_zero_turn(
+                    request,
+                    self._current_sample_for_planning(),
+                )
+                task = planning_task_from_resolved_targets(targets, cycle_id)
+                started = time.monotonic()
                 plan = self._planner.compute(task, initial_sample=recapture_sample)
                 planning_time_s = time.monotonic() - started
                 with self._lock:

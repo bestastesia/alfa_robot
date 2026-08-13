@@ -41,19 +41,19 @@ def test_joint_direction_contract_is_canonical():
     assert len(EXECUTION_JOINT_NAMES) == 13
     assert len(REAL_CONTROLLER_JOINT_NAMES) == 13
     assert set(REAL_CONTROLLER_JOINT_NAMES) == set(EXECUTION_JOINT_NAMES)
-    assert tuple(FLIPPED_JOINT_NAMES) == ('left_joint3', 'left_joint5', 'right_joint2', 'right_joint4')
+    assert tuple(FLIPPED_JOINT_NAMES) == ()
     assert DEFAULT_DIRECTION_SIGNS == direction_signs_for(EXECUTION_JOINT_NAMES)
     assert ROS_TO_ETHERCAT_SIGN_BY_JOINT == {
         'left_joint1': 1.0,
         'left_joint2': 1.0,
-        'left_joint3': -1.0,
+        'left_joint3': 1.0,
         'left_joint4': 1.0,
-        'left_joint5': -1.0,
+        'left_joint5': 1.0,
         'left_joint6': 1.0,
         'right_joint1': 1.0,
-        'right_joint2': -1.0,
+        'right_joint2': 1.0,
         'right_joint3': 1.0,
-        'right_joint4': -1.0,
+        'right_joint4': 1.0,
         'right_joint5': 1.0,
         'right_joint6': 1.0,
         'turn': 1.0,
@@ -64,11 +64,11 @@ def test_joint_direction_contract_is_canonical():
 
 
 def test_rt_control_contract_is_full_14_axis():
-    assert RT_CONTROL_ACTION_NAME == '/dual_arm_jtc/follow_joint_trajectory'
+    assert RT_CONTROL_ACTION_NAME == '/whole_body_jtc/follow_joint_trajectory'
     assert RT_CONTROL_JOINT_NAMES == [*REAL_CONTROLLER_JOINT_NAMES, 'updown']
 
 
-def test_rt_control_public_boundary_applies_calibrated_direction_signs():
+def test_rt_control_public_boundary_uses_positive_direction_signs():
     assert set(RT_CONTROL_DIRECTION_SIGN_BY_JOINT) == set(RT_CONTROL_JOINT_NAMES)
     assert set(RT_CONTROL_POSITION_OFFSET_BY_JOINT) == set(RT_CONTROL_JOINT_NAMES)
     assert RT_CONTROL_DIRECTION_SIGN_BY_JOINT == {
@@ -76,6 +76,7 @@ def test_rt_control_public_boundary_applies_calibrated_direction_signs():
         'updown': 1.0,
     }
     assert all(offset == 0.0 for offset in RT_CONTROL_POSITION_OFFSET_BY_JOINT.values())
+    assert all(sign == 1.0 for sign in RT_CONTROL_DIRECTION_SIGN_BY_JOINT.values())
     for joint_name, sign in RT_CONTROL_DIRECTION_SIGN_BY_JOINT.items():
         controller_position = model_to_rt_control_position(joint_name, 0.25)
         assert controller_position == pytest.approx(0.25 * sign)
@@ -93,10 +94,10 @@ def test_direction_conversion_round_trip():
         command_value = ros_to_ethercat_position(joint_name, 0.25)
         assert ethercat_to_ros_position(joint_name, command_value) == 0.25
 
-    assert ros_to_ethercat_position('left_joint3', 0.25) == -0.25
-    assert ros_to_ethercat_position('left_joint5', 0.25) == -0.25
-    assert ros_to_ethercat_position('right_joint2', 0.25) == -0.25
-    assert ros_to_ethercat_position('right_joint4', 0.25) == -0.25
+    assert ros_to_ethercat_position('left_joint3', 0.25) == 0.25
+    assert ros_to_ethercat_position('left_joint5', 0.25) == 0.25
+    assert ros_to_ethercat_position('right_joint2', 0.25) == 0.25
+    assert ros_to_ethercat_position('right_joint4', 0.25) == 0.25
     assert ros_to_ethercat_position('right_joint5', 0.25) == 0.25
 
 
@@ -110,7 +111,7 @@ def test_joint6_zero_offsets_apply_at_ethercat_boundary():
 def test_velocity_conversion_applies_direction_without_position_offset():
     assert ros_to_ethercat_velocity('left_joint6', 0.25) == pytest.approx(0.25)
     assert ros_to_ethercat_velocity('right_joint6', 0.25) == pytest.approx(0.25)
-    assert ros_to_ethercat_velocity('right_joint4', 0.25) == pytest.approx(-0.25)
+    assert ros_to_ethercat_velocity('right_joint4', 0.25) == pytest.approx(0.25)
 
 
 def test_updown_conversion_endpoints():
