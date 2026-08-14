@@ -91,7 +91,7 @@
     <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0 0 0" rpy="3.1415927 0 0" lower="-3.14159265" upper="3.14159265"/>
     <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="0.047051538 0.016916049 -0.117" rpy="-1.5707963 0 -1.2256642" lower="-1.83259571" upper="1.83259571"/>
     <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="0 0.1405 -0.05" rpy="-1.5707963 -1.2256642 0" lower="-3.14159265" upper="3.14159265"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.00082154955 -0.04999325 0.3775" rpy="1.5707963 0 -0.016431729" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.00082154955 -0.04999325 0.3775" rpy="1.5707963 0 -0.016431729" lower="-2.35619449" upper="2.35619449"/>
     <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="0 0.241 -0.05" rpy="-1.5707963 0.016431729 0" lower="-3.14159265" upper="3.14159265"/>
     <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="0.013852058 0.014426382 0.236" rpy="-1.5707963 0 -0.76509136" lower="-2.09439510" upper="2.09439510"/>
     <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="0 -0.039 -0.02" rpy="1.5707963 -0.76509136 0" lower="-3.14159265" upper="3.14159265"/>
