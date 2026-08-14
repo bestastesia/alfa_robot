@@ -1,0 +1,291 @@
+{
+  "job_id": "local_mssjuufi_oehz5g",
+  "source_file": "3代臂2.0urdf.STEP",
+  "coordinate_schema_version": 3,
+  "coordinate_frame": "z_up_x_forward",
+  "parts": [
+    {
+      "part_id": "part_001",
+      "name": "solid_001",
+      "mesh_file": "meshes/part_001_solid_001.stl",
+      "bbox": {
+        "min": [
+          -60,
+          -60,
+          0
+        ],
+        "max": [
+          60,
+          60,
+          10
+        ]
+      },
+      "volume_estimate": 84524.0873535353,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_001"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_002",
+      "name": "solid_002",
+      "mesh_file": "meshes/part_002_solid_002.stl",
+      "bbox": {
+        "min": [
+          -76.7611084,
+          -76.7611084,
+          10
+        ],
+        "max": [
+          76.7611084,
+          76.7611084,
+          137
+        ]
+      },
+      "volume_estimate": 730978.151597169,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_002"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_003",
+      "name": "solid_003",
+      "mesh_file": "meshes/part_003_solid_003.stl",
+      "bbox": {
+        "min": [
+          -37.29867935,
+          -37.29867935,
+          87
+        ],
+        "max": [
+          37.29867935,
+          37.29867935,
+          368
+        ]
+      },
+      "volume_estimate": 822130.936914795,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_003"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_004",
+      "name": "solid_004",
+      "mesh_file": "meshes/part_004_solid_004.stl",
+      "bbox": {
+        "min": [
+          -60.97776031,
+          -60.97776031,
+          368
+        ],
+        "max": [
+          60.97776031,
+          60.97776031,
+          678
+        ]
+      },
+      "volume_estimate": 845333.4865365502,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_004"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_005",
+      "name": "solid_005",
+      "mesh_file": "meshes/part_005_solid_005.stl",
+      "bbox": {
+        "min": [
+          -30.48888016,
+          -30.48888016,
+          624
+        ],
+        "max": [
+          30.48888016,
+          30.48888016,
+          884
+        ]
+      },
+      "volume_estimate": 181955.57069951025,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_005"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_006",
+      "name": "solid_006",
+      "mesh_file": "meshes/part_006_solid_006.stl",
+      "bbox": {
+        "min": [
+          -42.41765976,
+          -42.41765976,
+          884
+        ],
+        "max": [
+          42.41765976,
+          42.41765976,
+          1134
+        ]
+      },
+      "volume_estimate": 314666.6762168649,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_006"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_007",
+      "name": "solid_007",
+      "mesh_file": "meshes/part_007_solid_007.stl",
+      "bbox": {
+        "min": [
+          -42.41765976,
+          -42.41765976,
+          1096
+        ],
+        "max": [
+          42.41765976,
+          42.41765976,
+          1156
+        ]
+      },
+      "volume_estimate": 61955.55534449128,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_007"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "part_id": "part_008",
+      "name": "solid_008",
+      "mesh_file": "meshes/part_008_solid_008.stl",
+      "bbox": {
+        "min": [
+          -21.33644104,
+          -77.6087265,
+          1156
+        ],
+        "max": [
+          14.99100208,
+          14.95307732,
+          1342.5
+        ]
+      },
+      "volume_estimate": 139481.08238053834,
+      "source_kind": "solid",
+      "source_names": [
+        "solid_008"
+      ],
+      "source_part_count": 1,
+      "transform": {
+        "xyz": [
+          0,
+          0,
+          0
+        ],
+        "rpy": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "warnings": [
+    "CAD conversion completed locally in the browser; CAD file was not uploaded."
+  ]
+}

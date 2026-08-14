@@ -39,7 +39,7 @@
   </xacro:macro>
 
   <xacro:macro name="robot_v3_arm" params="prefix parent mount_xyz mount_rpy">
-    <xacro:property name="mesh_root" value="package://alfa_robot_description/meshes/robot_v3_0_3"/>
+    <xacro:property name="mesh_root" value="package://alfa_robot_description/meshes/robot_v3_0_4"/>
 
     <xacro:robot_v3_arm_link
       name="${prefix}_arm_base" mesh="${mesh_root}/part_001_solid_001.stl"
@@ -54,47 +54,47 @@
 
     <xacro:robot_v3_arm_link
       name="${prefix}_joint1" mesh="${mesh_root}/part_002_solid_002.stl"
-      visual_xyz="0 0 -0.01" visual_rpy="0 0 0"
-      mass="0.87717373" com="0 0 0.039425695"
-      inertia="${[0.0021069034, 0, 0, 0.0025068394, 0, 0.0028313348]}"/>
+      visual_xyz="0 0 0.005" visual_rpy="-3.1415927 0 0"
+      mass="0.87717378" com="0 1.1837915e-10 -0.044425695"
+      inertia="${[0.0021526807, -0.00012732782, -3.552265e-13, 0.0024610625, -2.1714843e-12, 0.0028313351]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint2" mesh="${mesh_root}/part_003_solid_003.stl"
-      visual_xyz="0 -0.122 -0.05" visual_rpy="0 -1.5707963 -1.5707963"
-      mass="0.98655703" com="0.10400343 0.08235591 -0.05"
-      inertia="${[0.0023603817, -0.0019984016, 1.4910558e-13, 0.0033016202, 5.8509003e-13, 0.004907507]}"/>
+      visual_xyz="0 -0.122 -0.05" visual_rpy="-1.5707963 -1.2256642 0"
+      mass="0.98655712" com="0 0.13266202 -0.05"
+      inertia="${[0.0048840702, 0, 4.4533713e-14, 0.00077793223, 0, 0.0049075075]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint3" mesh="${mesh_root}/part_004_solid_004.stl"
-      visual_xyz="0 0.095644701 -0.32173699" visual_rpy="0.90104 0 0"
-      mass="1.0144" com="8.5386936e-09 -8.3127536e-09 0.13505363"
-      inertia="${[0.01108191, 0.00060763248, -2.4432211e-10, 0.012062484, 7.5325887e-10, 0.0040465281]}"/>
+      visual_xyz="0 0 -0.2625" visual_rpy="0 0 0"
+      mass="1.0144002" com="0 3.1500509e-10 0.24055363"
+      inertia="${[0.012352546, -2.5654299e-05, -4.5671842e-12, 0.010791853, 1.6898776e-11, 0.0040465291]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint4" mesh="${mesh_root}/part_005_solid_005.stl"
-      visual_xyz="-0.43295104 -0.41535912 -0.036251864" visual_rpy="-0.66975631 -1.1248596 -0.95045824"
-      mass="0.074346673" com="0.024372684 0.014732853 0.0050000065"
-      inertia="${[3.6461725e-05, 6.2743849e-07, -7.6868823e-12, 3.5803028e-05, 1.9726013e-12, 4.5862434e-05]}"/>
+      visual_xyz="0 -0.64 -0.05" visual_rpy="-1.5707963 0.016431729 0"
+      mass="0.21834668" com="0 0.13589948 -0.05"
+      inertia="${[0.0014599397, 2.3870343e-13, 6.5580775e-14, 8.1241008e-05, 0, 0.0015123784]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint5" mesh="${mesh_root}/part_006_solid_006.stl"
-      visual_xyz="0.019338971 0.13644655 -0.63138864" visual_rpy="0.97020064 -0.033024112 0"
-      mass="0.37759991" com="-1.5278266e-08 3.7001349e-09 0.1148983"
-      inertia="${[0.0022579303, 4.9793063e-05, -6.1735248e-11, 0.002306173, 2.0268258e-10, 0.00034338123]}"/>
+      visual_xyz="0 0 -0.881" visual_rpy="0 0 0"
+      mass="0.37760001" com="0 0 0.1178983"
+      inertia="${[0.0022842981, -5.5282359e-05, -2.4838794e-13, 0.0022798052, 2.1839741e-13, 0.0003433814]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint6" mesh="${mesh_root}/part_007_solid_007.stl"
-      visual_xyz="0.071974724 0.87053707 0.026073354" visual_rpy="2.4883622 1.0100868 0"
-      mass="0.074346666" com="0.0020357719 -0.021029734 -0.030000012"
-      inertia="${[3.6721283e-05, -1.1596899e-08, -6.342882e-12, 3.6839868e-05, -1.1219588e-11, 4.7158853e-05]}"/>
+      visual_xyz="0 1.117 -0.02" visual_rpy="1.5707963 -0.76509136 0"
+      mass="0.074346666" com="0 -0.02112805 -0.02"
+      inertia="${[3.672015e-05, 0, -6.8244018e-14, 3.6841002e-05, 0, 4.7158831e-05]}"/>
     <xacro:robot_v3_arm_link
       name="${prefix}_joint7" mesh="${mesh_root}/part_008_solid_008.stl"
-      visual_xyz="0.034877061 0.16159878 -1.1719015" visual_rpy="0.99936455 -0.051262309 0"
-      mass="0.24041774" com="2.7885962e-05 -0.0015306603 -0.13089346"
-      inertia="${[0.0016335172, 3.6445384e-07, -1.1094727e-06, 0.0016187553, 4.6439655e-05, 4.1102104e-05]}"/>
+      visual_xyz="0 0 -1.156" visual_rpy="0 0 0"
+      mass="0.1673773" com="-0.00059196999 -0.0021196245 0.098811678"
+      inertia="${[0.00055399803, -3.7102629e-06, 8.0912649e-06, 0.0005414995, 2.9419345e-05, 3.2707842e-05]}"/>
 
-    <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0 0 0.005" rpy="0 0 0" lower="-3.14159265" upper="3.14159265"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="0.05 0 0.112" rpy="1.5707963 0 1.5707963" lower="-1.83259571" upper="1.83259571"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="0.19285735 0.15271556 -0.05" rpy="0 -1.5707963 -2.4718363" lower="-3.14159265" upper="3.14159265"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.0045110353 0.0021565173 0.272" rpy="1.5707963 -0.95045823 1.1248596" lower="-1.83259571" upper="1.83259571"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="0.039366614 0.023796423 0.0050000002" rpy="-1.5707963 -1.1260022 -1.0270875" lower="-3.14159265" upper="3.14159265"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="-0.0254202 0.015931521 0.233" rpy="-1.5707963 -0.062128917 1.0109562" lower="-2.09439510" upper="2.09439510"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="0.030096195 -0.31089667 -0.029999999" rpy="1.5707963 1.012185 0.096503786" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0 0 0" rpy="3.1415927 0 0" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="0.047051538 0.016916049 -0.117" rpy="-1.5707963 0 -1.2256642" lower="-1.83259571" upper="1.83259571"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="0 0.1405 -0.05" rpy="-1.5707963 -1.2256642 0" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.00082154955 -0.04999325 0.3775" rpy="1.5707963 0 -0.016431729" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="0 0.241 -0.05" rpy="-1.5707963 0.016431729 0" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="0.013852058 0.014426382 0.236" rpy="-1.5707963 0 -0.76509136" lower="-2.09439510" upper="2.09439510"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="0 -0.039 -0.02" rpy="1.5707963 -0.76509136 0" lower="-3.14159265" upper="3.14159265"/>
 
     <link name="${prefix}_tool0"/>
     <joint name="${prefix}_tool0_fixed" type="fixed">

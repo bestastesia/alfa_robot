@@ -50,7 +50,7 @@ def test_urdf_xacro():
             1: (-3.14159265, 3.14159265),
             2: (-1.83259571, 1.83259571),
             3: (-3.14159265, 3.14159265),
-            4: (-1.83259571, 1.83259571),
+            4: (-3.14159265, 3.14159265),
             5: (-3.14159265, 3.14159265),
             6: (-2.09439510, 2.09439510),
             7: (-3.14159265, 3.14159265),
@@ -71,7 +71,7 @@ def test_urdf_xacro():
                 collision_mesh = links[name].find("collision/geometry/mesh")
                 assert visual_mesh is not None
                 assert collision_mesh is not None
-                assert "/meshes/robot_v3_0_3/" in visual_mesh.attrib["filename"]
+                assert "/meshes/robot_v3_0_4/" in visual_mesh.attrib["filename"]
                 assert visual_mesh.attrib["filename"] == collision_mesh.attrib["filename"]
                 assert visual_mesh.attrib["scale"] == "0.001 0.001 0.001"
 
