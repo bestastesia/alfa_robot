@@ -46,6 +46,15 @@ def test_urdf_xacro():
             "left": ("0 0.255 0.25", "-1.57079633 -1.57079633 0"),
             "right": ("0 -0.255 0.25", "1.57079633 1.57079633 0"),
         }
+        expected_limits = {
+            1: (-3.14159265, 3.14159265),
+            2: (-1.83259571, 1.83259571),
+            3: (-3.14159265, 3.14159265),
+            4: (-1.83259571, 1.83259571),
+            5: (-3.14159265, 3.14159265),
+            6: (-2.09439510, 2.09439510),
+            7: (-3.14159265, 3.14159265),
+        }
         for side, (expected_xyz, expected_rpy) in expected_mounts.items():
             mount_origin = joints[f"{side}_arm_mount"].find("origin")
             assert mount_origin.attrib["xyz"] == expected_xyz
@@ -54,8 +63,10 @@ def test_urdf_xacro():
             for index in range(1, 8):
                 name = f"{side}_joint{index}"
                 assert name in joints
-                assert joints[name].find("limit").attrib["lower"] == "-1.57"
-                assert joints[name].find("limit").attrib["upper"] == "1.57"
+                lower, upper = expected_limits[index]
+                limit = joints[name].find("limit")
+                assert abs(float(limit.attrib["lower"]) - lower) < 1e-8
+                assert abs(float(limit.attrib["upper"]) - upper) < 1e-8
                 visual_mesh = links[name].find("visual/geometry/mesh")
                 collision_mesh = links[name].find("collision/geometry/mesh")
                 assert visual_mesh is not None

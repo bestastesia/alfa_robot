@@ -28,13 +28,13 @@
     </link>
   </xacro:macro>
 
-  <xacro:macro name="robot_v3_arm_joint" params="name parent child xyz rpy">
+  <xacro:macro name="robot_v3_arm_joint" params="name parent child xyz rpy lower upper">
     <joint name="${name}" type="revolute">
       <parent link="${parent}"/>
       <child link="${child}"/>
       <origin xyz="${xyz}" rpy="${rpy}"/>
       <axis xyz="0 0 1"/>
-      <limit lower="-1.57" upper="1.57" effort="10" velocity="5"/>
+      <limit lower="${lower}" upper="${upper}" effort="10" velocity="5"/>
     </joint>
   </xacro:macro>
 
@@ -88,13 +88,13 @@
       mass="0.24041774" com="2.7885962e-05 -0.0015306603 -0.13089346"
       inertia="${[0.0016335172, 3.6445384e-07, -1.1094727e-06, 0.0016187553, 4.6439655e-05, 4.1102104e-05]}"/>
 
-    <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0 0 0.005" rpy="0 0 0"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="0.05 0 0.112" rpy="1.5707963 0 1.5707963"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="0.19285735 0.15271556 -0.05" rpy="0 -1.5707963 -2.4718363"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.0045110353 0.0021565173 0.272" rpy="1.5707963 -0.95045823 1.1248596"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="0.039366614 0.023796423 0.0050000002" rpy="-1.5707963 -1.1260022 -1.0270875"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="-0.0254202 0.015931521 0.233" rpy="-1.5707963 -0.062128917 1.0109562"/>
-    <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="0.030096195 -0.31089667 -0.029999999" rpy="1.5707963 1.012185 0.096503786"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint1" parent="${prefix}_arm_base" child="${prefix}_joint1" xyz="0 0 0.005" rpy="0 0 0" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint2" parent="${prefix}_joint1" child="${prefix}_joint2" xyz="0.05 0 0.112" rpy="1.5707963 0 1.5707963" lower="-1.83259571" upper="1.83259571"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint3" parent="${prefix}_joint2" child="${prefix}_joint3" xyz="0.19285735 0.15271556 -0.05" rpy="0 -1.5707963 -2.4718363" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint4" parent="${prefix}_joint3" child="${prefix}_joint4" xyz="-0.0045110353 0.0021565173 0.272" rpy="1.5707963 -0.95045823 1.1248596" lower="-1.83259571" upper="1.83259571"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint5" parent="${prefix}_joint4" child="${prefix}_joint5" xyz="0.039366614 0.023796423 0.0050000002" rpy="-1.5707963 -1.1260022 -1.0270875" lower="-3.14159265" upper="3.14159265"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint6" parent="${prefix}_joint5" child="${prefix}_joint6" xyz="-0.0254202 0.015931521 0.233" rpy="-1.5707963 -0.062128917 1.0109562" lower="-2.09439510" upper="2.09439510"/>
+    <xacro:robot_v3_arm_joint name="${prefix}_joint7" parent="${prefix}_joint6" child="${prefix}_joint7" xyz="0.030096195 -0.31089667 -0.029999999" rpy="1.5707963 1.012185 0.096503786" lower="-3.14159265" upper="3.14159265"/>
 
     <link name="${prefix}_tool0"/>
     <joint name="${prefix}_tool0_fixed" type="fixed">

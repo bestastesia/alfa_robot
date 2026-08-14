@@ -1776,3 +1776,4 @@
 - 验证：description xacro/URDF 测试通过；MoveIt、单控制器和 JointStateBroadcaster 正常启动；全零状态通过 PlanningScene 碰撞检查；左臂非零末端目标 KDL IK 求解成功。
 - 范围：本分支仅用于 V3.0.3 安装方向、外观、碰撞和手动 KDL 规划测试，不代表旧抓取全流程已适配。
 - 执行修复：14轴共用控制器允许接收单侧7轴部分轨迹；未出现在目标中的另一臂保持当前状态，避免 RViz 单臂 `Plan and Execute` 被控制器拒绝。
+- 限位调整：左右双臂统一采用 J1/J3/J5/J7 ±180°、J2/J4 ±105°、J6 ±120°；URDF、ros2_control 与 MoveIt 三套配置保持一致。

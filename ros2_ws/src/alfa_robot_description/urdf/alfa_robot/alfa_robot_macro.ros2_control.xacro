@@ -27,11 +27,11 @@
         <param name="mock_sensor_commands">${mock_sensor_commands}</param>
       </hardware>
 
-      <xacro:macro name="arm_control_joint" params="joint_name initial_value">
+      <xacro:macro name="arm_control_joint" params="joint_name initial_value lower upper">
         <joint name="${prefix}${joint_name}">
           <command_interface name="position">
-            <param name="min">-1.57</param>
-            <param name="max">1.57</param>
+            <param name="min">${lower}</param>
+            <param name="max">${upper}</param>
           </command_interface>
           <state_interface name="position">
             <param name="initial_value">${initial_value}</param>
@@ -40,20 +40,20 @@
         </joint>
       </xacro:macro>
 
-      <xacro:arm_control_joint joint_name="left_joint1" initial_value="${left_joint1_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint2" initial_value="${left_joint2_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint3" initial_value="${left_joint3_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint4" initial_value="${left_joint4_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint5" initial_value="${left_joint5_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint6" initial_value="${left_joint6_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint7" initial_value="${left_joint7_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint1" initial_value="${right_joint1_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint2" initial_value="${right_joint2_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint3" initial_value="${right_joint3_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint4" initial_value="${right_joint4_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint5" initial_value="${right_joint5_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint6" initial_value="${right_joint6_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint7" initial_value="${right_joint7_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint1" initial_value="${left_joint1_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="left_joint2" initial_value="${left_joint2_initial}" lower="-1.83259571" upper="1.83259571"/>
+      <xacro:arm_control_joint joint_name="left_joint3" initial_value="${left_joint3_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="left_joint4" initial_value="${left_joint4_initial}" lower="-1.83259571" upper="1.83259571"/>
+      <xacro:arm_control_joint joint_name="left_joint5" initial_value="${left_joint5_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="left_joint6" initial_value="${left_joint6_initial}" lower="-2.09439510" upper="2.09439510"/>
+      <xacro:arm_control_joint joint_name="left_joint7" initial_value="${left_joint7_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="right_joint1" initial_value="${right_joint1_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="right_joint2" initial_value="${right_joint2_initial}" lower="-1.83259571" upper="1.83259571"/>
+      <xacro:arm_control_joint joint_name="right_joint3" initial_value="${right_joint3_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="right_joint4" initial_value="${right_joint4_initial}" lower="-1.83259571" upper="1.83259571"/>
+      <xacro:arm_control_joint joint_name="right_joint5" initial_value="${right_joint5_initial}" lower="-3.14159265" upper="3.14159265"/>
+      <xacro:arm_control_joint joint_name="right_joint6" initial_value="${right_joint6_initial}" lower="-2.09439510" upper="2.09439510"/>
+      <xacro:arm_control_joint joint_name="right_joint7" initial_value="${right_joint7_initial}" lower="-3.14159265" upper="3.14159265"/>
     </ros2_control>
   </xacro:macro>
 </robot>
