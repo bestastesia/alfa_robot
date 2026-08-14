@@ -26,6 +26,6 @@ cd /mnt/mydisk/ALFA/alfa_robot_v3
 
 双臂共用一个14轴 mock轨迹控制器；单臂执行时允许发送对应侧的7轴部分目标，另一侧保持当前位置。
 
-关节范围依次为：J1 ±180°、J2 ±105°、J3 ±180°、J4 ±135°、J5 ±180°、J6 ±120°、J7 ±180°。
+关节范围依次为：J1 ±180°、J2 ±105°、J3 ±180°、J4 ±150°、J5 ±180°、J6 ±120°、J7 ±180°。
 
 模型 Demo 默认使用 `ROS_DOMAIN_ID=78`，MoveIt Demo 默认使用 `ROS_DOMAIN_ID=79`，避免其他测试节点污染 `/robot_description`、`/joint_states` 和 TF。

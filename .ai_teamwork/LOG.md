@@ -1780,6 +1780,6 @@
 
 ## 2026-08-14 运控 / Codex / V3.0.4 立方体侧装双臂演示
 - 做了什么：将 `/mnt/mydisk/ALFA/backpack/robot_v3.0.4` 的八段网格、惯性和七轴关节链迁入独立测试分支，继续复用立方体左右侧装、14轴 mock 控制器和左右 KDL IK。
-- 限位：J1/J3/J5/J7 ±180°、J2 ±105°、J4 ±135°、J6 ±120°；URDF、ros2_control、MoveIt 和回归测试保持一致。
+- 限位：J1/J3/J5/J7 ±180°、J2 ±105°、J4 ±150°、J6 ±120°；URDF、ros2_control、MoveIt 和回归测试保持一致。
 - 验证：用户已在 MoveIt 窗口确认模型与手动操作正常；全零 PlanningScene 无碰撞，左右非零 FK 目标均可由 KDL 回代；description 与 MoveIt 共19项测试通过。
 - 范围：仍只验收模型、碰撞、手动规划和 KDL，不代表旧抓取全流程已适配 V3.0.4。

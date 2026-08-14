@@ -2,14 +2,14 @@ joint_limits:
   left_joint1: &joint_180 {has_position_limits: true, min_position: -3.14159265, max_position: 3.14159265, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
   left_joint2: &joint_105 {has_position_limits: true, min_position: -1.83259571, max_position: 1.83259571, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
   left_joint3: *joint_180
-  left_joint4: &joint_135 {has_position_limits: true, min_position: -2.35619449, max_position: 2.35619449, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
+  left_joint4: &joint_150 {has_position_limits: true, min_position: -2.61799388, max_position: 2.61799388, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
   left_joint5: *joint_180
   left_joint6: &joint_120 {has_position_limits: true, min_position: -2.09439510, max_position: 2.09439510, has_velocity_limits: true, max_velocity: 1.0, has_acceleration_limits: true, max_acceleration: 1.0}
   left_joint7: *joint_180
   right_joint1: *joint_180
   right_joint2: *joint_105
   right_joint3: *joint_180
-  right_joint4: *joint_135
+  right_joint4: *joint_150
   right_joint5: *joint_180
   right_joint6: *joint_120
   right_joint7: *joint_180
