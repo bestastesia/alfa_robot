@@ -6,6 +6,7 @@ find_package(Eigen3 REQUIRED)
 
 add_library(alfa_robot_analytic_ik
   src/analytic_ik.cpp
+  src/v3_redundant_analytic_ik.cpp
 )
 set_target_properties(alfa_robot_analytic_ik PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -37,6 +38,10 @@ if(BUILD_TESTING)
   add_executable(test_analytic_ik test/test_analytic_ik.cpp)
   target_link_libraries(test_analytic_ik alfa_robot_analytic_ik)
   add_test(NAME test_analytic_ik COMMAND test_analytic_ik)
+
+  add_executable(test_v3_redundant_analytic_ik test/test_v3_redundant_analytic_ik.cpp)
+  target_link_libraries(test_v3_redundant_analytic_ik alfa_robot_analytic_ik)
+  add_test(NAME test_v3_redundant_analytic_ik COMMAND test_v3_redundant_analytic_ik)
 endif()
 
 ament_package()

@@ -3,7 +3,7 @@
 <package format="3">
   <name>alfa_robot_analytic_ik</name>
   <version>0.1.0</version>
-  <description>Deterministic geometric IK solver for the current ALFA three-parallel-axis arm.</description>
+  <description>Deterministic geometric IK solvers for ALFA six-axis and V3 redundant seven-axis arms.</description>
   <maintainer email="motion@example.com">ALFA Motion Team</maintainer>
   <license>Proprietary</license>
 
