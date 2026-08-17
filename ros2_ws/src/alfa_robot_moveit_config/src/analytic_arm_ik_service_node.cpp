@@ -1,7 +1,7 @@
 #include "alfa_robot_analytic_ik/analytic_ik.hpp"
 #include "alfa_robot_moveit_config/motion_core/pose_math.hpp"
 #include "alfa_robot_moveit_config/runtime_status_publisher.hpp"
-#include "robot_motion_interfaces/srv/solve_arm_ik.hpp"
+#include "motion_internal_interfaces/srv/solve_arm_ik.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -15,7 +15,7 @@
 namespace
 {
 
-using SolveArmIk = robot_motion_interfaces::srv::SolveArmIk;
+using SolveArmIk = motion_internal_interfaces::srv::SolveArmIk;
 using alfa_robot::analytic_ik::ArmAnalyticIkRequest;
 using alfa_robot::analytic_ik::ArmSide;
 using alfa_robot::analytic_ik::ThreeParallelArmAnalyticIk;

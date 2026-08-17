@@ -14,7 +14,7 @@ from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
-from robot_motion_interfaces.srv import ExecuteTrajectory
+from motion_internal_interfaces.srv import ExecuteTrajectory
 from robot_motion_runtime.common import (
     REAL_ARM_JOINT_NAMES,
     RuntimeStatusPublisher,

@@ -24,11 +24,6 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "turn_zero_target_y_compensation_m", default_value="0.0"
             ),
-            DeclareLaunchArgument("enable_trajectory_cache", default_value="true"),
-            DeclareLaunchArgument("require_trajectory_cache_hit", default_value="false"),
-            DeclareLaunchArgument(
-                "trajectory_cache_fallback_on_planning_failure", default_value="true"
-            ),
             DeclareLaunchArgument("allow_partial_domain_test", default_value="true"),
             Node(
                 package="armmotion_demo",
@@ -43,8 +38,23 @@ def generate_launch_description():
             ),
             Node(
                 package="armmotion_demo",
+                executable="planning_joint_state_bridge",
+                name="motion_planning_joint_state_bridge",
+                output="screen",
+                parameters=[
+                    {
+                        "input_topic": "/joint_states",
+                        "output_topic": "/motion/internal/model_joint_states",
+                        "fixed_pitch": 0.0,
+                    }
+                ],
+            ),
+            Node(
+                package="armmotion_demo",
                 executable="domain_motion_server",
                 output="screen",
+                sigterm_timeout="20.0",
+                sigkill_timeout="5.0",
                 parameters=[
                     {
                         "dry_run": LaunchConfiguration("dry_run"),
@@ -61,15 +71,6 @@ def generate_launch_description():
                         ),
                         "turn_zero_target_y_compensation_m": LaunchConfiguration(
                             "turn_zero_target_y_compensation_m"
-                        ),
-                        "enable_trajectory_cache": LaunchConfiguration(
-                            "enable_trajectory_cache"
-                        ),
-                        "require_trajectory_cache_hit": LaunchConfiguration(
-                            "require_trajectory_cache_hit"
-                        ),
-                        "trajectory_cache_fallback_on_planning_failure": LaunchConfiguration(
-                            "trajectory_cache_fallback_on_planning_failure"
                         ),
                         "allow_partial_domain_test": LaunchConfiguration(
                             "allow_partial_domain_test"

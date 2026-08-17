@@ -57,6 +57,35 @@ RT_CONTROL_JOINT_NAMES = [
 ]
 RT_CONTROL_ACTION_NAME = '/whole_body_jtc/follow_joint_trajectory'
 
+# 机械臂 ROS/URDF 位置硬限位。数值与 rt-control
+# rt_control_bringup/config/joint_limits.yaml 保持一致。
+ARM_JOINT_POSITION_LIMITS_RAD = {
+    'left_joint1': (-1.57079632679, 1.57079632679),
+    'left_joint2': (-1.57079632679, 1.57079632679),
+    'left_joint3': (-2.44346095279, 2.44346095279),
+    'left_joint4': (-3.14159265359, 3.14159265359),
+    'left_joint5': (-2.18166156499, 2.18166156499),
+    'left_joint6': (-3.12413936107, 3.12413936107),
+    'right_joint1': (-1.57079632679, 1.57079632679),
+    'right_joint2': (-1.57079632679, 1.57079632679),
+    'right_joint3': (-2.44346095279, 2.44346095279),
+    'right_joint4': (-3.14159265359, 3.14159265359),
+    'right_joint5': (-2.18166156499, 2.18166156499),
+    'right_joint6': (-3.12413936107, 3.12413936107),
+}
+
+
+def require_arm_joint_in_range(joint_name: str, value_rad: float) -> None:
+    limits = ARM_JOINT_POSITION_LIMITS_RAD.get(joint_name)
+    if limits is None:
+        raise KeyError(f'unknown arm joint: {joint_name}')
+    lower, upper = limits
+    if not (lower - 1e-9 <= float(value_rad) <= upper + 1e-9):
+        raise ValueError(
+            f'{joint_name} target {value_rad:.6f} rad is outside the rt-control '
+            f'limit [{lower:.6f}, {upper:.6f}] rad'
+        )
+
 ROS_TO_ETHERCAT_SIGN_BY_JOINT = {
     'left_joint1': 1.0,
     'left_joint2': 1.0,

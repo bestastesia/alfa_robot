@@ -13,7 +13,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 ## 当前推进重点
 
 - 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同。
-- Motion 五域联调入口正在收口为单一 `/motion/execute_stage` 阶段 Action；正式入口只规划和执行轨迹，吸附通路由 Autonomy 编排 RT-Control。
+- Motion 五域联调入口为中央 `robot_motion_interfaces` 提供的 `/motion/execute_stage` 阶段 Action；正式入口只规划和执行轨迹，吸附通路由 Autonomy 编排 RT-Control。
+- 域间接口完整依赖中央 `robot_interfaces` 仓库，固定 SHA 记录于 `ros2_ws/src/dependencies.lock.yaml`；域内规划接口统一由 `motion_internal_interfaces` 提供，禁止其他域依赖。
 - 正式阶段输入只包含执行阶段和一对左右 `base_link` 6D 目标，不再包含任务号、箱号、frame 或规划内部字段；Action UUID 作为请求身份。同一逻辑任务先发送重拍目标对，再发送精定位抓取目标对。每个目标携带 `NO_MOVE/SIDE_SUCTION/TOP_SUCTION` 模式字段，本版只校验该字段，既有策略仍由位姿分类逻辑决定。
 - Motion 对外只有 `/motion/execute_stage` 一个阶段 Action；`CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME` 必须顺序调用。Motion 不再检测、规划或主动改变实体 `turn`；规划内部仅使用固定虚拟值。因为 Native rt-control 的完整14轴 Action 禁止 partial goal，发送轨迹时只复制最新 `turn` 反馈并保持零速度、零加速度，Turn 所有权归其他域。
 - 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
@@ -34,8 +35,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前主要模块速查
 
-- Motion 公开阶段契约：`ros2_ws/src/alfa_motion_interfaces/`
-- 仓库内部规划服务契约：`ros2_ws/src/robot_motion_interfaces/`
+- Motion 公开阶段契约：中央依赖 `ros2_ws/src/robot_interfaces/robot_motion_interfaces/`
+- 仓库内部规划服务契约：`ros2_ws/src/motion_internal_interfaces/`
 - 纯算法公共核心：`ros2_ws/src/robot_motion_core/`
 - 核心运行时：`ros2_ws/src/robot_motion_runtime/`
 - 场景能力：`ros2_ws/src/robot_motion_scene_service/`

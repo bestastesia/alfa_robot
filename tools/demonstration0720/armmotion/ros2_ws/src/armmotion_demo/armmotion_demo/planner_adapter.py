@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -55,7 +54,7 @@ class PlannerAdapter:
         max_updown_acceleration_m_s2: float,
         speed_scale: float,
         timeout_s: float,
-        trajectory_cache_enabled: bool = True,
+        trajectory_cache_enabled: bool = False,
         trajectory_cache_required: bool = False,
         trajectory_cache_fallback_on_planning_failure: bool = False,
         trajectory_cache_root: Path | None = None,
@@ -107,7 +106,16 @@ class PlannerAdapter:
     def _ensure_session(self) -> None:
         if self._planner_process is not None and self._planner_process.poll() is None:
             return
-        self._start_session()
+        self.close()
+        try:
+            self._start_session()
+        except Exception:
+            self.close()
+            raise
+
+    def start(self) -> float:
+        self._ensure_session()
+        return self.startup_ms
 
     def _start_session(self) -> None:
         command = [
@@ -115,6 +123,8 @@ class PlannerAdapter:
             str(self.planner_script),
             "--planner-server",
             "--external-control-stack",
+            "--planning-joint-states-topic",
+            "/motion/internal/model_joint_states",
             "--pair-sequence",
             "1,3",
             "--task-layout",
@@ -138,7 +148,7 @@ class PlannerAdapter:
             str(self.session_root),
             "--no-rerun",
             "--service-timeout",
-            "15.0",
+            "60.0",
             "--startup-retries",
             "1",
             "--ros-domain-id",
@@ -156,6 +166,7 @@ class PlannerAdapter:
                 stdout=log_stream,
                 stderr=subprocess.STDOUT,
                 text=True,
+                start_new_session=True,
             )
         finally:
             log_stream.close()
@@ -750,18 +761,12 @@ class PlannerAdapter:
         self._recapture_client = None
         process = self._planner_process
         self._planner_process = None
-        if process is None or process.poll() is not None:
+        if process is None:
             return
-        process.send_signal(signal.SIGINT)
-        try:
-            process.wait(timeout=10.0)
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            try:
-                process.wait(timeout=3.0)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=3.0)
+        if process.poll() is None:
+            self.monitor_helpers.terminate_process(process, timeout=10.0)
+        if not self.monitor_helpers.wait_until_planner_services_gone(timeout=5.0):
+            self.monitor_helpers.cleanup_stale_planner_stack(timeout=10.0)
 
     def __del__(self) -> None:
         try:

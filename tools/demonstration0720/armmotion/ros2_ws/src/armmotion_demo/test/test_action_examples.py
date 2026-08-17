@@ -35,20 +35,20 @@ def test_stage_modes_match_cached_grasp_family():
         expected = 2 if item["row"] <= 2 else 1
         for stage_index in (0, 1):
             targets = item["goals"][stage_index]["goal"]["targets"]
-            assert targets["left_stage"] == expected
-            assert targets["right_stage"] == expected
+            assert targets["left_grasp_mode"] == expected
+            assert targets["right_grasp_mode"] == expected
         for stage_index in (2, 3, 4):
             targets = item["goals"][stage_index]["goal"]["targets"]
-            assert targets["left_stage"] == 3
-            assert targets["right_stage"] == 3
+            assert targets["left_grasp_mode"] == 3
+            assert targets["right_grasp_mode"] == 3
 
 
 def test_single_arm_example_marks_other_arm_no_move():
     example = as_single_arm(load_examples()[0], "left")
     for stage_index in (0, 1):
         targets = example["goals"][stage_index]["goal"]["targets"]
-        assert targets["left_stage"] == 2
-        assert targets["right_stage"] == 3
+        assert targets["left_grasp_mode"] == 2
+        assert targets["right_grasp_mode"] == 3
         assert targets["right_pose"]["position"] == {"x": 0.0, "y": 0.0, "z": 0.0}
 
 

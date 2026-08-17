@@ -7,12 +7,12 @@ import time
 
 import rclpy
 from action_msgs.msg import GoalStatus
-from alfa_motion_interfaces.action import ExecuteMotionStage
-from alfa_motion_interfaces.msg import DualArmPoseTargets
 from geometry_msgs.msg import Pose
 from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from robot_motion_interfaces.action import ExecuteMotionStage
+from robot_motion_interfaces.msg import DualArmPoseTargets
 from std_srvs.srv import Trigger
 
 from .common import (
@@ -64,10 +64,10 @@ def _pose(value: Pose6DValue) -> Pose:
 
 
 TARGET_MODES = {
-    "no_move": DualArmPoseTargets.STAGE_NO_MOVE,
-    "front": DualArmPoseTargets.STAGE_SIDE_SUCTION,
-    "side_suction": DualArmPoseTargets.STAGE_SIDE_SUCTION,
-    "top_suction": DualArmPoseTargets.STAGE_TOP_SUCTION,
+    "no_move": DualArmPoseTargets.GRASP_MODE_NO_MOVE,
+    "front": DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION,
+    "side_suction": DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION,
+    "top_suction": DualArmPoseTargets.GRASP_MODE_TOP_SUCTION,
 }
 
 
@@ -107,8 +107,8 @@ class ManualDomainTask(Node):
     ):
         goal = ExecuteMotionStage.Goal()
         goal.execution_stage = int(stage)
-        goal.targets.left_stage = TARGET_MODES[left_mode]
-        goal.targets.right_stage = TARGET_MODES[right_mode]
+        goal.targets.left_grasp_mode = TARGET_MODES[left_mode]
+        goal.targets.right_grasp_mode = TARGET_MODES[right_mode]
         if left is not None:
             goal.targets.left_pose = _pose(left)
         if right is not None:
@@ -139,9 +139,11 @@ class ManualDomainTask(Node):
         if goal_handle is None or not goal_handle.accepted:
             raise RuntimeError(f"{label} Goal 被拒绝")
         wrapped = _wait_future(goal_handle.get_result_async(), timeout_s, f"{label} Result")
-        if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
+        if wrapped.status != GoalStatus.STATUS_SUCCEEDED or not wrapped.result.ok:
+            error = wrapped.result.error
             raise RuntimeError(
-                f"{label} 失败 status={wrapped.status}: {wrapped.result.diagnostic}"
+                f"{label} 失败 status={wrapped.status} code={error.code} "
+                f"retryable={error.retryable}: {error.message or wrapped.result.diagnostic}"
             )
         print(f"{label} 完成: {wrapped.result.diagnostic}", flush=True)
         return wrapped.result

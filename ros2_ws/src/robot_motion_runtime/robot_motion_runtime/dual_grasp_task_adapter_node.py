@@ -13,14 +13,14 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import (
+from motion_internal_interfaces.msg import (
     ArmExtractPolicy,
     AttachedBox,
     DualGraspStrategy,
     RobotMotionState,
     TaskReceipt,
 )
-from robot_motion_interfaces.srv import RunDualArmPoseTask, RunDualGraspTask
+from motion_internal_interfaces.srv import RunDualArmPoseTask, RunDualGraspTask
 from robot_motion_runtime.box_pair_task_adapter_node import (
     default_loaded_goal,
     make_pose,

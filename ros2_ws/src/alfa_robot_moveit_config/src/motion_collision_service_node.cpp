@@ -1,7 +1,7 @@
 #include "alfa_robot_moveit_config/planning_diagnostics.hpp"
 #include "alfa_robot_moveit_config/runtime_status_publisher.hpp"
-#include "robot_motion_interfaces/msg/attached_box.hpp"
-#include "robot_motion_interfaces/srv/check_collision.hpp"
+#include "motion_internal_interfaces/msg/attached_box.hpp"
+#include "motion_internal_interfaces/srv/check_collision.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -22,10 +22,10 @@
 namespace
 {
 
-using CheckCollision = robot_motion_interfaces::srv::CheckCollision;
+using CheckCollision = motion_internal_interfaces::srv::CheckCollision;
 
 moveit_msgs::msg::AttachedCollisionObject to_attached_collision_object(
-  const robot_motion_interfaces::msg::AttachedBox& box)
+  const motion_internal_interfaces::msg::AttachedBox& box)
 {
   moveit_msgs::msg::AttachedCollisionObject attached;
   attached.link_name = box.link_name;
@@ -140,7 +140,7 @@ private:
   planning_scene::PlanningScenePtr make_scene_snapshot(
     const std::vector<moveit_msgs::msg::CollisionObject>& scene_objects,
     const std::vector<moveit_msgs::msg::AttachedCollisionObject>& attached_objects,
-    const std::vector<robot_motion_interfaces::msg::AttachedBox>& attached_boxes,
+    const std::vector<motion_internal_interfaces::msg::AttachedBox>& attached_boxes,
     bool use_current_scene_as_base) const
   {
     planning_scene::PlanningScenePtr scene;

@@ -85,8 +85,8 @@ install_manifest.txt
 !ros2_ws/src/alfa_robot_moveit_config/srv/PlanRecapture.srv
 !ros2_ws/src/alfa_robot_moveit_config/srv/
 !ros2_ws/src/alfa_robot_moveit_config/srv/ConfigureExtractMonitor.srv
-!ros2_ws/src/robot_motion_interfaces/srv/
-!ros2_ws/src/robot_motion_interfaces/srv/*.srv
+!ros2_ws/src/motion_internal_interfaces/srv/
+!ros2_ws/src/motion_internal_interfaces/srv/*.srv
 *.msg.generated
 
 # Large binary files (models, maps, point clouds, images)
@@ -198,6 +198,9 @@ ros2_ws/RenderOption_*.json
 .ai_teamwork/tmp/
 .ai_teamwork/*.local.md
 .ai_teamwork/force_analysis_semantics.yaml
+
+# Source dependencies imported from ros2_ws/src/dependency.repos
+ros2_ws/src/robot_interfaces/
 
 # Local AI operation scratch log; not project progress
 .ai_teamwork/OPS_LOG.local.md

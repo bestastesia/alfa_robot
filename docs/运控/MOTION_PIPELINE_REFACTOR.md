@@ -281,21 +281,21 @@ ros2 run alfa_robot_moveit_config extract_startup_stability_smoke.py \
 
 关键原则：碰撞检查不能只依赖当前机器人状态。当前实现通过 `make_full_scene_snapshot(start_state, attached_boxes)` 克隆 PlanningScene，再显式 `setCurrentState(start_state)`，因此可以检查任意请求态和任意轨迹点。这是后续迁移到独立 collision service 时必须保留的 interface。
 
-当前已新增轻量接口包 `robot_motion_interfaces` 和运行时包 `robot_motion_runtime`。`DualArmPlannerNode` 仍是完整箱垛实验的主流程 Adapter，但事实源、PlanExtract、PlanLoaded、ExecuteTrajectory 和最小任务编排已具备独立 ROS 节点形态：
+当前已新增域内轻量接口包 `motion_internal_interfaces` 和运行时包 `robot_motion_runtime`。`DualArmPlannerNode` 仍是完整箱垛实验的主流程 Adapter，但事实源、PlanExtract、PlanLoaded、ExecuteTrajectory 和最小任务编排已具备独立 ROS 节点形态：
 
-- `robot_motion_interfaces/srv/SolveArmIk.srv`：单臂目标 Pose + seed state + fixed updown -> 多个单臂 IK 解；当前 `alfa_robot_moveit_config/analytic_arm_ik_service_node` 已实现该服务，默认服务名 `/robot_motion/solve_arm_ik`，支持 `base_link` 和 `{left,right}_arm_base` frame。
-- `robot_motion_interfaces/srv/PlanDualArmIk.srv`：左右目标 Pose + seed state + fixed updown -> 双臂组合 IK candidate states；当前 `robot_motion_runtime/dual_arm_ik_candidate_service_node.py` 已实现该服务，默认服务名 `/robot_motion/plan_dual_arm_ik`。
-- `robot_motion_interfaces/srv/PlanExtract.srv`：IK candidate states + carried boxes -> 抽离候选轨迹与选中项。
-- `robot_motion_interfaces/srv/PlanLoaded.srv`：抽离末态集合 + 负重姿态族 + carried boxes + planning mode -> 负重规划候选轨迹与选中项。
-- `robot_motion_interfaces/srv/CheckCollision.srv`：显式 `start_state` 或 `trajectory` + scene objects + attached boxes -> valid/reason/contacts；当前 `alfa_robot_moveit_config/motion_collision_service_node` 已实现该服务，默认服务名 `/robot_motion/check_collision`。该服务禁止静默替换成 live `/joint_states`。
-- `robot_motion_interfaces/srv/ExecuteTrajectory.srv`：轨迹 + 速度参数 -> accepted/message；执行层只负责验证和转发，不关心后端是 mock 还是真机。
-- `robot_motion_interfaces/srv/SetRobotMotionState.srv`：仿真/mock 启动时显式固定 `/robot_motion/state`；真实机器人通常由硬件反馈持续发布。
-- `robot_motion_interfaces/srv/SetRobotMotionScene.srv`：仿真/mock 启动时显式固定 `/robot_motion/scene`；真实系统可由感知/世界模型持续发布。
-- `robot_motion_interfaces/srv/RunMotionTask.srv`：最小任务编排契约；当前输入为 IK candidate states，服务内部串起 `PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
-- `robot_motion_interfaces/srv/RunDualArmPoseTask.srv`：目标位姿任务编排契约；服务内部串起 `PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`，用于把“下一次信息启动任务”从 IK candidate 输入推进到目标 pose 输入。
-- `robot_motion_interfaces/srv/RunBoxPairTask.srv`：箱号任务 adapter 契约；输入左右箱号、吸附模式和箱墙几何，服务内部生成左右目标 Pose 与附着箱，再转发 `RunDualArmPoseTask`。
-- `robot_motion_interfaces/msg/RobotMotionState.msg`：机器人姿态事实源样本；`robot_motion_runtime/motion_state_source_node.py` 可把指定 `/joint_states` 包装成 `/robot_motion/state`，也可通过 `/robot_motion/set_state` 固定仿真事实状态。生产运行时应只有一个节点发布 `authoritative=true`。
-- `robot_motion_interfaces/msg/RobotMotionScene.msg`：场景事实源样本；`robot_motion_runtime/motion_scene_source_node.py` 可通过 `/robot_motion/set_scene` 固定箱墙、集装箱等碰撞对象；`PlanExtract/PlanLoaded` 会把请求内显式 scene 或最新 `/robot_motion/scene` 传给 `CheckCollision`。
+- `motion_internal_interfaces/srv/SolveArmIk.srv`：单臂目标 Pose + seed state + fixed updown -> 多个单臂 IK 解；当前 `alfa_robot_moveit_config/analytic_arm_ik_service_node` 已实现该服务，默认服务名 `/robot_motion/solve_arm_ik`，支持 `base_link` 和 `{left,right}_arm_base` frame。
+- `motion_internal_interfaces/srv/PlanDualArmIk.srv`：左右目标 Pose + seed state + fixed updown -> 双臂组合 IK candidate states；当前 `robot_motion_runtime/dual_arm_ik_candidate_service_node.py` 已实现该服务，默认服务名 `/robot_motion/plan_dual_arm_ik`。
+- `motion_internal_interfaces/srv/PlanExtract.srv`：IK candidate states + carried boxes -> 抽离候选轨迹与选中项。
+- `motion_internal_interfaces/srv/PlanLoaded.srv`：抽离末态集合 + 负重姿态族 + carried boxes + planning mode -> 负重规划候选轨迹与选中项。
+- `motion_internal_interfaces/srv/CheckCollision.srv`：显式 `start_state` 或 `trajectory` + scene objects + attached boxes -> valid/reason/contacts；当前 `alfa_robot_moveit_config/motion_collision_service_node` 已实现该服务，默认服务名 `/robot_motion/check_collision`。该服务禁止静默替换成 live `/joint_states`。
+- `motion_internal_interfaces/srv/ExecuteTrajectory.srv`：轨迹 + 速度参数 -> accepted/message；执行层只负责验证和转发，不关心后端是 mock 还是真机。
+- `motion_internal_interfaces/srv/SetRobotMotionState.srv`：仿真/mock 启动时显式固定 `/robot_motion/state`；真实机器人通常由硬件反馈持续发布。
+- `motion_internal_interfaces/srv/SetRobotMotionScene.srv`：仿真/mock 启动时显式固定箱墙、集装箱等碰撞对象。
+- `motion_internal_interfaces/srv/RunMotionTask.srv`：最小任务编排契约；当前输入为 IK candidate states，服务内部串起 `PlanExtract -> PlanLoaded -> ExecuteTrajectory`。
+- `motion_internal_interfaces/srv/RunDualArmPoseTask.srv`：目标位姿任务编排契约；服务内部串起 `PlanDualArmIk -> PlanExtract -> PlanLoaded -> ExecuteTrajectory`，用于把“下一次信息启动任务”从 IK candidate 输入推进到目标 pose 输入。
+- `motion_internal_interfaces/srv/RunBoxPairTask.srv`：箱号任务 adapter 契约；输入左右箱号、吸附模式和箱墙几何，服务内部生成左右目标 Pose 与附着箱，再转发 `RunDualArmPoseTask`。
+- `motion_internal_interfaces/msg/RobotMotionState.msg`：机器人姿态事实源样本；`robot_motion_runtime/motion_state_source_node.py` 可把指定 `/joint_states` 包装成 `/robot_motion/state`，也可通过 `/robot_motion/set_state` 固定仿真事实状态。生产运行时应只有一个节点发布 `authoritative=true`。
+- `motion_internal_interfaces/msg/RobotMotionScene.msg`：场景事实源样本；`robot_motion_runtime/motion_scene_source_node.py` 可通过 `/robot_motion/set_scene` 固定箱墙、集装箱等碰撞对象；`PlanExtract/PlanLoaded` 会把请求内显式 scene 或最新 `/robot_motion/scene` 传给 `CheckCollision`。
 
 这些 interface 当前是契约和第一版可运行服务骨架，不强制改变已有实验入口。它们的作用是防止迁移到 `robot_motion_control` 时继续把 IK、抽离、规划、碰撞和执行都塞在一个 demo 节点里。
 
@@ -388,7 +388,7 @@ ros2 launch robot_motion_runtime runtime_services.launch.py \
 如果终端处于 Conda 环境，构建自定义 ROS interface 时必须显式使用系统 Python，否则会生成 `cpython-311` 的 typesupport，Humble 的 `ros2 service call` 会无法导入：
 
 ```bash
-colcon build --packages-select robot_motion_interfaces alfa_robot_moveit_config \
+colcon build --packages-select motion_internal_interfaces alfa_robot_moveit_config \
   --symlink-install \
   --cmake-args -DPYTHON_EXECUTABLE=/usr/bin/python3 -DPython3_EXECUTABLE=/usr/bin/python3 -DBUILD_TESTING=OFF
 ```

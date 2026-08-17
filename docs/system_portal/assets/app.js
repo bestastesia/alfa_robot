@@ -136,7 +136,7 @@
   }
 
   function renderPackagePreview() {
-    const featured = ["robot_motion_interfaces", "robot_motion_scene_service", "alfa_robot_moveit_config", "alfa_robot_execution_bridge"];
+    const featured = ["motion_internal_interfaces", "robot_motion_scene_service", "alfa_robot_moveit_config", "alfa_robot_execution_bridge"];
     return `
       <section class="section">
         <div class="section-head">

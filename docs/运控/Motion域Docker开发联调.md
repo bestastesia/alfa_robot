@@ -30,8 +30,8 @@ Autonomy -----------------------> rt-control 吸附接口
 
 | ROS 名称 | 类型 | 生产者 → 消费者 |
 |---|---|---|
-| `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy → Motion |
-| `/motion/readiness` | `alfa_motion_interfaces/msg/MotionReadiness` | Motion → Autonomy/观测工具 |
+| `/motion/execute_stage` | `robot_motion_interfaces/action/ExecuteMotionStage` | Autonomy → Motion |
+| `/motion/readiness` | `robot_system_interfaces/msg/DomainReadiness` | Motion → Autonomy/观测工具 |
 | `/whole_body_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → Native rt-control |
 | `/joint_states` | `sensor_msgs/msg/JointState` | rt-control → Motion |
 
@@ -45,24 +45,24 @@ DualArmPoseTargets targets
 `DualArmPoseTargets`：
 
 ```text
-STAGE_TOP_SUCTION=1
-STAGE_SIDE_SUCTION=2
-STAGE_NO_MOVE=3
+GRASP_MODE_TOP_SUCTION=1
+GRASP_MODE_SIDE_SUCTION=2
+GRASP_MODE_NO_MOVE=3
 
-uint8 left_stage
+uint8 left_grasp_mode
 geometry_msgs/Pose left_pose
-uint8 right_stage
+uint8 right_grasp_mode
 geometry_msgs/Pose right_pose
 ```
 
 Pose 固定在 `base_link` 下，位置单位米、姿态为归一化四元数。侧吸 Pose 表示实际正面吸附面中心，顶吸 Pose 表示实际顶面吸附面中心。Goal 不包含任务号、箱号、frame、时间戳、关节角、轨迹或 PLC 指令；ROS Action Goal UUID 负责请求身份。
 
-Result 只有 `diagnostic`。成功、失败和取消使用 Action 原生终态；Feedback 只有 `PLANNING/EXECUTING/SETTLING`。
+Result 包含 `ok`、结构化 `robot_system_interfaces/ErrorInfo error` 和仅供诊断的 `diagnostic`。成功、失败和取消同时使用 Action 原生终态；Feedback 只有 `PLANNING/EXECUTING/SETTLING`。
 
 接口源码：
 
-- `ros2_ws/src/alfa_motion_interfaces/action/ExecuteMotionStage.action`
-- `ros2_ws/src/alfa_motion_interfaces/msg/DualArmPoseTargets.msg`
+- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_interfaces/robot_motion_interfaces/action/ExecuteMotionStage.action`
+- `/mnt/mydisk/ALFA/SevenovaHangzhou/robot_interfaces/robot_motion_interfaces/msg/DualArmPoseTargets.msg`
 
 ## 3. 阶段状态机
 
@@ -70,8 +70,8 @@ Result 只有 `diagnostic`。成功、失败和取消使用 Action 原生终态�
 
 | 阶段 | Motion 行为 | 成功后 Autonomy 行为 |
 |---|---|---|
-| `CAMERA_VIEW` | 接收第一对重拍 Pose，执行 IK、碰撞规划和重拍位轨迹 | 触发感知重拍和精定位 |
-| `PREGRASP` | 接收第二对实际吸附面中心 Pose，从重拍真实末态计算完整计划并执行到预抓取位 | 请求靠近阶段 |
+| `CAMERA_VIEW` | 接收第一对重拍 Pose，保留输入姿态并执行 IK、碰撞规划和重拍位轨迹 | 触发感知重拍和精定位 |
+| `PREGRASP` | 接收第二对实际吸附面中心 Pose，允许 Motion 标准化抓取姿态，从重拍真实末态计算完整计划并执行到预抓取位 | 请求靠近阶段 |
 | `APPROACH` | 执行 5cm 靠近吸附轨迹 | 打开吸附通路并等待真空条件 |
 | `PLACE` | 执行抽离、负重过渡、预放置和放置轨迹 | 关闭吸附通路并等待释放条件 |
 | `HOME` | 执行放置位到初始位轨迹并清除计划 | 进入下一任务或结束 |
@@ -100,6 +100,14 @@ Result 只有 `diagnostic`。成功、失败和取消使用 Action 原生终态�
 - 模型、箱体尺寸、场景、关节合同或算法版本变化后必须重建缓存。
 
 ## 6. 原生联调
+
+首次构建先导入锁定版本的中央接口仓库；各机器目录可以不同，但必须使用同一提交：
+
+```bash
+cd ros2_ws
+vcs import src < src/dependencies.repos
+colcon build --packages-select robot_interfaces_qos robot_system_interfaces robot_motion_interfaces
+```
 
 Mock：
 
@@ -164,11 +172,11 @@ cd ~/motion_domain_current
 
 这些样例使用公共 Action 的真实四元数和吸附模式，不包含测试任务号或箱号。
 单臂诊断时增加 `--single-arm left` 或 `--single-arm right`，未发送的一臂会明确写为
-`STAGE_NO_MOVE=3`，便于验证 Motion 内部的 Y 镜像降级。
+`GRASP_MODE_NO_MOVE=3`，便于验证 Motion 内部的 Y 镜像降级。
 
 ## 7. 当前限制
 
-- `left_stage/right_stage` 已进入并校验公共合同；抓取策略由实际吸附面 Pose 反推出箱层和箱体几何。
+- `left_grasp_mode/right_grasp_mode` 已进入并校验公共合同；抓取策略由实际吸附面 Pose 反推出箱层和箱体几何。
 - Gate、安全状态、模型/标定版本强制准入尚未完成。
 - Action 取消当前只保证在轨迹段边界收敛，尚未完成生产级中途制动策略。
 - 长驻 planner 仍由历史 MoveIt 规划进程承载，是 Motion 内部实现细节，后续可替换而不修改公共 Action。

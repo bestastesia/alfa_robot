@@ -10,8 +10,8 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
-from robot_motion_interfaces.msg import MotionPlanCandidate, RobotMotionScene, RobotMotionState
-from robot_motion_interfaces.srv import CheckCollision, PlanExtract
+from motion_internal_interfaces.msg import MotionPlanCandidate, RobotMotionScene, RobotMotionState
+from motion_internal_interfaces.srv import CheckCollision, PlanExtract
 from robot_motion_runtime.common import (
     RuntimeStatusPublisher,
     joint_distance,

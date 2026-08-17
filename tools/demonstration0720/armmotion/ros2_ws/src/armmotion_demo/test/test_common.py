@@ -491,3 +491,16 @@ def test_hardware_always_holds_external_turn():
     )
     assert all(point.velocities[turn_index] == pytest.approx(0.0) for point in held.points)
     assert all(point.accelerations[turn_index] == pytest.approx(0.0) for point in held.points)
+
+
+def test_hardware_rejects_cached_trajectory_outside_rt_control_limits():
+    samples = [
+        sample("x", 0.0, 0.0, 0.3),
+        sample("x", 1.0, 0.0, 0.3),
+    ]
+    samples[-1].joints["left_joint3"] = math.radians(141.0)
+    executor = HardwareExecutor.__new__(HardwareExecutor)
+    executor._state_lock = threading.Lock()
+    executor._latest_joints = {}
+    with pytest.raises(ValueError, match="left_joint3.*rt-control limit"):
+        executor._make_trajectory(samples)

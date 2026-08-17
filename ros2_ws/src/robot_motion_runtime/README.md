@@ -72,7 +72,7 @@ ros2 launch robot_motion_runtime runtime_full_stack.launch.py \
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
 source install/setup.bash
 
-ros2 service call /robot_motion/run_dual_grasp_task robot_motion_interfaces/srv/RunDualGraspTask "{
+ros2 service call /robot_motion/run_dual_grasp_task motion_internal_interfaces/srv/RunDualGraspTask "{
   request_id: 'manual_dual_grasp_6_8',
   left: {
     pose_6d: {x: 0.925, y: 0.400, z: 1.197906, roll: 3.14159265359, pitch: -1.57079632679, yaw: 0.0}
@@ -104,7 +104,7 @@ ros2 topic echo /robot_motion/task_receipt
 cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
 source install/setup.bash
 
-ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/RunBoxPairTask "{
+ros2 service call /robot_motion/run_box_pair_task motion_internal_interfaces/srv/RunBoxPairTask "{
   context: {request_id: 'manual_box_pair_6_8', frame_id: 'base_link', scene_id: 'manual_box_stack', state_id: 'live_joint_states'},
   left_box_id: 6,
   right_box_id: 8,
@@ -170,7 +170,7 @@ xdg-open http://127.0.0.1:8766
 如果当前没有真实 `/joint_states`，先显式固定仿真事实状态：
 
 ```bash
-ros2 service call /robot_motion/set_state robot_motion_interfaces/srv/SetRobotMotionState "{
+ros2 service call /robot_motion/set_state motion_internal_interfaces/srv/SetRobotMotionState "{
   context: {request_id: 'manual_init', frame_id: 'world', scene_id: 'demo', state_id: 'manual:zero'},
   source: 'manual',
   authoritative: true,
@@ -184,7 +184,7 @@ ros2 service call /robot_motion/set_state robot_motion_interfaces/srv/SetRobotMo
 如果当前没有真实场景服务，也先显式固定仿真场景。空场景表示只使用 MoveIt 当前 PlanningScene；真实箱墙/集装箱可通过 `scene_objects` 传入：
 
 ```bash
-ros2 service call /robot_motion/set_scene robot_motion_interfaces/srv/SetRobotMotionScene "{
+ros2 service call /robot_motion/set_scene motion_internal_interfaces/srv/SetRobotMotionScene "{
   context: {request_id: 'manual_scene', frame_id: 'base_link', scene_id: 'manual:empty', state_id: 'manual:zero'},
   source: 'manual',
   authoritative: true,
@@ -199,7 +199,7 @@ ros2 service call /robot_motion/set_scene robot_motion_interfaces/srv/SetRobotMo
 最小 dry-run 任务示例：
 
 ```bash
-ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTask "{
+ros2 service call /robot_motion/run_task motion_internal_interfaces/srv/RunMotionTask "{
   context: {request_id: 'demo_task', frame_id: 'world', scene_id: 'demo', state_id: 'manual:zero'},
   seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   ik_candidate_states: [
@@ -220,7 +220,7 @@ ros2 service call /robot_motion/run_task robot_motion_interfaces/srv/RunMotionTa
 目标位姿任务示例：
 
 ```bash
-ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/srv/RunDualArmPoseTask "{
+ros2 service call /robot_motion/run_dual_arm_pose_task motion_internal_interfaces/srv/RunDualArmPoseTask "{
   context: {request_id: 'pose_task', frame_id: 'base_link', scene_id: 'demo', state_id: 'manual:zero'},
   seed_state: {name: ['updown','turn','pitch','left_joint1','right_joint1'], position: [0.55,0,0,0,0]},
   left_target: {header: {frame_id: 'base_link'}, pose: {position: {x: 0.6, y: 0.25, z: 0.8}, orientation: {x: 0.0, y: 0.7071068, z: 0.0, w: 0.7071068}}},
@@ -238,7 +238,7 @@ ros2 service call /robot_motion/run_dual_arm_pose_task robot_motion_interfaces/s
 箱号任务示例：
 
 ```bash
-ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/RunBoxPairTask "{
+ros2 service call /robot_motion/run_box_pair_task motion_internal_interfaces/srv/RunBoxPairTask "{
   context: {request_id: 'box_pair_demo', frame_id: 'base_link', scene_id: 'box_stack', state_id: 'manual:zero'},
   seed_state: {name: ['updown','turn','pitch','left_joint1','left_joint2','left_joint3','left_joint4','left_joint5','left_joint6','right_joint1','right_joint2','right_joint3','right_joint4','right_joint5','right_joint6'], position: [0.55,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},
   left_box_id: 1,
@@ -268,7 +268,7 @@ ros2 service call /robot_motion/run_box_pair_task robot_motion_interfaces/srv/Ru
 
 2026-07-09 验证过的完整 smoke：
 
-- 干净环境重编译：`robot_motion_interfaces`、`alfa_robot_moveit_config`、`robot_motion_runtime` 通过。
+- 干净环境重编译：`motion_internal_interfaces`、`alfa_robot_moveit_config`、`robot_motion_runtime` 通过。
 - 静态校验：`/usr/bin/python3 -m py_compile src/robot_motion_runtime/robot_motion_runtime/*.py src/robot_motion_runtime/launch/*.py` 通过。
 - 前端数据：`node --check docs/system_portal/assets/data.js` 通过。
 - 运行验证：隔离 `ROS_DOMAIN_ID=228` 启动 `runtime_full_stack.launch.py subscribe_joint_states:=false execute_forward_action:=false dashboard_port:=8774 ik_root_samples:=360 ik_default_max_solutions:=4 plan_check_collision:=true`。

@@ -4,8 +4,8 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
-from robot_motion_interfaces.msg import RobotMotionScene
-from robot_motion_interfaces.srv import SetRobotMotionScene
+from motion_internal_interfaces.msg import RobotMotionScene
+from motion_internal_interfaces.srv import SetRobotMotionScene
 from robot_motion_runtime.common import RuntimeStatusPublisher, stamp_is_zero
 
 

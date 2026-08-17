@@ -2,7 +2,7 @@ import rclpy
 import pytest
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.srv import SetRobotMotionScene, SetRobotMotionState
+from motion_internal_interfaces.srv import SetRobotMotionScene, SetRobotMotionState
 from robot_motion_runtime.motion_scene_source_node import MotionSceneSourceNode
 from robot_motion_runtime.motion_state_source_node import MotionStateSourceNode
 

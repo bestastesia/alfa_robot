@@ -4,8 +4,8 @@ import copy
 import math
 from dataclasses import dataclass
 
-from alfa_motion_interfaces.msg import DualArmPoseTargets
 from geometry_msgs.msg import Pose
+from robot_motion_interfaces.msg import DualArmPoseTargets
 from robot_motion_runtime.dual_grasp_strategy import (
     FRONT_TOOL_RPY,
     Pose6DValue,
@@ -21,8 +21,8 @@ from .common import PoseTaskSpec, planning_task_from_suction_surface_poses
 class ResolvedStageTargets:
     left_pose: Pose
     right_pose: Pose
-    left_stage: int
-    right_stage: int
+    left_grasp_mode: int
+    right_grasp_mode: int
     mirrored_from: str | None = None
 
 
@@ -33,40 +33,40 @@ def _mirrored_pose_y(source: Pose) -> Pose:
 
 
 def resolve_dual_stage_targets(request) -> ResolvedStageTargets:
-    left_stage = int(request.targets.left_stage)
-    right_stage = int(request.targets.right_stage)
-    left_no_move = left_stage == DualArmPoseTargets.STAGE_NO_MOVE
-    right_no_move = right_stage == DualArmPoseTargets.STAGE_NO_MOVE
+    left_grasp_mode = int(request.targets.left_grasp_mode)
+    right_grasp_mode = int(request.targets.right_grasp_mode)
+    left_no_move = left_grasp_mode == DualArmPoseTargets.GRASP_MODE_NO_MOVE
+    right_no_move = right_grasp_mode == DualArmPoseTargets.GRASP_MODE_NO_MOVE
     if left_no_move and right_no_move:
         raise ValueError("左右臂不能同时为 NO_MOVE")
     if left_no_move:
         return ResolvedStageTargets(
             left_pose=_mirrored_pose_y(request.targets.right_pose),
             right_pose=copy.deepcopy(request.targets.right_pose),
-            left_stage=right_stage,
-            right_stage=right_stage,
+            left_grasp_mode=right_grasp_mode,
+            right_grasp_mode=right_grasp_mode,
             mirrored_from="right",
         )
     if right_no_move:
         return ResolvedStageTargets(
             left_pose=copy.deepcopy(request.targets.left_pose),
             right_pose=_mirrored_pose_y(request.targets.left_pose),
-            left_stage=left_stage,
-            right_stage=left_stage,
+            left_grasp_mode=left_grasp_mode,
+            right_grasp_mode=left_grasp_mode,
             mirrored_from="left",
         )
     return ResolvedStageTargets(
         left_pose=copy.deepcopy(request.targets.left_pose),
         right_pose=copy.deepcopy(request.targets.right_pose),
-        left_stage=left_stage,
-        right_stage=right_stage,
+        left_grasp_mode=left_grasp_mode,
+        right_grasp_mode=right_grasp_mode,
     )
 
 
 def grasp_mode_from_stage(value: int) -> str:
-    if int(value) == DualArmPoseTargets.STAGE_SIDE_SUCTION:
+    if int(value) == DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION:
         return "front"
-    if int(value) == DualArmPoseTargets.STAGE_TOP_SUCTION:
+    if int(value) == DualArmPoseTargets.GRASP_MODE_TOP_SUCTION:
         return "top_suction"
     raise ValueError(f"吸附目标不支持阶段类型: {value}")
 
@@ -95,6 +95,37 @@ def canonicalize_grasp_pose_orientation(message: Pose, stage: int) -> tuple[Pose
         corrected.orientation.w,
     ) = canonical
     return corrected, angular_deviation
+
+
+def canonicalize_stage_target_orientations(request):
+    corrected = copy.deepcopy(request)
+    deviations: dict[str, float] = {}
+    for side in ("left", "right"):
+        grasp_mode = int(getattr(corrected.targets, f"{side}_grasp_mode"))
+        if grasp_mode == DualArmPoseTargets.GRASP_MODE_NO_MOVE:
+            continue
+        pose = getattr(corrected.targets, f"{side}_pose")
+        pose, deviation = canonicalize_grasp_pose_orientation(pose, grasp_mode)
+        setattr(corrected.targets, f"{side}_pose", pose)
+        deviations[side] = deviation
+    return corrected, deviations
+
+
+def align_target_pair_to_lower_height(
+    targets: ResolvedStageTargets,
+) -> ResolvedStageTargets:
+    left_pose = copy.deepcopy(targets.left_pose)
+    right_pose = copy.deepcopy(targets.right_pose)
+    aligned_z = min(float(left_pose.position.z), float(right_pose.position.z))
+    left_pose.position.z = aligned_z
+    right_pose.position.z = aligned_z
+    return ResolvedStageTargets(
+        left_pose=left_pose,
+        right_pose=right_pose,
+        left_grasp_mode=targets.left_grasp_mode,
+        right_grasp_mode=targets.right_grasp_mode,
+        mirrored_from=targets.mirrored_from,
+    )
 
 
 def pose6d_from_pose(message: Pose, label: str) -> Pose6DValue:
@@ -145,23 +176,31 @@ def planning_task_from_resolved_targets(
         task_code,
         left,
         right,
-        grasp_mode_from_stage(targets.left_stage),
-        grasp_mode_from_stage(targets.right_stage),
+        grasp_mode_from_stage(targets.left_grasp_mode),
+        grasp_mode_from_stage(targets.right_grasp_mode),
     )
 
 
 def validate_stage_pose_targets(request) -> None:
     valid_modes = {
-        DualArmPoseTargets.STAGE_TOP_SUCTION,
-        DualArmPoseTargets.STAGE_SIDE_SUCTION,
-        DualArmPoseTargets.STAGE_NO_MOVE,
+        DualArmPoseTargets.GRASP_MODE_TOP_SUCTION,
+        DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION,
+        DualArmPoseTargets.GRASP_MODE_NO_MOVE,
     }
     for name, mode, pose in (
-        ("targets.left", request.targets.left_stage, request.targets.left_pose),
-        ("targets.right", request.targets.right_stage, request.targets.right_pose),
+        (
+            "targets.left",
+            request.targets.left_grasp_mode,
+            request.targets.left_pose,
+        ),
+        (
+            "targets.right",
+            request.targets.right_grasp_mode,
+            request.targets.right_pose,
+        ),
     ):
         if int(mode) not in valid_modes:
-            raise ValueError(f"{name}_stage 不支持: {mode}")
-        if int(mode) != DualArmPoseTargets.STAGE_NO_MOVE:
+            raise ValueError(f"{name}_grasp_mode 不支持: {mode}")
+        if int(mode) != DualArmPoseTargets.GRASP_MODE_NO_MOVE:
             pose6d_from_pose(pose, f"{name}_pose")
     resolve_dual_stage_targets(request)

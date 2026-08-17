@@ -9,7 +9,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.srv import PlanDualArmIk, SolveArmIk
+from motion_internal_interfaces.srv import PlanDualArmIk, SolveArmIk
 from robot_motion_runtime.common import RuntimeStatusPublisher, joint_distance, merge_joint_state
 
 

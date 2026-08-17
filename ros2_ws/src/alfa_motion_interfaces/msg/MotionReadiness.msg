@@ -1,7 +1,0 @@
-std_msgs/Header header
-bool ready
-string state
-string interface_version
-string model_version
-string calibration_version
-alfa_motion_interfaces/MotionErrorInfo last_error

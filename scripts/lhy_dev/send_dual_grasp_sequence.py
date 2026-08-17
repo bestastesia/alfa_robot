@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import rclpy
 from rclpy.node import Node
 
-from robot_motion_interfaces.srv import RunDualGraspTask
+from motion_internal_interfaces.srv import RunDualGraspTask
 
 
 DEFAULT_SEQUENCE = "1,3;1,6;4,3;4,6;4,9;7,6;7,9;7,12;10,9;10,12"

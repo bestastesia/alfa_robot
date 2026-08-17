@@ -1866,3 +1866,9 @@
 - 改了哪里：`alfa_robot_moveit_config/src/dual_arm_planner_node.cpp`；`10mm/10°` 仅保留为位置与姿态误差的归一化尺度，不代表验收上限。
 - 验证结果：本地与工控机 `/home/ar/motion_domain_current` 均完成 `alfa_robot_moveit_config` Release 编译；未自动重启正在运行的实机 Motion，需安全重启后加载新二进制。
 - 留给下个 AI：该调整可能接受末端偏差明显但碰撞安全的重拍姿态，运行日志会输出最终 `position_error_mm` 和 `orientation_error_deg`，现场需据此判断是否另设宽松但有限的产品阈值。
+
+## 2026-08-17 运控 / Codex / MOTION-123 接口分层与中央契约迁移
+- 做了什么：删除本地公共接口副本，域间 Action、readiness、错误码和 QoS 改用中央 `robot_interfaces`；域内接口统一迁移为 `motion_internal_interfaces`。
+- 改了哪里：中央依赖锁定 `f699f45972ad15bbbbbb3da1a4894faf209144c9`，入口为 `ros2_ws/src/dependencies.repos` 和 `dependencies.lock.yaml`；迁移清单与原子升级/回滚步骤见 `docs/运控/MOTION-123_接口分层与中央契约迁移.md`。
+- 验证结果：本机 13 个 Motion 相关包 Release 构建通过，接口测试 2/2、合同测试 29/29；隔离 ROS Domain 下 Action 成功与结构化失败回执、readiness 类型及 QoS 均通过。
+- 留给下个 AI：Motion 与 Autonomy 必须使用同一中央接口 SHA 原子切换；禁止保留旧 `alfa_motion_interfaces` 或旧 `robot_motion_internal_interfaces` 构建覆盖层。

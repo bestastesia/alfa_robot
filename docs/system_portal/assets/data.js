@@ -23,7 +23,7 @@ window.SYSTEM_PORTAL_DATA = {
       id: "planner",
       name: "运控规划服务",
       role: "把箱子目标转成 IK 候选、抽离轨迹、负重规划和可执行 JointTrajectory。",
-      interfaces: ["robot_motion_interfaces", "MoveIt PlanningScene", "JSON/Rerun 记录"]
+      interfaces: ["motion_internal_interfaces", "MoveIt PlanningScene", "JSON/Rerun 记录"]
     },
     {
       id: "execution",
@@ -105,15 +105,15 @@ window.SYSTEM_PORTAL_DATA = {
   ],
   packages: [
     {
-      id: "robot_motion_interfaces",
-      name: "robot_motion_interfaces",
-      layer: "接口契约",
+      id: "motion_internal_interfaces",
+      name: "motion_internal_interfaces",
+      layer: "域内接口契约",
       status: "主线接口",
       maturity: "stable",
-      responsibility: "定义运控服务、轨迹、碰撞、状态和附着箱等跨包消息/服务契约。",
+      responsibility: "定义 Motion 域内规划服务、轨迹、碰撞、状态和附着箱等跨包消息/服务契约。跨域接口由中央 robot_interfaces 仓库提供。",
       consumes: ["无运行时输入；被其它包编译依赖"],
       produces: ["SolveArmIk.srv", "PlanDualArmIk.srv", "PlanExtract.srv", "PlanLoaded.srv", "CheckCollision.srv", "ExecuteTrajectory.srv", "RunDualArmPoseTask.srv", "RunBoxPairTask.srv", "SetRobotMotionScene.srv", "RobotMotionState.msg", "RobotMotionScene.msg", "MotionPlanCandidate.msg", "AttachedBox.msg"],
-      keyFiles: ["ros2_ws/src/robot_motion_interfaces/srv/*.srv", "ros2_ws/src/robot_motion_interfaces/msg/*.msg"],
+      keyFiles: ["ros2_ws/src/motion_internal_interfaces/srv/*.srv", "ros2_ws/src/motion_internal_interfaces/msg/*.msg"],
       statusNotes: ["应优先作为迁移到 robot_motion_control 后的稳定边界。", "接口一旦被外部包使用，字段变化需要版本化或兼容层。"]
     },
     {
@@ -138,7 +138,7 @@ window.SYSTEM_PORTAL_DATA = {
       consumes: ["/joint_states 或 /robot_motion/set_state", "/robot_motion/set_scene 或显式 scene_objects", "箱号任务、左右目标 Pose 或 IK candidate states", "loaded goal family", "JointTrajectory action backend"],
       produces: ["/robot_motion/state", "/robot_motion/scene", "/robot_motion/set_scene", "/robot_motion/run_box_pair_task", "/robot_motion/run_dual_arm_pose_task", "/robot_motion/run_task", "/robot_motion/plan_dual_arm_ik", "/robot_motion/plan_extract", "/robot_motion/plan_loaded", "/robot_motion/execute_trajectory", "/robot_motion/runtime_status", "http://127.0.0.1:8766"],
       keyFiles: ["ros2_ws/src/robot_motion_runtime/README.md", "ros2_ws/src/robot_motion_runtime/launch/runtime_services.launch.py", "ros2_ws/src/robot_motion_runtime/robot_motion_runtime"],
-      statusNotes: ["这是从 dual_arm_planner_node 抽脱任务链路的运行时骨架。", "只有本包可以发布权威 `/robot_motion/state` 与 `/robot_motion/scene`。", "算法节点通过 robot_motion_interfaces 接入，不能反向依赖 runtime 私有实现。", "当前仍混有部分临时 Plan 节点；目标是迁入独立 planning service。"]
+      statusNotes: ["这是从 dual_arm_planner_node 抽脱任务链路的运行时骨架。", "只有本包可以发布权威 `/robot_motion/state` 与 `/robot_motion/scene`。", "算法节点通过 motion_internal_interfaces 接入，不能反向依赖 runtime 私有实现。", "当前仍混有部分临时 Plan 节点；目标是迁入独立 planning service。"]
     },
     {
       id: "robot_motion_scene_service",
@@ -171,7 +171,7 @@ window.SYSTEM_PORTAL_DATA = {
       status: "待瘦身适配包",
       maturity: "transitional",
       responsibility: "维护 SRDF、规划组、控制器与 MoveIt/FCL adapter；现有全流程编排属于待迁出的历史职责。",
-      consumes: ["robot_description", "robot_motion_scene_service", "robot_motion_interfaces", "MoveIt PlanningScene", "箱子目标"],
+      consumes: ["robot_description", "robot_motion_scene_service", "motion_internal_interfaces", "MoveIt PlanningScene", "箱子目标"],
       produces: ["dual_arm_planner 服务", "motion_collision_service_node", "Rerun/JSON snapshot", "MoveIt planning result", "可执行 JointTrajectory"],
       keyFiles: ["ros2_ws/src/alfa_robot_moveit_config/src/dual_arm_planner_node.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/optimized_ik_pipeline.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/extract_planning_pipeline.cpp", "ros2_ws/src/alfa_robot_moveit_config/src/loaded_pose_planning.cpp", "ros2_ws/src/alfa_robot_moveit_config/launch/dual_arm_planner.launch.py"],
       statusNotes: ["禁止继续新增任务状态机、业务顺序和调试入口。", "dual_arm_planner 现有能力按 core → planning service → runtime 顺序迁出。", "最终只保留 MoveIt 配置、碰撞/规划 adapter 和必要 launch。"]
@@ -287,7 +287,7 @@ window.SYSTEM_PORTAL_DATA = {
       {
         index: "01",
         name: "契约层",
-        modules: "robot_motion_interfaces",
+        modules: "motion_internal_interfaces",
         owns: "跨包消息、服务、错误码、request/state/scene id",
         mustNot: "依赖 MoveIt 实现、硬件协议或任务脚本"
       },

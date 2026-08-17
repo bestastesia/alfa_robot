@@ -101,18 +101,18 @@
         </joint>
       </xacro:macro>
 
-      <xacro:arm_control_joint joint_name="left_joint1" lower="-0.0" upper="0.0" velocity="1.2" initial_value="${left_joint1_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint2" lower="-1.57079633" upper="1.57079633" velocity="1.2" initial_value="${left_joint2_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${left_joint3_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_joint4_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint5" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_joint5_initial}"/>
-      <xacro:arm_control_joint joint_name="left_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${left_joint6_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint1" lower="-0.0" upper="0.0" velocity="1.2" initial_value="${right_joint1_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint2" lower="-1.57079633" upper="1.57079633" velocity="1.2" initial_value="${right_joint2_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint3" lower="-3.14159265" upper="3.14159265" velocity="1.2" initial_value="${right_joint3_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint4" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_joint4_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint5" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_joint5_initial}"/>
-      <xacro:arm_control_joint joint_name="right_joint6" lower="-3.14159265" upper="3.14159265" velocity="1.5" initial_value="${right_joint6_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint1" lower="-1.57079632679" upper="1.57079632679" velocity="1.2" initial_value="${left_joint1_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint2" lower="-1.57079632679" upper="1.57079632679" velocity="1.2" initial_value="${left_joint2_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint3" lower="-2.44346095279" upper="2.44346095279" velocity="1.2" initial_value="${left_joint3_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint4" lower="-3.14159265359" upper="3.14159265359" velocity="1.5" initial_value="${left_joint4_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint5" lower="-2.18166156499" upper="2.18166156499" velocity="1.5" initial_value="${left_joint5_initial}"/>
+      <xacro:arm_control_joint joint_name="left_joint6" lower="-3.12413936107" upper="3.12413936107" velocity="1.5" initial_value="${left_joint6_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint1" lower="-1.57079632679" upper="1.57079632679" velocity="1.2" initial_value="${right_joint1_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint2" lower="-1.57079632679" upper="1.57079632679" velocity="1.2" initial_value="${right_joint2_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint3" lower="-2.44346095279" upper="2.44346095279" velocity="1.2" initial_value="${right_joint3_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint4" lower="-3.14159265359" upper="3.14159265359" velocity="1.5" initial_value="${right_joint4_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint5" lower="-2.18166156499" upper="2.18166156499" velocity="1.5" initial_value="${right_joint5_initial}"/>
+      <xacro:arm_control_joint joint_name="right_joint6" lower="-3.12413936107" upper="3.12413936107" velocity="1.5" initial_value="${right_joint6_initial}"/>
 
 
     </ros2_control>

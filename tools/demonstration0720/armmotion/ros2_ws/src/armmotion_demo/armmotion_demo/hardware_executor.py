@@ -7,10 +7,12 @@ import time
 from typing import Any
 
 from alfa_robot_execution_bridge.joints import (
+    ARM_JOINT_POSITION_LIMITS_RAD,
     RT_CONTROL_JOINT_NAMES,
     model_to_rt_control_acceleration,
     model_to_rt_control_position,
     model_to_rt_control_velocity,
+    require_arm_joint_in_range,
     rt_control_to_model_position,
 )
 from control_msgs.action import FollowJointTrajectory
@@ -239,6 +241,8 @@ class HardwareExecutor:
                     if name != "turn"
                     else 0.0
                 )
+                if name in ARM_JOINT_POSITION_LIMITS_RAD:
+                    require_arm_joint_in_range(name, model_position)
                 point.positions.append(
                     model_to_rt_control_position(name, model_position)
                 )

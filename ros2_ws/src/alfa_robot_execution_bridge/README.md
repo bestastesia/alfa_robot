@@ -4,6 +4,40 @@ ALFA 轨迹插值、关节合同和历史执行兼容工具包。`/alfa_executio
 是旧 13 轴兼容接口，不是当前 rt-control 的生产入口；新代码应直接使用完整 14 轴
 `/whole_body_jtc/follow_joint_trajectory`。
 
+## Rerun 滑块示教器
+
+该工具订阅权威 `/joint_states`、`/tf` 和 `/tf_static`，同时打开 Tk 滑块窗口和 Rerun。
+Rerun 原位模型严格使用 rt-control 的 `base_footprint → base_link → 本体关节` TF 显示
+实体状态，不再用本地 FK 冒充实体状态；横向偏移 2m 的滑块目标仍使用本地 URDF FK。
+拖动滑块只更新预览，不发布
+`/joint_states`，也不会驱动机器人；只有勾选现场安全确认并点击“执行滑块目标”后，才会
+向 `/whole_body_jtc/follow_joint_trajectory` 发送完整14轴五次平滑轨迹。
+
+```bash
+cd /mnt/mydisk/ALFA/alfa_robot/ros2_ws
+colcon build --packages-select alfa_robot_rerun alfa_robot_execution_bridge --symlink-install
+source install/setup.bash
+ros2 run alfa_robot_execution_bridge joint_teach_pendant
+```
+
+也可以直接运行源码旁的包装脚本：
+
+```bash
+ros2_ws/src/alfa_robot_execution_bridge/scripts/run_joint_teach_pendant.sh
+```
+
+包装脚本在 SSH 登录且 `DISPLAY` 为空时，会自动选择工控机当前本地 X11 桌面并设置
+`XAUTHORITY`，Tk 和 Rerun 窗口仍显示在工控机屏幕上。
+
+安全边界：
+
+- 示教器与 Motion 算法线程可独立启动、同时在线，双方不存在启动依赖；
+- rt-control 已有活动轨迹时拒绝发送，避免与算法线程或其他客户端同时控制；
+- rt-control 的本体 TF 树不完整时拒绝发送；
+- 滑块和 Rerun 只用于预览，工具不做 MoveIt 场景碰撞规划；
+- 默认旋转轴限速 `10deg/s`、加速度 `10deg/s^2`，Updown 限速和加速度均为 `0.05m/s`；
+- 每次执行结束都会自动撤销界面的安全解锁，下一次必须重新确认。
+
 ## 接口
 
 - Action server: `/alfa_execution/execute_joint_trajectory`

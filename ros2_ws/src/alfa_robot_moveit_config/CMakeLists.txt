@@ -27,7 +27,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(robot_motion_scene_service REQUIRED)
-find_package(robot_motion_interfaces REQUIRED)
+find_package(motion_internal_interfaces REQUIRED)
 find_package(robot_motion_core REQUIRED)
 find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -35,7 +35,7 @@ find_package(Eigen3 REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
   "srv/PlanRecapture.srv"
-  DEPENDENCIES geometry_msgs robot_motion_interfaces sensor_msgs trajectory_msgs
+  DEPENDENCIES geometry_msgs motion_internal_interfaces sensor_msgs trajectory_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
 
@@ -160,7 +160,7 @@ ament_target_dependencies(dual_arm_planner_node
   tf2_geometry_msgs
   tf2_eigen
   alfa_robot_analytic_ik
-  robot_motion_interfaces
+  motion_internal_interfaces
   robot_motion_core
 )
 
@@ -184,7 +184,7 @@ ament_target_dependencies(analytic_arm_ik_service_node
   geometry_msgs
   sensor_msgs
   std_msgs
-  robot_motion_interfaces
+  motion_internal_interfaces
   alfa_robot_analytic_ik
 )
 
@@ -212,7 +212,7 @@ ament_target_dependencies(motion_collision_service_node
   moveit_core
   moveit_ros_planning
   moveit_msgs
-  robot_motion_interfaces
+  motion_internal_interfaces
 )
 
 install(TARGETS
@@ -250,7 +250,7 @@ ament_export_dependencies(
   trajectory_msgs
   shape_msgs
   robot_motion_scene_service
-  robot_motion_interfaces
+  motion_internal_interfaces
   srdfdom
   urdf
 )

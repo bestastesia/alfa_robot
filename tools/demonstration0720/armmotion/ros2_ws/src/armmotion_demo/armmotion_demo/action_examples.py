@@ -13,7 +13,7 @@ from .trajectory_cache import CACHE_MAX_DISTANCE_CM, CACHE_MIN_DISTANCE_CM, Traj
 
 
 ACTION_NAME = "/motion/execute_stage"
-ACTION_TYPE = "alfa_motion_interfaces/action/ExecuteMotionStage"
+ACTION_TYPE = "robot_motion_interfaces/action/ExecuteMotionStage"
 CAMERA_VIEW = 1
 PREGRASP = 2
 APPROACH = 3
@@ -65,9 +65,9 @@ def _target_pair(
     right_mode: int,
 ) -> dict[str, Any]:
     return {
-        "left_stage": left_mode,
+        "left_grasp_mode": left_mode,
         "left_pose": _pose_message(left_pose),
-        "right_stage": right_mode,
+        "right_grasp_mode": right_mode,
         "right_pose": _pose_message(right_pose),
     }
 
@@ -78,9 +78,9 @@ def _empty_targets() -> dict[str, Any]:
         "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0},
     }
     return {
-        "left_stage": NO_MOVE,
+        "left_grasp_mode": NO_MOVE,
         "left_pose": zero_pose,
-        "right_stage": NO_MOVE,
+        "right_grasp_mode": NO_MOVE,
         "right_pose": zero_pose,
     }
 
@@ -148,7 +148,7 @@ def as_single_arm(example: dict[str, Any], active_arm: str) -> dict[str, Any]:
     zero = _empty_targets()
     for stage in result["goals"][:2]:
         targets = stage["goal"]["targets"]
-        targets[f"{inactive_arm}_stage"] = NO_MOVE
+        targets[f"{inactive_arm}_grasp_mode"] = NO_MOVE
         targets[f"{inactive_arm}_pose"] = zero[f"{inactive_arm}_pose"]
     result["single_arm"] = active_arm
     return result

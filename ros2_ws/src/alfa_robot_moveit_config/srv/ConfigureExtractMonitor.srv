@@ -6,7 +6,7 @@ bool right_top_suction
 bool use_explicit_targets
 geometry_msgs/PoseStamped left_target
 geometry_msgs/PoseStamped right_target
-robot_motion_interfaces/DualGraspStrategy strategy
+motion_internal_interfaces/DualGraspStrategy strategy
 bool update_runtime_config
 float64 box_front_x
 float64 scene_y_shift

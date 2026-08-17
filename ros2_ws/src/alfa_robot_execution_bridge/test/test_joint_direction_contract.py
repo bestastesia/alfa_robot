@@ -1,6 +1,9 @@
+import math
+
 import pytest
 
 from alfa_robot_execution_bridge.joints import (
+    ARM_JOINT_POSITION_LIMITS_RAD,
     DEFAULT_DIRECTION_SIGNS,
     DEFAULT_JOINT_NAMES,
     ETHERCAT_ZERO_OFFSET_BY_JOINT,
@@ -27,6 +30,7 @@ from alfa_robot_execution_bridge.joints import (
     physical_to_logical_updown,
     ros_to_ethercat_position,
     ros_to_ethercat_velocity,
+    require_arm_joint_in_range,
     rt_control_to_model_position,
 )
 from alfa_robot_execution_bridge.updown import (
@@ -66,6 +70,18 @@ def test_joint_direction_contract_is_canonical():
 def test_rt_control_contract_is_full_14_axis():
     assert RT_CONTROL_ACTION_NAME == '/whole_body_jtc/follow_joint_trajectory'
     assert RT_CONTROL_JOINT_NAMES == [*REAL_CONTROLLER_JOINT_NAMES, 'updown']
+
+
+def test_arm_position_limits_match_rt_control():
+    expected = [90.0, 90.0, 140.0, 180.0, 125.0, 179.0]
+    for side in ('left', 'right'):
+        for index, limit_deg in enumerate(expected, start=1):
+            lower, upper = ARM_JOINT_POSITION_LIMITS_RAD[f'{side}_joint{index}']
+            assert math.degrees(lower) == pytest.approx(-limit_deg, abs=1e-8)
+            assert math.degrees(upper) == pytest.approx(limit_deg, abs=1e-8)
+    require_arm_joint_in_range('left_joint3', math.radians(140.0))
+    with pytest.raises(ValueError, match='left_joint3.*rt-control limit'):
+        require_arm_joint_in_range('left_joint3', math.radians(140.01))
 
 
 def test_rt_control_public_boundary_uses_positive_direction_signs():

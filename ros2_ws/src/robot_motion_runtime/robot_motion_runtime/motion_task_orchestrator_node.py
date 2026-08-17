@@ -9,8 +9,8 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
-from robot_motion_interfaces.msg import MotionPlanCandidate
-from robot_motion_interfaces.srv import (
+from motion_internal_interfaces.msg import MotionPlanCandidate
+from motion_internal_interfaces.srv import (
     ExecuteTrajectory,
     PlanDualArmIk,
     PlanExtract,

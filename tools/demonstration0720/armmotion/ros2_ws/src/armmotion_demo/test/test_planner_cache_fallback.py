@@ -5,6 +5,12 @@ import pytest
 from armmotion_demo.planner_adapter import PlannerAdapter
 
 
+class RunningProcess:
+    @staticmethod
+    def poll():
+        return None
+
+
 def adapter_with_attempts(attempts, cache_match):
     adapter = PlannerAdapter.__new__(PlannerAdapter)
     adapter.trajectory_cache = SimpleNamespace(enabled=True)
@@ -20,6 +26,25 @@ def adapter_with_attempts(attempts, cache_match):
 
     adapter._compute_once = compute_once
     return adapter
+
+
+def test_start_prewarms_planner_once_and_reuses_session():
+    adapter = PlannerAdapter.__new__(PlannerAdapter)
+    adapter._planner_process = None
+    adapter._service_client = None
+    adapter._recapture_client = None
+    adapter.startup_ms = 8421.0
+    starts = []
+
+    def start_session():
+        starts.append(True)
+        adapter._planner_process = RunningProcess()
+
+    adapter._start_session = start_session
+
+    assert adapter.start() == pytest.approx(8421.0)
+    assert adapter.start() == pytest.approx(8421.0)
+    assert starts == [True]
 
 
 def test_online_planning_failure_falls_back_to_cache():

@@ -8,7 +8,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import RobotMotionState
+from motion_internal_interfaces.msg import RobotMotionState
 
 
 def stamp_is_zero(stamp) -> bool:

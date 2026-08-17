@@ -6,15 +6,15 @@
 
 | 名称 | 类型 | 方向 |
 |---|---|---|
-| `/motion/execute_stage` | `alfa_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
-| `/motion/readiness` | `alfa_motion_interfaces/msg/MotionReadiness` | Motion → Autonomy/观测工具 |
+| `/motion/execute_stage` | `robot_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
+| `/motion/readiness` | `robot_system_interfaces/msg/DomainReadiness` | Motion → Autonomy/观测工具 |
 | `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → rt-control |
 | `/joint_states` | `sensor_msgs/msg/JointState` | rt-control → Motion |
 
 `ExecuteMotionStage` 固定五个阶段：
 
-1. `CAMERA_VIEW`：接收第一对重拍末端 Pose，必要时先将实体 `turn` 对齐到最近等价的 `-90°`，再规划并执行重拍位。
-2. `PREGRASP`：接收第二对箱体正面中心 Pose，计算完整计划并立即执行到预抓取位。
+1. `CAMERA_VIEW`：接收第一对重拍末端 Pose，保留输入姿态，只做 Turn=0 虚拟模型坐标换算后规划并执行重拍位。
+2. `PREGRASP`：接收第二对吸附面中心 Pose，Motion 可按顶吸/侧吸标准化抓取姿态并计算完整计划。
 3. `APPROACH`：执行预抓取到吸附位的 5cm 靠近轨迹。
 4. `PLACE`：执行抽离、负重过渡和放置轨迹。
 5. `HOME`：执行放置位到初始位轨迹，完成后清除本轮计划。
@@ -24,6 +24,13 @@
 规划算法始终把 `turn` 视为 `0`。除 `CAMERA_VIEW` 开头的专用对齐轨迹外，Motion 下发所有十四轴轨迹时都把 `turn` 锁定为最新真实反馈值。
 
 ## 本机 Mock
+
+首次启动前导入锁定版本的中央接口仓库：
+
+```bash
+cd ros2_ws
+vcs import src < src/dependencies.repos
+```
 
 ```bash
 cd docker/motion
@@ -68,7 +75,7 @@ Motion 包内置默认 Y、`0.70～0.75m × 五排` 的 30 条已验证轨迹。
 
 ## 当前限制
 
-- `left_stage/right_stage` 已校验，但现有策略仍主要由正面中心高度分类。
+- `left_grasp_mode/right_grasp_mode` 已校验，但现有策略仍主要由吸附面高度分类。
 - 当前双臂全流程不支持单侧 `NO_MOVE`。
 - Gate、安全状态、模型/标定版本强制准入尚未接入。
 - `allow_partial_domain_test=true` 只用于开发联调。

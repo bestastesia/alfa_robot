@@ -36,6 +36,7 @@ setup(
             "dump_cached_action_examples = armmotion_demo.action_examples:main",
             "manual_domain_task = armmotion_demo.manual_domain_task:main",
             "mock_current_rt_control = armmotion_demo.mock_current_rt_control:main",
+            "planning_joint_state_bridge = armmotion_demo.planning_joint_state_bridge:main",
             "task_thread = armmotion_demo.task_thread:main",
         ],
     },

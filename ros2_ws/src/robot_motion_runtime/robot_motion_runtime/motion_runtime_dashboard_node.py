@@ -12,7 +12,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from robot_motion_interfaces.msg import RobotMotionScene, RobotMotionState
+from motion_internal_interfaces.msg import RobotMotionScene, RobotMotionState
 from robot_motion_runtime.common import joint_state_positions, now_ms
 
 

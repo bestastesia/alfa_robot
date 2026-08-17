@@ -552,6 +552,8 @@ public:
       1, get_or_declare_parameter<int>("recapture_numeric_max_iterations", 400)));
     recapture_numeric_max_candidates_ = static_cast<size_t>(std::max(
       1, get_or_declare_parameter<int>("recapture_numeric_max_candidates", 64)));
+    recapture_numeric_rejection_log_limit_ = static_cast<size_t>(std::max(
+      0, get_or_declare_parameter<int>("recapture_numeric_rejection_log_limit", 0)));
     recapture_numeric_max_step_ = std::max(
       0.1,
       get_or_declare_parameter<double>("recapture_numeric_max_step_deg", 3.0)) *
@@ -5683,13 +5685,38 @@ private:
       }
 
       std::map<std::string, size_t> numeric_rejection_counts;
+      std::set<std::string> logged_numeric_rejections;
+      size_t candidate_index = 0;
       for (const auto& candidate : numeric_candidates) {
+        const size_t current_candidate_index = candidate_index++;
         if (!candidate.state) continue;
         auto scene = make_full_scene_snapshot(*start_state, {});
         std::string goal_reason;
         if (!scene || !state_clear_in_full_scene(scene, *candidate.state, {}, &goal_reason)) {
-          numeric_rejection_counts[
-            goal_reason.empty() ? "numeric_goal_state_collision" : goal_reason]++;
+          const std::string rejection_reason = goal_reason.empty()
+            ? "numeric_goal_state_collision"
+            : goal_reason;
+          numeric_rejection_counts[rejection_reason]++;
+          if (
+            logged_numeric_rejections.size() < recapture_numeric_rejection_log_limit_ &&
+            logged_numeric_rejections.insert(rejection_reason).second)
+          {
+            std::ostringstream diagnostic;
+            diagnostic << "recapture_numeric_rejected_candidate index="
+                       << current_candidate_index
+                       << " h=" << candidate.h
+                       << " position_error_m=" << candidate.position_error
+                       << " orientation_error_rad=" << candidate.orientation_error
+                       << " reason=" << rejection_reason
+                       << " joints=";
+            const auto names = dual_arm_with_updown_joint_names();
+            for (size_t index = 0; index < names.size(); ++index) {
+              if (index > 0) diagnostic << ',';
+              diagnostic << names[index] << ':'
+                         << candidate.state->getVariablePosition(names[index]);
+            }
+            RCLCPP_INFO(get_logger(), "%s", diagnostic.str().c_str());
+          }
           continue;
         }
         moveit::planning_interface::MoveGroupInterface::Plan plan;
@@ -7586,6 +7613,7 @@ private:
   double recapture_numeric_orientation_tolerance_ = 10.0 * M_PI / 180.0;
   size_t recapture_numeric_max_iterations_ = 400;
   size_t recapture_numeric_max_candidates_ = 64;
+  size_t recapture_numeric_rejection_log_limit_ = 0;
   double recapture_numeric_max_step_ = 3.0 * M_PI / 180.0;
   double fixed_updown_ = 0.45;
   double box_front_x_ = 0.625;

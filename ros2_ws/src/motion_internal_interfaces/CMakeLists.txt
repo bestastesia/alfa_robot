@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(robot_motion_interfaces)
+project(motion_internal_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
@@ -34,6 +34,17 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetRobotMotionState.srv"
   DEPENDENCIES builtin_interfaces geometry_msgs sensor_msgs trajectory_msgs moveit_msgs
 )
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_interface_generation test/test_interface_generation.cpp)
+  rosidl_get_typesupport_target(
+    cpp_typesupport_target
+    ${PROJECT_NAME}
+    rosidl_typesupport_cpp
+  )
+  target_link_libraries(test_interface_generation "${cpp_typesupport_target}")
+endif()
 
 ament_export_dependencies(rosidl_default_runtime)
 ament_package()

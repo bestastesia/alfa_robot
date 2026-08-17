@@ -12,8 +12,14 @@ namespace
 {
 
 constexpr double kPi = 3.1415926535897932384626433832795;
-constexpr double kJoint1Limit = 2.35619449;
-constexpr double kJointLimit = kPi;
+constexpr std::array<double, 6> kJointLimits = {
+  1.57079632679,
+  1.57079632679,
+  2.44346095279,
+  3.14159265359,
+  2.18166156499,
+  3.12413936107,
+};
 constexpr double kBaseToUpdownX = -0.009816;
 constexpr double kBaseToUpdownZ = 0.392;
 constexpr double kArmMountX = 0.095;
@@ -244,12 +250,9 @@ std::vector<std::array<double, 6>> solvePlanarElbow(
       normalizeAngle(branch.q5),
       normalizeAngle(branch.q6),
     };
-    if (!withinLimit(joints[0], kJoint1Limit)) {
-      continue;
-    }
     bool in_limits = true;
-    for (size_t i = 1; i < joints.size(); ++i) {
-      in_limits = in_limits && withinLimit(joints[i], kJointLimit);
+    for (size_t i = 0; i < joints.size(); ++i) {
+      in_limits = in_limits && withinLimit(joints[i], kJointLimits[i]);
     }
     if (in_limits) {
       out.push_back(joints);

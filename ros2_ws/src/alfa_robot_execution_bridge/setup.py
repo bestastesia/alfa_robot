@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'execution_bridge_node = alfa_robot_execution_bridge.execution_bridge_node:main',
+            'joint_teach_pendant = alfa_robot_execution_bridge.joint_teach_pendant:main',
             'mock_execution_node = alfa_robot_execution_bridge.mock_execution_node:main',
             'send_mock_trajectory = alfa_robot_execution_bridge.send_mock_trajectory:main',
         ],

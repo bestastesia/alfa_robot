@@ -13,8 +13,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import AttachedBox, RobotMotionState
-from robot_motion_interfaces.srv import RunBoxPairTask, RunDualArmPoseTask
+from motion_internal_interfaces.msg import AttachedBox, RobotMotionState
+from motion_internal_interfaces.srv import RunBoxPairTask, RunDualArmPoseTask
 from robot_motion_runtime.common import RuntimeStatusPublisher, clamp_motion_scale
 from robot_motion_runtime.dual_grasp_strategy import (
     BOX_DEPTH_M,

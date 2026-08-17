@@ -32,6 +32,7 @@ from alfa_robot_execution_bridge.joints import (
     model_to_rt_control_acceleration,
     model_to_rt_control_position,
     model_to_rt_control_velocity,
+    require_arm_joint_in_range,
     require_updown_logical_in_range,
     rt_control_to_model_position,
 )
@@ -42,37 +43,6 @@ from alfa_robot_execution_bridge.updown import (
 
 SMOOTHSTEP_MAX_VELOCITY_GAIN = 1.875
 SMOOTHSTEP_MAX_ACCELERATION_GAIN = 10.0 / math.sqrt(3.0)
-
-# Position limits in ROS/URDF radians, matching
-# alfa_robot_moveit_config/config/joint_limits.yaml. Kept here as a literal
-# copy (not a YAML import) because this is a standalone jog tool; if
-# joint_limits.yaml changes, update this table too.
-ARM_JOINT_POSITION_LIMITS_RAD = {
-    'left_joint1': (-2.35619449, 2.35619449),
-    'left_joint2': (-1.57079633, 1.57079633),
-    'left_joint3': (-3.14159265, 3.14159265),
-    'left_joint4': (-3.14159265, 3.14159265),
-    'left_joint5': (-3.14159265, 3.14159265),
-    'left_joint6': (-3.14159265, 3.14159265),
-    'right_joint1': (-2.35619449, 2.35619449),
-    'right_joint2': (-1.57079633, 1.57079633),
-    'right_joint3': (-3.14159265, 3.14159265),
-    'right_joint4': (-3.14159265, 3.14159265),
-    'right_joint5': (-3.14159265, 3.14159265),
-    'right_joint6': (-3.14159265, 3.14159265),
-}
-
-
-def require_arm_joint_in_range(name: str, value_rad: float) -> None:
-    limits = ARM_JOINT_POSITION_LIMITS_RAD.get(name)
-    if limits is None:
-        return
-    lower, upper = limits
-    if not (lower - 1e-9 <= value_rad <= upper + 1e-9):
-        raise ValueError(
-            f'{name} target {value_rad:.6f} rad ({math.degrees(value_rad):.3f} deg) is outside '
-            f'the valid range [{lower:.6f}, {upper:.6f}] rad from joint_limits.yaml'
-        )
 
 
 def seconds_to_duration(seconds: float):

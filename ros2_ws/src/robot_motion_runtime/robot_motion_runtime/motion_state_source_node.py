@@ -9,8 +9,8 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import RobotMotionState
-from robot_motion_interfaces.srv import SetRobotMotionState
+from motion_internal_interfaces.msg import RobotMotionState
+from motion_internal_interfaces.srv import SetRobotMotionState
 from robot_motion_runtime.common import (
     DEFAULT_MOTION_JOINTS,
     RuntimeStatusPublisher,

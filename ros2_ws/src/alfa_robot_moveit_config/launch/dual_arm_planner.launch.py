@@ -5,7 +5,7 @@ from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from moveit_configs_utils.launches import generate_move_group_launch
-from launch_ros.actions import Node
+from launch_ros.actions import Node, SetRemap
 from launch_ros.parameter_descriptions import ParameterValue
 
 
@@ -36,6 +36,7 @@ def generate_launch_description():
             "start_support_nodes",
             default_value=LaunchConfiguration("start_move_group"),
         ),
+        DeclareLaunchArgument("planning_joint_states_topic", default_value="/joint_states"),
         DeclareLaunchArgument("box_front_x", default_value="0.625"),
         DeclareLaunchArgument("scene_y_shift", default_value="0.0"),
         DeclareLaunchArgument("fixed_updown", default_value="0.45"),
@@ -90,6 +91,8 @@ def generate_launch_description():
         DeclareLaunchArgument("ik_top_position_tolerance", default_value="0.04"),
         DeclareLaunchArgument("ik_top_orientation_tolerance_deg", default_value="7.0"),
         DeclareLaunchArgument("optimized_ik_check_collision", default_value="true"),
+        DeclareLaunchArgument("recapture_numeric_fallback_enabled", default_value="true"),
+        DeclareLaunchArgument("recapture_numeric_rejection_log_limit", default_value="0"),
         DeclareLaunchArgument("ik_fallback_enabled", default_value="false"),
         DeclareLaunchArgument("enable_container_obstacle", default_value="true"),
         DeclareLaunchArgument("container_frame", default_value="world"),
@@ -332,6 +335,12 @@ def generate_launch_description():
                 "ik_top_position_tolerance": ParameterValue(LaunchConfiguration("ik_top_position_tolerance"), value_type=float),
                 "ik_top_orientation_tolerance_deg": ParameterValue(LaunchConfiguration("ik_top_orientation_tolerance_deg"), value_type=float),
                 "optimized_ik_check_collision": ParameterValue(LaunchConfiguration("optimized_ik_check_collision"), value_type=bool),
+                "recapture_numeric_fallback_enabled": ParameterValue(
+                    LaunchConfiguration("recapture_numeric_fallback_enabled"), value_type=bool
+                ),
+                "recapture_numeric_rejection_log_limit": ParameterValue(
+                    LaunchConfiguration("recapture_numeric_rejection_log_limit"), value_type=int
+                ),
                 "ik_fallback_enabled": ParameterValue(LaunchConfiguration("ik_fallback_enabled"), value_type=bool),
                 "enable_container_obstacle": ParameterValue(LaunchConfiguration("enable_container_obstacle"), value_type=bool),
                 "container_frame": LaunchConfiguration("container_frame"),
@@ -477,6 +486,9 @@ def generate_launch_description():
                 "extract_benchmark_csv_path": LaunchConfiguration("extract_benchmark_csv_path"),
             },
         ],
+        remappings=[
+            ("/joint_states", LaunchConfiguration("planning_joint_states_topic")),
+        ],
     )
 
     move_group_launch = generate_move_group_launch(moveit_config)
@@ -499,7 +511,13 @@ def generate_launch_description():
         IncludeLaunchDescription(PythonLaunchDescriptionSource(str(launch_dir / "spawn_controllers.launch.py"))),
     ]
     move_group_stack = GroupAction(
-        actions=move_group_launch.entities,
+        actions=[
+            SetRemap(
+                src="/joint_states",
+                dst=LaunchConfiguration("planning_joint_states_topic"),
+            ),
+            *move_group_launch.entities,
+        ],
         condition=IfCondition(LaunchConfiguration("start_move_group")),
     )
     support_stack = GroupAction(

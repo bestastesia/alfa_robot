@@ -153,7 +153,7 @@
     <parent link="left_arm_base" />
     <child link="left_joint1" />
     <axis xyz="0 0 1" />
-    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
+    <limit lower="-1.57079632679" upper="1.57079632679" effort="120" velocity="1.2" />
   </joint>
 
   <link name="left_joint2">
@@ -184,7 +184,7 @@
     <parent link="left_joint1" />
     <child link="left_joint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
+    <limit lower="-1.57079632679" upper="1.57079632679" effort="120" velocity="1.2" />
   </joint>
 
   <link name="left_joint3">
@@ -215,7 +215,7 @@
     <parent link="left_joint2" />
     <child link="left_joint3" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
+    <limit lower="-2.44346095279" upper="2.44346095279" effort="100" velocity="1.2" />
   </joint>
 
   <link name="left_joint4">
@@ -246,7 +246,7 @@
     <parent link="left_joint3" />
     <child link="left_joint4" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265359" upper="3.14159265359" effort="60" velocity="1.5" />
   </joint>
 
   <link name="left_joint5">
@@ -277,7 +277,7 @@
     <parent link="left_joint4" />
     <child link="left_joint5" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+    <limit lower="-2.18166156499" upper="2.18166156499" effort="60" velocity="1.5" />
   </joint>
 
   <link name="left_joint6">
@@ -308,7 +308,7 @@
     <parent link="left_joint5" />
     <child link="left_joint6" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
+    <limit lower="-3.12413936107" upper="3.12413936107" effort="40" velocity="1.5" />
   </joint>
 
   <!-- ========== RIGHT ARM mapped to project names ========== -->
@@ -354,7 +354,7 @@
     <parent link="right_arm_base" />
     <child link="right_joint1" />
     <axis xyz="0 0 1" />
-    <limit lower="-2.35619449" upper="2.35619449" effort="120" velocity="1.2" />
+    <limit lower="-1.57079632679" upper="1.57079632679" effort="120" velocity="1.2" />
   </joint>
 
   <link name="right_joint2">
@@ -385,7 +385,7 @@
     <parent link="right_joint1" />
     <child link="right_joint2" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.57079633" upper="1.57079633" effort="120" velocity="1.2" />
+    <limit lower="-1.57079632679" upper="1.57079632679" effort="120" velocity="1.2" />
   </joint>
 
   <link name="right_joint3">
@@ -416,7 +416,7 @@
     <parent link="right_joint2" />
     <child link="right_joint3" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="100" velocity="1.2" />
+    <limit lower="-2.44346095279" upper="2.44346095279" effort="100" velocity="1.2" />
   </joint>
 
   <link name="right_joint4">
@@ -447,7 +447,7 @@
     <parent link="right_joint3" />
     <child link="right_joint4" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+    <limit lower="-3.14159265359" upper="3.14159265359" effort="60" velocity="1.5" />
   </joint>
 
   <link name="right_joint5">
@@ -478,7 +478,7 @@
     <parent link="right_joint4" />
     <child link="right_joint5" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="60" velocity="1.5" />
+    <limit lower="-2.18166156499" upper="2.18166156499" effort="60" velocity="1.5" />
   </joint>
 
   <link name="right_joint6">
@@ -509,7 +509,7 @@
     <parent link="right_joint5" />
     <child link="right_joint6" />
     <axis xyz="0 0 1" />
-    <limit lower="-3.14159265" upper="3.14159265" effort="40" velocity="1.5" />
+    <limit lower="-3.12413936107" upper="3.12413936107" effort="40" velocity="1.5" />
   </joint>
 
   <link name="front_sensor">

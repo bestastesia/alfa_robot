@@ -477,6 +477,7 @@ def make_pair_args(
         ik_only_raw=args.ik_only_raw,
         ik_scene_rejected=args.ik_scene_rejected,
         start_support_nodes=not args.external_control_stack,
+        planning_joint_states_topic=args.planning_joint_states_topic,
     )
 
 
@@ -1109,6 +1110,11 @@ def main() -> int:
         "--external-control-stack",
         action="store_true",
         help="使用外部真实控制栈的 /joint_states，不启动本地 ros2_control/RSP 支持节点。",
+    )
+    parser.add_argument(
+        "--planning-joint-states-topic",
+        default="/joint_states",
+        help="MoveIt内部使用的完整模型关节状态；实机模式应指向补齐pitch的只读适配话题。",
     )
     parser.add_argument("--pair-sequence", default=DEFAULT_SEQUENCE)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)

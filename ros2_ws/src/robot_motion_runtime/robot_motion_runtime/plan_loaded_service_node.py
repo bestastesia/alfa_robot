@@ -11,8 +11,8 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
-from robot_motion_interfaces.msg import MotionPlanCandidate, RobotMotionScene, RobotMotionState
-from robot_motion_interfaces.srv import CheckCollision, PlanLoaded
+from motion_internal_interfaces.msg import MotionPlanCandidate, RobotMotionScene, RobotMotionState
+from motion_internal_interfaces.srv import CheckCollision, PlanLoaded
 from robot_motion_runtime.common import (
     RuntimeStatusPublisher,
     joint_distance,

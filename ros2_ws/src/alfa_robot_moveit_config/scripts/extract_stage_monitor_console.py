@@ -158,6 +158,7 @@ def build_launch_command(args: argparse.Namespace, run_dir: Path, snapshot_path:
         "execute:=false",
         "start_move_group:=true",
         f"start_support_nodes:={str(getattr(args, 'start_support_nodes', True)).lower()}",
+        f"planning_joint_states_topic:={getattr(args, 'planning_joint_states_topic', '/joint_states')}",
         f"box_front_x:={args.box_front_x}",
         f"scene_y_shift:={args.scene_y_shift}",
         f"container_height:={getattr(args, 'container_height', 2.4)}",

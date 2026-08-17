@@ -8,7 +8,8 @@
 alfa_robot/
 ├── ros2_ws/         ROS2 workspace (colcon build here)
 │   └── src/
-│       ├── robot_motion_interfaces/  跨包稳定契约
+│       ├── motion_internal_interfaces/  Motion 域内稳定契约
+│       ├── robot_interfaces/        中央域间契约（由 dependencies.repos 导入）
 │       ├── robot_motion_core/        无 ROS 副作用的运控核心
 │       ├── robot_motion_runtime/     权威状态、场景与任务编排
 │       └── alfa_robot_rerun/         公共只读可视化 Adapter
