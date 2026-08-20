@@ -24,6 +24,7 @@ setup(
         'console_scripts': [
             'basic_robot_viewer = alfa_robot_rerun.basic_robot_viewer:main',
             'rerun_joint_state_viewer_node = alfa_robot_rerun.joint_state_viewer_node:main',
+            'v3_redundant_solution_family_viewer = alfa_robot_rerun.v3_redundant_solution_family_viewer:main',
             'visualize_rerun = alfa_robot_rerun.visualize_rerun:main',
         ],
     },

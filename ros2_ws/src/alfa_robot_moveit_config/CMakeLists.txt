@@ -19,6 +19,7 @@ find_package(srdfdom REQUIRED)
 find_package(urdf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(interactive_markers REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -214,12 +215,55 @@ ament_target_dependencies(motion_collision_service_node
   robot_motion_interfaces
 )
 
+add_executable(v3_continuous_reachability
+  src/v3_continuous_reachability.cpp
+)
+
+target_compile_features(v3_continuous_reachability PUBLIC cxx_std_17)
+
+target_link_libraries(v3_continuous_reachability
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+ament_target_dependencies(v3_continuous_reachability
+  rclcpp
+  moveit_core
+  moveit_ros_planning
+  nlohmann_json
+  alfa_robot_analytic_ik
+)
+
+add_executable(v3_redundant_ik_interactive_demo
+  src/v3_redundant_ik_interactive_demo.cpp
+)
+
+target_compile_features(v3_redundant_ik_interactive_demo PUBLIC cxx_std_17)
+
+target_link_libraries(v3_redundant_ik_interactive_demo
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+ament_target_dependencies(v3_redundant_ik_interactive_demo
+  alfa_robot_analytic_ik
+  geometry_msgs
+  interactive_markers
+  nlohmann_json
+  rclcpp
+  sensor_msgs
+  std_msgs
+  tf2_eigen
+  tf2_ros
+  visualization_msgs
+)
+
 install(TARGETS
   alfa_robot_motion_core
   alfa_robot_motion_scene_adapter
   dual_arm_planner_node
   analytic_arm_ik_service_node
   motion_collision_service_node
+  v3_continuous_reachability
+  v3_redundant_ik_interactive_demo
   EXPORT export_alfa_robot_motion_core
   DESTINATION lib/${PROJECT_NAME}
   ARCHIVE DESTINATION lib
@@ -373,5 +417,6 @@ install(PROGRAMS
   scripts/motion_contracts/check_joint_contract.py
   scripts/motion_contracts/generate_motion_baseline.py
   scripts/visualize_moveit_box_stack_flow.py
+  scripts/visualize_v3_continuous_reachability.py
   DESTINATION lib/${PROJECT_NAME}
 )

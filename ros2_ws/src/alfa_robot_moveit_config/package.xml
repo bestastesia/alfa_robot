@@ -36,6 +36,7 @@
   <depend>nlohmann_json</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
+  <depend>interactive_markers</depend>
   <depend>sensor_msgs</depend>
   <depend>shape_msgs</depend>
   <depend>robot_motion_scene_service</depend>

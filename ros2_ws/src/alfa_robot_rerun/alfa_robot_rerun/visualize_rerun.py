@@ -281,7 +281,7 @@ class UrdfRobot:
         return transforms
 
 
-def render_current_urdf() -> str:
+def render_current_urdf(xacro_mappings: dict[str, str] | None = None) -> str:
     if get_package_share_directory is not None:
         try:
             xacro_path = Path(get_package_share_directory("alfa_robot_description")) / "urdf" / "alfa_robot.urdf.xacro"
@@ -297,8 +297,12 @@ def render_current_urdf() -> str:
     with tempfile.NamedTemporaryFile("w+", suffix=".urdf", delete=False) as tmp:
         tmp_path = tmp.name
     try:
+        xacro_command = ["xacro", str(xacro_path)]
+        xacro_command.extend(
+            f"{name}:={value}" for name, value in (xacro_mappings or {}).items()
+        )
         subprocess.run(
-            command_with_workspace_setup(["xacro", str(xacro_path)]),
+            command_with_workspace_setup(xacro_command),
             check=True,
             stdout=open(tmp_path, "w"),
             text=True,
