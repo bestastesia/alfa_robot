@@ -191,6 +191,44 @@ void checkSwivelFamily()
   require(observed_elbow_motion, "swivel parameter did not move the elbow");
 }
 
+void checkV305MirroredModels()
+{
+  using alfa_robot::analytic_ik::V3RedundantArmAnalyticIk;
+  using alfa_robot::analytic_ik::V3RedundantArmModel;
+  using alfa_robot::analytic_ik::V3RedundantIkRequest;
+
+  std::mt19937 rng(20260818);
+  for (const V3RedundantArmModel model : {
+      V3RedundantArmModel::V305Left,
+      V3RedundantArmModel::V305Right}) {
+    V3RedundantArmAnalyticIk solver(model);
+    const auto lower = solver.jointLowerLimits();
+    const auto upper = solver.jointUpperLimits();
+    for (size_t sample = 0; sample < 1000; ++sample) {
+      std::array<double, 7> joints{};
+      for (size_t index = 0; index < joints.size(); ++index) {
+        joints[index] = randomBetween(
+          rng, 0.85 * lower[index], 0.85 * upper[index]);
+      }
+      V3RedundantIkRequest request;
+      request.target_in_arm_base = solver.forwardInArmBase(joints);
+      request.swivel_angle = solver.swivelAngle(joints);
+      request.seed = joints;
+      const auto solutions = solver.solveInArmBase(request);
+      require(!solutions.empty(), "V3.0.5 mirrored model lost a reachable FK target");
+      for (const auto& solution : solutions) {
+        const Eigen::Isometry3d actual = solver.forwardInArmBase(solution.joints);
+        require(
+          (actual.translation() - request.target_in_arm_base.translation()).norm() < 1e-7,
+          "V3.0.5 mirrored model position residual exceeded tolerance");
+        require(
+          orientationError(actual.linear(), request.target_in_arm_base.linear()) < 1e-7,
+          "V3.0.5 mirrored model orientation residual exceeded tolerance");
+      }
+    }
+  }
+}
+
 void checkSingularAndUnreachableTargets()
 {
   using alfa_robot::analytic_ik::V3RedundantArmAnalyticIk;
@@ -225,6 +263,7 @@ int main()
   checkGeometry();
   checkRandomFkIkRegression();
   checkSwivelFamily();
+  checkV305MirroredModels();
   checkSingularAndUnreachableTargets();
   return 0;
 }

@@ -22,7 +22,7 @@ constexpr double kSingularityTolerance = 1e-10;
 using JointVector = std::array<double, 7>;
 using TransformArray = std::array<Eigen::Isometry3d, 7>;
 
-const JointVector kLowerLimits = {
+const JointVector kLegacyLowerLimits = {
   -kPi,
   -1.83259571,
   -kPi,
@@ -32,11 +32,31 @@ const JointVector kLowerLimits = {
   -kPi,
 };
 
-const JointVector kUpperLimits = {
+const JointVector kLegacyUpperLimits = {
   kPi,
   1.83259571,
   kPi,
   2.61799388,
+  kPi,
+  2.09439510,
+  kPi,
+};
+
+const JointVector kV305LowerLimits = {
+  -kPi,
+  -1.83259571,
+  -kPi,
+  -2.53072742,
+  -kPi,
+  -2.09439510,
+  -kPi,
+};
+
+const JointVector kV305UpperLimits = {
+  kPi,
+  1.83259571,
+  kPi,
+  2.53072742,
   kPi,
   2.09439510,
   kPi,
@@ -90,8 +110,58 @@ Eigen::Isometry3d rotationAroundLine(
   return transform;
 }
 
-TransformArray fixedJointTransforms()
+TransformArray fixedJointTransforms(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V305Left) {
+    return {
+      transformFromOrigin(
+        {-0.055000007, -0.2905, -1.417},
+        {kUrdfHalfPi, -0.22548136, 0.0}),
+      transformFromOrigin(
+        {-0.049472837, 0.0072414368, 0.122},
+        {kUrdfHalfPi, 0.0, -1.7161362}),
+      transformFromOrigin(
+        {2.5750223e-10, 0.1405, -0.05},
+        {-kUrdfHalfPi, 1.4254565, -kUrdfPi}),
+      transformFromOrigin(
+        {-0.0091167376, -0.049161826, -0.3775},
+        {kUrdfHalfPi, 0.0, -0.18336049}),
+      transformFromOrigin(
+        {1.2925199e-10, -0.254, -0.05},
+        {kUrdfHalfPi, 0.18336049, 0.0}),
+      transformFromOrigin(
+        {0.016070053, 0.025332852, 0.223},
+        {-kUrdfHalfPi, 0.0, -0.56529915}),
+      transformFromOrigin(
+        {0.0, -0.039, -0.03},
+        {kUrdfHalfPi, -0.56529915, 0.0}),
+    };
+  }
+  if (model == V3RedundantArmModel::V305Right) {
+    return {
+      transformFromOrigin(
+        {-0.055000007, 0.3005, -1.417},
+        {-kUrdfHalfPi, -0.22548136, 0.0}),
+      transformFromOrigin(
+        {0.047051538, -0.016916049, 0.112},
+        {kUrdfHalfPi, 0.0, 1.2256642}),
+      transformFromOrigin(
+        {0.0, 0.246, -0.05},
+        {-kUrdfHalfPi, -1.2256642, 0.0}),
+      transformFromOrigin(
+        {0.00082154954, 0.04999325, 0.272},
+        {-kUrdfHalfPi, 0.0, -0.016431729}),
+      transformFromOrigin(
+        {0.0, -0.244, -0.05},
+        {kUrdfHalfPi, -0.016431729, 0.0}),
+      transformFromOrigin(
+        {0.013852058, 0.014426382, 0.233},
+        {-kUrdfHalfPi, 0.0, -0.76509136}),
+      transformFromOrigin(
+        {0.0, -0.036, -0.02},
+        {kUrdfHalfPi, -0.76509136, 0.0}),
+    };
+  }
   return {
     transformFromOrigin({0.0, 0.0, 0.0}, {kUrdfPi, 0.0, 0.0}),
     transformFromOrigin(
@@ -113,6 +183,17 @@ TransformArray fixedJointTransforms()
       {0.0, -0.039, -0.02},
       {kUrdfHalfPi, -0.76509136, 0.0}),
   };
+}
+
+Eigen::Isometry3d toolTransform(V3RedundantArmModel model)
+{
+  Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
+  if (model == V3RedundantArmModel::V305Left) {
+    transform.translation().z() = 0.1865;
+  } else if (model == V3RedundantArmModel::V305Right) {
+    transform.translation().z() = 0.1895;
+  }
+  return transform;
 }
 
 Eigen::Vector3d commonAxisCenter(
@@ -148,10 +229,10 @@ struct Geometry
   double forearm_length = 0.0;
 };
 
-Geometry makeGeometry()
+Geometry makeGeometry(V3RedundantArmModel model)
 {
   Geometry geometry;
-  geometry.fixed_transforms = fixedJointTransforms();
+  geometry.fixed_transforms = fixedJointTransforms(model);
   Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
   for (size_t index = 0; index < geometry.fixed_transforms.size(); ++index) {
     transform = transform * geometry.fixed_transforms[index];
@@ -159,7 +240,7 @@ Geometry makeGeometry()
     geometry.axes[index] =
       (transform.linear() * Eigen::Vector3d::UnitZ()).normalized();
   }
-  geometry.zero_tool = transform;
+  geometry.zero_tool = transform * toolTransform(model);
   geometry.shoulder = commonAxisCenter(
     geometry.axis_points, geometry.axes, {0, 1, 2});
   geometry.elbow = commonAxisCenter(
@@ -178,10 +259,30 @@ Geometry makeGeometry()
   return geometry;
 }
 
-const Geometry& geometry()
+const Geometry& geometry(V3RedundantArmModel model)
 {
-  static const Geometry instance = makeGeometry();
-  return instance;
+  static const Geometry legacy = makeGeometry(V3RedundantArmModel::LegacyV304);
+  static const Geometry v305_left = makeGeometry(V3RedundantArmModel::V305Left);
+  static const Geometry v305_right = makeGeometry(V3RedundantArmModel::V305Right);
+  if (model == V3RedundantArmModel::V305Left) {
+    return v305_left;
+  }
+  if (model == V3RedundantArmModel::V305Right) {
+    return v305_right;
+  }
+  return legacy;
+}
+
+const JointVector& lowerLimits(V3RedundantArmModel model)
+{
+  return model == V3RedundantArmModel::LegacyV304 ?
+         kLegacyLowerLimits : kV305LowerLimits;
+}
+
+const JointVector& upperLimits(V3RedundantArmModel model)
+{
+  return model == V3RedundantArmModel::LegacyV304 ?
+         kLegacyUpperLimits : kV305UpperLimits;
 }
 
 std::pair<Eigen::Vector3d, Eigen::Vector3d> swivelBasis(
@@ -228,26 +329,30 @@ std::vector<double> signedBranches(double magnitude)
   return {magnitude, -magnitude};
 }
 
-bool insideLimits(const JointVector& joints)
+bool insideLimits(const JointVector& joints, V3RedundantArmModel model)
 {
+  const JointVector& lower = lowerLimits(model);
+  const JointVector& upper = upperLimits(model);
   for (size_t index = 0; index < joints.size(); ++index) {
-    if (joints[index] < kLowerLimits[index] - 1e-9 ||
-        joints[index] > kUpperLimits[index] + 1e-9) {
+    if (joints[index] < lower[index] - 1e-9 ||
+        joints[index] > upper[index] + 1e-9) {
       return false;
     }
   }
   return true;
 }
 
-double minimumLimitMargin(const JointVector& joints)
+double minimumLimitMargin(const JointVector& joints, V3RedundantArmModel model)
 {
+  const JointVector& lower = lowerLimits(model);
+  const JointVector& upper = upperLimits(model);
   double margin = std::numeric_limits<double>::infinity();
   for (size_t index = 0; index < joints.size(); ++index) {
     margin = std::min(
       margin,
       std::min(
-        joints[index] - kLowerLimits[index],
-        kUpperLimits[index] - joints[index]));
+        joints[index] - lower[index],
+        upper[index] - joints[index]));
   }
   return margin;
 }
@@ -282,9 +387,10 @@ double orientationError(
 Eigen::Vector3d pointAfterJointMotions(
   const Eigen::Vector3d& home_point,
   const JointVector& joints,
-  size_t joint_count)
+  size_t joint_count,
+  V3RedundantArmModel model_kind)
 {
-  const Geometry& model = geometry();
+  const Geometry& model = geometry(model_kind);
   Eigen::Isometry3d motion = Eigen::Isometry3d::Identity();
   for (size_t index = 0; index < joint_count; ++index) {
     motion = motion * rotationAroundLine(
@@ -295,6 +401,11 @@ Eigen::Vector3d pointAfterJointMotions(
 
 }  // namespace
 
+V3RedundantArmAnalyticIk::V3RedundantArmAnalyticIk(V3RedundantArmModel model)
+: model_(model)
+{
+}
+
 std::vector<V3RedundantIkSolution> V3RedundantArmAnalyticIk::solveInArmBase(
   const V3RedundantIkRequest& request) const
 {
@@ -303,7 +414,7 @@ std::vector<V3RedundantIkSolution> V3RedundantArmAnalyticIk::solveInArmBase(
     return solutions;
   }
 
-  const Geometry& model = geometry();
+  const Geometry& model = geometry(model_);
   const Eigen::Vector3d wrist =
     request.target_in_arm_base.translation() -
     request.target_in_arm_base.linear() * model.wrist_to_tool_in_tool;
@@ -420,7 +531,7 @@ std::vector<V3RedundantIkSolution> V3RedundantArmAnalyticIk::solveInArmBase(
           normalizeAngle(q6),
           q7,
         };
-        if (request.enforce_joint_limits && !insideLimits(joints)) {
+        if (request.enforce_joint_limits && !insideLimits(joints, model_)) {
           continue;
         }
         const Eigen::Isometry3d actual = forwardInArmBase(joints);
@@ -449,7 +560,7 @@ std::vector<V3RedundantIkSolution> V3RedundantArmAnalyticIk::solveInArmBase(
         solution.position_error = position_error;
         solution.orientation_error = rotation_error;
         solution.seed_distance = seedDistance(joints, request.seed);
-        solution.minimum_joint_limit_margin = minimumLimitMargin(joints);
+        solution.minimum_joint_limit_margin = minimumLimitMargin(joints, model_);
         solutions.push_back(solution);
       }
     }
@@ -475,31 +586,31 @@ std::vector<V3RedundantIkSolution> V3RedundantArmAnalyticIk::solveInArmBase(
 Eigen::Isometry3d V3RedundantArmAnalyticIk::forwardInArmBase(
   const JointVector& joints) const
 {
-  const Geometry& model = geometry();
+  const Geometry& model = geometry(model_);
   Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
   for (size_t index = 0; index < joints.size(); ++index) {
     transform = transform * model.fixed_transforms[index] *
       rotationTransform(rotZ(joints[index]));
   }
-  return transform;
+  return transform * toolTransform(model_);
 }
 
 Eigen::Vector3d V3RedundantArmAnalyticIk::elbowPositionInArmBase(
   const JointVector& joints) const
 {
-  return pointAfterJointMotions(geometry().elbow, joints, 2);
+  return pointAfterJointMotions(geometry(model_).elbow, joints, 2, model_);
 }
 
 Eigen::Vector3d V3RedundantArmAnalyticIk::wristCenterInArmBase(
   const JointVector& joints) const
 {
-  return pointAfterJointMotions(geometry().wrist, joints, 4);
+  return pointAfterJointMotions(geometry(model_).wrist, joints, 4, model_);
 }
 
 double V3RedundantArmAnalyticIk::swivelAngle(
   const JointVector& joints) const
 {
-  const Geometry& model = geometry();
+  const Geometry& model = geometry(model_);
   const Eigen::Vector3d wrist = wristCenterInArmBase(joints);
   const Eigen::Vector3d shoulder_to_wrist = wrist - model.shoulder;
   const double shoulder_to_wrist_distance = shoulder_to_wrist.norm();
@@ -533,27 +644,27 @@ double V3RedundantArmAnalyticIk::swivelAngle(
 
 Eigen::Vector3d V3RedundantArmAnalyticIk::shoulderCenterInArmBase()
 {
-  return geometry().shoulder;
+  return geometry(V3RedundantArmModel::LegacyV304).shoulder;
 }
 
 double V3RedundantArmAnalyticIk::upperArmLength()
 {
-  return geometry().upper_arm_length;
+  return geometry(V3RedundantArmModel::LegacyV304).upper_arm_length;
 }
 
 double V3RedundantArmAnalyticIk::forearmLength()
 {
-  return geometry().forearm_length;
+  return geometry(V3RedundantArmModel::LegacyV304).forearm_length;
 }
 
-JointVector V3RedundantArmAnalyticIk::jointLowerLimits()
+JointVector V3RedundantArmAnalyticIk::jointLowerLimits() const
 {
-  return kLowerLimits;
+  return lowerLimits(model_);
 }
 
-JointVector V3RedundantArmAnalyticIk::jointUpperLimits()
+JointVector V3RedundantArmAnalyticIk::jointUpperLimits() const
 {
-  return kUpperLimits;
+  return upperLimits(model_);
 }
 
 }  // namespace alfa_robot::analytic_ik

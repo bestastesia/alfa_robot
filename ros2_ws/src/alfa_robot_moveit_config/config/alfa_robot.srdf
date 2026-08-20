@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <robot name="alfa_robot">
     <group name="left_arm">
-        <chain base_link="left_arm_base" tip_link="left_tool0"/>
+        <chain base_link="arm_carriage" tip_link="left_tool0"/>
     </group>
     <group name="right_arm">
-        <chain base_link="right_arm_base" tip_link="right_tool0"/>
+        <chain base_link="arm_carriage" tip_link="right_tool0"/>
     </group>
     <group name="dual_arm">
         <group name="left_arm"/>
@@ -35,9 +35,9 @@
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
-    <disable_collisions link1="base_link" link2="left_arm_base" reason="Adjacent"/>
-    <disable_collisions link1="base_link" link2="right_arm_base" reason="Adjacent"/>
-    <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>
+    <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
+    <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>
     <disable_collisions link1="left_joint1" link2="left_joint2" reason="Adjacent"/>
     <disable_collisions link1="left_joint2" link2="left_joint3" reason="Adjacent"/>
     <disable_collisions link1="left_joint3" link2="left_joint4" reason="Adjacent"/>
@@ -45,7 +45,7 @@
     <disable_collisions link1="left_joint5" link2="left_joint6" reason="Adjacent"/>
     <disable_collisions link1="left_joint6" link2="left_joint7" reason="Adjacent"/>
     <disable_collisions link1="left_joint7" link2="left_tool0" reason="Adjacent"/>
-    <disable_collisions link1="right_arm_base" link2="right_joint1" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="right_joint1" reason="Adjacent"/>
     <disable_collisions link1="right_joint1" link2="right_joint2" reason="Adjacent"/>
     <disable_collisions link1="right_joint2" link2="right_joint3" reason="Adjacent"/>
     <disable_collisions link1="right_joint3" link2="right_joint4" reason="Adjacent"/>

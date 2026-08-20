@@ -4,6 +4,7 @@
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_mock_hardware" default="true"/>
   <xacro:arg name="mock_sensor_commands" default="true"/>
+  <xacro:arg name="arm_mount_forward_offset" default="0"/>
   <xacro:arg name="left_joint1_initial" default="0.0"/>
   <xacro:arg name="left_joint2_initial" default="0.0"/>
   <xacro:arg name="left_joint3_initial" default="0.0"/>
@@ -20,50 +21,24 @@
   <xacro:arg name="right_joint7_initial" default="0.0"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
-  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_arm.xacro"/>
+  <xacro:property name="arm_mount_forward_offset_value" value="$(arg arm_mount_forward_offset)"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_5.xacro"/>
 
   <link name="world"/>
   <joint name="world_to_base" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="-0.055 0 0" rpy="0 0 0"/>
   </joint>
 
-  <link name="base_link">
-    <inertial>
-      <origin xyz="0 0 0.25" rpy="0 0 0"/>
-      <mass value="25"/>
-      <inertia ixx="1.041667" ixy="0" ixz="0" iyy="0.854167" iyz="0" izz="0.854167"/>
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0.25" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.4 0.5 0.5"/>
-      </geometry>
-      <material name="cube_base_blue">
-        <color rgba="0.16 0.34 0.55 1"/>
-      </material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0.25" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.4 0.5 0.5"/>
-      </geometry>
-    </collision>
-  </link>
-
-  <!--
-    V3.0.4 单臂复制为左右两臂，安装在立方体的左右侧面。
-    两臂局部 Y 轴均朝机器人前方；joint1 局部 Z 轴分别朝左右外侧。
-  -->
-  <xacro:robot_v3_arm
-    prefix="left" parent="base_link"
-    mount_xyz="0 0.255 0.25"
-    mount_rpy="-1.57079633 -1.57079633 0"/>
-  <xacro:robot_v3_arm
-    prefix="right" parent="base_link"
-    mount_xyz="0 -0.255 0.25"
-    mount_rpy="1.57079633 1.57079633 0"/>
+  <link name="base_link"/>
+  <joint name="base_to_model" type="fixed">
+    <parent link="base_link"/>
+    <child link="model_base"/>
+    <origin
+      xyz="${0.13899334 + float(arm_mount_forward_offset_value)} 0 -0.50669703"
+      rpy="1.57079632679 0.22548136 0"/>
+  </joint>
 
   <xacro:alfa_robot_ros2_control
     name="alfa_robot"

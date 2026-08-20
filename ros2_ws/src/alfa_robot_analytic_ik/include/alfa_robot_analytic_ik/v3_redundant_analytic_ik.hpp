@@ -8,6 +8,13 @@
 namespace alfa_robot::analytic_ik
 {
 
+enum class V3RedundantArmModel
+{
+  LegacyV304,
+  V305Left,
+  V305Right,
+};
+
 struct V3RedundantIkSolution
 {
   std::array<double, 7> joints{};
@@ -34,6 +41,9 @@ struct V3RedundantIkRequest
 class V3RedundantArmAnalyticIk
 {
 public:
+  explicit V3RedundantArmAnalyticIk(
+    V3RedundantArmModel model = V3RedundantArmModel::LegacyV304);
+
   std::vector<V3RedundantIkSolution> solveInArmBase(
     const V3RedundantIkRequest& request) const;
 
@@ -52,8 +62,11 @@ public:
   static Eigen::Vector3d shoulderCenterInArmBase();
   static double upperArmLength();
   static double forearmLength();
-  static std::array<double, 7> jointLowerLimits();
-  static std::array<double, 7> jointUpperLimits();
+  std::array<double, 7> jointLowerLimits() const;
+  std::array<double, 7> jointUpperLimits() const;
+
+private:
+  V3RedundantArmModel model_;
 };
 
 }  // namespace alfa_robot::analytic_ik
