@@ -71,6 +71,9 @@ public:
     const AxisAlignedBox& left_source_box,
     const AxisAlignedBox& right_source_box);
 
+  // 移除当前任务专属箱墙，保留集装箱等固定场景。
+  bool clearStaticBoxWallOpening();
+
   const std::vector<StaticBoxObstacle>& staticBoxObstacles() const { return current_static_box_obstacles_; }
 
   int activeStaticLeftBoxId() const { return active_static_left_box_id_; }
@@ -126,7 +129,7 @@ private:
     const AttachedBoxSpec& spec,
     int operation) const;
 
-  void clearAppliedStaticBoxObstacles();
+  bool clearAppliedStaticBoxObstacles();
 
   bool applyStaticBoxObstacles();
 

@@ -7,6 +7,12 @@ import json
 import math
 from pathlib import Path
 
+from armmotion_demo.trajectory_cache import (
+    CACHE_NOMINAL_ARM_SPACING_CM,
+    CACHE_SCHEMA_VERSION,
+    cache_filename,
+)
+
 
 TASK_ROWS = {
     (1, 3): 1,
@@ -76,7 +82,11 @@ def pose_dict(x: float, y: float, z: float, rpy: tuple[float, float, float]) -> 
     }
 
 
-def canonical_targets(distance_m: float, row: int) -> dict:
+def canonical_targets(
+    distance_m: float,
+    lateral_offset_cm: int,
+    row: int,
+) -> dict:
     center_z = (
         BOTTOM_ROW_CENTER_WORLD_Z_M
         - WORLD_TO_BASE_Z_M
@@ -91,56 +101,100 @@ def canonical_targets(distance_m: float, row: int) -> dict:
         x = distance_m + 0.5 * BOX_DEPTH_M
         z = center_z + 0.5 * BOX_HEIGHT_M
         rpy = TOP_RPY
+    half_spacing_m = CACHE_NOMINAL_ARM_SPACING_CM / 200.0
+    lateral_offset_m = lateral_offset_cm / 100.0
     return {
-        "left": {"pose_6d": pose_dict(x, 0.4, z, rpy), "grasp_mode": mode},
-        "right": {"pose_6d": pose_dict(x, -0.4, z, rpy), "grasp_mode": mode},
+        "left": {
+            "pose_6d": pose_dict(x, half_spacing_m + lateral_offset_m, z, rpy),
+            "grasp_mode": mode,
+        },
+        "right": {
+            "pose_6d": pose_dict(x, -half_spacing_m + lateral_offset_m, z, rpy),
+            "grasp_mode": mode,
+        },
     }
 
 
+def build_cache_record(
+    snapshot: dict,
+    *,
+    distance_cm: int,
+    lateral_offset_cm: int,
+    row: int,
+) -> dict:
+    pair = next((pair for pair, pair_row in TASK_ROWS.items() if pair_row == row), None)
+    if pair is None:
+        raise ValueError(f"未知任务层: {row}")
+    return {
+        "schema_version": CACHE_SCHEMA_VERSION,
+        "distance_cm": distance_cm,
+        "lateral_offset_cm": lateral_offset_cm,
+        "nominal_arm_spacing_cm": CACHE_NOMINAL_ARM_SPACING_CM,
+        "row": row,
+        "source_pair": list(pair),
+        "pregrasp_state": pregrasp_state(snapshot),
+        "canonical_targets": canonical_targets(
+            distance_cm / 100.0,
+            lateral_offset_cm,
+            row,
+        ),
+        "snapshot": {
+            "type": "trajectory_cache",
+            "success": True,
+            "box_front_x": float(snapshot["box_front_x"]),
+            "scene_y_shift": lateral_offset_cm / 100.0,
+            "left_box_id": pair[0],
+            "right_box_id": pair[1],
+            "replay_stages": [
+                slim_stage(stage) for stage in snapshot["replay_stages"][1:]
+            ],
+        },
+    }
+
+
+def write_cache_record(record: dict, output_root: Path) -> Path:
+    output_root.mkdir(parents=True, exist_ok=True)
+    target = output_root / cache_filename(
+        int(record["distance_cm"]),
+        int(record["lateral_offset_cm"]),
+        int(record["row"]),
+    )
+    with gzip.open(target, "wt", encoding="utf-8", compresslevel=9) as stream:
+        json.dump(record, stream, ensure_ascii=False, separators=(",", ":"))
+    return target
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="从十一档五排验证快照生成运行时轨迹缓存")
+    parser = argparse.ArgumentParser(description="从距离×横移×五排验证快照生成运行时轨迹缓存")
     parser.add_argument("source_root", type=Path)
     parser.add_argument("output_root", type=Path)
     args = parser.parse_args()
     args.output_root.mkdir(parents=True, exist_ok=True)
 
     generated = []
-    for path in sorted(args.source_root.glob("x_*cm/sequence_*/??_L*_R*/stage_snapshot.json")):
+    pattern = "x_*cm/y_*cm/sequence_*/??_L*_R*/stage_snapshot.json"
+    for path in sorted(args.source_root.glob(pattern)):
         snapshot = json.loads(path.read_text(encoding="utf-8"))
         try:
             row = int(path.parent.name.split("_", 1)[0])
         except (TypeError, ValueError):
             continue
-        pair = next((pair for pair, pair_row in TASK_ROWS.items() if pair_row == row), None)
-        if pair is None:
+        try:
+            lateral_token = path.parents[2].name.removeprefix("y_").removesuffix("cm")
+            lateral_offset_cm = int(lateral_token.replace("p", "+").replace("m", "-"))
+        except (TypeError, ValueError):
             continue
         distance_cm = int(round(float(snapshot["box_front_x"]) * 100.0))
-        record = {
-            "schema_version": 2,
-            "distance_cm": distance_cm,
-            "row": row,
-            "source_pair": list(pair),
-            "pregrasp_state": pregrasp_state(snapshot),
-            "canonical_targets": canonical_targets(float(snapshot["box_front_x"]), row),
-            "snapshot": {
-                "type": "trajectory_cache",
-                "success": True,
-                "box_front_x": float(snapshot["box_front_x"]),
-                "scene_y_shift": float(snapshot.get("scene_y_shift", 0.0)),
-                "left_box_id": pair[0],
-                "right_box_id": pair[1],
-                "replay_stages": [
-                    slim_stage(stage) for stage in snapshot["replay_stages"][1:]
-                ],
-            },
-        }
-        target = args.output_root / f"x_{distance_cm:02d}cm_row_{row}.json.gz"
-        with gzip.open(target, "wt", encoding="utf-8", compresslevel=9) as stream:
-            json.dump(record, stream, ensure_ascii=False, separators=(",", ":"))
-        generated.append(target)
+        record = build_cache_record(
+            snapshot,
+            distance_cm=distance_cm,
+            lateral_offset_cm=lateral_offset_cm,
+            row=row,
+        )
+        generated.append(write_cache_record(record, args.output_root))
 
     print(
-        f"生成轨迹缓存 {len(generated)}/55 条，"
+        f"生成轨迹缓存 {len(generated)} 条，"
         f"总大小 {sum(path.stat().st_size for path in generated)} bytes"
     )
     return 0

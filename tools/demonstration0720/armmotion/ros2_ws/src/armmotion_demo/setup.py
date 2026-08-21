@@ -12,8 +12,7 @@ setup(
     packages=find_packages(exclude=["test"]),
     package_data={
         "armmotion_demo": [
-            "trajectory_cache/*.json.gz",
-            "trajectory_cache_pregrasp_v2/*.json.gz",
+            "trajectory_cache_pregrasp_v3/*.json.gz",
         ]
     },
     data_files=[

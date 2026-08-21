@@ -9,7 +9,15 @@ from typing import Any
 from robot_motion_runtime.dual_grasp_strategy import Pose6DValue, quaternion_xyzw
 
 from .common import camera_view_pose_from_suction_surface
-from .trajectory_cache import CACHE_MAX_DISTANCE_CM, CACHE_MIN_DISTANCE_CM, TrajectoryCache
+from .trajectory_cache import (
+    CACHE_MAX_DISTANCE_CM,
+    CACHE_MAX_LATERAL_OFFSET_CM,
+    CACHE_MIN_DISTANCE_CM,
+    CACHE_MIN_LATERAL_OFFSET_CM,
+    CACHE_LATERAL_OFFSET_STEP_CM,
+    TrajectoryCache,
+    cache_filename,
+)
 
 
 ACTION_NAME = "/motion/execute_stage"
@@ -93,8 +101,13 @@ def build_action_example(record: dict[str, Any]) -> dict[str, Any]:
     right_mode = _target_mode(str(canonical["right"]["grasp_mode"]))
     empty = _empty_targets()
     return {
-        "cache_key": f"x_{int(record['distance_cm']):02d}cm_row_{int(record['row'])}",
+        "cache_key": cache_filename(
+            int(record["distance_cm"]),
+            int(record["lateral_offset_cm"]),
+            int(record["row"]),
+        ).removesuffix(".json.gz"),
         "distance_cm": int(record["distance_cm"]),
+        "lateral_offset_cm": int(record["lateral_offset_cm"]),
         "row": int(record["row"]),
         "action_name": ACTION_NAME,
         "action_type": ACTION_TYPE,
@@ -129,12 +142,17 @@ def load_examples(cache_root: Path | None = None) -> list[dict[str, Any]]:
     root = TrajectoryCache(cache_root).root
     examples: list[dict[str, Any]] = []
     for distance_cm in range(CACHE_MIN_DISTANCE_CM, CACHE_MAX_DISTANCE_CM + 1):
-        for row in range(1, 6):
-            path = root / f"x_{distance_cm:02d}cm_row_{row}.json.gz"
-            if not path.is_file():
-                continue
-            with gzip.open(path, "rt", encoding="utf-8") as stream:
-                examples.append(build_action_example(json.load(stream)))
+        for lateral_offset_cm in range(
+            CACHE_MIN_LATERAL_OFFSET_CM,
+            CACHE_MAX_LATERAL_OFFSET_CM + 1,
+            CACHE_LATERAL_OFFSET_STEP_CM,
+        ):
+            for row in range(1, 6):
+                path = root / cache_filename(distance_cm, lateral_offset_cm, row)
+                if not path.is_file():
+                    continue
+                with gzip.open(path, "rt", encoding="utf-8") as stream:
+                    examples.append(build_action_example(json.load(stream)))
     if not examples:
         raise FileNotFoundError(f"缓存目录中没有可用轨迹: {root}")
     return examples
@@ -163,6 +181,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="输出可用缓存对应的真实 Motion Action Goal")
     parser.add_argument("--distance-cm", type=int)
     parser.add_argument("--row", type=int)
+    parser.add_argument("--lateral-offset-cm", type=int)
     parser.add_argument("--single-arm", choices=("left", "right"))
     parser.add_argument("--format", choices=("json", "commands"), default="json")
     parser.add_argument("--output", type=Path)
@@ -176,6 +195,12 @@ def main() -> None:
         examples = [item for item in examples if item["distance_cm"] == options.distance_cm]
     if options.row is not None:
         examples = [item for item in examples if item["row"] == options.row]
+    if options.lateral_offset_cm is not None:
+        examples = [
+            item
+            for item in examples
+            if item["lateral_offset_cm"] == options.lateral_offset_cm
+        ]
     if options.single_arm is not None:
         examples = [as_single_arm(item, options.single_arm) for item in examples]
     if not examples:
@@ -195,12 +220,12 @@ def main() -> None:
         }
         output = json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 3,
                 "units": {"position": "m", "orientation": "quaternion_xyzw"},
                 "diagnostic_only": {
                     "action_name": ACTION_NAME,
                     "action_type": ACTION_TYPE,
-                    "group_keys": "x_XXcm_row_N仅用于定位样例，不属于Action Goal",
+                    "group_keys": "x_XXcm_y_±YYcm_row_N仅用于定位样例，不属于Action Goal",
                 },
                 "wire_goal_groups": wire_goal_groups,
             },

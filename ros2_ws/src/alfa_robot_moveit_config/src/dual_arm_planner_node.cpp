@@ -2181,6 +2181,23 @@ private:
     return true;
   }
 
+  bool clear_static_box_wall_opening(const std::string& reason)
+  {
+    if (!scene_adapter_) return true;
+    if (scene_adapter_->staticBoxObstacles().empty()) return true;
+    const bool cleared = scene_adapter_->clearStaticBoxWallOpening();
+    extract_collision_scene_epoch_.fetch_add(1, std::memory_order_acq_rel);
+    if (!cleared) {
+      RCLCPP_ERROR(
+        get_logger(), "Failed to clear task-specific box wall before %s", reason.c_str());
+      return false;
+    }
+    RCLCPP_INFO(
+      get_logger(), "Cleared task-specific box wall before %s; container obstacles retained",
+      reason.c_str());
+    return true;
+  }
+
   AxisAlignedBox source_box_from_box_spec(const BoxSpec& box) const
   {
     return {{
@@ -5575,6 +5592,16 @@ private:
       response->message = start_reason;
       return false;
     }
+    if (!request.use_exact_target_state) {
+      if (!clear_carried_boxes_from_scene()) {
+        response->message = "failed to clear carried boxes before recapture planning";
+        return false;
+      }
+      if (!clear_static_box_wall_opening("recapture planning")) {
+        response->message = "failed to clear task-specific box wall before recapture planning";
+        return false;
+      }
+    }
     if (request.use_exact_target_state) {
       std::string goal_reason;
       auto goal_state = robot_state_from_joint_state_message(
@@ -5590,20 +5617,15 @@ private:
           : "exact target " + goal_reason;
         return false;
       }
-      moveit::planning_interface::MoveGroupInterface::Plan plan;
-      std::string planning_reason;
-      if (!plan_joint_space_with_direct_pipeline(
-          *start_state,
-          *goal_state,
-          &plan,
-          &planning_reason,
-          {},
-          extract_loaded_planning_group_)) {
-        response->message = planning_reason.empty()
-          ? "exact target planning failed"
-          : planning_reason;
+      const auto transition = extract_monitor_transition_planner(
+        {}, "cache_bridge_to_pregrasp").plan(*start_state, *goal_state);
+      if (!transition.valid) {
+        response->message = transition.failure_reason.empty()
+          ? "exact target shortcut/local RRT planning failed"
+          : transition.failure_reason;
         return false;
       }
+      auto plan = transition.plan;
       auto& exact_trajectory = plan.trajectory_.joint_trajectory;
       if (exact_trajectory.points.empty() ||
           exact_trajectory.points.back().positions.size() != exact_trajectory.joint_names.size()) {
@@ -5667,7 +5689,7 @@ private:
       "recapture_pose_pair");
     response->ik_time_ms = solved.ik_result.wall_ms;
     if (!solved.ik_result.success) {
-      if (!recapture_numeric_fallback_enabled_) {
+      if (!request.allow_numeric_fallback || !recapture_numeric_fallback_enabled_) {
         response->message = solved.failure_reason;
         return false;
       }
@@ -6376,6 +6398,40 @@ private:
     extract_collision_check_max_ns_.store(0, std::memory_order_relaxed);
     if (box_pose_rrt_profile_) box_pose_rrt_profile_->reset();
     if (box_pose_solver_profile_) box_pose_solver_profile_->reset();
+    const size_t pre_contact_filter_input_count = extract_monitor_state_.legal_candidates.size();
+    std::vector<robot_motion::core::UpdownAwareIkCandidate> pre_contact_candidates;
+    std::vector<moveit::core::RobotStatePtr> pre_contact_candidate_states;
+    std::map<std::string, size_t> pre_contact_filter_rejections;
+    pre_contact_candidates.reserve(pre_contact_filter_input_count);
+    pre_contact_candidate_states.reserve(pre_contact_filter_input_count);
+    for (size_t index = 0; index < pre_contact_filter_input_count; ++index) {
+      const auto state = index < extract_monitor_state_.candidate_states.size()
+        ? extract_monitor_state_.candidate_states[index]
+        : std::make_shared<moveit::core::RobotState>(robot_state_from_ik_candidate(
+            *extract_monitor_state_.seed_state,
+            extract_monitor_state_.legal_candidates[index],
+            joint_group_));
+      std::string pre_contact_reason;
+      if (!state || !build_extract_monitor_pre_contact_state(*state, *state, &pre_contact_reason)) {
+        std::string rejection = "pre_contact_unreachable";
+        if (pre_contact_reason.rfind("left_", 0) == 0) {
+          rejection += "_left";
+        } else if (pre_contact_reason.rfind("right_", 0) == 0) {
+          rejection += "_right";
+        }
+        if (pre_contact_reason.find("analytic_no_solution") != std::string::npos) {
+          rejection += "_analytic_no_solution";
+        } else if (pre_contact_reason.find("analytic_tip_error") != std::string::npos) {
+          rejection += "_analytic_tip_error";
+        }
+        pre_contact_filter_rejections[rejection]++;
+        continue;
+      }
+      pre_contact_candidates.push_back(extract_monitor_state_.legal_candidates[index]);
+      pre_contact_candidate_states.push_back(state);
+    }
+    extract_monitor_state_.legal_candidates = std::move(pre_contact_candidates);
+    extract_monitor_state_.candidate_states = std::move(pre_contact_candidate_states);
     const size_t count = extract_monitor_state_.legal_candidates.size();
     size_t worker_count = 1;
     const bool direct_updown_lift =
@@ -6559,6 +6615,9 @@ private:
     snapshot["extract_quality_success_quorum"] = extract_benchmark_extract_quality_success_quorum_;
     snapshot["extract_quality_loaded_distance_sum"] =
       extract_benchmark_extract_quality_loaded_distance_sum_;
+    snapshot["pre_contact_filter_input_count"] = pre_contact_filter_input_count;
+    snapshot["pre_contact_filter_accepted_count"] = count;
+    snapshot["pre_contact_filter_rejections"] = failure_counts_json(pre_contact_filter_rejections);
     const bool snapshot_written = finish_extract_monitor_stage(
       snapshot,
       "extract monitor extract",
@@ -6711,10 +6770,7 @@ private:
       return transition_clear(*extract_monitor_state_.replay_start_state, *pre_contact_state) &&
         transition_clear(*pre_contact_state, *ik_state);
     }
-
-    auto plan = make_interpolated_joint_plan(*extract_monitor_state_.replay_start_state, *ik_state, 1.0);
-    std::string reason;
-    return planned_trajectory_clear_in_full_scene(plan, *extract_monitor_state_.replay_start_state, {}, &reason);
+    return false;
   }
 
   moveit::core::RobotStatePtr build_extract_monitor_pre_contact_state(

@@ -2,9 +2,14 @@ import pytest
 
 from robot_motion_interfaces.action import ExecuteMotionStage
 from robot_motion_interfaces.msg import DualArmPoseTargets
-from armmotion_demo.domain_motion_server import DomainMotionServer, pregrasp_entry_mode
+from armmotion_demo.domain_motion_server import (
+    DomainMotionServer,
+    cache_result_diagnostic,
+    pregrasp_entry_mode,
+)
 from armmotion_demo.manual_domain_task import _quaternion_from_rpy
 from armmotion_demo.stage_contract import (
+    align_target_pair_to_average_x,
     align_target_pair_to_lower_height,
     canonicalize_grasp_pose_orientation,
     canonicalize_stage_target_orientations,
@@ -39,6 +44,23 @@ def goal(left_y=0.5, right_y=-0.5):
         pose.orientation.x = 0.70710678
         pose.orientation.z = 0.70710678
     return message
+
+
+def test_cache_result_diagnostic_reports_requested_and_selected_grid():
+    diagnostic = cache_result_diagnostic(
+        {
+            "trajectory_cache_path": "/tmp/x_78cm_y_p06cm_row_3.json.gz",
+            "trajectory_cache_nearest_success_used": True,
+            "trajectory_cache_requested_distance_m": 0.78,
+            "trajectory_cache_distance_m": 0.78,
+            "trajectory_cache_requested_lateral_offset_m": 0.07,
+            "trajectory_cache_lateral_offset_m": 0.06,
+        }
+    )
+    assert "cache_key=x_78cm_y_p06cm_row_3" in diagnostic
+    assert "nearest_success=True" in diagnostic
+    assert "requested_y_offset=+0.070m" in diagnostic
+    assert "selected_y_offset=+0.060m" in diagnostic
 
 
 def test_public_action_result_uses_structured_error_contract():
@@ -77,6 +99,19 @@ def test_domain_task_uses_explicit_left_right_poses():
     assert task.scene_y_shift == pytest.approx(0.0)
     assert task.left_front_face_pose.y == pytest.approx(0.5)
     assert task.right_front_face_pose.y == pytest.approx(-0.5)
+
+
+def test_target_pair_average_x_preserves_each_y():
+    targets = resolve_dual_stage_targets(goal(left_y=0.47, right_y=-0.35))
+    targets.left_pose.position.x = 0.72
+    targets.right_pose.position.x = 0.78
+
+    aligned = align_target_pair_to_average_x(targets)
+
+    assert aligned.left_pose.position.x == pytest.approx(0.75)
+    assert aligned.right_pose.position.x == pytest.approx(0.75)
+    assert aligned.left_pose.position.y == pytest.approx(0.47)
+    assert aligned.right_pose.position.y == pytest.approx(-0.35)
 
 
 def test_domain_top_target_is_actual_top_surface_center():

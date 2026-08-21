@@ -9,13 +9,13 @@ from armmotion_demo.action_examples import as_single_arm, load_examples
 
 def test_all_successful_cached_action_examples_are_complete():
     examples = load_examples()
-    assert len(examples) == 53
-    assert (80, 3) not in {
-        (item["distance_cm"], item["row"]) for item in examples
-    }
-    assert (80, 4) not in {
-        (item["distance_cm"], item["row"]) for item in examples
-    }
+    assert len(examples) == 312
+    assert len(
+        {
+            (item["distance_cm"], item["lateral_offset_cm"], item["row"])
+            for item in examples
+        }
+    ) == 312
     assert all(len(item["goals"]) == 5 for item in examples)
 
 
@@ -56,8 +56,8 @@ def test_json_output_separates_diagnostics_from_wire_goals(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["dump_cached_action_examples"])
     action_examples.main()
     payload = json.loads(capsys.readouterr().out)
-    assert len(payload["wire_goal_groups"]) == 53
-    first_goal = payload["wire_goal_groups"]["x_70cm_row_1"][0]
+    assert len(payload["wire_goal_groups"]) == 312
+    first_goal = payload["wire_goal_groups"]["x_75cm_y_m10cm_row_2"][0]
     assert set(first_goal) == {"execution_stage", "targets"}
     assert "label" not in first_goal
     assert "cache_key" not in first_goal

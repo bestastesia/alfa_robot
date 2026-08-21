@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import os
@@ -295,6 +296,7 @@ class PlannerAdapter:
         preferred_updown: float = 0.3,
         exact_target: MotionSample | None = None,
         context_stage: str = "recapture/planned",
+        allow_numeric_fallback: bool = True,
     ) -> tuple[list[MotionSample], dict[str, Any]]:
         self._ensure_session()
         if self._recapture_client is None:
@@ -303,6 +305,7 @@ class PlannerAdapter:
         request.left_target = left_target
         request.right_target = right_target
         request.preferred_updown = float(preferred_updown)
+        request.allow_numeric_fallback = bool(allow_numeric_fallback)
         request.use_exact_target_state = exact_target is not None
         request.start_state.name = [
             "updown",
@@ -390,6 +393,76 @@ class PlannerAdapter:
             "selected_updown": float(response.selected_updown),
             "message": response.message,
         }
+
+    def plan_recapture_with_approach_search(
+        self,
+        left_viewpose: PoseStamped,
+        right_viewpose: PoseStamped,
+        current: MotionSample,
+        *,
+        preferred_updown: float = 0.3,
+        approach_limit_m: float = 0.10,
+        approach_step_m: float = 0.01,
+        context_stage: str = "recapture/planned",
+    ) -> tuple[list[MotionSample], dict[str, Any]]:
+        if approach_limit_m < 0.0 or approach_step_m <= 0.0:
+            raise ValueError("观察位解析 IK 递进范围和步长必须为正")
+        attempt_count = int(round(approach_limit_m / approach_step_m)) + 1
+        analytic_failures: list[str] = []
+        for attempt_index in range(attempt_count):
+            approach_offset_m = attempt_index * approach_step_m
+            left_target = copy.deepcopy(left_viewpose)
+            right_target = copy.deepcopy(right_viewpose)
+            left_target.pose.position.x += approach_offset_m
+            right_target.pose.position.x += approach_offset_m
+            try:
+                samples, metrics = self.plan_recapture(
+                    left_target,
+                    right_target,
+                    current,
+                    preferred_updown=preferred_updown,
+                    context_stage=context_stage,
+                    allow_numeric_fallback=False,
+                )
+            except RuntimeError as exc:
+                analytic_failures.append(
+                    f"x+{approach_offset_m:.2f}m: {exc}"
+                )
+                continue
+            metrics.update(
+                {
+                    "viewpose_approach_offset_m": approach_offset_m,
+                    "analytic_attempts": attempt_index + 1,
+                    "numeric_fallback_used": False,
+                    "analytic_failures": analytic_failures,
+                }
+            )
+            return samples, metrics
+
+        try:
+            samples, metrics = self.plan_recapture(
+                left_viewpose,
+                right_viewpose,
+                current,
+                preferred_updown=preferred_updown,
+                context_stage=context_stage,
+                allow_numeric_fallback=True,
+            )
+        except RuntimeError as exc:
+            diagnostic = " | ".join(analytic_failures)
+            raise RuntimeError(
+                "观察位0~10cm解析IK递进与原viewpose数值IK均失败: "
+                f"analytic=[{diagnostic}]; numeric=({exc})"
+            ) from exc
+        metrics.update(
+            {
+                "viewpose_approach_offset_m": 0.0,
+                "analytic_attempts": attempt_count,
+                "numeric_fallback_used": True,
+                "analytic_failures": analytic_failures,
+            }
+        )
+        return samples, metrics
 
     @staticmethod
     def _cached_task(task: PlanningTask, cache_match) -> PoseTaskSpec:
@@ -741,6 +814,29 @@ class PlannerAdapter:
             "trajectory_cache_path": str(cache_match.path) if cache_match is not None else "",
             "trajectory_cache_distance_m": (
                 cache_match.distance_cm / 100.0 if cache_match is not None else 0.0
+            ),
+            "trajectory_cache_requested_distance_m": (
+                cache_match.requested_distance_cm / 100.0
+                if cache_match is not None
+                else 0.0
+            ),
+            "trajectory_cache_lateral_offset_m": (
+                cache_match.lateral_offset_cm / 100.0
+                if cache_match is not None
+                else 0.0
+            ),
+            "trajectory_cache_requested_lateral_offset_m": (
+                cache_match.requested_lateral_offset_cm / 100.0
+                if cache_match is not None
+                else 0.0
+            ),
+            "trajectory_cache_nearest_success_used": (
+                cache_match is not None
+                and (
+                    cache_match.distance_cm != cache_match.requested_distance_cm
+                    or cache_match.lateral_offset_cm
+                    != cache_match.requested_lateral_offset_cm
+                )
             ),
             "trajectory_cache_bridge_ms": (
                 float(bridge_metrics["wall_ms"]) if cache_match is not None else 0.0

@@ -32,6 +32,7 @@ from .common import (
 from .hardware_executor import ARM_JOINT_NAMES, HardwareExecutor
 from .planner_adapter import PlannerAdapter
 from .stage_contract import (
+    align_target_pair_to_average_x,
     align_target_pair_to_lower_height,
     canonicalize_stage_target_orientations,
     planning_task_from_resolved_targets,
@@ -65,6 +66,23 @@ def pregrasp_entry_mode(
     return None
 
 
+def cache_result_diagnostic(metrics: dict) -> str:
+    cache_path = str(metrics.get("trajectory_cache_path", ""))
+    if not cache_path:
+        return ""
+    cache_key = Path(cache_path).name.removesuffix(".json.gz")
+    return (
+        f"cache_key={cache_key} "
+        f"nearest_success={bool(metrics.get('trajectory_cache_nearest_success_used', False))} "
+        f"requested_x={float(metrics['trajectory_cache_requested_distance_m']):.3f}m "
+        f"selected_x={float(metrics['trajectory_cache_distance_m']):.3f}m "
+        f"requested_y_offset="
+        f"{float(metrics['trajectory_cache_requested_lateral_offset_m']):+.3f}m "
+        f"selected_y_offset="
+        f"{float(metrics['trajectory_cache_lateral_offset_m']):+.3f}m"
+    )
+
+
 class DomainMotionServer(Node):
     """Single staged Motion ingress; vacuum ownership stays outside Motion."""
 
@@ -82,6 +100,9 @@ class DomainMotionServer(Node):
         self.declare_parameter("max_updown_speed_m_s", 0.15)
         self.declare_parameter("updown_acceleration_m_s2", 0.05)
         self.declare_parameter("recapture_preferred_updown_m", 0.3)
+        self.declare_parameter("recapture_analytic_approach_limit_m", 0.10)
+        self.declare_parameter("recapture_analytic_approach_step_m", 0.01)
+        self.declare_parameter("trajectory_cache_root", "")
         self.declare_parameter("turn_tf_frame", "turn")
         self.declare_parameter("turn_tf_timeout_s", 1.0)
         self.declare_parameter("turn_zero_target_y_compensation_m", 0.0)
@@ -143,9 +164,14 @@ class DomainMotionServer(Node):
             max_updown_acceleration_m_s2=updown_acceleration,
             speed_scale=speed_scale,
             timeout_s=float(self.get_parameter("planner_timeout_s").value),
-            trajectory_cache_enabled=False,
-            trajectory_cache_required=False,
+            trajectory_cache_enabled=True,
+            trajectory_cache_required=True,
             trajectory_cache_fallback_on_planning_failure=False,
+            trajectory_cache_root=(
+                Path(str(self.get_parameter("trajectory_cache_root").value)).resolve()
+                if str(self.get_parameter("trajectory_cache_root").value).strip()
+                else None
+            ),
         )
         self.get_logger().info("Planner 启动期主动预热开始")
         planner_startup_ms = self._planner.start()
@@ -197,7 +223,10 @@ class DomainMotionServer(Node):
         detail: str = "",
     ) -> ErrorInfo:
         error = ErrorInfo()
-        error.code = int(code)
+        try:
+            error.code = int(code)
+        except (AssertionError, TypeError):
+            error.code = str(int(code))
         error.message = str(message)
         error.retryable = bool(retryable)
         if severity is not None:
@@ -243,7 +272,7 @@ class DomainMotionServer(Node):
             if not partial_test:
                 blockers.append("partial_domain_test_disabled")
             errors: list[ErrorInfo] = []
-            if int(self._last_error.code) != ErrorCode.SUCCESS:
+            if int(self._last_error.code or ErrorCode.SUCCESS) != ErrorCode.SUCCESS:
                 readiness_error = copy.deepcopy(self._last_error)
                 if message.ready:
                     readiness_error.severity = ErrorInfo.WARN
@@ -345,6 +374,7 @@ class DomainMotionServer(Node):
         *,
         canonicalize_grasp_orientation: bool,
         align_to_lower_height: bool,
+        align_to_average_x: bool,
     ):
         current_turn = float(current.joints.get("turn", 0.0))
         corrected_request = copy.deepcopy(request)
@@ -390,12 +420,20 @@ class DomainMotionServer(Node):
         original_right_z = float(targets.right_pose.position.z)
         if align_to_lower_height:
             targets = align_target_pair_to_lower_height(targets)
+        if align_to_average_x:
+            targets = align_target_pair_to_average_x(targets)
+        lateral_offset_m = 0.5 * (
+            float(targets.left_pose.position.y)
+            + float(targets.right_pose.position.y)
+        )
         self.get_logger().info(
             "目标 Pose 预处理完成："
             f"actual_turn={current_turn:.6f}rad "
             f"y_compensation={y_compensation_m:+.3f}m "
             f"canonical_orientation={canonicalize_grasp_orientation} "
             f"align_lower_height={align_to_lower_height} "
+            f"align_average_x={align_to_average_x} "
+            f"lateral_offset={lateral_offset_m:+.3f}m "
             f"left=({targets.left_pose.position.x:.3f},"
             f"{targets.left_pose.position.y:.3f},"
             f"{targets.left_pose.position.z:.3f}) "
@@ -448,6 +486,7 @@ class DomainMotionServer(Node):
         result = ExecuteMotionStage.Result()
         planning_time_s = 0.0
         execution_time_s = 0.0
+        result_detail = ""
         with self._lock:
             self._busy = True
             self._goal_reserved = False
@@ -462,22 +501,31 @@ class DomainMotionServer(Node):
                 targets = self._targets_for_zero_turn(
                     request,
                     current_with_turn,
-                    canonicalize_grasp_orientation=False,
+                    canonicalize_grasp_orientation=True,
                     align_to_lower_height=False,
+                    align_to_average_x=True,
                 )
                 started = time.monotonic()
-                samples, metrics = self._planner.plan_recapture(
+                samples, metrics = self._planner.plan_recapture_with_approach_search(
                     self._base_link_pose_stamped(targets.left_pose),
                     self._base_link_pose_stamped(targets.right_pose),
                     current,
                     preferred_updown=float(
                         self.get_parameter("recapture_preferred_updown_m").value
                     ),
+                    approach_limit_m=float(
+                        self.get_parameter("recapture_analytic_approach_limit_m").value
+                    ),
+                    approach_step_m=float(
+                        self.get_parameter("recapture_analytic_approach_step_m").value
+                    ),
                 )
                 planning_time_s = time.monotonic() - started
                 self.get_logger().info(
                     "重拍位规划完成："
                     f"updown={metrics['selected_updown']:.3f}m "
+                    f"x_approach={metrics['viewpose_approach_offset_m']:.3f}m "
+                    f"numeric_fallback={metrics['numeric_fallback_used']} "
                     f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms "
                     f"mirrored_from={targets.mirrored_from or 'none'}"
                 )
@@ -532,11 +580,26 @@ class DomainMotionServer(Node):
                     self._current_sample_for_planning(),
                     canonicalize_grasp_orientation=True,
                     align_to_lower_height=True,
+                    align_to_average_x=True,
                 )
                 task = planning_task_from_resolved_targets(targets, cycle_id)
                 started = time.monotonic()
                 plan = self._planner.compute(task, initial_sample=recapture_sample)
                 planning_time_s = time.monotonic() - started
+                self.get_logger().info(
+                    "任务缓存规划完成："
+                    f"requested_x={plan.metrics['trajectory_cache_requested_distance_m']:.3f}m "
+                    f"selected_x={plan.metrics['trajectory_cache_distance_m']:.3f}m "
+                    f"requested_y_offset="
+                    f"{plan.metrics['trajectory_cache_requested_lateral_offset_m']:+.3f}m "
+                    f"selected_y_offset="
+                    f"{plan.metrics['trajectory_cache_lateral_offset_m']:+.3f}m "
+                    f"nearest_success="
+                    f"{plan.metrics['trajectory_cache_nearest_success_used']} "
+                    f"bridge={plan.metrics['trajectory_cache_bridge_ms']:.2f}ms "
+                    f"cache={plan.metrics['trajectory_cache_path']}"
+                )
+                result_detail = cache_result_diagnostic(plan.metrics)
                 with self._lock:
                     self._active_plan = plan
                 goal_handle.publish_feedback(
@@ -575,6 +638,7 @@ class DomainMotionServer(Node):
             result.diagnostic = (
                 f"{self._stage_name(stage)} complete; "
                 f"planning={planning_time_s:.3f}s execution={execution_time_s:.3f}s"
+                + (f"; {result_detail}" if result_detail else "")
             )
             goal_handle.publish_feedback(
                 self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_SETTLING)

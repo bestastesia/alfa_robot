@@ -105,9 +105,9 @@ bool MotionSceneAdapter::applyContainerObstacles()
   return true;
 }
 
-void MotionSceneAdapter::clearAppliedStaticBoxObstacles()
+bool MotionSceneAdapter::clearAppliedStaticBoxObstacles()
 {
-  if (!planning_scene_interface_ || applied_static_box_obstacle_ids_.empty()) return;
+  if (!planning_scene_interface_ || applied_static_box_obstacle_ids_.empty()) return true;
 
   std::vector<moveit_msgs::msg::CollisionObject> remove_objects;
   remove_objects.reserve(applied_static_box_obstacle_ids_.size());
@@ -118,13 +118,23 @@ void MotionSceneAdapter::clearAppliedStaticBoxObstacles()
       {0.0, 0.0, 0.0},
       moveit_msgs::msg::CollisionObject::REMOVE));
   }
-  planning_scene_interface_->applyCollisionObjects(remove_objects);
+  if (!planning_scene_interface_->applyCollisionObjects(remove_objects)) return false;
   applied_static_box_obstacle_ids_.clear();
+  return true;
+}
+
+bool MotionSceneAdapter::clearStaticBoxWallOpening()
+{
+  if (!clearAppliedStaticBoxObstacles()) return false;
+  current_static_box_obstacles_.clear();
+  active_static_left_box_id_ = 0;
+  active_static_right_box_id_ = 0;
+  return true;
 }
 
 bool MotionSceneAdapter::applyStaticBoxObstacles()
 {
-  clearAppliedStaticBoxObstacles();
+  if (!clearAppliedStaticBoxObstacles()) return false;
   if (!config_.enable_static_box_obstacles) {
     current_static_box_obstacles_.clear();
     active_static_left_box_id_ = 0;

@@ -21,6 +21,9 @@ def generate_launch_description():
             DeclareLaunchArgument("execution_speed_scale", default_value="3.0"),
             DeclareLaunchArgument("max_updown_speed_m_s", default_value="0.15"),
             DeclareLaunchArgument("recapture_preferred_updown_m", default_value="0.3"),
+            DeclareLaunchArgument("recapture_analytic_approach_limit_m", default_value="0.10"),
+            DeclareLaunchArgument("recapture_analytic_approach_step_m", default_value="0.01"),
+            DeclareLaunchArgument("trajectory_cache_root", default_value=""),
             DeclareLaunchArgument(
                 "turn_zero_target_y_compensation_m", default_value="0.0"
             ),
@@ -68,6 +71,15 @@ def generate_launch_description():
                         ),
                         "recapture_preferred_updown_m": LaunchConfiguration(
                             "recapture_preferred_updown_m"
+                        ),
+                        "recapture_analytic_approach_limit_m": LaunchConfiguration(
+                            "recapture_analytic_approach_limit_m"
+                        ),
+                        "recapture_analytic_approach_step_m": LaunchConfiguration(
+                            "recapture_analytic_approach_step_m"
+                        ),
+                        "trajectory_cache_root": LaunchConfiguration(
+                            "trajectory_cache_root"
                         ),
                         "turn_zero_target_y_compensation_m": LaunchConfiguration(
                             "turn_zero_target_y_compensation_m"

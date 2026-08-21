@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,7 @@ from alfa_robot_rerun import visualize_rerun as rerun_helpers
 
 from .common import (
     MotionSample,
-    camera_view_poses_for_task,
+    camera_view_pose_from_suction_surface,
     loaded_joint_map,
     parse_task_code,
     planning_task_from_suction_surface_poses,
@@ -24,7 +25,14 @@ from .common import (
 )
 from .controller_interpolated_rerun import segment_raw_trace, static_signature
 from .planner_adapter import PlannerAdapter
-from .trajectory_cache import CACHE_MAX_DISTANCE_CM, CACHE_MIN_DISTANCE_CM
+from .trajectory_cache import (
+    CACHE_MAX_DISTANCE_CM,
+    CACHE_MAX_LATERAL_OFFSET_CM,
+    CACHE_MIN_DISTANCE_CM,
+    CACHE_MIN_LATERAL_OFFSET_CM,
+    CACHE_LATERAL_OFFSET_STEP_CM,
+    CACHE_NOMINAL_ARM_SPACING_CM,
+)
 
 
 WORLD_TO_BASE_Z_M = 0.202094
@@ -141,7 +149,7 @@ def _log_sample(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="生成30组缓存Action的完整原始轨迹Rerun")
+    parser = argparse.ArgumentParser(description="生成全部缓存Action的完整原始轨迹Rerun")
     parser.add_argument("--source-ws", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--save", type=Path)
@@ -198,16 +206,41 @@ def main() -> int:
     timeline_s = 0.0
     summaries: list[dict[str, Any]] = []
     try:
-        task_total = (CACHE_MAX_DISTANCE_CM - CACHE_MIN_DISTANCE_CM + 1) * 5
+        task_total = (
+            (CACHE_MAX_DISTANCE_CM - CACHE_MIN_DISTANCE_CM + 1)
+            * len(
+                range(
+                    CACHE_MIN_LATERAL_OFFSET_CM,
+                    CACHE_MAX_LATERAL_OFFSET_CM + 1,
+                    CACHE_LATERAL_OFFSET_STEP_CM,
+                )
+            )
+            * 5
+        )
         task_index = 0
         for distance_cm in range(CACHE_MIN_DISTANCE_CM, CACHE_MAX_DISTANCE_CM + 1):
             distance_m = distance_cm / 100.0
-            for row in range(1, 6):
+            for lateral_offset_cm, row in (
+                (offset, row)
+                for offset in range(
+                    CACHE_MIN_LATERAL_OFFSET_CM,
+                    CACHE_MAX_LATERAL_OFFSET_CM + 1,
+                    CACHE_LATERAL_OFFSET_STEP_CM,
+                )
+                for row in range(1, 6)
+            ):
                 task_index += 1
                 fixture = parse_task_code(f"B{row}", distance_m, distance_m)
                 left_surface, right_surface = suction_surface_poses_for_task(fixture)
-                left_camera, right_camera = camera_view_poses_for_task(fixture)
-                task_label = f"x_{distance_cm:02d}cm_row_{row}"
+                offset_m = lateral_offset_cm / 100.0
+                half_spacing_m = CACHE_NOMINAL_ARM_SPACING_CM / 200.0
+                left_surface = replace(left_surface, y=half_spacing_m + offset_m)
+                right_surface = replace(right_surface, y=-half_spacing_m + offset_m)
+                left_camera = camera_view_pose_from_suction_surface(left_surface)
+                right_camera = camera_view_pose_from_suction_surface(right_surface)
+                task_label = (
+                    f"x_{distance_cm:02d}cm_y_{lateral_offset_cm:+03d}cm_row_{row}"
+                )
                 task = planning_task_from_suction_surface_poses(
                     task_label,
                     left_surface,
