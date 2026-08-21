@@ -211,6 +211,7 @@ class ExecutionPlan:
     snapshot_path: Path
     summary_path: Path
     stages: dict[int, list[list[MotionSample]]]
+    action_trajectories: dict[str, list[MotionSample]]
     metrics: dict[str, Any]
 
 
@@ -1075,3 +1076,62 @@ def retime_all_stages(
         ]
         for stage_number, segments in stages.items()
     }
+
+
+def _concatenate_motion_segments(
+    segments: Iterable[list[MotionSample]],
+    joint_names: list[str],
+) -> list[MotionSample]:
+    combined: list[MotionSample] = []
+    for segment in segments:
+        for sample in segment:
+            copied = _copy_sample(sample)
+            if combined and (
+                abs(combined[-1].updown_m - copied.updown_m) <= 1e-9
+                and all(
+                    abs(combined[-1].joints[name] - copied.joints[name]) <= 1e-9
+                    for name in joint_names
+                )
+            ):
+                copied.time_s = max(combined[-1].time_s, copied.time_s)
+                combined[-1] = copied
+                continue
+            combined.append(copied)
+    return combined
+
+
+def retime_action_trajectories(
+    stages: dict[int, list[list[MotionSample]]],
+    joint_names: list[str],
+    *,
+    rate_hz: float,
+    max_joint_speed_deg_s: float,
+    max_updown_speed_m_s: float,
+    speed_scale: float = 1.0,
+    max_joint_acceleration_deg_s2: float = 60.0,
+    max_updown_acceleration_m_s2: float = 0.05,
+) -> dict[str, list[MotionSample]]:
+    groups = {
+        "pregrasp": stages[1],
+        "approach": stages[2],
+        "place": [*stages[3], *stages[4]],
+        "home": stages[6],
+    }
+    trajectories: dict[str, list[MotionSample]] = {}
+    for name, segments in groups.items():
+        combined = _concatenate_motion_segments(segments, joint_names)
+        if len(combined) == 1:
+            combined.append(
+                _copy_sample(combined[0], combined[0].time_s + 1.0 / rate_hz)
+            )
+        trajectories[name] = retime_segment(
+            combined,
+            joint_names,
+            rate_hz=rate_hz,
+            max_joint_speed_deg_s=max_joint_speed_deg_s,
+            max_updown_speed_m_s=max_updown_speed_m_s,
+            speed_scale=speed_scale,
+            max_joint_acceleration_deg_s2=max_joint_acceleration_deg_s2,
+            max_updown_acceleration_m_s2=max_updown_acceleration_m_s2,
+        )
+    return trajectories

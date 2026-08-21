@@ -449,17 +449,17 @@ class DomainMotionServer(Node):
         )
         return targets
 
-    def _run_plan_stage(self, goal_handle, plan_stage: int, label: str) -> float:
+    def _run_plan_action(self, goal_handle, action_name: str, label: str) -> float:
         with self._lock:
             plan = self._active_plan
         if plan is None:
             raise RuntimeError("内部执行计划不存在")
-        started = time.monotonic()
-        for index, segment in enumerate(plan.stages[plan_stage], start=1):
-            if goal_handle.is_cancel_requested:
-                raise InterruptedError("动作在轨迹段边界被取消")
-            self._hardware.execute_segment(segment, f"{label}/{index}")
-        return time.monotonic() - started
+        trajectory = plan.action_trajectories.get(action_name)
+        if not trajectory:
+            raise RuntimeError(f"内部执行计划缺少动作轨迹: {action_name}")
+        if goal_handle.is_cancel_requested:
+            raise InterruptedError("动作在轨迹发送前被取消")
+        return float(self._hardware.execute_segment(trajectory, label)["duration_s"])
 
     @staticmethod
     def _planning_sample_without_external_turn(sample: MotionSample) -> MotionSample:
@@ -605,9 +605,9 @@ class DomainMotionServer(Node):
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
                 )
-                execution_time_s = self._run_plan_stage(
+                execution_time_s = self._run_plan_action(
                     goal_handle,
-                    1,
+                    "pregrasp",
                     "预抓取",
                 )
                 self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH
@@ -615,20 +615,31 @@ class DomainMotionServer(Node):
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
                 )
-                execution_time_s = self._run_plan_stage(goal_handle, 2, "靠近吸附")
+                execution_time_s = self._run_plan_action(
+                    goal_handle,
+                    "approach",
+                    "靠近吸附",
+                )
                 self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE
             elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE:
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
                 )
-                execution_time_s += self._run_plan_stage(goal_handle, 3, "抽离到负重")
-                execution_time_s += self._run_plan_stage(goal_handle, 4, "负重到放置")
+                execution_time_s = self._run_plan_action(
+                    goal_handle,
+                    "place",
+                    "抽离到放置",
+                )
                 self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME
             else:
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
                 )
-                execution_time_s = self._run_plan_stage(goal_handle, 6, "返回初始位")
+                execution_time_s = self._run_plan_action(
+                    goal_handle,
+                    "home",
+                    "返回初始位",
+                )
                 with self._lock:
                     self._active_plan = None
                     self._recapture_sample = None

@@ -21,6 +21,7 @@ from .common import (
     TaskSpec,
     planning_task_from_suction_surface_poses,
     pose6d_from_dict,
+    retime_action_trajectories,
     retime_segment,
     retime_all_stages,
     split_execution_stages,
@@ -782,17 +783,25 @@ class PlannerAdapter:
         ]
         if cache_match is not None:
             samples = [*cache_bridge, *samples]
-        stages = split_execution_stages(samples)
-        validate_stage_contracts(task, stages, EXECUTION_JOINT_NAMES)
-        stages = retime_all_stages(
-            stages,
+        raw_stages = split_execution_stages(samples)
+        validate_stage_contracts(task, raw_stages, EXECUTION_JOINT_NAMES)
+        retime_parameters = {
+            "rate_hz": self.rate_hz,
+            "max_joint_speed_deg_s": self.max_joint_speed_deg_s,
+            "max_joint_acceleration_deg_s2": self.max_joint_acceleration_deg_s2,
+            "max_updown_speed_m_s": self.max_updown_speed_m_s,
+            "speed_scale": self.speed_scale,
+            "max_updown_acceleration_m_s2": self.max_updown_acceleration_m_s2,
+        }
+        action_trajectories = retime_action_trajectories(
+            raw_stages,
             EXECUTION_JOINT_NAMES,
-            rate_hz=self.rate_hz,
-            max_joint_speed_deg_s=self.max_joint_speed_deg_s,
-            max_joint_acceleration_deg_s2=self.max_joint_acceleration_deg_s2,
-            max_updown_speed_m_s=self.max_updown_speed_m_s,
-            speed_scale=self.speed_scale,
-            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
+            **retime_parameters,
+        )
+        stages = retime_all_stages(
+            raw_stages,
+            EXECUTION_JOINT_NAMES,
+            **retime_parameters,
         )
         validate_stage_contracts(task, stages, EXECUTION_JOINT_NAMES)
         metrics = {
@@ -847,6 +856,7 @@ class PlannerAdapter:
             snapshot_path=snapshot_path,
             summary_path=summary_path,
             stages=stages,
+            action_trajectories=action_trajectories,
             metrics=metrics,
         )
 

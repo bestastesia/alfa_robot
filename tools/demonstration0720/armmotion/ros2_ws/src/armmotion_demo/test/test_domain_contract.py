@@ -1,3 +1,6 @@
+import threading
+from types import SimpleNamespace
+
 import pytest
 
 from robot_motion_interfaces.action import ExecuteMotionStage
@@ -7,6 +10,7 @@ from armmotion_demo.domain_motion_server import (
     cache_result_diagnostic,
     pregrasp_entry_mode,
 )
+from armmotion_demo.common import MotionSample
 from armmotion_demo.manual_domain_task import _quaternion_from_rpy
 from armmotion_demo.stage_contract import (
     align_target_pair_to_average_x,
@@ -90,6 +94,29 @@ def test_planning_failure_is_mapped_to_canonical_error_codes():
     assert DomainMotionServer._planning_error_code("planner timeout") == (
         ErrorCode.MOTION_PLANNING_FAILED
     )
+
+
+def test_domain_sends_place_as_one_continuous_controller_goal():
+    trajectory = [
+        MotionSample(0.0, {"left_joint1": 0.0}, 0.3, {}),
+        MotionSample(1.0, {"left_joint1": 0.1}, 0.1, {}),
+    ]
+    calls = []
+    server = DomainMotionServer.__new__(DomainMotionServer)
+    server._lock = threading.RLock()
+    server._active_plan = SimpleNamespace(
+        action_trajectories={"place": trajectory}
+    )
+    server._hardware = SimpleNamespace(
+        execute_segment=lambda samples, label: calls.append((samples, label))
+        or {"duration_s": 1.0}
+    )
+    goal_handle = SimpleNamespace(is_cancel_requested=False)
+
+    duration = server._run_plan_action(goal_handle, "place", "抽离到放置")
+
+    assert duration == pytest.approx(1.0)
+    assert calls == [(trajectory, "抽离到放置")]
 
 
 def test_domain_task_uses_explicit_left_right_poses():

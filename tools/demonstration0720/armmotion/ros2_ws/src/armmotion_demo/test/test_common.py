@@ -12,6 +12,7 @@ from armmotion_demo.common import (
     planning_task_from_front_face_poses,
     planning_task_from_suction_surface_poses,
     parse_task_code,
+    retime_action_trajectories,
     retime_segment,
     split_execution_stages,
     suction_surface_poses_for_task,
@@ -331,6 +332,51 @@ def test_retime_does_not_stop_at_same_direction_rrt_corner():
         key=lambda item: abs(item.joints[JOINT_NAMES[0]] - math.radians(10.0)),
     )
     assert middle.joint_velocities[JOINT_NAMES[0]] > math.radians(1.0)
+
+
+def test_action_retiming_blends_place_internal_segments_without_stopping():
+    points = [
+        sample("selected_extract_step_0", 0.0, math.radians(0.0), 0.3),
+        sample("selected_extract_step_1", 1.0, math.radians(10.0), 0.3),
+        sample("selected_loaded_plan", 1.0, math.radians(10.0), 0.3),
+        sample("selected_loaded_plan", 2.0, math.radians(20.0), 0.3),
+        sample("selected_loaded_to_place", 2.0, math.radians(20.0), 0.3),
+        sample("selected_loaded_to_place", 3.0, math.radians(30.0), 0.3),
+    ]
+    stages = {
+        1: [[points[0], points[1]]],
+        2: [[points[0], points[1]]],
+        3: [[points[0], points[1]], [points[2], points[3]]],
+        4: [[points[4], points[5]]],
+        5: [],
+        6: [[points[0], points[1]]],
+    }
+
+    trajectories = retime_action_trajectories(
+        stages,
+        JOINT_NAMES,
+        rate_hz=30.0,
+        max_joint_speed_deg_s=10.0,
+        max_joint_acceleration_deg_s2=60.0,
+        max_updown_speed_m_s=0.15,
+        max_updown_acceleration_m_s2=0.05,
+        speed_scale=3.0,
+    )
+
+    place = trajectories["place"]
+    joint_name = JOINT_NAMES[0]
+    first_boundary = min(
+        place,
+        key=lambda item: abs(item.joints[joint_name] - math.radians(10.0)),
+    )
+    second_boundary = min(
+        place,
+        key=lambda item: abs(item.joints[joint_name] - math.radians(20.0)),
+    )
+    assert place[0].joint_velocities[joint_name] == pytest.approx(0.0)
+    assert place[-1].joint_velocities[joint_name] == pytest.approx(0.0)
+    assert first_boundary.joint_velocities[joint_name] > math.radians(1.0)
+    assert second_boundary.joint_velocities[joint_name] > math.radians(1.0)
 
 
 def test_controller_rerun_trace_uses_250hz_quintic_samples_and_90hz_output():
