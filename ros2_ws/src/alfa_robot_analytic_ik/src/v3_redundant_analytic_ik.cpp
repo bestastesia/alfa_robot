@@ -112,6 +112,37 @@ Eigen::Isometry3d rotationAroundLine(
 
 TransformArray fixedJointTransforms(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V306Left ||
+      model == V3RedundantArmModel::V306Right) {
+    const Eigen::Isometry3d arm_mount = model == V3RedundantArmModel::V306Left ?
+      transformFromOrigin(
+        {-0.055000007, -0.286, -1.417},
+        {kUrdfHalfPi, -0.22548136, 0.0}) :
+      transformFromOrigin(
+        {-0.055000007, 0.296, -1.417},
+        {-kUrdfHalfPi, -0.22548136, 0.0});
+    return {
+      arm_mount * transformFromOrigin({0.0, 0.0, 0.0045}, {0.0, 0.0, 0.0}),
+      transformFromOrigin(
+        {-0.02406893, -0.031948186, 0.112},
+        {-kUrdfHalfPi, 0.0, -0.64565691}),
+      transformFromOrigin(
+        {0.0, -0.1795, 0.04},
+        {kUrdfHalfPi, -0.64565691, 0.0}),
+      transformFromOrigin(
+        {0.061100907, -0.046031828, 0.3265},
+        {-kUrdfHalfPi, 0.0, 0.92513942}),
+      transformFromOrigin(
+        {1.2528395e-10, -0.234, 0.0765},
+        {kUrdfHalfPi, 0.92513942, 0.0}),
+      transformFromOrigin(
+        {-0.033696502, -0.044727461, 0.242},
+        {-kUrdfHalfPi, 0.0, -0.64565691}),
+      transformFromOrigin(
+        {1.0640907e-10, -0.041, 0.056},
+        {kUrdfHalfPi, -0.64565691, 0.0}),
+    };
+  }
   if (model == V3RedundantArmModel::V305Left) {
     return {
       transformFromOrigin(
@@ -192,6 +223,9 @@ Eigen::Isometry3d toolTransform(V3RedundantArmModel model)
     transform.translation().z() = 0.1865;
   } else if (model == V3RedundantArmModel::V305Right) {
     transform.translation().z() = 0.1895;
+  } else if (model == V3RedundantArmModel::V306Left ||
+             model == V3RedundantArmModel::V306Right) {
+    transform.translation().z() = 0.19435;
   }
   return transform;
 }
@@ -264,6 +298,14 @@ const Geometry& geometry(V3RedundantArmModel model)
   static const Geometry legacy = makeGeometry(V3RedundantArmModel::LegacyV304);
   static const Geometry v305_left = makeGeometry(V3RedundantArmModel::V305Left);
   static const Geometry v305_right = makeGeometry(V3RedundantArmModel::V305Right);
+  static const Geometry v306_left = makeGeometry(V3RedundantArmModel::V306Left);
+  static const Geometry v306_right = makeGeometry(V3RedundantArmModel::V306Right);
+  if (model == V3RedundantArmModel::V306Left) {
+    return v306_left;
+  }
+  if (model == V3RedundantArmModel::V306Right) {
+    return v306_right;
+  }
   if (model == V3RedundantArmModel::V305Left) {
     return v305_left;
   }

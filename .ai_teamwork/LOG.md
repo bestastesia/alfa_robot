@@ -1827,3 +1827,17 @@
 - 行为：同一 `psi` 的重复解去重；按肩/肘/腕离散分支组织连续段，无解区间或大于20°的关节跳变自动切段。Rerun按相邻解关节变化自适应播放间隔，分支切换明确暂停，不伪装成可执行连续轨迹。
 - 验证结果：默认2°分辨率下，每个目标扫描181个 `psi`，得到784个去重合法解和8个连续分支，计算约2.3～2.6ms；末端X移动5cm后Rerun自动从generation 1切换到generation 2。四包Release构建通过，共22项测试0失败。
 - 入口：`ros2 launch alfa_robot_moveit_config v3_redundant_ik_interactive_demo.launch.py`；说明见 `docs/运控/IK/V3冗余解析IK交互Demo.md`。
+
+## 2026-08-20 运控 / Codex / V3.0.6 单臂模型镜像双臂接入
+- 做了什么：迁入 `/mnt/mydisk/ALFA/backpack/robot_v3.0.6` 单臂模型，以同一关节链镜像生成左右双臂；V3.0.5 的底座、升降架和双臂安装平台保持不变。
+- 限位：未采用上游 V3.0.6 的统一 ±90°，继续保持 J1/J3/J5/J7 ±180°、J2 ±105°、J4 ±145°、J6 ±120°，并同步 URDF、ros2_control 和 MoveIt。
+- 验证结果：Release 构建通过，共23项测试0失败；默认双臂状态 MoveIt/FCL 有效且无接触，左臂当前末端由 MoveIt KDL IK 精确回代成功。
+- 解析与扫描：V3.0.6 仍满足三组轴线共点条件，已加入左右臂冗余闭式模型；17.36万个中心中单点可达37.92%、前伸40cm连续14.98%、周围15cm连续20.59%。冗余Demo默认2°采样得到792个去重解、8个连续分支，约2.27ms。
+- 数据：`data/ik_benchmark/v3_0_6_extended_reachability/` 包含三份 JSON/RRD 和冗余解族 RRD。
+
+## 2026-08-21 运控 / Codex / V3.0.7 整机模型接入
+- 做了什么：整体迁入 `/mnt/mydisk/ALFA/backpack/robot_v3.0.7` 的45个整机网格、惯性与双侧七轴关节链；保留 `model_base`、`arm_carriage`、`left/right_joint1..7` 和 `tool0` 等既有 ROS/MoveIt 契约。
+- 坐标：以 `arm_carriage` 作为工作坐标原点和方向基准；`world -> arm_carriage` 的平移、旋转均为零，整机在 RViz 中保持 Z-up 直立。
+- 限位：J1/J3/J5/J7 ±180°、J2 ±105°、J4 ±145°、J6 按本轮要求改为 ±110°；URDF 与 ros2_control 限位一致。
+- 验证结果：description 与 MoveIt Release 构建通过，URDF 回归测试通过；MoveGroup、14轴 mock 控制器和 RViz 正常启动；双臂零位 PlanningScene 有效且无碰撞；左臂当前 TCP 的 MoveIt FK→KDL IK 回代成功。
+- 留给下个 AI：V3.0.7 当前使用 KDL；现有 V3.0.6 冗余解析 IK 几何常量、连续可达性数据和交互 Demo 结果不可直接视为 V3.0.7 验收，后续需单独重推与复测。

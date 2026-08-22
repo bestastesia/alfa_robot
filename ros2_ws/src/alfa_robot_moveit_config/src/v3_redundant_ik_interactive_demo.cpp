@@ -179,7 +179,7 @@ public:
     }
 
     solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      side_ == "left" ? V3RedundantArmModel::V305Left : V3RedundantArmModel::V305Right);
+      side_ == "left" ? V3RedundantArmModel::V306Left : V3RedundantArmModel::V306Right);
     target_pose_.position.x = initial_target[0];
     target_pose_.position.y = initial_target[1];
     target_pose_.position.z = initial_target[2];

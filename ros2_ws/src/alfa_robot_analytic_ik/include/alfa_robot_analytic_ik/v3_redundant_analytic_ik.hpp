@@ -13,6 +13,8 @@ enum class V3RedundantArmModel
   LegacyV304,
   V305Left,
   V305Right,
+  V306Left,
+  V306Right,
 };
 
 struct V3RedundantIkSolution

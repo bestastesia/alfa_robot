@@ -464,6 +464,12 @@
       </geometry>
     </collision>
   </link>
+  <joint name="arm_carriage_joint" type="fixed">
+    <origin xyz="0.065760636 -0.66236699 -2.021e-08" rpy="1.5707963 0 0.22548136" />
+    <parent link="model_base" />
+    <child link="arm_carriage" />
+  </joint>
+  <xacro:if value="false">
   <link name="right_joint1">
     <inertial>
       <origin xyz="-1.5564971e-09 2.2176745e-09 0.039410606" rpy="0 0 0" />
@@ -887,4 +893,5 @@
     <child link="right_tool0" />
     <origin xyz="0 0 0.1895" rpy="0 0 0" />
   </joint>
+  </xacro:if>
 </robot>

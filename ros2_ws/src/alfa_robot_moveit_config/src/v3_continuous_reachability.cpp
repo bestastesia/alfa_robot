@@ -258,6 +258,9 @@ public:
     x_start_max_ = declare_parameter<double>("x_start_max", 0.75);
     x_start_step_ = declare_parameter<double>("x_start_step", 0.01);
     travel_ = declare_parameter<double>("travel", 0.40);
+    travel_x_ = declare_parameter<double>("travel_x", 0.0);
+    travel_y_ = declare_parameter<double>("travel_y", 0.0);
+    travel_z_ = declare_parameter<double>("travel_z", 0.0);
     path_step_ = declare_parameter<double>("path_step", 0.01);
     disk_radius_ = declare_parameter<double>("disk_radius", 0.15);
     disk_ring_step_ = declare_parameter<double>("disk_ring_step", 0.03);
@@ -307,10 +310,12 @@ public:
       throw std::invalid_argument("side must be left or right");
     }
     solver_ = V3RedundantArmAnalyticIk(
-      side_ == "left" ? V3RedundantArmModel::V305Left :
-      V3RedundantArmModel::V305Right);
-    if (test_pattern_ != "linear_x" && test_pattern_ != "planar_disk") {
-      throw std::invalid_argument("test_pattern must be linear_x or planar_disk");
+      side_ == "left" ? V3RedundantArmModel::V306Left :
+      V3RedundantArmModel::V306Right);
+    if (test_pattern_ != "linear_x" && test_pattern_ != "linear_vector" &&
+        test_pattern_ != "planar_disk") {
+      throw std::invalid_argument(
+        "test_pattern must be linear_x, linear_vector, or planar_disk");
     }
     if (!(x_start_step_ > 0.0) || !(path_step_ > 0.0) || !(swivel_step_ > 0.0) ||
         !(maximum_joint_delta_ > 0.0) || !(edge_joint_step_ > 0.0) ||
@@ -322,6 +327,10 @@ public:
     if (test_pattern_ == "planar_disk" &&
         (!(disk_radius_ > 0.0) || !(disk_ring_step_ > 0.0))) {
       throw std::invalid_argument("disk_radius and disk_ring_step must be positive");
+    }
+    if (test_pattern_ == "linear_vector" &&
+        Eigen::Vector3d(travel_x_, travel_y_, travel_z_).norm() <= 1.0e-12) {
+      throw std::invalid_argument("linear_vector travel must be non-zero");
     }
   }
 
@@ -344,6 +353,12 @@ public:
         side_.c_str(), start_xs.size() * laterals.size() * heights.size(), path_point_count,
         disk_radius_, disk_ring_step_, path_step_, x_start_min_, x_start_max_,
         lateral_min_, lateral_max_, height_min_, height_max_);
+    } else if (test_pattern_ == "linear_vector") {
+      RCLCPP_INFO(
+        get_logger(),
+        "Starting V3 vector continuity scan: side=%s starts=%zu points_per_test=%zu vector=[%.3f,%.3f,%.3f] path_step=%.3f",
+        side_.c_str(), start_xs.size() * laterals.size() * heights.size(), path_point_count,
+        travel_x_, travel_y_, travel_z_, path_step_);
     } else {
       RCLCPP_INFO(
         get_logger(),
@@ -468,6 +483,19 @@ private:
       offsets.reserve(segments + 1);
       for (size_t index = 0; index <= segments; ++index) {
         offsets.emplace_back(actual_step * static_cast<double>(index), 0.0, 0.0);
+      }
+      return offsets;
+    }
+
+    if (test_pattern_ == "linear_vector") {
+      const Eigen::Vector3d travel_vector(travel_x_, travel_y_, travel_z_);
+      const size_t segments = std::max<size_t>(
+        1, static_cast<size_t>(std::ceil(travel_vector.norm() / path_step_)));
+      std::vector<Eigen::Vector3d> offsets;
+      offsets.reserve(segments + 1);
+      for (size_t index = 0; index <= segments; ++index) {
+        offsets.emplace_back(
+          travel_vector * static_cast<double>(index) / static_cast<double>(segments));
       }
       return offsets;
     }
@@ -763,10 +791,12 @@ private:
     bool found_analytic_candidate = false;
     bool rejected_by_collision = false;
     bool rejected_by_task_path = false;
-    std::string last_collision_reason;
-    std::string last_task_path_reason;
-    std::optional<JointVector> rejected_candidate;
-    double rejected_candidate_delta = std::numeric_limits<double>::infinity();
+    std::string rejected_collision_reason;
+    std::string rejected_task_path_reason;
+    std::optional<JointVector> rejected_collision_candidate;
+    std::optional<JointVector> rejected_task_path_candidate;
+    double rejected_collision_delta = std::numeric_limits<double>::infinity();
+    double rejected_task_path_delta = std::numeric_limits<double>::infinity();
     std::optional<SampleResult> high_gain_result;
     double high_gain_score = std::numeric_limits<double>::infinity();
     const size_t high_gain_search_count = 1 + 2 * high_gain_swivel_neighbor_steps_;
@@ -823,15 +853,15 @@ private:
         if (!valid) {
           rejected_by_collision = rejected_by_collision || edge_result.collision;
           rejected_by_task_path = rejected_by_task_path || edge_result.task_path_deviation;
-          if (edge_result.collision) {
-            last_collision_reason = edge_result.reason;
+          if (edge_result.collision && maximum_delta < rejected_collision_delta) {
+            rejected_collision_delta = maximum_delta;
+            rejected_collision_candidate = edge_result.rejected_joints;
+            rejected_collision_reason = edge_result.reason;
           }
-          if (edge_result.task_path_deviation) {
-            last_task_path_reason = edge_result.reason;
-          }
-          if (maximum_delta < rejected_candidate_delta) {
-            rejected_candidate_delta = maximum_delta;
-            rejected_candidate = edge_result.rejected_joints;
+          if (edge_result.task_path_deviation && maximum_delta < rejected_task_path_delta) {
+            rejected_task_path_delta = maximum_delta;
+            rejected_task_path_candidate = edge_result.rejected_joints;
+            rejected_task_path_reason = edge_result.reason;
           }
           continue;
         }
@@ -875,18 +905,23 @@ private:
     if (!found_analytic_candidate) {
       result.reason = "analytic_no_solution";
     } else if (rejected_by_collision) {
-      result.reason = "all_candidate_edges_colliding:" + last_collision_reason;
+      result.reason = "all_candidate_edges_colliding:" + rejected_collision_reason;
+      result.has_diagnostic_joints = rejected_collision_candidate.has_value();
+      if (rejected_collision_candidate) {
+        result.diagnostic_joints = *rejected_collision_candidate;
+        result.diagnostic_joint_delta_deg = rad_to_deg(rejected_collision_delta);
+        result.diagnostic_pose_kind = "colliding_interpolated_state";
+      }
     } else if (rejected_by_task_path) {
-      result.reason = "all_candidate_edges_deviate_from_task_path:" + last_task_path_reason;
+      result.reason = "all_candidate_edges_deviate_from_task_path:" + rejected_task_path_reason;
+      result.has_diagnostic_joints = rejected_task_path_candidate.has_value();
+      if (rejected_task_path_candidate) {
+        result.diagnostic_joints = *rejected_task_path_candidate;
+        result.diagnostic_joint_delta_deg = rad_to_deg(rejected_task_path_delta);
+        result.diagnostic_pose_kind = "task_path_deviation_state";
+      }
     } else {
       result.reason = "no_continuous_candidate";
-    }
-    if (rejected_candidate) {
-      result.has_diagnostic_joints = true;
-      result.diagnostic_joints = *rejected_candidate;
-      result.diagnostic_joint_delta_deg = rad_to_deg(rejected_candidate_delta);
-      result.diagnostic_pose_kind = rejected_by_collision
-        ? "colliding_interpolated_state" : "task_path_deviation_state";
     }
     return result;
   }
@@ -986,6 +1021,7 @@ private:
       {"x_start_max", x_start_max_},
       {"x_start_step", x_start_step_},
       {"travel", travel_},
+      {"travel_vector", {travel_x_, travel_y_, travel_z_}},
       {"evaluation_mode", test_pattern_ == "planar_disk"
         ? "planar_disk_continuity"
         : (path_point_count == 1 ? "point_reachability" : "continuous_translation")},
@@ -1129,6 +1165,9 @@ private:
   double x_start_max_ = 0.75;
   double x_start_step_ = 0.01;
   double travel_ = 0.40;
+  double travel_x_ = 0.0;
+  double travel_y_ = 0.0;
+  double travel_z_ = 0.0;
   double path_step_ = 0.01;
   double disk_radius_ = 0.15;
   double disk_ring_step_ = 0.03;

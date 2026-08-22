@@ -37,7 +37,9 @@
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
     <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
     <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="left_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>
+    <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>
     <disable_collisions link1="left_joint1" link2="left_joint2" reason="Adjacent"/>
     <disable_collisions link1="left_joint2" link2="left_joint3" reason="Adjacent"/>
     <disable_collisions link1="left_joint3" link2="left_joint4" reason="Adjacent"/>
@@ -45,7 +47,9 @@
     <disable_collisions link1="left_joint5" link2="left_joint6" reason="Adjacent"/>
     <disable_collisions link1="left_joint6" link2="left_joint7" reason="Adjacent"/>
     <disable_collisions link1="left_joint7" link2="left_tool0" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="right_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="right_joint1" reason="Adjacent"/>
+    <disable_collisions link1="right_arm_base" link2="right_joint1" reason="Adjacent"/>
     <disable_collisions link1="right_joint1" link2="right_joint2" reason="Adjacent"/>
     <disable_collisions link1="right_joint2" link2="right_joint3" reason="Adjacent"/>
     <disable_collisions link1="right_joint3" link2="right_joint4" reason="Adjacent"/>

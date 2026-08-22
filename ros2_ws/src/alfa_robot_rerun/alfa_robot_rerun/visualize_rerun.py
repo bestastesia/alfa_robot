@@ -315,11 +315,19 @@ def render_current_urdf(xacro_mappings: dict[str, str] | None = None) -> str:
             pass
 
 
-def log_robot_static_model(robot: UrdfRobot, world_path: str, *, log_meshes: bool = True) -> None:
+def log_robot_static_model(
+    robot: UrdfRobot,
+    world_path: str,
+    *,
+    log_meshes: bool = True,
+    exclude_link_prefixes: tuple[str, ...] = (),
+) -> None:
     rr.log(world_path, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     missing_meshes = 0
     logged_meshes = 0
     for link in robot.links.values():
+        if link.name.startswith(exclude_link_prefixes):
+            continue
         link_path = f"{world_path}/{link.name}"
         for index, visual in enumerate(link.visuals):
             mesh_path = package_uri_to_path(visual.path)
