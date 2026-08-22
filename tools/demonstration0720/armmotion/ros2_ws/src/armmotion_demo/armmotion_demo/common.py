@@ -36,7 +36,7 @@ TASK_LAYOUTS = {
     "A": "right_shift_0p1",
     "B": "centered",
 }
-FRONT_TASKS = frozenset({1, 2})
+FRONT_TASKS = frozenset({1, 2, 3})
 DIRECT_LIFT_TASKS = frozenset({3, 4, 5})
 STAGE_LABELS = {
     1: "负重位到 IK 前 5cm 预吸附位",

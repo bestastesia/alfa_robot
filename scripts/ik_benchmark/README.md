@@ -178,3 +178,46 @@ python3 scripts/ik_benchmark/scripts/ik_range_grid.py \
 ```
 
 V2 的 SRDF 当前未单独保存，因此默认仍使用当前 `alfa_robot.srdf`。如果你希望 V2 严格按旧 SRDF 分组跑，需要再提供/导出 V2 对应 SRDF，并用 `--srdf <path>` 指定。
+
+## 解析 IK 姿态 RGB 可达性点云
+
+`analytic_orientation_rgb_reachability` 直接调用 `alfa_robot_analytic_ik`，不经过 ROS Service、MoveIt 或数值 IK。当前定义为右臂工具法向从 `+X=0°` 绕 world `-Y` 连续转到 `+Z=90°`：
+
+- R：`0,5,...,30°` 的成功比例；
+- G：`35,40,...,60°` 的成功比例；
+- B：`65,70,...,90°` 的成功比例；
+- 每个通道全部可达时取 `255`；
+- 只把存在 `joint3 > 0` 且 `joint4 < 0` 解析分支的姿态计为可达；
+- 只检查解析 IK 与关节限位，不包含 MoveIt 碰撞过滤。
+
+生成 CSV 后使用 `visualize_orientation_rgb_reachability.py` 加载完整机器人并保存 Rerun：
+
+```bash
+ros2 run alfa_robot_benchmarks analytic_orientation_rgb_reachability -- \
+  --min-x -0.09 --max-x 0.98 --min-y -0.8 --max-y 0.0 \
+  --min-z 1.15 --max-z 2.2 --step-x 0.05 --step-y 0.05 --step-z 0.05 \
+  --min-angle-deg 0 --max-angle-deg 90 --angle-step-deg 5 \
+  --fixed-updown 0.45 --output-csv /tmp/right_arm_rgb.csv
+
+ros2 run alfa_robot_benchmarks visualize_orientation_rgb_reachability.py -- \
+  /tmp/right_arm_rgb.csv --save /tmp/right_arm_rgb.rrd --updown 0.45
+```
+
+## 径向抽离冻结测试组
+
+`analytic_radial_extract_prototype` 在径向段最后合法帧后固定工具位置与 Updown，按默认 `2°` 分辨率只旋转工具朝向，使工具轴对齐冻结的 Joint2 中心径向线；随后执行到负重位的 Shortcut 与局部 RRT。若转腕接管失败，会回退原径向末帧。
+
+实验参数 `--resume-radial-after-orientation` 会在转腕完成后保持工具轴与径向线对齐，继续把径向角收敛到竖直、工作半径收敛到目标值；遇到下一次解析、限位或碰撞失败时，直接从最后合法续推帧执行 Shortcut 与局部 RRT。该模式不会回退旧径向末帧，用于严格衡量续推策略本身。
+
+同时启用 `--interleave-loaded-shortcuts` 时，从原径向末态开始，在每个转腕和径向续推合法检查点先验证一次到负重位的完整 Shortcut；首次通过立即停止几何调整。全部检查点均被拒绝时，才从最后合法检查点调用局部 RRT。
+
+后续方案比较必须复用相同 IK snapshot，避免重新选 IK 污染成功率：
+
+```bash
+ros2 run alfa_robot_benchmarks run_radial_frozen_target_set.py -- \
+  --manifest /path/to/success_rate_target_set_v1/manifest.json \
+  --snapshot-root /path/to/radial_loaded_grid/cases \
+  --output /tmp/radial_frozen_ab \
+  --resume-radial-after-orientation \
+  --interleave-loaded-shortcuts
+```

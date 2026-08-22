@@ -92,7 +92,7 @@ def canonical_targets(
         - WORLD_TO_BASE_Z_M
         + (5 - row) * ROW_PITCH_M
     )
-    mode = "front" if row <= 2 else "top_suction"
+    mode = "front" if row <= 3 else "top_suction"
     if mode == "front":
         x = distance_m
         z = center_z

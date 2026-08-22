@@ -8,11 +8,14 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(moveit_core REQUIRED)
 find_package(moveit_ros_planning REQUIRED)
+find_package(moveit_ros_planning_interface REQUIRED)
 find_package(moveit_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(shape_msgs REQUIRED)
+find_package(trajectory_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(random_numbers REQUIRED)
@@ -22,6 +25,7 @@ find_package(urdf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(robot_motion_core REQUIRED)
 find_package(alfa_robot_analytic_ik REQUIRED)
+find_package(alfa_robot_moveit_config REQUIRED)
 find_package(std_msgs REQUIRED)
 
 # ── IkSolver library ───────────────────────────────────────────────────────
@@ -350,6 +354,49 @@ ament_target_dependencies(collision_state_monitor PUBLIC
   urdf
 )
 
+# ── Pure analytic orientation RGB reachability ───────────────────────────
+
+add_executable(analytic_orientation_rgb_reachability
+  src/analytic_orientation_rgb_reachability.cpp
+)
+
+target_compile_features(analytic_orientation_rgb_reachability PUBLIC cxx_std_17)
+
+ament_target_dependencies(analytic_orientation_rgb_reachability PUBLIC
+  alfa_robot_analytic_ik
+  Eigen3
+)
+
+target_link_libraries(analytic_orientation_rgb_reachability PRIVATE
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+# ── Analytic radial extraction prototype ────────────────────────────────
+
+add_executable(analytic_radial_extract_prototype
+  src/analytic_radial_extract_prototype.cpp
+)
+
+target_compile_features(analytic_radial_extract_prototype PUBLIC cxx_std_17)
+
+ament_target_dependencies(analytic_radial_extract_prototype PUBLIC
+  alfa_robot_analytic_ik
+  Eigen3
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
+  moveit_msgs
+  rclcpp
+  shape_msgs
+  trajectory_msgs
+  nlohmann_json
+)
+
+target_link_libraries(analytic_radial_extract_prototype PRIVATE
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+  alfa_robot_moveit_config::alfa_robot_motion_scene_adapter
+)
+
 # ── PROTOTYPE: realtime 6D-pose solve/check loop ─────────────────────────
 
 add_library(realtime_6d_pose_pipeline_prototype STATIC
@@ -402,7 +449,7 @@ target_link_libraries(realtime_6d_pose_prototype PRIVATE
 
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor realtime_6d_pose_prototype realtime_6d_pose_pipeline_prototype ik_solver_lib parallel_updown_aware_ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor analytic_orientation_rgb_reachability analytic_radial_extract_prototype realtime_6d_pose_prototype realtime_6d_pose_pipeline_prototype ik_solver_lib parallel_updown_aware_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -423,6 +470,11 @@ install(PROGRAMS
   scripts/ik_range_grid.py
   scripts/run_parallel_ik_speed_limit_benchmark.py
   scripts/plot_parallel_ik_speed_limit.py
+  scripts/visualize_orientation_rgb_reachability.py
+  scripts/visualize_analytic_radial_extract.py
+  scripts/visualize_pregrasp_failures.py
+  scripts/run_radial_loaded_grid.py
+  scripts/run_radial_frozen_target_set.py
   prototypes/realtime_6d_pose/interactive_6d_target.py
   prototypes/realtime_6d_pose/motion_rolling_preview.py
   prototypes/realtime_6d_pose/rolling_suffix.py

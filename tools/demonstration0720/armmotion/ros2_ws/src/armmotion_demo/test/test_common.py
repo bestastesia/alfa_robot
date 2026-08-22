@@ -65,7 +65,7 @@ def test_task_code_contract():
     assert (task.left_box_id, task.right_box_id) == (7, 9)
     assert task.index in DIRECT_LIFT_TASKS
     assert task.task_layout == "right_shift_0p1"
-    assert task.effective_distance_m == pytest.approx(0.7)
+    assert task.effective_distance_m == pytest.approx(0.9)
 
 
 def test_all_ten_task_codes_are_supported():
@@ -121,19 +121,19 @@ def test_algorithm_derives_rows_and_modes_from_noisy_front_face_poses():
     assert task.extraction_mode == "box_pose_rrt"
 
 
-def test_algorithm_uses_third_row_top_suction_strategy():
+def test_algorithm_uses_third_row_side_suction_strategy():
     fixture = parse_task_code("B3", 0.9, 0.7)
     left_pose, right_pose = suction_surface_poses_for_task(fixture)
     task = planning_task_from_suction_surface_poses(
         "camera-request-row3",
         left_pose,
         right_pose,
-        "top_suction",
-        "top_suction",
+        "front",
+        "front",
     )
     assert (task.left_row, task.right_row) == (3, 3)
-    assert task.grasp_family == "top_suction"
-    assert task.effective_distance_m == pytest.approx(0.7)
+    assert task.grasp_family == "front"
+    assert task.effective_distance_m == pytest.approx(0.9)
 
 
 def test_pose_task_validation_accepts_collision_planned_top_extract_motion():

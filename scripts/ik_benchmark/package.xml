@@ -11,24 +11,27 @@
 
   <depend>moveit_core</depend>
   <depend>moveit_ros_planning</depend>
+  <depend>moveit_ros_planning_interface</depend>
   <depend>moveit_msgs</depend>
   <depend>pluginlib</depend>
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>shape_msgs</depend>
+  <depend>trajectory_msgs</depend>
   <depend>visualization_msgs</depend>
   <depend>ament_index_cpp</depend>
   <depend>random_numbers</depend>
   <depend>nlohmann_json</depend>
   <depend>robot_motion_core</depend>
   <depend>alfa_robot_analytic_ik</depend>
+  <depend>alfa_robot_moveit_config</depend>
   <depend>std_msgs</depend>
   <exec_depend>unique_identifier_msgs</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
 
   <exec_depend>alfa_robot_description</exec_depend>
-  <exec_depend>alfa_robot_moveit_config</exec_depend>
   <exec_depend>alfa_robot_rerun</exec_depend>
   <exec_depend>alfa_robot_execution_bridge</exec_depend>
   <exec_depend>robot_motion_interfaces</exec_depend>

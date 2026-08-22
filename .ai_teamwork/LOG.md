@@ -1884,3 +1884,9 @@
 - 改了哪里：`rolling_suffix.py`新增有状态`RollingTargetPlanner`，固定目标沿同一绝对时间曲线滚动，目标变化时从权威拼接点的精确q/v连续重规划；Motion-only预览限速改为当前MoveIt限速快照并明确标注为非RT协商值。`motion_rolling_preview.py`和Rerun状态增加曲线时长、是否重规划及限速来源。
 - 验证结果：同一10deg阶跃的执行前沿到95%由约3.03s缩短为约0.90s，第一批500ms末点由约0.62deg提高到约4.71deg；固定目标和连续拖动回归2/2通过。隔离ROS Domain实测Motion约100Hz、TX约30.0Hz、0本地拒绝，Rerun完整收到Motion目标、TX末点及状态首帧。
 - 留给下个 AI：这里仍是Motion输出预览，不代表真实机械臂位置；实机接入必须以rt-control协商的生产限速和ACK/state为拼接基线，不能直接沿用预览占位身份或MoveIt限速快照。
+
+## 2026-08-23 运控算法 / Codex / 64候选完整链路与五排缓存
+- 做了什么：IK不再只使用单个最低代价解；从全部合法、无碰撞解析解中按代价升序去重，最多尝试64个，只有“预抓取→吸附→抽离→负重位”全链路成功才早停，再拼接既有负重→放置→初始轨迹。
+- 验证结果：旧侧吸成功样本560/560全部保留，54个旧失败遍历37～38个合法候选后仍未恢复；顶吸504组中有54组由第2～7候选恢复。五排1260网格生成946份成功缓存，运行时946个精确命中、314个最近成功命中、0缺失；34项单测通过。
+- 数据：`data/ik_benchmark/radial_cache_candidate64_20260823/README.md`；正式缓存位于`tools/demonstration0720/armmotion/ros2_ws/src/armmotion_demo/armmotion_demo/trajectory_cache_pregrasp_v3/`。
+- 留给下个 AI：第三排近距离侧吸和较远顶吸仍依赖最近成功缓存降级；本次没有放宽碰撞或强行生成失败轨迹。
