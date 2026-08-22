@@ -1872,3 +1872,15 @@
 - 改了哪里：中央依赖锁定 `f699f45972ad15bbbbbb3da1a4894faf209144c9`，入口为 `ros2_ws/src/dependencies.repos` 和 `dependencies.lock.yaml`；迁移清单与原子升级/回滚步骤见 `docs/运控/MOTION-123_接口分层与中央契约迁移.md`。
 - 验证结果：本机 13 个 Motion 相关包 Release 构建通过，接口测试 2/2、合同测试 29/29；隔离 ROS Domain 下 Action 成功与结构化失败回执、readiness 类型及 QoS 均通过。
 - 留给下个 AI：Motion 与 Autonomy 必须使用同一中央接口 SHA 原子切换；禁止保留旧 `alfa_motion_interfaces` 或旧 `robot_motion_internal_interfaces` 构建覆盖层。
+
+## 2026-08-22 运控 / Codex / 实时6D Pose收口到Motion TX预览
+- 做了什么：实时6D Pose Demo不再启动Mock或真实rt-control Adapter；保留100Hz解析IK、关节突变和连续边碰撞门，新增纯Motion侧10/30Hz滚动消息生成器，在隔离topic发布正式`RollingJointTargetBatch`类型并由Rerun展开每批6个未来点。紫色模型只表示TX suffix末点，不是实际反馈。
+- 改了哪里：入口仍为`run_realtime_pose_teach_pendant.sh`；核心新增`scripts/ik_benchmark/prototypes/realtime_6d_pose/motion_rolling_preview.py`，launch关闭反馈同步订阅，Rerun和README改为Motion TX语义。正式预览topic为`/realtime_6d_pose/motion_tx_preview`，不创建任何`/rt/*` endpoint。
+- 验证结果：`alfa_robot_benchmarks` Release/symlink构建通过；隔离Domain实测30Hz为约30.00Hz、10Hz为约10.00Hz，每批6点、100ms knot、500ms horizon；Rerun收到14轴TX首帧和批次状态；最终ROS图无`/joint_states`、accepted-reference及任何`/rt/*` endpoint，验证进程均已停止。
+- 留给下个 AI：预览suffix从上一条已发送消息拼接，UUID是预览占位值；这只验证Motion输出形状和节拍，真实接入时必须改由rt-control session身份与ACK/state推进拼接基线。
+
+## 2026-08-22 运控 / Codex / Motion TX预览连续跟随提速
+- 做了什么：修复紫色TX末点在目标已远离时仍缓慢爬行的问题。根因是旧预览每30Hz重建一个500ms且末速为零的五次曲线，同时只使用临时15deg/s限速的60%，等价于不断要求滚动窗口末端停车。
+- 改了哪里：`rolling_suffix.py`新增有状态`RollingTargetPlanner`，固定目标沿同一绝对时间曲线滚动，目标变化时从权威拼接点的精确q/v连续重规划；Motion-only预览限速改为当前MoveIt限速快照并明确标注为非RT协商值。`motion_rolling_preview.py`和Rerun状态增加曲线时长、是否重规划及限速来源。
+- 验证结果：同一10deg阶跃的执行前沿到95%由约3.03s缩短为约0.90s，第一批500ms末点由约0.62deg提高到约4.71deg；固定目标和连续拖动回归2/2通过。隔离ROS Domain实测Motion约100Hz、TX约30.0Hz、0本地拒绝，Rerun完整收到Motion目标、TX末点及状态首帧。
+- 留给下个 AI：这里仍是Motion输出预览，不代表真实机械臂位置；实机接入必须以rt-control协商的生产限速和ACK/state为拼接基线，不能直接沿用预览占位身份或MoveIt限速快照。

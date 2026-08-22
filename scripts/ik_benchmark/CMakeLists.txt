@@ -21,6 +21,8 @@ find_package(srdfdom REQUIRED)
 find_package(urdf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(robot_motion_core REQUIRED)
+find_package(alfa_robot_analytic_ik REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # ── IkSolver library ───────────────────────────────────────────────────────
 
@@ -348,9 +350,59 @@ ament_target_dependencies(collision_state_monitor PUBLIC
   urdf
 )
 
+# ── PROTOTYPE: realtime 6D-pose solve/check loop ─────────────────────────
+
+add_library(realtime_6d_pose_pipeline_prototype STATIC
+  prototypes/realtime_6d_pose/src/realtime_6d_pose_pipeline.cpp
+)
+
+target_compile_features(realtime_6d_pose_pipeline_prototype PUBLIC cxx_std_17)
+
+target_include_directories(realtime_6d_pose_pipeline_prototype PUBLIC
+  prototypes/realtime_6d_pose/include
+)
+
+ament_target_dependencies(realtime_6d_pose_pipeline_prototype PUBLIC
+  moveit_core
+  moveit_ros_planning
+  alfa_robot_analytic_ik
+)
+
+target_link_libraries(realtime_6d_pose_pipeline_prototype PUBLIC
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+add_executable(realtime_6d_pose_prototype
+  prototypes/realtime_6d_pose/src/realtime_6d_pose_prototype_node.cpp
+)
+
+target_compile_features(realtime_6d_pose_prototype PUBLIC cxx_std_17)
+
+target_include_directories(realtime_6d_pose_prototype PRIVATE
+  prototypes/realtime_6d_pose/include
+)
+
+ament_target_dependencies(realtime_6d_pose_prototype PUBLIC
+  moveit_core
+  moveit_ros_planning
+  rclcpp
+  geometry_msgs
+  sensor_msgs
+  std_msgs
+  ament_index_cpp
+  srdfdom
+  urdf
+  nlohmann_json
+  alfa_robot_analytic_ik
+)
+
+target_link_libraries(realtime_6d_pose_prototype PRIVATE
+  realtime_6d_pose_pipeline_prototype
+)
+
 # ── Install ────────────────────────────────────────────────────────────────
 
-install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor ik_solver_lib parallel_updown_aware_ik_solver_lib
+install(TARGETS ik_benchmark ik_demo ik_range_grid pick_place_baseline pick_place_updown_lookup parallel_ik_benchmark box_stack_kdl_benchmark box_stack_dual_ik_benchmark parallel_updown_ik_demo updown_solver_comparison collision_state_monitor realtime_6d_pose_prototype realtime_6d_pose_pipeline_prototype ik_solver_lib parallel_updown_aware_ik_solver_lib
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}
@@ -371,7 +423,22 @@ install(PROGRAMS
   scripts/ik_range_grid.py
   scripts/run_parallel_ik_speed_limit_benchmark.py
   scripts/plot_parallel_ik_speed_limit.py
+  prototypes/realtime_6d_pose/interactive_6d_target.py
+  prototypes/realtime_6d_pose/motion_rolling_preview.py
+  prototypes/realtime_6d_pose/rolling_suffix.py
+  prototypes/realtime_6d_pose/realtime_6d_pose_rerun.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
+
+install(DIRECTORY prototypes/realtime_6d_pose/
+  DESTINATION share/${PROJECT_NAME}/prototypes/realtime_6d_pose
+  PATTERN "src" EXCLUDE
+  PATTERN "include" EXCLUDE
+  PATTERN "*.py" EXCLUDE
 )
 
 install(DIRECTORY models/
