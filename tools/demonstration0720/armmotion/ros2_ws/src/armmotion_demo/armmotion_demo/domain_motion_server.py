@@ -27,9 +27,8 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from .common import (
     MotionSample,
     loaded_joint_map,
-    retime_segment,
 )
-from .hardware_executor import ARM_JOINT_NAMES, HardwareExecutor
+from .hardware_executor import HardwareExecutor
 from .planner_adapter import PlannerAdapter
 from .stage_contract import (
     align_target_pair_to_average_x,
@@ -40,6 +39,9 @@ from .stage_contract import (
     validate_stage_pose_targets,
 )
 from .turn_frame import compensate_pose_y, pose_at_zero_turn
+
+
+SIDE_RECAPTURE_ARM_POSE_DEG = (0.0, -88.0, 135.0, -40.0, 0.0, 0.0)
 
 
 def pregrasp_entry_mode(
@@ -66,6 +68,19 @@ def pregrasp_entry_mode(
     return None
 
 
+def pregrasp_planning_start_sample(
+    *,
+    entry_mode: str,
+    current_sample: MotionSample,
+    recapture_sample: MotionSample | None,
+) -> MotionSample:
+    if entry_mode == "after_recapture" and recapture_sample is None:
+        raise RuntimeError("缺少重拍阶段真实末态")
+    if entry_mode not in {"after_recapture", "skip_recapture"}:
+        raise ValueError(f"无效的 PREGRASP 入口模式: {entry_mode}")
+    return current_sample
+
+
 def cache_result_diagnostic(metrics: dict) -> str:
     cache_path = str(metrics.get("trajectory_cache_path", ""))
     if not cache_path:
@@ -80,6 +95,59 @@ def cache_result_diagnostic(metrics: dict) -> str:
         f"{float(metrics['trajectory_cache_requested_lateral_offset_m']):+.3f}m "
         f"selected_y_offset="
         f"{float(metrics['trajectory_cache_lateral_offset_m']):+.3f}m"
+    )
+
+
+def fixed_side_recapture_target(
+    current: MotionSample,
+    targets,
+    *,
+    row_split_z_m: float,
+    first_row_updown_m: float,
+    second_row_updown_m: float,
+    arm_pose_deg=SIDE_RECAPTURE_ARM_POSE_DEG,
+) -> tuple[MotionSample, int, float] | None:
+    if (
+        int(targets.left_grasp_mode)
+        != DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION
+        or int(targets.right_grasp_mode)
+        != DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION
+    ):
+        return None
+    if len(arm_pose_deg) != 6 or not all(math.isfinite(float(value)) for value in arm_pose_deg):
+        raise ValueError("侧吸重拍固定关节姿态必须包含6个有限角度")
+    if not all(
+        math.isfinite(float(value))
+        for value in (row_split_z_m, first_row_updown_m, second_row_updown_m)
+    ):
+        raise ValueError("侧吸重拍分层参数必须为有限值")
+
+    average_z_m = 0.5 * (
+        float(targets.left_pose.position.z) + float(targets.right_pose.position.z)
+    )
+    row = 1 if average_z_m >= float(row_split_z_m) else 2
+    target_updown_m = (
+        float(first_row_updown_m) if row == 1 else float(second_row_updown_m)
+    )
+    joints = dict(current.joints)
+    for side in ("left", "right"):
+        for index, value_deg in enumerate(arm_pose_deg, start=1):
+            joints[f"{side}_joint{index}"] = math.radians(float(value_deg))
+    joints["turn"] = 0.0
+    return (
+        MotionSample(
+            time_s=0.1,
+            joints=joints,
+            updown_m=target_updown_m,
+            context={
+                "stage": "recapture/fixed_side",
+                "row": row,
+                "source_average_z_m": average_z_m,
+                "updown": target_updown_m,
+            },
+        ),
+        row,
+        average_z_m,
     )
 
 
@@ -99,9 +167,22 @@ class DomainMotionServer(Node):
         self.declare_parameter("max_joint_acceleration_deg_s2", 60.0)
         self.declare_parameter("max_updown_speed_m_s", 0.15)
         self.declare_parameter("updown_acceleration_m_s2", 0.05)
+        self.declare_parameter("max_joint_jerk_deg_s3", 6000.0)
+        self.declare_parameter("max_updown_jerk_m_s3", 5.0)
+        self.declare_parameter("controller_interpolation_rate_hz", 250.0)
+        self.declare_parameter("trajectory_smoothing_path_tolerance", 0.001)
+        self.declare_parameter("trajectory_smoothing_resample_dt", 0.1)
         self.declare_parameter("recapture_preferred_updown_m", 0.3)
         self.declare_parameter("recapture_analytic_approach_limit_m", 0.10)
         self.declare_parameter("recapture_analytic_approach_step_m", 0.01)
+        self.declare_parameter("side_recapture_fixed_joint_enabled", True)
+        self.declare_parameter("side_recapture_row_split_z_m", 1.10)
+        self.declare_parameter("side_recapture_first_row_updown_m", 0.40)
+        self.declare_parameter("side_recapture_second_row_updown_m", 0.0)
+        self.declare_parameter(
+            "side_recapture_arm_pose_deg",
+            list(SIDE_RECAPTURE_ARM_POSE_DEG),
+        )
         self.declare_parameter("trajectory_cache_root", "")
         self.declare_parameter("turn_tf_frame", "turn")
         self.declare_parameter("turn_tf_timeout_s", 1.0)
@@ -109,6 +190,8 @@ class DomainMotionServer(Node):
         self.declare_parameter("planner_timeout_s", 180.0)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
+        self.declare_parameter("start_joint_tolerance_deg", 0.75)
+        self.declare_parameter("start_updown_tolerance_m", 0.015)
         self.declare_parameter(
             "trajectory_action",
             RT_CONTROL_ACTION_NAME,
@@ -151,6 +234,12 @@ class DomainMotionServer(Node):
             vacuum_pump_service="",
             wait_timeout_s=interface_timeout,
             joint_state_topic=str(self.get_parameter("joint_state_topic").value),
+            start_joint_tolerance_deg=float(
+                self.get_parameter("start_joint_tolerance_deg").value
+            ),
+            start_updown_tolerance_m=float(
+                self.get_parameter("start_updown_tolerance_m").value
+            ),
             manage_grasp_io=False,
         )
         self._hardware.verify_interfaces()
@@ -172,17 +261,24 @@ class DomainMotionServer(Node):
                 if str(self.get_parameter("trajectory_cache_root").value).strip()
                 else None
             ),
+            max_joint_jerk_deg_s3=float(
+                self.get_parameter("max_joint_jerk_deg_s3").value
+            ),
+            max_updown_jerk_m_s3=float(
+                self.get_parameter("max_updown_jerk_m_s3").value
+            ),
+            trajectory_smoothing_path_tolerance=float(
+                self.get_parameter("trajectory_smoothing_path_tolerance").value
+            ),
+            trajectory_smoothing_resample_dt=float(
+                self.get_parameter("trajectory_smoothing_resample_dt").value
+            ),
+            controller_interpolation_rate_hz=float(
+                self.get_parameter("controller_interpolation_rate_hz").value
+            ),
         )
         self.get_logger().info("Planner 启动期主动预热开始")
         planner_startup_ms = self._planner.start()
-        self._retime_parameters = {
-            "rate_hz": rate_hz,
-            "max_joint_speed_deg_s": max_joint_speed,
-            "max_joint_acceleration_deg_s2": max_joint_acceleration,
-            "max_updown_speed_m_s": max_updown_speed,
-            "max_updown_acceleration_m_s2": updown_acceleration,
-            "speed_scale": speed_scale,
-        }
         self._readiness_pub = self.create_publisher(
             DomainReadiness,
             str(self.get_parameter("readiness_topic").value),
@@ -498,37 +594,80 @@ class DomainMotionServer(Node):
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
                 )
-                targets = self._targets_for_zero_turn(
-                    request,
-                    current_with_turn,
-                    canonicalize_grasp_orientation=True,
-                    align_to_lower_height=False,
-                    align_to_average_x=True,
-                )
                 started = time.monotonic()
-                samples, metrics = self._planner.plan_recapture_with_approach_search(
-                    self._base_link_pose_stamped(targets.left_pose),
-                    self._base_link_pose_stamped(targets.right_pose),
-                    current,
-                    preferred_updown=float(
-                        self.get_parameter("recapture_preferred_updown_m").value
-                    ),
-                    approach_limit_m=float(
-                        self.get_parameter("recapture_analytic_approach_limit_m").value
-                    ),
-                    approach_step_m=float(
-                        self.get_parameter("recapture_analytic_approach_step_m").value
-                    ),
-                )
+                fixed_side = None
+                if bool(self.get_parameter("side_recapture_fixed_joint_enabled").value):
+                    side_recapture_arm_pose_deg = tuple(
+                        float(value)
+                        for value in self.get_parameter(
+                            "side_recapture_arm_pose_deg"
+                        ).value
+                    )
+                    fixed_side = fixed_side_recapture_target(
+                        current,
+                        resolve_dual_stage_targets(request),
+                        row_split_z_m=float(
+                            self.get_parameter("side_recapture_row_split_z_m").value
+                        ),
+                        first_row_updown_m=float(
+                            self.get_parameter("side_recapture_first_row_updown_m").value
+                        ),
+                        second_row_updown_m=float(
+                            self.get_parameter("side_recapture_second_row_updown_m").value
+                        ),
+                        arm_pose_deg=side_recapture_arm_pose_deg,
+                    )
+                if fixed_side is not None:
+                    target, side_row, source_average_z_m = fixed_side
+                    samples, smoothing_metrics = self._planner.smooth_motion_samples(
+                        [current, target],
+                        context_label="camera_view/fixed_side",
+                    )
+                    metrics = {
+                        "selected_updown": target.updown_m,
+                        "viewpose_approach_offset_m": 0.0,
+                        "numeric_fallback_used": False,
+                        "ik_ms": 0.0,
+                        "planning_ms": 0.0,
+                        "trajectory_smoothing": smoothing_metrics,
+                    }
+                    self.get_logger().info(
+                        "侧吸重拍位使用固定关节姿态："
+                        f"row={side_row} source_average_z={source_average_z_m:.3f}m "
+                        f"updown={target.updown_m:.3f}m "
+                        f"arm_pose_deg={list(side_recapture_arm_pose_deg)}"
+                    )
+                else:
+                    targets = self._targets_for_zero_turn(
+                        request,
+                        current_with_turn,
+                        canonicalize_grasp_orientation=True,
+                        align_to_lower_height=False,
+                        align_to_average_x=True,
+                    )
+                    samples, metrics = self._planner.plan_recapture_with_approach_search(
+                        self._base_link_pose_stamped(targets.left_pose),
+                        self._base_link_pose_stamped(targets.right_pose),
+                        current,
+                        preferred_updown=float(
+                            self.get_parameter("recapture_preferred_updown_m").value
+                        ),
+                        approach_limit_m=float(
+                            self.get_parameter("recapture_analytic_approach_limit_m").value
+                        ),
+                        approach_step_m=float(
+                            self.get_parameter("recapture_analytic_approach_step_m").value
+                        ),
+                    )
+                    self.get_logger().info(
+                        "顶吸重拍位规划完成："
+                        f"updown={metrics['selected_updown']:.3f}m "
+                        f"x_approach={metrics['viewpose_approach_offset_m']:.3f}m "
+                        f"numeric_fallback={metrics['numeric_fallback_used']} "
+                        f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms "
+                        f"mirrored_from={targets.mirrored_from or 'none'}"
+                    )
                 planning_time_s = time.monotonic() - started
-                self.get_logger().info(
-                    "重拍位规划完成："
-                    f"updown={metrics['selected_updown']:.3f}m "
-                    f"x_approach={metrics['viewpose_approach_offset_m']:.3f}m "
-                    f"numeric_fallback={metrics['numeric_fallback_used']} "
-                    f"ik={metrics['ik_ms']:.2f}ms plan={metrics['planning_ms']:.2f}ms "
-                    f"mirrored_from={targets.mirrored_from or 'none'}"
-                )
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
                 )
@@ -562,10 +701,9 @@ class DomainMotionServer(Node):
                     )
                 if entry_mode is None:
                     raise RuntimeError("PREGRASP 入口状态已失效")
+                current_with_turn = self._current_sample_for_planning()
+                current = self._planning_sample_without_external_turn(current_with_turn)
                 if entry_mode == "skip_recapture":
-                    recapture_sample = self._planning_sample_without_external_turn(
-                        self._current_sample_for_planning()
-                    )
                     with self._lock:
                         self._cycle_serial += 1
                         cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
@@ -573,18 +711,21 @@ class DomainMotionServer(Node):
                     self.get_logger().info(
                         "PREGRASP 跳过重拍位，从当前机器人真实状态开始规划"
                     )
-                if recapture_sample is None:
-                    raise RuntimeError("缺少重拍阶段真实末态")
+                planning_start = pregrasp_planning_start_sample(
+                    entry_mode=entry_mode,
+                    current_sample=current,
+                    recapture_sample=recapture_sample,
+                )
                 targets = self._targets_for_zero_turn(
                     request,
-                    self._current_sample_for_planning(),
+                    current_with_turn,
                     canonicalize_grasp_orientation=True,
                     align_to_lower_height=True,
                     align_to_average_x=True,
                 )
                 task = planning_task_from_resolved_targets(targets, cycle_id)
                 started = time.monotonic()
-                plan = self._planner.compute(task, initial_sample=recapture_sample)
+                plan = self._planner.compute(task, initial_sample=planning_start)
                 planning_time_s = time.monotonic() - started
                 self.get_logger().info(
                     "任务缓存规划完成："
@@ -746,10 +887,9 @@ class DomainMotionServer(Node):
             updown_m=0.3,
             context={"stage": "initialization/loaded", "updown": 0.3},
         )
-        samples = retime_segment(
+        samples, _ = self._planner.smooth_motion_samples(
             [current, target],
-            list(ARM_JOINT_NAMES),
-            **self._retime_parameters,
+            context_label="initialization/loaded",
         )
         return float(self._hardware.execute_segment(samples, label)["duration_s"])
 

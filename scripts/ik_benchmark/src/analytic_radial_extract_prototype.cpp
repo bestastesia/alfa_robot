@@ -63,9 +63,11 @@ struct Options
   double top_retreat_step_x = 0.01;
   int top_shortcut_start_step = 30;
   int candidate_index = 0;
+  int candidate_count = 1;
   std::string path_mode = "radial";
   bool resume_radial_after_orientation = false;
   bool interleave_loaded_shortcuts = false;
+  bool updown_compensation_enabled = true;
 };
 
 double degrees(double radians)
@@ -394,12 +396,16 @@ Options parseOptions(int argc, char** argv)
       options.top_shortcut_start_step = std::stoi(argv[++index]);
     } else if (argument == "--candidate-index" && index + 1 < argc) {
       options.candidate_index = std::stoi(argv[++index]);
+    } else if (argument == "--candidate-count" && index + 1 < argc) {
+      options.candidate_count = std::stoi(argv[++index]);
     } else if (argument == "--path-mode" && index + 1 < argc) {
       options.path_mode = argv[++index];
     } else if (argument == "--resume-radial-after-orientation" && index + 1 < argc) {
       options.resume_radial_after_orientation = std::string(argv[++index]) == "true";
     } else if (argument == "--interleave-loaded-shortcuts" && index + 1 < argc) {
       options.interleave_loaded_shortcuts = std::string(argv[++index]) == "true";
+    } else if (argument == "--updown-compensation-enabled" && index + 1 < argc) {
+      options.updown_compensation_enabled = std::string(argv[++index]) == "true";
     }
   }
   if (options.snapshot.empty()) throw std::runtime_error("--snapshot is required");
@@ -420,6 +426,9 @@ Options parseOptions(int argc, char** argv)
   }
   if (options.candidate_index < 0) {
     throw std::runtime_error("--candidate-index must be non-negative");
+  }
+  if (options.candidate_count <= 0) {
+    throw std::runtime_error("--candidate-count must be positive");
   }
   if (options.path_mode != "radial" && options.path_mode != "top_horizontal_retract") {
     throw std::runtime_error("--path-mode must be radial or top_horizontal_retract");
@@ -448,14 +457,19 @@ int main(int argc, char** argv)
     if (options.candidate_index >= static_cast<int>(snapshot.at("records").size())) {
       throw std::runtime_error("candidate index exceeds snapshot records");
     }
-    const Json& selected = snapshot.at("records").at(options.candidate_index);
+    robot_model_loader::RobotModelLoader loader(node, "robot_description");
+    const auto robot_model = loader.getModel();
+    if (!robot_model) throw std::runtime_error("failed to load robot model");
+
+    const int candidate_end = std::min(
+      static_cast<int>(snapshot.at("records").size()),
+      options.candidate_index + options.candidate_count);
+    const auto evaluate_candidate = [&](int candidate_index) -> Json {
+    const Json& selected = snapshot.at("records").at(candidate_index);
     const double updown = selected.at("h").get<double>();
     std::array<double, 6> left_previous = jointsFromRecord(selected, "left");
     std::array<double, 6> right_previous = jointsFromRecord(selected, "right");
 
-    robot_model_loader::RobotModelLoader loader(node, "robot_description");
-    const auto robot_model = loader.getModel();
-    if (!robot_model) throw std::runtime_error("failed to load robot model");
     auto scene = std::make_shared<planning_scene::PlanningScene>(robot_model);
     for (const auto& panel : snapshot.value("container_panels", Json::array())) {
       scene->processCollisionObjectMsg(collisionObjectFromJson(panel));
@@ -618,7 +632,7 @@ int main(int argc, char** argv)
     output["path_mode"] = options.path_mode;
     output["top_retreat_step_x"] = options.top_retreat_step_x;
     output["top_shortcut_start_step"] = options.top_shortcut_start_step;
-    output["candidate_index"] = options.candidate_index;
+    output["candidate_index"] = candidate_index;
     output["candidate_score"] = selected.value("score", 0.0);
     output["updown"] = updown;
     output["target_radius"] = options.target_radius;
@@ -646,10 +660,16 @@ int main(int argc, char** argv)
     output["attached_boxes"] = snapshot.value("attached_boxes", Json::array());
     output["moveit_attached_body_count"] = moveit_attached_bodies.size();
     output["frames"] = Json::array();
-    output["updown_compensation_rule"] =
-      "after fixed-updown dual-arm IK, shift updown so the lower tool stays at the initial lower tool height, clamped to updown bounds";
-    output["collision_check_order"] =
-      "for every solved frame: merge both arm states, apply updown compensation, then immediately check bounds and the full planning scene";
+    const bool apply_updown_compensation =
+      !top_horizontal_retract && options.updown_compensation_enabled;
+    output["updown_compensation_rule"] = top_horizontal_retract
+      ? "top suction keeps updown fixed throughout extraction"
+      : (apply_updown_compensation
+          ? "after fixed-updown dual-arm IK, shift updown so the lower tool stays at the initial lower tool height, clamped to updown bounds"
+          : "side suction keeps updown fixed throughout extraction");
+    output["collision_check_order"] = apply_updown_compensation
+      ? "for every solved frame: merge both arm states, apply updown compensation, then immediately check bounds and the full planning scene"
+      : "for every solved frame: merge both arm states at fixed updown, then immediately check bounds and the full planning scene";
 
     moveit::core::RobotState state(scene->getCurrentState());
     state.setVariablePosition("pitch", 0.0);
@@ -802,7 +822,9 @@ int main(int argc, char** argv)
         const double fixed_min_tool_z = kWorldToBaseZ + std::min(
           left_fixed_base.translation().z(), right_fixed_base.translation().z());
         const double required_compensation = initial_min_tool_z - fixed_min_tool_z;
-        const double compensated_updown = std::clamp(updown + required_compensation, 0.0, 0.7);
+        const double compensated_updown = apply_updown_compensation
+          ? std::clamp(updown + required_compensation, 0.0, 0.7)
+          : updown;
         const double applied_compensation = compensated_updown - updown;
         max_updown_compensation = std::max(max_updown_compensation, std::abs(applied_compensation));
         frame["fixed_updown_min_tool_z_world"] = fixed_min_tool_z;
@@ -810,8 +832,10 @@ int main(int argc, char** argv)
         frame["requested_updown_compensation"] = required_compensation;
         frame["updown_compensation"] = applied_compensation;
         frame["compensated_updown"] = compensated_updown;
-        frame["compensation_clamped"] = std::abs(applied_compensation - required_compensation) > 1e-12;
-        frame["collision_check_uses_compensated_updown"] = true;
+        frame["compensation_clamped"] = apply_updown_compensation &&
+          std::abs(applied_compensation - required_compensation) > 1e-12;
+        frame["updown_compensation_enabled"] = apply_updown_compensation;
+        frame["collision_check_uses_compensated_updown"] = apply_updown_compensation;
 
         state.setVariablePosition("pitch", 0.0);
         state.setVariablePosition("turn", 0.0);
@@ -1220,17 +1244,19 @@ int main(int argc, char** argv)
         const double fixed_min_tool_z = kWorldToBaseZ + std::min(
           left_fixed_base.translation().z(), right_fixed_base.translation().z());
         const double required_compensation = initial_min_tool_z - fixed_min_tool_z;
-        const double compensated_updown = std::clamp(
-          resume_reference_updown + required_compensation, 0.0, 0.7);
+        const double compensated_updown = apply_updown_compensation
+          ? std::clamp(resume_reference_updown + required_compensation, 0.0, 0.7)
+          : resume_reference_updown;
         const double applied_compensation = compensated_updown - resume_reference_updown;
         frame["fixed_updown_min_tool_z_world"] = fixed_min_tool_z;
         frame["initial_min_tool_z_world"] = initial_min_tool_z;
         frame["requested_updown_compensation"] = required_compensation;
         frame["updown_compensation"] = applied_compensation;
         frame["compensated_updown"] = compensated_updown;
-        frame["compensation_clamped"] =
+        frame["compensation_clamped"] = apply_updown_compensation &&
           std::abs(applied_compensation - required_compensation) > 1e-12;
-        frame["collision_check_uses_compensated_updown"] = true;
+        frame["updown_compensation_enabled"] = apply_updown_compensation;
+        frame["collision_check_uses_compensated_updown"] = apply_updown_compensation;
 
         resume_state.setVariablePosition("pitch", 0.0);
         resume_state.setVariablePosition("turn", 0.0);
@@ -1556,21 +1582,75 @@ int main(int argc, char** argv)
     output["strategy_total_ms"] = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - strategy_start).count();
 
+    return output;
+    };
+
+    Json selected_output;
+    Json candidate_attempts = Json::array();
+    bool complete_success = false;
+    for (int candidate_index = options.candidate_index;
+         candidate_index < candidate_end;
+         ++candidate_index) {
+      Json candidate_output;
+      try {
+        candidate_output = evaluate_candidate(candidate_index);
+      } catch (const std::exception& error) {
+        candidate_attempts.push_back(Json{
+          {"candidate_index", candidate_index},
+          {"score", snapshot.at("records").at(candidate_index).value("score", 0.0)},
+          {"success", false},
+          {"failure_reason", error.what()},
+        });
+        continue;
+      }
+      const Json pregrasp = candidate_output.value("pregrasp_transition", Json::object());
+      const Json loaded = candidate_output.value("loaded_transition", Json::object());
+      const bool candidate_success =
+        pregrasp.value("valid", false) &&
+        loaded.value("start_radial_frame", -1) >= 0 &&
+        loaded.value("valid", false);
+      const std::string failure_reason = !pregrasp.value("failure_reason", "").empty()
+        ? pregrasp.value("failure_reason", "")
+        : loaded.value("failure_reason", "");
+      candidate_attempts.push_back(Json{
+        {"candidate_index", candidate_index},
+        {"score", candidate_output.value("candidate_score", 0.0)},
+        {"success", candidate_success},
+        {"failure_reason", failure_reason},
+      });
+      selected_output = std::move(candidate_output);
+      if (candidate_success) {
+        complete_success = true;
+        break;
+      }
+    }
+    if (selected_output.empty()) {
+      throw std::runtime_error("all requested candidates raised exceptions");
+    }
+    selected_output["candidate_attempts"] = std::move(candidate_attempts);
+    selected_output["candidate_count_requested"] = options.candidate_count;
+    selected_output["candidate_count_attempted"] =
+      selected_output.at("candidate_attempts").size();
+    selected_output["complete_success"] = complete_success;
+
     std::filesystem::create_directories(options.output.parent_path());
     std::ofstream output_stream(options.output);
-    output_stream << std::setw(2) << output << '\n';
+    output_stream << std::setw(2) << selected_output << '\n';
     std::cout << "output=" << options.output << '\n'
-              << "path_valid=" << std::boolalpha << path_valid << '\n'
-              << "first_failure_frame=" << first_failure << '\n'
-              << "first_failure_reason=" << first_failure_reason << '\n'
-              << "max_joint_step_deg=" << degrees(max_joint_step) << '\n'
-              << "max_updown_compensation=" << max_updown_compensation << '\n'
-              << "solve_and_collision_ms=" << output["solve_and_collision_ms"] << '\n'
-              << "loaded_transition_valid=" << output["loaded_transition"]["valid"] << '\n'
-              << "loaded_transition_method=" << output["loaded_transition"]["method"] << '\n'
-              << "loaded_transition_reason=" << output["loaded_transition"]["failure_reason"] << '\n';
+              << "candidate_index=" << selected_output["candidate_index"] << '\n'
+              << "candidate_count_attempted=" << selected_output["candidate_count_attempted"] << '\n'
+              << "complete_success=" << std::boolalpha << complete_success << '\n'
+              << "path_valid=" << selected_output["path_valid"] << '\n'
+              << "first_failure_frame=" << selected_output["first_failure_frame"] << '\n'
+              << "first_failure_reason=" << selected_output["first_failure_reason"] << '\n'
+              << "max_joint_step_deg=" << selected_output["max_joint_step_deg"] << '\n'
+              << "max_updown_compensation=" << selected_output["max_updown_compensation"] << '\n'
+              << "solve_and_collision_ms=" << selected_output["solve_and_collision_ms"] << '\n'
+              << "loaded_transition_valid=" << selected_output["loaded_transition"]["valid"] << '\n'
+              << "loaded_transition_method=" << selected_output["loaded_transition"]["method"] << '\n'
+              << "loaded_transition_reason=" << selected_output["loaded_transition"]["failure_reason"] << '\n';
     rclcpp::shutdown();
-    return path_valid ? 0 : 3;
+    return complete_success ? 0 : 3;
   } catch (const std::exception& error) {
     std::cerr << "analytic_radial_extract_prototype failed: " << error.what() << '\n';
     if (rclcpp::ok()) rclcpp::shutdown();

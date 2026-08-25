@@ -14,9 +14,14 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import yaml
+
 
 REPO = Path(__file__).resolve().parents[3]
 ROS_WS = REPO / "ros2_ws"
+PROTOTYPE_EXECUTABLE = (
+    REPO / "build" / "alfa_robot_benchmarks" / "analytic_radial_extract_prototype"
+)
 MONITOR_DIR = ROS_WS / "src" / "alfa_robot_moveit_config" / "scripts"
 if str(MONITOR_DIR) not in sys.path:
     sys.path.insert(0, str(MONITOR_DIR))
@@ -64,6 +69,34 @@ def gzip_file(path: Path) -> None:
     with path.open("rb") as source, gzip.open(path.with_suffix(path.suffix + ".gz"), "wb") as target:
         target.write(source.read())
     path.unlink()
+
+
+def write_prototype_parameter_file(output: Path, env: dict[str, str]) -> Path:
+    dump_dir = output / "prototype_parameter_dump"
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["ros2", "param", "dump", "/dual_arm_planner", "--output-dir", str(dump_dir)],
+        cwd=ROS_WS,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=10.0,
+        check=True,
+    )
+    dumped = dump_dir / "dual_arm_planner.yaml"
+    payload = yaml.safe_load(dumped.read_text())
+    planner_parameters = payload["/dual_arm_planner"]["ros__parameters"]
+    required = {
+        name: planner_parameters[name]
+        for name in ("robot_description", "robot_description_semantic")
+    }
+    parameter_file = output / "analytic_radial_extract_prototype.params.yaml"
+    parameter_file.write_text(
+        yaml.safe_dump({"/**": {"ros__parameters": required}}, sort_keys=False),
+        encoding="utf-8",
+    )
+    return parameter_file
 
 
 def candidate_identity(candidate: dict[str, object]) -> tuple[float, ...] | None:
@@ -201,12 +234,15 @@ def main() -> int:
     parser.add_argument("--case-names-file", type=Path, default=None)
     parser.add_argument("--rows", default="1,2,3")
     parser.add_argument("--grasp-mode", choices=("front", "top_suction"), default="front")
+    parser.add_argument("--top-suction-z-offset-m", type=float, default=0.20)
     parser.add_argument("--resume-radial-after-orientation", action="store_true")
     parser.add_argument("--interleave-loaded-shortcuts", action="store_true")
+    parser.add_argument("--disable-updown-compensation", action="store_true")
     parser.add_argument("--shortcut-start-radial-rotation-deg", type=float, default=30.0)
     parser.add_argument("--top-shortcut-start-step", type=int, default=30)
     parser.add_argument("--lateral-step-cm", type=int, default=2)
     parser.add_argument("--ik-candidate-limit", type=int, default=64)
+    parser.add_argument("--candidate-workers", type=int, default=8)
     args = parser.parse_args()
 
     row_indices = tuple(int(value.strip()) for value in args.rows.split(",") if value.strip())
@@ -216,6 +252,10 @@ def main() -> int:
         raise ValueError("--lateral-step-cm must be a positive divisor of 20")
     if args.ik_candidate_limit <= 0:
         raise ValueError("--ik-candidate-limit must be positive")
+    if args.candidate_workers <= 0:
+        raise ValueError("--candidate-workers must be positive")
+    if args.top_suction_z_offset_m <= 0.0:
+        raise ValueError("--top-suction-z-offset-m must be positive")
     rows_to_test = tuple((row, *ROW_SPECS[row]) for row in row_indices)
     top_suction = args.grasp_mode == "top_suction"
 
@@ -257,6 +297,8 @@ def main() -> int:
             "extract_monitor_left_top_suction": str(top_suction).lower(),
             "extract_monitor_right_top_suction": str(top_suction).lower(),
             "extract_monitor_top_suction": str(top_suction).lower(),
+            "top_suction_z_offset": str(args.top_suction_z_offset_m),
+            "carried_box_grasp_lateral_offset": "-0.01",
             "extract_monitor_snapshot_path": str(initial_snapshot),
             "record_jsonl_path": str(output / "flow_unused.jsonl"),
         },
@@ -280,6 +322,7 @@ def main() -> int:
             args.service_timeout,
             output / "planner.log",
         )
+        prototype_parameter_file = write_prototype_parameter_file(output, env)
         with monitor.ExtractMonitorServiceClient(
             configure_service="/dual_arm_planner/configure_extract_monitor",
             trigger_service="/dual_arm_planner/run_extract_monitor_next",
@@ -375,76 +418,75 @@ def main() -> int:
                             record["ik_candidates_eligible_count"] = eligible_count
                             record["ik_candidates_available"] = len(ranked_records)
                             record["ik_candidates_considered"] = candidate_count
-                            temporary_result = case_dir / ".candidate_result.json"
                             selected_result = None
-                            for candidate_index in range(candidate_count):
+                            temporary_result = case_dir / ".candidate_result.json"
+                            try:
                                 run = subprocess.run(
                                     [
-                                        "ros2", "launch", "alfa_robot_benchmarks",
-                                        "analytic_radial_extract_prototype.launch.py",
-                                        f"snapshot:={snapshot}",
-                                        f"output:={temporary_result}",
-                                        "frames:=50",
-                                        "target_radius:=0.79",
-                                        "resume_radial_after_orientation:="
+                                        str(PROTOTYPE_EXECUTABLE),
+                                        "--snapshot", str(snapshot),
+                                        "--output", str(temporary_result),
+                                        "--frames", "50",
+                                        "--target-radius", "0.79",
+                                        "--resume-radial-after-orientation",
                                         f"{'true' if args.resume_radial_after_orientation else 'false'}",
-                                        "interleave_loaded_shortcuts:="
+                                        "--interleave-loaded-shortcuts",
                                         f"{'true' if args.interleave_loaded_shortcuts else 'false'}",
-                                        "shortcut_start_radial_rotation_deg:="
+                                        "--updown-compensation-enabled",
+                                        f"{'false' if args.disable_updown_compensation else 'true'}",
+                                        "--shortcut-start-radial-rotation-deg",
                                         f"{args.shortcut_start_radial_rotation_deg}",
-                                        "path_mode:="
+                                        "--path-mode",
                                         f"{'top_horizontal_retract' if top_suction else 'radial'}",
-                                        "top_retreat_step_x:=0.01",
-                                        "top_shortcut_start_step:="
+                                        "--top-retreat-step-x", "0.01",
+                                        "--top-shortcut-start-step",
                                         f"{args.top_shortcut_start_step}",
-                                        f"candidate_index:={candidate_index}",
+                                        "--candidate-index", "0",
+                                        "--candidate-count", str(candidate_count),
+                                        "--ros-args", "--params-file",
+                                        str(prototype_parameter_file),
                                     ],
                                     cwd=REPO,
                                     env=env,
                                     stdout=subprocess.DEVNULL,
                                     stderr=subprocess.DEVNULL,
-                                    timeout=args.service_timeout,
+                                    timeout=max(args.service_timeout, 10.0 * candidate_count),
                                     check=False,
                                 )
-                                record["ik_candidates_attempted"] = candidate_index + 1
-                                if run.returncode not in (0, 3) or not temporary_result.exists():
+                                if run.returncode in (0, 3) and temporary_result.exists():
+                                    selected_result = json.loads(temporary_result.read_text())
+                                    record["candidate_attempts"] = list(
+                                        selected_result.get("candidate_attempts", [])
+                                    )
+                                    record["ik_candidates_attempted"] = len(
+                                        record["candidate_attempts"]
+                                    )
+                                    record["selected_candidate_index"] = int(
+                                        selected_result.get("candidate_index", -1)
+                                    )
+                                    record["selected_candidate_score"] = float(
+                                        selected_result.get("candidate_score", 0.0)
+                                    )
+                                else:
                                     record["candidate_attempts"].append(
                                         {
-                                            "candidate_index": candidate_index,
-                                            "score": float(records[candidate_index].get("score", 0.0)),
+                                            "candidate_index": -1,
+                                            "score": 0.0,
                                             "success": False,
                                             "failure_reason": f"prototype_exit_{run.returncode}",
                                         }
                                     )
-                                    continue
-                                result = json.loads(temporary_result.read_text())
-                                orientation = result.get("orientation_only_transition", {})
-                                pregrasp = result.get("pregrasp_transition", {})
-                                loaded = result.get("loaded_transition", {})
-                                candidate_success = (
-                                    bool(pregrasp.get("valid", False))
-                                    and int(loaded.get("start_radial_frame", -1)) >= 0
-                                    and bool(loaded.get("valid", False))
-                                )
-                                failure_reason = (
-                                    str(pregrasp.get("failure_reason", ""))
-                                    or str(loaded.get("failure_reason", ""))
-                                )
+                            except subprocess.TimeoutExpired:
                                 record["candidate_attempts"].append(
                                     {
-                                        "candidate_index": candidate_index,
-                                        "score": float(result.get("candidate_score", 0.0)),
-                                        "success": candidate_success,
-                                        "failure_reason": failure_reason,
+                                        "candidate_index": -1,
+                                        "score": 0.0,
+                                        "success": False,
+                                        "failure_reason": "prototype_timeout",
                                     }
                                 )
-                                selected_result = result
-                                if candidate_success:
-                                    record["selected_candidate_index"] = candidate_index
-                                    record["selected_candidate_score"] = float(
-                                        result.get("candidate_score", 0.0)
-                                    )
-                                    break
+                            finally:
+                                temporary_result.unlink(missing_ok=True)
                             if selected_result is not None:
                                 result_path.write_text(
                                     json.dumps(selected_result, ensure_ascii=False, indent=2)
@@ -489,7 +531,6 @@ def main() -> int:
                                 record["pregrasp_failure_reason"] = (
                                     "all_considered_ik_candidates_failed"
                                 )
-                            temporary_result.unlink(missing_ok=True)
                         else:
                             record["loaded_failure_reason"] = (
                                 trigger_message if configure_ok else configure_message

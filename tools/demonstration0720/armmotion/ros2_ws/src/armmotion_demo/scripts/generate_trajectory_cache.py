@@ -86,13 +86,16 @@ def canonical_targets(
     distance_m: float,
     lateral_offset_cm: int,
     row: int,
+    grasp_mode: str | None = None,
 ) -> dict:
     center_z = (
         BOTTOM_ROW_CENTER_WORLD_Z_M
         - WORLD_TO_BASE_Z_M
         + (5 - row) * ROW_PITCH_M
     )
-    mode = "front" if row <= 3 else "top_suction"
+    mode = grasp_mode or ("front" if row <= 3 else "top_suction")
+    if mode not in ("front", "top_suction"):
+        raise ValueError(f"unsupported grasp mode: {mode}")
     if mode == "front":
         x = distance_m
         z = center_z

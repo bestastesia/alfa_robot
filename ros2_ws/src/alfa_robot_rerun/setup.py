@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'basic_robot_viewer = alfa_robot_rerun.basic_robot_viewer:main',
+            'reachability_bounds_editor = alfa_robot_rerun.reachability_bounds_editor:main',
             'rerun_joint_state_viewer_node = alfa_robot_rerun.joint_state_viewer_node:main',
             'visualize_rerun = alfa_robot_rerun.visualize_rerun:main',
         ],

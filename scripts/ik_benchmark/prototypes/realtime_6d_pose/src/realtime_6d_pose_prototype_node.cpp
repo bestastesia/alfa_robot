@@ -277,6 +277,8 @@ public:
             return;
           }
           latest_topic_target_ = pose_to_eigen(msg->pose);
+          topic_target_received_ = true;
+          topic_target_dirty_ = true;
         });
     } else if (pose_source_ != "synthetic") {
       throw std::invalid_argument("pose_source must be 'synthetic' or 'topic'");
@@ -419,16 +421,24 @@ private:
       return;
     }
     Eigen::Isometry3d target;
+    Realtime6dPoseResult result;
     if (pose_source_ == "topic") {
-      if (!latest_topic_target_) {
+      // Do not turn the internally generated baseline pose into a command.
+      // Real target tracking is armed only by an external Marker/Pose message.
+      if (!topic_target_received_ || !latest_topic_target_) {
         return;
       }
       target = *latest_topic_target_;
+      if (topic_target_dirty_ || !cached_topic_result_) {
+        cached_topic_result_ = pipeline_->process(target);
+        topic_target_dirty_ = false;
+      }
+      result = *cached_topic_result_;
     } else {
       const double elapsed = std::chrono::duration<double>(SteadyClock::now() - start_time_).count();
       target = synthetic_target(2.0 * kPi * elapsed / std::max(0.1, path_period_s_));
+      result = pipeline_->process(target);
     }
-    const auto result = pipeline_->process(target);
     ++sequence_;
     ++window_count_;
     result.accepted ? ++window_accepted_ : ++window_rejected_;
@@ -471,6 +481,18 @@ private:
       joint_msg.position.assign(
         pipeline_->currentState().getVariablePositions(),
         pipeline_->currentState().getVariablePositions() + joint_msg.name.size());
+      // A cached Cartesian solution remains the active-arm goal while the
+      // accepted-reference callback keeps the other eight axes authoritative.
+      const std::string active_prefix = left_arm_ ? "left_joint" : "right_joint";
+      for (std::size_t axis = 0; axis < result.joints.size(); ++axis) {
+        const auto found = std::find(
+          joint_msg.name.begin(), joint_msg.name.end(),
+          active_prefix + std::to_string(axis + 1));
+        if (found != joint_msg.name.end()) {
+          joint_msg.position[static_cast<std::size_t>(found - joint_msg.name.begin())] =
+            result.joints[axis];
+        }
+      }
       commanded_joint_pub_->publish(joint_msg);
 
     }
@@ -524,6 +546,9 @@ private:
   SteadyClock::time_point start_time_;
   SteadyClock::time_point report_window_start_;
   std::optional<Eigen::Isometry3d> latest_topic_target_;
+  std::optional<Realtime6dPoseResult> cached_topic_result_;
+  bool topic_target_received_ = false;
+  bool topic_target_dirty_ = false;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr initial_target_pub_;

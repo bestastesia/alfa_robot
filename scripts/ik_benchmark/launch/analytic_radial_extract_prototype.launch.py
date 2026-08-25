@@ -26,6 +26,7 @@ def generate_launch_description():
             DeclareLaunchArgument("candidate_index", default_value="0"),
             DeclareLaunchArgument("resume_radial_after_orientation", default_value="false"),
             DeclareLaunchArgument("interleave_loaded_shortcuts", default_value="false"),
+            DeclareLaunchArgument("updown_compensation_enabled", default_value="true"),
             Node(
                 package="alfa_robot_benchmarks",
                 executable="analytic_radial_extract_prototype",
@@ -59,6 +60,8 @@ def generate_launch_description():
                     LaunchConfiguration("resume_radial_after_orientation"),
                     "--interleave-loaded-shortcuts",
                     LaunchConfiguration("interleave_loaded_shortcuts"),
+                    "--updown-compensation-enabled",
+                    LaunchConfiguration("updown_compensation_enabled"),
                 ],
             ),
         ]

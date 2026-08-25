@@ -28,6 +28,8 @@ ros2_ws/src/alfa_robot_execution_bridge/scripts/run_joint_teach_pendant.sh
 
 包装脚本在 SSH 登录且 `DISPLAY` 为空时，会自动选择工控机当前本地 X11 桌面并设置
 `XAUTHORITY`，Tk 和 Rerun 窗口仍显示在工控机屏幕上。
+若未显式设置 `ROS_DOMAIN_ID`，包装脚本会从当前活动 rt-control 的
+`ros2_control_node` 读取实际 Domain；也可用 `--ros-domain-id 12` 手工覆盖。
 
 安全边界：
 
@@ -125,6 +127,20 @@ Updown 已并入完整 14 轴 FJT，单位为米。`run_jog_to_pose.sh` 的
   --updown-acceleration-mps2 0.05 \
   --send
 ```
+
+历史全轴绝对运动命令名也已保留。它调用相同的 `joints.py` 合同和
+`/whole_body_jtc/follow_joint_trajectory`，默认不启动 Rerun：
+
+```bash
+/home/ar/motion_domain_current/run_move_all_joints_abs.sh \
+  --right-joint2-deg -45 --right-joint3-deg 120 --right-joint4-deg -75 \
+  --left-joint2-deg -45 --left-joint3-deg 120 --left-joint4-deg -75 \
+  --updown-m 0.30 --duration-s 8 --send
+```
+
+未指定的轴保持当前反馈位置；不加 `--send` 只打印目标和轨迹参数，不发送运动。
+工控机入口未显式设置 `ROS_DOMAIN_ID` 时同样自动跟随活动 rt-control Domain；环境变量
+`ROS_DOMAIN_ID=...` 始终优先，可用于明确覆盖。
 
 ## jog_to_pose PLC IO 联调
 

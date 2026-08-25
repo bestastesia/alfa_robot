@@ -73,7 +73,7 @@ class AlgorithmThread(Node):
         self.declare_parameter("planner_timeout_s", 180.0)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
-        self.declare_parameter("start_joint_tolerance_deg", 5.0)
+        self.declare_parameter("start_joint_tolerance_deg", 0.75)
         self.declare_parameter("start_updown_tolerance_m", 0.015)
         self.declare_parameter(
             "action_name",

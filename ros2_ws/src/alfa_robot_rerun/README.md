@@ -85,6 +85,31 @@ ros2 launch alfa_robot_rerun basic_robot_viewer.launch.py
 
 Rerun 包只依赖 `/joint_states` 和机器人 description，不依赖 MoveIt 任务流程。
 
+## 右臂可达性范围编辑器
+
+只确定九向可达性测试的空间范围，不调用 IK、不执行碰撞检测：
+
+```bash
+ros2 run alfa_robot_rerun reachability_bounds_editor
+```
+
+工具同时打开 Tk 参数面板和 Rerun：
+
+- 显示完整机器人，`updown=0.45m`，其余关节为零；
+- 以 `world` 为坐标系动态显示右臂采样包围盒与点阵；
+- 可调整 XYZ 最小值、最大值和各轴分辨率；
+- 显示实际点数与九向 IK 调用总数，并可复制后续测试参数；
+- 该工具不发布关节状态，也不会启动实际可达性计算。
+
+也可以在启动时给定初值：
+
+```bash
+ros2 run alfa_robot_rerun reachability_bounds_editor -- \
+  --min-x 0.25 --max-x 1.20 \
+  --min-y -0.80 --max-y 0.20 \
+  --min-z 0.50 --max-z 2.20
+```
+
 ## 职责边界
 
 - 允许：只读机器人状态、轨迹、场景和诊断数据的可视化与记录。

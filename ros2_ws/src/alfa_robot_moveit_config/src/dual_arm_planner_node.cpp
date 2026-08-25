@@ -41,12 +41,15 @@
 #include <moveit/robot_model/revolute_joint_model.h>
 #include <moveit/robot_state/conversions.h>
 #include <moveit/robot_state/robot_state.h>
+#include <moveit/robot_trajectory/robot_trajectory.h>
+#include <moveit/trajectory_processing/time_optimal_trajectory_generation.h>
 #include <moveit/collision_detection/collision_common.h>
 #include <geometry_msgs/msg/pose.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include "alfa_robot_moveit_config/srv/configure_extract_monitor.hpp"
 #include "alfa_robot_moveit_config/srv/plan_recapture.hpp"
+#include "alfa_robot_moveit_config/srv/smooth_trajectory.hpp"
 
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_ros/buffer.h>
@@ -74,6 +77,8 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_set>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -583,7 +588,9 @@ public:
     carried_box_width_ = get_or_declare_parameter<double>("carried_box_width", 0.4);
     carried_box_height_ = get_or_declare_parameter<double>("carried_box_height", 0.4);
     carried_box_grasp_lateral_offset_ =
-      get_or_declare_parameter<double>("carried_box_grasp_lateral_offset", 0.0);
+      get_or_declare_parameter<double>(
+        "carried_box_grasp_lateral_offset",
+        alfa_robot::motion::kOuterBoxGraspLateralOffset);
     attached_box_collision_padding_ = get_or_declare_parameter<double>("attached_box_collision_padding", -0.002);
     enable_static_box_obstacles_ = get_or_declare_parameter<bool>("enable_static_box_obstacles", true);
     static_box_obstacle_inset_ = get_or_declare_parameter<double>("static_box_obstacle_inset", 0.002);
@@ -1077,14 +1084,23 @@ public:
         plan_recapture(*request, response.get());
       });
 
+    trajectory_smoothing_srv_ = create_service<alfa_robot_moveit_config::srv::SmoothTrajectory>(
+      "~/smooth_trajectory",
+      [this](
+        const std::shared_ptr<alfa_robot_moveit_config::srv::SmoothTrajectory::Request> request,
+        std::shared_ptr<alfa_robot_moveit_config::srv::SmoothTrajectory::Response> response) {
+        std::lock_guard<std::mutex> lock(extract_monitor_mutex_);
+        smooth_trajectory(*request, response.get());
+      });
+
     RCLCPP_INFO(get_logger(), "DualArmPlannerNode ready");
     RCLCPP_INFO(get_logger(), "  group=%s execute=%s backend=%s box_front_x=%.3f max_rounds=%d include_top=%s",
                 planning_group_.c_str(), execute_ ? "true" : "false", execution_backend_.c_str(),
                 box_front_x_, max_rounds_,
                 include_top_suction_ ? "true" : "false");
     RCLCPP_INFO(get_logger(),
-                "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected, /%s/plan_recapture",
-                get_name(), get_name(), get_name(), get_name(), get_name(), get_name());
+                "  Services: /%s/plan_and_execute, /%s/run_box_stack_flow, /%s/run_left_extract_demo, /%s/run_extract_monitor_next, /%s/run_extract_monitor_full_selected, /%s/plan_recapture, /%s/smooth_trajectory",
+                get_name(), get_name(), get_name(), get_name(), get_name(), get_name(), get_name());
     RCLCPP_INFO(get_logger(),
                 "  IK strategy=analytic_three_parallel_fixed_h h=%zu root_samples=%zu collision=%s",
                 ik_config_.h_candidate_count, ik_analytic_root_samples_,
@@ -5572,6 +5588,117 @@ private:
     return result;
   }
 
+  bool smooth_trajectory(
+    const alfa_robot_moveit_config::srv::SmoothTrajectory::Request& request,
+    alfa_robot_moveit_config::srv::SmoothTrajectory::Response* response)
+  {
+    if (!response) return false;
+    response->success = false;
+    const auto& input = request.input;
+    if (input.points.size() < 2 || input.joint_names.empty()) {
+      response->message = "trajectory smoothing requires at least two points";
+      return false;
+    }
+    if (request.max_joint_velocity_rad_s <= 0.0 ||
+        request.max_joint_acceleration_rad_s2 <= 0.0 ||
+        request.max_updown_velocity_m_s <= 0.0 ||
+        request.max_updown_acceleration_m_s2 <= 0.0 ||
+        request.path_tolerance <= 0.0 || request.path_tolerance > 0.002 ||
+        request.resample_dt < 0.02 || request.resample_dt > 0.2) {
+      response->message = "invalid smoothing limits";
+      return false;
+    }
+    const auto* group = robot_model_->getJointModelGroup("dual_arm_with_base");
+    if (!group) {
+      response->message = "dual_arm_with_base group unavailable";
+      return false;
+    }
+    std::unordered_map<std::string, size_t> input_index;
+    const auto& model_variables = robot_model_->getVariableNames();
+    const std::unordered_set<std::string> model_variable_names(
+      model_variables.begin(), model_variables.end());
+    for (size_t index = 0; index < input.joint_names.size(); ++index) {
+      const auto& name = input.joint_names[index];
+      if (model_variable_names.count(name) == 0) {
+        response->message = "unknown input joint: " + name;
+        return false;
+      }
+      if (!input_index.emplace(name, index).second) {
+        response->message = "duplicate input joint: " + name;
+        return false;
+      }
+    }
+    for (const auto& name : group->getVariableNames()) {
+      if (input_index.count(name) == 0) {
+        response->message = "missing smoothing joint: " + name;
+        return false;
+      }
+    }
+    for (const auto& point : input.points) {
+      if (point.positions.size() != input.joint_names.size()) {
+        response->message = "trajectory point position size mismatch";
+        return false;
+      }
+    }
+
+    robot_trajectory::RobotTrajectory trajectory(robot_model_, group);
+    double previous_time = 0.0;
+    for (size_t point_index = 0; point_index < input.points.size(); ++point_index) {
+      const auto& point = input.points[point_index];
+      moveit::core::RobotState state(robot_model_);
+      state.setToDefaultValues();
+      for (size_t joint_index = 0; joint_index < input.joint_names.size(); ++joint_index) {
+        state.setVariablePosition(input.joint_names[joint_index], point.positions[joint_index]);
+      }
+      state.update(true);
+      const double time = rclcpp::Duration(point.time_from_start).seconds();
+      const double duration = point_index == 0 ? 0.0 : std::max(1e-6, time - previous_time);
+      trajectory.addSuffixWayPoint(state, duration);
+      previous_time = time;
+    }
+
+    std::unordered_map<std::string, double> velocity_limits;
+    std::unordered_map<std::string, double> acceleration_limits;
+    for (const auto& name : group->getVariableNames()) {
+      const bool updown = name == "updown";
+      velocity_limits[name] = updown ? request.max_updown_velocity_m_s : request.max_joint_velocity_rad_s;
+      acceleration_limits[name] = updown ? request.max_updown_acceleration_m_s2 : request.max_joint_acceleration_rad_s2;
+    }
+    trajectory_processing::TimeOptimalTrajectoryGeneration parameterization(
+      request.path_tolerance, request.resample_dt, 0.0001);
+    if (!parameterization.computeTimeStamps(
+          trajectory, velocity_limits, acceleration_limits)) {
+      response->message = "TOTG trajectory parameterization failed";
+      return false;
+    }
+
+    response->trajectory.joint_names = input.joint_names;
+    response->trajectory.points.reserve(trajectory.getWayPointCount());
+    double output_time = 0.0;
+    for (size_t point_index = 0; point_index < trajectory.getWayPointCount(); ++point_index) {
+      output_time += trajectory.getWayPointDurationFromPrevious(point_index);
+      const auto& state = trajectory.getWayPoint(point_index);
+      trajectory_msgs::msg::JointTrajectoryPoint point;
+      point.positions.reserve(input.joint_names.size());
+      point.velocities.reserve(input.joint_names.size());
+      point.accelerations.reserve(input.joint_names.size());
+      for (const auto& name : input.joint_names) {
+        point.positions.push_back(state.getVariablePosition(name));
+        point.velocities.push_back(state.getVariableVelocity(name));
+        point.accelerations.push_back(state.getVariableAcceleration(name));
+      }
+      point.time_from_start = rclcpp::Duration::from_seconds(output_time);
+      response->trajectory.points.push_back(std::move(point));
+    }
+    response->success = true;
+    std::ostringstream message;
+    message << "TOTG smoothed " << input.points.size() << "->"
+            << response->trajectory.points.size() << " points duration="
+            << trajectory.getDuration() << "s";
+    response->message = message.str();
+    return true;
+  }
+
   bool plan_recapture(
     const alfa_robot_moveit_config::srv::PlanRecapture::Request& request,
     alfa_robot_moveit_config::srv::PlanRecapture::Response* response)
@@ -7913,6 +8040,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr extract_monitor_full_selected_srv_;
   rclcpp::Service<alfa_robot_moveit_config::srv::ConfigureExtractMonitor>::SharedPtr extract_monitor_config_srv_;
   rclcpp::Service<alfa_robot_moveit_config::srv::PlanRecapture>::SharedPtr recapture_plan_srv_;
+  rclcpp::Service<alfa_robot_moveit_config::srv::SmoothTrajectory>::SharedPtr trajectory_smoothing_srv_;
   rclcpp_action::Client<FollowJointTrajectory>::SharedPtr execution_action_client_;
   rclcpp::CallbackGroup::SharedPtr joint_state_callback_group_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;

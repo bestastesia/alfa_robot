@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import math
 import os
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import Any
 
 from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
 from geometry_msgs.msg import PoseStamped
+from trajectory_msgs.msg import JointTrajectoryPoint
 
 from .common import (
     ExecutionPlan,
@@ -21,12 +23,15 @@ from .common import (
     TaskSpec,
     planning_task_from_suction_surface_poses,
     pose6d_from_dict,
-    retime_action_trajectories,
+    _concatenate_motion_segments,
+    _copy_sample,
+    _simplify_collinear_samples,
     retime_segment,
     retime_all_stages,
     split_execution_stages,
     validate_stage_contracts,
 )
+from .trajectory_smoothing import controller_limited_resample
 from .trajectory_cache import TrajectoryCache, format_cache_miss_diagnostic
 
 
@@ -60,6 +65,11 @@ class PlannerAdapter:
         trajectory_cache_required: bool = False,
         trajectory_cache_fallback_on_planning_failure: bool = False,
         trajectory_cache_root: Path | None = None,
+        max_joint_jerk_deg_s3: float = 6000.0,
+        max_updown_jerk_m_s3: float = 5.0,
+        trajectory_smoothing_path_tolerance: float = 0.001,
+        trajectory_smoothing_resample_dt: float = 0.1,
+        controller_interpolation_rate_hz: float = 250.0,
     ) -> None:
         self.source_ws = source_ws.resolve()
         self.output_root = output_root.resolve()
@@ -72,6 +82,17 @@ class PlannerAdapter:
         if self.speed_scale <= 0.0:
             raise ValueError("speed_scale 必须为正数")
         self.timeout_s = float(timeout_s)
+        self.max_joint_jerk_deg_s3 = float(max_joint_jerk_deg_s3)
+        self.max_updown_jerk_m_s3 = float(max_updown_jerk_m_s3)
+        self.trajectory_smoothing_path_tolerance = float(
+            trajectory_smoothing_path_tolerance
+        )
+        self.trajectory_smoothing_resample_dt = float(
+            trajectory_smoothing_resample_dt
+        )
+        self.controller_interpolation_rate_hz = float(
+            controller_interpolation_rate_hz
+        )
         self.trajectory_cache = TrajectoryCache(
             trajectory_cache_root,
             enabled=trajectory_cache_enabled,
@@ -103,6 +124,7 @@ class PlannerAdapter:
         self._planner_process: subprocess.Popen[str] | None = None
         self._service_client = None
         self._recapture_client = None
+        self._smooth_client = None
         self.startup_ms = 0.0
 
     def _ensure_session(self) -> None:
@@ -197,7 +219,7 @@ class PlannerAdapter:
             timeout=self.timeout_s,
             node_name="armmotion_persistent_planner_client",
         )
-        from alfa_robot_moveit_config.srv import PlanRecapture
+        from alfa_robot_moveit_config.srv import PlanRecapture, SmoothTrajectory
 
         self._recapture_type = PlanRecapture
         self._recapture_client = self._service_client.node.create_client(
@@ -206,12 +228,267 @@ class PlannerAdapter:
         )
         if not self._recapture_client.wait_for_service(timeout_sec=self.timeout_s):
             raise TimeoutError("service /dual_arm_planner/plan_recapture not available")
+        self._smooth_type = SmoothTrajectory
+        self._smooth_client = self._service_client.node.create_client(
+            SmoothTrajectory,
+            "/dual_arm_planner/smooth_trajectory",
+        )
+        if not self._smooth_client.wait_for_service(timeout_sec=self.timeout_s):
+            self._smooth_client = None
+            print(
+                "警告：/dual_arm_planner/smooth_trajectory 不可用，轨迹将使用旧重定时安全降级",
+                flush=True,
+            )
         self.startup_ms = (time.monotonic() - started) * 1000.0
         print(
             f"planner 长驻会话已就绪：startup={self.startup_ms:.1f}ms "
             f"log={self.session_log}",
             flush=True,
         )
+
+    @staticmethod
+    def _set_duration(message, seconds: float) -> None:
+        seconds = max(0.0, float(seconds))
+        whole = int(math.floor(seconds))
+        nanoseconds = int(round((seconds - whole) * 1_000_000_000))
+        if nanoseconds >= 1_000_000_000:
+            whole += 1
+            nanoseconds -= 1_000_000_000
+        message.sec = whole
+        message.nanosec = nanoseconds
+
+    @staticmethod
+    def _context_for_progress(
+        samples: list[MotionSample],
+        progress: float,
+    ) -> dict[str, Any]:
+        index = min(
+            len(samples) - 1,
+            int(round(min(1.0, max(0.0, progress)) * (len(samples) - 1))),
+        )
+        return dict(samples[index].context)
+
+    def smooth_motion_samples(
+        self,
+        samples: list[MotionSample],
+        *,
+        context_label: str,
+    ) -> tuple[list[MotionSample], dict[str, Any]]:
+        if len(samples) < 2:
+            raise ValueError("轨迹段至少需要两个采样点")
+        fallback_reason = ""
+        try:
+            self._ensure_session()
+            if self._smooth_client is None:
+                raise RuntimeError("trajectory smoothing service unavailable")
+            control_samples = _simplify_collinear_samples(
+                samples,
+                EXECUTION_JOINT_NAMES,
+            )
+            request = self._smooth_type.Request()
+            request.input.joint_names = ["updown", *EXECUTION_JOINT_NAMES]
+            first_time = float(control_samples[0].time_s)
+            for sample in control_samples:
+                point = JointTrajectoryPoint()
+                point.positions = [
+                    float(sample.updown_m),
+                    *(float(sample.joints[name]) for name in EXECUTION_JOINT_NAMES),
+                ]
+                self._set_duration(
+                    point.time_from_start,
+                    max(0.0, float(sample.time_s) - first_time),
+                )
+                request.input.points.append(point)
+            request.max_joint_velocity_rad_s = math.radians(
+                self.max_joint_speed_deg_s * self.speed_scale
+            )
+            request.max_joint_acceleration_rad_s2 = math.radians(
+                self.max_joint_acceleration_deg_s2
+            )
+            request.max_updown_velocity_m_s = self.max_updown_speed_m_s
+            request.max_updown_acceleration_m_s2 = self.max_updown_acceleration_m_s2
+            request.path_tolerance = self.trajectory_smoothing_path_tolerance
+            request.resample_dt = self.trajectory_smoothing_resample_dt
+
+            started = time.monotonic()
+            future = self._smooth_client.call_async(request)
+            self._service_client._rclpy.spin_until_future_complete(
+                self._service_client.node,
+                future,
+                timeout_sec=self.timeout_s,
+            )
+            service_wall_ms = (time.monotonic() - started) * 1000.0
+            if not future.done():
+                raise TimeoutError(f"trajectory smoothing timeout {self.timeout_s:.1f}s")
+            response = future.result()
+            if response is None:
+                raise RuntimeError(f"trajectory smoothing call failed: {future.exception()}")
+            if not response.success:
+                raise RuntimeError(response.message)
+            trajectory = response.trajectory
+            if len(trajectory.points) < 2:
+                raise RuntimeError("trajectory smoothing returned fewer than two points")
+            index_by_name = {
+                name: index for index, name in enumerate(trajectory.joint_names)
+            }
+            required_names = ["updown", *EXECUTION_JOINT_NAMES]
+            missing = [name for name in required_names if name not in index_by_name]
+            if missing:
+                raise RuntimeError(f"trajectory smoothing missing joints: {missing}")
+            final_time = (
+                float(trajectory.points[-1].time_from_start.sec)
+                + float(trajectory.points[-1].time_from_start.nanosec) * 1e-9
+            )
+            smoothed: list[MotionSample] = []
+            for point in trajectory.points:
+                stamp = (
+                    float(point.time_from_start.sec)
+                    + float(point.time_from_start.nanosec) * 1e-9
+                )
+                progress = stamp / final_time if final_time > 1e-12 else 1.0
+                context = self._context_for_progress(samples, progress)
+                updown_index = index_by_name["updown"]
+                updown = float(point.positions[updown_index])
+                context["stage"] = context.get("stage", context_label)
+                context["updown"] = updown
+                smoothed.append(
+                    MotionSample(
+                        time_s=stamp,
+                        joints={
+                            name: float(point.positions[index_by_name[name]])
+                            for name in EXECUTION_JOINT_NAMES
+                        },
+                        updown_m=updown,
+                        context=context,
+                        joint_velocities={
+                            name: float(point.velocities[index_by_name[name]])
+                            for name in EXECUTION_JOINT_NAMES
+                        },
+                        updown_velocity_m_s=float(point.velocities[updown_index]),
+                        joint_accelerations={
+                            name: float(point.accelerations[index_by_name[name]])
+                            for name in EXECUTION_JOINT_NAMES
+                        },
+                        updown_acceleration_m_s2=float(
+                            point.accelerations[updown_index]
+                        ),
+                    )
+                )
+            for endpoint_label, expected, actual in (
+                ("start", samples[0], smoothed[0]),
+                ("goal", samples[-1], smoothed[-1]),
+            ):
+                maximum_joint_error = max(
+                    abs(expected.joints[name] - actual.joints[name])
+                    for name in EXECUTION_JOINT_NAMES
+                )
+                updown_error = abs(expected.updown_m - actual.updown_m)
+                if maximum_joint_error > 1e-8 or updown_error > 1e-8:
+                    raise RuntimeError(
+                        f"trajectory smoothing changed {endpoint_label} endpoint: "
+                        f"joint_error={maximum_joint_error:.3e} "
+                        f"updown_error={updown_error:.3e}"
+                    )
+            output, controller_metrics, duration_scale = controller_limited_resample(
+                smoothed,
+                EXECUTION_JOINT_NAMES,
+                output_rate_hz=self.rate_hz,
+                controller_rate_hz=self.controller_interpolation_rate_hz,
+                max_joint_velocity_rad_s=request.max_joint_velocity_rad_s,
+                max_joint_acceleration_rad_s2=request.max_joint_acceleration_rad_s2,
+                max_joint_jerk_rad_s3=math.radians(self.max_joint_jerk_deg_s3),
+                max_updown_velocity_m_s=request.max_updown_velocity_m_s,
+                max_updown_acceleration_m_s2=request.max_updown_acceleration_m_s2,
+                max_updown_jerk_m_s3=self.max_updown_jerk_m_s3,
+            )
+            for sample in output:
+                sample.context["trajectory_smoothing_context"] = context_label
+            return output, {
+                "mode": "totg_controller_limited",
+                "fallback": False,
+                "service_wall_ms": service_wall_ms,
+                "service_message": response.message,
+                "input_points": len(samples),
+                "control_points": len(control_samples),
+                "output_points": len(output),
+                "duration_s": controller_metrics.duration_s,
+                "duration_scale": duration_scale,
+                "max_joint_velocity_deg_s": math.degrees(
+                    controller_metrics.max_joint_velocity_rad_s
+                ),
+                "max_joint_acceleration_deg_s2": math.degrees(
+                    controller_metrics.max_joint_acceleration_rad_s2
+                ),
+                "max_joint_jerk_deg_s3": math.degrees(
+                    controller_metrics.max_joint_jerk_rad_s3
+                ),
+                "max_updown_velocity_m_s": controller_metrics.max_updown_velocity_m_s,
+                "max_updown_acceleration_m_s2": (
+                    controller_metrics.max_updown_acceleration_m_s2
+                ),
+                "max_updown_jerk_m_s3": controller_metrics.max_updown_jerk_m_s3,
+            }
+        except Exception as exc:
+            fallback_reason = str(exc)
+
+        fallback_source = retime_segment(
+            samples,
+            EXECUTION_JOINT_NAMES,
+            rate_hz=self.rate_hz,
+            max_joint_speed_deg_s=self.max_joint_speed_deg_s,
+            max_joint_acceleration_deg_s2=self.max_joint_acceleration_deg_s2,
+            max_updown_speed_m_s=self.max_updown_speed_m_s,
+            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
+            speed_scale=self.speed_scale,
+        )
+        fallback, controller_metrics, duration_scale = controller_limited_resample(
+            fallback_source,
+            EXECUTION_JOINT_NAMES,
+            output_rate_hz=self.rate_hz,
+            controller_rate_hz=self.controller_interpolation_rate_hz,
+            max_joint_velocity_rad_s=math.radians(
+                self.max_joint_speed_deg_s * self.speed_scale
+            ),
+            max_joint_acceleration_rad_s2=math.radians(
+                self.max_joint_acceleration_deg_s2
+            ),
+            max_joint_jerk_rad_s3=math.radians(self.max_joint_jerk_deg_s3),
+            max_updown_velocity_m_s=self.max_updown_speed_m_s,
+            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
+            max_updown_jerk_m_s3=self.max_updown_jerk_m_s3,
+        )
+        for sample in fallback:
+            sample.context["trajectory_smoothing"] = "legacy_controller_limited_fallback"
+            sample.context["trajectory_smoothing_context"] = context_label
+            sample.context["trajectory_smoothing_fallback_reason"] = fallback_reason
+        print(
+            f"警告：{context_label} TOTG 平滑失败，已使用限 jerk 的旧重定时降级："
+            f"{fallback_reason}",
+            flush=True,
+        )
+        return fallback, {
+            "mode": "legacy_controller_limited_fallback",
+            "fallback": True,
+            "fallback_reason": fallback_reason,
+            "input_points": len(samples),
+            "output_points": len(fallback),
+            "duration_s": controller_metrics.duration_s,
+            "duration_scale": duration_scale,
+            "max_joint_velocity_deg_s": math.degrees(
+                controller_metrics.max_joint_velocity_rad_s
+            ),
+            "max_joint_acceleration_deg_s2": math.degrees(
+                controller_metrics.max_joint_acceleration_rad_s2
+            ),
+            "max_joint_jerk_deg_s3": math.degrees(
+                controller_metrics.max_joint_jerk_rad_s3
+            ),
+            "max_updown_velocity_m_s": controller_metrics.max_updown_velocity_m_s,
+            "max_updown_acceleration_m_s2": (
+                controller_metrics.max_updown_acceleration_m_s2
+            ),
+            "max_updown_jerk_m_s3": controller_metrics.max_updown_jerk_m_s3,
+        }
 
     def _target_args(self, task: PlanningTask) -> SimpleNamespace:
         scene_y_shift = getattr(task, "scene_y_shift", None)
@@ -377,15 +654,9 @@ class PlannerAdapter:
                 "重拍位规划成功但轨迹为空: "
                 f"response_points={len(trajectory.points)} message={response.message}"
             )
-        samples = retime_segment(
+        samples, smoothing_metrics = self.smooth_motion_samples(
             raw_samples,
-            EXECUTION_JOINT_NAMES,
-            rate_hz=self.rate_hz,
-            max_joint_speed_deg_s=self.max_joint_speed_deg_s,
-            max_joint_acceleration_deg_s2=self.max_joint_acceleration_deg_s2,
-            max_updown_speed_m_s=self.max_updown_speed_m_s,
-            max_updown_acceleration_m_s2=self.max_updown_acceleration_m_s2,
-            speed_scale=self.speed_scale,
+            context_label=context_stage,
         )
         return samples, {
             "wall_ms": wall_ms,
@@ -393,6 +664,7 @@ class PlannerAdapter:
             "planning_ms": float(response.planning_time_ms),
             "selected_updown": float(response.selected_updown),
             "message": response.message,
+            "trajectory_smoothing": smoothing_metrics,
         }
 
     def plan_recapture_with_approach_search(
@@ -793,11 +1065,32 @@ class PlannerAdapter:
             "speed_scale": self.speed_scale,
             "max_updown_acceleration_m_s2": self.max_updown_acceleration_m_s2,
         }
-        action_trajectories = retime_action_trajectories(
-            raw_stages,
-            EXECUTION_JOINT_NAMES,
-            **retime_parameters,
-        )
+        action_groups = {
+            "pregrasp": raw_stages[1],
+            "approach": raw_stages[2],
+            "place": [*raw_stages[3], *raw_stages[4]],
+            "home": raw_stages[6],
+        }
+        action_trajectories: dict[str, list[MotionSample]] = {}
+        action_smoothing_metrics: dict[str, dict[str, Any]] = {}
+        for action_name, segments in action_groups.items():
+            combined = _concatenate_motion_segments(
+                segments,
+                EXECUTION_JOINT_NAMES,
+            )
+            if len(combined) == 1:
+                combined.append(
+                    _copy_sample(
+                        combined[0],
+                        combined[0].time_s + 1.0 / self.rate_hz,
+                    )
+                )
+            trajectory, smoothing_metrics = self.smooth_motion_samples(
+                combined,
+                context_label=f"action/{action_name}",
+            )
+            action_trajectories[action_name] = trajectory
+            action_smoothing_metrics[action_name] = smoothing_metrics
         stages = retime_all_stages(
             raw_stages,
             EXECUTION_JOINT_NAMES,
@@ -850,6 +1143,7 @@ class PlannerAdapter:
             "trajectory_cache_bridge_ms": (
                 float(bridge_metrics["wall_ms"]) if cache_match is not None else 0.0
             ),
+            "trajectory_smoothing": action_smoothing_metrics,
         }
         return ExecutionPlan(
             task=task,
@@ -865,6 +1159,7 @@ class PlannerAdapter:
             self._service_client.close()
             self._service_client = None
         self._recapture_client = None
+        self._smooth_client = None
         process = self._planner_process
         self._planner_process = None
         if process is None:

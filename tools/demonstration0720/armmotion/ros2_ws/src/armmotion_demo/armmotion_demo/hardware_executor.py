@@ -59,7 +59,7 @@ class HardwareExecutor:
         vacuum_pump_service: str,
         wait_timeout_s: float,
         joint_state_topic: str = "/joint_states",
-        start_joint_tolerance_deg: float = 5.0,
+        start_joint_tolerance_deg: float = 0.75,
         start_updown_tolerance_m: float = 0.015,
         manage_grasp_io: bool = True,
     ) -> None:

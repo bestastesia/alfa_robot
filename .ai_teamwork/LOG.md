@@ -2,6 +2,20 @@
 
 这里仅保留当前分支仍需让新 AI 立刻看到的最新交接。长过程和已完成事项已归档。
 
+## 2026-08-15 运控 / Codex / 交互式实时 6D Pose 闭环原型
+
+- 做了什么：在 `codex/realtime-6d-pose-demo` 将第一版纯正弦性能演示补成可操作闭环：RViz 6DoF Marker -> Motion 100Hz 解析 IK/突变/连续边碰撞门 -> 固定顺序 14 轴最新目标流 -> Mock rt-control 250Hz -> 100Hz 实际反馈；Rerun 30Hz 同时显示目标、Motion 接受位姿和实际机械臂。初始状态已改为从当前 Motion baseline 读取的双臂负重位 `[0,-45,120,-75,0,0]deg`、`updown=0.3m`。
+- 验证结果：一键 launch 五个进程均正常启动和退出；RViz 完成 marker 服务初始化，模拟 marker feedback 确实更新 Motion；Motion 稳定约 100Hz，Mock RT 实测约 250Hz，反馈 100Hz，看门狗正常不触发；Rerun 首帧收齐 14 轴实际反馈、15 变量指令、目标/接受 Pose 和 RT 状态。Release 构建通过。
+- 当前边界：Mock RT 只模拟最新位置目标、速度/加速度限幅和 100ms 看门狗，不模拟电流环/总线；Motion 门控基于上一条接受指令而非反馈；场景还没有环境和吸附重物；不会发送实机命令。详见原型 `README.md`/`NOTES.md`。
+- 留给下个 AI：接真实 rt-control 前确认连续目标接口、14 轴顺序、时间戳/序号、看门狗和反馈 QoS；随后把真实反馈注入 Motion 当前状态，并测试目标中断、丢帧和附着重物碰撞场景。
+
+## 2026-08-15 运控 / Codex / MuJoCo 力引导贴合原型
+
+- 做了什么：新增隔离原型 `scripts/ik_benchmark/prototypes/mujoco_force_alignment/`，完全不依赖机器人、ROS/MoveIt；MuJoCo 1kHz 模拟末端板沿 `world -X` 侧向靠近竖直墙面，250Hz 状态机用工具局部 `Fz` 控制压力、偏心接触产生的 `Mx/My` 修正 roll/pitch，带图形窗口、接触力箭头、终端全状态和 3°/8°/15° 快捷重置。
+- 验证结果：`alfa` 环境 MuJoCo 3.8.1 可用；默认 8° 从约3.068s单角接触、4.348s边接触、5.184s四点接触推进到约12.6s稳定 `seated`。3°、8°、15° 均在16s内形成四点整面贴合，最终约29.1～29.5N、姿态接近0°；关闭力矩修正时16s后仍保持单角斜接触。侧视离屏画面与图形 Viewer 已验收；接触箭头按180mm工具尺度显示。
+- 当前边界：自由刚体 Cartesian servo，不包含机器人动力学、传感器噪声、吸盘柔性和摩擦不确定性；未接 ROS。详见原型 `README.md`/`NOTES.md`。
+- 留给下个 AI：如用户认可，把局部 MuJoCo 接触 Lab 接到实时 6D Pose Demo，让实际 FK 驱动末端接触体、贴合状态机输出小步 Pose 修正，再走解析 IK/突变/碰撞门。
+
 ## 归档索引
 
 - `.ai_teamwork/archive/2026-05-13_direction_reset/LOG.full_history.before_reset.md`
@@ -10,6 +24,30 @@
 - `.ai_teamwork/archive/2026-05-18_v5_dev_collaboration_cleanup/COMPLETED_SUMMARY.md`
 
 默认不要读归档；只有追溯历史原因、验收证据、责任边界或恢复旧方案时再查。
+
+## 2026-08-23 运控 / Codex / 修复实时 6D Pose 目标球未出现
+
+- 做了什么：定位真实 rolling 联调在 Marker 暴露前失败的原因：Motion 尚未收到外部 Pose 时仍重复求解相同初始 Pose，腕部奇异附近的等价解析 IK 解发生累积漂移，最终第 18 批被 rt-control 以 `NOT_STOPPING_VIABLE` 拒绝；安全门禁因此正确地没有启动目标球。
+- 改了哪里：topic 模式改为只有收到新的外部 Pose 才求一次 IK，并缓存该关节目标；当前 Pose 增加零运动快速路径；rolling client 增加“收到外部 Pose 后才允许离开 HOLD”的武装门；本地 suffix 校验同步 rt-control 的逐段保守停止包络；一键脚本退出改为有界 `SIGTERM` 清理。新版已部署到工控机 `/home/ar/motion_realtime_pose_demo_0020d98`，旧文件备份在其 `.backup_20260823_marker_fix/`。
+- 验证结果：Python 回归 4/4 通过，干净 ROS 环境 C++ 构建通过；真实证据第 17 批本地判定通过、第 18 批准确提前判定 `stopping_viability:left_joint3`；工控机隔离 Mock Domain 日志出现 `6D target ready in RViz`，并连续约 14 秒保持 100Hz `accepted_current_pose`，无初始 IK 漂移、无残留进程。
+- 留给下个 AI：下一次真机联调需由操作员先启动 rt-control 并确认 Domain 0/FJT_READY，再运行 `ALFA_RT_COMMISSIONING_CONFIRM=CURRENT_POSE_HOLD_ACKED ./run_realtime_pose_control_with_rerun.sh --arm left --rate 30`；重点保留本次真实 evidence，确认 Marker 暴露后首批仍是零运动 HOLD，并观察拖动接近关节边界时本地 stopping viability 门是否生效。
+
+## 2026-08-24 运控 / Codex / 追溯 8 月 23 日最后一轮实时联调失败
+
+- 做了什么：对齐工控机最后一份真实 evidence `track_20260823_081536.jsonl` 与相邻 rt-control launch 日志；该轮不是 Mock，也没有进入 open/HOLD/update/Marker 阶段。
+- 根因边界：Motion 的 `FJT_READY→ROLLING_READY` compare-and-set 请求返回 `accepted=false / result=RESTART_REQUIRED(19) / mode=RESTART_REQUIRED / restart_required=true`。同一时刻 controller_manager 记录 `rolling_trajectory_controller` 激活后从第一个 250Hz update 开始持续返回 ERROR；模式切换虽显示 source 已停、target 已激活，但后置状态不可信，因此 rt-control 按契约 fail-closed。
+- 验证结果：最后 evidence 只有 `client_start→set_mode_request→set_mode_response→client_error` 四条，没有 open、HOLD batch、IK 目标或 Marker 武装记录；因此该轮失败与 Motion suffix、解析 IK、RViz 显示无关，问题位于 rt-control rolling controller 的 activate/update 阶段。
+- 源码追踪：工控机部署源码 `rolling_trajectory_controller.cpp` 的时间早于对应插件构建；`on_activate()` 已成功，且 session 尚为 `kNone` 时首个 `update()` 只会将接管到的当前 command position 以零速度写回。该路径返回 ERROR 的可达条件是 `desiredIsValid()` 判定当前姿态越过 rt-control rolling envelope；但实现没有记录失败轴、当前值或上下界。
+- 前序关联：上一轮最后接受的 suffix（seq17）已把 `left_joint3` 末点推进到距 provisional 安全上界约 `0.085°`，seq18～23均被 rt-control 以 `NOT_STOPPING_VIABLE` 拒绝，最终因 `UPDATE_TIMEOUT` 停止；切回 FJT 又返回 `TAKEOVER_MISMATCH(13)`。因此 `left_joint3` 是本轮接管越界的最强嫌疑轴，但由于首帧 ERROR 缺少轴级日志，这一轴名仍是基于前序证据的推断，不写成直接观测事实。
+- 留给下个 AI：本轮直接责任在 rt-control：控制器应在激活事务内原子校验当前姿态，并以轴名/当前值/安全界限明确拒绝，不能先停 FJT、激活 rolling，再由首帧 update 进入无原因的 250Hz ERROR 和 `RESTART_REQUIRED`。Motion 可补充使用同版本 envelope 的切换前预检以改善体验，但不能替代 rt-control 的最终准入与原子切换；进入 `RESTART_REQUIRED` 后不得由 Motion 自动重试。
+
+## 2026-08-24 运控 / Codex / 16:21 实时拖动停止与退出残留修复
+
+- 现场证据：本轮对齐的是工控机 `track_20260824_012134.jsonl`（本地时间约16:21），不是上一日日志。会话成功进入RUNNING并接受853批；随后固定24ms替换裕量被约30～40ms旧的公开RT状态追过，连续出现`LATE_REPLACE`，200ms内没有可接受后缀后触发`UPDATE_TIMEOUT`并进入HOLD。这是“拖动一次后不再运动”的直接原因，和IK可达性无关。
+- Motion修复：新增替换前沿纯函数，使用`公开state年龄 + 24ms传输裕量`选择splice，并受Open协商的`max_horizon/replace_lead/controller_period`共同约束；状态过旧时本地跳过该批，不再发送必被拒绝的suffix。状态输出新增`public_state_age_ms`。
+- 就绪门修复：孤立的累计reject不再永久判死；每次新reject重新开始3秒/60批无拒绝soak。`HOLDING/STOPPING/TERMINATED`、watchdog、stop reason及real error仍立即失败。
+- 退出修复：一键脚本用独立process group启动commissioning和Marker；任何Ctrl+C或就绪门失败都会向整个launch组发送SIGINT，使rolling client执行`REQUEST_STOP→FINALIZE→FJT_READY`，退出后再读取controller_manager确认FJT，避免只杀launch父进程留下writer。16:22的`track_20260824_012248.jsonl`残留正是旧脚本只TERM父进程造成。
+- 验证与部署：本地Python回归8/8、Shell语法、Python编译、`alfa_robot_benchmarks` Release构建通过；修复和两份回归已上传`/home/ar/motion_realtime_pose_demo_0020d98`，工控机纯软件回归8/8通过。尚未做真实mode switch/运动复验：现场`recover-power-loss`从16:48起卡在`sudo modprobe zpcican`，controller_manager不可用；PID39080旧rolling client仍在，待恢复流程退出后再清理。
 
 ## 2026-05-18 项目经理 / Codex / v5_dev 协作文件归档
 
@@ -1867,11 +1905,109 @@
 - 验证结果：本地与工控机 `/home/ar/motion_domain_current` 均完成 `alfa_robot_moveit_config` Release 编译；未自动重启正在运行的实机 Motion，需安全重启后加载新二进制。
 - 留给下个 AI：该调整可能接受末端偏差明显但碰撞安全的重拍姿态，运行日志会输出最终 `position_error_mm` 和 `orientation_error_deg`，现场需据此判断是否另设宽松但有限的产品阈值。
 
+## 2026-08-15 运控 / Codex / 14轴Rerun滑块示教器
+- 做了什么：新增独立 Tk 示教窗口，订阅权威 `/joint_states`，在 Rerun 并排显示实体当前状态与14轴滑块预览；滑块不发布机器人状态，人工解锁并点击后才生成完整14轴五次平滑轨迹。
+- 安全边界：执行前检查 `/motion/execute_stage` 是否在线以及 `/whole_body_jtc` 是否已有活动目标；任一条件成立即拒绝发送，避免与算法线程或其他轨迹客户端抢占。工具不做碰撞规划，默认旋转轴限速/加速度为 `10deg/s`、`10deg/s^2`，Updown 均为 `0.05m/s` 量级。
+- 验证结果：`alfa_robot_rerun` 与 `alfa_robot_execution_bridge` 构建通过，执行桥18项测试通过；隔离 ROS Domain 下窗口和Rerun启动正常，同一轨迹生成器向非硬件 rt-control Mock 发送31点完整14轴轨迹并成功完成。
+- 使用入口：`ros2 run alfa_robot_execution_bridge joint_teach_pendant`；包装脚本为 `ros2_ws/src/alfa_robot_execution_bridge/scripts/run_joint_teach_pendant.sh`。已同步到工控机 `/home/ar/motion_domain_current` 并完成远端构建与18项测试；包装脚本支持从 SSH 自动连接工控机本地 X11 桌面。本轮未启动真实控制或 Motion 算法进程。
+- TF纠正：初版实体模型实际由 `/joint_states + 本地URDF FK` 重建，不消费 rt-control TF。现改为实体模型严格消费 rt-control 的 `/tf`、`/tf_static`，以 `base_footprint` 为根查询本体链；滑块目标才使用本地URDF FK。TF树不完整时界面明确列出缺帧并禁止实机发送。
+- 解耦纠正：示教器不再以 `/motion/execute_stage` 是否在线作为执行锁。示教器和 Motion 算法线程可以独立启动并同时保持在线，只在 `/whole_body_jtc` 已有活动轨迹时拒绝发送，避免控制器目标冲突。
+- 限位纠正：发现 Motion 将 Joint1/3/5/6 分别按 `±135/±180/±180/±180°` 规划，而 rt-control 硬限位为 `±90/±140/±125/±179°`，导致控制器可能在物理限位外返回假成功。现将两臂12轴在 `joints.py`、URDF、MoveIt、ros2_control、解析IK、Jog和示教器中统一为 rt-control 的 `90/90/140/180/125/179°`。
+- 缓存退出：正式 Motion 域不再声明或接受轨迹缓存开关，`PlannerAdapter` 固定以 cache disabled 启动；抓取任务始终针对收到并完成 Turn=0、姿态标准化、低位同高归一后的6D Pose 实时规划。缓存类仅保留为离线历史工具，不进入正式入口。
+
+## 2026-08-15 运控 / Codex / ALFA机械臂MuJoCo柔性贴合原型
+- 链路：当前 ALFA URDF 左臂末端增加接触板与虚拟六维力传感器；MuJoCo 生成墙面接触力，外层控制器将 `Fz/Mx` 转为连续6D Pose微调，既有实时Pose原型负责解析IK、10°突变门和MoveIt连续碰撞门，再输出完整14轴最新目标给1kHz模拟rt-control。
+- 结果：初始 roll `-5°`，约8.48s首次接触、11.20s首次四点整面接触、13.38s进入`seated`；最终四点接触、法向力29.99N、roll约`-0.044°`、峰值35.68N，Motion最终`accepted`，模拟关节跟踪误差0°。
+- 边界：首轮只验证单倾角轴和无切向摩擦法向接触；第二轴保持平行且不参与完成判定。只使用原型ROS话题和理想位置跟踪，没有连接真实rt-control、没有猜测电机环参数，也未操作实机。
+- 入口：`ros2 launch alfa_robot_benchmarks mujoco_robot_force_alignment_prototype.launch.py`；说明与实验结论位于`scripts/ik_benchmark/prototypes/mujoco_force_alignment/`。
+- 阻尼整定：针对接近整面接触时的姿态来回摆，将机械臂版角导纳增益从`0.06`降为`0.04 rad/(N·m·s)`，等效提高虚拟角阻尼；单位采样目标角摆动约下降61%，峰值力由35.68N降至35.03N，进入`seated`约慢0.4s。该参数已开放为launch参数`moment_gain_rad_per_nm_s`。
+- 动态物体：墙面改为首次稳定贴合后启动的MuJoCo mocap物体，默认16秒周期执行面内`±30mm`、法向`±2mm`和roll`±1°`复合运动。18.18秒动态验收中持续接触率和四点接触率均100%、最长失联0秒、压力RMSE 6.39N、倾角跟随RMSE 0.044°，Motion最终`accepted`且模拟跟踪误差0°。面内接触点允许滑移，不宣称刚性切向附着。
+- 复合抖动：按用户要求将规则运动改为三组不同频率/相位叠加的确定性抖动，面内、法向和roll每个仿真步同时更新，标称幅度提高至`±45mm/±2.5mm/±1.5°`。21.18秒验收中接触率100%、四点接触率96.22%、最长失联0秒，压力范围8.83～45.49N、倾角RMSE 0.055°；短暂边接触可自行恢复。
+- 高频抖动：基础周期缩短到3.5秒、最快分量约0.97Hz。高频法向`±0.8mm`时出现0.24秒短暂失联；降为面内`±35mm`、法向`±0.4mm`、roll`±0.35°`后，16.18秒验收中接触率和四点接触率均100%、压力17.34～44.15N、倾角RMSE 0.048°，设为默认参数。
+- 5°高频旋转：按总行程`0°↔-5°`实现，避免`±5°`造成10°峰峰值和正向解析IK不可达。动态阶段切到增益0.12、角速度上限0.30rad/s后，约0.97Hz的16.18秒实验接触率84.18%、四点率59.21%、最长失联0.92秒、峰值81.04N；继续提高增益反而更差。默认按用户要求保留5°压力测试，但它不是稳定附着配置，稳定高频配置仍为0.35°。
+
+## 2026-08-16 运控 / Codex / 实机规划状态适配与冷启动修复
+- 根因：Motion启动期主动预热直接让MoveIt订阅rt-control的14轴`/joint_states`，但模型还包含不由Motion负责的`pitch`；原有补齐`pitch=0`的模型状态适配没有接入这条新启动链，服务又只等待15秒，导致规划器尚未完成构造就被误杀。
+- 修复：`armmotion_demo`新增只读`planning_joint_state_bridge`，输出`/motion/internal/model_joint_states`；只补`pitch=0`，实体`turn`及其余14轴全部原样透传。MoveGroup和`dual_arm_planner_node`统一只订阅该内部话题，执行层仍直接使用权威`/joint_states`，Motion不规划或改变`turn/pitch`；冷启动服务等待放宽到45秒。
+- 同步：工控机`/home/ar/motion_domain_current`同时补齐MoveIt旧内部接口到`robot_motion_internal_interfaces`的既有本地迁移，消除中央`robot_motion_interfaces`同名ABI冲突；未改变规划算法参数。
+- 验证：本地20项桥与域契约测试通过；工控机隔离Domain 208 Mock冷启动成功，Planner约`5322.9ms`就绪，内部状态15关节，`raw_turn=0.0 == model_turn=0.0`、`model_pitch=0.0`，验证后已清理隔离进程。
+
+## 2026-08-16 运控 / Codex / ALFA机械臂切向粘附跟随原型
+- 做了什么：保留原柔性贴合程序不变，新增独立`mujoco_robot_adhesive_follow.py`及launch；稳定贴合后在墙面局部Y方向建立虚拟吸附锚点，以`Fy=-k*dy-c*d(dy)/dt`合成切向六维力传感器数据，再用切向导纳产生连续6D Pose平移目标。
+- 默认参数：墙面面内标称`±8mm`、周期5秒，粘附刚度300N/m、阻尼1N·s/m、切向力限幅6N；法向抖动缩小为`±0.2mm`、roll总行程0.75°。
+- 验证结果：23.18秒动态阶段接触率/四点率均100%、最长失联0秒；切向偏移RMSE 2.00mm、最大4.61mm，切向力RMSE 0.60N、最大1.38N，符合约0.3N/mm且未顶限幅。Motion最终accepted，模拟关节跟踪误差0°。
+- 受力视图：独立粘附Demo的MuJoCo窗口右上角实时显示工具坐标系六维力、粘附Fy、切向偏移和接触阶段；机械臂上方增加限长的黄色合力与青色粘附力HUD箭头。30秒图形验收无异常，动态阶段保持四点接触且Motion最终accepted。
+- 高频粘附抖动：粘附版单独覆写扰动生成，基础周期从5秒压到0.4秒，最快分量提高到8.525Hz；面内/法向/roll相应缩小为`±4mm/±0.05mm/0.15°总行程`，阻尼降至0.15N·s/m。15.18秒动态验收接触率和四点率均100%，法向力29.37～30.51N，切向力最大1.10N，Motion最终accepted。
+- 开场抖动与扭转摩擦：当前粘附版默认周期进一步改为0.25秒（最快13.64Hz），物体从第一仿真步即开始抖；roll总行程增至0.5°，并新增绕表面法向`±3°`旋转。首次四点接触建立旋转锚点，以扭转弹簧阻尼生成`Mz`并驱动末端yaw导纳。23.46秒粘附阶段持续接触率100%、四点率99.66%，扭转角最大2.81°、Mz最大0.105N·m，Motion最终accepted。
+- 边界：当前是单切向轴虚拟弹簧加单法向轴扭转弹簧，只向虚拟传感器与导纳闭环注入力/力矩，不包含真实吸盘材料形变、完整摩擦锥、脱附阈值、滞回或传感器动态；未连接真实rt-control、未操作实机。
+
 ## 2026-08-17 运控 / Codex / MOTION-123 接口分层与中央契约迁移
 - 做了什么：删除本地公共接口副本，域间 Action、readiness、错误码和 QoS 改用中央 `robot_interfaces`；域内接口统一迁移为 `motion_internal_interfaces`。
 - 改了哪里：中央依赖锁定 `f699f45972ad15bbbbbb3da1a4894faf209144c9`，入口为 `ros2_ws/src/dependencies.repos` 和 `dependencies.lock.yaml`；迁移清单与原子升级/回滚步骤见 `docs/运控/MOTION-123_接口分层与中央契约迁移.md`。
 - 验证结果：本机 13 个 Motion 相关包 Release 构建通过，接口测试 2/2、合同测试 29/29；隔离 ROS Domain 下 Action 成功与结构化失败回执、readiness 类型及 QoS 均通过。
 - 留给下个 AI：Motion 与 Autonomy 必须使用同一中央接口 SHA 原子切换；禁止保留旧 `alfa_motion_interfaces` 或旧 `robot_motion_internal_interfaces` 构建覆盖层。
+
+## 2026-08-18 运控 / Codex / 观察位渐近 IK 与预抓取轨迹缓存
+- 观察位：输入先换算到 Turn=0、标准化朝向、左右 X 取均值并保留各自 Y；解析 IK 从原位起向箱墙方向按 1cm 递进至 10cm，全部失败后才在原 viewpose 使用数值 IK。
+- 抓取任务：输入同样完成 Turn=0、标准朝向和 X 均值处理，以 X、五排高度和左右 Y 平均偏差命中 `70～78cm × -10～+10cm × 5排` 缓存；越界夹到边界，缺失失败格自动选择同排最近成功缓存。
+- 缓存：945 个网格中 931 个成功轨迹保存于 `trajectory_cache_pregrasp_v3`；只保存预抓取起点之后直至放置完成并返回初始位的轨迹。运行时先用 shortcut+局部RRT从当前状态连接缓存预抓取，再复用缓存余段。
+- 场景修复：重拍规划前移除上一任务的动态箱墙和附着箱，但保留集装箱固定碰撞；避免跨任务残留箱墙误拒绝下一任务 IK/轨迹。
+- 验证：本地 Motion Python 测试 68/68；本地与工控机隔离 Mock 均完成五阶段。缺失格 `x78/y+7/row3` 正确降级到 `x78/y+6/row3`。工控机 `/home/ar/motion_domain_current` 已同步 931 条缓存并完成 Release 构建；未启动实机控制。
+
+## 2026-08-20 运控 / Codex / ELECTRI-102 Rolling 6D Pose 联调原型
+- 契约：中央 `robot_interfaces` 锁定 `9cc937970736cd19fd3bf5283de8cc5c15926967`，实现 protocol 1.0 的完整14轴 authoritative future suffix；30Hz 更新、100ms knot、约500ms future，只有 public state ACK 才推进 Motion splice 基线。
+- Demo：`run_realtime_pose_teach_pendant.sh` 默认启动安全 Mock；RViz 拖动末端6D Pose，Motion 100Hz执行解析IK、10°突变门与连续边碰撞门，rolling client 生成有限未来段，Mock 250Hz Hermite采样，Rerun同步目标、接受状态、实际机械臂和协议健康度。Real observe-only 不创建 `/rt/rolling_joint_control/update` writer；真实发送必须同时提供 launch 参数、环境确认和 provisional limits 显式许可。
+- 验证：系统 Python 3.10 Release/symlink 构建5包通过；隔离 Domain 实测 Motion 稳定100Hz、batch约30.01Hz、Mock约250.00Hz、230+连续批次0拒绝、未来余量约540ms；主动移动目标后仍无拒绝。Rerun收到完整首帧；纯suffix、重复序号、update timeout自检通过；Ctrl-C安全退出通过。
+- 电控状态：ELECTRI-102 软件/mock 600秒与14场景已通过，但零设备 Docker smoke 与 EC-05～EC-09仍未完成；当前不能写成实机准入。随后已恢复 SSH，并将源码与18MB非 symlink overlay 独立部署到工控机 `~/motion_realtime_pose_demo`，未覆盖运行中的 `~/motion_domain_current`。
+- 工控机验证：正式 rolling IDL typesupport、C++动态依赖、launch解析和Rerun 0.33.1导入均通过。真实 Domain 11 当时 `control_enabled=true/READY`，因此不在远端编译、不切换模式、不发实机目标；仅在 Domain 151、localhost-only、CPU 12/14、nice 15 下运行 headless Mock，396批0 reject、future约540ms、Motion 100Hz，受限Mock batch约28Hz/RT约205Hz。验证后按明确PID停止，Domain 151无节点残留，Domain 11状态保持不变。
+## 2026-08-20 运控 / Codex / 全轴绝对运动兼容入口恢复
+- 做了什么：恢复历史 `run_move_all_joints_abs.sh` 命令名，但不再调用旧方向/升降实现；统一转发当前 `jog_to_pose.py`，通过 `joints.py` 合同向 `/whole_body_jtc/follow_joint_trajectory` 发送完整14轴五次平滑轨迹，默认关闭 Rerun。
+- 改了哪里：新增当前 Motion 部署入口 `tools/demonstration0720/armmotion/run_move_all_joints_abs.sh`；旧 `scripts/lhy_dev/run_move_all_joints_abs.sh` 自动优先转发 `/home/ar/motion_domain_current`，本地不存在时再使用仓库工作区。
+- 修复补充：工控机 rt-control 实际运行在 ROS Domain 12，旧入口默认 Domain 0 导致收不到 `/joint_states`；当前 Motion 环境和示教器会自动读取活动 `ros2_control_node` 的 Domain，显式 `ROS_DOMAIN_ID`/`--ros-domain-id` 仍可覆盖。同时修复连续型 `turn` 被错误套用12轴位置限位表的问题。
+- 验证结果：脚本语法和双入口参数输出一致，执行桥方向/轨迹回归16项通过；工控机无 `--send` 的完整14轴干运行成功生成114点、11.25秒轨迹，Action 为 `/whole_body_jtc/follow_joint_trajectory`；示教器在自动 Domain 12 下短时启动并加载26 links/21 meshes。未发送实机运动。
+
+## 2026-08-21 运控 / Codex / 轨迹缓存扩展至82cm
+- 做了什么：缓存命中距离上限由78cm扩展至82cm；为节省生成时间，只新增80cm、82cm两档，五排横向偏差按-10～+10cm、2cm分辨率各尝试一次。
+- 验证结果：110格中36格规划成功并追加至`trajectory_cache_pregrasp_v3`，缓存总数由931增至967；80cm成功23格、82cm成功13格。缺失格继续按同排最近成功缓存降级，0.82m五排均可返回缓存；缓存单测11/11、`armmotion_demo`定向构建通过。
+- 留给下个 AI：本轮按用户要求不重试失败格，第三排80/82cm均无新增成功缓存，82cm第四/五排也无新增成功缓存，实际会回退至78/80cm最近成功轨迹。已同步并构建工控机`/home/ar/motion_domain_current`；同步时旧`domain_motion_server`仍在运行，必须安全重启后才加载82cm上限和新增缓存。
+
+## 2026-08-21 运控 / Codex / 工具末端标定与缓存全量重建
+- 标定：左右`tool0`固定长度由259mm改为243mm，解析IK、URDF和MoveIt FK测试同源；`updown=0.4m/joint2=90°`的工具Z由0.91059m修正为0.92659m，与0.937m实测保留约10.4mm共同测量偏差。
+- 缓存：删除旧70～74cm、1cm横向分辨率和零散80/82cm缓存；按75～82cm、横向-10～+10cm每2cm、5排、82cm双臂间距重新计算440格，312格全流程成功并保存，缓存约8MB。
+- 验证：312份gzip/JSON和元数据完整性0错误；缓存/action测试16/16、解析IK与MoveIt FK回归通过。统计见`docs/运控/IK/2026-08-21_末端长度标定与轨迹缓存重建.md`。
+
+## 2026-08-21 运控 / Codex / PLACE阶段连续重定时
+- 根因：公开`PLACE`虽然只对应一次上层Action，内部抽离、负重过渡、放置却分别发送三个`FollowJointTrajectory` Goal，导致两个内部边界被控制器按完整停机处理。
+- 修复：保留内部三段算法语义和碰撞结果，将其拼接后按完整`PLACE`一次重定时、一次发送；只在公开Action起终点保留零速度，抽离→负重→放置内部边界不再强制停车。
+- 验证：本地与工控机`armmotion_demo`均为72项测试通过；312条新缓存全部通过新执行链加载。工控机`/home/ar/motion_domain_current`旧967条缓存和旧构建副本已删除，运行时缓存清单与本地哈希一致；未启动或重启实机Motion进程。
+## 2026-08-22 运控 / Codex / MoveIt Demo 单臂交互与重复模型修复
+- 做了什么：为 `demo.launch.py` 增加独立 KDL 配置，只给左右单臂提供 RViz 末端交互；正式 `kinematics.yaml` 保持为空，生产解析 IK 链路不变。RViz 默认关闭 Query Start State，只保留当前场景机器人和目标机器人。
+- 验证结果：隔离 ROS Domain 实启 Demo 后不再出现 `No kinematics plugins defined` 或 `No active joints or end effectors`；交互标记服务实际返回 `EE:goal_left_tool0`、`EE:goal_right_tool0`。Release 构建、配置回归和包边界测试通过；包内既有 `test_planning_diagnostics` 在 Release 下因空测试模型缺少 `updown` 仍失败，与本次修改无关。
+
+## 2026-08-22 运控 / Codex / 右臂可达性范围交互预览
+- 做了什么：新增 `alfa_robot_rerun/reachability_bounds_editor`，以完整当前URDF和固定`updown=0.45m`显示整车；Tk面板动态调整右臂XYZ范围与分辨率，Rerun同步更新采样盒、点阵、点数和九向IK预计调用量，并可复制后续测试参数。
+- 验证结果：该工具不调用IK、不做碰撞检测、不发布机器人状态；`alfa_robot_rerun`构建通过，4项包测试通过，短时图形启动成功。
+- 留给下个 AI：这只是T-0030正式计算前的范围选择工具，不代表T-0030/T-0031已完成；用户确认范围后仍需运行九向IK并输出真实成功/失败点云。
+
+## 2026-08-22 运控 / Codex / 右臂0至90度解析IK RGB可达性点云
+- 做了什么：新增C++进程内纯解析IK扫描器与RGB Rerun工具；工具法向按`+X=0°→-Z=90°`每5度扫描，R/G/B分别编码`0～30°/35～60°/65～90°`成功比例。
+- 验证结果：`updown=0.45m`、world范围`X[-0.09,0.98] Y[-0.8,0] Z[1.15,2.2]`共8602点、163438次IK，解析计算503.925ms、平均3.083us/次；至少一姿态可达6620点，19姿态全可达1359点。完整整车回放位于`data/ik_benchmark/right_arm_orientation_rgb_20260822_162524/right_arm_orientation_rgb.rrd`。
+- 留给下个 AI：当前结果是解析IK+关节限位的几何可达性，不包含MoveIt场景、自碰撞或环境碰撞；若用于安全工作空间，还需增加统一碰撞过滤层。
+
+## 2026-08-22 运控 / Codex / 右臂关节符号约束可达性复测
+- 做了什么：解析姿态扫描增加硬门槛，只有至少一个解析分支满足`joint3>0`且`joint4<0`才把该点该姿态判为可达；机器人默认35%不透明，点半径缩小至9mm。
+- 验证结果：world范围扩为`Z[0.90,2.20]m`，共10557点、200583次IK；合法57395次（28.61%），至少一姿态可达6046点（57.27%），19姿态全可达269点（2.55%）。原始有解96320次，其中38925次因关节符号条件被拒绝。Rerun为`data/ik_benchmark/right_arm_orientation_rgb_joint3pos_joint4neg_20260822_170208/right_arm_orientation_rgb_joint3pos_joint4neg.rrd`。
+- 纠正：本条初次复测的角度符号错误，90度实际指向world `-Z`，该组统计和Rerun不可用于目标工作空间判断。
+
+## 2026-08-22 运控 / Codex / 右臂向上姿态可达性纠正复测
+- 做了什么：姿态路径修正为工具法向`+X=0°→+Z=90°`（绕world `-Y`），并加入启动端点自检；继续要求`joint3>0`且`joint4<0`。
+- 验证结果：同一10557点、200583次IK中，合法44112次（21.99%），至少一姿态可达5073点（48.05%），19姿态全可达160点（1.52%）；解析计算664.884ms。正确Rerun为`data/ik_benchmark/right_arm_orientation_rgb_upward_joint3pos_joint4neg_20260822_173841/right_arm_orientation_rgb_upward_joint3pos_joint4neg.rrd`。
+- 留给下个 AI：结果仍不含碰撞过滤，不能直接作为安全工作空间。
+
+## 2026-08-22 运控 / Codex / 右臂向下至前向姿态可达性扫描
+- 做了什么：扫描器支持角度上下限参数和动态RGB三等分；姿态约定固定为`-90°=-Z向下、0°=+X向前、+90°=+Z向上`，继续要求`joint3>0`且`joint4<0`。
+- 验证结果：`updown=0.45m`、world范围`X[0.2,1.2] Y[-0.8,0] Z[0.45,2.3]`共13566点、257754次IK；`-90～0°`每5度扫描，合法63721次（24.72%），至少一姿态可达6691点（49.32%），19姿态全可达276点（2.03%），解析计算850.999ms。
+- 数据：Rerun为`data/ik_benchmark/right_arm_orientation_rgb_down_to_forward_joint3pos_joint4neg_20260822_193742/right_arm_orientation_rgb_down_to_forward_joint3pos_joint4neg.rrd`；仍不包含碰撞过滤。
 
 ## 2026-08-22 运控 / Codex / 实时6D Pose收口到Motion TX预览
 - 做了什么：实时6D Pose Demo不再启动Mock或真实rt-control Adapter；保留100Hz解析IK、关节突变和连续边碰撞门，新增纯Motion侧10/30Hz滚动消息生成器，在隔离topic发布正式`RollingJointTargetBatch`类型并由Rerun展开每批6个未来点。紫色模型只表示TX suffix末点，不是实际反馈。
@@ -1885,8 +2021,121 @@
 - 验证结果：同一10deg阶跃的执行前沿到95%由约3.03s缩短为约0.90s，第一批500ms末点由约0.62deg提高到约4.71deg；固定目标和连续拖动回归2/2通过。隔离ROS Domain实测Motion约100Hz、TX约30.0Hz、0本地拒绝，Rerun完整收到Motion目标、TX末点及状态首帧。
 - 留给下个 AI：这里仍是Motion输出预览，不代表真实机械臂位置；实机接入必须以rt-control协商的生产限速和ACK/state为拼接基线，不能直接沿用预览占位身份或MoveIt限速快照。
 
+## 2026-08-22 运控 / Codex / ELECTRI-102 真机联调包与当前姿态接管门
+- 做了什么：新增独立 `observe/hold/track` 联调入口。真实命令前必须连续读取25帧完整14轴反馈并确认静止；模式切换时冻结当前姿态，Open返回的hold姿态需在0.25deg/1mm内匹配且速度为零；首批永远只发当前姿态HOLD，收到ACK后才允许单独解锁6D Marker。rolling规划改用有状态C1 planner，只有public state ACK推进拼接基线。
+- 安全边界：`observe`不创建`/rt/rolling_joint_control/update` publisher；`hold/track`同时要求`--supervised`、环境确认和provisional limits显式许可。退出执行`REQUEST_STOP -> HOLDING -> FINALIZE -> FJT_READY`，不以kill代替协议关闭。
+- 工控机：独立上传至`/home/ar/motion_realtime_pose_demo_0020d98`，未覆盖旧Demo或`motion_domain_current`。只观察模式已从真实125Hz `/joint_states`捕获稳定14轴当前姿态；校验后`/rt/rolling_joint_control/update`发布者仍为0，无联调进程残留。
+- 当前结论：2026-08-22现场`whole_body_jtc`和`rolling_trajectory_controller`均为inactive，因此只能确认观察/姿态初始化链路可用，不能宣称实机HOLD或拖动联调已通过；须待ELECTRI完成EC-04准入并共同值守后从HOLD阶段开始。
+## 2026-08-22 Codex / 首排侧吸径向解析抽离原型
+- 做了什么：按 X=0.83m、Y=±0.40m、Z=1.85m 的最低代价 IK 起姿，固定 Updown，将“Joint2 工作中心到工具的径向角、工具相对径向夹角、工作半径”线性分配为 50 帧并逐帧调用纯解析 IK、MoveIt 场景碰撞检测。
+- 改了哪里：新增 `scripts/ik_benchmark/src/analytic_radial_extract_prototype.cpp`、对应 launch 和 Rerun 脚本；工作中心使用 Turn 轴 X=0.07134m、世界 Z=`updown+0.852094m`、Y=目标 Y。
+- 验证结果：X=0.83m 起姿选择 updown=0.48m；前 29/50 帧双臂解析连续且无碰撞，单帧最大关节变化 7.71°；第 30 帧双臂同时无解析解，Joint1 闭式几何裕量由 +3.25mm 变为 -2.08mm。完整 50 帧解算+碰撞仅 2.21ms，但目标末态不可达；即使忽略 IK，携带箱末端理论上会高于顶板下沿 22.09mm。
+- Updown 补偿复测：按正式 `tip_floor_updown_target()` 语义，在每帧双臂合并后双向调整 Updown，使最低工具始终贴住起始最低高度，再重检限位和完整场景。前 29 帧 Updown 从 0.48m 最低降至 0.2250m，均无碰撞；但第 30 帧仍在补偿之前失去双臂解析解，因为 Joint1 闭式可行条件只取决于目标 X/Y 和工具方向，Updown 不能修复。
+- 第二排复测：同样以 `X=0.83m、Y=±0.40m、Z=1.44m` 执行 `L4/R6` 50 帧原型，起始 Updown=0.07m；前 29 帧解析连续且完整场景零碰撞，Updown 补偿至 0m，第 30 帧仍以相同 Joint1 几何条件失去双臂解析解。说明该直插路径的失败与排高和碰撞无关，是 X/Y/末端方向组合导致的共同几何不可达。
+- 负重接管复测：从两排第29个最后合法帧分别规划到双臂 `[0,-90,120,-75,0,0]°`、`updown=0.1m` 负重位。两次都由关节 Shortcut 直接通过，未触发局部 RRT；各 33 点，计划计算约 `2.5ms`，MoveIt 状态确认附着箱数为2，逐帧完整场景碰撞数为0。
+- 第三排两段复测：`L7/R9` 以侧吸起始 `updown=0m`，径向段前37帧解析连续且零碰撞，连线由 `76.80°` 转至 `20.38°`（累计 `56.43°`），第38帧失去解析解。从第37个最后合法帧接到负重位同样由 Shortcut 直接通过，41点、`3.34ms`、完整场景零碰撞，未触发 RRT。
+- 留给下个 AI：该几何直插方案不能原样作为抽离策略；若继续，优先增加很小的双臂向外 Y 让位或放松“径向和工具同时完全竖直”，不要增加 RRT 搜索量。
+
+## 2026-08-22 Codex / 三排侧吸径向两段方案网格压力测试
+- 测试矩阵：箱面距离 `0.75～0.86m` 每1cm、整组横移 `-0.10～+0.10m` 每2cm、前3排均侧吸，共 `12×11×3=396` 组；复用同一长驻 Planner。
+- 判定口径：径向解析段取首次失败前最后合法状态，再以携带箱完整场景执行到 `[0,-90,120,-75,0,0]° / updown=0.1m` 的 Shortcut+局部RRT；两段均通过才算成功。
+- 结果：`190/396=47.98%`；第一排 `33/132=25.0%`，第二排 `53/132=40.2%`，第三排 `104/132=78.8%`。初始IK、场景配置和径向合法前缀均为 `396/396`，206次失败全部发生在径向末态到负重位的携带箱规划。
+- 规律：距离由0.75m增至0.86m时总成功率由33.3%升至84.8%；零横移为86.1%，±10cm仅19.4%～22.2%。成功中175次直接Shortcut、15次由局部RRT修补。
+- 主因：前两排携带箱与动态箱墙侧面/中间墙冲突；第三排主要是携带箱与Turn碰撞。汇总位于 `data/ik_benchmark/radial_loaded_grid_75_86_shift10_rows123_20260822_retry/summary.md`，并保留三排各一组成功和失败代表Rerun。
+- 后续回归集：固定随机种子`20260822`，从190个成功样本均匀抽取19组；失败按“排数＋首个碰撞对”分成10类并各抽1组，共29组。清单位于 `data/ik_benchmark/radial_loaded_grid_75_86_shift10_rows123_20260822_retry/success_rate_target_set_v1/`。
+
+## 2026-08-22 Codex / 径向末帧定点转腕接管
+- 算法：径向段首次失败前的最后合法帧后，固定双臂工具XYZ、Updown、Joint2中心到工具的径向角和半径，仅按2°分辨率旋转工具朝向，使工具轴对齐冻结径向线；每步解析IK、关节限位和完整场景碰撞均立即检查。
+- 接管：先按正式30Hz重采样口径预检转腕末态到负重位Shortcut；成功则使用转腕末态，失败则保留原径向末帧的Shortcut+局部RRT回退，避免旧成功样本回归。
+- 严格A/B：复用同一批冻结IK snapshot运行29组，基线`19/29=65.52%`，最终复跑`22/29=75.86%`，保持原成功19组、新增稳定恢复3组、回归0组；29组转腕段均完整解析且无碰撞。稳定恢复均为第二排，转腕后直接Shortcut通过。
+- 随机性：另一次运行第三排两个局部RRT样本曾恢复，使结果达到`24/29`，但最终复跑未复现，因此不计入可靠收益。正式结论采用`22/29`。
+- 数据：`data/ik_benchmark/radial_orientation_bridge_frozen_target_set_final_20260822/README.md`；新增 `run_radial_frozen_target_set.py` 固化冻结snapshot回归入口，避免重选IK污染比较。
+
+## 2026-08-22 Codex / 转腕后二次径向续推实验
+- 算法：转腕完成后保持工具轴与Joint2径向线对齐，继续把径向角收敛至竖直、半径收敛至0.79m；每帧解析IK后执行Updown高度补偿，再立即检查限位和完整场景，下一次失败即从最后合法续推帧接Shortcut+局部RRT到负重位。
+- 严格口径：实验开关下只允许二次径向末态接管，不回退旧径向末帧或只转腕末态；29组冻结snapshot全部进入该链路。
+- 结果：两次复跑分别`23/29`和`22/29`；相对只转腕方案首轮净增1组，但成功集合发生变化，稳定交集为21组。续推段本身确定，波动来自负重阶段局部RRT；主要失败仍是携带箱与Turn碰撞。
+- 数据：`data/ik_benchmark/radial_orientation_then_resume_frozen_target_set_20260822/README.md`和`data/ik_benchmark/radial_orientation_then_resume_frozen_target_set_repeat_20260822/README.md`；保留新增成功、回归失败和持续失败三类代表Rerun。
+
+## 2026-08-23 Codex / 转腕与径向续推逐检查点Shortcut
+- 算法：从原径向最后合法帧开始，每个转腕和径向续推合法检查点先验证一次到负重位的完整Shortcut；首次通过立即接管，只有全部检查点均失败才从最后合法点调用局部RRT。
+- 结果：29组冻结snapshot复跑`29/29`，保持原成功19组、恢复原失败10组、回归0组；18组在原径向末态接管，5组在转腕阶段接管，6组在径向续推阶段接管。26组直接Shortcut，3组需要局部RRT。
+- 性能：策略最快`26.313ms`、最慢`471.713ms`、中位`30.600ms`、平均`58.149ms`；136次Shortcut碰撞检查单次最快`0.125ms`、最慢`4.697ms`、平均`0.841ms`。最慢任务由局部RRT的`438.326ms`主导。
+- 数据：`data/ik_benchmark/radial_interleaved_shortcut_checkpoints_final_20260823/README.md`；保留最快、最慢、转腕恢复和径向续推恢复四类代表Rerun。
+
+## 2026-08-23 Codex / 逐检查点Shortcut全396组回归
+- 口径：复用原`0.75～0.86m × -0.10～+0.10m × 前3排`共396份冻结IK snapshot，不重新选IK；全部启用转腕、径向续推和逐检查点Shortcut。
+- 严格单次结果：`376/396=94.95%`，较旧方案`190/396=47.98%`提升46.97个百分点；第一、二排均`132/132`，第三排`112/132=84.85%`。成功中354组直接Shortcut、22组局部RRT。
+- 失败：20组全部位于第三排，19组主因是携带箱与Turn碰撞，1组局部RRT还出现相机前部碰撞；旧190个成功保留182个，8个回归均属于旧方案依赖随机局部RRT的样本，确定性Shortcut成功没有回归。
+- 随机性：单独复跑20个失败后8个由局部RRT成功；若替换该轮结果则为`384/396=96.97%`，仍有12个持续失败。因此正式单次成功率采用94.95%，可观察波动上限约96.97%。
+- 性能：策略最快`25.607ms`、最慢`1067.913ms`、中位`32.151ms`、平均`60.453ms`；2992次Shortcut检查平均`0.603ms`。完整批量墙钟270.4秒主要含396次独立ROS/MoveIt进程启动。
+- 数据：`data/ik_benchmark/radial_interleaved_shortcut_checkpoints_all396_20260823/README.md`和同目录`summary.json`；失败20组复跑位于`failed20_repeat/`。
+
+## 2026-08-23 Codex / 径向转动30°后提前同步Shortcut
+- 调整：不再等径向解析首次失败后才检测到负重位Shortcut；双臂径向连线累计转动均达到30°后，每个合法径向帧同步检测一次Shortcut。若路径在30°前已失败，仍保留首次失败前最后合法帧作为兜底。
+- 全量结果：复用原`0.75～0.86m × -0.10～+0.10m × 前3排`396份冻结IK snapshot，严格单次`396/396=100%`；三排均`132/132`，相较上版`376/396`恢复全部20个失败且无回归。
+- 接管分布：217组在径向检查点、70组在定点转腕阶段、109组在径向续推阶段接管；396组全部由完整碰撞验证后的直接Shortcut完成，未调用局部RRT。
+- 性能：策略最快`25.948ms`、最慢`53.675ms`、中位`30.407ms`、平均`31.469ms`；2906次Shortcut检查平均`0.655ms`。完整批量墙钟250.1秒主要仍是396次独立ROS/MoveIt启动。
+- 数据：`data/ik_benchmark/radial_interleaved_shortcut_from30deg_all396_20260823/README.md`和同目录`summary.json`。
+
+## 2026-08-23 Codex / 顶吸复用径向策略对照
+- 口径：第四、五排双顶吸复用侧吸径向解析、30°后同步Shortcut、末态转腕/径向续推及负重Shortcut+局部RRT；距离0.75～0.86m、横移-0.10～+0.10m，共264组。
+- 结果：`0/264`。264组场景配置均成功；128组有合法顶吸IK并进入策略，136组在IK阶段结束。0.75～0.78m顶吸IK为22/22，0.82～0.86m为0/22。
+- 根因：进入策略的128组全部在30°阈值前先撞动态箱墙后挡面；第四排典型第3帧、第五排典型第2帧发生携带箱与`rear_guard`碰撞。最后合法帧到负重的Shortcut同样立即撞后挡面，局部RRT失败。
+- 数据：`data/ik_benchmark/top_radial_same_logic_rows45_grid_20260823/summary.md`；第四、五排代表回放为同目录`representative_rerun/top_rows45_rear_guard_failures.rrd`。
+## 2026-08-23 运控算法 / Codex / 顶吸水平回撤原型随机验证
+- 做了什么：新增 `top_horizontal_retract` 路径模式；顶吸工具轴保持竖直向下，末端保持 y/z 并按 1cm 沿 x 靠近机器人，每帧解析 IK 后立即执行完整场景碰撞检查，首个失败立即停止且不再进入负重 Shortcut/RRT。
+- 改了哪里：`scripts/ik_benchmark/src/analytic_radial_extract_prototype.cpp`、`scripts/ik_benchmark/launch/analytic_radial_extract_prototype.launch.py`。
+- 验证结果：固定随机种子抽取第四、第五排各 3 组。第四排均在 x=0.44～0.51m 失去单臂连续解析解；第五排均在 x=0.52m 出现 `base_link <-> carried_left_box_13`。六组单段计算 3.58～4.92ms，均未再触发动态后挡墙碰撞。合并回放为 `data/ik_benchmark/top_horizontal_retract_random6_20260823/top_horizontal_retract_random6_until_failure.rrd`。
+- 留给下个 AI：当前实验只验证用户指定的新顶吸抽离段，未接 Shortcut、局部 RRT 或后续负重流程；不要把 0/6 完整成功误读为整套策略结论。
+
+## 2026-08-23 运控算法 / Codex / 顶吸径向转正原型修正
+- 做了什么：纠正上一版“只减 x、径向角趋近 180°”的误解；现在末端每帧沿 x 靠近机器人 1cm，同时第一径向连线由起始角严格向 0°收敛并缩短，顶吸工具轴保持竖直向下。
+- 验证结果：复用相同 6 组随机样本，径向角由 100～115°降至首个失败前的 40～47°，半径均单调缩短；第四排两组失去连续解析解、一组携带箱撞 joint2，第五排三组均为携带箱撞 joint2；单段耗时 4.22～8.08ms。
+- 数据：`data/ik_benchmark/top_upright_retract_random6_20260823/README.md`；合并回放为同目录 `top_upright_retract_random6_until_failure.rrd`。
+- 留给下个 AI：本轮按用户要求只运行到首个失败，没有接 Shortcut/RRT；上一目录 `top_horizontal_retract_random6_20260823` 已标记为废弃对照。
+
+## 2026-08-23 运控算法 / Codex / 顶吸第30步后同步Shortcut全网格
+- 做了什么：顶吸径向转正路径完成30个1cm步骤后，从每个合法帧同步检查到负重位的完整携箱Shortcut，首个通过即接管；该实验明确禁用局部RRT。
+- 验证结果：第四、五排 × 0.75～0.86m × 横移-0.10～+0.10m，共264组；整体128/264=48.48%。128组起始IK合法的案例全部由直接Shortcut成功，条件成功率100%；其余136组均停在起始IK，无路径/Shortcut失败。
+- 接管分布：第30步69组、第35步33组、第36步20组、第37步2组、第38步4组；每组1～9次检查，平均3.59次；Shortcut检查累计平均4.74ms、最大8.59ms。
+- 数据：`data/ik_benchmark/top_upright_shortcut_after30_rows45_grid_20260823/summary.md`及同目录`summary.json`。
+- 留给下个 AI：0.82～0.86m全部因起始顶吸IK无合法解而失败；新径向+Shortcut本身对进入策略的案例无失败。
+
 ## 2026-08-23 运控算法 / Codex / 64候选完整链路与五排缓存
 - 做了什么：IK不再只使用单个最低代价解；从全部合法、无碰撞解析解中按代价升序去重，最多尝试64个，只有“预抓取→吸附→抽离→负重位”全链路成功才早停，再拼接既有负重→放置→初始轨迹。
 - 验证结果：旧侧吸成功样本560/560全部保留，54个旧失败遍历37～38个合法候选后仍未恢复；顶吸504组中有54组由第2～7候选恢复。五排1260网格生成946份成功缓存，运行时946个精确命中、314个最近成功命中、0缺失；34项单测通过。
 - 数据：`data/ik_benchmark/radial_cache_candidate64_20260823/README.md`；正式缓存位于`tools/demonstration0720/armmotion/ros2_ws/src/armmotion_demo/armmotion_demo/trajectory_cache_pregrasp_v3/`。
 - 留给下个 AI：第三排近距离侧吸和较远顶吸仍依赖最近成功缓存降级；本次没有放宽碰撞或强行生成失败轨迹。
+
+## 2026-08-23 运控算法 / Codex / 三排顶吸新策略缓存替换与二排无补偿复测
+- 做了什么：正式缓存第3～5排替换为“顶吸固定Updown、径向转正回撤、第30步后同步Shortcut”的64候选结果；修复缓存生成器把第3排误接侧吸放置模板的问题。本地和工控机缓存均由946条更新为689条（第1～5排分别252/252/59/67/59），文件清单哈希一致。
+- 验证结果：新顶吸网格最终185/396成功；所有193个合法吸附IK均完成负重接管，其中8个在预抓取解析阶段失败。第二排侧吸关闭Updown补偿后，同一`75～86cm × -10～+10cm`共252组仍为252/252，和原补偿方案成功率一致，抽离段最大补偿严格为0。
+- 速度结论：第一排252份缓存经正式30Hz重定时后，Updown实测计算峰值速度`0.14458m/s`、峰值加速度`0.05m/s²`；若绕过重定时把原始缓存点直接按30Hz发送，理论峰值会达到`0.42838m/s`和`5.83845m/s²`，禁止采用后一口径。
+- 数据：顶吸汇总位于`data/ik_benchmark/top_rows345_fixed_updown_candidate64_20260823/`；二排无补偿汇总位于`data/ik_benchmark/side_row2_no_updown_compensation_20260823/summary.md`。工控机缓存备份为`/tmp/trajectory_cache_pregrasp_v3_before_top_fixed_1787480154`。
+
+## 2026-08-23 运控 / Codex / 前两排侧吸重拍位固定关节化
+- 做了什么：`CAMERA_VIEW`在有效双臂模式均为侧吸时不再调用解析/数值IK；按收到目标平均Z以`1.10m`分层，第一排执行双臂`[0,-90,135,-40,0,0]° + updown=0.40m`，第二排执行同一双臂姿态`+ updown=0m`。顶吸重拍位继续使用原IK与靠近搜索。
+- 改了哪里：`tools/demonstration0720/armmotion/ros2_ws/src/armmotion_demo/armmotion_demo/domain_motion_server.py`及契约回归测试；轨迹仍走统一30Hz重定时与`/whole_body_jtc/follow_joint_trajectory`，Turn保持外部当前值。
+- 验证结果：本地与工控机`test_domain_contract.py`均27/27通过，`armmotion_demo`两端构建成功；已同步至`/home/ar/motion_domain_current`，运行中的旧Motion进程未重启，须安全重启后生效。
+
+## 2026-08-23 运控 / Codex / 控制器插值感知的限Jerk重定时
+- 做了什么：正式`CAMERA_VIEW/PREGRASP/APPROACH/PLACE/HOME`执行轨迹改为稀疏几何路径→MoveIt TOTG→30Hz输出，并按rt-control的250Hz五次插值结果校验速度、加速度和Jerk；超限时统一拉伸整段时间，TOTG不可用时也只允许走同样限Jerk校验后的旧重定时降级。
+- 改了哪里：新增`alfa_robot_moveit_config/SmoothTrajectory`内部服务和`armmotion_demo/trajectory_smoothing.py`；优化`trajectory_interpolation.sample_fixed_rate`，从逐点重复校验整条轨迹改为一次校验后顺序采样。
+- 验证结果：本地和工控机Release构建成功、两端56项回归通过；历史19:07/19:10两轮6个动作段均未降级。最坏关节Jerk由约`1,209,601deg/s³`降至`3,666deg/s³`，最坏Updown Jerk由约`5,799m/s³`降至`2.97m/s³`；端点位置保持不变。
+- 留给下个 AI：工控机源码位于`/home/ar/motion_domain_current`，同步前备份为`/tmp/motion_jerk_backup_20260823_224008`；未启动实机，需安全重启Motion后再做低速空载验收。历史PLACE段为满足30deg/s、60deg/s²、0.05m/s²和限Jerk约束，时长由约14秒增加到约20.6秒。
+
+## 2026-08-24 运控 / Codex / 侧吸重拍固定姿态实机值校正
+- 做了什么：根据ROS域12下实机当前稳定姿态，将前两排侧吸重拍默认双臂关节角从`[0,-90,135,-40,0,0]°`校正为`[0,-88,135,-40,0,0]°`；第一排`updown=0.40m`、第二排`updown=0m`保持不变。
+- 验证结果：本地定向契约测试3项通过；已同步并重新编译工控机`/home/ar/motion_domain_current`，源码和构建产物常量一致。运行中的Motion进程需安全重启后生效。
+
+## 2026-08-24 运控 / Codex / 单臂任务保留横向偏差
+- 做了什么：单臂输入降级为双臂任务时，不再把已有目标简单按`y取反`；改为以已有手为事实源，按标准双臂间距`0.82m`补齐另一手，因此缓存偏差`(left_y+right_y)/2`能够保留真实横移。
+- 验证结果：阶段合同27项、缓存匹配11项全部通过；已同步并重新编译工控机`/home/ar/motion_domain_current`，源码和构建产物一致。运行中的Motion进程需安全重启后生效。
+
+## 2026-08-25 运控算法 / Codex / 顶吸接触高度纠正与五排缓存全量重算
+- 根因修复：旧缓存生成器误复用历史启动命令中的`top_suction_z_offset=0.25m`，使顶吸接触点整体高5cm；改回箱体半高`0.20m`，并将双臂末端间距合同统一为`0.82m`（`y=±0.41m`）。
+- 重算口径：`0.75～0.86m × -0.10～+0.10m（1cm分辨率）× 5排`共1260组；前两排侧吸、后三排顶吸，每个任务最多按代价尝试64个合法IK候选，首个完整链路成功即早停。
+- 结果：侧吸`504/504`；顶吸`331/756`，分排为`123/125/83`；正式缓存整体替换为835份真实成功轨迹，失败任务不写伪缓存，继续由运行时最近成功命中规则处理。
+- 验证：835份缓存全部通过吸附目标、抓取模式、0.82m间距、Updown限位、13维轨迹点和五阶段连续性审计；缓存相关Python回归43项、任务几何C++测试1项通过。
+- 数据：汇总位于`data/ik_benchmark/trajectory_cache_corrected_contact_20260825/cache_report.md`；旧689份缓存备份在`/tmp/alfa_cache_rebuild_20260825/old_cache_backup`。

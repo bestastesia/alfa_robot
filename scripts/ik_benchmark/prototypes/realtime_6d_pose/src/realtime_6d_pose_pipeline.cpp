@@ -178,6 +178,31 @@ Realtime6dPoseResult Realtime6dPosePipeline::process(
   const auto total_start = Clock::now();
   const auto seed = currentArmJoints();
 
+  // An unchanged Cartesian target must be an exact joint-space HOLD.  Around
+  // wrist singularities there can be a continuum of equivalent analytic IK
+  // solutions; resolving the current pose on every timer tick can otherwise
+  // walk the seed through that continuum even though the operator has not
+  // moved the target at all.
+  const Eigen::Isometry3d current_pose = currentToolPoseInBase();
+  const double current_position_error =
+    (target_in_base_link.translation() - current_pose.translation()).norm();
+  const Eigen::AngleAxisd current_orientation_delta(
+    current_pose.linear().transpose() * target_in_base_link.linear());
+  const double current_orientation_error = std::abs(current_orientation_delta.angle());
+  if (
+    current_position_error <= config_.position_tolerance &&
+    current_orientation_error <= config_.orientation_tolerance)
+  {
+    result.accepted = true;
+    result.status = "accepted_current_pose";
+    result.joints = seed;
+    result.actual_pose_in_base = current_pose;
+    result.position_error_m = current_position_error;
+    result.orientation_error_rad = current_orientation_error;
+    result.timing.total_ms = elapsed_ms(total_start);
+    return result;
+  }
+
   const auto ik_start = Clock::now();
   const auto solutions = analytic_solver_.solveInBaseLink(
     config_.side,

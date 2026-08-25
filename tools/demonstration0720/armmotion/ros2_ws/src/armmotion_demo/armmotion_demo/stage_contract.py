@@ -17,6 +17,9 @@ from robot_motion_runtime.dual_grasp_strategy import (
 from .common import PoseTaskSpec, planning_task_from_suction_surface_poses
 
 
+MIRRORED_DUAL_ARM_SPACING_M = 0.82
+
+
 @dataclass(frozen=True)
 class ResolvedStageTargets:
     left_pose: Pose
@@ -26,9 +29,14 @@ class ResolvedStageTargets:
     mirrored_from: str | None = None
 
 
-def _mirrored_pose_y(source: Pose) -> Pose:
+def _paired_pose_y(source: Pose, *, source_side: str) -> Pose:
     mirrored = copy.deepcopy(source)
-    mirrored.position.y = -float(source.position.y)
+    if source_side == "left":
+        mirrored.position.y = float(source.position.y) - MIRRORED_DUAL_ARM_SPACING_M
+    elif source_side == "right":
+        mirrored.position.y = float(source.position.y) + MIRRORED_DUAL_ARM_SPACING_M
+    else:
+        raise ValueError(f"不支持的镜像来源侧: {source_side}")
     return mirrored
 
 
@@ -41,7 +49,7 @@ def resolve_dual_stage_targets(request) -> ResolvedStageTargets:
         raise ValueError("左右臂不能同时为 NO_MOVE")
     if left_no_move:
         return ResolvedStageTargets(
-            left_pose=_mirrored_pose_y(request.targets.right_pose),
+            left_pose=_paired_pose_y(request.targets.right_pose, source_side="right"),
             right_pose=copy.deepcopy(request.targets.right_pose),
             left_grasp_mode=right_grasp_mode,
             right_grasp_mode=right_grasp_mode,
@@ -50,7 +58,7 @@ def resolve_dual_stage_targets(request) -> ResolvedStageTargets:
     if right_no_move:
         return ResolvedStageTargets(
             left_pose=copy.deepcopy(request.targets.left_pose),
-            right_pose=_mirrored_pose_y(request.targets.left_pose),
+            right_pose=_paired_pose_y(request.targets.left_pose, source_side="left"),
             left_grasp_mode=left_grasp_mode,
             right_grasp_mode=left_grasp_mode,
             mirrored_from="left",

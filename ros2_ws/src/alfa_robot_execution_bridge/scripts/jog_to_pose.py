@@ -188,7 +188,8 @@ class JogToPose(Node):
         for name, deg_value in specified.items():
             if deg_value is not None:
                 target_rad = math.radians(float(deg_value))
-                require_arm_joint_in_range(name, target_rad)
+                if name != 'turn':
+                    require_arm_joint_in_range(name, target_rad)
                 target[name] = target_rad
         updown_target = self.args.updown_m
         if updown_target is not None:

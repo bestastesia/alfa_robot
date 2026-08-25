@@ -1,3 +1,4 @@
+import math
 import threading
 from types import SimpleNamespace
 
@@ -8,7 +9,9 @@ from robot_motion_interfaces.msg import DualArmPoseTargets
 from armmotion_demo.domain_motion_server import (
     DomainMotionServer,
     cache_result_diagnostic,
+    fixed_side_recapture_target,
     pregrasp_entry_mode,
+    pregrasp_planning_start_sample,
 )
 from armmotion_demo.common import MotionSample
 from armmotion_demo.manual_domain_task import _quaternion_from_rpy
@@ -195,8 +198,10 @@ def test_single_right_arm_target_is_mirrored_to_left_arm():
     assert targets.mirrored_from == "right"
     assert targets.left_grasp_mode == DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
     assert targets.right_grasp_mode == DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
-    assert targets.left_pose.position.y == pytest.approx(0.43)
+    assert targets.left_pose.position.y == pytest.approx(0.39)
     assert targets.right_pose.position.y == pytest.approx(-0.43)
+    assert targets.left_pose.position.y - targets.right_pose.position.y == pytest.approx(0.82)
+    assert 0.5 * (targets.left_pose.position.y + targets.right_pose.position.y) == pytest.approx(-0.02)
     assert targets.left_pose.orientation == targets.right_pose.orientation
 
 
@@ -207,8 +212,8 @@ def test_single_left_grasp_target_builds_mirrored_dual_task():
     message.targets.right_pose.orientation.z = 0.0
     task = planning_task_from_stage_goal(message, "single-left")
     assert task.left_suction_surface_pose.y == pytest.approx(0.47)
-    assert task.right_suction_surface_pose.y == pytest.approx(-0.47)
-    assert task.scene_y_shift == pytest.approx(0.0)
+    assert task.right_suction_surface_pose.y == pytest.approx(-0.35)
+    assert task.scene_y_shift == pytest.approx(0.06)
 
 
 def test_both_no_move_targets_are_rejected():
@@ -242,6 +247,93 @@ def test_pregrasp_can_skip_recapture_from_idle_state():
         cycle_id="",
         next_stage=ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
     ) == "skip_recapture"
+
+
+def test_pregrasp_after_recapture_plans_from_fresh_joint_state():
+    stale_recapture = MotionSample(
+        0.0,
+        {"right_joint2": -1.15},
+        0.3,
+        {"stage": "camera_view"},
+    )
+    fresh_current = MotionSample(
+        0.0,
+        {"right_joint2": -1.19},
+        0.3,
+        {"stage": "joint_states"},
+    )
+
+    selected = pregrasp_planning_start_sample(
+        entry_mode="after_recapture",
+        current_sample=fresh_current,
+        recapture_sample=stale_recapture,
+    )
+
+    assert selected is fresh_current
+
+
+@pytest.mark.parametrize(
+    ("target_z", "expected_row", "expected_updown"),
+    ((1.30, 1, 0.40), (0.90, 2, 0.0)),
+)
+def test_side_recapture_uses_fixed_joint_pose_by_row(
+    target_z,
+    expected_row,
+    expected_updown,
+):
+    message = goal()
+    message.execution_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
+    message.targets.left_pose.position.z = target_z
+    message.targets.right_pose.position.z = target_z + 0.02
+    current = MotionSample(
+        0.0,
+        {
+            **{
+                f"{side}_joint{index}": 0.1
+                for side in ("left", "right")
+                for index in range(1, 7)
+            },
+            "turn": 0.0,
+        },
+        0.2,
+        {"stage": "joint_states"},
+    )
+
+    result = fixed_side_recapture_target(
+        current,
+        resolve_dual_stage_targets(message),
+        row_split_z_m=1.10,
+        first_row_updown_m=0.40,
+        second_row_updown_m=0.0,
+    )
+
+    assert result is not None
+    target, row, average_z = result
+    assert row == expected_row
+    assert average_z == pytest.approx(target_z + 0.01)
+    assert target.updown_m == pytest.approx(expected_updown)
+    expected_deg = (0.0, -88.0, 135.0, -40.0, 0.0, 0.0)
+    for side in ("left", "right"):
+        for index, value_deg in enumerate(expected_deg, start=1):
+            assert target.joints[f"{side}_joint{index}"] == pytest.approx(
+                math.radians(value_deg)
+            )
+
+
+def test_top_recapture_keeps_existing_ik_path():
+    message = goal()
+    message.execution_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
+    message.targets.left_grasp_mode = DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
+    message.targets.right_grasp_mode = DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
+    current = MotionSample(0.0, {"turn": 0.0}, 0.2, {})
+
+    assert fixed_side_recapture_target(
+        current,
+        resolve_dual_stage_targets(message),
+        row_split_z_m=1.10,
+        first_row_updown_m=0.40,
+        second_row_updown_m=0.0,
+    ) is None
 
 
 def test_pregrasp_cannot_skip_outside_idle_state():

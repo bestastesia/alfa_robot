@@ -25,6 +25,10 @@ from armmotion_demo.controller_interpolated_rerun import (
 from armmotion_demo import hardware_executor as hardware_executor_module
 from armmotion_demo.hardware_executor import HardwareExecutor
 from armmotion_demo.domain_motion_server import DomainMotionServer
+from armmotion_demo.trajectory_smoothing import (
+    controller_limited_resample,
+    controller_trajectory_metrics,
+)
 from alfa_robot_execution_bridge.joints import RT_CONTROL_JOINT_NAMES
 
 
@@ -40,6 +44,55 @@ def sample(stage, time_s, value, updown):
         updown_m=updown,
         context={"stage": f"task/{stage}", "updown": updown},
     )
+
+
+def test_controller_limited_retime_bounds_interpolated_jerk_and_preserves_path():
+    samples = [
+        sample("jerk/start", 0.0, 0.0, 0.30),
+        sample("jerk/corner", 0.10, math.radians(3.0), 0.31),
+        sample("jerk/end", 0.20, math.radians(2.0), 0.30),
+    ]
+    for item, velocity, acceleration in zip(
+        samples,
+        (0.0, 0.0, math.radians(-2.0)),
+        (0.0, math.radians(-60.0), 0.0),
+    ):
+        item.joint_velocities = {name: velocity for name in JOINT_NAMES}
+        item.joint_accelerations = {name: acceleration for name in JOINT_NAMES}
+        item.updown_velocity_m_s = 0.0
+        item.updown_acceleration_m_s2 = 0.05 if item is samples[1] else 0.0
+
+    before = controller_trajectory_metrics(
+        samples,
+        JOINT_NAMES,
+        controller_rate_hz=250.0,
+    )
+    assert math.degrees(before.max_joint_jerk_rad_s3) > 6000.0
+
+    result, after, scale = controller_limited_resample(
+        samples,
+        JOINT_NAMES,
+        output_rate_hz=30.0,
+        controller_rate_hz=250.0,
+        max_joint_velocity_rad_s=math.radians(30.0),
+        max_joint_acceleration_rad_s2=math.radians(60.0),
+        max_joint_jerk_rad_s3=math.radians(6000.0),
+        max_updown_velocity_m_s=0.15,
+        max_updown_acceleration_m_s2=0.05,
+        max_updown_jerk_m_s3=5.0,
+    )
+
+    assert scale > 1.0
+    assert result[0].joints == pytest.approx(samples[0].joints)
+    assert result[-1].joints == pytest.approx(samples[-1].joints)
+    assert result[0].updown_m == pytest.approx(samples[0].updown_m)
+    assert result[-1].updown_m == pytest.approx(samples[-1].updown_m)
+    assert math.degrees(after.max_joint_velocity_rad_s) <= 30.03
+    assert math.degrees(after.max_joint_acceleration_rad_s2) <= 60.06
+    assert math.degrees(after.max_joint_jerk_rad_s3) <= 6006.0
+    assert after.max_updown_velocity_m_s <= 0.15015
+    assert after.max_updown_acceleration_m_s2 <= 0.05005
+    assert after.max_updown_jerk_m_s3 <= 5.005
 
 
 def make_direct_lift_samples():
@@ -332,6 +385,28 @@ def test_retime_does_not_stop_at_same_direction_rrt_corner():
         key=lambda item: abs(item.joints[JOINT_NAMES[0]] - math.radians(10.0)),
     )
     assert middle.joint_velocities[JOINT_NAMES[0]] > math.radians(1.0)
+
+
+def test_retime_preserves_exact_segment_boundary_positions():
+    source = [
+        sample("x", 0.0, math.radians(-65.8), 0.26),
+        sample("x", 0.2, math.radians(-45.0), 0.30),
+    ]
+
+    result = retime_segment(
+        source,
+        JOINT_NAMES,
+        rate_hz=30.0,
+        max_joint_speed_deg_s=10.0,
+        max_joint_acceleration_deg_s2=60.0,
+        max_updown_speed_m_s=0.15,
+        speed_scale=3.0,
+    )
+
+    assert result[0].joints == source[0].joints
+    assert result[0].updown_m == pytest.approx(source[0].updown_m)
+    assert result[-1].joints == source[-1].joints
+    assert result[-1].updown_m == pytest.approx(source[-1].updown_m)
 
 
 def test_action_retiming_blends_place_internal_segments_without_stopping():

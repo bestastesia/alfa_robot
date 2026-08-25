@@ -115,7 +115,7 @@ def generate_launch_description():
         DeclareLaunchArgument("carried_box_depth", default_value="0.3"),
         DeclareLaunchArgument("carried_box_width", default_value="0.4"),
         DeclareLaunchArgument("carried_box_height", default_value="0.4"),
-        DeclareLaunchArgument("carried_box_grasp_lateral_offset", default_value="0.0"),
+        DeclareLaunchArgument("carried_box_grasp_lateral_offset", default_value="-0.01"),
         DeclareLaunchArgument("attached_box_collision_padding", default_value="-0.002"),
         DeclareLaunchArgument("enable_static_box_obstacles", default_value="true"),
         DeclareLaunchArgument("static_box_obstacle_inset", default_value="0.002"),

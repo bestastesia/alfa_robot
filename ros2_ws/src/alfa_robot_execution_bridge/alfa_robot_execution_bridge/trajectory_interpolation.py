@@ -210,15 +210,11 @@ def _quintic_state(
     )
 
 
-def interpolate_between(
+def _interpolate_between_validated(
     start: TrajectorySample,
     goal: TrajectorySample,
     time_from_start: float,
 ) -> InterpolatedState:
-    _validate_sample(start)
-    _validate_sample(goal)
-    if len(start.positions) != len(goal.positions):
-        raise ValueError("trajectory endpoint joint counts differ")
     duration = float(goal.time_from_start) - float(start.time_from_start)
     if duration <= 0.0:
         raise ValueError("trajectory endpoint times must be strictly increasing")
@@ -234,6 +230,18 @@ def interpolate_between(
     if has_velocity:
         return _cubic_state(start, goal, elapsed, duration)
     return _linear_state(start, goal, elapsed, duration)
+
+
+def interpolate_between(
+    start: TrajectorySample,
+    goal: TrajectorySample,
+    time_from_start: float,
+) -> InterpolatedState:
+    _validate_sample(start)
+    _validate_sample(goal)
+    if len(start.positions) != len(goal.positions):
+        raise ValueError("trajectory endpoint joint counts differ")
+    return _interpolate_between_validated(start, goal, time_from_start)
 
 
 def sample_trajectory(
@@ -267,18 +275,38 @@ def sample_fixed_rate(
         raise ValueError("sample rate must be finite and positive")
     if not samples:
         raise ValueError("trajectory samples must not be empty")
-    start_time = float(samples[0].time_from_start)
+    for sample in samples:
+        _validate_sample(sample)
+    joint_count = len(samples[0].positions)
+    if any(len(sample.positions) != joint_count for sample in samples[1:]):
+        raise ValueError("trajectory sample joint counts differ")
+    times = [float(sample.time_from_start) for sample in samples]
+    if any(goal <= start for start, goal in zip(times, times[1:])):
+        raise ValueError("trajectory sample times must be strictly increasing")
+    start_time = times[0]
     final_time = float(samples[-1].time_from_start)
     if final_time < start_time:
         raise ValueError("trajectory final time precedes start time")
     period = 1.0 / rate_hz
     tick_count = int(math.floor((final_time - start_time) * rate_hz + 1e-9))
-    result = [
-        sample_trajectory(samples, start_time + tick * period)
-        for tick in range(tick_count + 1)
-    ]
+    result: list[InterpolatedState] = []
+    goal_index = 1
+    for tick in range(tick_count + 1):
+        sample_time = start_time + tick * period
+        if sample_time <= start_time:
+            result.append(_endpoint_state(samples[0]))
+            continue
+        while goal_index < len(times) - 1 and sample_time > times[goal_index]:
+            goal_index += 1
+        result.append(
+            _interpolate_between_validated(
+                samples[goal_index - 1],
+                samples[goal_index],
+                sample_time,
+            )
+        )
     if not result or final_time - result[-1].time_from_start > 1e-9:
-        result.append(sample_trajectory(samples, final_time))
+        result.append(_endpoint_state(samples[-1]))
     return result
 
 

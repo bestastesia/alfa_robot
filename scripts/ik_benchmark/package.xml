@@ -35,6 +35,8 @@
   <exec_depend>alfa_robot_rerun</exec_depend>
   <exec_depend>alfa_robot_execution_bridge</exec_depend>
   <exec_depend>robot_motion_interfaces</exec_depend>
+  <exec_depend>robot_rt_control_interfaces</exec_depend>
+  <exec_depend>robot_interfaces_qos</exec_depend>
   <exec_depend>interactive_markers</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>python3-yaml</exec_depend>

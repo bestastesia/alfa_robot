@@ -20,7 +20,7 @@ inline constexpr double kBoxRowPitch = kBoxHeight + kBoxRowGap;
 inline constexpr double kBottomBoxCenterZ = 0.21;
 inline constexpr double kBoxStackHeight =
   kBottomBoxCenterZ + (kBoxStackRowCount - 1) * kBoxRowPitch + 0.5 * kBoxHeight;
-inline constexpr double kOuterBoxGraspTargetY = 0.40;
+inline constexpr double kOuterBoxGraspTargetY = 0.41;
 inline constexpr double kOuterBoxGraspLateralOffset = kBoxWidth - kOuterBoxGraspTargetY;
 
 struct BoxSpec

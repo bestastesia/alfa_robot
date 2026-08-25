@@ -35,6 +35,7 @@ find_package(Eigen3 REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
   "srv/PlanRecapture.srv"
+  "srv/SmoothTrajectory.srv"
   DEPENDENCIES geometry_msgs motion_internal_interfaces sensor_msgs trajectory_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
@@ -345,6 +346,11 @@ if(BUILD_TESTING)
     COMMAND /usr/bin/python3
       ${CMAKE_CURRENT_SOURCE_DIR}/test/test_package_boundaries.py
       ${CMAKE_CURRENT_SOURCE_DIR}/../../..
+  )
+
+  add_test(
+    NAME test_demo_interaction_config
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_demo_interaction_config.py
   )
 endif()
 

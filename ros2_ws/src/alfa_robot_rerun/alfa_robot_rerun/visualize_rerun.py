@@ -311,7 +311,13 @@ def render_current_urdf() -> str:
             pass
 
 
-def log_robot_static_model(robot: UrdfRobot, world_path: str, *, log_meshes: bool = True) -> None:
+def log_robot_static_model(
+    robot: UrdfRobot,
+    world_path: str,
+    *,
+    log_meshes: bool = True,
+    mesh_albedo_factor: list[int] | None = None,
+) -> None:
     rr.log(world_path, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     missing_meshes = 0
     logged_meshes = 0
@@ -325,7 +331,11 @@ def log_robot_static_model(robot: UrdfRobot, world_path: str, *, log_meshes: boo
             visual_path = f"{link_path}/visual_{index}"
             log_transform_matrix(visual_path, visual.origin, static=True, scale=visual.scale)
             if log_meshes:
-                rr.log(visual_path, rr.Asset3D(path=mesh_path), static=True)
+                rr.log(
+                    visual_path,
+                    rr.Asset3D(path=mesh_path, albedo_factor=mesh_albedo_factor),
+                    static=True,
+                )
                 logged_meshes += 1
     if missing_meshes:
         print(f"Warning: {missing_meshes} robot visual meshes were not found.")

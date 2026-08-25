@@ -388,7 +388,6 @@ ament_target_dependencies(analytic_radial_extract_prototype PUBLIC
   moveit_msgs
   rclcpp
   shape_msgs
-  trajectory_msgs
   nlohmann_json
 )
 
@@ -435,6 +434,7 @@ ament_target_dependencies(realtime_6d_pose_prototype PUBLIC
   rclcpp
   geometry_msgs
   sensor_msgs
+  trajectory_msgs
   std_msgs
   ament_index_cpp
   srdfdom
@@ -477,6 +477,8 @@ install(PROGRAMS
   scripts/run_radial_frozen_target_set.py
   prototypes/realtime_6d_pose/interactive_6d_target.py
   prototypes/realtime_6d_pose/motion_rolling_preview.py
+  prototypes/realtime_6d_pose/mock_rt_control.py
+  prototypes/realtime_6d_pose/rolling_pose_client.py
   prototypes/realtime_6d_pose/rolling_suffix.py
   prototypes/realtime_6d_pose/realtime_6d_pose_rerun.py
   DESTINATION lib/${PROJECT_NAME}

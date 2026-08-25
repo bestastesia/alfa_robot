@@ -1,0 +1,11 @@
+trajectory_msgs/JointTrajectory input
+float64 max_joint_velocity_rad_s
+float64 max_joint_acceleration_rad_s2
+float64 max_updown_velocity_m_s
+float64 max_updown_acceleration_m_s2
+float64 path_tolerance
+float64 resample_dt
+---
+bool success
+string message
+trajectory_msgs/JointTrajectory trajectory

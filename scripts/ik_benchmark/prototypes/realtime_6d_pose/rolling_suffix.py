@@ -46,6 +46,11 @@ class AxisLimit:
     velocity: float
     acceleration: float
     margin: float
+    stop_acceleration: float | None = None
+
+    @property
+    def stopping_acceleration(self) -> float:
+        return self.acceleration if self.stop_acceleration is None else self.stop_acceleration
 
 
 def _rotary(lower: float, upper: float) -> AxisLimit:
@@ -101,6 +106,66 @@ MOTION_PREVIEW_LIMITS = tuple(
 
 class SuffixPlanningError(RuntimeError):
     """A target cannot be converted into a conservative admissible suffix."""
+
+
+def target_tracking_allowed(*, enabled: bool, armed: bool, target_is_fresh: bool) -> bool:
+    """Return whether a Motion joint target may replace current-pose HOLD."""
+
+    return bool(enabled and armed and target_is_fresh)
+
+
+def choose_replace_from_ns(
+    *,
+    public_replaceable_from_ns: int,
+    accepted_replace_from_ns: int,
+    public_state_age_ns: int,
+    replace_guard_ns: int,
+    horizon_ns: int,
+    max_horizon_ns: int,
+    replace_lead_ns: int,
+    controller_period_ns: int,
+) -> int:
+    """Choose a future splice from an asynchronously published RT frontier.
+
+    ``public_replaceable_from_ns`` is already old by the time Motion plans and
+    publishes a batch.  Compensating for the observed state age prevents the
+    RT admission frontier from overtaking a fixed guard.  The compensation is
+    bounded by the negotiated maximum horizon, with one controller period
+    reserved for admission jitter.
+    """
+
+    values = {
+        "public_replaceable_from_ns": public_replaceable_from_ns,
+        "accepted_replace_from_ns": accepted_replace_from_ns,
+        "public_state_age_ns": public_state_age_ns,
+        "replace_guard_ns": replace_guard_ns,
+        "horizon_ns": horizon_ns,
+        "max_horizon_ns": max_horizon_ns,
+        "replace_lead_ns": replace_lead_ns,
+        "controller_period_ns": controller_period_ns,
+    }
+    if any(not isinstance(value, int) or value < 0 for value in values.values()):
+        raise ValueError("replace-frontier times must be non-negative integers")
+
+    maximum_extra_ns = (
+        max_horizon_ns - horizon_ns - replace_lead_ns - controller_period_ns
+    )
+    requested_extra_ns = public_state_age_ns + replace_guard_ns
+    if maximum_extra_ns < 0 or requested_extra_ns > maximum_extra_ns:
+        raise SuffixPlanningError(
+            "rt_public_state_too_stale:"
+            f"age_ms={public_state_age_ns * 1e-6:.3f},"
+            f"guard_ms={replace_guard_ns * 1e-6:.3f},"
+            f"budget_ms={max(0, maximum_extra_ns) * 1e-6:.3f}"
+        )
+
+    replace_from_ns = max(
+        public_replaceable_from_ns + requested_extra_ns,
+        accepted_replace_from_ns,
+    )
+    if replace_from_ns - public_replaceable_from_ns > maximum_extra_ns:
+        raise SuffixPlanningError("accepted_suffix_exceeds_rt_horizon_budget")
+    return replace_from_ns
 
 
 def _vector(values: Iterable[float], label: str) -> tuple[float, ...]:
@@ -560,45 +625,110 @@ def validate_suffix(
 
     for left, right in zip(suffix.points, suffix.points[1:]):
         duration_s = (right.time_ns - left.time_ns) * 1e-9
-        for axis in active:
+        segment_extrema = []
+        for axis in range(AXIS_COUNT):
             limit = envelope[axis]
-            extrema_u = [0.0, 1.0]
-            velocity_root = _hermite_acceleration_root(
+            extrema = _hermite_extrema(
                 left.positions[axis],
                 left.velocities[axis],
                 right.positions[axis],
                 right.velocities[axis],
                 duration_s,
             )
-            if velocity_root is not None and 0.0 < velocity_root < 1.0:
-                extrema_u.append(velocity_root)
-            for u in extrema_u:
-                position, velocity = _hermite(
-                    left.positions[axis],
-                    left.velocities[axis],
-                    right.positions[axis],
-                    right.velocities[axis],
-                    duration_s,
-                    u,
-                )
-                peak_velocity = max(peak_velocity, abs(velocity))
-                if position < limit.lower + limit.margin or position > limit.upper - limit.margin:
-                    return False, f"interior_position:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
-                if abs(velocity) > limit.velocity * limit_fraction + 1e-9:
-                    return False, f"interior_velocity:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
-            for u in (0.0, 1.0):
-                acceleration = _hermite_acceleration(
-                    left.positions[axis],
-                    left.velocities[axis],
-                    right.positions[axis],
-                    right.velocities[axis],
-                    duration_s,
-                    u,
-                )
-                peak_acceleration = max(peak_acceleration, abs(acceleration))
-                if abs(acceleration) > limit.acceleration * limit_fraction + 1e-9:
-                    return False, f"acceleration_limit:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
+            segment_extrema.append(extrema)
+            position_min, position_max, velocity_positive, velocity_negative, acceleration_positive, acceleration_negative = extrema
+            peak_velocity = max(peak_velocity, velocity_positive, velocity_negative)
+            peak_acceleration = max(
+                peak_acceleration, acceleration_positive, acceleration_negative
+            )
+            fraction = limit_fraction if axis in active else 1.0
+            if (
+                position_min < limit.lower + limit.margin
+                or position_max > limit.upper - limit.margin
+            ):
+                return False, f"interior_position:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
+            if max(velocity_positive, velocity_negative) > limit.velocity * fraction + 1e-9:
+                return False, f"interior_velocity:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
+            if max(acceleration_positive, acceleration_negative) > limit.acceleration * fraction + 1e-9:
+                return False, f"acceleration_limit:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
+
+        # Match rt-control's conservative per-segment stopping envelope.  The
+        # slowest axis determines the shared stop duration, then every axis
+        # must remain inside its position margin throughout that stop.
+        stop_duration_s = max(
+            max(velocity_positive, velocity_negative) /
+            envelope[axis].stopping_acceleration
+            for axis, (_, _, velocity_positive, velocity_negative, _, _) in
+            enumerate(segment_extrema)
+        )
+        for axis, (position_min, position_max, velocity_positive, velocity_negative, _, _) in enumerate(segment_extrema):
+            limit = envelope[axis]
+            stop_lower = position_min - 0.5 * velocity_negative * stop_duration_s
+            stop_upper = position_max + 0.5 * velocity_positive * stop_duration_s
+            if (
+                stop_lower < limit.lower + limit.margin
+                or stop_upper > limit.upper - limit.margin
+            ):
+                return False, f"stopping_viability:{AXIS_NAMES[axis]}", peak_velocity, peak_acceleration
     return True, "ok", peak_velocity, peak_acceleration
+
+
+def _real_roots(a: float, b: float, c: float) -> tuple[float, ...]:
+    scale = max(abs(a), abs(b), abs(c))
+    if not math.isfinite(scale) or scale == 0.0:
+        return ()
+    a, b, c = a / scale, b / scale, c / scale
+    tolerance = 64.0 * float.fromhex("0x1.0000000000000p-52")
+    if abs(a) <= tolerance:
+        return () if abs(b) <= tolerance else (-c / b,)
+    discriminant = b * b - 4.0 * a * c
+    discriminant_scale = b * b + abs(4.0 * a * c)
+    if discriminant < 0.0 and -discriminant <= tolerance * discriminant_scale:
+        discriminant = 0.0
+    if discriminant < 0.0 or not math.isfinite(discriminant):
+        return ()
+    square_root = math.sqrt(discriminant)
+    if square_root == 0.0:
+        return (-b / (2.0 * a),)
+    q = -0.5 * (b + math.copysign(square_root, b))
+    roots = [q / a]
+    if q != 0.0:
+        roots.append(c / q)
+    return tuple(roots)
+
+
+def _hermite_extrema(
+    q0: float, v0: float, q1: float, v1: float, duration_s: float
+) -> tuple[float, float, float, float, float, float]:
+    h = max(duration_s, 1e-12)
+    c0 = q0
+    c1 = h * v0
+    c2 = -3.0 * q0 - 2.0 * h * v0 + 3.0 * q1 - h * v1
+    c3 = 2.0 * q0 + h * v0 - 2.0 * q1 + h * v1
+    samples = [_hermite(q0, v0, q1, v1, h, 0.0), _hermite(q0, v0, q1, v1, h, 1.0)]
+    for root in _real_roots(3.0 * c3, 2.0 * c2, c1):
+        if -1e-14 <= root <= 1.0 + 1e-14:
+            samples.append(_hermite(q0, v0, q1, v1, h, min(max(root, 0.0), 1.0)))
+    velocity_samples = [samples[0][1], samples[1][1]]
+    acceleration_root = _hermite_acceleration_root(q0, v0, q1, v1, h)
+    if acceleration_root is not None and -1e-14 <= acceleration_root <= 1.0 + 1e-14:
+        _, velocity = _hermite(
+            q0, v0, q1, v1, h, min(max(acceleration_root, 0.0), 1.0)
+        )
+        velocity_samples.append(velocity)
+    accelerations = (
+        _hermite_acceleration(q0, v0, q1, v1, h, 0.0),
+        _hermite_acceleration(q0, v0, q1, v1, h, 1.0),
+    )
+    positions = [position for position, _ in samples]
+    return (
+        min(positions),
+        max(positions),
+        max(0.0, *velocity_samples),
+        max(0.0, *(-value for value in velocity_samples)),
+        max(0.0, *accelerations),
+        max(0.0, *(-value for value in accelerations)),
+    )
 
 
 def _quintic_boundary_state(

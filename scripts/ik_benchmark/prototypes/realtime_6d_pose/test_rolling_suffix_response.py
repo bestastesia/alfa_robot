@@ -6,8 +6,80 @@ import math
 from rolling_suffix import (
     PROVISIONAL_LIMITS,
     RollingTargetPlanner,
+    RollingPoint,
+    RollingSuffix,
+    SuffixPlanningError,
     build_hold_suffix,
+    choose_replace_from_ns,
+    target_tracking_allowed,
+    validate_suffix,
 )
+
+import pytest
+
+
+def test_target_tracking_requires_external_pose_arm() -> None:
+    assert not target_tracking_allowed(enabled=True, armed=False, target_is_fresh=True)
+    assert not target_tracking_allowed(enabled=True, armed=True, target_is_fresh=False)
+    assert not target_tracking_allowed(enabled=False, armed=True, target_is_fresh=True)
+    assert target_tracking_allowed(enabled=True, armed=True, target_is_fresh=True)
+
+
+def test_replace_frontier_compensates_for_public_state_age() -> None:
+    assert choose_replace_from_ns(
+        public_replaceable_from_ns=1_000_000_000,
+        accepted_replace_from_ns=0,
+        public_state_age_ns=30_000_000,
+        replace_guard_ns=24_000_000,
+        horizon_ns=500_000_000,
+        max_horizon_ns=600_000_000,
+        replace_lead_ns=16_000_000,
+        controller_period_ns=4_000_000,
+    ) == 1_054_000_000
+
+
+def test_replace_frontier_rejects_state_age_beyond_horizon_budget() -> None:
+    with pytest.raises(SuffixPlanningError, match="rt_public_state_too_stale"):
+        choose_replace_from_ns(
+            public_replaceable_from_ns=1_000_000_000,
+            accepted_replace_from_ns=0,
+            public_state_age_ns=57_000_000,
+            replace_guard_ns=24_000_000,
+            horizon_ns=500_000_000,
+            max_horizon_ns=600_000_000,
+            replace_lead_ns=16_000_000,
+            controller_period_ns=4_000_000,
+        )
+
+
+def test_local_validation_matches_rt_stopping_viability_reject() -> None:
+    positions = [0.0] * 14
+    positions[13] = 0.3
+    start = list(positions)
+    end = list(positions)
+    start[8] = 2.420
+    end[8] = 2.430
+    start_velocity = [0.0] * 14
+    end_velocity = [0.0] * 14
+    start_velocity[8] = 0.10
+    end_velocity[8] = 0.10
+    suffix = RollingSuffix(
+        sequence=1,
+        replace_from_ns=0,
+        points=(
+            RollingPoint(0, tuple(start), tuple(start_velocity)),
+            RollingPoint(100_000_000, tuple(end), tuple(end_velocity)),
+        ),
+    )
+
+    valid, reason, _, _ = validate_suffix(
+        suffix,
+        active_indices=range(6, 12),
+        limits=PROVISIONAL_LIMITS,
+    )
+
+    assert not valid
+    assert reason == "stopping_viability:left_joint3"
 
 
 def test_ten_degree_step_keeps_rolling_instead_of_stopping_each_horizon() -> None:

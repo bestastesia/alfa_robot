@@ -195,10 +195,10 @@ def cache_record_from_result(
     row: int,
     distance_cm: int,
     lateral_offset_cm: int,
+    mode: str,
     place_templates: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
     pair = next(pair for pair, pair_row in TASK_ROWS.items() if pair_row == row)
-    mode = "front" if row <= 3 else "top_suction"
     pregrasp = result.get("pregrasp_transition", {})
     if not pregrasp.get("valid", False):
         raise ValueError(f"预抓取轨迹无效: {pregrasp.get('failure_reason', '')}")
@@ -207,6 +207,29 @@ def cache_record_from_result(
     loaded_frames = valid_prefix(list(result["loaded_transition"].get("frames", [])))
     if not approach_frames or not loaded_frames:
         raise ValueError("预抓取或负重轨迹为空")
+
+    targets = canonical_targets(
+        distance_cm / 100.0,
+        lateral_offset_cm,
+        row,
+        grasp_mode=mode,
+    )
+    contact_frame = approach_frames[-1]
+    world_to_base_z = float(result.get("world_to_base_z", 0.202094))
+    for side in ("left", "right"):
+        actual = [float(value) for value in contact_frame[f"{side}_target_position_world"]]
+        expected_pose = targets[side]["pose_6d"]
+        expected = [
+            float(expected_pose["x"]),
+            float(expected_pose["y"]),
+            float(expected_pose["z"]) + world_to_base_z,
+        ]
+        error = max(abs(lhs - rhs) for lhs, rhs in zip(actual, expected))
+        if error > 1e-6:
+            raise ValueError(
+                f"{side}吸附目标与缓存合同不一致: "
+                f"actual={actual} expected={expected} max_error={error:.6f}m"
+            )
 
     approach_points = points_from_frames(approach_frames)
     extract_points = points_from_frames(strategy_frames)
@@ -253,9 +276,7 @@ def cache_record_from_result(
         "source_pair": list(pair),
         "strategy": "analytic_radial_to_loaded_v1",
         "pregrasp_state": pregrasp_state,
-        "canonical_targets": canonical_targets(
-            distance_cm / 100.0, lateral_offset_cm, row
-        ),
+        "canonical_targets": targets,
         "snapshot": {
             "type": "trajectory_cache",
             "success": True,
@@ -276,7 +297,10 @@ def main() -> int:
     generated = []
     failed = []
     attempted: dict[tuple[int, int, int], dict[str, Any]] = {}
-    for source_root in (args.side_root.resolve(), args.top_root.resolve()):
+    for source_root, mode in (
+        (args.side_root.resolve(), "front"),
+        (args.top_root.resolve(), "top_suction"),
+    ):
         summary_path = source_root / "summary.json"
         if summary_path.is_file():
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -302,6 +326,7 @@ def main() -> int:
                     row=row,
                     distance_cm=distance_cm,
                     lateral_offset_cm=lateral_offset_cm,
+                    mode=mode,
                     place_templates=place_templates,
                 )
                 generated.append(write_cache_record(record, output_root))
@@ -326,9 +351,10 @@ def main() -> int:
                 if key in generated_keys or key in failed_keys:
                     continue
                 item = attempted.get(key, {})
-                reason = str(item.get("loaded_failure_reason", "case_result_missing"))
                 if not item.get("ik_ok", False):
-                    reason = "ik_failed:" + reason
+                    reason = "ik_failed"
+                else:
+                    reason = str(item.get("loaded_failure_reason", "")) or "case_result_missing"
                 failed.append((*key, reason))
     rows = []
     for row in range(1, 6):
@@ -338,8 +364,8 @@ def main() -> int:
         "# 新径向策略轨迹缓存",
         "",
         "- 网格：12距离(75～86cm) × 21横移(-10～+10cm) × 5排。",
-        "- 前三排：侧吸径向转正/缩短 + 分阶段 Shortcut。",
-        "- 后两排：顶吸竖直工具轴 + 1cm水平回抽 + 第30步起 Shortcut。",
+        "- 前两排：侧吸径向转正/缩短 + 分阶段 Shortcut。",
+        "- 后三排：顶吸竖直工具轴 + 1cm水平回抽 + 第30步起 Shortcut。",
         f"- 成功缓存：{len(generated)}/{expected} = {len(generated) / expected:.2%}。",
         f"- 未生成：{len(failed)}。运行时继续使用原有最近成功缓存命中规则。",
         "",

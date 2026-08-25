@@ -85,6 +85,7 @@ install_manifest.txt
 !ros2_ws/src/alfa_robot_moveit_config/srv/PlanRecapture.srv
 !ros2_ws/src/alfa_robot_moveit_config/srv/
 !ros2_ws/src/alfa_robot_moveit_config/srv/ConfigureExtractMonitor.srv
+!ros2_ws/src/alfa_robot_moveit_config/srv/SmoothTrajectory.srv
 !ros2_ws/src/motion_internal_interfaces/srv/
 !ros2_ws/src/motion_internal_interfaces/srv/*.srv
 *.msg.generated
