@@ -22,7 +22,7 @@
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
   <xacro:property name="arm_mount_forward_offset_value" value="$(arg arm_mount_forward_offset)"/>
-  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_7.xacro"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_8.xacro"/>
 
   <link name="world"/>
   <joint name="world_to_base" type="fixed">
@@ -36,8 +36,8 @@
     <parent link="base_link"/>
     <child link="model_base"/>
     <origin
-      xyz="${0.319993084526 + float(arm_mount_forward_offset_value)} -1.343e-08 0.566102751502"
-      rpy="1.57079632679 0.22548136 0"/>
+      xyz="${-0.190000017371 + float(arm_mount_forward_offset_value)} 6.50500004219e-09 0.648299964909"
+      rpy="1.5707963 0 1.57079632679"/>
   </joint>
 
   <xacro:alfa_robot_ros2_control

@@ -202,7 +202,11 @@ void checkInstalledMirroredModels()
       V3RedundantArmModel::V305Left,
       V3RedundantArmModel::V305Right,
       V3RedundantArmModel::V306Left,
-      V3RedundantArmModel::V306Right}) {
+      V3RedundantArmModel::V306Right,
+      V3RedundantArmModel::V307Left,
+      V3RedundantArmModel::V307Right,
+      V3RedundantArmModel::V308Left,
+      V3RedundantArmModel::V308Right}) {
     V3RedundantArmAnalyticIk solver(model);
     const auto lower = solver.jointLowerLimits();
     const auto upper = solver.jointUpperLimits();

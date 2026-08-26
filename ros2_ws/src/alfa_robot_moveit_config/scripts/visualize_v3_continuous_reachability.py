@@ -35,13 +35,23 @@ GRAY = [145, 150, 160, 180]
 CYAN = [60, 220, 235, 230]
 DARK_RED = [150, 20, 35, 245]
 
-V306_SHOULDER_CENTERS = {
-    "left": np.array([-0.055, 0.4025, 0.25]),
-    "right": np.array([-0.055, -0.4125, 0.25]),
+SHOULDER_CENTERS = {
+    "V3.0.6": {
+        "left": np.array([-0.055, 0.4025, 0.25]),
+        "right": np.array([-0.055, -0.4125, 0.25]),
+    },
+    "V3.0.7": {
+        "left": np.array([0.18099999, -0.4115, 1.3228]),
+        "right": np.array([0.18099999, 0.4115, 1.3228]),
+    },
+    "V3.0.8": {
+        "left": np.array([0.181, -0.47659019, 1.34243275]),
+        "right": np.array([0.181, 0.47659019, 1.34243279]),
+    },
 }
-V306_UPPER_ARM_LENGTH = 0.506
-V306_FOREARM_LENGTH = 0.476
-V306_TOOL_LENGTH = 0.19435
+UPPER_ARM_LENGTH = 0.506
+FOREARM_LENGTH = 0.473
+TOOL_LENGTH = 0.13585
 
 
 JUMP_SEVERITIES = [
@@ -103,6 +113,10 @@ def set_failure_time(index: int) -> None:
         rr.set_time_sequence("failure_case", index)
     else:
         rr.set_time("failure_case", sequence=index)
+
+
+def set_point_stage(seconds: float) -> None:
+    rr.set_time("point_stage", duration=seconds)
 
 
 def jump_severity(point: dict) -> tuple[str, list[int]]:
@@ -337,16 +351,17 @@ def log_reach_limit_playback(
     ) != 0:
         raise RuntimeError("指定中心不是起点解析不可达案例")
     side = str(config["side"])
-    shoulder = V306_SHOULDER_CENTERS[side].copy()
+    analytic_model = str(config.get("analytic_model", "V3.0.6"))
+    shoulder = SHOULDER_CENTERS[analytic_model][side].copy()
     shoulder[0] += float(config.get("arm_mount_forward_offset", 0.0))
     target = np.asarray(point["position"], dtype=float)
     roll, pitch, yaw = [float(value) for value in config["target_orientation_rpy"]]
     target_rotation = rotation_from_rpy(roll, pitch, yaw)
-    wrist = target - target_rotation @ np.array([0.0, 0.0, V306_TOOL_LENGTH])
+    wrist = target - target_rotation @ np.array([0.0, 0.0, TOOL_LENGTH])
     shoulder_to_wrist = wrist - shoulder
     desired_distance = float(np.linalg.norm(shoulder_to_wrist))
     direction = shoulder_to_wrist / desired_distance
-    maximum_distance = V306_UPPER_ARM_LENGTH + V306_FOREARM_LENGTH
+    maximum_distance = UPPER_ARM_LENGTH + FOREARM_LENGTH
     maximum_wrist = shoulder + maximum_distance * direction
     overreach = max(0.0, desired_distance - maximum_distance)
     frame_count = max(2, int(round(3.0 * frames_per_second)))
@@ -1338,6 +1353,7 @@ def main() -> int:
     )
     highlighted_forward_point: dict | None = None
     highlighted_forward_shoulder: np.ndarray | None = None
+    staged_point_clouds = not args.failure_details and not args.failure_poses
     if args.highlight_forward_farthest:
         if not successful_points:
             raise RuntimeError("筛选范围内没有可高亮的可达点")
@@ -1454,6 +1470,15 @@ def main() -> int:
         return 0
 
     if successful_points and not args.failure_poses:
+        if staged_point_clouds:
+            set_point_stage(0.0)
+            rr.log(
+                "scan/stage_status",
+                rr.TextDocument(
+                    "# Stage 1/2\nSuccessful points only",
+                    media_type=rr.MediaType.MARKDOWN,
+                ),
+            )
         side = str(config["side"])
         joint_names = [f"{side}_joint{index}" for index in range(1, 8)]
         displayed_robot_point = highlighted_forward_point or successful_points[0]
@@ -1507,7 +1532,7 @@ def main() -> int:
                         for point in points
                     ],
                 ),
-                static=True,
+                static=not staged_point_clouds,
             )
 
         if highlighted_forward_point is not None and highlighted_forward_shoulder is not None:
@@ -1542,6 +1567,27 @@ def main() -> int:
             )
 
     if failed_points and not args.failure_details and not jump_component_points and not jump_case:
+        if staged_point_clouds:
+            set_point_stage(2.0)
+            rr.log(
+                "scan/reachable_points",
+                rr.Clear(recursive=True),
+            )
+            rr.log(
+                "scan/continuous_points",
+                rr.Clear(recursive=True),
+            )
+            rr.log(
+                "scan/disk_continuous_points",
+                rr.Clear(recursive=True),
+            )
+            rr.log(
+                "scan/stage_status",
+                rr.TextDocument(
+                    "# Stage 2/2\nFailed points only",
+                    media_type=rr.MediaType.MARKDOWN,
+                ),
+            )
         rr.log(
             (
                 "scan/unreachable_points"
@@ -1555,7 +1601,7 @@ def main() -> int:
                 colors=[RED] * len(failed_points),
                 radii=0.005,
             ),
-            static=True,
+            static=not staged_point_clouds,
         )
 
     if failed_points and args.failure_details and not jump_component_points and not jump_case:
@@ -1763,6 +1809,7 @@ def main() -> int:
                     f"- Collision checks: {summary['collision_checks']} calls / "
                     f"{summary['collision_ms']:.2f} ms",
                     color_label,
+                    "- Playback: 0s shows successful points; 2s shows failed points.",
                     *(
                         [
                             "- 失败诊断颜色：深红=中心立即无解，橙=圆盘外圈进入不可达区，",
@@ -1778,6 +1825,15 @@ def main() -> int:
         ),
         static=True,
     )
+    if staged_point_clouds:
+        set_point_stage(0.0)
+        rr.log(
+            "scan/stage_status",
+            rr.TextDocument(
+                "# Stage 1/2\nSuccessful points only",
+                media_type=rr.MediaType.MARKDOWN,
+            ),
+        )
     rr.send_blueprint(
         rrb.Blueprint(
             rrb.Horizontal(

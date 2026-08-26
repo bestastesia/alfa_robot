@@ -162,7 +162,7 @@ public:
     world_frame_ = declare_parameter<std::string>("world_frame", "world");
     arm_base_frame_ = declare_parameter<std::string>("arm_base_frame", "arm_carriage");
     const auto initial_target = declare_parameter<std::vector<double>>(
-      "initial_target_xyzrpy", {0.50, 0.30, 0.30, 0.0, kPi / 2.0, 0.0});
+      "initial_target_xyzrpy", {0.73, -0.20, 0.55, 0.0, kPi / 2.0, 0.0});
     psi_step_ = degToRad(std::clamp(
       declare_parameter<double>("psi_step_deg", 2.0), 0.1, 30.0));
     maximum_segment_joint_jump_ = degToRad(std::clamp(
@@ -179,7 +179,7 @@ public:
     }
 
     solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      side_ == "left" ? V3RedundantArmModel::V306Left : V3RedundantArmModel::V306Right);
+      side_ == "left" ? V3RedundantArmModel::V308Left : V3RedundantArmModel::V308Right);
     target_pose_.position.x = initial_target[0];
     target_pose_.position.y = initial_target[1];
     target_pose_.position.z = initial_target[2];

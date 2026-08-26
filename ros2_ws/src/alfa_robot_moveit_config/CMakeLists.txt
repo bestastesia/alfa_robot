@@ -256,6 +256,67 @@ ament_target_dependencies(v3_redundant_ik_interactive_demo
   visualization_msgs
 )
 
+add_executable(v3_single_arm_box_extract_demo
+  src/v3_single_arm_box_extract_demo.cpp
+)
+
+target_compile_features(v3_single_arm_box_extract_demo PUBLIC cxx_std_17)
+
+target_include_directories(v3_single_arm_box_extract_demo PRIVATE
+  include
+)
+
+target_link_libraries(v3_single_arm_box_extract_demo
+  alfa_robot_motion_scene_adapter
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+ament_target_dependencies(v3_single_arm_box_extract_demo
+  alfa_robot_analytic_ik
+  geometry_msgs
+  interactive_markers
+  moveit_core
+  moveit_msgs
+  moveit_ros_planning
+  nlohmann_json
+  pluginlib
+  rclcpp
+  sensor_msgs
+  shape_msgs
+  std_msgs
+  std_srvs
+  visualization_msgs
+)
+
+add_executable(v3_dual_arm_cartesian_box_demo
+  src/v3_dual_arm_cartesian_box_demo.cpp
+)
+
+target_compile_features(v3_dual_arm_cartesian_box_demo PUBLIC cxx_std_17)
+
+target_include_directories(v3_dual_arm_cartesian_box_demo PRIVATE
+  include
+)
+
+target_link_libraries(v3_dual_arm_cartesian_box_demo
+  alfa_robot_motion_scene_adapter
+  alfa_robot_analytic_ik::alfa_robot_analytic_ik
+)
+
+ament_target_dependencies(v3_dual_arm_cartesian_box_demo
+  alfa_robot_analytic_ik
+  geometry_msgs
+  interactive_markers
+  moveit_core
+  moveit_ros_planning
+  nlohmann_json
+  rclcpp
+  sensor_msgs
+  std_msgs
+  std_srvs
+  visualization_msgs
+)
+
 install(TARGETS
   alfa_robot_motion_core
   alfa_robot_motion_scene_adapter
@@ -264,6 +325,8 @@ install(TARGETS
   motion_collision_service_node
   v3_continuous_reachability
   v3_redundant_ik_interactive_demo
+  v3_single_arm_box_extract_demo
+  v3_dual_arm_cartesian_box_demo
   EXPORT export_alfa_robot_motion_core
   DESTINATION lib/${PROJECT_NAME}
   ARCHIVE DESTINATION lib
@@ -418,5 +481,6 @@ install(PROGRAMS
   scripts/motion_contracts/generate_motion_baseline.py
   scripts/visualize_moveit_box_stack_flow.py
   scripts/visualize_v3_continuous_reachability.py
+  scripts/visualize_v3_reachability_scan_volume.py
   DESTINATION lib/${PROJECT_NAME}
 )

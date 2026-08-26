@@ -41,6 +41,11 @@ install(
   DESTINATION share/${PROJECT_NAME}/meshes
 )
 
+install(
+  DIRECTORY meshes/robot_v3_0_8
+  DESTINATION share/${PROJECT_NAME}/meshes
+)
+
 # 根 xacro 已随 urdf/ 目录安装；运行时按需展开，避免首次构建时自查找本包失败。
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)

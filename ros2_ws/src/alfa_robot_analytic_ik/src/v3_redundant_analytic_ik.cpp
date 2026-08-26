@@ -62,6 +62,26 @@ const JointVector kV305UpperLimits = {
   kPi,
 };
 
+const JointVector kV307LowerLimits = {
+  -kPi,
+  -1.83259571,
+  -kPi,
+  -2.53072742,
+  -kPi,
+  -1.91986218,
+  -kPi,
+};
+
+const JointVector kV307UpperLimits = {
+  kPi,
+  1.83259571,
+  kPi,
+  2.53072742,
+  kPi,
+  1.91986218,
+  kPi,
+};
+
 Eigen::Matrix3d rotX(double value)
 {
   return Eigen::AngleAxisd(value, Eigen::Vector3d::UnitX()).toRotationMatrix();
@@ -112,6 +132,106 @@ Eigen::Isometry3d rotationAroundLine(
 
 TransformArray fixedJointTransforms(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V308Left) {
+    return {
+      rotationTransform(rotZ(kPi / 2.0)) * transformFromOrigin(
+        {-0.33054221, -0.181, 1.3032993},
+        {0.0, -1.3089969, 0.0}),
+      transformFromOrigin(
+        {0.039999999, 0.0, 0.1512},
+        {0.0, kUrdfHalfPi, -kUrdfPi}),
+      transformFromOrigin(
+        {-0.1795, 0.0, 0.040000001},
+        {0.0, kUrdfHalfPi, kUrdfPi}),
+      transformFromOrigin(
+        {-1.2287747e-09, -0.068, 0.3265},
+        {kUrdfHalfPi, 1.3089969, 0.0}),
+      transformFromOrigin(
+        {-0.22457775, 0.060175428, -0.068},
+        {-kUrdfHalfPi, 0.0, 1.3089969}),
+      transformFromOrigin(
+        {0.061499999, 0.0, 0.2405},
+        {0.0, kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {-0.1025, 0.0, -0.0615},
+        {0.0, -kUrdfHalfPi, 0.0}),
+    };
+  }
+  if (model == V3RedundantArmModel::V308Right) {
+    return {
+      rotationTransform(rotZ(kPi / 2.0)) * transformFromOrigin(
+        {0.35372443, -0.181, 1.309511},
+        {0.0, -1.3089969, kUrdfPi}),
+      transformFromOrigin(
+        {0.039999999, 0.0, 0.1272},
+        {0.0, -kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {0.1795, 0.0, 0.040000001},
+        {0.0, kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {-1.2261866e-09, 0.07, 0.3265},
+        {kUrdfHalfPi, -1.3089969, -kUrdfPi}),
+      transformFromOrigin(
+        {0.22457775, 0.060175428, -0.07},
+        {kUrdfHalfPi, 0.0, 1.8325957}),
+      transformFromOrigin(
+        {0.076499999, 0.0, 0.2405},
+        {0.0, -kUrdfHalfPi, -kUrdfPi}),
+      transformFromOrigin(
+        {0.1025, 0.0, -0.0765},
+        {0.0, -kUrdfHalfPi, kUrdfPi}),
+    };
+  }
+  if (model == V3RedundantArmModel::V307Left) {
+    return {
+      transformFromOrigin(
+        {0.18099999, -0.2995, 1.3228},
+        {kUrdfHalfPi, 0.22548136, 0.0}),
+      transformFromOrigin(
+        {-0.021239679, 0.092595227, 0.112},
+        {-kUrdfHalfPi, 0.0, 0.22548136}),
+      transformFromOrigin(
+        {3.328254e-10, -0.1795, -0.095},
+        {kUrdfHalfPi, 0.22548136, 0.0}),
+      transformFromOrigin(
+        {0.066278689, 0.015203138, 0.3265},
+        {kUrdfHalfPi, 0.0, 1.7962777}),
+      transformFromOrigin(
+        {-2.5261506e-10, 0.234, -0.068},
+        {kUrdfHalfPi, -1.345315, -kUrdfPi}),
+      transformFromOrigin(
+        {-0.013749897, 0.059943226, 0.242},
+        {-kUrdfHalfPi, 0.0, 0.22548136}),
+      transformFromOrigin(
+        {3.1333161e-10, -0.041, -0.0615},
+        {kUrdfHalfPi, 0.22548136, 0.0}),
+    };
+  }
+  if (model == V3RedundantArmModel::V307Right) {
+    return {
+      transformFromOrigin(
+        {0.18099999, 0.2995, 1.3228},
+        {-kUrdfHalfPi, 0.22548136, 0.0}),
+      transformFromOrigin(
+        {-0.021239679, -0.092595227, 0.112},
+        {kUrdfHalfPi, 0.0, -0.22548136}),
+      transformFromOrigin(
+        {3.328254e-10, 0.246, -0.095},
+        {-kUrdfHalfPi, 0.22548136, 0.0}),
+      transformFromOrigin(
+        {0.038987464, -0.0089430226, 0.26},
+        {-kUrdfHalfPi, 0.0, -1.7962777}),
+      transformFromOrigin(
+        {-1.6265724e-10, -0.234, -0.04},
+        {-kUrdfHalfPi, -1.345315, -kUrdfPi}),
+      transformFromOrigin(
+        {-0.013749897, -0.059943226, 0.242},
+        {kUrdfHalfPi, 0.0, -0.22548136}),
+      transformFromOrigin(
+        {3.1333161e-10, 0.0995, -0.0615},
+        {-kUrdfHalfPi, 0.22548136, 0.0}),
+    };
+  }
   if (model == V3RedundantArmModel::V306Left ||
       model == V3RedundantArmModel::V306Right) {
     const Eigen::Isometry3d arm_mount = model == V3RedundantArmModel::V306Left ?
@@ -224,8 +344,13 @@ Eigen::Isometry3d toolTransform(V3RedundantArmModel model)
   } else if (model == V3RedundantArmModel::V305Right) {
     transform.translation().z() = 0.1895;
   } else if (model == V3RedundantArmModel::V306Left ||
-             model == V3RedundantArmModel::V306Right) {
+             model == V3RedundantArmModel::V306Right ||
+             model == V3RedundantArmModel::V307Left ||
+             model == V3RedundantArmModel::V307Right) {
     transform.translation().z() = 0.19435;
+  } else if (model == V3RedundantArmModel::V308Left ||
+             model == V3RedundantArmModel::V308Right) {
+    transform.translation().z() = 0.13585;
   }
   return transform;
 }
@@ -300,6 +425,22 @@ const Geometry& geometry(V3RedundantArmModel model)
   static const Geometry v305_right = makeGeometry(V3RedundantArmModel::V305Right);
   static const Geometry v306_left = makeGeometry(V3RedundantArmModel::V306Left);
   static const Geometry v306_right = makeGeometry(V3RedundantArmModel::V306Right);
+  static const Geometry v307_left = makeGeometry(V3RedundantArmModel::V307Left);
+  static const Geometry v307_right = makeGeometry(V3RedundantArmModel::V307Right);
+  static const Geometry v308_left = makeGeometry(V3RedundantArmModel::V308Left);
+  static const Geometry v308_right = makeGeometry(V3RedundantArmModel::V308Right);
+  if (model == V3RedundantArmModel::V308Left) {
+    return v308_left;
+  }
+  if (model == V3RedundantArmModel::V308Right) {
+    return v308_right;
+  }
+  if (model == V3RedundantArmModel::V307Left) {
+    return v307_left;
+  }
+  if (model == V3RedundantArmModel::V307Right) {
+    return v307_right;
+  }
   if (model == V3RedundantArmModel::V306Left) {
     return v306_left;
   }
@@ -317,12 +458,24 @@ const Geometry& geometry(V3RedundantArmModel model)
 
 const JointVector& lowerLimits(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V307Left ||
+      model == V3RedundantArmModel::V307Right ||
+      model == V3RedundantArmModel::V308Left ||
+      model == V3RedundantArmModel::V308Right) {
+    return kV307LowerLimits;
+  }
   return model == V3RedundantArmModel::LegacyV304 ?
          kLegacyLowerLimits : kV305LowerLimits;
 }
 
 const JointVector& upperLimits(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V307Left ||
+      model == V3RedundantArmModel::V307Right ||
+      model == V3RedundantArmModel::V308Left ||
+      model == V3RedundantArmModel::V308Right) {
+    return kV307UpperLimits;
+  }
   return model == V3RedundantArmModel::LegacyV304 ?
          kLegacyUpperLimits : kV305UpperLimits;
 }

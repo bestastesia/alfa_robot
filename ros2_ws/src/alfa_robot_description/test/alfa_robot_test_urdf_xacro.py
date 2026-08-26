@@ -40,17 +40,19 @@ def test_urdf_xacro():
 
         base_meshes = links["model_base"].findall("visual/geometry/mesh")
         carriage_meshes = links["arm_carriage"].findall("visual/geometry/mesh")
-        assert len(base_meshes) == 17
-        assert len(carriage_meshes) == 14
+        upper_body_meshes = links["upper_body"].findall("visual/geometry/mesh")
+        assert len(base_meshes) == 19
+        assert len(carriage_meshes) == 8
+        assert len(upper_body_meshes) == 1
         assert all(
-            "/meshes/robot_v3_0_7/" in mesh.attrib["filename"]
-            for mesh in base_meshes + carriage_meshes
+            "/meshes/robot_v3_0_8/" in mesh.attrib["filename"]
+            for mesh in base_meshes + carriage_meshes + upper_body_meshes
         )
 
         visuals = robot.findall(".//visual")
         collisions = robot.findall(".//collision")
-        assert len(visuals) == 45
-        assert len(collisions) == 45
+        assert len(visuals) == 42
+        assert len(collisions) == 42
         assert all(
             visual.find("material/color").attrib["rgba"] == "0.82 0.82 0.82 1"
             for visual in visuals
@@ -60,10 +62,10 @@ def test_urdf_xacro():
         assert model_joint.find("parent").attrib["link"] == "base_link"
         assert model_joint.find("child").attrib["link"] == "model_base"
         assert model_joint.find("origin").attrib["xyz"] == (
-            "0.319993084526 -1.343e-08 0.566102751502"
+            "-0.190000017371 6.50500004219e-09 0.648299964909"
         )
         assert model_joint.find("origin").attrib["rpy"] == (
-            "1.57079632679 0.22548136 0"
+            "1.5707963 0 1.57079632679"
         )
         assert joints["world_to_base"].find("origin").attrib["xyz"] == "0 0 0"
 
@@ -72,8 +74,12 @@ def test_urdf_xacro():
         assert carriage_joint.find("parent").attrib["link"] == "model_base"
         assert carriage_joint.find("child").attrib["link"] == "arm_carriage"
         assert carriage_joint.find("origin").attrib["xyz"] == (
-            "-0.18532623 -0.6233154 -1.343e-08"
+            "-6.505e-09 -0.64829997 0.19"
         )
+        upper_body_joint = joints["upper_body_joint"]
+        assert upper_body_joint.attrib["type"] == "fixed"
+        assert upper_body_joint.find("parent").attrib["link"] == "arm_carriage"
+        assert upper_body_joint.find("child").attrib["link"] == "upper_body"
         expected_limits = {
             1: (-3.14159265, 3.14159265),
             2: (-1.83259571, 1.83259571),
@@ -95,7 +101,7 @@ def test_urdf_xacro():
                 collision_mesh = links[name].find("collision/geometry/mesh")
                 assert visual_mesh is not None
                 assert collision_mesh is not None
-                assert "/meshes/robot_v3_0_7/" in visual_mesh.attrib["filename"]
+                assert "/meshes/robot_v3_0_8/" in visual_mesh.attrib["filename"]
                 assert visual_mesh.attrib["filename"] == collision_mesh.attrib["filename"]
                 assert visual_mesh.attrib["scale"] == "0.001 0.001 0.001"
 
@@ -105,8 +111,13 @@ def test_urdf_xacro():
             assert joints[f"{side}_joint1"].find("parent").attrib["link"] == f"{side}_arm_base"
             assert joints[f"{side}_tool0_fixed"].find("parent").attrib["link"] == f"{side}_joint7"
 
-        assert joints["left_tool0_fixed"].find("origin").attrib["xyz"] == "0 0 0.19435"
-        assert joints["right_tool0_fixed"].find("origin").attrib["xyz"] == "0 0 0.19435"
+        assert joints["left_tool0_fixed"].find("origin").attrib["xyz"] == "0 0 0.13585"
+        assert joints["right_tool0_fixed"].find("origin").attrib["xyz"] == "0 0 0.13585"
+
+        left_joint1_origin = joints["left_joint1"].find("origin").attrib["xyz"]
+        right_joint1_origin = joints["right_joint1"].find("origin").attrib["xyz"]
+        assert left_joint1_origin == "0.181 -0.33054221 1.3032993"
+        assert right_joint1_origin == "0.181 0.35372443 1.309511"
 
         ros2_control = robot.find("ros2_control")
         assert ros2_control is not None

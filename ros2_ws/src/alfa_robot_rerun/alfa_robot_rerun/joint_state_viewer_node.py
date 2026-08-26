@@ -35,6 +35,7 @@ class RerunJointStateViewerNode(Node):
 
         self.rr = rerun_module
         self.robot = rerun_helpers.UrdfRobot(rerun_helpers.render_current_urdf())
+        rerun_helpers.prefer_matching_rerun_cli(self.rr)
         self.rr.init(self.app_id)
         if self.spawn_viewer:
             self.rr.spawn()
@@ -43,9 +44,11 @@ class RerunJointStateViewerNode(Node):
             self.robot_path,
             log_meshes=self.log_meshes,
         )
+        rerun_helpers.set_sample_time(0)
+        rerun_helpers.log_robot_state(self.robot, {}, self.robot_path)
 
         self.latest: dict[str, float] = {}
-        self.sample = 0
+        self.sample = 1
         self.subscription = self.create_subscription(
             JointState,
             self.joint_state_topic,
