@@ -17,7 +17,11 @@ def generate_launch_description():
     auto_run_once = LaunchConfiguration("auto_run_once")
     recording_path = LaunchConfiguration("rerun_recording_path")
     motion_mode = LaunchConfiguration("motion_mode")
+    grasp_pattern = LaunchConfiguration("grasp_pattern")
     box_size = LaunchConfiguration("box_size")
+    upward_contact_lateral_offset = LaunchConfiguration(
+        "upward_contact_lateral_offset"
+    )
     initial_target_roll_deg = LaunchConfiguration("initial_target_roll_deg")
     angular_step_deg = LaunchConfiguration("angular_step_deg")
     maximum_joint_step_deg = LaunchConfiguration("maximum_joint_step_deg")
@@ -36,7 +40,11 @@ def generate_launch_description():
             DeclareLaunchArgument("auto_run_once", default_value="false"),
             DeclareLaunchArgument("rerun_recording_path", default_value=""),
             DeclareLaunchArgument("motion_mode", default_value="translate"),
+            DeclareLaunchArgument("grasp_pattern", default_value="inward"),
             DeclareLaunchArgument("box_size", default_value="0.40"),
+            DeclareLaunchArgument(
+                "upward_contact_lateral_offset", default_value="0.10"
+            ),
             DeclareLaunchArgument("initial_target_roll_deg", default_value="0.0"),
             DeclareLaunchArgument("angular_step_deg", default_value="2.0"),
             DeclareLaunchArgument("maximum_joint_step_deg", default_value="12.0"),
@@ -75,7 +83,11 @@ def generate_launch_description():
                     {
                         "auto_run_once": auto_run_once,
                         "motion_mode": motion_mode,
+                        "grasp_pattern": grasp_pattern,
                         "box_size": ParameterValue(box_size, value_type=float),
+                        "upward_contact_lateral_offset": ParameterValue(
+                            upward_contact_lateral_offset, value_type=float
+                        ),
                         "initial_target_roll_deg": ParameterValue(
                             initial_target_roll_deg, value_type=float
                         ),

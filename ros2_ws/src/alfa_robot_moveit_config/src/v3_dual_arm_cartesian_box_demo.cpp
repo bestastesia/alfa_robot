@@ -196,6 +196,14 @@ public:
     if (motion_mode_ != "translate" && motion_mode_ != "roll") {
       throw std::invalid_argument("motion_mode must be translate or roll");
     }
+    grasp_pattern_ = getParameter<std::string>("grasp_pattern", "inward");
+    if (grasp_pattern_ != "inward" &&
+        grasp_pattern_ != "left_side_right_bottom" &&
+        grasp_pattern_ != "right_side_left_bottom") {
+      throw std::invalid_argument(
+              "grasp_pattern must be inward, left_side_right_bottom or "
+              "right_side_left_bottom");
+    }
     const auto initial_center = getParameter<std::vector<double>>(
       "initial_box_center", {0.73, 0.0, 0.55});
     const auto initial_target_offset = getParameter<std::vector<double>>(
@@ -216,6 +224,9 @@ public:
     target_box_roll_ = motion_mode_ == "roll" ?
       degToRad(getParameter<double>("initial_target_roll_deg", 45.0)) : 0.0;
     box_size_ = getParameter<double>("box_size", 0.40);
+    upward_contact_lateral_offset_ = std::clamp(
+      getParameter<double>("upward_contact_lateral_offset", 0.10),
+      0.0, box_size_ * 0.5);
     cartesian_step_ = getParameter<double>("cartesian_step", 0.01);
     angular_step_ = degToRad(getParameter<double>("angular_step_deg", 2.0));
     psi_step_ = degToRad(getParameter<double>("psi_step_deg", 5.0));
@@ -277,7 +288,7 @@ public:
     initialization_metrics.initialization_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - initialization_started).count();
     if (!initial) {
-      throw std::runtime_error("no collision-free inward dual-arm grasp at initial_box_center");
+      throw std::runtime_error("no collision-free dual-arm grasp at initial_box_center");
     }
     current_state_ = initial->state;
     display_state_ = std::make_shared<moveit::core::RobotState>(*current_state_);
@@ -394,10 +405,19 @@ private:
     return output;
   }
 
+  bool upwardGrasp(bool left) const
+  {
+    return
+      (grasp_pattern_ == "left_side_right_bottom" && !left) ||
+      (grasp_pattern_ == "right_side_left_bottom" && left);
+  }
+
   Eigen::Matrix3d inwardOrientation(bool left, double roll) const
   {
-    const Eigen::Vector3d tool_z = left ?
-      Eigen::Vector3d(0.0, 1.0, 0.0) : Eigen::Vector3d(0.0, -1.0, 0.0);
+    const bool upward = upwardGrasp(left);
+    const Eigen::Vector3d tool_z = upward ?
+      Eigen::Vector3d::UnitZ() :
+      (left ? Eigen::Vector3d(0.0, 1.0, 0.0) : Eigen::Vector3d(0.0, -1.0, 0.0));
     const Eigen::Vector3d tool_x = Eigen::Vector3d::UnitX();
     const Eigen::Vector3d tool_y = tool_z.cross(tool_x);
     Eigen::Matrix3d base;
@@ -405,6 +425,18 @@ private:
     base.col(1) = tool_y;
     base.col(2) = tool_z;
     return base * Eigen::AngleAxisd(roll, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  }
+
+  Eigen::Vector3d contactOffset(bool left) const
+  {
+    const bool upward = upwardGrasp(left);
+    if (upward) {
+      return Eigen::Vector3d(
+        0.0, left ? -upward_contact_lateral_offset_ : upward_contact_lateral_offset_,
+        -box_size_ * 0.5);
+    }
+    return Eigen::Vector3d(
+      0.0, left ? -box_size_ * 0.5 : box_size_ * 0.5, 0.0);
   }
 
   Eigen::Isometry3d toolPose(
@@ -416,8 +448,7 @@ private:
     const Eigen::Matrix3d box_rotation = Eigen::AngleAxisd(
       box_roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
-    pose.translation() = box_center + box_rotation * Eigen::Vector3d(
-      0.0, left ? -box_size_ * 0.5 : box_size_ * 0.5, 0.0);
+    pose.translation() = box_center + box_rotation * contactOffset(left);
     pose.linear() = box_rotation * orientation;
     return pose;
   }
@@ -666,12 +697,17 @@ private:
     moveit::core::RobotState seed(robot_model_);
     seed.setToDefaultValues();
     seed.update(true);
-    const std::array<double, 4> rolls = {0.0, kPi / 2.0, -kPi / 2.0, kPi};
+    std::vector<double> left_rolls = {0.0, kPi / 2.0, -kPi / 2.0, kPi};
+    std::vector<double> right_rolls = left_rolls;
+    if (grasp_pattern_ != "inward") {
+      left_rolls = {0.0};
+      right_rolls = {0.0};
+    }
     std::optional<DualCandidate> best;
     Eigen::Matrix3d previous_left_orientation = left_orientation_;
     Eigen::Matrix3d previous_right_orientation = right_orientation_;
-    for (double left_roll : rolls) {
-      for (double right_roll : rolls) {
+    for (double left_roll : left_rolls) {
+      for (double right_roll : right_rolls) {
         left_orientation_ = inwardOrientation(true, left_roll);
         right_orientation_ = inwardOrientation(false, right_roll);
         setHeldBoxTransform(box_center, 0.0);
@@ -1017,6 +1053,7 @@ private:
   {
     return {
       {"motion_mode", motion_mode_},
+      {"grasp_pattern", grasp_pattern_},
       {"current_box_center", {current.x(), current.y(), current.z()}},
       {"target_box_center", {target.x(), target.y(), target.z()}},
       {"current_box_roll", current_roll},
@@ -1024,7 +1061,7 @@ private:
       {"box_size", box_size_},
       {"left_tool_link", left_tool_link_},
       {"right_tool_link", right_tool_link_},
-      {"grasp_spacing", box_size_},
+      {"grasp_spacing", (contactOffset(true) - contactOffset(false)).norm()},
     };
   }
 
@@ -1283,6 +1320,7 @@ private:
   std::string left_tool_link_;
   std::string right_tool_link_;
   std::string motion_mode_ = "translate";
+  std::string grasp_pattern_ = "inward";
   Eigen::Vector3d initial_box_center_{0.73, 0.0, 0.55};
   Eigen::Vector3d current_box_center_{0.73, 0.0, 0.55};
   Eigen::Vector3d target_box_center_{0.61, 0.0, 0.55};
@@ -1294,6 +1332,7 @@ private:
   Eigen::Matrix3d right_orientation_ = Eigen::Matrix3d::Identity();
   Eigen::Isometry3d left_tool_to_box_ = Eigen::Isometry3d::Identity();
   double box_size_ = 0.40;
+  double upward_contact_lateral_offset_ = 0.10;
   double cartesian_step_ = 0.01;
   double angular_step_ = degToRad(2.0);
   double psi_step_ = degToRad(5.0);
