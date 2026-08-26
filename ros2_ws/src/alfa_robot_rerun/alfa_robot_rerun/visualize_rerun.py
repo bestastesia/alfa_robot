@@ -212,6 +212,23 @@ def command_with_workspace_setup(command: list[str]) -> list[str]:
     return command
 
 
+def prefer_matching_rerun_cli(rerun_module=rr) -> str | None:
+    """Prioritize the Viewer bundled with the imported Rerun SDK."""
+    module_file = getattr(rerun_module, "__file__", None)
+    if not module_file:
+        return None
+    bundled_cli = Path(module_file).resolve().parent.parent / "rerun_cli" / "rerun"
+    if not bundled_cli.is_file():
+        return None
+    bundled_dir = str(bundled_cli.parent)
+    path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    if not path_entries or path_entries[0] != bundled_dir:
+        os.environ["PATH"] = os.pathsep.join(
+            [bundled_dir, *[entry for entry in path_entries if entry != bundled_dir]]
+        )
+    return str(bundled_cli)
+
+
 class UrdfRobot:
     def __init__(self, urdf_text: str) -> None:
         self.links: dict[str, LinkModel] = {}
@@ -320,9 +337,11 @@ def log_robot_static_model(
     world_path: str,
     *,
     log_meshes: bool = True,
+    log_view_coordinates: bool = True,
     exclude_link_prefixes: tuple[str, ...] = (),
 ) -> None:
-    rr.log(world_path, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
+    if log_view_coordinates:
+        rr.log(world_path, rr.ViewCoordinates.RIGHT_HAND_Z_UP, static=True)
     missing_meshes = 0
     logged_meshes = 0
     for link in robot.links.values():
@@ -436,6 +455,7 @@ def main():
     print(f"Loaded {len(records)} samples, dual_arm={is_dual}")
 
     # 初始化 Rerun
+    prefer_matching_rerun_cli()
     if args.save:
         rr.init("ik_benchmark", recording_id=Path(args.jsonl_path).stem)
         rr.save(args.save)

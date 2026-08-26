@@ -37,6 +37,7 @@
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
     <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
     <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="upper_body" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>
     <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>

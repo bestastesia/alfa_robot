@@ -18,6 +18,7 @@ from alfa_robot_rerun.visualize_rerun import (
     UrdfRobot,
     log_robot_state,
     log_robot_static_model,
+    prefer_matching_rerun_cli,
     render_current_urdf,
 )
 
@@ -72,19 +73,22 @@ class V3RedundantSolutionFamilyViewer(Node):
             0.0, float(self.get_parameter("segment_pause_s").value)
         )
 
+        prefer_matching_rerun_cli()
         rr.init("v3_redundant_solution_family", spawn=spawn_viewer)
         if recording_path:
             rr.save(recording_path)
             self.get_logger().info(f"Rerun recording: {recording_path}")
         self.robot = UrdfRobot(render_current_urdf())
         log_robot_static_model(self.robot, "world/robot", log_meshes=log_meshes)
+        rr.set_time("solution_frame", sequence=0)
+        log_robot_state(self.robot, {}, "world/robot")
 
         self.frames: list[PlaybackFrame] = []
         self.side = "left"
         self.target_pose: dict = {}
         self.generation = 0
         self.frame_index = 0
-        self.global_frame = 0
+        self.global_frame = 1
         self.next_frame_time = time.monotonic()
         self.last_frame: PlaybackFrame | None = None
 

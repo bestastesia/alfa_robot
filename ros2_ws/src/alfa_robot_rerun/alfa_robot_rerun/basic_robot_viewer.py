@@ -14,6 +14,7 @@ from alfa_robot_rerun.visualize_rerun import (
     UrdfRobot,
     log_robot_state,
     log_robot_static_model,
+    prefer_matching_rerun_cli,
     render_current_urdf,
 )
 
@@ -35,6 +36,7 @@ class BasicRerunRobotViewer(Node):
         recording_path = str(self.get_parameter("recording_path").value)
         log_meshes = bool(self.get_parameter("log_meshes").value)
 
+        prefer_matching_rerun_cli()
         rr.init(application_id, spawn=spawn)
         if recording_path:
             rr.save(recording_path)
