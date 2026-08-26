@@ -2,4 +2,4 @@ repositories:
   robot_interfaces:
     type: git
     url: https://github.com/SevenovaHangzhou/robot_interfaces.git
-    version: 9cc937970736cd19fd3bf5283de8cc5c15926967
+    version: 92d6ff2ed0b45684d7da2170d96703ca8be569f4

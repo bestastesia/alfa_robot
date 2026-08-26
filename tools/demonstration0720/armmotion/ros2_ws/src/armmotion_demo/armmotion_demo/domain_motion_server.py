@@ -36,12 +36,56 @@ from .stage_contract import (
     canonicalize_stage_target_orientations,
     planning_task_from_resolved_targets,
     resolve_dual_stage_targets,
+    validate_default_stage_targets,
     validate_stage_pose_targets,
 )
 from .turn_frame import compensate_pose_y, pose_at_zero_turn
 
 
 SIDE_RECAPTURE_ARM_POSE_DEG = (0.0, -88.0, 135.0, -40.0, 0.0, 0.0)
+REMOTE_CAMERA_VIEW_JOINTS_RAD = {
+    "left": (
+        0.000047935,
+        -0.785901500,
+        2.103159565,
+        -1.309444351,
+        0.000059923,
+        0.0,
+    ),
+    "right": (
+        -0.000407465,
+        -0.785374195,
+        2.102200827,
+        -1.204246822,
+        0.000239686,
+        0.000095874,
+    ),
+}
+ARM_CONVERGED_JOINTS_RAD = {
+    "left": (
+        0.645769957,
+        -0.854858731,
+        1.548457731,
+        -0.685905129,
+        0.642342472,
+        -0.000023968,
+    ),
+    "right": (
+        -0.584698350,
+        -0.800761939,
+        1.328523236,
+        -0.516603981,
+        -0.579425288,
+        0.000071905,
+    ),
+}
+INDEPENDENT_EXECUTION_STAGES = frozenset(
+    {
+        ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN,
+        ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
+        ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE,
+    }
+)
 
 
 def pregrasp_entry_mode(
@@ -51,20 +95,13 @@ def pregrasp_entry_mode(
     cycle_id: str,
     next_stage: int,
 ) -> str | None:
-    if active_plan is not None:
-        return None
     if (
-        recapture_sample is not None
-        and bool(cycle_id)
-        and int(next_stage) == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP
-    ):
-        return "after_recapture"
-    if (
-        recapture_sample is None
+        active_plan is None
+        and recapture_sample is None
         and not cycle_id
         and int(next_stage) == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
     ):
-        return "skip_recapture"
+        return "from_idle"
     return None
 
 
@@ -74,11 +111,63 @@ def pregrasp_planning_start_sample(
     current_sample: MotionSample,
     recapture_sample: MotionSample | None,
 ) -> MotionSample:
-    if entry_mode == "after_recapture" and recapture_sample is None:
-        raise RuntimeError("缺少重拍阶段真实末态")
-    if entry_mode not in {"after_recapture", "skip_recapture"}:
+    if entry_mode != "from_idle":
         raise ValueError(f"无效的 PREGRASP 入口模式: {entry_mode}")
     return current_sample
+
+
+def named_joint_pose_target(
+    current: MotionSample,
+    named_joint_pose: int,
+) -> tuple[MotionSample, str]:
+    definitions = {
+        ExecuteMotionStage.Goal.NAMED_JOINT_POSE_REMOTE_CAMERA_VIEW: (
+            REMOTE_CAMERA_VIEW_JOINTS_RAD,
+            "remote_camera_view",
+        ),
+        ExecuteMotionStage.Goal.NAMED_JOINT_POSE_ARM_CONVERGED: (
+            ARM_CONVERGED_JOINTS_RAD,
+            "arm_converged",
+        ),
+    }
+    try:
+        pose_by_side, label = definitions[int(named_joint_pose)]
+    except KeyError as exc:
+        raise ValueError(f"不支持的命名关节姿态: {named_joint_pose}") from exc
+    joints = dict(current.joints)
+    for side, values in pose_by_side.items():
+        for index, value in enumerate(values, start=1):
+            joints[f"{side}_joint{index}"] = float(value)
+    return (
+        MotionSample(
+            time_s=0.1,
+            joints=joints,
+            updown_m=float(current.updown_m),
+            context={
+                "stage": f"named_joint_pose/{label}",
+                "named_joint_pose": int(named_joint_pose),
+                "updown": float(current.updown_m),
+            },
+        ),
+        label,
+    )
+
+
+def turn_stage_target(current: MotionSample, target_rad: float) -> MotionSample:
+    if not math.isfinite(float(target_rad)):
+        raise ValueError("Turn 目标必须为有限弧度值")
+    joints = dict(current.joints)
+    joints["turn"] = float(target_rad)
+    return MotionSample(
+        time_s=0.1,
+        joints=joints,
+        updown_m=float(current.updown_m),
+        context={
+            "stage": "turn",
+            "turn_target_rad": float(target_rad),
+            "updown": float(current.updown_m),
+        },
+    )
 
 
 def cache_result_diagnostic(metrics: dict) -> str:
@@ -393,6 +482,10 @@ class DomainMotionServer(Node):
             ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH: "WAITING_APPROACH",
             ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE: "WAITING_PLACE",
             ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME: "WAITING_HOME",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN: "TURN",
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE: (
+                "NAMED_JOINT_POSE"
+            ),
         }.get(int(stage), "UNKNOWN_STAGE")
 
     def _accept_stage_goal(self, request) -> GoalResponse:
@@ -405,14 +498,12 @@ class DomainMotionServer(Node):
             if self._busy or self._goal_reserved or self._scene_unknown:
                 return GoalResponse.REJECT
             stage = int(request.execution_stage)
-            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
+            if stage in INDEPENDENT_EXECUTION_STAGES:
                 if (
                     self._active_plan is not None
                     or self._recapture_sample is not None
                     or self._cycle_id
                 ):
-                    return GoalResponse.REJECT
-                if int(self._next_stage) != ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
                     return GoalResponse.REJECT
             elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
                 if pregrasp_entry_mode(
@@ -440,6 +531,8 @@ class DomainMotionServer(Node):
             ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH,
             ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE,
             ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN,
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE,
         }
         stage = int(request.execution_stage)
         if stage not in valid_stages:
@@ -449,6 +542,26 @@ class DomainMotionServer(Node):
             ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
         }:
             validate_stage_pose_targets(request)
+        else:
+            validate_default_stage_targets(request)
+        turn_target_rad = float(request.turn_target_rad)
+        if not math.isfinite(turn_target_rad):
+            raise ValueError("turn_target_rad 必须为有限值")
+        if (
+            stage != ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN
+            and abs(turn_target_rad) > 1e-12
+        ):
+            raise ValueError("仅 TURN 阶段允许设置 turn_target_rad")
+        named_joint_pose = int(request.named_joint_pose)
+        valid_named_joint_poses = {
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_REMOTE_CAMERA_VIEW,
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_ARM_CONVERGED,
+        }
+        if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE:
+            if named_joint_pose not in valid_named_joint_poses:
+                raise ValueError(f"不支持的 named_joint_pose: {named_joint_pose}")
+        elif named_joint_pose != ExecuteMotionStage.Goal.NAMED_JOINT_POSE_UNSPECIFIED:
+            raise ValueError("仅 NAMED_JOINT_POSE 阶段允许设置 named_joint_pose")
 
     @staticmethod
     def _feedback(state: int):
@@ -557,6 +670,37 @@ class DomainMotionServer(Node):
             raise InterruptedError("动作在轨迹发送前被取消")
         return float(self._hardware.execute_segment(trajectory, label)["duration_s"])
 
+    def _plan_and_execute_joint_target(
+        self,
+        goal_handle,
+        current: MotionSample,
+        target: MotionSample,
+        *,
+        context_label: str,
+        execution_label: str,
+        hold_turn: bool,
+    ) -> tuple[float, float, dict]:
+        goal_handle.publish_feedback(
+            self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
+        )
+        started = time.monotonic()
+        samples, smoothing_metrics = self._planner.smooth_motion_samples(
+            [current, target],
+            context_label=context_label,
+        )
+        planning_time_s = time.monotonic() - started
+        goal_handle.publish_feedback(
+            self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_EXECUTING)
+        )
+        execution_time_s = float(
+            self._hardware.execute_segment(
+                samples,
+                execution_label,
+                hold_turn=hold_turn,
+            )["duration_s"]
+        )
+        return planning_time_s, execution_time_s, smoothing_metrics
+
     @staticmethod
     def _planning_sample_without_external_turn(sample: MotionSample) -> MotionSample:
         joints = dict(sample.joints)
@@ -588,7 +732,48 @@ class DomainMotionServer(Node):
             self._goal_reserved = False
         self._publish_readiness()
         try:
-            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
+            if stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN:
+                current = self._current_sample_for_planning()
+                target = turn_stage_target(current, request.turn_target_rad)
+                (
+                    planning_time_s,
+                    execution_time_s,
+                    smoothing_metrics,
+                ) = self._plan_and_execute_joint_target(
+                    goal_handle,
+                    current,
+                    target,
+                    context_label="turn",
+                    execution_label="Turn 独立运动",
+                    hold_turn=False,
+                )
+                result_detail = (
+                    f"turn_target_rad={float(request.turn_target_rad):.6f}; "
+                    f"smoothing={smoothing_metrics.get('mode', 'unknown')}"
+                )
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE:
+                current = self._current_sample_for_planning()
+                target, named_label = named_joint_pose_target(
+                    current,
+                    request.named_joint_pose,
+                )
+                (
+                    planning_time_s,
+                    execution_time_s,
+                    smoothing_metrics,
+                ) = self._plan_and_execute_joint_target(
+                    goal_handle,
+                    current,
+                    target,
+                    context_label=f"named_joint_pose/{named_label}",
+                    execution_label=f"命名姿态 {named_label}",
+                    hold_turn=True,
+                )
+                result_detail = (
+                    f"named_joint_pose={named_label}; "
+                    f"smoothing={smoothing_metrics.get('mode', 'unknown')}"
+                )
+            elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW:
                 current_with_turn = self._current_sample_for_planning()
                 current = self._planning_sample_without_external_turn(current_with_turn)
                 goal_handle.publish_feedback(
@@ -674,18 +859,6 @@ class DomainMotionServer(Node):
                 execution_time_s += float(
                     self._hardware.execute_segment(samples, "重拍位")["duration_s"]
                 )
-                recapture_sample = (
-                    samples[-1]
-                    if self._hardware.dry_run
-                    else self._planning_sample_without_external_turn(
-                        self._hardware.current_sample()
-                    )
-                )
-                with self._lock:
-                    self._cycle_serial += 1
-                    self._cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
-                    self._recapture_sample = recapture_sample
-                    self._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP
             elif stage == ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP:
                 goal_handle.publish_feedback(
                     self._feedback(ExecuteMotionStage.Feedback.MOTION_STATE_PLANNING)
@@ -703,14 +876,13 @@ class DomainMotionServer(Node):
                     raise RuntimeError("PREGRASP 入口状态已失效")
                 current_with_turn = self._current_sample_for_planning()
                 current = self._planning_sample_without_external_turn(current_with_turn)
-                if entry_mode == "skip_recapture":
-                    with self._lock:
-                        self._cycle_serial += 1
-                        cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
-                        self._cycle_id = cycle_id
-                    self.get_logger().info(
-                        "PREGRASP 跳过重拍位，从当前机器人真实状态开始规划"
-                    )
+                with self._lock:
+                    self._cycle_serial += 1
+                    cycle_id = f"motion-cycle-{self._cycle_serial:06d}"
+                    self._cycle_id = cycle_id
+                self.get_logger().info(
+                    "PREGRASP 从当前机器人真实状态建立抓取流程"
+                )
                 planning_start = pregrasp_planning_start_sample(
                     entry_mode=entry_mode,
                     current_sample=current,
@@ -813,6 +985,8 @@ class DomainMotionServer(Node):
                 if stage in {
                     ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
                     ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
+                    ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN,
+                    ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE,
                 }
                 else ErrorCode.MOTION_EXECUTION_FAILED
             )
@@ -850,7 +1024,11 @@ class DomainMotionServer(Node):
     def _handle_stage_failure(self, stage: int, error: ErrorInfo) -> None:
         with self._lock:
             self._last_error = error
-            if stage >= ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH:
+            if stage in {
+                ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH,
+                ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE,
+                ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME,
+            }:
                 self._scene_unknown = True
             else:
                 self._active_plan = None

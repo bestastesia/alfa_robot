@@ -231,3 +231,29 @@ def validate_stage_pose_targets(request) -> None:
         if int(mode) != DualArmPoseTargets.GRASP_MODE_NO_MOVE:
             pose6d_from_pose(pose, f"{name}_pose")
     resolve_dual_stage_targets(request)
+
+
+def validate_default_stage_targets(request) -> None:
+    targets = request.targets
+    if int(targets.left_grasp_mode) != DualArmPoseTargets.GRASP_MODE_UNSPECIFIED:
+        raise ValueError("当前阶段 targets.left_grasp_mode 必须保持默认值")
+    if int(targets.right_grasp_mode) != DualArmPoseTargets.GRASP_MODE_UNSPECIFIED:
+        raise ValueError("当前阶段 targets.right_grasp_mode 必须保持默认值")
+    for pose in (targets.left_pose, targets.right_pose):
+        values = (
+            pose.position.x,
+            pose.position.y,
+            pose.position.z,
+            pose.orientation.x,
+            pose.orientation.y,
+            pose.orientation.z,
+            pose.orientation.w,
+        )
+        if not all(math.isfinite(float(value)) for value in values):
+            raise ValueError("当前阶段 targets 必须包含有限默认值")
+        expected = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0)
+        if any(
+            abs(float(value) - expected_value) > 1e-12
+            for value, expected_value in zip(values, expected)
+        ):
+            raise ValueError("当前阶段 targets 必须保持默认值")

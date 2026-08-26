@@ -86,7 +86,7 @@ cd /home/ar/demostration0720/src/armmotion
 - 当前双臂有效速度上限为 `30deg/s`，关节加速度上限为 `60deg/s²`；必要时自动延长该轨迹段，不再通过相邻位置差硬切速度。
 - `/whole_body_jtc` 命令和 `/joint_states` 反馈必须经过统一 `joints.py` 合同；所有方向符号均为正，电机方向与编码器零点由 rt-control 负责，Motion 不重复校准。
 - `updown` 不再使用独立 PP 话题，而是和其他 13 轴一起进入同一个 FJT 目标；速度硬限制为 `0.15m/s`，加速度默认限制为 `0.05m/s²`。
-- Motion 不拥有 `turn`。由于控制器禁止 partial goal，执行适配器仅在完整14轴消息中复制最新 `turn` 反馈并发送零速度、零加速度；不存在主动命令 Turn 的接口。
+- Motion 只在公共 `TURN` 独立阶段改变 `turn`；其余阶段仍复制最新 `turn` 反馈并发送零速度、零加速度。`NAMED_JOINT_POSE` 仅改变双臂12轴并保持 `turn/updown`。
 
 输入 `D` 可修改两种距离，输入 `Q` 退出任务线程。算法线程启动时会一次性启动并预热长驻 planner；后续每个任务只重置 monitor 状态，并按任务原子更新距离、横向布局、抽离模式和动态碰撞场景，不再重复支付 MoveIt 冷启动成本。算法线程 `Ctrl-C` 时会一并关闭 planner 子进程。
 

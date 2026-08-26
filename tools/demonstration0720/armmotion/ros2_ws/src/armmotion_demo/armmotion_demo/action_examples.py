@@ -30,6 +30,7 @@ HOME = 5
 TOP_SUCTION = 1
 SIDE_SUCTION = 2
 NO_MOVE = 3
+UNSPECIFIED = 0
 def _pose6d(value: dict[str, Any]) -> Pose6DValue:
     return Pose6DValue(
         x=float(value["x"]),
@@ -83,12 +84,12 @@ def _target_pair(
 def _empty_targets() -> dict[str, Any]:
     zero_pose = {
         "position": {"x": 0.0, "y": 0.0, "z": 0.0},
-        "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 0.0},
+        "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
     }
     return {
-        "left_grasp_mode": NO_MOVE,
+        "left_grasp_mode": UNSPECIFIED,
         "left_pose": zero_pose,
-        "right_grasp_mode": NO_MOVE,
+        "right_grasp_mode": UNSPECIFIED,
         "right_pose": zero_pose,
     }
 

@@ -10,8 +10,10 @@ from armmotion_demo.domain_motion_server import (
     DomainMotionServer,
     cache_result_diagnostic,
     fixed_side_recapture_target,
+    named_joint_pose_target,
     pregrasp_entry_mode,
     pregrasp_planning_start_sample,
+    turn_stage_target,
 )
 from armmotion_demo.common import MotionSample
 from armmotion_demo.manual_domain_task import _quaternion_from_rpy
@@ -23,6 +25,7 @@ from armmotion_demo.stage_contract import (
     planning_task_from_resolved_targets,
     planning_task_from_stage_goal,
     resolve_dual_stage_targets,
+    validate_default_stage_targets,
     validate_stage_pose_targets,
 )
 from robot_motion_runtime.dual_grasp_strategy import (
@@ -30,6 +33,7 @@ from robot_motion_runtime.dual_grasp_strategy import (
     BOX_ROW_PITCH_M,
 )
 from robot_system_interfaces.msg import ErrorCode, ErrorInfo
+from rclpy.action import GoalResponse
 
 
 def goal(left_y=0.5, right_y=-0.5):
@@ -231,31 +235,25 @@ def test_pose_target_rejects_unknown_mode():
         validate_stage_pose_targets(message)
 
 
-def test_pregrasp_can_start_after_recapture():
+def test_pregrasp_cannot_start_from_stale_recapture_context():
     assert pregrasp_entry_mode(
         active_plan=None,
         recapture_sample=object(),
         cycle_id="motion-cycle-000001",
         next_stage=ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,
-    ) == "after_recapture"
+    ) is None
 
 
-def test_pregrasp_can_skip_recapture_from_idle_state():
+def test_pregrasp_can_start_from_idle_state():
     assert pregrasp_entry_mode(
         active_plan=None,
         recapture_sample=None,
         cycle_id="",
         next_stage=ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
-    ) == "skip_recapture"
+    ) == "from_idle"
 
 
-def test_pregrasp_after_recapture_plans_from_fresh_joint_state():
-    stale_recapture = MotionSample(
-        0.0,
-        {"right_joint2": -1.15},
-        0.3,
-        {"stage": "camera_view"},
-    )
+def test_pregrasp_from_idle_plans_from_fresh_joint_state():
     fresh_current = MotionSample(
         0.0,
         {"right_joint2": -1.19},
@@ -264,12 +262,233 @@ def test_pregrasp_after_recapture_plans_from_fresh_joint_state():
     )
 
     selected = pregrasp_planning_start_sample(
-        entry_mode="after_recapture",
+        entry_mode="from_idle",
         current_sample=fresh_current,
-        recapture_sample=stale_recapture,
+        recapture_sample=None,
     )
 
     assert selected is fresh_current
+
+
+def test_turn_stage_changes_only_turn():
+    current = MotionSample(
+        0.0,
+        {
+            **{
+                f"{side}_joint{index}": 0.01 * index
+                for side in ("left", "right")
+                for index in range(1, 7)
+            },
+            "turn": 0.2,
+        },
+        0.31,
+        {},
+    )
+
+    target = turn_stage_target(current, -1.25)
+
+    assert target.joints["turn"] == pytest.approx(-1.25)
+    assert target.updown_m == pytest.approx(current.updown_m)
+    for name, value in current.joints.items():
+        if name != "turn":
+            assert target.joints[name] == pytest.approx(value)
+
+
+@pytest.mark.parametrize(
+    ("named_pose", "expected_label", "left_joint4", "right_joint4"),
+    (
+        (
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_REMOTE_CAMERA_VIEW,
+            "remote_camera_view",
+            -1.309444351,
+            -1.204246822,
+        ),
+        (
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_ARM_CONVERGED,
+            "arm_converged",
+            -0.685905129,
+            -0.516603981,
+        ),
+    ),
+)
+def test_named_joint_pose_preserves_turn_and_updown(
+    named_pose,
+    expected_label,
+    left_joint4,
+    right_joint4,
+):
+    current = MotionSample(
+        0.0,
+        {
+            **{
+                f"{side}_joint{index}": 0.0
+                for side in ("left", "right")
+                for index in range(1, 7)
+            },
+            "turn": -0.75,
+        },
+        0.26,
+        {},
+    )
+
+    target, label = named_joint_pose_target(current, named_pose)
+
+    assert label == expected_label
+    assert target.joints["turn"] == pytest.approx(-0.75)
+    assert target.updown_m == pytest.approx(0.26)
+    assert target.joints["left_joint4"] == pytest.approx(left_joint4)
+    assert target.joints["right_joint4"] == pytest.approx(right_joint4)
+
+
+def test_non_pose_stage_requires_default_targets():
+    message = ExecuteMotionStage.Goal()
+    message.execution_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN
+    validate_default_stage_targets(message)
+
+    message.targets.left_grasp_mode = DualArmPoseTargets.GRASP_MODE_NO_MOVE
+    with pytest.raises(ValueError, match="left_grasp_mode"):
+        validate_default_stage_targets(message)
+
+
+def test_stage_request_accepts_turn_and_named_pose_fields_only_in_own_stage():
+    server = DomainMotionServer.__new__(DomainMotionServer)
+    server.get_parameter = lambda _: SimpleNamespace(value=True)
+
+    turn_goal = ExecuteMotionStage.Goal()
+    turn_goal.execution_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN
+    turn_goal.turn_target_rad = -1.2
+    server._validate_stage_request(turn_goal)
+
+    named_goal = ExecuteMotionStage.Goal()
+    named_goal.execution_stage = (
+        ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE
+    )
+    named_goal.named_joint_pose = (
+        ExecuteMotionStage.Goal.NAMED_JOINT_POSE_ARM_CONVERGED
+    )
+    server._validate_stage_request(named_goal)
+
+    named_goal.turn_target_rad = 0.1
+    with pytest.raises(ValueError, match="仅 TURN"):
+        server._validate_stage_request(named_goal)
+
+
+@pytest.mark.parametrize(
+    ("stage", "named_pose", "expected_label", "expected_hold_turn"),
+    (
+        (
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN,
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_UNSPECIFIED,
+            "Turn 独立运动",
+            False,
+        ),
+        (
+            ExecuteMotionStage.Goal.EXECUTION_STAGE_NAMED_JOINT_POSE,
+            ExecuteMotionStage.Goal.NAMED_JOINT_POSE_REMOTE_CAMERA_VIEW,
+            "命名姿态 remote_camera_view",
+            True,
+        ),
+    ),
+)
+def test_standalone_stage_executes_without_creating_grasp_context(
+    stage,
+    named_pose,
+    expected_label,
+    expected_hold_turn,
+):
+    current = MotionSample(
+        0.0,
+        {
+            **{
+                f"{side}_joint{index}": 0.0
+                for side in ("left", "right")
+                for index in range(1, 7)
+            },
+            "turn": 0.1,
+        },
+        0.24,
+        {},
+    )
+    calls = []
+    server = DomainMotionServer.__new__(DomainMotionServer)
+    server._lock = threading.RLock()
+    server._busy = False
+    server._goal_reserved = True
+    server._scene_unknown = False
+    server._active_plan = None
+    server._recapture_sample = None
+    server._cycle_id = ""
+    server._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
+    server._publish_readiness = lambda: None
+    server._current_sample_for_planning = lambda: current
+    server._planner = SimpleNamespace(
+        smooth_motion_samples=lambda samples, context_label: (
+            samples,
+            {"mode": context_label},
+        )
+    )
+    server._hardware = SimpleNamespace(
+        execute_segment=lambda samples, label, **kwargs: calls.append(
+            (samples, label, kwargs)
+        )
+        or {"duration_s": 1.0}
+    )
+    server.get_logger = lambda: SimpleNamespace(error=lambda _: None)
+
+    request = ExecuteMotionStage.Goal()
+    request.execution_stage = stage
+    request.turn_target_rad = -1.0
+    request.named_joint_pose = named_pose
+    if stage != ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN:
+        request.turn_target_rad = 0.0
+    terminal = []
+    goal_handle = SimpleNamespace(
+        request=request,
+        is_cancel_requested=False,
+        publish_feedback=lambda _: None,
+        succeed=lambda: terminal.append("succeeded"),
+        abort=lambda: terminal.append("aborted"),
+        canceled=lambda: terminal.append("canceled"),
+    )
+
+    result = server._execute_stage(goal_handle)
+
+    assert result.ok is True
+    assert terminal == ["succeeded"]
+    assert len(calls) == 1
+    samples, label, kwargs = calls[0]
+    assert label == expected_label
+    assert kwargs.get("hold_turn", True) is expected_hold_turn
+    assert samples[-1].updown_m == pytest.approx(current.updown_m)
+    assert server._active_plan is None
+    assert server._cycle_id == ""
+
+
+def test_standalone_stage_is_rejected_during_active_grasp_flow():
+    server = DomainMotionServer.__new__(DomainMotionServer)
+    server._lock = threading.RLock()
+    server._busy = False
+    server._goal_reserved = False
+    server._scene_unknown = False
+    server._active_plan = object()
+    server._recapture_sample = None
+    server._cycle_id = "motion-cycle-000001"
+    server._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH
+    server._publish_readiness = lambda: None
+    server.get_parameter = lambda _: SimpleNamespace(value=True)
+    server.get_logger = lambda: SimpleNamespace(error=lambda _: None)
+    request = ExecuteMotionStage.Goal()
+    request.execution_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_TURN
+    request.turn_target_rad = -1.0
+
+    assert server._accept_stage_goal(request) == GoalResponse.REJECT
+    assert server._goal_reserved is False
+
+    server._active_plan = None
+    server._cycle_id = ""
+    server._next_stage = ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW
+    assert server._accept_stage_goal(request) == GoalResponse.ACCEPT
+    assert server._goal_reserved is True
 
 
 @pytest.mark.parametrize(

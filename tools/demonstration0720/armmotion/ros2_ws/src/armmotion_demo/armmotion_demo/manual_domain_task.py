@@ -64,6 +64,7 @@ def _pose(value: Pose6DValue) -> Pose:
 
 
 TARGET_MODES = {
+    "unspecified": DualArmPoseTargets.GRASP_MODE_UNSPECIFIED,
     "no_move": DualArmPoseTargets.GRASP_MODE_NO_MOVE,
     "front": DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION,
     "side_suction": DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION,
@@ -288,9 +289,9 @@ def main(args=None) -> None:
                 left_mode,
                 right_mode,
             ),
-            (ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH, "靠近吸附", None, None, "no_move", "no_move"),
-            (ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE, "放置", None, None, "no_move", "no_move"),
-            (ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME, "返回初始位", None, None, "no_move", "no_move"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_APPROACH, "靠近吸附", None, None, "unspecified", "unspecified"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_PLACE, "放置", None, None, "unspecified", "unspecified"),
+            (ExecuteMotionStage.Goal.EXECUTION_STAGE_HOME, "返回初始位", None, None, "unspecified", "unspecified"),
         ]
         stop_stage = {
             "pregrasp": ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,

@@ -118,6 +118,8 @@ class HardwareExecutor:
         self,
         samples: list[MotionSample],
         label: str,
+        *,
+        hold_turn: bool = True,
     ) -> dict[str, float]:
         if len(samples) < 2:
             raise ValueError(f"{label}: 轨迹段采样点不足")
@@ -136,8 +138,8 @@ class HardwareExecutor:
                 "duration_s": duration_s,
                 "updown_velocity_m_s": peak_updown_velocity_mps,
             }
-        self._wait_for_start_state(samples[0], label)
-        trajectory = self._make_trajectory(samples)
+        self._wait_for_start_state(samples[0], label, include_turn=not hold_turn)
+        trajectory = self._make_trajectory(samples, hold_turn=hold_turn)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = trajectory
         goal_future = self.action_client.send_goal_async(goal)
@@ -151,7 +153,11 @@ class HardwareExecutor:
         result = wrapped_result.result
         if result.error_code != FollowJointTrajectory.Result.SUCCESSFUL:
             raise RuntimeError(f"{label}: 执行失败 code={result.error_code} {result.error_string}")
-        self._wait_for_start_state(samples[-1], f"{label}: 等待末态反馈")
+        self._wait_for_start_state(
+            samples[-1],
+            f"{label}: 等待末态反馈",
+            include_turn=not hold_turn,
+        )
         return {
             "duration_s": duration_s,
             "updown_velocity_m_s": peak_updown_velocity_mps,
@@ -202,6 +208,8 @@ class HardwareExecutor:
     def _make_trajectory(
         self,
         samples: list[MotionSample],
+        *,
+        hold_turn: bool = True,
     ) -> JointTrajectory:
         trajectory = JointTrajectory()
         trajectory.joint_names = list(RT_CONTROL_JOINT_NAMES)
@@ -224,21 +232,21 @@ class HardwareExecutor:
                     sample.updown_m
                     if name == "updown"
                     else sample.joints[name]
-                    if name != "turn"
+                    if name != "turn" or not hold_turn
                     else held_turn
                 )
                 model_velocity = (
                     sample.updown_velocity_m_s
                     if name == "updown"
                     else sample.joint_velocities.get(name, 0.0)
-                    if name != "turn"
+                    if name != "turn" or not hold_turn
                     else 0.0
                 )
                 model_acceleration = (
                     sample.updown_acceleration_m_s2
                     if name == "updown"
                     else sample.joint_accelerations.get(name, 0.0)
-                    if name != "turn"
+                    if name != "turn" or not hold_turn
                     else 0.0
                 )
                 if name in ARM_JOINT_POSITION_LIMITS_RAD:
@@ -279,6 +287,8 @@ class HardwareExecutor:
         self,
         expected: MotionSample,
         label: str,
+        *,
+        include_turn: bool = False,
     ) -> None:
         deadline = time.monotonic() + self.wait_timeout_s
         last_error = "尚未收到完整 /joint_states"
@@ -290,9 +300,12 @@ class HardwareExecutor:
                 all(name in joints for name in (*ARM_JOINT_NAMES, "turn"))
                 and updown_m is not None
             ):
+                checked_joint_names = (
+                    (*ARM_JOINT_NAMES, "turn") if include_turn else ARM_JOINT_NAMES
+                )
                 joint_errors = {
                     name: abs(joints[name] - expected.joints[name])
-                    for name in ARM_JOINT_NAMES
+                    for name in checked_joint_names
                 }
                 worst_name = max(joint_errors, key=joint_errors.get)
                 worst_joint_error = joint_errors[worst_name]

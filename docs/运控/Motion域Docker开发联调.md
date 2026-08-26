@@ -40,6 +40,8 @@ Action Goal：
 ```text
 uint8 execution_stage
 DualArmPoseTargets targets
+float64 turn_target_rad
+uint8 named_joint_pose
 ```
 
 `DualArmPoseTargets`：
@@ -66,30 +68,53 @@ Result 包含 `ok`、结构化 `robot_system_interfaces/ErrorInfo error` 和仅�
 
 ## 3. 阶段状态机
 
-标准流程按以下顺序调用：
+独立任务仅在没有活动抓取流程时接受，完成后仍保持空闲：
+
+| 阶段 | Motion 行为 |
+|---|---|
+| `TURN` | 仅改变 Turn；左右臂和 Updown 保持当前反馈位置 |
+| `CAMERA_VIEW` | 按重拍 Pose 运动；完成后不建立抓取上下文 |
+| `NAMED_JOINT_POSE` | 运动到 `REMOTE_CAMERA_VIEW` 或 `ARM_CONVERGED`；Turn 和 Updown 保持当前反馈位置 |
+
+抓取流程按以下顺序调用：
 
 | 阶段 | Motion 行为 | 成功后 Autonomy 行为 |
 |---|---|---|
-| `CAMERA_VIEW` | 接收第一对重拍 Pose，保留输入姿态并执行 IK、碰撞规划和重拍位轨迹 | 触发感知重拍和精定位 |
-| `PREGRASP` | 接收第二对实际吸附面中心 Pose，允许 Motion 标准化抓取姿态，从重拍真实末态计算完整计划并执行到预抓取位 | 请求靠近阶段 |
+| `PREGRASP` | 接收实际吸附面中心 Pose，从当前真实状态建立完整计划并执行到预抓取位 | 请求靠近阶段 |
 | `APPROACH` | 执行 5cm 靠近吸附轨迹 | 打开吸附通路并等待真空条件 |
 | `PLACE` | 执行抽离、负重过渡、预放置和放置轨迹 | 关闭吸附通路并等待释放条件 |
 | `HOME` | 执行放置位到初始位轨迹并清除计划 | 进入下一任务或结束 |
 
-允许在 Motion 空闲且尚未建立任务周期时跳过 `CAMERA_VIEW`，直接发送 `PREGRASP`。此时 Motion 从最新 `/joint_states` 对应的真实状态开始计算完整计划；后续仍严格按 `APPROACH → PLACE → HOME` 执行。已有任务周期内不能再次跳过或乱序调用。
+`TURN/CAMERA_VIEW/NAMED_JOINT_POSE` 可在空闲时任意单独触发。`PREGRASP` 从最新 `/joint_states` 建立抓取流程，后续必须严格按 `APPROACH → PLACE → HOME` 执行；活动抓取流程期间所有独立任务均被拒绝。
 
-`CAMERA_VIEW/PREGRASP` 至少提供一侧有效目标；若恰好一侧为 `NO_MOVE`，Motion 将有效目标按 `Y取负` 镜像给另一臂，并执行对应的双臂降级方案。观察阶段直接求镜像双臂 IK，抓取阶段按镜像后的双臂目标查找缓存。左右同时 `NO_MOVE` 非法。`APPROACH/PLACE/HOME` 完全忽略 `targets`。
+`CAMERA_VIEW/PREGRASP` 至少提供一侧有效目标；若恰好一侧为 `NO_MOVE`，Motion 将有效目标补齐为已验收的双臂间距并执行双臂降级方案。左右同时 `NO_MOVE` 非法。`TURN/NAMED_JOINT_POSE/APPROACH/PLACE/HOME` 的 `targets` 必须保持默认值。
 
 每个 Action 只有在对应轨迹被 rt-control 接受并返回成功后才返回 `SUCCEEDED`。顺序错误、服务忙、场景未知或目标非法时 Goal 被拒绝或返回 `ABORTED`。
 
+独立阶段可直接使用以下 Goal 验证：
+
+```bash
+ros2 action send_goal /motion/execute_stage \
+  robot_motion_interfaces/action/ExecuteMotionStage \
+  "{execution_stage: 6, turn_target_rad: -1.57079632679}" --feedback
+
+ros2 action send_goal /motion/execute_stage \
+  robot_motion_interfaces/action/ExecuteMotionStage \
+  "{execution_stage: 7, named_joint_pose: 1}" --feedback
+
+ros2 action send_goal /motion/execute_stage \
+  robot_motion_interfaces/action/ExecuteMotionStage \
+  "{execution_stage: 7, named_joint_pose: 2}" --feedback
+```
+
 ## 4. Turn 边界
 
-- Motion 不检测 Turn 是否到达某个角度，不规划 Turn，也没有任何主动改变 Turn 的代码入口。
+- Motion 只在独立 `TURN` 阶段读取 `turn_target_rad` 并改变 Turn；该阶段保持左右臂和 Updown 不动，并等待 Turn 末态反馈对齐。
 - IK 和碰撞规划内部使用固定虚拟 `turn=0`；Motion 收到基于实时 TF 树计算的
   `base_link` 目标后，先依据当前 Turn 角度与 `base_link→turn` 变换，将左右 Pose
   整体反变换到 Turn=0 的虚拟模型，再进入 IK 和碰撞规划。这个虚拟值不会成为硬件命令。
-- Native rt-control 的 `/whole_body_jtc` 禁止 partial goal，因此完整十四轴消息仍必须包含 `turn`。执行适配器只复制最新 `/joint_states` 中的 Turn 反馈，并固定发送零速度、零加速度，使其保持不动。
-- Turn 的目标值、运动时机、到位判断和异常处理全部由其他域负责。
+- Native rt-control 的 `/whole_body_jtc` 禁止 partial goal，因此完整十四轴消息始终包含 `turn`。除 `TURN` 外，执行适配器复制最新 Turn 反馈并发送零速度、零加速度；`TURN` 阶段才透传规划后的 Turn 位置、速度和加速度。
+- `NAMED_JOINT_POSE` 的 `REMOTE_CAMERA_VIEW` 和 `ARM_CONVERGED` 只改变左右臂12轴，实际关节值由 Motion 代码维护，不进入公共接口。
 
 ## 5. 轨迹缓存
 

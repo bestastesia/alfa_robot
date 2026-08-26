@@ -2139,3 +2139,8 @@
 - 结果：侧吸`504/504`；顶吸`331/756`，分排为`123/125/83`；正式缓存整体替换为835份真实成功轨迹，失败任务不写伪缓存，继续由运行时最近成功命中规则处理。
 - 验证：835份缓存全部通过吸附目标、抓取模式、0.82m间距、Updown限位、13维轨迹点和五阶段连续性审计；缓存相关Python回归43项、任务几何C++测试1项通过。
 - 数据：汇总位于`data/ik_benchmark/trajectory_cache_corrected_contact_20260825/cache_report.md`；旧689份缓存备份在`/tmp/alfa_cache_rebuild_20260825/old_cache_backup`。
+## 2026-08-26 运控 / Codex / M-08 独立 Turn 与命名关节姿态接入
+- 做了什么：Motion 公共阶段 Action 跟随中央 `robot_interfaces/main@92d6ff2`，新增独立 `TURN`、`NAMED_JOINT_POSE`；远端拍照姿态和机械臂收敛姿态采用已确认的左右臂12轴标定值。
+- 改了哪里：`domain_motion_server` 将 `TURN/CAMERA_VIEW/NAMED_JOINT_POSE` 定义为空闲态独立任务，不建立抓取上下文；`PREGRASP→APPROACH→PLACE→HOME` 保持严格串行。执行边界仅对 `TURN` 放行 Turn 轨迹，其余阶段继续保持最新 Turn；命名姿态保持当前 Turn 与 Updown。
+- 验证结果：中央接口3包 Release 构建通过，`armmotion_demo`构建通过，完整 Python 回归87项通过；本地接口源码、依赖锁和生成类型均为`92d6ff2`，rolling realtime 类型未纳入。本轮未连接或启动实机。
+- 留给下个 AI：Autonomy 与 Motion 必须同时升级到`92d6ff2`；实机先分别低速验证 TURN、REMOTE_CAMERA_VIEW、ARM_CONVERGED，再回归完整抓取四阶段，禁止与旧 Action 类型混跑。

@@ -614,6 +614,35 @@ def test_hardware_always_holds_external_turn():
     assert all(point.accelerations[turn_index] == pytest.approx(0.0) for point in held.points)
 
 
+def test_hardware_turn_stage_forwards_turn_trajectory():
+    source = [
+        sample("turn", 0.0, 0.0, 0.3),
+        sample("turn", 1.0, 0.0, 0.3),
+    ]
+    source[-1].joints["turn"] = math.radians(-90.0)
+    samples = retime_segment(
+        source,
+        JOINT_NAMES,
+        rate_hz=30.0,
+        max_joint_speed_deg_s=10.0,
+        max_joint_acceleration_deg_s2=60.0,
+        max_updown_speed_m_s=0.05,
+        speed_scale=1.0,
+    )
+    executor = HardwareExecutor.__new__(HardwareExecutor)
+    executor._state_lock = threading.Lock()
+    executor._latest_joints = {"turn": math.radians(12.0)}
+
+    forwarded = executor._make_trajectory(samples, hold_turn=False)
+
+    turn_index = forwarded.joint_names.index("turn")
+    assert forwarded.points[0].positions[turn_index] == pytest.approx(0.0)
+    assert forwarded.points[-1].positions[turn_index] == pytest.approx(
+        math.radians(-90.0)
+    )
+    assert any(abs(point.velocities[turn_index]) > 0.0 for point in forwarded.points)
+
+
 def test_hardware_rejects_cached_trajectory_outside_rt_control_limits():
     samples = [
         sample("x", 0.0, 0.0, 0.3),
