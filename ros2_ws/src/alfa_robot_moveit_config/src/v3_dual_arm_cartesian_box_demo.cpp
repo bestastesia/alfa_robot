@@ -61,6 +61,11 @@ double degToRad(double value)
   return value * kPi / 180.0;
 }
 
+double normalizedAngle(double value)
+{
+  return std::atan2(std::sin(value), std::cos(value));
+}
+
 double rawMaximumJointDelta(
   const std::array<double, 7>& from,
   const std::array<double, 7>& to)
@@ -110,6 +115,22 @@ InteractiveMarkerControl axisControl(
   return control;
 }
 
+InteractiveMarkerControl rotationControl(
+  const std::string& name,
+  double x,
+  double y,
+  double z)
+{
+  InteractiveMarkerControl control;
+  control.name = name;
+  control.interaction_mode = InteractiveMarkerControl::ROTATE_AXIS;
+  control.orientation.w = 1.0;
+  control.orientation.x = x;
+  control.orientation.y = y;
+  control.orientation.z = z;
+  return control;
+}
+
 struct ArmCandidate
 {
   std::array<double, 7> joints{};
@@ -130,6 +151,7 @@ struct ReplayFrame
   std::string stage;
   std::vector<double> joints;
   Eigen::Vector3d box_center = Eigen::Vector3d::Zero();
+  double box_roll = 0.0;
 };
 
 struct PlanningMetrics
@@ -170,6 +192,10 @@ public:
     dual_group_name_ = getParameter<std::string>("dual_group", "dual_arm");
     left_tool_link_ = getParameter<std::string>("left_tool_link", "left_tool0");
     right_tool_link_ = getParameter<std::string>("right_tool_link", "right_tool0");
+    motion_mode_ = getParameter<std::string>("motion_mode", "translate");
+    if (motion_mode_ != "translate" && motion_mode_ != "roll") {
+      throw std::invalid_argument("motion_mode must be translate or roll");
+    }
     const auto initial_center = getParameter<std::vector<double>>(
       "initial_box_center", {0.73, 0.0, 0.55});
     const auto initial_target_offset = getParameter<std::vector<double>>(
@@ -186,8 +212,12 @@ public:
       getParameter<double>("initial_target_offset_x", initial_target_offset[0]),
       getParameter<double>("initial_target_offset_y", initial_target_offset[1]),
       getParameter<double>("initial_target_offset_z", initial_target_offset[2]));
+    current_box_roll_ = 0.0;
+    target_box_roll_ = motion_mode_ == "roll" ?
+      degToRad(getParameter<double>("initial_target_roll_deg", 45.0)) : 0.0;
     box_size_ = getParameter<double>("box_size", 0.40);
     cartesian_step_ = getParameter<double>("cartesian_step", 0.01);
+    angular_step_ = degToRad(getParameter<double>("angular_step_deg", 2.0));
     psi_step_ = degToRad(getParameter<double>("psi_step_deg", 5.0));
     maximum_joint_step_ = degToRad(getParameter<double>("maximum_joint_step_deg", 12.0));
     edge_joint_resolution_ = degToRad(
@@ -203,8 +233,10 @@ public:
     playback_rate_hz_ = std::max(
       1.0, getParameter<double>("playback_rate_hz", 20.0));
     auto_run_once_ = getParameter<bool>("auto_run_once", false);
-    if (box_size_ <= 0.0 || cartesian_step_ <= 0.0 || psi_step_ <= 0.0) {
-      throw std::invalid_argument("box_size, cartesian_step and psi_step must be positive");
+    if (box_size_ <= 0.0 || cartesian_step_ <= 0.0 || angular_step_ <= 0.0 ||
+        psi_step_ <= 0.0) {
+      throw std::invalid_argument(
+              "box_size, cartesian_step, angular_step and psi_step must be positive");
     }
 
     robot_model_loader_ = std::make_shared<robot_model_loader::RobotModelLoader>(
@@ -250,9 +282,10 @@ public:
     current_state_ = initial->state;
     display_state_ = std::make_shared<moveit::core::RobotState>(*current_state_);
     display_box_center_ = initial_box_center_;
+    display_box_roll_ = current_box_roll_;
     left_orientation_ = initial->left_orientation;
     right_orientation_ = initial->right_orientation;
-    setHeldBoxTransform(initial_box_center_);
+    setHeldBoxTransform(initial_box_center_, current_box_roll_);
     attachHeldBox(*current_state_);
     attachHeldBox(*display_state_);
     scene_->setCurrentState(*current_state_);
@@ -285,7 +318,7 @@ public:
       get_node_services_interface());
     createTargetMarker();
     menu_handler_.insert(
-      "确认并计算同步直线",
+      motion_mode_ == "roll" ? "确认并计算同步绕X旋转" : "确认并计算同步直线",
       [this](const Feedback::ConstSharedPtr&) {requestPlanning();});
     menu_handler_.insert(
       "目标恢复到当前箱位",
@@ -302,7 +335,10 @@ public:
     display_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(display_period),
       [this]() {publishDisplayState();});
-    publishPreview("拖动青色控制球；右键确认后计算双臂同步解析直线");
+    publishPreview(
+      motion_mode_ == "roll" ?
+      "拖动蓝色旋转环；右键确认后计算双臂同步解析绕箱体中心旋转" :
+      "拖动青色控制球；右键确认后计算双臂同步解析直线");
     publishStatus("READY", true);
 
     if (auto_run_once_) {
@@ -314,10 +350,13 @@ public:
     }
     RCLCPP_INFO(
       get_logger(),
-      "V3 dual-arm Cartesian box demo ready: current=[%.3f, %.3f, %.3f] "
-      "target=[%.3f, %.3f, %.3f] box=%.2fm init=%.3fms",
+      "V3 dual-arm rigid box demo ready: mode=%s current=[%.3f, %.3f, %.3f]/%.1fdeg "
+      "target=[%.3f, %.3f, %.3f]/%.1fdeg box=%.2fm init=%.3fms",
+      motion_mode_.c_str(),
       current_box_center_.x(), current_box_center_.y(), current_box_center_.z(),
+      current_box_roll_ * 180.0 / kPi,
       target_box_center_.x(), target_box_center_.y(), target_box_center_.z(),
+      target_box_roll_ * 180.0 / kPi,
       box_size_, initialization_metrics_.initialization_ms);
   }
 
@@ -371,12 +410,15 @@ private:
   Eigen::Isometry3d toolPose(
     const Eigen::Vector3d& box_center,
     bool left,
-    const Eigen::Matrix3d& orientation) const
+    const Eigen::Matrix3d& orientation,
+    double box_roll = 0.0) const
   {
+    const Eigen::Matrix3d box_rotation = Eigen::AngleAxisd(
+      box_roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
-    pose.translation() = box_center + Eigen::Vector3d(
+    pose.translation() = box_center + box_rotation * Eigen::Vector3d(
       0.0, left ? -box_size_ * 0.5 : box_size_ * 0.5, 0.0);
-    pose.linear() = orientation;
+    pose.linear() = box_rotation * orientation;
     return pose;
   }
 
@@ -393,11 +435,31 @@ private:
     const auto seed = armJoints(seed_state, group);
     const int intervals = std::max(
       1, static_cast<int>(std::ceil(2.0 * kPi / psi_step_)));
-    std::vector<ArmCandidate> candidates;
+    std::vector<double> swivel_samples;
+    swivel_samples.reserve(static_cast<size_t>(intervals) + 5U);
+    if (enforce_step) {
+      const double seed_swivel = solver.swivelAngle(seed);
+      for (const double offset : {
+          0.0, -0.5 * psi_step_, 0.5 * psi_step_, -psi_step_, psi_step_}) {
+        swivel_samples.push_back(normalizedAngle(seed_swivel + offset));
+      }
+    }
     for (int index = 0; index < intervals; ++index) {
+      const double sample = -kPi + static_cast<double>(index) * 2.0 * kPi / intervals;
+      const bool duplicate = std::any_of(
+        swivel_samples.begin(), swivel_samples.end(),
+        [sample](double existing) {
+          return std::abs(normalizedAngle(existing - sample)) < 1e-9;
+        });
+      if (!duplicate) {
+        swivel_samples.push_back(sample);
+      }
+    }
+    std::vector<ArmCandidate> candidates;
+    for (double swivel : swivel_samples) {
       V3RedundantIkRequest request;
       request.target_in_arm_base = world_to_arm_base * target_world;
-      request.swivel_angle = -kPi + static_cast<double>(index) * 2.0 * kPi / intervals;
+      request.swivel_angle = swivel;
       request.seed = seed;
       const auto started = std::chrono::steady_clock::now();
       const auto solutions = solver.solveInArmBase(request);
@@ -452,11 +514,14 @@ private:
     return reason;
   }
 
-  void setHeldBoxTransform(const Eigen::Vector3d& box_center)
+  void setHeldBoxTransform(const Eigen::Vector3d& box_center, double box_roll)
   {
-    const Eigen::Isometry3d left_pose = toolPose(box_center, true, left_orientation_);
+    const Eigen::Isometry3d left_pose = toolPose(
+      box_center, true, left_orientation_, box_roll);
     Eigen::Isometry3d box_pose = Eigen::Isometry3d::Identity();
     box_pose.translation() = box_center;
+    box_pose.linear() = Eigen::AngleAxisd(
+      box_roll, Eigen::Vector3d::UnitX()).toRotationMatrix();
     left_tool_to_box_ = left_pose.inverse() * box_pose;
   }
 
@@ -527,15 +592,16 @@ private:
 
   std::optional<moveit::core::RobotStatePtr> solveSynchronizedStep(
     const Eigen::Vector3d& box_center,
+    double box_roll,
     const moveit::core::RobotState& seed_state,
     PlanningMetrics* metrics,
     std::string* rejection) const
   {
     const auto left_candidates = solveArmCandidates(
-      toolPose(box_center, true, left_orientation_), seed_state,
+      toolPose(box_center, true, left_orientation_, box_roll), seed_state,
       left_group_, *left_solver_, true, metrics);
     const auto right_candidates = solveArmCandidates(
-      toolPose(box_center, false, right_orientation_), seed_state,
+      toolPose(box_center, false, right_orientation_, box_roll), seed_state,
       right_group_, *right_solver_, true, metrics);
     if (left_candidates.empty() || right_candidates.empty()) {
       if (rejection) {
@@ -608,13 +674,29 @@ private:
       for (double right_roll : rolls) {
         left_orientation_ = inwardOrientation(true, left_roll);
         right_orientation_ = inwardOrientation(false, right_roll);
-        setHeldBoxTransform(box_center);
+        setHeldBoxTransform(box_center, 0.0);
         const auto left_candidates = solveArmCandidates(
           toolPose(box_center, true, left_orientation_), seed,
           left_group_, *left_solver_, false, metrics);
         const auto right_candidates = solveArmCandidates(
           toolPose(box_center, false, right_orientation_), seed,
           right_group_, *right_solver_, false, metrics);
+        if (motion_mode_ == "roll") {
+          const auto target_left_candidates = solveArmCandidates(
+            toolPose(box_center, true, left_orientation_, target_box_roll_), seed,
+            left_group_, *left_solver_, false, nullptr);
+          const auto target_right_candidates = solveArmCandidates(
+            toolPose(box_center, false, right_orientation_, target_box_roll_), seed,
+            right_group_, *right_solver_, false, nullptr);
+          RCLCPP_DEBUG(
+            get_logger(),
+            "roll grasp endpoint check wrist_roll=[%.0f, %.0f]deg target_candidates=[%zu, %zu]",
+            left_roll * 180.0 / kPi, right_roll * 180.0 / kPi,
+            target_left_candidates.size(), target_right_candidates.size());
+          if (target_left_candidates.empty() || target_right_candidates.empty()) {
+            continue;
+          }
+        }
         size_t collision_rejects = 0;
         std::string last_collision;
         for (const auto& left : left_candidates) {
@@ -651,7 +733,7 @@ private:
     if (best) {
       left_orientation_ = best->left_orientation;
       right_orientation_ = best->right_orientation;
-      setHeldBoxTransform(box_center);
+      setHeldBoxTransform(box_center, 0.0);
       best->state->clearAttachedBody(kHeldBoxId);
       attachHeldBox(*best->state);
     } else {
@@ -664,27 +746,36 @@ private:
   TaskResult planTask(
     const Eigen::Vector3d& start_center,
     const Eigen::Vector3d& target_center,
+    double start_roll,
+    double target_roll,
     const moveit::core::RobotState& start_state)
   {
     TaskResult result;
     const auto total_started = std::chrono::steady_clock::now();
     result.metrics.initialization_ms = initialization_metrics_.initialization_ms;
     result.frames.push_back(ReplayFrame{
-      "start", allJoints(start_state), start_center});
+      "start", allJoints(start_state), start_center, start_roll});
     const Eigen::Vector3d delta = target_center - start_center;
     const double distance = delta.norm();
+    const double roll_delta = normalizedAngle(target_roll - start_roll);
     const size_t steps = std::max<size_t>(
-      1, static_cast<size_t>(std::ceil(distance / cartesian_step_)));
+      1, motion_mode_ == "roll" ?
+      static_cast<size_t>(std::ceil(std::abs(roll_delta) / angular_step_)) :
+      static_cast<size_t>(std::ceil(distance / cartesian_step_)));
     auto current = std::make_shared<moveit::core::RobotState>(start_state);
     const auto cartesian_started = std::chrono::steady_clock::now();
     for (size_t step = 1; step <= steps; ++step) {
       const double ratio = static_cast<double>(step) / static_cast<double>(steps);
-      const Eigen::Vector3d box_center = start_center + delta * ratio;
+      const Eigen::Vector3d box_center = motion_mode_ == "roll" ?
+        start_center : start_center + delta * ratio;
+      const double box_roll = motion_mode_ == "roll" ?
+        normalizedAngle(start_roll + roll_delta * ratio) : start_roll;
       std::string rejection;
       const auto next = solveSynchronizedStep(
-        box_center, *current, &result.metrics, &rejection);
+        box_center, box_roll, *current, &result.metrics, &rejection);
       if (!next) {
-        result.failure_stage = "synchronized_cartesian";
+        result.failure_stage = motion_mode_ == "roll" ?
+          "synchronized_box_roll" : "synchronized_cartesian";
         result.failure_reason = "step " + std::to_string(step) + "/" +
           std::to_string(steps) + " " + rejection;
         result.metrics.cartesian_ms = std::chrono::duration<double, std::milli>(
@@ -695,7 +786,8 @@ private:
       }
       current = *next;
       result.frames.push_back(ReplayFrame{
-        "synchronized_cartesian", allJoints(*current), box_center});
+        motion_mode_ == "roll" ? "synchronized_box_roll" : "synchronized_cartesian",
+        allJoints(*current), box_center, box_roll});
     }
     result.metrics.cartesian_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - cartesian_started).count();
@@ -714,28 +806,41 @@ private:
 
   void createTargetMarker()
   {
-    const Eigen::Vector3d handle = controlHandlePosition(target_box_center_);
+    const Eigen::Vector3d handle = motion_mode_ == "roll" ?
+      target_box_center_ : controlHandlePosition(target_box_center_);
     InteractiveMarker marker;
     marker.header.frame_id = world_frame_;
     marker.name = kMarkerName;
-    marker.description = "目标箱中心XYZ控制球：右键确认同步直线";
+    marker.description = motion_mode_ == "roll" ?
+      "绕箱体中心X轴旋转：右键确认同步旋转" :
+      "目标箱中心XYZ控制球：右键确认同步直线";
     marker.scale = 0.65;
     marker.pose.position.x = handle.x();
     marker.pose.position.y = handle.y();
     marker.pose.position.z = handle.z();
-    marker.pose.orientation.w = 1.0;
+    const Eigen::Quaterniond target_orientation(Eigen::AngleAxisd(
+      target_box_roll_, Eigen::Vector3d::UnitX()));
+    marker.pose.orientation.w = target_orientation.w();
+    marker.pose.orientation.x = target_orientation.x();
+    marker.pose.orientation.y = target_orientation.y();
+    marker.pose.orientation.z = target_orientation.z();
     InteractiveMarkerControl body;
     body.always_visible = true;
-    body.interaction_mode = InteractiveMarkerControl::MOVE_3D;
+    body.interaction_mode = motion_mode_ == "roll" ?
+      InteractiveMarkerControl::BUTTON : InteractiveMarkerControl::MOVE_3D;
     Marker sphere;
     sphere.type = Marker::SPHERE;
     sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.09;
     sphere.color = color(0.10F, 0.85F, 1.0F, 0.95F);
     body.markers.push_back(sphere);
     marker.controls.push_back(body);
-    marker.controls.push_back(axisControl("move_x", 1.0, 0.0, 0.0));
-    marker.controls.push_back(axisControl("move_y", 0.0, 1.0, 0.0));
-    marker.controls.push_back(axisControl("move_z", 0.0, 0.0, 1.0));
+    if (motion_mode_ == "roll") {
+      marker.controls.push_back(rotationControl("rotate_x", 1.0, 0.0, 0.0));
+    } else {
+      marker.controls.push_back(axisControl("move_x", 1.0, 0.0, 0.0));
+      marker.controls.push_back(axisControl("move_y", 0.0, 1.0, 0.0));
+      marker.controls.push_back(axisControl("move_z", 0.0, 0.0, 1.0));
+    }
     marker_server_->insert(
       marker,
       [this](const Feedback::ConstSharedPtr& feedback) {handleTargetFeedback(feedback);});
@@ -749,22 +854,41 @@ private:
     }
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
-      target_box_center_ = Eigen::Vector3d(
-        feedback->pose.position.x + control_handle_forward_offset_,
-        feedback->pose.position.y + control_handle_lateral_offset_,
-        feedback->pose.position.z);
+      if (motion_mode_ == "roll") {
+        const auto& orientation = feedback->pose.orientation;
+        target_box_center_ = current_box_center_;
+        target_box_roll_ = normalizedAngle(std::atan2(
+          2.0 * (orientation.w * orientation.x +
+          orientation.y * orientation.z),
+          1.0 - 2.0 * (orientation.x * orientation.x +
+          orientation.y * orientation.y)));
+      } else {
+        target_box_center_ = Eigen::Vector3d(
+          feedback->pose.position.x + control_handle_forward_offset_,
+          feedback->pose.position.y + control_handle_lateral_offset_,
+          feedback->pose.position.z);
+      }
     }
-    publishPreview("目标已更新，右键控制球确认后计算");
+    publishPreview(
+      motion_mode_ == "roll" ?
+      "目标旋转角已更新，右键旋转环确认后计算" :
+      "目标已更新，右键控制球确认后计算");
   }
 
   void setMarkerToTarget()
   {
-    const Eigen::Vector3d handle = controlHandlePosition(target_box_center_);
+    const Eigen::Vector3d handle = motion_mode_ == "roll" ?
+      target_box_center_ : controlHandlePosition(target_box_center_);
     geometry_msgs::msg::Pose pose;
     pose.position.x = handle.x();
     pose.position.y = handle.y();
     pose.position.z = handle.z();
-    pose.orientation.w = 1.0;
+    const Eigen::Quaterniond target_orientation(Eigen::AngleAxisd(
+      target_box_roll_, Eigen::Vector3d::UnitX()));
+    pose.orientation.w = target_orientation.w();
+    pose.orientation.x = target_orientation.x();
+    pose.orientation.y = target_orientation.y();
+    pose.orientation.z = target_orientation.z();
     marker_server_->setPose(kMarkerName, pose);
     marker_server_->applyChanges();
   }
@@ -774,6 +898,7 @@ private:
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       target_box_center_ = current_box_center_;
+      target_box_roll_ = current_box_roll_;
       setMarkerToTarget();
     }
     publishPreview("目标已恢复到当前箱位");
@@ -786,8 +911,11 @@ private:
       current_state_ = std::make_shared<moveit::core::RobotState>(*initial_state_);
       current_box_center_ = initial_box_center_;
       target_box_center_ = initial_box_center_;
+      current_box_roll_ = 0.0;
+      target_box_roll_ = 0.0;
       display_state_ = std::make_shared<moveit::core::RobotState>(*initial_state_);
       display_box_center_ = initial_box_center_;
+      display_box_roll_ = 0.0;
       playback_frames_.clear();
       playback_index_ = 0;
       setMarkerToTarget();
@@ -811,11 +939,15 @@ private:
     }
     Eigen::Vector3d start_center;
     Eigen::Vector3d target_center;
+    double start_roll = 0.0;
+    double target_roll = 0.0;
     moveit::core::RobotStatePtr start_state;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       start_center = current_box_center_;
       target_center = target_box_center_;
+      start_roll = current_box_roll_;
+      target_roll = target_box_roll_;
       start_state = std::make_shared<moveit::core::RobotState>(*current_state_);
     }
     const uint64_t generation = ++generation_;
@@ -823,13 +955,18 @@ private:
     publishStatus("CALCULATING", true);
     RCLCPP_INFO(
       get_logger(),
-      "[%llu] calculation started: start=[%.3f, %.3f, %.3f] target=[%.3f, %.3f, %.3f]",
+      "[%llu] calculation started: mode=%s start=[%.3f, %.3f, %.3f]/%.1fdeg "
+      "target=[%.3f, %.3f, %.3f]/%.1fdeg",
       static_cast<unsigned long long>(generation),
+      motion_mode_.c_str(),
       start_center.x(), start_center.y(), start_center.z(),
-      target_center.x(), target_center.y(), target_center.z());
+      start_roll * 180.0 / kPi,
+      target_center.x(), target_center.y(), target_center.z(),
+      target_roll * 180.0 / kPi);
     TaskResult result;
     try {
-      result = planTask(start_center, target_center, *start_state);
+      result = planTask(
+        start_center, target_center, start_roll, target_roll, *start_state);
     } catch (const std::exception& error) {
       result.failure_stage = "exception";
       result.failure_reason = error.what();
@@ -843,6 +980,7 @@ private:
       std::lock_guard<std::mutex> lock(state_mutex_);
       current_state_ = result.final_state;
       current_box_center_ = target_center;
+      current_box_roll_ = target_roll;
       scene_->setCurrentState(*current_state_);
     }
     publishTaskResult(generation, start_center, target_center, result);
@@ -873,11 +1011,16 @@ private:
 
   nlohmann::json baseJson(
     const Eigen::Vector3d& current,
-    const Eigen::Vector3d& target) const
+    const Eigen::Vector3d& target,
+    double current_roll,
+    double target_roll) const
   {
     return {
+      {"motion_mode", motion_mode_},
       {"current_box_center", {current.x(), current.y(), current.z()}},
       {"target_box_center", {target.x(), target.y(), target.z()}},
+      {"current_box_roll", current_roll},
+      {"target_box_roll", target_roll},
       {"box_size", box_size_},
       {"left_tool_link", left_tool_link_},
       {"right_tool_link", right_tool_link_},
@@ -896,20 +1039,25 @@ private:
   {
     Eigen::Vector3d current;
     Eigen::Vector3d target;
+    double current_roll = 0.0;
+    double target_roll = 0.0;
     std::vector<double> current_joints;
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       current = current_box_center_;
       target = target_box_center_;
+      current_roll = current_box_roll_;
+      target_roll = target_box_roll_;
       current_joints = allJoints(*current_state_);
     }
-    auto payload = baseJson(current, target);
+    auto payload = baseJson(current, target, current_roll, target_roll);
     payload["kind"] = "preview";
     payload["status"] = status;
     payload["joint_names"] = all_joint_names_;
     payload["current_joints"] = current_joints;
     publishJson(payload);
-    publishSceneMarkers(current, target, current);
+    publishSceneMarkers(
+      current, target, current, current_roll, target_roll, current_roll);
   }
 
   void publishPlanningStarted(
@@ -917,7 +1065,14 @@ private:
     const Eigen::Vector3d& current,
     const Eigen::Vector3d& target)
   {
-    auto payload = baseJson(current, target);
+    double current_roll = 0.0;
+    double target_roll = 0.0;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      current_roll = current_box_roll_;
+      target_roll = target_box_roll_;
+    }
+    auto payload = baseJson(current, target, current_roll, target_roll);
     payload["kind"] = "planning";
     payload["generation"] = generation;
     payload["status"] = "计算开始";
@@ -930,7 +1085,14 @@ private:
     const Eigen::Vector3d& target,
     const TaskResult& result)
   {
-    auto payload = baseJson(start, target);
+    double start_roll = 0.0;
+    double target_roll = 0.0;
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      start_roll = result.frames.empty() ? current_box_roll_ : result.frames.front().box_roll;
+      target_roll = result.frames.empty() ? target_box_roll_ : result.frames.back().box_roll;
+    }
+    auto payload = baseJson(start, target, start_roll, target_roll);
     payload["kind"] = "result";
     payload["generation"] = generation;
     payload["success"] = result.success;
@@ -954,6 +1116,7 @@ private:
         {"joints", frame.joints},
         {"box_center", {
           frame.box_center.x(), frame.box_center.y(), frame.box_center.z()}},
+        {"box_roll", frame.box_roll},
       });
     }
     publishJson(payload);
@@ -988,7 +1151,10 @@ private:
   void publishSceneMarkers(
     const Eigen::Vector3d& current,
     const Eigen::Vector3d& target,
-    const Eigen::Vector3d& displayed)
+    const Eigen::Vector3d& displayed,
+    double current_roll,
+    double target_roll,
+    double displayed_roll)
   {
     visualization_msgs::msg::MarkerArray markers;
     Marker current_box;
@@ -1001,7 +1167,12 @@ private:
     current_box.pose.position.x = displayed.x();
     current_box.pose.position.y = displayed.y();
     current_box.pose.position.z = displayed.z();
-    current_box.pose.orientation.w = 1.0;
+    const Eigen::Quaterniond displayed_orientation(Eigen::AngleAxisd(
+      displayed_roll, Eigen::Vector3d::UnitX()));
+    current_box.pose.orientation.w = displayed_orientation.w();
+    current_box.pose.orientation.x = displayed_orientation.x();
+    current_box.pose.orientation.y = displayed_orientation.y();
+    current_box.pose.orientation.z = displayed_orientation.z();
     current_box.scale.x = current_box.scale.y = current_box.scale.z = box_size_;
     current_box.color = color(0.12F, 0.45F, 1.0F, 0.75F);
     markers.markers.push_back(current_box);
@@ -1011,20 +1182,31 @@ private:
     target_box.pose.position.x = target.x();
     target_box.pose.position.y = target.y();
     target_box.pose.position.z = target.z();
+    const Eigen::Quaterniond target_orientation(Eigen::AngleAxisd(
+      target_roll, Eigen::Vector3d::UnitX()));
+    target_box.pose.orientation.w = target_orientation.w();
+    target_box.pose.orientation.x = target_orientation.x();
+    target_box.pose.orientation.y = target_orientation.y();
+    target_box.pose.orientation.z = target_orientation.z();
     target_box.color = color(0.20F, 1.0F, 0.25F, 0.28F);
     markers.markers.push_back(target_box);
 
     Marker line;
     line.header.frame_id = world_frame_;
     line.header.stamp = now();
-    line.ns = "cartesian_line";
+    line.ns = motion_mode_ == "roll" ? "rotation_axis" : "cartesian_line";
     line.id = 0;
     line.type = Marker::LINE_STRIP;
     line.action = Marker::ADD;
     line.pose.orientation.w = 1.0;
     line.scale.x = 0.012;
     line.color = color(0.95F, 0.2F, 0.95F, 0.95F);
-    for (const auto& point : {current, target}) {
+    const std::array<Eigen::Vector3d, 2> line_points = motion_mode_ == "roll" ?
+      std::array<Eigen::Vector3d, 2>{
+      current - Eigen::Vector3d(0.25, 0.0, 0.0),
+      current + Eigen::Vector3d(0.25, 0.0, 0.0)} :
+      std::array<Eigen::Vector3d, 2>{current, target};
+    for (const auto& point : line_points) {
       geometry_msgs::msg::Point message;
       message.x = point.x();
       message.y = point.y();
@@ -1038,7 +1220,9 @@ private:
     handle_line.scale.x = 0.007;
     handle_line.color = color(0.10F, 0.85F, 1.0F, 0.85F);
     handle_line.points.clear();
-    for (const auto& point : {controlHandlePosition(target), target}) {
+    const Eigen::Vector3d handle = motion_mode_ == "roll" ?
+      target : controlHandlePosition(target);
+    for (const auto& point : {handle, target}) {
       geometry_msgs::msg::Point message;
       message.x = point.x();
       message.y = point.y();
@@ -1054,11 +1238,16 @@ private:
     Eigen::Vector3d current;
     Eigen::Vector3d target;
     Eigen::Vector3d displayed;
+    double current_roll = 0.0;
+    double target_roll = 0.0;
+    double displayed_roll = 0.0;
     sensor_msgs::msg::JointState message;
     {
       std::lock_guard<std::mutex> state_lock(state_mutex_);
       current = current_box_center_;
       target = target_box_center_;
+      current_roll = current_box_roll_;
+      target_roll = target_box_roll_;
     }
     {
       std::lock_guard<std::mutex> display_lock(display_mutex_);
@@ -1070,17 +1259,20 @@ private:
         }
         display_state_->update(true);
         display_box_center_ = frame.box_center;
+        display_box_roll_ = frame.box_roll;
         if (playback_index_ + 1U < playback_frames_.size()) {
           ++playback_index_;
         }
       }
       displayed = display_box_center_;
+      displayed_roll = display_box_roll_;
       message.header.stamp = now();
       message.name = all_joint_names_;
       message.position = allJoints(*display_state_);
     }
     joint_state_publisher_->publish(message);
-    publishSceneMarkers(current, target, displayed);
+    publishSceneMarkers(
+      current, target, displayed, current_roll, target_roll, displayed_roll);
   }
 
   std::string world_frame_;
@@ -1090,15 +1282,20 @@ private:
   std::string dual_group_name_;
   std::string left_tool_link_;
   std::string right_tool_link_;
+  std::string motion_mode_ = "translate";
   Eigen::Vector3d initial_box_center_{0.73, 0.0, 0.55};
   Eigen::Vector3d current_box_center_{0.73, 0.0, 0.55};
   Eigen::Vector3d target_box_center_{0.61, 0.0, 0.55};
   Eigen::Vector3d display_box_center_{0.73, 0.0, 0.55};
+  double current_box_roll_ = 0.0;
+  double target_box_roll_ = 0.0;
+  double display_box_roll_ = 0.0;
   Eigen::Matrix3d left_orientation_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d right_orientation_ = Eigen::Matrix3d::Identity();
   Eigen::Isometry3d left_tool_to_box_ = Eigen::Isometry3d::Identity();
   double box_size_ = 0.40;
   double cartesian_step_ = 0.01;
+  double angular_step_ = degToRad(2.0);
   double psi_step_ = degToRad(5.0);
   double maximum_joint_step_ = degToRad(12.0);
   double edge_joint_resolution_ = degToRad(2.5);

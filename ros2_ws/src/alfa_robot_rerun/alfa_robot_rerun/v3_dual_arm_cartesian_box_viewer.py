@@ -30,6 +30,11 @@ class PlaybackFrame:
     stage: str
     joints: tuple[float, ...]
     box_center: tuple[float, float, float]
+    box_roll: float
+
+
+def roll_quaternion(roll: float) -> list[float]:
+    return [math.sin(roll * 0.5), 0.0, 0.0, math.cos(roll * 0.5)]
 
 
 def maximum_joint_delta_degrees(
@@ -86,7 +91,7 @@ class V3DualArmCartesianBoxViewer(Node):
                     rrb.Spatial3DView(
                         origin="/world",
                         contents=["/world/**"],
-                        name="V3 dual-arm synchronous Cartesian box",
+                        name="V3 dual-arm synchronous rigid box motion",
                     ),
                     rrb.TextDocumentView(origin="/summary", name="Task status"),
                     column_shares=[0.78, 0.22],
@@ -99,6 +104,9 @@ class V3DualArmCartesianBoxViewer(Node):
         self.joint_names: tuple[str, ...] = ()
         self.current_box_center = (0.73, 0.0, 0.55)
         self.target_box_center = (0.61, 0.0, 0.55)
+        self.current_box_roll = 0.0
+        self.target_box_roll = 0.0
+        self.motion_mode = "translate"
         self.box_size = 0.40
         self.frame_index = 0
         self.global_frame = 1
@@ -110,7 +118,7 @@ class V3DualArmCartesianBoxViewer(Node):
         qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.subscription = self.create_subscription(String, topic, self.on_task, qos)
         self.timer = self.create_timer(0.01, self.on_timer)
-        self.get_logger().info(f"双臂同步笛卡尔Rerun播放器已就绪: topic={topic}")
+        self.get_logger().info(f"双臂同步刚性箱体Rerun播放器已就绪: topic={topic}")
 
     def on_task(self, message: String) -> None:
         try:
@@ -153,6 +161,7 @@ class V3DualArmCartesianBoxViewer(Node):
                     stage=str(frame.get("stage", "synchronized_cartesian")),
                     joints=joints,
                     box_center=center,
+                    box_roll=float(frame.get("box_roll", 0.0)),
                 )
             )
         self.frames = parsed
@@ -178,18 +187,28 @@ class V3DualArmCartesianBoxViewer(Node):
             self.current_box_center = tuple(float(value) for value in current)
         if len(target) == 3:
             self.target_box_center = tuple(float(value) for value in target)
+        self.current_box_roll = float(
+            payload.get("current_box_roll", self.current_box_roll)
+        )
+        self.target_box_roll = float(
+            payload.get("target_box_roll", self.target_box_roll)
+        )
+        self.motion_mode = str(payload.get("motion_mode", self.motion_mode))
         self.box_size = float(payload.get("box_size", self.box_size))
-        self.log_boxes(self.current_box_center)
+        self.log_boxes(self.current_box_center, self.current_box_roll)
 
-    def log_boxes(self, displayed_center: tuple[float, float, float]) -> None:
+    def log_boxes(
+        self, displayed_center: tuple[float, float, float], displayed_roll: float
+    ) -> None:
         half_size = [self.box_size * 0.5] * 3
         rr.log(
             "world/task/current_box",
             rr.Boxes3D(
                 centers=[list(displayed_center)],
                 half_sizes=[half_size],
+                quaternions=[roll_quaternion(displayed_roll)],
                 colors=[[40, 120, 255, 190]],
-                labels=["40cm rigidly held cube"],
+                labels=[f"{self.box_size * 100:.0f}cm rigidly held cube"],
             ),
         )
         rr.log(
@@ -197,25 +216,39 @@ class V3DualArmCartesianBoxViewer(Node):
             rr.Boxes3D(
                 centers=[list(self.target_box_center)],
                 half_sizes=[half_size],
+                quaternions=[roll_quaternion(self.target_box_roll)],
                 colors=[[55, 245, 80, 75]],
                 labels=["target cube center"],
             ),
         )
-        rr.log(
-            "world/task/straight_line",
-            rr.LineStrips3D(
-                strips=[[list(self.current_box_center), list(self.target_box_center)]],
-                colors=[[245, 50, 235]],
-                radii=[0.008],
-                labels=["synchronous analytic Cartesian line"],
-            ),
-        )
+        if self.motion_mode == "roll":
+            center = self.current_box_center
+            rr.log(
+                "world/task/rotation_axis",
+                rr.Arrows3D(
+                    origins=[[center[0] - 0.25, center[1], center[2]]],
+                    vectors=[[0.50, 0.0, 0.0]],
+                    colors=[[245, 50, 235]],
+                    radii=[0.008],
+                    labels=["robot-forward X rotation axis"],
+                ),
+            )
+        else:
+            rr.log(
+                "world/task/straight_line",
+                rr.LineStrips3D(
+                    strips=[[list(self.current_box_center), list(self.target_box_center)]],
+                    colors=[[245, 50, 235]],
+                    radii=[0.008],
+                    labels=["synchronous analytic Cartesian line"],
+                ),
+            )
 
     def log_summary(self, text: str) -> None:
         rr.log(
             "summary",
             rr.TextDocument(
-                "# V3双臂同步笛卡尔箱体Demo\n\n" + text,
+                "# V3双臂同步刚性箱体Demo\n\n" + text,
                 media_type=rr.MediaType.MARKDOWN,
             ),
         )
@@ -228,7 +261,7 @@ class V3DualArmCartesianBoxViewer(Node):
         self.global_frame += 1
         joints = dict(zip(self.joint_names, frame.joints))
         log_robot_state(self.robot, joints, "world/robot")
-        self.log_boxes(frame.box_center)
+        self.log_boxes(frame.box_center, frame.box_roll)
         rr.log("summary/current_stage", rr.TextLog(frame.stage))
 
         delay = self.minimum_frame_period

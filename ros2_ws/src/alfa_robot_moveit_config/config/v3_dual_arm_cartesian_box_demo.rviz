@@ -25,14 +25,14 @@ Visualization Manager:
       Enable Transparency: true
       Enabled: true
       Interactive Markers Namespace: /v3_dual_arm_cartesian_box_demo_marker
-      Name: Box Center XYZ Control
+      Name: Box Motion Control
       Show Axes: false
       Show Descriptions: true
       Show Visual Aids: true
       Value: true
     - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: Current Target and Cartesian Line
+      Name: Current Target and Motion Guide
       Topic:
         Depth: 1
         Durability Policy: Transient Local
