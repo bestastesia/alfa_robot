@@ -48,7 +48,7 @@ def test_single_arm_example_marks_other_arm_no_move():
     for stage_index in (0, 1):
         targets = example["goals"][stage_index]["goal"]["targets"]
         assert targets["left_grasp_mode"] == 2
-        assert targets["right_grasp_mode"] == 0
+        assert targets["right_grasp_mode"] == 3
         assert targets["right_pose"]["position"] == {"x": 0.0, "y": 0.0, "z": 0.0}
 
 
