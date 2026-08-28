@@ -17,7 +17,7 @@ from alfa_robot_execution_bridge.joints import (
 )
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
-from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from robot_interfaces_qos import fast_state
 from sensor_msgs.msg import JointState
 from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -25,12 +25,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from .common import MotionSample
 
 
-JOINT_STATE_QOS = QoSProfile(
-    reliability=ReliabilityPolicy.BEST_EFFORT,
-    durability=DurabilityPolicy.VOLATILE,
-    history=HistoryPolicy.KEEP_LAST,
-    depth=10,
-)
+JOINT_STATE_QOS = fast_state()
 ARM_JOINT_NAMES = tuple(
     name for name in RT_CONTROL_JOINT_NAMES if name not in ("turn", "updown")
 )
@@ -89,6 +84,7 @@ class HardwareExecutor:
         self._state_lock = threading.Lock()
         self._latest_joints: dict[str, float] = {}
         self._latest_updown_m: float | None = None
+        self._latest_state_monotonic: float | None = None
         self._joint_state_subscription = node.create_subscription(
             JointState,
             joint_state_topic,
@@ -205,6 +201,20 @@ class HardwareExecutor:
             time.sleep(0.05)
         raise TimeoutError("初始化前未收到完整 /joint_states")
 
+    def state_is_fresh(self, max_age_s: float) -> bool:
+        if self.dry_run:
+            return True
+        with self._state_lock:
+            latest = self._latest_state_monotonic
+            joints = dict(self._latest_joints)
+            updown_m = self._latest_updown_m
+        if latest is None or time.monotonic() - latest > max(0.0, float(max_age_s)):
+            return False
+        return (
+            all(name in joints for name in RT_CONTROL_JOINT_NAMES if name != "updown")
+            and updown_m is not None
+        )
+
     def _make_trajectory(
         self,
         samples: list[MotionSample],
@@ -282,6 +292,7 @@ class HardwareExecutor:
             self._latest_joints.update(joints)
             if updown_m is not None:
                 self._latest_updown_m = updown_m
+            self._latest_state_monotonic = time.monotonic()
 
     def _wait_for_start_state(
         self,

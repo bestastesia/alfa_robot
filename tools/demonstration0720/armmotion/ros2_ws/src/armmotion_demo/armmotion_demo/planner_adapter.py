@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from ament_index_python.packages import PackageNotFoundError, get_package_prefix
 from alfa_robot_execution_bridge.joints import EXECUTION_JOINT_NAMES
 from geometry_msgs.msg import PoseStamped
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -48,11 +49,42 @@ def _load_script_module(name: str, path: Path):
     return module
 
 
+def _resolve_planner_scripts_dir(source_ws: Path | None) -> Path:
+    override = os.environ.get("ARMMOTION_PLANNER_SCRIPTS_DIR", "").strip()
+    candidates: list[Path] = []
+    if override:
+        candidates.append(Path(override).expanduser())
+    try:
+        package_prefix = Path(get_package_prefix("alfa_robot_moveit_config"))
+    except PackageNotFoundError:
+        package_prefix = None
+    if package_prefix is not None:
+        candidates.append(package_prefix / "lib/alfa_robot_moveit_config")
+    require_installed = os.environ.get(
+        "ARMMOTION_REQUIRE_INSTALLED_RUNTIME", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if source_ws is not None and not require_installed:
+        candidates.append(
+            source_ws.expanduser().resolve()
+            / "src/alfa_robot_moveit_config/scripts"
+        )
+    required = ("extract_sequence_rerun.py", "execute_l6_r8_mock_live.py")
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if all((resolved / name).is_file() for name in required):
+            return resolved
+    inspected = ", ".join(str(path) for path in candidates) or "<none>"
+    raise FileNotFoundError(
+        "找不到已安装的 Motion Planner 运行文件；"
+        f"检查路径: {inspected}; required={','.join(required)}"
+    )
+
+
 class PlannerAdapter:
     def __init__(
         self,
         *,
-        source_ws: Path,
+        source_ws: Path | None,
         output_root: Path,
         rate_hz: float,
         max_joint_speed_deg_s: float,
@@ -71,8 +103,11 @@ class PlannerAdapter:
         trajectory_smoothing_resample_dt: float = 0.1,
         controller_interpolation_rate_hz: float = 250.0,
     ) -> None:
-        self.source_ws = source_ws.resolve()
         self.output_root = output_root.resolve()
+        self.runtime_workdir = Path(
+            os.environ.get("ARMMOTION_RUNTIME_WORKDIR", str(self.output_root))
+        ).expanduser().resolve()
+        self.runtime_workdir.mkdir(parents=True, exist_ok=True)
         self.rate_hz = float(rate_hz)
         self.max_joint_speed_deg_s = float(max_joint_speed_deg_s)
         self.max_joint_acceleration_deg_s2 = float(max_joint_acceleration_deg_s2)
@@ -101,7 +136,7 @@ class PlannerAdapter:
         self.trajectory_cache_fallback_on_planning_failure = bool(
             trajectory_cache_fallback_on_planning_failure
         )
-        self.scripts_dir = self.source_ws / "src/alfa_robot_moveit_config/scripts"
+        self.scripts_dir = _resolve_planner_scripts_dir(source_ws)
         self.planner_script = self.scripts_dir / "extract_sequence_rerun.py"
         self.execution_script = self.scripts_dir / "execute_l6_r8_mock_live.py"
         for path in (self.planner_script, self.execution_script):
@@ -141,6 +176,9 @@ class PlannerAdapter:
         self._ensure_session()
         return self.startup_ms
 
+    def is_running(self) -> bool:
+        return self._planner_process is not None and self._planner_process.poll() is None
+
     def _start_session(self) -> None:
         command = [
             sys.executable,
@@ -179,13 +217,14 @@ class PlannerAdapter:
             "inherit",
         ]
         environment = os.environ.copy()
-        environment["ALFA_ROBOT_ROOT"] = str(self.source_ws.parent)
+        environment.setdefault("ALFA_RUNTIME_ROOT", str(self.output_root))
+        environment.setdefault("ALFA_RUNTIME_WORKDIR", str(self.runtime_workdir))
         started = time.monotonic()
         log_stream = self.session_log.open("w", encoding="utf-8")
         try:
             self._planner_process = subprocess.Popen(
                 command,
-                cwd=self.source_ws,
+                cwd=self.runtime_workdir,
                 env=environment,
                 stdout=log_stream,
                 stderr=subprocess.STDOUT,

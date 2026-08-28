@@ -1,56 +1,33 @@
 services:
   motion:
-    build:
-      context: ../..
-      dockerfile: docker/motion/Dockerfile
-      args:
-        ROS_BASE_IMAGE: "${MOTION_ROS_BASE_IMAGE:-docker.m.daocloud.io/osrf/ros:humble-desktop-full}"
-        UBUNTU_MIRROR: "${MOTION_UBUNTU_MIRROR:-https://mirrors.aliyun.com/ubuntu}"
-        ROS2_MIRROR: "${MOTION_ROS2_MIRROR:-https://mirrors.tuna.tsinghua.edu.cn/ros2/ubuntu}"
-    image: alfa-motion-dev:humble
+    image: "${MOTION_IMAGE:?MOTION_IMAGE must identify the motion image}"
     network_mode: host
-    user: "${MOTION_UID:-1000}:${MOTION_GID:-1000}"
+    ipc: host
+    cpuset: "${MOTION_CPUSET:-21,22}"
+    user: "1000:1000"
     environment:
-      HOME: /workspace/home
-      ROS_LOG_DIR: /workspace/ros_logs
-      ROS_DOMAIN_ID: "${MOTION_ROS_DOMAIN_ID:-142}"
-      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
-      FASTRTPS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
-      FASTDDS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
-      MOTION_ROLE: server
-      MOTION_RT_MODE: "${MOTION_RT_MODE:-external}"
-      MOTION_DRY_RUN: "${MOTION_DRY_RUN:-true}"
-      MOTION_SKIP_BUILD: "${MOTION_SKIP_BUILD:-false}"
-      MOTION_SOURCE_ROOT: /repo
-      MOTION_WORKSPACE: /workspace
-      MOTION_OUTPUT_ROOT: /motion_data
+      ROS_DOMAIN_ID: "7"
+      ROS_LOCALHOST_ONLY: "0"
+      RMW_IMPLEMENTATION: "rmw_fastrtps_cpp"
+      FASTRTPS_DEFAULT_PROFILES_FILE: "/etc/robot/fastdds.xml"
+      FASTDDS_DEFAULT_PROFILES_FILE: "/etc/robot/fastdds.xml"
+      MOTION_USE_MOCK_RT_CONTROL: "${MOTION_USE_MOCK_RT_CONTROL:-false}"
+      MOTION_DRY_RUN: "${MOTION_DRY_RUN:-false}"
+      MOTION_TRAJECTORY_ACTION: "${MOTION_TRAJECTORY_ACTION:-/whole_body_jtc/follow_joint_trajectory}"
     volumes:
-      - ../..:/repo:ro
-      - ./.workspace:/workspace
-      - ../../data/docker_motion:/motion_data
-      - ./fastdds_udp_only.xml:/etc/fastdds_udp_only.xml:ro
+      - motion-data:/var/lib/robot/motion
+      - motion-logs:/var/log/robot/motion
+    cap_drop: ["ALL"]
     init: true
-    stop_grace_period: 20s
+    restart: unless-stopped
+    stop_grace_period: "30s"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/motion-healthcheck"]
+      interval: "10s"
+      timeout: "6s"
+      start_period: "90s"
+      retries: 3
 
-  task:
-    image: alfa-motion-dev:humble
-    network_mode: host
-    user: "${MOTION_UID:-1000}:${MOTION_GID:-1000}"
-    environment:
-      HOME: /workspace/home
-      ROS_LOG_DIR: /workspace/ros_logs
-      ROS_DOMAIN_ID: "${MOTION_ROS_DOMAIN_ID:-142}"
-      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
-      FASTRTPS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
-      FASTDDS_DEFAULT_PROFILES_FILE: /etc/fastdds_udp_only.xml
-      MOTION_ROLE: task
-      MOTION_SKIP_BUILD: "true"
-      MOTION_SOURCE_ROOT: /repo
-      MOTION_WORKSPACE: /workspace
-      MOTION_OUTPUT_ROOT: /motion_data
-    volumes:
-      - ../..:/repo:ro
-      - ./.workspace:/workspace
-      - ../../data/docker_motion:/motion_data
-      - ./fastdds_udp_only.xml:/etc/fastdds_udp_only.xml:ro
-    profiles: ["manual"]
+volumes:
+  motion-data:
+  motion-logs:

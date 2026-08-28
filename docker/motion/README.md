@@ -1,81 +1,93 @@
-# Motion 域 Docker 开发联调
+# Motion 域不可变 Docker 发布
 
-本目录只封装 Motion 运行环境。Motion 通过 ROS 2 原生接口连接 Autonomy 和 rt-control，不通过 Docker 私有通信，也不拥有电磁阀、真空泵或真空阈值控制权。
+本目录用于构建和部署 Motion 域生产镜像。容器通过 ROS 2 原生接口连接 Autonomy 和 RT-Control，不拥有吸附通路，也不启动、使能、复位或停止 RT-Control。
 
-## 对外接口
+## 公共接口
 
 | 名称 | 类型 | 方向 |
-|---|---|---|
-| `/motion/execute_stage` | `robot_motion_interfaces/action/ExecuteMotionStage` | Autonomy/测试客户端 → Motion |
-| `/motion/readiness` | `robot_system_interfaces/msg/DomainReadiness` | Motion → Autonomy/观测工具 |
-| `/dual_arm_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → rt-control |
-| `/joint_states` | `sensor_msgs/msg/JointState` | rt-control → Motion |
+| --- | --- | --- |
+| `/motion/execute_stage` | `robot_motion_interfaces/action/ExecuteMotionStage` | Autonomy → Motion |
+| `/motion/readiness` | `robot_system_interfaces/msg/DomainReadiness` | Motion → Autonomy |
+| `/whole_body_jtc/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Motion → RT-Control |
+| `/joint_states` | `sensor_msgs/msg/JointState` | RT-Control → Motion |
+| `/tf`、`/tf_static` | `tf2_msgs/msg/TFMessage` | RT-Control → Motion |
 
-`ExecuteMotionStage` 固定五个阶段：
+公共接口固定来自 `robot_interfaces@92d6ff2ed0b45684d7da2170d96703ca8be569f4`。
 
-1. `CAMERA_VIEW`：接收第一对重拍末端 Pose，保留输入姿态，只做 Turn=0 虚拟模型坐标换算后规划并执行重拍位。
-2. `PREGRASP`：接收第二对吸附面中心 Pose，Motion 可按顶吸/侧吸标准化抓取姿态并计算完整计划。
-3. `APPROACH`：执行预抓取到吸附位的 5cm 靠近轨迹。
-4. `PLACE`：执行抽离、负重过渡和放置轨迹。
-5. `HOME`：执行放置位到初始位轨迹，完成后清除本轮计划。
+## 镜像结构
 
-两批 Pose 都固定表达在 `base_link`，消息不带 frame、时间戳、任务号或箱号。Action Goal UUID 是请求身份。`APPROACH/PLACE/HOME` 的 `targets` 被忽略。
+- 强制继承 `robot/contract-runtime:interfaces-92d6ff2-20260827`。
+- Builder 阶段以 Release 模式编译 Motion 包。
+- Runtime 阶段只包含 `/opt/motion` 安装产物和运行依赖。
+- 启动时不执行 `git clone`、`vcs import` 或 `colcon build`。
+- 生产 Compose 不挂载源码、`build` 或 `install`。
+- Planner 从 ROS 安装空间解析并启动，不读取宿主仓库源码。
+- 使用基础镜像提供的 `/etc/robot/fastdds.xml`，不覆盖 Fast DDS 公共配置。
 
-规划算法始终把 `turn` 视为 `0`。除 `CAMERA_VIEW` 开头的专用对齐轨迹外，Motion 下发所有十四轴轨迹时都把 `turn` 锁定为最新真实反馈值。
+## 构建
 
-## 本机 Mock
-
-首次启动前导入锁定版本的中央接口仓库：
-
-```bash
-cd ros2_ws
-vcs import src < src/dependencies.repos
-```
+先确保统一基础镜像已经导入：
 
 ```bash
-cd docker/motion
-mkdir -p .workspace ../../data/docker_motion
-MOTION_UID=$(id -u) MOTION_GID=$(id -g) MOTION_ROS_DOMAIN_ID=142 \
-MOTION_RT_MODE=mock MOTION_DRY_RUN=false \
-docker compose up --build motion
+docker image inspect robot/contract-runtime:interfaces-92d6ff2-20260827
 ```
 
-另一个终端模拟 Autonomy：
+构建 Release 镜像：
 
 ```bash
-MOTION_UID=$(id -u) MOTION_GID=$(id -g) MOTION_ROS_DOMAIN_ID=142 \
-docker compose --profile manual run --rm task \
-  --recapture-left 0.70 0.40 1.597906 3.1415926 -1.5707963 0.0 \
-  --recapture-right 0.70 -0.40 1.597906 3.1415926 -1.5707963 0.0 \
-  --task B1 --front-distance 0.70 --top-distance 0.70 \
-  --interactive --yes-execute
+cd /path/to/alfa_robot
+MOTION_VERSION=0.1.0-rc1 \
+MOTION_IMAGE=alfa-motion:0.1.0-rc1 \
+  ./docker/motion/build_release.sh
 ```
 
-## 实机联调
-
-1. 独立启动 rt-control，确认其输出 `READY`。
-2. 启动 Motion：
+## 验证
 
 ```bash
-MOTION_HARDWARE_CONFIRM=ENABLE_MOTION_HARDWARE \
-  tools/motion_domain_docker.sh start-external
+MOTION_IMAGE=alfa-motion:0.1.0-rc1 \
+  ./docker/motion/verify_release.sh
 ```
 
-3. 查看接口：
+该脚本执行：
+
+- `robot-runtime-doctor`；
+- `contract-runtime-doctor`；
+- 发布清单检查；
+- 非 root 用户检查；
+- 源码/构建目录泄漏检查；
+- Compose 静态解析检查。
+
+完整 Mock 集成测试使用相同镜像启动 Motion 和测试 RT-Control，检查 Planner 预热、`/motion/readiness` 和容器健康状态。
+
+## 打包 GitHub Release
 
 ```bash
-ROS_DOMAIN_ID=42 ros2 action list -t | grep -E 'motion/execute_stage|dual_arm_jtc'
+MOTION_VERSION=0.1.0-rc1 \
+MOTION_IMAGE=alfa-motion:0.1.0-rc1 \
+  ./docker/motion/package_release.sh
 ```
 
-Motion 不启动、使能、复位或停止 rt-control。源码只读挂载到 `/repo`，Release 构建产物保存在 `docker/motion/.workspace`。当前使用 host network + Fast DDS UDPv4，规避 root 容器与宿主普通用户间的 SHM 权限问题。
+产物包括镜像归档、`compose.yaml`、SHA256、发布清单和部署说明。工控机不需要源码，也不会在启动时编译。
 
-## 轨迹缓存
+## 运行
 
-Motion 包内置默认 Y、`0.70～0.75m × 五排` 的 30 条已验证轨迹。距离按厘米向上取整；缓存文件、排数和起点状态同时匹配时跳过完整规划，否则自动回退实时 planner。模型、场景或关节合同变化后必须重新生成缓存。
+```bash
+cd /path/to/release
+export MOTION_IMAGE=alfa-motion:0.1.0-rc1
+docker compose up -d motion
+docker compose ps
+docker compose logs -f motion
+```
 
-## 当前限制
+固定运行约束：
 
-- `left_grasp_mode/right_grasp_mode` 已校验，但现有策略仍主要由吸附面高度分类。
-- 当前双臂全流程不支持单侧 `NO_MOVE`。
-- Gate、安全状态、模型/标定版本强制准入尚未接入。
-- `allow_partial_domain_test=true` 只用于开发联调。
+- `ROS_DOMAIN_ID=7`；
+- `network_mode: host`；
+- `ipc: host`；
+- 暂定 CPU `21,22`，不使用 RT-Control 的 CPU 14；
+- 用户 `1000:1000`；
+- `cap_drop: ALL`；
+- 无硬件设备映射和实时调度 capability。
+- 运行数据和日志写入 Compose 具名卷，不依赖宿主机源码目录权限。
+
+详细部署和回滚见 [DEPLOYMENT.md](DEPLOYMENT.md)。

@@ -2144,3 +2144,9 @@
 - 改了哪里：`domain_motion_server` 将 `TURN/CAMERA_VIEW/NAMED_JOINT_POSE` 定义为空闲态独立任务，不建立抓取上下文；`PREGRASP→APPROACH→PLACE→HOME` 保持严格串行。执行边界仅对 `TURN` 放行 Turn 轨迹，其余阶段继续保持最新 Turn；命名姿态保持当前 Turn 与 Updown。
 - 验证结果：中央接口3包 Release 构建通过，`armmotion_demo`构建通过，完整 Python 回归87项通过；本地接口源码、依赖锁和生成类型均为`92d6ff2`，rolling realtime 类型未纳入。本轮未连接或启动实机。
 - 留给下个 AI：Autonomy 与 Motion 必须同时升级到`92d6ff2`；实机先分别低速验证 TURN、REMOTE_CAMERA_VIEW、ARM_CONVERGED，再回归完整抓取四阶段，禁止与旧 Action 类型混跑。
+
+## 2026-08-28 运控 / Codex / MOTION-155 运控域不可变容器
+- 做了什么：Motion 镜像改为继承统一 `contract-runtime@interfaces-92d6ff2`，Release 构建产物固化在 `/opt/motion`；启动时不再挂载源码、拉代码或执行 `colcon build`，Planner 只从 ROS 安装空间加载运行脚本。
+- 改了哪里：重写 `docker/motion` 的多阶段 Dockerfile、统一 Compose、健康检查、doctor/打包/部署脚本；正式健康状态同时检查 Planner 存活和权威 `/joint_states` 新鲜度，运行数据与日志使用具名卷。
+- 验证结果：基础运行时与中央接口 doctor 通过；镜像内无 `/repo`、`/motion_build` 或源码工作区；Motion Python 回归 89/89；隔离 ROS Domain 的 Mock RT-Control 完成 CAMERA_VIEW→PREGRASP→APPROACH→PLACE→HOME，全流程任务规划约 0.77s；生产 `init: true` 条件下容器停止约 248ms。
+- 留给下个 AI：正式镜像固定 `ROS_DOMAIN_ID=7`、host network/ipc、CPU `21,22`、非 root 1000:1000、`cap_drop: ALL`；Motion 不拥有任何硬件设备或 RT-Control 生命周期。实机只在 RT-Control READY 且现场安全确认后启动。

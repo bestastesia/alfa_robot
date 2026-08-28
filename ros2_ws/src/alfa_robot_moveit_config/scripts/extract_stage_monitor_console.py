@@ -54,6 +54,9 @@ ROS_WS = REPO_ROOT / "ros2_ws"
 ROS_SETUP = Path(
     os.environ.get("ALFA_ROS_SETUP", str(ROS_WS / "install/setup.bash"))
 ).expanduser().resolve()
+RUNTIME_WORKDIR = Path(
+    os.environ.get("ALFA_RUNTIME_WORKDIR", str(ROS_WS))
+).expanduser().resolve()
 SYSTEM_PYTHON = Path("/usr/bin/python3")
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/extract_stage_monitor"
 DEFAULT_LOADED_POSE_FAMILY_DEG = "[0.0,-90.0,120.0,-75.0,0.0,0.0]"
@@ -76,12 +79,13 @@ def load_rerun_helpers():
 
 
 def bash_source_command(command: str) -> list[str]:
+    setup_command = f"source {ROS_SETUP} && " if ROS_SETUP.is_file() else ""
     return [
         "bash",
         "-lc",
         "source /opt/ros/humble/setup.bash && "
-        f"source {ROS_SETUP} && "
-        f"cd {ROS_WS} && "
+        f"{setup_command}"
+        f"cd {RUNTIME_WORKDIR} && "
         f"{command}",
     ]
 
@@ -1341,7 +1345,7 @@ def main() -> int:
             f"{domain_export}"
             "source /opt/ros/humble/setup.bash\n"
             f"source {ROS_SETUP}\n"
-            f"cd {ROS_WS}\n{launch_command}\n"
+            f"cd {RUNTIME_WORKDIR}\n{launch_command}\n"
         )
         log_event(f"启动 planner，日志：{launch_log}", run_start)
         with launch_log.open("w") as log_file:
