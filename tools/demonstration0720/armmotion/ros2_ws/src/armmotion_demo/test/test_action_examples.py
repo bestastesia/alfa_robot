@@ -6,16 +6,18 @@ import pytest
 from armmotion_demo import action_examples
 from armmotion_demo.action_examples import as_single_arm, load_examples
 
+EXPECTED_SUCCESSFUL_CACHE_COUNT = 835
+
 
 def test_all_successful_cached_action_examples_are_complete():
     examples = load_examples()
-    assert len(examples) == 312
+    assert len(examples) == EXPECTED_SUCCESSFUL_CACHE_COUNT
     assert len(
         {
             (item["distance_cm"], item["lateral_offset_cm"], item["row"])
             for item in examples
         }
-    ) == 312
+    ) == EXPECTED_SUCCESSFUL_CACHE_COUNT
     assert all(len(item["goals"]) == 5 for item in examples)
 
 
@@ -56,7 +58,7 @@ def test_json_output_separates_diagnostics_from_wire_goals(monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["dump_cached_action_examples"])
     action_examples.main()
     payload = json.loads(capsys.readouterr().out)
-    assert len(payload["wire_goal_groups"]) == 312
+    assert len(payload["wire_goal_groups"]) == EXPECTED_SUCCESSFUL_CACHE_COUNT
     first_goal = payload["wire_goal_groups"]["x_75cm_y_m10cm_row_2"][0]
     assert set(first_goal) == {"execution_stage", "targets"}
     assert "label" not in first_goal

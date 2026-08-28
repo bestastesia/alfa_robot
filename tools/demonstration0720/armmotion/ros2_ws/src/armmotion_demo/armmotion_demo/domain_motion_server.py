@@ -245,7 +245,7 @@ class DomainMotionServer(Node):
 
     def __init__(self) -> None:
         super().__init__("motion_domain_server")
-        default_source_ws = os.environ.get("ARMMOTION_SOURCE_WS", "/motion_ws")
+        default_source_ws = os.environ.get("ARMMOTION_SOURCE_WS", "")
         default_output_root = os.environ.get("ARMMOTION_OUTPUT_ROOT", "/motion_data")
         self.declare_parameter("source_ws", default_source_ws)
         self.declare_parameter("output_root", default_output_root)
@@ -279,6 +279,7 @@ class DomainMotionServer(Node):
         self.declare_parameter("planner_timeout_s", 180.0)
         self.declare_parameter("interface_timeout_s", 10.0)
         self.declare_parameter("joint_state_topic", "/joint_states")
+        self.declare_parameter("joint_state_max_age_s", 0.2)
         self.declare_parameter("start_joint_tolerance_deg", 0.75)
         self.declare_parameter("start_updown_tolerance_m", 0.015)
         self.declare_parameter(
@@ -333,7 +334,11 @@ class DomainMotionServer(Node):
         )
         self._hardware.verify_interfaces()
         self._planner = PlannerAdapter(
-            source_ws=Path(str(self.get_parameter("source_ws").value)),
+            source_ws=(
+                Path(str(self.get_parameter("source_ws").value))
+                if str(self.get_parameter("source_ws").value).strip()
+                else None
+            ),
             output_root=Path(str(self.get_parameter("output_root").value)),
             rate_hz=rate_hz,
             max_joint_speed_deg_s=max_joint_speed,
@@ -434,10 +439,21 @@ class DomainMotionServer(Node):
         message.map_version = ""
         message.producer_instance_id = self._producer_instance_id
         with self._lock:
-            partial_test = bool(self.get_parameter("allow_partial_domain_test").value)
-            message.ready = partial_test and not self._busy and not self._goal_reserved
+            message.ready = not self._busy and not self._goal_reserved
             blockers: list[str] = []
-            if self._scene_unknown:
+            planner_running = self._planner.is_running()
+            joint_state_fresh = self._hardware.state_is_fresh(
+                float(self.get_parameter("joint_state_max_age_s").value)
+            )
+            if not planner_running:
+                message.operational_state = "PLANNER_UNAVAILABLE"
+                message.ready = False
+                blockers.append("planner_unavailable")
+            elif not joint_state_fresh:
+                message.operational_state = "JOINT_STATES_STALE"
+                message.ready = False
+                blockers.append("joint_states_stale")
+            elif self._scene_unknown:
                 message.operational_state = "SCENE_UNKNOWN"
                 message.ready = False
                 blockers.append("scene_unknown")
@@ -449,13 +465,9 @@ class DomainMotionServer(Node):
                 and self._recapture_sample is None
                 and not self._cycle_id
             ):
-                message.operational_state = (
-                    "DEVELOPMENT_READY" if partial_test else "INTEGRATION_BLOCKED"
-                )
+                message.operational_state = "IDLE"
             else:
                 message.operational_state = self._stage_name(self._next_stage)
-            if not partial_test:
-                blockers.append("partial_domain_test_disabled")
             errors: list[ErrorInfo] = []
             if int(self._last_error.code or ErrorCode.SUCCESS) != ErrorCode.SUCCESS:
                 readiness_error = copy.deepcopy(self._last_error)
@@ -523,8 +535,6 @@ class DomainMotionServer(Node):
         return GoalResponse.ACCEPT
 
     def _validate_stage_request(self, request) -> None:
-        if not bool(self.get_parameter("allow_partial_domain_test").value):
-            raise ValueError("当前开发入口未开启部分域联调许可")
         valid_stages = {
             ExecuteMotionStage.Goal.EXECUTION_STAGE_CAMERA_VIEW,
             ExecuteMotionStage.Goal.EXECUTION_STAGE_PREGRASP,

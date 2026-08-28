@@ -9,6 +9,7 @@
 
   <buildtool_depend>ament_python</buildtool_depend>
 
+  <depend>ament_index_python</depend>
   <depend>alfa_robot_execution_bridge</depend>
   <depend>alfa_robot_moveit_config</depend>
   <depend>alfa_robot_rerun</depend>

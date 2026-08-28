@@ -16,6 +16,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import rclpy
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from alfa_robot_rerun import visualize_rerun as rerun_helpers
 from control_msgs.action import FollowJointTrajectory
 from rclpy.action import ActionClient
@@ -43,6 +44,12 @@ def find_repo_root() -> Path:
 
 REPO_ROOT = find_repo_root()
 ROS_WS = REPO_ROOT / "ros2_ws"
+ROS_SETUP = Path(
+    os.environ.get("ALFA_ROS_SETUP", str(ROS_WS / "install/setup.bash"))
+).expanduser().resolve()
+RUNTIME_WORKDIR = Path(
+    os.environ.get("ALFA_RUNTIME_WORKDIR", str(ROS_WS))
+).expanduser().resolve()
 DEFAULT_MOCK_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_mock_execution"
 DEFAULT_REAL_OUTPUT_ROOT = REPO_ROOT / "data/ik_benchmark/live_real_execution"
 
@@ -55,7 +62,7 @@ MAX_SAFE_REAL_UPDOWN_SPEED_M_S = 0.05
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 BRIDGE_SRC = ROS_WS / "src/alfa_robot_execution_bridge"
-if str(BRIDGE_SRC) not in sys.path:
+if BRIDGE_SRC.is_dir() and str(BRIDGE_SRC) not in sys.path:
     sys.path.insert(0, str(BRIDGE_SRC))
 from alfa_robot_execution_bridge.joints import (  # noqa: E402
     EXECUTION_JOINT_NAMES,
@@ -86,12 +93,13 @@ JOINT_STATE_QOS = QoSProfile(
 
 
 def bash_source_command(command: str) -> list[str]:
+    setup_command = f"source {ROS_SETUP} && " if ROS_SETUP.is_file() else ""
     return [
         "bash",
         "-lc",
         "source /opt/ros/humble/setup.bash && "
-        f"source {ROS_WS}/install/setup.bash && "
-        f"cd {ROS_WS} && "
+        f"{setup_command}"
+        f"cd {RUNTIME_WORKDIR} && "
         f"{command}",
     ]
 
@@ -898,10 +906,15 @@ def compute_snapshot(args: argparse.Namespace, run_dir: Path) -> Path:
 
 def start_execution_bridge(run_dir: Path, hz: float, config_name: str) -> subprocess.Popen[str]:
     log_path = run_dir / "execution_bridge.log"
+    try:
+        bridge_share = Path(get_package_share_directory("alfa_robot_execution_bridge"))
+    except PackageNotFoundError:
+        bridge_share = ROS_WS / "install/alfa_robot_execution_bridge/share/alfa_robot_execution_bridge"
+    config_path = bridge_share / "config" / config_name
     command = (
         "ros2 run alfa_robot_execution_bridge execution_bridge_node "
         "--ros-args "
-        f"--params-file {ROS_WS}/install/alfa_robot_execution_bridge/share/alfa_robot_execution_bridge/config/{config_name} "
+        f"--params-file {config_path} "
         f"-p update_hz:={hz}"
     )
     with log_path.open("w") as log_file:

@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 from geometry_msgs.msg import PoseStamped
 
+from armmotion_demo import planner_adapter
 from armmotion_demo.planner_adapter import PlannerAdapter
 
 
@@ -10,6 +11,37 @@ class RunningProcess:
     @staticmethod
     def poll():
         return None
+
+
+def test_release_runtime_resolves_installed_planner_scripts(tmp_path, monkeypatch):
+    scripts_dir = tmp_path / "lib" / "alfa_robot_moveit_config"
+    scripts_dir.mkdir(parents=True)
+    for name in ("extract_sequence_rerun.py", "execute_l6_r8_mock_live.py"):
+        (scripts_dir / name).write_text("", encoding="utf-8")
+    monkeypatch.setenv("ARMMOTION_REQUIRE_INSTALLED_RUNTIME", "1")
+    monkeypatch.setattr(
+        planner_adapter,
+        "get_package_prefix",
+        lambda _package: str(tmp_path),
+    )
+
+    assert planner_adapter._resolve_planner_scripts_dir(None) == scripts_dir
+
+
+def test_release_runtime_does_not_fall_back_to_source_tree(tmp_path, monkeypatch):
+    source_scripts = tmp_path / "source_ws/src/alfa_robot_moveit_config/scripts"
+    source_scripts.mkdir(parents=True)
+    for name in ("extract_sequence_rerun.py", "execute_l6_r8_mock_live.py"):
+        (source_scripts / name).write_text("", encoding="utf-8")
+    monkeypatch.setenv("ARMMOTION_REQUIRE_INSTALLED_RUNTIME", "1")
+    monkeypatch.setattr(
+        planner_adapter,
+        "get_package_prefix",
+        lambda _package: str(tmp_path / "missing_install"),
+    )
+
+    with pytest.raises(FileNotFoundError, match="已安装"):
+        planner_adapter._resolve_planner_scripts_dir(tmp_path / "source_ws")
 
 
 def adapter_with_attempts(attempts, cache_match):

@@ -15,7 +15,7 @@ def generate_launch_description():
                 "trajectory_action",
                 default_value=RT_CONTROL_ACTION_NAME,
             ),
-            DeclareLaunchArgument("source_ws", default_value="/motion_ws"),
+            DeclareLaunchArgument("source_ws", default_value=""),
             DeclareLaunchArgument("output_root", default_value="/motion_data"),
             DeclareLaunchArgument("trajectory_rate_hz", default_value="30.0"),
             DeclareLaunchArgument("execution_speed_scale", default_value="3.0"),
