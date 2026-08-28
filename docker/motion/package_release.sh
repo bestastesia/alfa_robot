@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 image="${MOTION_IMAGE:?MOTION_IMAGE must identify the motion image}"
-version="${MOTION_VERSION:-0.1.0-rc1}"
+version="${MOTION_VERSION:-2.0.1}"
 output_dir="${MOTION_RELEASE_DIR:-/tmp/alfa-motion-release/motion-domain-${version}}"
 archive="${output_dir}/motion-domain-${version}.tar.zst"
 
