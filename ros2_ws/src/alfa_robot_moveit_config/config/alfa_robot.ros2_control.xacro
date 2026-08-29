@@ -16,6 +16,8 @@
                     </state_interface>
                 </joint>
             </xacro:macro>
+            <xacro:moveit_control_joint joint_name="updown"/>
+            <xacro:moveit_control_joint joint_name="head_joint"/>
             <xacro:moveit_control_joint joint_name="left_joint1"/>
             <xacro:moveit_control_joint joint_name="left_joint2"/>
             <xacro:moveit_control_joint joint_name="left_joint3"/>

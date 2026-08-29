@@ -134,6 +134,31 @@ def test_urdf_xacro():
             for side in ("left", "right")
             for index in range(1, 8)
         }
+        arm_initial_positions = (0.0, -1.57079632679, -1.57079632679, 0.0,
+                                 -1.57079632679, 0.0, 0.0)
+        expected_initial_positions = {"updown": 0.0, "head_joint": 0.0}
+        expected_initial_positions.update({
+            f"{side}_joint{index}": arm_initial_positions[index - 1]
+            for side in ("left", "right")
+            for index in range(1, 8)
+        })
+        for joint_name, expected_value in expected_initial_positions.items():
+            initial_value = ros2_control.find(
+                f"joint[@name='{joint_name}']/state_interface[@name='position']/"
+                "param[@name='initial_value']"
+            )
+            assert initial_value is not None
+            assert abs(float(initial_value.text) - expected_value) < 1e-8
+
+        updown_position = ros2_control.find(
+            "joint[@name='updown']/command_interface[@name='position']"
+        )
+        updown_params = {
+            param.attrib["name"]: float(param.text)
+            for param in updown_position.findall("param")
+        }
+        assert updown_params == {"min": -1.0, "max": 0.0}
+
         for side in ("left", "right"):
             joint = ros2_control.find(f"joint[@name='{side}_joint6']")
             position_interface = joint.find("command_interface[@name='position']")

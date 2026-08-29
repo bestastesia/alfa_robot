@@ -282,7 +282,8 @@ public:
     target_orientation_rpy_[2] = declare_parameter<double>(
       "target_yaw", target_orientation_rpy_[2]);
     initial_seed_ = vector_to_joints(declare_parameter<std::vector<double>>(
-      "initial_seed", {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}), "initial_seed");
+      "initial_seed", {0.0, -kPi / 2.0, -kPi / 2.0, 0.0, -kPi / 2.0, 0.0, 0.0}),
+      "initial_seed");
     swivel_step_ = deg_to_rad(declare_parameter<double>("swivel_step_deg", 5.0));
     maximum_joint_delta_ = deg_to_rad(
       declare_parameter<double>("maximum_joint_delta_deg", 10.0));

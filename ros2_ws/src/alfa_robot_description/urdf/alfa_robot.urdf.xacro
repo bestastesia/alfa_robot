@@ -8,17 +8,17 @@
   <xacro:arg name="updown_initial" default="0.0"/>
   <xacro:arg name="head_joint_initial" default="0.0"/>
   <xacro:arg name="left_joint1_initial" default="0.0"/>
-  <xacro:arg name="left_joint2_initial" default="0.0"/>
-  <xacro:arg name="left_joint3_initial" default="0.0"/>
+  <xacro:arg name="left_joint2_initial" default="-1.57079632679"/>
+  <xacro:arg name="left_joint3_initial" default="-1.57079632679"/>
   <xacro:arg name="left_joint4_initial" default="0.0"/>
-  <xacro:arg name="left_joint5_initial" default="0.0"/>
+  <xacro:arg name="left_joint5_initial" default="-1.57079632679"/>
   <xacro:arg name="left_joint6_initial" default="0.0"/>
   <xacro:arg name="left_joint7_initial" default="0.0"/>
   <xacro:arg name="right_joint1_initial" default="0.0"/>
-  <xacro:arg name="right_joint2_initial" default="0.0"/>
-  <xacro:arg name="right_joint3_initial" default="0.0"/>
+  <xacro:arg name="right_joint2_initial" default="-1.57079632679"/>
+  <xacro:arg name="right_joint3_initial" default="-1.57079632679"/>
   <xacro:arg name="right_joint4_initial" default="0.0"/>
-  <xacro:arg name="right_joint5_initial" default="0.0"/>
+  <xacro:arg name="right_joint5_initial" default="-1.57079632679"/>
   <xacro:arg name="right_joint6_initial" default="0.0"/>
   <xacro:arg name="right_joint7_initial" default="0.0"/>
 

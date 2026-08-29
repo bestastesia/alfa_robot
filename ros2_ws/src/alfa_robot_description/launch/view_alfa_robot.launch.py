@@ -83,13 +83,13 @@ def generate_launch_description():
         parameters = [robot_description]
         if use_model_initial_positions.perform(context).lower() not in ("false", "0", "no", "off"):
             # joint_state_publisher_gui does not read MoveIt's initial_positions.yaml.
+            initial_arm_positions = (0.0, -1.57079632679, -1.57079632679, 0.0,
+                                     -1.57079632679, 0.0, 0.0)
             parameters.append(
                 {
-                    **{
-                        f"zeros.{side}_joint{index}": 0.0
-                        for side in ("left", "right")
-                        for index in range(1, 8)
-                    },
+                    f"zeros.{side}_joint{index}": initial_arm_positions[index - 1]
+                    for side in ("left", "right")
+                    for index in range(1, 8)
                 }
             )
         return [
