@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Preview the V3.0.8 reachability scan volume without running IK."""
+"""Preview the V3.0.9 reachability scan volume without running IK."""
 
 from __future__ import annotations
 
@@ -32,13 +32,13 @@ def inclusive_axis(start: float, stop: float, step: float) -> np.ndarray:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="预览 V3.0.8 左臂连续可达性测试将采用的三维点云范围"
+        description="预览 V3.0.9 左臂连续可达性测试将采用的三维点云范围"
     )
     parser.add_argument(
         "--save",
         default=(
             "/mnt/mydisk/ALFA/alfa_robot_v3/data/ik_benchmark/"
-            "v3_0_8_scan_volume_preview/left_joint1_centered_scan_volume_preview.rrd"
+            "v3_0_9_scan_volume_preview/left_joint1_centered_scan_volume_preview.rrd"
         ),
     )
     parser.add_argument("--spawn", action="store_true")
@@ -67,7 +67,7 @@ def main() -> int:
 
     output_path = Path(args.save).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    rr.init("v3_0_8_reachability_scan_volume", spawn=args.spawn)
+    rr.init("v3_0_9_reachability_scan_volume", spawn=args.spawn)
     rr.save(str(output_path))
 
     robot = UrdfRobot(render_current_urdf())
@@ -128,7 +128,7 @@ def main() -> int:
     rr.log(
         "summary",
         rr.TextLog(
-            f"V3.0.8 planned scan volume: {len(points)} points; "
+            f"V3.0.9 planned scan volume: {len(points)} points; "
             f"X=[{args.x_min:.3f},{args.x_max:.3f}]m, "
             f"Y=[{args.y_min:.3f},{args.y_max:.3f}]m, "
             f"Z=[{args.z_min:.3f},{args.z_max:.3f}]m. Gray means untested."

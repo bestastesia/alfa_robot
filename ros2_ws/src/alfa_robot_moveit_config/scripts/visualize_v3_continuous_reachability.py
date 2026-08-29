@@ -48,6 +48,10 @@ SHOULDER_CENTERS = {
         "left": np.array([0.181, -0.47659019, 1.34243275]),
         "right": np.array([0.181, 0.47659019, 1.34243279]),
     },
+    "V3.0.9": {
+        "left": np.array([0.181, -0.47659019, 1.34243275]),
+        "right": np.array([0.181, 0.47659019, 1.34243279]),
+    },
 }
 UPPER_ARM_LENGTH = 0.506
 FOREARM_LENGTH = 0.473

@@ -270,7 +270,7 @@ public:
     display_state_ = std::make_shared<moveit::core::RobotState>(*initial_state_);
 
     solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      side_ == "left" ? V3RedundantArmModel::V308Left : V3RedundantArmModel::V308Right);
+      side_ == "left" ? V3RedundantArmModel::V309Left : V3RedundantArmModel::V309Right);
 
     const std::vector<std::string> request_adapters = {
       "default_planner_request_adapters/AddTimeOptimalParameterization",

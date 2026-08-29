@@ -6,6 +6,8 @@
                prefix
                use_mock_hardware:=true
                mock_sensor_commands:=true
+               updown_initial:=0.0
+               head_joint_initial:=0.0
                left_joint1_initial:=0.0
                left_joint2_initial:=0.0
                left_joint3_initial:=0.0
@@ -40,6 +42,8 @@
         </joint>
       </xacro:macro>
 
+      <xacro:arm_control_joint joint_name="updown" initial_value="${updown_initial}" lower="0" upper="0.7"/>
+      <xacro:arm_control_joint joint_name="head_joint" initial_value="${head_joint_initial}" lower="-1.57079633" upper="1.57079633"/>
       <xacro:arm_control_joint joint_name="left_joint1" initial_value="${left_joint1_initial}" lower="-3.14159265" upper="3.14159265"/>
       <xacro:arm_control_joint joint_name="left_joint2" initial_value="${left_joint2_initial}" lower="-1.83259571" upper="1.83259571"/>
       <xacro:arm_control_joint joint_name="left_joint3" initial_value="${left_joint3_initial}" lower="-3.14159265" upper="3.14159265"/>

@@ -40,13 +40,13 @@ def test_urdf_xacro():
 
         base_meshes = links["model_base"].findall("visual/geometry/mesh")
         carriage_meshes = links["arm_carriage"].findall("visual/geometry/mesh")
-        upper_body_meshes = links["upper_body"].findall("visual/geometry/mesh")
+        head_meshes = links["head"].findall("visual/geometry/mesh")
         assert len(base_meshes) == 19
         assert len(carriage_meshes) == 8
-        assert len(upper_body_meshes) == 1
+        assert len(head_meshes) == 1
         assert all(
             "/meshes/robot_v3_0_8/" in mesh.attrib["filename"]
-            for mesh in base_meshes + carriage_meshes + upper_body_meshes
+            for mesh in base_meshes + carriage_meshes + head_meshes
         )
 
         visuals = robot.findall(".//visual")
@@ -69,17 +69,21 @@ def test_urdf_xacro():
         )
         assert joints["world_to_base"].find("origin").attrib["xyz"] == "0 0 0"
 
-        carriage_joint = joints["arm_carriage_joint"]
-        assert carriage_joint.attrib["type"] == "fixed"
-        assert carriage_joint.find("parent").attrib["link"] == "model_base"
-        assert carriage_joint.find("child").attrib["link"] == "arm_carriage"
-        assert carriage_joint.find("origin").attrib["xyz"] == (
+        updown_joint = joints["updown"]
+        assert updown_joint.attrib["type"] == "prismatic"
+        assert updown_joint.find("parent").attrib["link"] == "model_base"
+        assert updown_joint.find("child").attrib["link"] == "arm_carriage"
+        assert updown_joint.find("origin").attrib["xyz"] == (
             "-6.505e-09 -0.64829997 0.19"
         )
-        upper_body_joint = joints["upper_body_joint"]
-        assert upper_body_joint.attrib["type"] == "fixed"
-        assert upper_body_joint.find("parent").attrib["link"] == "arm_carriage"
-        assert upper_body_joint.find("child").attrib["link"] == "upper_body"
+        assert updown_joint.find("axis").attrib["xyz"] == "0 0 1"
+        assert updown_joint.find("limit").attrib["lower"] == "0"
+        assert updown_joint.find("limit").attrib["upper"] == "0.7"
+        head_joint = joints["head_joint"]
+        assert head_joint.attrib["type"] == "revolute"
+        assert head_joint.find("parent").attrib["link"] == "arm_carriage"
+        assert head_joint.find("child").attrib["link"] == "head"
+        assert head_joint.find("axis").attrib["xyz"] == "0 0 1"
         expected_limits = {
             1: (-3.14159265, 3.14159265),
             2: (-1.83259571, 1.83259571),
@@ -122,8 +126,8 @@ def test_urdf_xacro():
         ros2_control = robot.find("ros2_control")
         assert ros2_control is not None
         control_joints = [joint.attrib["name"] for joint in ros2_control.findall("joint")]
-        assert len(control_joints) == 14
-        assert set(control_joints) == {
+        assert len(control_joints) == 16
+        assert set(control_joints) == {"updown", "head_joint"} | {
             f"{side}_joint{index}"
             for side in ("left", "right")
             for index in range(1, 8)

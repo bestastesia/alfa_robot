@@ -13,7 +13,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 ## 当前推进重点
 
 - 当前主线：`v5_dev` 已收口左右箱体正面中心 6D 位姿任务合同；功能分支正在接入 V3 七轴双臂模型。
-- V3 模型工作跟踪：Linear `MOTION-94`。当前试验分支已接入 `robot_v3.0.8` 整机导出模型，外观与碰撞均使用该版本上游网格。
+- V3 模型工作跟踪：Linear `MOTION-94`。当前试验分支已接入 `robot_v3.0.9` 十六自由度整机模型；双臂外观与碰撞网格和 V3.0.8 上游资产逐字节一致。
 - V3 基础动作跟踪：Linear `MOTION-154`。分支 `motion-154-v3-dual-arm-simple-motion` 已完成首个40cm箱双臂同步解析笛卡尔平移Demo，待用户交互验收后继续旋转和异构握持任务。
 - 正式任务输入只包含 `request_id`、左右正面中心 `pose_6d` 和 `execute`；算法内部按高度容差识别排数、吸附方式和抽离策略，禁止从箱号或外部吸附模式获取帮助。
 - 旧 `/robot_motion/run_box_pair_task` 仅保留为显式兼容入口，默认完整栈不启动 `box_pair_task_adapter_node`。
@@ -25,13 +25,13 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前仍需注意
 
-- 当前 V3.0.8 外观与碰撞共用 `ros2_ws/src/alfa_robot_description/meshes/robot_v3_0_8/` 中的上游整机网格。
+- 当前 V3.0.9 恢复 `updown` 升降和 `head_joint` 旋转自由度，连同左右七轴共16个可动关节；因 V3.0.9 与 V3.0.8 的46个上游 STL 完全相同，继续复用 `ros2_ws/src/alfa_robot_description/meshes/robot_v3_0_8/`，不重复存储。
 - Linear/Git 关联提交标题优先使用 `Refs MOTION-xx: ...`；只写 `MOTION-xx:` 不稳定。
 - 一个 issue 只对创建时的验收目标负责；后续探索/测试应拆新 issue 或放 Backlog，不要让已达标 issue 永远开着。
 - `alfa_robot_moveit_config` 已不再编译或包含 `scripts/ik_benchmark/` 的头文件；公共 IK 候选类型已迁入 `robot_motion_core`，Rerun 公共实现已迁入 `alfa_robot_rerun`。
 - `dual_arm_planner_node` 仍承载完整候选排序、抽离和负重规划适配；这些实现尚未全部迁入独立 core/planning service。
 - 历史 `bio_ik`、仓库内 `alfa_robot_hardware` 和旧 `alfa_robot_bringup` 已退出主线；实机硬件与生命周期由外部 `rt-control` 域负责。
-- 当前 V3.0.8 已完成 description、14轴 ros2_control/MoveIt 契约、冗余解析 IK，以及单点、前伸40cm、周围15cm三项连续可达性扫描；尚未验收完整抓取流程。
+- 当前 V3.0.9 已完成 description、16轴 ros2_control/MoveIt 契约与冗余解析 IK 回归；V3.0.8 的单点、前伸40cm、周围15cm数据仅作为双臂几何参考，恢复整机自由度后的完整抓取流程尚未验收。
 
 ## 当前主要模块速查
 

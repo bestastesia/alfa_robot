@@ -10,6 +10,26 @@
         <group name="left_arm"/>
         <group name="right_arm"/>
     </group>
+    <group name="head">
+        <joint name="head_joint"/>
+    </group>
+    <group name="left_arm_with_updown">
+        <joint name="updown"/>
+        <group name="left_arm"/>
+    </group>
+    <group name="right_arm_with_updown">
+        <joint name="updown"/>
+        <group name="right_arm"/>
+    </group>
+    <group name="dual_arm_with_updown">
+        <joint name="updown"/>
+        <group name="dual_arm"/>
+    </group>
+    <group name="whole_body">
+        <joint name="updown"/>
+        <joint name="head_joint"/>
+        <group name="dual_arm"/>
+    </group>
     <group name="left_tool_group">
         <link name="left_tool0"/>
     </group>
@@ -32,12 +52,30 @@
         <joint name="right_joint6" value="0"/>
         <joint name="right_joint7" value="0"/>
     </group_state>
+    <group_state name="home" group="whole_body">
+        <joint name="updown" value="0"/>
+        <joint name="head_joint" value="0"/>
+        <joint name="left_joint1" value="0"/>
+        <joint name="left_joint2" value="0"/>
+        <joint name="left_joint3" value="0"/>
+        <joint name="left_joint4" value="0"/>
+        <joint name="left_joint5" value="0"/>
+        <joint name="left_joint6" value="0"/>
+        <joint name="left_joint7" value="0"/>
+        <joint name="right_joint1" value="0"/>
+        <joint name="right_joint2" value="0"/>
+        <joint name="right_joint3" value="0"/>
+        <joint name="right_joint4" value="0"/>
+        <joint name="right_joint5" value="0"/>
+        <joint name="right_joint6" value="0"/>
+        <joint name="right_joint7" value="0"/>
+    </group_state>
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>
     <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
     <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
     <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
-    <disable_collisions link1="arm_carriage" link2="upper_body" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="head" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>
     <disable_collisions link1="left_arm_base" link2="left_joint1" reason="Adjacent"/>

@@ -9,6 +9,8 @@ moveit_simple_controller_manager:
     action_ns: follow_joint_trajectory
     default: true
     joints:
+      - updown
+      - head_joint
       - left_joint1
       - left_joint2
       - left_joint3

@@ -277,9 +277,9 @@ public:
       }
     }
     left_solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      V3RedundantArmModel::V308Left);
+      V3RedundantArmModel::V309Left);
     right_solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      V3RedundantArmModel::V308Right);
+      V3RedundantArmModel::V309Right);
     scene_ = std::make_shared<planning_scene::PlanningScene>(robot_model_);
 
     PlanningMetrics initialization_metrics;

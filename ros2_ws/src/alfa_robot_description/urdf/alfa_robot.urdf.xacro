@@ -5,6 +5,8 @@
   <xacro:arg name="use_mock_hardware" default="true"/>
   <xacro:arg name="mock_sensor_commands" default="true"/>
   <xacro:arg name="arm_mount_forward_offset" default="0"/>
+  <xacro:arg name="updown_initial" default="0.0"/>
+  <xacro:arg name="head_joint_initial" default="0.0"/>
   <xacro:arg name="left_joint1_initial" default="0.0"/>
   <xacro:arg name="left_joint2_initial" default="0.0"/>
   <xacro:arg name="left_joint3_initial" default="0.0"/>
@@ -22,7 +24,7 @@
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
   <xacro:property name="arm_mount_forward_offset_value" value="$(arg arm_mount_forward_offset)"/>
-  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_8.xacro"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_9.xacro"/>
 
   <link name="world"/>
   <joint name="world_to_base" type="fixed">
@@ -45,6 +47,8 @@
     prefix="$(arg prefix)"
     use_mock_hardware="$(arg use_mock_hardware)"
     mock_sensor_commands="$(arg mock_sensor_commands)"
+    updown_initial="$(arg updown_initial)"
+    head_joint_initial="$(arg head_joint_initial)"
     left_joint1_initial="$(arg left_joint1_initial)"
     left_joint2_initial="$(arg left_joint2_initial)"
     left_joint3_initial="$(arg left_joint3_initial)"
