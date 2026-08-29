@@ -37,36 +37,36 @@
         <link name="right_tool0"/>
     </group>
     <group_state name="home" group="dual_arm">
-        <joint name="left_joint1" value="0"/>
+        <joint name="left_joint1" value="-1.57079632679"/>
         <joint name="left_joint2" value="-1.57079632679"/>
-        <joint name="left_joint3" value="-1.57079632679"/>
-        <joint name="left_joint4" value="0"/>
-        <joint name="left_joint5" value="-1.57079632679"/>
+        <joint name="left_joint3" value="0"/>
+        <joint name="left_joint4" value="-1.57079632679"/>
+        <joint name="left_joint5" value="0"/>
         <joint name="left_joint6" value="0"/>
         <joint name="left_joint7" value="0"/>
-        <joint name="right_joint1" value="0"/>
+        <joint name="right_joint1" value="-1.57079632679"/>
         <joint name="right_joint2" value="-1.57079632679"/>
-        <joint name="right_joint3" value="-1.57079632679"/>
-        <joint name="right_joint4" value="0"/>
-        <joint name="right_joint5" value="-1.57079632679"/>
+        <joint name="right_joint3" value="0"/>
+        <joint name="right_joint4" value="-1.57079632679"/>
+        <joint name="right_joint5" value="0"/>
         <joint name="right_joint6" value="0"/>
         <joint name="right_joint7" value="0"/>
     </group_state>
     <group_state name="home" group="whole_body">
         <joint name="updown" value="0"/>
         <joint name="head_joint" value="0"/>
-        <joint name="left_joint1" value="0"/>
+        <joint name="left_joint1" value="-1.57079632679"/>
         <joint name="left_joint2" value="-1.57079632679"/>
-        <joint name="left_joint3" value="-1.57079632679"/>
-        <joint name="left_joint4" value="0"/>
-        <joint name="left_joint5" value="-1.57079632679"/>
+        <joint name="left_joint3" value="0"/>
+        <joint name="left_joint4" value="-1.57079632679"/>
+        <joint name="left_joint5" value="0"/>
         <joint name="left_joint6" value="0"/>
         <joint name="left_joint7" value="0"/>
-        <joint name="right_joint1" value="0"/>
+        <joint name="right_joint1" value="-1.57079632679"/>
         <joint name="right_joint2" value="-1.57079632679"/>
-        <joint name="right_joint3" value="-1.57079632679"/>
-        <joint name="right_joint4" value="0"/>
-        <joint name="right_joint5" value="-1.57079632679"/>
+        <joint name="right_joint3" value="0"/>
+        <joint name="right_joint4" value="-1.57079632679"/>
+        <joint name="right_joint5" value="0"/>
         <joint name="right_joint6" value="0"/>
         <joint name="right_joint7" value="0"/>
     </group_state>

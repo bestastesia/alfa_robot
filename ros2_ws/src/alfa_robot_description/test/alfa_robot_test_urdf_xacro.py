@@ -134,8 +134,8 @@ def test_urdf_xacro():
             for side in ("left", "right")
             for index in range(1, 8)
         }
-        arm_initial_positions = (0.0, -1.57079632679, -1.57079632679, 0.0,
-                                 -1.57079632679, 0.0, 0.0)
+        arm_initial_positions = (-1.57079632679, -1.57079632679, 0.0,
+                                 -1.57079632679, 0.0, 0.0, 0.0)
         expected_initial_positions = {"updown": 0.0, "head_joint": 0.0}
         expected_initial_positions.update({
             f"{side}_joint{index}": arm_initial_positions[index - 1]
