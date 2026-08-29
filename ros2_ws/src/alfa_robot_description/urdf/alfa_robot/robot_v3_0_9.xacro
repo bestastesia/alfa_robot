@@ -758,14 +758,14 @@
     <parent link="model_base" />
     <child link="arm_carriage" />
     <axis xyz="0 0 1" />
-    <limit lower="0" upper="0.7" effort="1000" velocity="0.15" />
+    <limit lower="-0.1" upper="0.1" effort="1000" velocity="0.15" />
   </joint>
   <joint name="head_joint" type="revolute">
     <origin xyz="0.226 -5.01820807131e-17 1.3756412" rpy="0 0 1.57079632679" />
     <parent link="arm_carriage" />
     <child link="head" />
     <axis xyz="0 0 1" />
-    <limit lower="-1.57079633" upper="1.57079633" effort="10" velocity="1" />
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="1" />
   </joint>
   <joint name="left_joint1" type="revolute">
     <origin xyz="0.181 -0.33054221 1.3032993" rpy="3.33066907388e-16 -1.3089969 1.57079632679" />

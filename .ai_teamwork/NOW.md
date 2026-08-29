@@ -25,7 +25,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前仍需注意
 
-- 当前 V3.0.9 恢复 `updown` 升降和 `head_joint` 旋转自由度，连同左右七轴共16个可动关节；因 V3.0.9 与 V3.0.8 的46个上游 STL 完全相同，继续复用 `ros2_ws/src/alfa_robot_description/meshes/robot_v3_0_8/`，不重复存储。
+- 当前 V3.0.9 恢复 `updown` 升降和 `head_joint` 旋转自由度，连同左右七轴共16个可动关节；位置范围严格采用上游 `updown=-0.1～0.1m`、`head_joint=-1.57～1.57rad`。因 V3.0.9 与 V3.0.8 的46个上游 STL 完全相同，继续复用 `ros2_ws/src/alfa_robot_description/meshes/robot_v3_0_8/`，不重复存储。
 - Linear/Git 关联提交标题优先使用 `Refs MOTION-xx: ...`；只写 `MOTION-xx:` 不稳定。
 - 一个 issue 只对创建时的验收目标负责；后续探索/测试应拆新 issue 或放 Backlog，不要让已达标 issue 永远开着。
 - `alfa_robot_moveit_config` 已不再编译或包含 `scripts/ik_benchmark/` 的头文件；公共 IK 候选类型已迁入 `robot_motion_core`，Rerun 公共实现已迁入 `alfa_robot_rerun`。
