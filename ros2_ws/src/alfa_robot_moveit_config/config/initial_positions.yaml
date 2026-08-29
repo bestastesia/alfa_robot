@@ -1,5 +1,6 @@
 # V3.0.9 十六自由度整机演示零位。
 initial_positions:
+  # 0.0m 是升降最高点；最低点为 -1.0m。
   updown: 0.0
   head_joint: 0.0
   left_joint1: 0.0

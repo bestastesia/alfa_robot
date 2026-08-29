@@ -77,8 +77,8 @@ def test_urdf_xacro():
             "-6.505e-09 -0.64829997 0.19"
         )
         assert updown_joint.find("axis").attrib["xyz"] == "0 0 1"
-        assert updown_joint.find("limit").attrib["lower"] == "-0.1"
-        assert updown_joint.find("limit").attrib["upper"] == "0.1"
+        assert updown_joint.find("limit").attrib["lower"] == "-1.0"
+        assert updown_joint.find("limit").attrib["upper"] == "0.0"
         head_joint = joints["head_joint"]
         assert head_joint.attrib["type"] == "revolute"
         assert head_joint.find("parent").attrib["link"] == "arm_carriage"
