@@ -20,6 +20,7 @@ from armmotion_demo.manual_domain_task import _quaternion_from_rpy
 from armmotion_demo.stage_contract import (
     align_target_pair_to_average_x,
     align_target_pair_to_lower_height,
+    align_target_pair_x_by_grasp_mode,
     canonicalize_grasp_pose_orientation,
     canonicalize_stage_target_orientations,
     planning_task_from_resolved_targets,
@@ -146,6 +147,33 @@ def test_target_pair_average_x_preserves_each_y():
     assert aligned.right_pose.position.x == pytest.approx(0.75)
     assert aligned.left_pose.position.y == pytest.approx(0.47)
     assert aligned.right_pose.position.y == pytest.approx(-0.35)
+
+
+def test_side_suction_pair_uses_deeper_x_and_preserves_each_y():
+    targets = resolve_dual_stage_targets(goal(left_y=0.47, right_y=-0.35))
+    targets.left_pose.position.x = 0.72
+    targets.right_pose.position.x = 0.78
+
+    aligned = align_target_pair_x_by_grasp_mode(targets)
+
+    assert aligned.left_pose.position.x == pytest.approx(0.78)
+    assert aligned.right_pose.position.x == pytest.approx(0.78)
+    assert aligned.left_pose.position.y == pytest.approx(0.47)
+    assert aligned.right_pose.position.y == pytest.approx(-0.35)
+
+
+def test_top_suction_pair_keeps_average_x():
+    message = goal(left_y=0.47, right_y=-0.35)
+    message.targets.left_grasp_mode = DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
+    message.targets.right_grasp_mode = DualArmPoseTargets.GRASP_MODE_TOP_SUCTION
+    targets = resolve_dual_stage_targets(message)
+    targets.left_pose.position.x = 0.72
+    targets.right_pose.position.x = 0.78
+
+    aligned = align_target_pair_x_by_grasp_mode(targets)
+
+    assert aligned.left_pose.position.x == pytest.approx(0.75)
+    assert aligned.right_pose.position.x == pytest.approx(0.75)
 
 
 def test_domain_top_target_is_actual_top_surface_center():

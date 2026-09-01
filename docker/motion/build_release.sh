@@ -3,7 +3,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 base_image="${CONTRACT_RUNTIME_IMAGE:-robot/contract-runtime:interfaces-92d6ff2-20260827}"
-version="${MOTION_VERSION:-2.0.1}"
+version="${MOTION_VERSION:-2.0.2}"
 image="${MOTION_IMAGE:-alfa-motion:${version}}"
 git_sha="${MOTION_GIT_SHA:-$(git -C "${root}" rev-parse HEAD)}"
 interfaces_sha="$(awk '$1 == "commit:" {print $2; exit}' "${root}/ros2_ws/src/dependencies.lock.yaml")"

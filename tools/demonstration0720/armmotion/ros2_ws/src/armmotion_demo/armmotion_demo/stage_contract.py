@@ -155,6 +155,33 @@ def align_target_pair_to_average_x(
     )
 
 
+def align_target_pair_x_by_grasp_mode(
+    targets: ResolvedStageTargets,
+) -> ResolvedStageTargets:
+    left_pose = copy.deepcopy(targets.left_pose)
+    right_pose = copy.deepcopy(targets.right_pose)
+    dual_side_suction = (
+        int(targets.left_grasp_mode)
+        == DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION
+        and int(targets.right_grasp_mode)
+        == DualArmPoseTargets.GRASP_MODE_SIDE_SUCTION
+    )
+    aligned_x = (
+        max(float(left_pose.position.x), float(right_pose.position.x))
+        if dual_side_suction
+        else 0.5 * (float(left_pose.position.x) + float(right_pose.position.x))
+    )
+    left_pose.position.x = aligned_x
+    right_pose.position.x = aligned_x
+    return ResolvedStageTargets(
+        left_pose=left_pose,
+        right_pose=right_pose,
+        left_grasp_mode=targets.left_grasp_mode,
+        right_grasp_mode=targets.right_grasp_mode,
+        mirrored_from=targets.mirrored_from,
+    )
+
+
 def pose6d_from_pose(message: Pose, label: str) -> Pose6DValue:
     position = (message.position.x, message.position.y, message.position.z)
     quaternion = (

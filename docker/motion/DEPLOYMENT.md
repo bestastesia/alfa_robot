@@ -11,12 +11,12 @@
 
 ```bash
 # 单文件归档：
-zstd -dc motion-domain-2.0.1.tar.zst | docker load
+zstd -dc motion-domain-2.0.2.tar.zst | docker load
 
 # 若 Release 因 GitHub 单文件大小限制分片：
-cat motion-domain-2.0.1.tar.zst.part-* | zstd -dc | docker load
+cat motion-domain-2.0.2.tar.zst.part-* | zstd -dc | docker load
 
-export MOTION_IMAGE=alfa-motion:2.0.1
+export MOTION_IMAGE=alfa-motion:2.0.2
 docker compose up -d motion
 docker compose ps
 docker compose logs -f motion
