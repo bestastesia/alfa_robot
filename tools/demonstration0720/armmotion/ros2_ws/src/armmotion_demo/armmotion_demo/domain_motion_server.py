@@ -31,8 +31,8 @@ from .common import (
 from .hardware_executor import HardwareExecutor
 from .planner_adapter import PlannerAdapter
 from .stage_contract import (
-    align_target_pair_to_average_x,
     align_target_pair_to_lower_height,
+    align_target_pair_x_by_grasp_mode,
     canonicalize_stage_target_orientations,
     planning_task_from_resolved_targets,
     resolve_dual_stage_targets,
@@ -593,7 +593,7 @@ class DomainMotionServer(Node):
         *,
         canonicalize_grasp_orientation: bool,
         align_to_lower_height: bool,
-        align_to_average_x: bool,
+        align_x_by_grasp_mode: bool,
     ):
         current_turn = float(current.joints.get("turn", 0.0))
         corrected_request = copy.deepcopy(request)
@@ -639,8 +639,8 @@ class DomainMotionServer(Node):
         original_right_z = float(targets.right_pose.position.z)
         if align_to_lower_height:
             targets = align_target_pair_to_lower_height(targets)
-        if align_to_average_x:
-            targets = align_target_pair_to_average_x(targets)
+        if align_x_by_grasp_mode:
+            targets = align_target_pair_x_by_grasp_mode(targets)
         lateral_offset_m = 0.5 * (
             float(targets.left_pose.position.y)
             + float(targets.right_pose.position.y)
@@ -651,7 +651,7 @@ class DomainMotionServer(Node):
             f"y_compensation={y_compensation_m:+.3f}m "
             f"canonical_orientation={canonicalize_grasp_orientation} "
             f"align_lower_height={align_to_lower_height} "
-            f"align_average_x={align_to_average_x} "
+            f"align_x_by_grasp_mode={align_x_by_grasp_mode} "
             f"lateral_offset={lateral_offset_m:+.3f}m "
             f"left=({targets.left_pose.position.x:.3f},"
             f"{targets.left_pose.position.y:.3f},"
@@ -838,7 +838,7 @@ class DomainMotionServer(Node):
                         current_with_turn,
                         canonicalize_grasp_orientation=True,
                         align_to_lower_height=False,
-                        align_to_average_x=True,
+                        align_x_by_grasp_mode=True,
                     )
                     samples, metrics = self._planner.plan_recapture_with_approach_search(
                         self._base_link_pose_stamped(targets.left_pose),
@@ -903,7 +903,7 @@ class DomainMotionServer(Node):
                     current_with_turn,
                     canonicalize_grasp_orientation=True,
                     align_to_lower_height=True,
-                    align_to_average_x=True,
+                    align_x_by_grasp_mode=True,
                 )
                 task = planning_task_from_resolved_targets(targets, cycle_id)
                 started = time.monotonic()

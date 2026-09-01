@@ -36,15 +36,15 @@ docker image inspect robot/contract-runtime:interfaces-92d6ff2-20260827
 
 ```bash
 cd /path/to/alfa_robot
-MOTION_VERSION=2.0.1 \
-MOTION_IMAGE=alfa-motion:2.0.1 \
+MOTION_VERSION=2.0.2 \
+MOTION_IMAGE=alfa-motion:2.0.2 \
   ./docker/motion/build_release.sh
 ```
 
 ## 验证
 
 ```bash
-MOTION_IMAGE=alfa-motion:2.0.1 \
+MOTION_IMAGE=alfa-motion:2.0.2 \
   ./docker/motion/verify_release.sh
 ```
 
@@ -62,8 +62,8 @@ MOTION_IMAGE=alfa-motion:2.0.1 \
 ## 打包 GitHub Release
 
 ```bash
-MOTION_VERSION=2.0.1 \
-MOTION_IMAGE=alfa-motion:2.0.1 \
+MOTION_VERSION=2.0.2 \
+MOTION_IMAGE=alfa-motion:2.0.2 \
   ./docker/motion/package_release.sh
 ```
 
@@ -73,7 +73,7 @@ MOTION_IMAGE=alfa-motion:2.0.1 \
 
 ```bash
 cd /path/to/release
-export MOTION_IMAGE=alfa-motion:2.0.1
+export MOTION_IMAGE=alfa-motion:2.0.2
 docker compose up -d motion
 docker compose ps
 docker compose logs -f motion
