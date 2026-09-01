@@ -6,7 +6,7 @@ import pytest
 from armmotion_demo import action_examples
 from armmotion_demo.action_examples import as_single_arm, load_examples
 
-EXPECTED_SUCCESSFUL_CACHE_COUNT = 835
+EXPECTED_SUCCESSFUL_CACHE_COUNT = 1087
 
 
 def test_all_successful_cached_action_examples_are_complete():

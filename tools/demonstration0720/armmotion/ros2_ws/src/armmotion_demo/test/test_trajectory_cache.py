@@ -52,7 +52,8 @@ def test_distance_bucket_rounds_up_to_next_centimetre():
     assert upward_distance_bucket_cm(0.725) == 75
     assert upward_distance_bucket_cm(0.7500000001) == 76
     assert upward_distance_bucket_cm(0.82) == 82
-    assert upward_distance_bucket_cm(0.90) == 86
+    assert upward_distance_bucket_cm(0.90) == 90
+    assert upward_distance_bucket_cm(0.95) == 92
     assert upward_distance_bucket_cm(0.65) == 75
 
 
@@ -177,7 +178,7 @@ def test_far_target_clamps_to_farthest_cache_entry(cache_root):
 
     assert reason == "cache_hit"
     assert match is not None
-    assert match.distance_cm == 86
+    assert match.distance_cm == 92
 
 
 def test_required_cache_policy_rejects_before_online_planning(cache_root):
