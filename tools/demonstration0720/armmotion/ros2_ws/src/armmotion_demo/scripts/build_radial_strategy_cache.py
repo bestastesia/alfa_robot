@@ -43,6 +43,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--template-cache-root", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--rows", default="1,2,3,4,5")
+    parser.add_argument("--min-distance-cm", type=int, default=75)
+    parser.add_argument("--max-distance-cm", type=int, default=86)
     return parser.parse_args()
 
 
@@ -291,6 +294,13 @@ def cache_record_from_result(
 
 def main() -> int:
     args = parse_args()
+    selected_rows = tuple(
+        int(value.strip()) for value in str(args.rows).split(",") if value.strip()
+    )
+    if not selected_rows or any(row not in range(1, 6) for row in selected_rows):
+        raise ValueError("--rows must only contain 1..5")
+    if args.min_distance_cm <= 0 or args.max_distance_cm < args.min_distance_cm:
+        raise ValueError("distance range must be positive and ordered")
     place_templates = load_place_templates(args.template_cache_root.resolve())
     output_root = args.output_root.resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -313,9 +323,15 @@ def main() -> int:
                     ): item
                     for item in summary.get("rows", [])
                 }
-            )
+        )
         for result_path in sorted(source_root.glob("cases/*/result.json")):
             row, distance_cm, lateral_offset_cm = case_metadata(result_path)
+            if (
+                row not in selected_rows
+                or distance_cm < args.min_distance_cm
+                or distance_cm > args.max_distance_cm
+            ):
+                continue
             result = json.loads(result_path.read_text(encoding="utf-8"))
             if not result.get("loaded_transition", {}).get("valid", False):
                 failed.append((row, distance_cm, lateral_offset_cm, "loaded_transition_invalid"))
@@ -333,7 +349,8 @@ def main() -> int:
             except Exception as exc:
                 failed.append((row, distance_cm, lateral_offset_cm, str(exc)))
 
-    expected = 12 * 21 * 5
+    distance_count = args.max_distance_cm - args.min_distance_cm + 1
+    expected = distance_count * 21 * len(selected_rows)
     generated_keys = {
         (
             int(path.name.rsplit("row_", 1)[1].split(".", 1)[0]),
@@ -344,8 +361,8 @@ def main() -> int:
         for path in generated
     }
     failed_keys = {(row, distance, offset) for row, distance, offset, _ in failed}
-    for row in range(1, 6):
-        for distance_cm in range(75, 87):
+    for row in selected_rows:
+        for distance_cm in range(args.min_distance_cm, args.max_distance_cm + 1):
             for lateral_offset_cm in range(-10, 11):
                 key = (row, distance_cm, lateral_offset_cm)
                 if key in generated_keys or key in failed_keys:
@@ -357,13 +374,16 @@ def main() -> int:
                     reason = str(item.get("loaded_failure_reason", "")) or "case_result_missing"
                 failed.append((*key, reason))
     rows = []
-    for row in range(1, 6):
+    for row in selected_rows:
         count = sum(f"row_{row}" in path.name for path in generated)
-        rows.append(f"| {row} | {count} | {12 * 21} | {count / (12 * 21):.1%} |")
+        row_total = distance_count * 21
+        rows.append(f"| {row} | {count} | {row_total} | {count / row_total:.1%} |")
     report = [
         "# 新径向策略轨迹缓存",
         "",
-        "- 网格：12距离(75～86cm) × 21横移(-10～+10cm) × 5排。",
+        f"- 网格：{distance_count}距离({args.min_distance_cm}～"
+        f"{args.max_distance_cm}cm) × 21横移(-10～+10cm) × "
+        f"{len(selected_rows)}排。",
         "- 前两排：侧吸径向转正/缩短 + 分阶段 Shortcut。",
         "- 后三排：顶吸竖直工具轴 + 1cm水平回抽 + 第30步起 Shortcut。",
         f"- 成功缓存：{len(generated)}/{expected} = {len(generated) / expected:.2%}。",

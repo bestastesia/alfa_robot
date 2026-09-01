@@ -170,17 +170,22 @@ def write_markdown(
     rows: list[dict[str, object]],
     elapsed_s: float,
     grasp_mode: str,
+    min_distance_cm: int,
+    max_distance_cm: int,
 ) -> None:
     successes = sum(bool(row["success"]) for row in rows)
     lateral_count = len({float(row["scene_y_shift"]) for row in rows})
-    if len(rows) == 12 * lateral_count * 3:
+    distance_count = max_distance_cm - min_distance_cm + 1
+    if len(rows) == distance_count * lateral_count * 3:
         matrix_line = (
-            f"`12距离(0.75～0.86m) × {lateral_count}横移(-0.10～+0.10m) "
+            f"`{distance_count}距离({min_distance_cm / 100.0:.2f}～"
+            f"{max_distance_cm / 100.0:.2f}m) × {lateral_count}横移(-0.10～+0.10m) "
             f"× 3排 = {len(rows)}组`"
         )
-    elif len(rows) == 12 * lateral_count * 2:
+    elif len(rows) == distance_count * lateral_count * 2:
         matrix_line = (
-            f"`12距离(0.75～0.86m) × {lateral_count}横移(-0.10～+0.10m) "
+            f"`{distance_count}距离({min_distance_cm / 100.0:.2f}～"
+            f"{max_distance_cm / 100.0:.2f}m) × {lateral_count}横移(-0.10～+0.10m) "
             f"× 2排 = {len(rows)}组`"
         )
     else:
@@ -243,6 +248,8 @@ def main() -> int:
     parser.add_argument("--lateral-step-cm", type=int, default=2)
     parser.add_argument("--ik-candidate-limit", type=int, default=64)
     parser.add_argument("--candidate-workers", type=int, default=8)
+    parser.add_argument("--min-distance-cm", type=int, default=75)
+    parser.add_argument("--max-distance-cm", type=int, default=86)
     args = parser.parse_args()
 
     row_indices = tuple(int(value.strip()) for value in args.rows.split(",") if value.strip())
@@ -256,6 +263,8 @@ def main() -> int:
         raise ValueError("--candidate-workers must be positive")
     if args.top_suction_z_offset_m <= 0.0:
         raise ValueError("--top-suction-z-offset-m must be positive")
+    if args.min_distance_cm <= 0 or args.max_distance_cm < args.min_distance_cm:
+        raise ValueError("distance range must be positive and ordered")
     rows_to_test = tuple((row, *ROW_SPECS[row]) for row in row_indices)
     top_suction = args.grasp_mode == "top_suction"
 
@@ -271,7 +280,9 @@ def main() -> int:
     total_cases = (
         len(selected_case_names)
         if selected_case_names is not None
-        else 12 * (20 // args.lateral_step_cm + 1) * len(rows_to_test)
+        else (args.max_distance_cm - args.min_distance_cm + 1)
+        * (20 // args.lateral_step_cm + 1)
+        * len(rows_to_test)
     )
 
     output = args.output.resolve()
@@ -330,7 +341,7 @@ def main() -> int:
             node_name="radial_loaded_grid_client",
         ) as client:
             case_index = 0
-            for distance_cm in range(75, 87):
+            for distance_cm in range(args.min_distance_cm, args.max_distance_cm + 1):
                 for shift_cm in range(-10, 11, args.lateral_step_cm):
                     for row_index, left_id, right_id in rows_to_test:
                         case_index += 1
@@ -553,7 +564,10 @@ def main() -> int:
         json.dumps(
             {
                 "matrix": {
-                    "front_x_m": [value / 100.0 for value in range(75, 87)],
+                    "front_x_m": [
+                        value / 100.0
+                        for value in range(args.min_distance_cm, args.max_distance_cm + 1)
+                    ],
                     "scene_y_shift_m": [
                         value / 100.0
                         for value in range(-10, 11, args.lateral_step_cm)
@@ -578,7 +592,14 @@ def main() -> int:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    write_markdown(output / "summary.md", rows, elapsed_s, args.grasp_mode)
+    write_markdown(
+        output / "summary.md",
+        rows,
+        elapsed_s,
+        args.grasp_mode,
+        args.min_distance_cm,
+        args.max_distance_cm,
+    )
     print(output / "summary.md")
     return 0
 
