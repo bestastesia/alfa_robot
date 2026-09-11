@@ -27,7 +27,7 @@ def main():
     os.environ.setdefault('ROS_DOMAIN_ID', '188')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
     command = ['ros2', 'launch', 'alfa_robot_moveit_config',
-               'v3_box_wall_grasp_demo.launch.py', 'start_rviz:=false',
+               'v3_box_wall_grasp_demo.launch.py', 'align_height:=false', 'start_rviz:=false',
                'start_rerun:=false', 'auto_run_once:=false']
     checks = []
 

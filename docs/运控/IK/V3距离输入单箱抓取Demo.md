@@ -8,11 +8,12 @@
 
 输入车头到箱墙近面的距离 `x`（米），指定 5×5 箱墙中任一 `box_id`，选择 `left/right/auto`。成功条件是找到完整的：
 
-1. 零关节初态 → RRT → 预接触；
+0. 从零关节初态按目标高度下降共享升降轴（需要下降时）；
+1. 保持调整后的升降高度 → RRT → 预接触；
 2. 解析笛卡尔直线接触；
 3. 吸附目标箱；
 4. 直线抽出 0.35m；
-5. 携箱 RRT 返回该臂原始零关节姿态。
+5. 携箱 RRT 返回该臂原始零关节姿态，升降保持调整后的值。
 
 **不是双臂抓取、放置/释放、连续拆墙、共享轴搜索或实机轨迹。** 每次请求独立恢复完整箱墙和旧初态，不累计上次抽出的洞。
 
@@ -25,10 +26,10 @@ cd /home/astesia/Sevenova/alfa_robot
 source tools/ros_humble_env.sh
 source ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=1
-export ROS_DOMAIN_ID=187  # 示例；先确保该 domain 空闲
+export ROS_DOMAIN_ID=188  # 新高度版示例；先确保该 domain 空闲
 
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=6 arm:=auto
+  x:=0.30 box_id:=0 arm:=auto
 ```
 
 默认同时打开 RViz、Rerun，并执行一次启动请求。`0.30m` 是已验证的**仿真样例**，不是同事的测量结果或推荐最优距离。`x` 必填，不能使用缺省距离冒充实测。
@@ -39,7 +40,7 @@ ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
 
 ```bash
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=6 start_rviz:=false spawn_viewer:=false \
+  x:=0.30 box_id:=0 start_rviz:=false spawn_viewer:=false \
   rerun_recording_path:=/tmp/wall_grasp.rrd
 ```
 
@@ -67,10 +68,10 @@ Rerun：相同场景/关节帧及附着标志，只读显示阶段、距离、�
 cd /home/astesia/Sevenova/alfa_robot
 source tools/ros_humble_env.sh
 source ros2_ws/install/setup.bash
-export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=187
+export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 6, arm: auto}'
+  '{x: 0.30, box_id: 0, arm: auto}'
 ```
 
 启动生命周期回归（安装环境已 source，188 须空闲）：
@@ -81,6 +82,40 @@ ROS_DOMAIN_ID=188 python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_
 ```
 
 覆盖非法 arm 启动前拦截、非法 x 初始化失败联动退出、三次启动并真实请求六号箱、Ctrl+C / 规划进程退出 / 终端关闭信号以及服务下线。不会调用实机执行接口。
+
+## 2.1 新增：按箱体高度先下降（2026-09-11）
+
+开发分支 `feature/wall-box-height-alignment`；冻结版仍为 `feature/wall-box-grasp` / `27ea05e`，原 PR #20 不在本轮改写。
+
+**高度合同（本 demo 的明确约定，仍需实机标定确认）：**机械臂中心取 V3.0.9 左右肩部前三关节轴线公共交点的中点，转换到 world 后的 Z。不是 `arm_carriage` 原点，也不是末端高度。目标高度取箱体**中心**，不是箱顶面。
+
+```text
+height_difference = initial_shoulder_z - (box_center_z + shoulder_box_offset)
+descent = max(0, height_difference)      # align_height=true 时
+updown_target = 0 - descent
+```
+
+- `align_height:=true`：默认开启；`false` 完整恢复冻结版固定高度规划。
+- `shoulder_box_offset:=0.25`：默认25cm，可在启动时修改，单位米，必须有限且非负；本轮不扩大服务请求类型。
+- 当前初始肩部中心 Z≈1.342432773m。底排0～4箱中心Z=.20m，下降≈.892432773m；第二排5～9中心Z=.61m，下降≈.482432773m；第三排10～14下降≈.072432773m。更高两排不下降，**也不向上升**。
+- `updown` 读取模型限位 `[-1, 0]m`；越界返回 `height_alignment_limits`，绝不静默截断。下降按至多5mm间隔检查全机器人关节边界/碰撞；失败返回 `height_alignment_collision` 和失败位置/碰撞对，不回放被拒绝的下降。
+- 合法下降前缀使用 `lower_to_box_height` 阶段和完整16轴帧；后续 IK 的基坐标变换、RRT 起态和负重返回目标均用下降后的状态。结束时不自动升回顶端。
+- 仍然**先算几何路径，再可视化回放**；没有向实机下发升降或机械臂动作。抓取失败时可能只回放通过检查的下降用于诊断，不代表完成搬运。
+- `result_json.height_alignment` 给出基准、原始高度差、计划下降量、目标关节值、限位和采样步长。Rerun摘要及RViz成功提示显示升降信息；不是实际编码器反馈。
+
+**实测不是整两排全覆盖：**在 `x=.30m / offset=.25m / auto` 下逐箱检查0～9，成功为 **0、4、5、9**；1、2、3、6、7、8的左右臂均在 `precontact_ik` 无候选。特别是6号在冻结版可成功，新高度下没有找到解；升降通过不保证当前固定吸附姿态存在关节限位内的逆解，也不能据此断言物理上不可抓。
+
+```bash
+# 推荐先演示底排0号；启动后同一个服务可继续指定4、5、9等箱号
+ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
+  x:=0.30 box_id:=0 arm:=auto shoulder_box_offset:=0.25
+
+# 回归用户已确认的固定高度6号动作（需先停止同domain的已有服务）
+ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
+  x:=0.30 box_id:=6 arm:=auto align_height:=false
+```
+
+**状态重置边界：**每次新请求恢复 `updown=0`、双臂零角和完整箱墙，再按该箱重新下降。跨请求重置只是独立仿真场景复位，**不是规划过的连续升回运动**。若要真正连续搬多个箱，还缺释放/安放、从实际当前状态接续和升回避障策略。
 
 ## 3. 选择接口
 
@@ -93,7 +128,7 @@ Demo-local ROS service：
 # 在另一个 source 了同一环境且 ROS_DOMAIN_ID 相同的终端
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 6, arm: auto}'
+  '{x: 0.30, box_id: 0, arm: auto}'
 ```
 
 请求字段：
@@ -120,7 +155,7 @@ row 0 (底层)    0  1  2  3  4
 - `success`：是否找到完整路径；只找到预接触 IK 或部分抽出路径不算成功。
 - `generation`：有效规划请求的序号；非法请求不递增、不改变当前场景。
 - `selected_arm`：成功臂；失败为空字符串。
-- `failure_stage/failure_reason`：非法参数、初态/负重返回目标碰撞、IK、接触、抽出、RRT等诊断。
+- `failure_stage/failure_reason`：升降限位/下降碰撞、非法参数、初态/负重返回目标碰撞、IK、接触、抽出、RRT等诊断。
 - `result_json`：与 `~/task_json` result 消息相同，含25箱场景、车头基准、16轴名称、逐帧关节/附着状态及 `attempts`。非法/忙请求无 result JSON。
 - `verdict=path_found/no_path_found`：**no_path_found 只表示本次有限搜索未找到，不证明物理上不可抓取**。
 - `auto` 两臂均失败时，顶层失败原因及诊断回放来自最后尝试的臂；请同时查看 `attempts`，避免遗漏另一臂失败信息。JSON `side/tool_link` 是当前诊断/回放臂，失败时不代表选中了执行臂。
@@ -137,7 +172,7 @@ row 0 (底层)    0  1  2  3  4
 
 ```bash
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=6 chassis_front_x:=0.42 \
+  x:=0.30 box_id:=0 chassis_front_x:=0.42 \
   wall_center_y:=0.0 wall_bottom_z:=0.0
 ```
 
@@ -164,7 +199,7 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 
 明确限制：
 
-- 初态沿用旧 demo **14个臂关节全0**，`updown=0、head_joint=0`；不是 NOW/SRDF 的 `home=[-90,-90,0,-90,0,0,0]°`。非选中臂及共享轴固定，不进行升降/转头/底盘搜索。
+- 初态沿用旧 demo **14个臂关节全0**，`updown=0、head_joint=0`；不是 NOW/SRDF 的 `home=[-90,-90,0,-90,0,0,0]°`。非选中臂及头部固定；仅在抓取前按公式下降 `updown`，抓取和返回期间升降固定，不进行共享轴联合搜索或底盘搜索。
 - 固定姿态正面中心吸附、5°冗余角采样、最多8个预接触候选、单次RRT默认1秒。`auto` 最多两臂；失败可能由策略、初态或搜索预算造成。
 - 碰撞检测为离散采样（默认最大关节插值步长2.5°），不是连续扫掠体证明；真实末端接触容差、吸盘压缩、负载/扭矩/稳定性与真实动力学未建模（下述微米间隙仅用于数值处理）。
 - world 障碍仅包含箱墙；地板、顶棚、其他货架等额外环境障碍未建模。box底面为Z=0只是放置参数，不意味着已加入地面碰撞平面。
@@ -192,6 +227,8 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 之前指南中8号右臂的同类失败也是零间隙旧结果；修复后本机8号已规划成功。全墙有限搜索结果不代表所有箱体可抓或每次搜索必定成功。
 
 ## 6. 仍缺的规范/接口（不阻塞独立 demo）
+
+新增升降仍缺：实机肩部中心基准与零位/行程标定、25cm偏置验收值、升降速度/加速度/负载稳定性合同、跨箱接续/回升策略。当前场景没有地板碰撞体，底排成功不构成带地板或实机安全验收。
 
 1. **车头参考面合同**：同事测量采用外壳、保险杠、碰撞网格前沿还是另一标记？需交付 world/base 的标定关系与测量不确定度；当前可通过 `chassis_front_x` 覆盖。
 2. **墙摆放合同**：横向偏移、底面高度、箱体实际尺寸/间隙、正对关系是否符合默认值？x单独不能描述任意偏置/偏航墙。
@@ -227,3 +264,17 @@ cd ..
 GUI启动和消息/FK验收不等同于用户确认画面交互效果，也不是全墙都能抓取的证明。
 
 本次左右臂/接触修复证据：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_arm_symmetry/`；包含修复前逐臂结果、网格测量、修复后全流程与零间隙对照。`test_v3_box_wall_grasp_demo.py` 已新增10/14号显式/auto选臂、非活动臂固定、吸附无跳变和右臂RViz FK检查。
+
+
+### 新高度版验收（2026-09-11）
+
+```bash
+# 已 source tools/ros_humble_env.sh 和 ros2_ws/install/setup.bash；188 须空闲
+ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188 python3 \
+  ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_height_alignment.py \
+  --artifacts /tmp/wall_height_alignment
+```
+
+新增检查实际完成23次请求、3类非法偏置拒绝，覆盖0～9扫描、0/4/5/9显式左右臂、10/14回归、高低切换重置、负高度差不抬升、超限拒绝和接近-1m边界。独立URDF FK核对肩中心/升降量、16轴保持、5mm插值、附着无跳变和RViz最终箱位。下降碰撞检查为离散采样，未声称连续碰撞证明；当前未构造自然的下降中间碰撞反例。
+
+证据：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_height_alignment/`。原 `test_v3_box_wall_grasp_demo.py` 和 startup 回归显式传 `align_height:=false`，其历史成功箱集合仅适用于冻结版，不适用于新高度版。

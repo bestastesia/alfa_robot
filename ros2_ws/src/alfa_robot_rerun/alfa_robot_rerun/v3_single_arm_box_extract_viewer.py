@@ -364,6 +364,13 @@ class V3SingleArmBoxExtractViewer(Node):
                      f"，arm={self.wall_request.get('side', '?')}"
                      f"\n- 车头基准 X={self.wall_request['chassis_front_x']:.6f}m"
                      "\n- 仅仿真：未找到路径不等于绝对不可抓取；失败回放仅供诊断。")
+        alignment = self.wall_request.get("height_alignment", {})
+        if alignment:
+            body += (f"\n- 高度调整：{'开启' if alignment['enabled'] else '关闭'}；"
+                     f"肩部中心比箱中心高 {alignment['shoulder_box_offset']:.3f} m"
+                     f"\n- 计划下降 {alignment['descent']:.3f} m；"
+                     f"updown 目标 {alignment['target_updown']:.3f} m（不是实机反馈）"
+                     "\n- lower_to_box_height → 预接触 → 接触 → 附着 → 抽出 → 保持升降高度携箱返回")
         rr.log(
             "summary",
             rr.TextDocument(body, media_type=rr.MediaType.MARKDOWN),
@@ -395,11 +402,18 @@ class V3SingleArmBoxExtractViewer(Node):
             if self.last_frame.stage != frame.stage:
                 delay = self.stage_pause_s
             else:
-                delta = maximum_joint_delta_degrees(self.last_frame.joints, frame.joints)
+                # updown is metres, not radians. Playback is illustrative, not a timed trajectory.
+                angular = [i for i, name in enumerate(self.joint_names) if name != "updown"]
+                delta = maximum_joint_delta_degrees(
+                    [self.last_frame.joints[i] for i in angular],
+                    [frame.joints[i] for i in angular])
                 delay = max(
                     self.minimum_frame_period,
                     min(0.25, delta / self.playback_joint_speed_deg_s),
                 )
+        if self.last_frame is not None and "updown" in self.joint_names:
+            lift = self.joint_names.index("updown")
+            delay = max(delay, abs(frame.joints[lift] - self.last_frame.joints[lift]) / 0.15)
         self.last_frame = frame
         self.frame_index += 1
         self.global_frame += 1

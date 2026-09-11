@@ -24,6 +24,7 @@
 <div class="layout">
 <nav aria-label="页面目录">
 <strong>操作速查</strong>
+<a href="#height">新增　按箱高下降</a>
 <a href="#quickstart">01　启动与发送请求</a>
 <a href="#motion">02　预期动作</a>
 <a href="#selection">03　如何指定箱体</a>
@@ -35,6 +36,17 @@
 <small>本页为离线说明。<br>命令需要在终端执行；<br>网页不会发送 ROS 请求。</small>
 </nav>
 <main id="main">
+<section id="height">
+<h2>新增：先降到箱体上方，再抓取</h2>
+<div class="note"><strong>当前为高度开发版</strong> <code>feature/wall-box-height-alignment</code>；冻结版分支和原PR保持不变。</div>
+<pre><code>高度差 = 初始肩部中心Z −（目标箱体中心Z + 0.25m）
+下降量 = max(0, 高度差)
+updown目标 = −下降量</code></pre>
+<p>肩部中心取左右肩部前三轴公共交点的中点，初始Z约1.34243m。底排下降约89.24cm，第二排约48.24cm；高箱不下降、不抬升。底盘和头部不动，两臂随共享升降架一起下降，只有选中臂随后抓取。</p>
+<p><code>shoulder_box_offset:=0.25</code> 可修改偏置（米）；<code>align_height:=false</code> 恢复冻结版固定高度。升降范围为[-1,0]m；越界拒绝，不偷偷截断。下降每至多5mm检查整机碰撞；回放不是实机执行。</p>
+<div class="note warn"><strong>实测：下面两排并非全部可抓。</strong> x=.30m、偏置=.25m时，0、4、5、9成功；1、2、3、6、7、8的左右臂均没有找到预接触IK。旧版可抓的6号在新高度下也会失败；可用 <code>align_height:=false</code> 回归旧动作，不将有限搜索失败称为绝对不可达。</div>
+<p>结果JSON的 <code>height_alignment</code> 显示基准、高度差、计划下降量和目标updown。返回阶段保持下降后的高度。下一次请求会重置整个仿真场景、升降和双臂，不是连续升回或连续拆墙。</p>
+</section>
 <section id="quickstart">
 <h2><span class="num">01 / QUICK START</span>启动一次，用服务重复发请求</h2>
 <div class="note"><strong>两条指令的区别：</strong><code>ros2 launch</code> 启动 demo 和可视化；<code>ros2 service call</code> 向已经运行的 demo 提交新的抓取请求，不是再启动一个 demo。</div>
@@ -43,39 +55,40 @@
 source tools/ros_humble_env.sh
 source ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=1
-export ROS_DOMAIN_ID=187  # 先确保这个 domain 空闲，与实机隔离
+export ROS_DOMAIN_ID=188  # 先确保这个 domain 空闲，与实机隔离
 
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=6 arm:=auto</code></pre>
-<p>默认打开 RViz、Rerun，并自动计算和回放一次6号箱抓取。只想先看场景，可在启动参数中加 <code>auto_run_once:=false</code>。</p>
+  x:=0.30 box_id:=0 arm:=auto shoulder_box_offset:=0.25</code></pre>
+<p>默认打开 RViz、Rerun，并自动计算和回放一次0号箱先下降再抓取。只想先看场景，可在启动参数中加 <code>auto_run_once:=false</code>。</p>
 <h3>终端 B：加载同一环境，再发请求</h3>
 <pre><code>cd ~/Sevenova/alfa_robot
 source tools/ros_humble_env.sh
 source ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=1
-export ROS_DOMAIN_ID=187  # 必须与终端 A 一致
+export ROS_DOMAIN_ID=188  # 必须与终端 A 一致
 
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 6, arm: auto}'</code></pre>
+  '{x: 0.30, box_id: 0, arm: auto}'</code></pre>
 <div class="note warn"><strong>每个新终端都要单独 source。</strong>进入仓库目录不等于加载接口。这里的0.30m是仿真成功样例，不是同事测量的结果或推荐最优距离。</div>
 </section>
 
 <section id="motion">
 <h2><span class="num">02 / EXPECTED MOTION</span>运行后，应该看到什么？</h2>
-<div class="flow" aria-label="完整抓取流程"><span>选择目标</span><b>→</b><span>规划</span><b>→</b><span>接近</span><b>→</b><span>接触吸附</span><b>→</b><span>抽出</span><b>→</b><span>携箱返回</span></div>
+<div class="flow" aria-label="完整抓取流程"><span>选择目标</span><b>→</b><span>规划</span><b>→</b><span>按需下降</span><b>→</b><span>接近</span><b>→</b><span>接触吸附</span><b>→</b><span>抽出</span><b>→</b><span>携箱返回</span></div>
 <div class="table-wrap"><table>
 <thead><tr><th scope="col">阶段</th><th scope="col">画面中的预期表现</th></tr></thead>
 <tbody>
 <tr><td>选择目标</td><td>目标箱绿色，其余24箱橙色。RViz白色数字是固定墙格编号。</td></tr>
 <tr><td>规划</td><td>先计算完整路径；画面可能暂时不动，不代表卡死。</td></tr>
+<tr><td><code>lower_to_box_height</code></td><td>双臂零角随共享升降架下降；到目标高度后才开始抓取阶段。</td></tr>
 <tr><td>到预接触点</td><td>一只手臂避障移动到箱体正面前约5cm。</td></tr>
 <tr><td>接触与吸附</td><td>末端直线前进到箱体正面中心；目标箱随后成为末端附着物。</td></tr>
 <tr><td>抽出</td><td>手臂携箱沿远离箱墙的方向直线退回35cm，原墙格留下空位。</td></tr>
-<tr><td>携箱返回</td><td>手臂带箱避障返回旧 demo 的零关节初态，停在最后一帧。</td></tr>
+<tr><td>携箱返回</td><td>手臂带箱避障返回零臂角，升降保持下降后的高度，停在最后一帧。</td></tr>
 </tbody></table></div>
-<div class="note good"><strong>6号箱 / x=0.30m 已验证成功，用户也已确认动作正常。</strong>本机双视图验收录制包含87帧、完整接近—吸附—抽出—返回过程；后续规划路径及帧数可能变化。</div>
-<p><strong>底盘、升降、转头轴均不移动，另一只手臂保持不动。</strong>最终箱体仍吸在手上，不会自动放下。RViz与Rerun播放相同结果，但播放速度不完全一致。</p>
+<div class="note good"><strong>历史冻结版（align_height=false）：6号箱 / x=0.30m 已验证成功，用户也已确认动作正常。</strong>本机双视图验收录制包含87帧、完整接近—吸附—抽出—返回过程；后续规划路径及帧数可能变化。</div>
+<p><strong>底盘和转头轴不移动；另一只手臂的七个关节角保持不变，但会随共享升降架下降。</strong>最终箱体仍吸在手上，不会自动放下。RViz与Rerun播放相同结果，但播放速度不完全一致。</p>
 </section>
 
 <section id="selection">
@@ -86,8 +99,8 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 <tr><td>20</td><td>21</td><td>22</td><td>23</td><td>24</td></tr>
 <tr><td>15</td><td>16</td><td>17</td><td>18</td><td>19</td></tr>
 <tr><td>10</td><td>11</td><td>12</td><td>13</td><td>14</td></tr>
-<tr><td>5</td><td class="target" aria-label="6号箱，已验证成功样例">6</td><td>7</td><td>8</td><td>9</td></tr>
-<tr><td>0</td><td>1</td><td>2</td><td>3</td><td>4</td></tr>
+<tr><td>5</td><td>6</td><td>7</td><td>8</td><td>9</td></tr>
+<tr><td class="target" aria-label="0号箱，高度版成功样例">0</td><td>1</td><td>2</td><td>3</td><td>4</td></tr>
 </tbody></table>
 <p class="wall-note">最低层：0～4。屏幕左右随视角变化，以 RViz 编号为准。</p>
 <ul>
@@ -99,17 +112,17 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 </section>
 
 <section id="next">
-<h2><span class="num">04 / THE NEXT BOX</span>搬完6号，再搬另一箱？</h2>
+<h2><span class="num">04 / THE NEXT BOX</span>搬完0号，再搬另一箱？</h2>
 <div class="grid">
-<article class="card"><span class="badge b-green">当前支持</span><h3>重新演示另一箱</h3><p>向同一个服务发新请求即可。程序恢复完整箱墙和机器人初态，再开始新的独立试验。</p><p><strong>6号箱会重新出现在墙上。</strong></p></article>
-<article class="card"><span class="badge b-amber">当前未实现</span><h3>接着上一轮连续搬运</h3><p>保留6号箱已取走的空位，从当前状态继续抓另一箱，属于连续任务；当前不能用重复服务调用实现。</p><p><strong>第一箱还吸在手上，没有释放。</strong></p></article>
+<article class="card"><span class="badge b-green">当前支持</span><h3>重新演示另一箱</h3><p>向同一个服务发新请求即可。程序恢复完整箱墙和机器人初态，再开始新的独立试验。</p><p><strong>0号箱会重新出现在墙上。</strong></p></article>
+<article class="card"><span class="badge b-amber">当前未实现</span><h3>接着上一轮连续搬运</h3><p>保留0号箱已取走的空位，从当前状态继续抓另一箱，属于连续任务；当前不能用重复服务调用实现。</p><p><strong>第一箱还吸在手上，没有释放。</strong></p></article>
 </div>
 <h3>现在可以这样重新演示5号箱</h3>
 <pre><code>ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
   '{x: 0.30, box_id: 5, arm: auto}'</code></pre>
 <h3>真正连续搬运还需要什么？</h3>
-<p>抓取6号 → 放到指定位置并释放 → 保留墙上的空位 → 从机器人当前姿态出发 → 抓取5号。</p>
+<p>抓取0号 → 放到指定位置并释放 → 保留墙上的空位 → 从机器人当前姿态出发 → 抓取5号。</p>
 <div class="note warn"><strong>必要的待确认项：第一个箱体放在哪里？</strong>例如底盘上的指定位置，或外部固定放置点。需要明确放置位姿及过程，再补放置、释放和连续场景状态；不能把重置试验当成连续搬运。</div>
 </section>
 
@@ -131,17 +144,17 @@ ros2 interface show alfa_robot_moveit_config/srv/PlanWallBoxDemo</code></pre>
 <h3>关闭终端后一直 waiting：本次已查明原因</h3>
 <div class="note danger"><strong>2026-09-11 实际故障：</strong>启动命令写成了 <code>arm:=auto~</code>，末尾多了一个 <code>~</code>。规划节点报 <code>arm must be left/right/auto</code> 后退出，但旧版仍保留可视化进程，造成“看起来运行中”的错觉。正确写法是 <code>arm:=auto</code>，不是抓取失败。</div>
 <ol>
-<li><strong>终端A必须保持运行。</strong>重开终端后，先按本页启动步骤重新 source、设置 domain 187 并启动 demo；只发服务请求不能启动服务。</li>
+<li><strong>终端A必须保持运行。</strong>重开终端后，先按本页启动步骤重新 source、设置 domain 188 并启动 demo；只发服务请求不能启动服务。</li>
 <li><strong>检查第一条 ERROR/FATAL。</strong>新启动文件已在启动前拒绝非法 arm；规划节点退出时联动停止其余受 launch 管理的节点。独立 Rerun 窗口可能保留旧录制，不代表服务在线。</li>
 <li><strong>终端B重新加载环境再调用：</strong>与终端A使用相同 domain 和 localhost 设置；返回 <code>success: true</code> 才说明本次完整规划成功。</li>
 </ol>
 <pre><code>cd /home/astesia/Sevenova/alfa_robot
 source tools/ros_humble_env.sh
 source ros2_ws/install/setup.bash
-export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=187
+export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 6, arm: auto}'</code></pre>
+  '{x: 0.30, box_id: 0, arm: auto}'</code></pre>
 <p>停止时建议在终端A按 <code>Ctrl+C</code> 并等待退出，再关闭窗口。突然关闭后，服务发现可能短暂缓存旧记录；不要把“窗口还在 / service list 有名字”当成真实请求已成功。</p>
 <h3>三处反馈入口</h3>
 <ul>
@@ -159,7 +172,7 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 selected_arm: ''
 failure_stage: cartesian_approach
 failure_reason: '...collision:neighbor_box_3&lt;-&gt;right_joint7'</code></pre>
-<div class="note warn"><strong>历史结果已更新：</strong>8号、14号右臂曾在接触最后一步报末端与邻箱碰撞；这是零数值间隙版本的结果。2026-09-11修复贴面数值问题后，默认参数下两者均已规划成功，不要把旧失败原因当成当前固定结论。</div>
+<div class="note warn"><strong>历史结果已更新：</strong>8号、14号右臂曾在接触最后一步报末端与邻箱碰撞；这是零数值间隙版本的结果。2026-09-11修复贴面数值问题后，冻结版固定高度（align_height=false）下两者均已规划成功，不要把旧失败原因当成当前固定结论。</div>
 <h3>10号可以、14号不行，是只算了一只手吗？</h3>
 <p><strong>不是。</strong>修复前10号由模型的 <code>left</code> 臂完成；14号的 <code>auto</code> 已尝试两臂，左臂预接触无逆解，右臂最后一步报 <code>right_joint7 / neighbor_box_9</code> 碰撞。臂名以模型为准，不以屏幕左右判断。</p>
 <p>定位到导出末端网格与名义TCP接触面约0.1微米的偏差。新demo使用<strong>1微米仿真数值间隙</strong>，并同步修正附着位置，避免吸附时箱体跳动；没有缩小碰撞体或放开邻箱碰撞。该数值<strong>不是实机吸盘标定或安全距离</strong>。</p>
@@ -172,6 +185,8 @@ failure_reason: '...collision:neighbor_box_3&lt;-&gt;right_joint7'</code></pre>
 <tbody>
 <tr><td><code>invalid_request</code></td><td>x、箱号、arm等输入不合法。</td></tr>
 <tr><td><code>busy</code></td><td>检测到已有待处理规划；当前同步串行服务也可能让并发请求排队。</td></tr>
+<tr><td><code>height_alignment_limits</code></td><td>按公式计算的升降目标超出[-1,0]m；本次拒绝下降。</td></tr>
+<tr><td><code>height_alignment_collision</code></td><td>下降采样发现整机碰撞或关节越界；本次拒绝下降。</td></tr>
 <tr><td><code>initial_state</code></td><td>机器人初始状态存在碰撞。</td></tr>
 <tr><td><code>return_goal</code></td><td>携箱返回目标状态存在碰撞。</td></tr>
 <tr><td><code>precontact_ik</code></td><td>没有找到可用的预接触逆解候选。</td></tr>
@@ -194,6 +209,7 @@ failure_reason: '...collision:neighbor_box_3&lt;-&gt;right_joint7'</code></pre>
 </ol>
 <h3>可直接复制填写的反馈模板</h3>
 <pre><code>请求：x=____，box_id=____，arm=____
+启动参数：align_height=____，shoulder_box_offset=____
 是否重新启动了 demo：是 / 否
 终端 A / B 的 ROS_DOMAIN_ID：____ / ____
 调用终端表现：类型无效 / 等待服务 / 等待计算 / 已返回
@@ -212,7 +228,7 @@ failure_reason：____
 <ul>
 <li><strong>场景：</strong>5×5固定墙，默认箱体0.30×0.40×0.40m，横竖间隙1cm。默认墙居中、底面Z=0，额外地面碰撞障碍并未加入。</li>
 <li><strong>车头基准：</strong>默认是model_base碰撞网格的world最大X，本模型约0.310m；可通过启动参数 <code>chassis_front_x</code> 显式标定覆盖。实测基准仍需对齐。</li>
-<li><strong>状态：</strong>沿用旧demo零臂角初态，升降与头部固定，不搜索底盘/共享轴；不是正式SRDF home。</li>
+<li><strong>状态：</strong>沿用旧demo零臂角初态，升降先按公式下降，抓取期间固定；头部固定，不搜索底盘/共享轴；不是正式SRDF home。</li>
 <li><strong>任务：</strong>单次独立抽箱并携箱返回；没有放置释放、连续拆墙、取消或实机执行。</li>
 <li><strong>安全边界：</strong>成功仅表示模型内找到几何路径，不是连续碰撞、吸附可靠性、载荷/动力学或实机安全证明。</li>
 </ul>

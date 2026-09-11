@@ -74,7 +74,7 @@ def main():
             return response, task
         return response, None
 
-    command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py',
+    command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py', 'align_height:=false',
                'x:=0.3', 'box_id:=6', 'auto_run_once:=false', 'start_rviz:=false',
                'start_rerun:=false']
     try:

@@ -322,6 +322,16 @@ public:
           contact_numerical_gap_ > 1e-4) {
         throw std::invalid_argument("contact_numerical_gap must be finite and in [0, 0.0001] metres");
       }
+      align_height_ = getParameter<bool>("align_height", true);
+      shoulder_box_offset_ = getParameter<double>("shoulder_box_offset", 0.25);
+      if (!std::isfinite(shoulder_box_offset_) || shoulder_box_offset_ < 0.0) {
+        throw std::invalid_argument("shoulder_box_offset must be finite and nonnegative metres");
+      }
+      const Eigen::Vector3d shoulder_midpoint = 0.5 * (
+        V3RedundantArmAnalyticIk(V3RedundantArmModel::V309Left).modelShoulderCenterInArmBase() +
+        V3RedundantArmAnalyticIk(V3RedundantArmModel::V309Right).modelShoulderCenterInArmBase());
+      initial_shoulder_z_ = (initial_state_->getGlobalLinkTransform(arm_base_link_) *
+        shoulder_midpoint).z();
       chassis_front_x_ = getParameter<double>("chassis_front_x", modelChassisFrontX());
       wall_center_y_ = getParameter<double>("wall_center_y", 0.0);
       wall_bottom_z_ = getParameter<double>("wall_bottom_z", 0.0);
@@ -618,6 +628,13 @@ private:
       "[%llu] calculation started: box_center=[%.3f, %.3f, %.3f]",
       static_cast<unsigned long long>(generation),
       box_center.x(), box_center.y(), box_center.z());
+    if (distance_demo_) {
+      const auto alignment = heightAlignment(box_center);
+      RCLCPP_INFO(get_logger(),
+        "height alignment: enabled=%s shoulder_z=%.6fm offset=%.3fm descent=%.6fm target_updown=%.6fm",
+        align_height_ ? "true" : "false", initial_shoulder_z_, shoulder_box_offset_,
+        alignment.at("descent").get<double>(), alignment.at("target_updown").get<double>());
+    }
 
     {
       std::lock_guard<std::mutex> lock(display_mutex_);
@@ -665,7 +682,10 @@ private:
       std::ostringstream status;
       status << "SUCCESS total=" << std::fixed << std::setprecision(1)
              << result.total_ms << "ms";
-      if (distance_demo_) status << " arm=" << side_;
+      if (distance_demo_) {
+        status << " arm=" << side_ << " lift=" << std::setprecision(3)
+               << heightAlignment(box_center).at("target_updown").get<double>() << "m";
+      }
       publishStatus(status.str(), true);
       RCLCPP_INFO(
         get_logger(),
@@ -1195,6 +1215,59 @@ private:
     }
   }
 
+  nlohmann::json heightAlignment(const Eigen::Vector3d& box_center) const
+  {
+    const double difference = initial_shoulder_z_ - (box_center.z() + shoulder_box_offset_);
+    const double descent = align_height_ ? std::max(0.0, difference) : 0.0;
+    const double initial = initial_state_->getVariablePosition("updown");
+    const auto& bounds = robot_model_->getVariableBounds("updown");
+    return {{"enabled", align_height_},
+      {"reference", "midpoint of left/right shoulder common-axis centers in world Z"},
+      {"initial_shoulder_z", initial_shoulder_z_}, {"box_center_z", box_center.z()},
+      {"shoulder_box_offset", shoulder_box_offset_}, {"height_difference", difference},
+      {"descent", descent}, {"initial_updown", initial}, {"target_updown", initial - descent},
+      {"lower_limit", bounds.min_position_}, {"upper_limit", bounds.max_position_},
+      {"collision_sample_step_m", 0.005}, {"return_policy", "keep aligned lift; arms return to zero"}};
+  }
+
+  bool alignHeight(
+    const Eigen::Vector3d& box_center, const planning_scene::PlanningScenePtr& scene,
+    moveit::core::RobotState& grasp_start, TaskResult& result) const
+  {
+    if (!distance_demo_ || !align_height_) return true;
+    const auto alignment = heightAlignment(box_center);
+    const double target = alignment.at("target_updown").get<double>();
+    const auto& bounds = robot_model_->getVariableBounds("updown");
+    if (target < bounds.min_position_ || target > bounds.max_position_) {
+      result.failure_stage = "height_alignment_limits";
+      result.failure_reason = "required updown=" + std::to_string(target) +
+        " outside [" + std::to_string(bounds.min_position_) + ", " +
+        std::to_string(bounds.max_position_) + "] metres; not clamped";
+      return false;
+    }
+    const double initial = grasp_start.getVariablePosition("updown");
+    if (target == initial) return true;
+    std::vector<ReplayFrame> prefix{
+      ReplayFrame{"lower_to_box_height", allJoints(grasp_start), false}};
+    const size_t steps = static_cast<size_t>(std::ceil(std::abs(target - initial) / 0.005));
+    for (size_t step = 1; step <= steps; ++step) {
+      grasp_start.setVariablePosition("updown", initial + (target - initial) * step / steps);
+      grasp_start.update(true);
+      const std::string collision = collisionReason(scene, grasp_start, &result.metrics);
+      if (!grasp_start.satisfiesBounds() || !collision.empty()) {
+        result.failure_stage = "height_alignment_collision";
+        result.failure_reason = "updown=" +
+          std::to_string(grasp_start.getVariablePosition("updown")) + ": " +
+          (collision.empty() ? "joint bounds violated" : collision);
+        // Reject the complete descent, not a replay that stops just before collision.
+        return false;
+      }
+      prefix.push_back(ReplayFrame{"lower_to_box_height", allJoints(grasp_start), false});
+    }
+    result.frames = std::move(prefix);
+    return true;
+  }
+
   TaskResult planTask(const Eigen::Vector3d& box_center)
   {
     TaskResult result;
@@ -1215,24 +1288,32 @@ private:
       return finish();
     }
 
-    moveit::core::RobotState return_goal(*initial_state_);
+    moveit::core::RobotState grasp_start(*initial_state_);
+    if (!alignHeight(box_center, scene, grasp_start, result)) {
+      result.frames = {ReplayFrame{"initial_state", allJoints(*initial_state_), false}};
+      return finish();
+    }
+    const auto lift_prefix = result.frames;
+    moveit::core::RobotState return_goal(grasp_start);
     attachCarriedBox(return_goal);
     const std::string return_goal_collision = collisionReason(loaded, return_goal, &result.metrics);
     if (!return_goal_collision.empty()) {
       result.failure_stage = "return_goal";
-      result.failure_reason = "initial pose cannot carry box: " + return_goal_collision;
-      result.frames.push_back(ReplayFrame{"initial_state", allJoints(*initial_state_), false});
+      result.failure_reason = "return pose cannot carry box: " + return_goal_collision;
+      if (result.frames.empty())
+        result.frames.push_back(ReplayFrame{"initial_state", allJoints(grasp_start), false});
       return finish();
     }
 
     std::string precontact_rejections;
     auto precontact_candidates = solvePoseCandidates(
-      precontactPose(box_center), *initial_state_, false, scene, &result.metrics,
+      precontactPose(box_center), grasp_start, false, scene, &result.metrics,
       false, &precontact_rejections);
     if (precontact_candidates.empty()) {
       result.failure_stage = "precontact_ik";
       result.failure_reason = precontact_rejections;
-      result.frames.push_back(ReplayFrame{"initial_state", allJoints(*initial_state_), false});
+      if (result.frames.empty())
+        result.frames.push_back(ReplayFrame{"initial_state", allJoints(grasp_start), false});
       return finish();
     }
     if (precontact_candidates.size() > precontact_candidate_limit_) {
@@ -1241,7 +1322,7 @@ private:
 
     std::string last_failure_stage = "candidate_search";
     std::string last_failure_reason = "no candidate attempted";
-    std::vector<ReplayFrame> best_partial;
+    std::vector<ReplayFrame> best_partial = lift_prefix;
     for (size_t candidate_index = 0; candidate_index < precontact_candidates.size(); ++candidate_index) {
       const auto analytic_started = std::chrono::steady_clock::now();
       std::vector<moveit::core::RobotStatePtr> approach_states;
@@ -1262,7 +1343,7 @@ private:
       }
 
       const auto approach_rrt = planRrt(
-        scene, *initial_state_, *precontact_candidates[candidate_index].state);
+        scene, grasp_start, *precontact_candidates[candidate_index].state);
       result.metrics.rrt_approach_ms += approach_rrt.wall_ms;
       if (!approach_rrt.success) {
         last_failure_stage = "rrt_to_precontact";
@@ -1271,7 +1352,7 @@ private:
         continue;
       }
 
-      std::vector<ReplayFrame> executable_prefix;
+      std::vector<ReplayFrame> executable_prefix = lift_prefix;
       appendStates(approach_rrt.states, "rrt_to_precontact", false, false, &executable_prefix);
       appendStates(approach_states, "cartesian_approach", false, true, &executable_prefix);
       if (!retreat_states.empty()) {
@@ -1302,7 +1383,7 @@ private:
     result.failure_reason = last_failure_reason;
     result.frames = std::move(best_partial);
     if (result.frames.empty()) {
-      result.frames.push_back(ReplayFrame{"initial_state", allJoints(*initial_state_), false});
+      result.frames.push_back(ReplayFrame{"initial_state", allJoints(grasp_start), false});
     }
     return finish();
   }
@@ -1317,6 +1398,7 @@ private:
     output["world_frame"] = world_frame_;
     if (distance_demo_) {
       output["distance_demo"] = true;
+      output["height_alignment"] = heightAlignment(box_center);
       output["contact_numerical_gap"] = contact_numerical_gap_;
       output["requested_arm"] = requested_arm_;
       output["wall_center_y"] = wall_center_y_;
@@ -1594,6 +1676,9 @@ private:
 
   bool display_box_attached_ = false;
   bool distance_demo_ = false;
+  bool align_height_ = false;
+  double shoulder_box_offset_ = 0.25;
+  double initial_shoulder_z_ = 0.0;
   double chassis_front_x_ = 0.0;
   double wall_center_y_ = 0.0;
   double wall_bottom_z_ = 0.0;

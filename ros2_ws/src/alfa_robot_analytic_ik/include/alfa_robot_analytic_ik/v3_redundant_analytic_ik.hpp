@@ -68,6 +68,8 @@ public:
   double swivelAngle(
     const std::array<double, 7>& joints) const;
 
+  // Model-specific shoulder center; the static accessor below retains legacy semantics.
+  Eigen::Vector3d modelShoulderCenterInArmBase() const;
   static Eigen::Vector3d shoulderCenterInArmBase();
   static double upperArmLength();
   static double forearmLength();

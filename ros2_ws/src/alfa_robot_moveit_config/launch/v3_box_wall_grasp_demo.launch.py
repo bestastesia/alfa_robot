@@ -15,7 +15,8 @@ def launch_nodes(context):
     params = {"distance_demo": True, "collision_inset": 0.0}
     for key, kind in (("x", float), ("box_id", int), ("arm", str),
                       ("auto_run_once", bool), ("wall_center_y", float),
-                      ("wall_bottom_z", float), ("contact_numerical_gap", float)):
+                      ("wall_bottom_z", float), ("contact_numerical_gap", float),
+                      ("align_height", bool), ("shoulder_box_offset", float)):
         params[key] = ParameterValue(LaunchConfiguration(key), value_type=kind)
     front = LaunchConfiguration("chassis_front_x").perform(context)
     if front:
@@ -48,7 +49,9 @@ def generate_launch_description():
                               description="auto stops at first successful arm"),
     ]
     for name, default, description in (
-        ("box_id", "6", "0..24; row=id/5 bottom-up, column=id%5 along +Y"),
+        ("align_height", "true", "Lower shared lift before grasp; false restores frozen fixed-height mode"),
+        ("shoulder_box_offset", "0.25", "Shoulder midpoint above target box center, finite nonnegative metres"),
+        ("box_id", "0", "0..24; row=id/5 bottom-up, column=id%5 along +Y"),
         ("contact_numerical_gap", "0.000001", "Simulation-only contact gap in metres (0..0.0001), not suction calibration"),
         ("auto_run_once", "true", "Plan launch request once, then wait for services"),
         ("chassis_front_x", "", "Optional calibrated world X; empty uses model_base collision maximum X"),

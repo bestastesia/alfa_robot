@@ -837,6 +837,11 @@ double V3RedundantArmAnalyticIk::swivelAngle(
     elbow_offset.dot(swivel_first));
 }
 
+Eigen::Vector3d V3RedundantArmAnalyticIk::modelShoulderCenterInArmBase() const
+{
+  return geometry(model_).shoulder;
+}
+
 Eigen::Vector3d V3RedundantArmAnalyticIk::shoulderCenterInArmBase()
 {
   return geometry(V3RedundantArmModel::LegacyV304).shoulder;

@@ -1936,3 +1936,16 @@
 - 上游权限只有pull，没有push；已创建bestastesia/alfa_robot公共fork，采用fork的feature/wall-box-grasp向kkozia188/alfa_robot的alfa_v3_dev提PR，不推送或合并上游基线。上游alfa_v3_dev经API核验仍为1e6c58f。
 - Issue按用户授权留空；源码与先前冻结树一致，只更新PR/交接文档。保留未归属冗余IK修改和历史日志，不扩大暂存范围。
 - GitHub API可用但github.com Git传输仍超时，改用GitHub Git数据库API发布同一Git对象；必须校验远端tree/commit SHA与本地完全相同后才创建新分支，不强制更新已有分支。实际提交/PR结果记录到仓库外冻结清单；未经核心review/CI和合并，不发布正式tag。
+
+## 2026-09-11 Codex / 单箱抓取前按箱高下降共享升降轴
+- 做了什么：在冻结提交 `27ea05e` 上新建 `feature/wall-box-height-alignment`，按用户要求实现 `max(0, 肩部中心Z-(箱中心Z+offset))` 的下降预阶段；offset默认0.25m。冻结分支和原PR未改，本轮未提交/推送。保留原冗余IK未提交工作，不混入本功能。
+- 高度合同：中心取左右肩部前三关节公共轴交点的中点；复用解析IK几何，新增模型级肩中心读取，旧static接口仍保持LegacyV304语义。当前world Z≈1.342432773m；底排下降≈.892432773m、第二排≈.482432773m。updown按模型[-1,0]m限位拒绝越界，至多5mm采样整机碰撞；不做静默clamp、不放松ACM。非正差不抬升。下降后IK基坐标/RRT起态/负重返回目标一致；返回保持升降高度。
+- 改了哪里：解析IK hpp/cpp；单臂demo C++、距离launch（默认box0，新增align_height/shoulder_box_offset）、Rerun摘要/米与弧度回放区分；新增 `test_v3_box_wall_height_alignment.py`；原抓取/startup测试显式关闭高度调整以保持冻结回归；更新距离demo Markdown/HTML。
+- 验证结果：最终3包Release构建成功；新测试23次真实服务请求+3类非法偏置拒绝通过（初始肩中心独立URDF FK、低两排扫描、显式双臂、10/14、高低重置、不抬升、超行程拒绝/-1m边界、16轴/插值/附着无跳变、RViz最终箱位对齐Rerun FK）；冻结抓取回归通过（含10/14及零gap反例），startup 8项、legacy 10项、解析IK CTest 2/2通过。Rerun RRD verify通过，已记录261帧从lower_to_box_height至携箱rrt_return末帧。证据 `/home/astesia/Sevenova/日志/验收_2026-09-11/wall_height_alignment/`（最终新测试在final_acceptance/）。
+- 关键限制：x=.30/offset=.25时低两排只有0、4、5、9在本次搜索成功；1、2、3、6、7、8双臂预接触IK无候选，不能说已覆盖整两排；尤其6号冻结版成功、新高度版失败。未擅自搜索替代高度/改姿态绕过用户公式。场景仍无地板，碰撞离散非连续，未构造下降中途碰撞反例；未做实机动态/载荷/标定验收。每次请求重置零角/升降0/完整墙，不是连续升回与连续搬箱。
+- 留给下个AI：本机新升降版双视图已启动在localhost ROS_DOMAIN_ID=188，默认0号success；原冻结演示仍在187（不要混用服务）。同一install现在是新构建，重启冻结动作要显式 `align_height:=false` 或检出冻结分支重编译。HTML新指南已发起打开。后续若要整两排覆盖，应与用户确认偏置/接触姿态/高度搜索策略，不能宣称25cm已全覆盖。实机肩中心/零位/行程与速度负载合同、放置释放/跨箱接续规范仍缺；RTK引用文件仍不存在。
+
+## 2026-09-11 Git / Codex / 升降抓取版独立PR提交准备
+- 用户明确要求将本次高度版提交PR；仅暂存高度版代码/文档/测试和本任务交接，不混入冗余IK修复或既有未归属日志。
+- GitHub API核验账号bestastesia；上游PR #20仍open未合并，目标alfa_v3_dev仍为1e6c58f。新PR沿用该目标，标注依赖#20并要求先合并#20；合并前累计diff包含前序内容，可用27ea05e到本次HEAD单独审阅升降增量。Issue无明确对应，按用户授权留空。
+- PR说明记录默认行为变化、0/4/5/9成功及6号回归差异、离散碰撞/无地板/无实机验收边界和复现命令。只发布待审查分支，不合并、不打正式tag。远端发布结果另存仓库外清单。
