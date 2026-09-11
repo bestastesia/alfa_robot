@@ -35,6 +35,7 @@ find_package(Eigen3 REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
+  "srv/PlanWallBoxDemo.srv"
   DEPENDENCIES geometry_msgs robot_motion_interfaces
 )
 ament_export_dependencies(rosidl_default_runtime)
@@ -267,6 +268,7 @@ target_include_directories(v3_single_arm_box_extract_demo PRIVATE
 )
 
 target_link_libraries(v3_single_arm_box_extract_demo
+  "${cpp_typesupport_target}"
   alfa_robot_motion_scene_adapter
   alfa_robot_analytic_ik::alfa_robot_analytic_ik
 )

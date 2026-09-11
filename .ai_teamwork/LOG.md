@@ -1884,3 +1884,55 @@
 - 后续修正：用户确认运动方向正确，要求位置范围严格采用 V3.0.9 原始 URDF；已将 `updown` 改为 `-0.1～0.1m`，`head_joint` 改为 `-1.57～1.57rad`，不再沿用旧机器人 `0～0.7m` 升降合同。解析 IK 仍只求单臂七轴，升降和头部由上层规划组管理。
 - 最终升降合同：用户进一步确认 V3 实际升降总行程为 `1m`，且当前模型 `updown=0` 对应真实高度 `1m`、`updown=-1m` 对应真实零高度；因此最终规划范围改为 `[-1.0, 0.0]m`，运动方向保持不变。
 - 默认初始姿态：用户更正左右臂均为 `J1～J7=[-90,-90,0,-90,0,0,0]°`，共享 `updown=0m`、`head_joint=0°`。已同步 description xacro 默认参数、模型查看器、两套 mock ros2_control、MoveIt initial positions、SRDF `home` 和连续可达性默认 seed。
+
+## 2026-09-10 Codex / V3 Demo Conda 环境隔离修复
+- 做了什么：共享 ROS 环境脚本不再只过滤旧机器 Anaconda 路径，同时清理用户默认 Conda 安装和当前激活环境/安装根目录，覆盖 PATH、动态库、pkg-config 和 Python 搜索路径。
+- 改了哪里：`tools/ros_humble_env.sh`；新增 `tools/test_ros_humble_env.sh` 回归检查。
+- 验证结果：环境检查通过；CMake 选择 `/usr/bin/python3`，`robot_motion_core` 单包构建成功，原 catkin_pkg 报错消失。
+- 留给下个 AI：完整 `build_v3_moveit_demo.sh` 仍被缺失 `moveit_core` 阻塞；本机 apt 显示 `ros-humble-moveit` 和 `ros-humble-moveit-core` 均未安装，本轮未安装系统依赖。
+
+## 2026-09-11 Codex / 旧架构单臂 demo 的箱墙前置开发
+- 做了什么：用户已向 mentor 确认允许在本地旧架构单臂 demo 开发完整任务；此前“必须等待新架构视频工作树”的阻塞判断失效。同事负责固定距离，我们先做场景/配置/回归，不代替其测量。
+- 改了哪里：单臂 demo C++/launch，新增默认参数 YAML 与 `test/test_v3_box_wall_preparation.py`；更新 `docs/运控/IK/V3单臂解析抽箱交互Demo.md`。增加显式 wall_origin 的5×5/1cm场景，目标选择不移动墙，完整16轴输出及配置拒绝；保留旧cross模式与既有未提交改动。未提交、推送、安装软件或控制实机。
+- 验证结果：Release 单包构建成功；10项无窗口检查通过（旧单箱四段规划含附着事件、3个固定墙目标、不可达规划拒绝、5个非法配置）；Rerun几何预览RRD生成并通过 `rrd verify`。证据在 `/home/astesia/Sevenova/日志/验收_2026-09-11/old_demo_wall_preparation/`。不是双箱/全墙可达/放置验收。
+- 留给下个 AI：RTK引用文件本机缺失；距离需连同基准面/坐标系/初始姿态交付；demo零臂角与NOW的home冲突。优先补目标箱接触前碰撞与 world/attached/released 生命周期，审计全机器人碰撞后再做双箱/共享轴和后放。正式runtime合同、任务issue/验收人未确认，不擅自绑定历史issue或将demo接入生产启动链。
+
+## 2026-09-11 Codex / 距离输入单箱抓取 demo
+- 做了什么：按用户新请求在旧单臂抽箱可执行程序上新增 `distance_demo` 模式与独立 `v3_box_wall_grasp_demo.launch.py`，通过 demo-local `PlanWallBoxDemo.srv` 接收 `x/box_id/arm`，每次恢复完整5×5墙后独立规划，支持左右臂/auto。未接硬件、未新增包/外部依赖、未提交或推送。
+- 改了哪里：`alfa_robot_moveit_config` 的单臂demo C++、CMake、新srv/launch/test；`.gitignore` 仅为新srv添加例外（原规则忽略所有srv）；复用的Rerun viewer补请求显示/换请求清理；新增 `docs/运控/IK/V3距离输入单箱抓取Demo.md` 并在原文档加入口。保留本轮前已有脏改动。
+- 关键实现：车头默认是 model_base 碰撞网格 world 最大X（本模型约0.310000006814m），可显式 `chassis_front_x` 标定；默认墙居中、底面Z=0。目标箱接触前纳入world，最后接触段仅放行tool/joint7；吸附后从world移除并参与负重检测。显式检查整机/有界关节插值/RRT真实起终点连接及固定轴。新模式只需几何轨迹，去掉TOTG重采样，不可下发控制器。RViz携箱随FK运动且停末帧、墙格编号可见；Rerun消费相同结果帧。
+- 验证结果：Release两包构建通过；新测试覆盖25箱号固定墙、25个远距离失败、7类非法请求、左右/auto、成功完整路径、16轴固定约束、RViz最终携箱位置与Rerun FK一致、车头标定覆盖。0.30m全墙本次有限搜索找到完整路径的ID为 `[5,6,10,11,15,20,21]`，其余只代表本次未找到，不能证明不可抓取。原10项回归通过；RViz/Rerun实际GUI启动，0.30m/6号完整成功轨迹RRD通过verify且包含最终携箱返回帧。证据 `/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_demo/`。
+- 留给下个AI：`success`只代表该模型/固定初态/离散检测/有限预算内完整几何路径，不是全墙都能抓或实机安全证明。新服务同步串行、并发可能排队、无取消；失败 `selected_arm` 为空，JSON side为最后诊断臂，auto失败要查看全部attempts。仍缺实测车头基准/墙摆放/初终态合同，RTK引用文件仍缺；旧零臂角与NOW home不一致，本次刻意保留旧基线。共享轴不搜索，地面和额外环境障碍、动力学/吸附反馈、放置释放、连续拆墙均未实现，正式集成由runtime管理，不把此demo当生产接口。
+
+## 2026-09-11 运控 / Codex / 单箱 demo 关闭终端后 waiting 故障修复
+- 做了什么：从用户实际进程 PID339321 命令行确认 `arm:=auto~` 拼写错误；规划节点 PID339324 的 FATAL 为 `arm must be left/right/auto`，但旧 launch 仍保留 RSP/RViz/Rerun。调用端 PID340093 与服务端同为 domain187/localhost1/正确 overlay，本次不是 source/domain 故障。
+- 改了哪里：仅新距离 demo launch 增加原生 arm choices 和规划节点 on_exit→Shutdown；不更改 C++、旧单臂 launch、抓取算法或实机接口。新增 `test/test_v3_box_wall_startup.py`；同步 `docs/运控/IK/V3距离输入单箱抓取Demo.md` 和本地 HTML 操作指南。
+- 验证结果：config 包构建通过；domain188 隔离回归通过非法 arm 启动前拒绝、非法 x 初始化失败联动停止、三次全新启动真实请求6号箱（均 success、generation1、left、87帧五阶段），并覆盖 SIGINT、规划节点 SIGTERM、终端关闭 SIGHUP 后进程清理与服务下线。突然退出后的 DDS 发现缓存会延迟消失，测试等待上限60秒，不能用缓存 service list 作为存活证据。原生 Shutdown 在 x 初始化失败时外层 launch 可返回0，诊断应看 FATAL/节点退出，不仅看 shell 返回码。
+- 实际恢复：仅停止原故障 launch 及其 ROS 子进程；在可见 gnome-terminal「单箱抓取 Demo · 服务端 · Domain 187」以 `x:=0.30 box_id:=6 arm:=auto` 重新启动。原先等待的客户端退出，对应第2轮 SUCCESS；独立新请求第3轮同样 success/left/87帧，验证 RViz 最终箱体 marker 与 Rerun FK 一致，Rerun 日志收到 generation3 SUCCESS。目前有意保留该可视化仿真服务运行，用户在服务端终端 Ctrl+C 即停止，不是后台常驻服务。
+- 证据：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_startup/` 下 original_processes.txt、original_failure.log、build.log、test.log、startup_summary.json、各 restart 日志/轨迹、restored_visual_launch.log、restored_service_summary.json / restored_service_task.json。独立 Rerun 查看窗口可能保留旧录制，不应宣称关闭所有窗口才算退出；本次未触实机、未提交 Git。RTK 入口 `/home/li/.codex/RTK.md` 本机仍缺失，不影响此次已定位的 launch 修复。
+
+## 2026-09-11 运控 / Codex / 10号可抓而14号失败的逐臂定位与修复
+- 做了什么：在隔离domain188以x=0.30逐一复测10/14的auto、left、right。10由left完成；14的auto确实尝试left（precontact_ik无候选）和right（最后接触step5/5，right_joint7与下方neighbor_box_9碰撞）。不是漏算左臂，也未修改auto先left后right的顺序。
+- 根因与修复：当前STL变换到tool0后，左右末端前沿分别超出名义TCP面约0.039µm/0.101µm；严格零间隙贴面叠加浮点误差触发邻箱接触判定。仅新距离demo新增默认1µm的contact_numerical_gap（有限0..0.0001m；旧demo保持0），用同一toolToBoxCenter()统一接触目标、附着碰撞体、JSON/Rerun及RViz位置，避免吸附时箱体跳变；没有缩网格/箱体、改ACM、关闭邻箱碰撞或增加搜索预算。这只是仿真数值间隙，不是吸盘压缩/TCP标定/安全距离；实机这些合同仍缺失。
+- 改了哪里：v3_single_arm_box_extract_demo.cpp、新距离launch、既有test_v3_box_wall_grasp_demo.py与test_v3_box_wall_startup.py、距离demo技术文档及本地HTML指南。额外逐臂打印arm=... SUCCESS/FAILED stage/reason，RViz成功状态加arm。Rerun已经消费tool_to_box_center，无需再修改viewer。
+- 验证结果：构建通过；新回归含10-left/14-right显式及auto、非活动臂/共享轴固定、五阶段、吸附无跳变和双臂RViz最终marker/FK一致；把gap设回0可重复得到14右臂同一邻箱碰撞（严格反例）。原10项旧demo回归通过；启动回归8项通过（含负/过大gap拒绝及三次重启真实6号请求）。本轮0.30m有限全墙扫描成功IDs=[5,6,8,9,10,11,13,14,15,19,20,21,23,24]，不是物理可达证明/永久成功清单；8号此前的右臂接触失败已被修复，历史说明已更新。
+- 实际恢复：仅停止旧domain187 demo launch PID352008；在可见终端「单箱抓取 Demo · 已修复14号 · Domain 187」启动新版x=0.30/box14/auto并保留运行。真实桌面新服务请求10->left成功、14->right成功（各79帧完整五阶段），验证RViz FK/arm状态和Rerun generation3 SUCCESS；最后场景是14号。未触实机、未提交Git。
+- 留给下个AI：证据在 `/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_arm_symmetry/`：before_summary/逐臂JSON、wrist_mesh_bounds.json、build.log、regression.log及zero_contact_gap.json反例、legacy.log、startup.log、visual_summary.json/visual_10_task.json/visual_14_task.json/visual_launch.log；before_demo.cpp可查看本轮相对已有未提交修改的精确增量。不要把1µm改成真实硬件间距，也不要通过放开邻箱ACM处理更大真实碰撞。
+
+## 2026-09-11 Git / Codex / 单箱抓取版本冻结准备
+- 做了什么：用户认可当前版本并要求按仓库 PR 规范冻结；从 alfa_v3_dev 的 1e6c58f 建立 feature/wall-box-grasp，保留旧架构目标，不直接提交基线或发布正式 tag。
+- 范围：箱墙前置、距离服务、启动联动退出、双臂数值接触修复、回归和技术/HTML指南；纳入编译前置 Conda 环境隔离及测试。不纳入独立冗余 IK 启动修复、本机安装交接和无关历史日志。
+- 验证：复核已有构建/仿真证据；冻结时检查环境脚本、Python AST、HTML锚点和暂存diff。未停止桌面仿真、未操作硬件。
+- 留给下个AI：六项PR材料见 docs/运控/IK/V3距离输入单箱抓取Demo_PR.md。作者姓名/邮箱未配置，本任务Issue未确认；禁止冒用历史作者或MOTION-94/154。尚未commit/push/创建PR，远端读取未及时返回；确认身份及Issue后完善关联再提交，核心review/CI通过前不合并、不打正式tag。工作区仍保留未归属修改，勿git add .。
+
+## 2026-09-11 Git / Codex / 复用 VS Code 登录与 Issue 核对
+- 用户授权：优先复用 VS Code 的 GitHub 登录；只有能确定对应本任务时才关联 Issue，否则允许留空。
+- 核对结果：GitHub 仓库 state=all 列表返回18项且均为PR，无独立Issue；本地NOW/TASKS未提供本任务编号，MOTION-154是不同的双臂动作任务。没有Linear在线访问能力，未声称查遍Linear；本次关联留空。
+- 身份/网络：VS Code认证日志确认16:28登录成功；但当前命令环境未继承凭据助手。通过正常VS Code Git askpass请求在Username阶段超时，没有读取到可核验的账号身份或凭据，未读取/导出编辑器秘密存储。GitHub API公开读取成功，github.com HTTPS连接仍超时，不能把登录成功等同于可推送。
+- 交接：PR材料已取消Issue阻塞；源码与先前冻结快照一致。仍未commit/push/创建PR；需用户检查VS Code是否有待确认的Git账号授权提示，并恢复github.com连通性。暂存范围和未归属工作区修改保持隔离，未操作实机或演示进程。
+
+## 2026-09-11 Git / Codex / 账号核验与 fork 提交
+- 用户确认授权后，VS Code正常Git凭据助手已可使用；GitHub /user 核验账号bestastesia（ID136950813）。仅本仓库设置作者bestastesia / 136950813+bestastesia@users.noreply.github.com，避免公开私人邮箱；凭据不写入仓库或日志。
+- 上游权限只有pull，没有push；已创建bestastesia/alfa_robot公共fork，采用fork的feature/wall-box-grasp向kkozia188/alfa_robot的alfa_v3_dev提PR，不推送或合并上游基线。上游alfa_v3_dev经API核验仍为1e6c58f。
+- Issue按用户授权留空；源码与先前冻结树一致，只更新PR/交接文档。保留未归属冗余IK修改和历史日志，不扩大暂存范围。
+- GitHub API可用但github.com Git传输仍超时，改用GitHub Git数据库API发布同一Git对象；必须校验远端tree/commit SHA与本地完全相同后才创建新分支，不强制更新已有分支。实际提交/PR结果记录到仓库外冻结清单；未经核心review/CI和合并，不发布正式tag。

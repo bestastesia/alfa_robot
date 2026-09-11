@@ -206,3 +206,6 @@ data/
 
 # MOTION-38 local one-off/debug scripts
 scripts/ik_benchmark/motion38/visualize_single_down_point_9_orients.py
+
+# Demo-local typed planning request (simulation only).
+!ros2_ws/src/alfa_robot_moveit_config/srv/PlanWallBoxDemo.srv

@@ -143,6 +143,7 @@ class V3SingleArmBoxExtractViewer(Node):
         self.failure_reason = ""
         self.total_ms = 0.0
         self.metrics: dict = {}
+        self.wall_request: dict = {}
 
         qos = QoSProfile(depth=1)
         qos.reliability = ReliabilityPolicy.RELIABLE
@@ -158,6 +159,13 @@ class V3SingleArmBoxExtractViewer(Node):
             self.get_logger().error(f"非法抽箱JSON: {exception}")
             return
 
+        self.wall_request = payload if payload.get("distance_demo") else {}
+        if payload.get("kind") in ("preview", "planning"):
+            self.frames = []
+            self.metrics = {}
+            self.last_frame = None
+            log_robot_state(self.robot, {}, "world/robot")
+        self.tool_link = str(payload.get("tool_link", self.tool_link))
         self.update_scene(payload)
         kind = str(payload.get("kind", "preview"))
         if kind == "preview":
@@ -349,6 +357,13 @@ class V3SingleArmBoxExtractViewer(Node):
                 f"- 箱体中心：`{self.box_center.tolist()}`\n"
                 "- 在RViz拖动绿色箱体XYZ；右键箱体确认后才开始计算。"
             )
+        if self.wall_request:
+            body = body.replace("在RViz拖动绿色箱体XYZ；右键箱体确认后才开始计算。",
+                                "通过 plan_wall_box 服务选择 x、box_id 和 arm。")
+            body += (f"\n- 请求：x={self.wall_request['x']:.3f}m，box_id={self.wall_request['box_id']}"
+                     f"，arm={self.wall_request.get('side', '?')}"
+                     f"\n- 车头基准 X={self.wall_request['chassis_front_x']:.6f}m"
+                     "\n- 仅仿真：未找到路径不等于绝对不可抓取；失败回放仅供诊断。")
         rr.log(
             "summary",
             rr.TextDocument(body, media_type=rr.MediaType.MARKDOWN),

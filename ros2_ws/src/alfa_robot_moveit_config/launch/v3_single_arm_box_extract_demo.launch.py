@@ -24,6 +24,12 @@ def generate_launch_description():
             DeclareLaunchArgument("start_rviz", default_value="true"),
             DeclareLaunchArgument("start_rerun", default_value="true"),
             DeclareLaunchArgument("auto_run_once", default_value="false"),
+            DeclareLaunchArgument(
+                "demo_config",
+                default_value=str(moveit_config.package_path / "config" /
+                                  "v3_single_arm_box_extract_demo.yaml"),
+                description="Simulation-only scene and planner ROS parameter file",
+            ),
             DeclareLaunchArgument("rerun_recording_path", default_value=""),
             DeclareLaunchArgument(
                 "rviz_config",
@@ -51,12 +57,8 @@ def generate_launch_description():
                 output="screen",
                 parameters=[
                     moveit_config.to_dict(),
-                    {
-                        "auto_run_once": auto_run_once,
-                        "side": "left",
-                        "planning_group": "left_arm",
-                        "tool_link": "left_tool0",
-                    },
+                    LaunchConfiguration("demo_config"),
+                    {"auto_run_once": auto_run_once},
                 ],
             ),
             Node(
