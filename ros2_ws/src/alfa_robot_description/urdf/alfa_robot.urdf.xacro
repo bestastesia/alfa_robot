@@ -4,6 +4,8 @@
   <xacro:arg name="prefix" default=""/>
   <xacro:arg name="use_mock_hardware" default="true"/>
   <xacro:arg name="mock_sensor_commands" default="true"/>
+  <!-- Demo grounding calibration; default preserves existing model coordinates. -->
+  <xacro:arg name="model_ground_offset" default="0"/>
   <xacro:arg name="arm_mount_forward_offset" default="0"/>
   <xacro:arg name="updown_initial" default="0.0"/>
   <xacro:arg name="head_joint_initial" default="0.0"/>
@@ -38,7 +40,7 @@
     <parent link="base_link"/>
     <child link="model_base"/>
     <origin
-      xyz="${-0.190000017371 + float(arm_mount_forward_offset_value)} 6.50500004219e-09 0.648299964909"
+      xyz="${-0.190000017371 + float(arm_mount_forward_offset_value)} 6.50500004219e-09 ${0.648299964909 + float(xacro.arg('model_ground_offset'))}"
       rpy="1.5707963 0 1.57079632679"/>
   </joint>
 

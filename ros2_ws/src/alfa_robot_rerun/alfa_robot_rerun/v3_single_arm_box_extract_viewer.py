@@ -83,6 +83,7 @@ class V3SingleArmBoxExtractViewer(Node):
         self.declare_parameter(
             "task_topic", "/v3_single_arm_box_extract_demo/task_json"
         )
+        self.declare_parameter("robot_description", "")
         self.declare_parameter("spawn_viewer", True)
         self.declare_parameter("recording_path", "")
         self.declare_parameter("log_meshes", True)
@@ -107,10 +108,10 @@ class V3SingleArmBoxExtractViewer(Node):
         if recording_path:
             rr.save(recording_path)
             self.get_logger().info(f"Rerun recording: {recording_path}")
-        self.robot = UrdfRobot(render_current_urdf())
+        self.robot = UrdfRobot(str(self.get_parameter("robot_description").value) or render_current_urdf())
         log_robot_static_model(self.robot, "world/robot", log_meshes=log_meshes)
         rr.set_time("task_frame", sequence=0)
-        log_robot_state(self.robot, {}, "world/robot")
+        # Wait for the planner's initial_joints; do not insert an all-zero preview frame.
         rr.send_blueprint(
             rrb.Blueprint(
                 rrb.Horizontal(
@@ -164,7 +165,8 @@ class V3SingleArmBoxExtractViewer(Node):
             self.frames = []
             self.metrics = {}
             self.last_frame = None
-            log_robot_state(self.robot, {}, "world/robot")
+            log_robot_state(self.robot, dict(zip(payload.get("joint_names", []),
+                                                payload.get("initial_joints", []))), "world/robot")
         self.tool_link = str(payload.get("tool_link", self.tool_link))
         self.update_scene(payload)
         kind = str(payload.get("kind", "preview"))
@@ -216,6 +218,12 @@ class V3SingleArmBoxExtractViewer(Node):
         )
 
     def update_scene(self, payload: dict) -> None:
+        # Clear first: a restarted planner may supply a different scene (or disabled regression mode).
+        rr.log("world/environment", rr.Clear(recursive=True))
+        for box in payload.get("environment", {}).get("boxes", []):
+            rr.log(f"world/environment/{box['id']}", rr.Boxes3D(
+                centers=[box["center"]], half_sizes=[np.asarray(box["size"]) / 2.0],
+                colors=[[115, 140, 166, 50]], labels=[box["id"]]))
         center = payload.get("box_center", [])
         size = payload.get("box_size", [])
         if len(center) == 3:
@@ -364,13 +372,17 @@ class V3SingleArmBoxExtractViewer(Node):
                      f"，arm={self.wall_request.get('side', '?')}"
                      f"\n- 车头基准 X={self.wall_request['chassis_front_x']:.6f}m"
                      "\n- 仅仿真：未找到路径不等于绝对不可抓取；失败回放仅供诊断。")
+        environment = self.wall_request.get("environment", {})
+        if environment:
+            body += (f"\n- 环境碰撞：{'开启' if environment['enabled'] else '关闭（仅回归）'}；"
+                     f"{len(environment['boxes'])}个障碍；{environment.get('description', '')}")
         alignment = self.wall_request.get("height_alignment", {})
         if alignment:
             body += (f"\n- 高度调整：{'开启' if alignment['enabled'] else '关闭'}；"
                      f"肩部中心比箱中心高 {alignment['shoulder_box_offset']:.3f} m"
                      f"\n- 计划下降 {alignment['descent']:.3f} m；"
                      f"updown 目标 {alignment['target_updown']:.3f} m（不是实机反馈）"
-                     "\n- lower_to_box_height → 预接触 → 接触 → 附着 → 抽出 → 保持升降高度携箱返回")
+                     "\n- lower_to_box_height → 预接触 → 接触 → 附着 → 抽出 → 携箱返回home → restore_default_height升回0")
         rr.log(
             "summary",
             rr.TextDocument(body, media_type=rr.MediaType.MARKDOWN),

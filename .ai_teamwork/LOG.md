@@ -1949,3 +1949,31 @@
 - 用户明确要求将本次高度版提交PR；仅暂存高度版代码/文档/测试和本任务交接，不混入冗余IK修复或既有未归属日志。
 - GitHub API核验账号bestastesia；上游PR #20仍open未合并，目标alfa_v3_dev仍为1e6c58f。新PR沿用该目标，标注依赖#20并要求先合并#20；合并前累计diff包含前序内容，可用27ea05e到本次HEAD单独审阅升降增量。Issue无明确对应，按用户授权留空。
 - PR说明记录默认行为变化、0/4/5/9成功及6号回归差异、离散碰撞/无地板/无实机验收边界和复现命令。只发布待审查分支，不合并、不打正式tag。远端发布结果另存仓库外清单。
+
+## 2026-09-12 Codex / 距离升降单箱Demo加入地面与四周碰撞
+- 做了什么：在7d2defe上新建 `feature/wall-box-environment-collision`；共享makeScene统一加入原生CollisionObject环境盒体，复用现有整机状态/边检查覆盖初态、下降、IK、接触附着、抽出和负重RRT返回。未放松ACM、未缩小碰撞网格，保留原冗余IK未提交修改。本轮未提交/推送/创建PR。
+- 接口：距离launch默认check_environment=true；environment_file JSON启动时读取，配置frame_id/world、description和轴对齐boxes(id/center/size)，ground必填，数值/尺寸/ID/坐标系/不支持旋转校验失败即退出。result_json.environment、RViz及Rerun使用同一份几何；RViz重启不保留旧障碍。false只给历史回归使用，日志明确警告。旧单臂入口不变。
+- 基准与任务风险：独立URDF FK/STL顶点确认model_base最低world Z约-0.4022m，默认地板上表面-0.402201m（1µm仅数值间隔）；示例四周内边界X±3m、Y±2.5m、顶Z2.6m，全部未现场标定。为保留已验收网格，默认墙底仍Z0，比地面高40.22cm，不能称落地场景。允许wall_bottom_z为有限负数；显式落地到-.402201时，0号按25cm偏置需下降约1.2946m，真实超出[-1,0]，返回height_alignment_limits，不clamp/不关闭地板。真实底盘/地面/墙底坐标及障碍尺寸、安全裕度合同仍缺；RTK引用文件仍缺。
+- 改了哪里：单臂C++共享场景、距离launch、新config/v3_box_wall_environment.json、Rerun、test_v3_box_wall_environment.py；原高度和冻结抓取测试显式关闭环境以保留原算法回归；更新距离Markdown/HTML。环境固定于进程，修改自定义文件需重启；只支持有限尺寸静态轴对齐盒体，离散碰撞不是连续或实机安全证明。
+- 验证结果：2包Release构建通过；14真实请求+6类非法环境全部通过，默认0/4/5/9/10/14/20/24成功，ground/base初态、仅闲置右臂障碍、下降中途台板（updown=-.289168）、仅携箱返回目标及抽出侧挡片碰撞全部拦截。负world墙底可输入且底排超行程拒绝正确。高度23+3、冻结全墙/零gap反例、startup8、legacy10、解析IKCTest2/2通过。实际RViz/Rerun启动，RRD verify成功；6环境实体中心/半尺寸与配置一致，完整261帧到携箱rrt_return。抓录脚本整进程组SIGINT导致launch重复转发，Rerun退出atexit出现KeyboardInterrupt；发生于完整回放之后，录制独立验证通过，不隐瞒此测试清理现象。
+- 证据与接手：`/home/astesia/Sevenova/日志/验收_2026-09-12/wall_environment/validation_summary.json`、model_ground_reference.json、final/及visual/；前一轮13请求记录在2026-09-11同名目录third/。测试使用localhost189/190/191/192并只清理自身进程；本轮未留下后台demo，重启时source当前install即可默认启用环境。本功能完成不意味着用户整体新架构接手/仿真复现学习目标已全部完成。
+
+## 2026-09-12 Codex / 环境碰撞后补齐两种箱墙25箱覆盖
+- 做了什么：复用环境测试增加可选`--scan-wall`，固定x=.30m、25cm偏置，默认/模型落地各25请求；未改业务算法、环境、预算或ACM。新请求摘要保留箱号/选臂/全部attempts/耗时，对成功携箱回放统一做FK地板高度检查。
+- 验证结果：domain193隔离运行55请求（50扫描+5碰撞反例）及6类非法配置检查通过。默认墙底Z0成功12/25：0,4,5,9,10,14,15,19,20,21,23,24；12个precontact_ik失败、22号cartesian_retreat失败。模型落地墙底-.402201成功8/25：5,9,10,14,15,19,20,24；0～4全超行程，其余12个precontact_ik。失败auto均有左右臂尝试；默认17/落地22是候选机身自碰撞，不能统称数学无解。
+- 改了哪里：现有环境回归脚本及距离Markdown/HTML，个人接手导航同步覆盖结论。无新框架/依赖，无生产代码变化，未提交推送PR。
+- 接手证据：`/home/astesia/Sevenova/日志/验收_2026-09-12/wall_environment/full_wall/`含每请求原JSON、coverage.csv、coverage_summary.json（源码/二进制hash），源码与安装环境配置/launch逐字节一致。测试通过不是全部搬运成功，成功仍附着返回；这是固定测试距离下独立请求覆盖，不是最优距离、连续拆墙、放置释放或实机验收。
+
+## 2026-09-12 Codex / 碰撞demo改为home起终姿态、零地面和单开口仓库
+- 做了什么：按本轮用户要求，距离demo直接读取SRDF `whole_body/home`：双臂[-90,-90,0,-90,0,0,0]°、updown/head=0。先按原25cm策略下降，携箱RRT返回home臂角后新增`restore_default_height`，携箱按≤5mm采样升回0；预先验证整段负重上升，阻挡返回`return_lift_collision`，不跳过上升伪报成功。旧交互launch仍保持原零姿态/坐标。
+- 坐标/仓库：仅距离launch传`model_ground_offset=.402201`修正base_to_model安装高度，world/base_link仍Z0，箱墙底Z0，地板上表面Z0；独立碰撞STL/FK测得底盘最低Z=.947µm（数值容差，非实机安全裕度）。仓库内尺寸X长4m/Y宽2.38m/Z高2.35m，+X正墙、−X开口，两侧/正墙/地板/顶棚五个有碰撞实体，10cm厚度向外。箱墙Y居中，宽2.04m，两侧各17cm，背面距正墙1µm（复用contact_numerical_gap，避免右臂吸附FK误差误判穿正墙）。没有缩网格、放开ACM或扩大搜索预算。
+- 改了哪里：description增加默认0的落地标定arg；距离launch传同一URDF给规划器/RViz/Rerun；C++初态、负重回升、JSON initial_joints及环境坐标；默认环境配置增加`anchor:box_wall_back`，每次独立距离请求重建仓库相对箱墙的位置（不是底盘行走）。自定义world环境默认不平移，配置仍只从启动文件读一次。Rerun不再插入全零预览，用规划器initial_joints，摘要更新。环境/固定升降/高度/startup回归已迁移新home合同；更新距离Markdown/HTML，未触本轮开始前其他未提交修改。
+- 验证结果：3包Release构建成功（description仍有已有pytest检测warning）；仓库42真实请求+7非法配置通过，含五个仓库实体分别侵入整机、空闲臂/下降中途/仅负载返回/仅负载回升/抽出挡片反例；独立全机器人初态碰撞网格均在仓内。固定x=.90m扫描成功17/25：5,6,8,9,10,11,13,14,15,16,18,19,20,21,22,23,24；0～4超行程（下降需1.294634m），7/12/17接触路径无解。不是连续拆墙或全策略可达性结论。新home导致x=.30初态碰箱墙，x=.75携箱home碰剩余箱体，不能沿用原零姿态距离示例。
+- 其他验证：高度21请求+3非法偏置；固定高度25墙格/7非法输入/20左24右/零gap反例/车头覆盖；startup8项；旧交互demo10项；解析IK CTest2/2；py_compile和diff --check均通过。右臂9号RRD verify通过且完整418帧至restore_default_height，最终joint_states/携箱RViz marker与同一落地URDF独立FK一致，录制进程干净退出。已实际查看RViz/Rerun新版仓库及home携箱终态截图；Rerun中文缺字方框为现有字体问题，本轮未处理。
+- 接手证据/运行：`/home/astesia/Sevenova/日志/验收_2026-09-12/warehouse_home/`含environment/summary.json、home_collision_mesh_bounds.json、各回归日志/JSON、visual/warehouse.rrd及截图、源码/二进制hash。仅SIGINT停止原可视化launch PID94173及其子进程，以可见终端「仓库 Demo · home起终姿态 · Domain 0」重启x=.90/box5/auto，新请求SUCCESS/left/422帧并保留运行；沿用原ROS_DOMAIN_ID=0、ROS_LOCALHOST_ONLY=0，终端Ctrl+C停止。原引用`/home/li/.codex/RTK.md`仍不存在；未接实机、未提交推送。
+
+## 2026-09-12 Git / Codex / 仓库碰撞与home起终姿态PR准备
+- 做了什么：按用户要求提交当前仓库碰撞demo；仅包含环境/home/零地面代码、配置、测试、距离指南和对应交接，不混入冗余IK启动修复、本机MoveIt交接或历史未归属日志。
+- 分支/依赖：`feature/wall-box-environment-collision`，基于`7d2defe`；GitHub核验上游#20/#21仍open，目标`alfa_v3_dev`仍为`1e6c58f`。本PR要求先合并#20再#21，本次增量从`7d2defe`审阅；沿用前序Issue留空约定，不编造或关闭历史Issue。
+- 验证/边界：源码与完整验收的6项实现/二进制SHA256一致，提交前重跑仓库环境与25箱扫描42请求+7非法配置通过，解析IK CTest 2/2、暂存语法/JSON/diff检查通过，无关文件哈希未变；完整历史验收见`/home/astesia/Sevenova/日志/验收_2026-09-12/warehouse_home/`，本次发布核验见其`pr/`子目录。本机证据不是远端附件；PR给出复验命令和17/25覆盖、升降超限、离散碰撞及非实机边界。
+- 发布约束：中文提交/PR及Codex协作署名；只创建待审查PR，不合并、不打tag、不强推。发布后的PR编号、commit/tree一致性和CI/review状态另存发布清单并追加交接。

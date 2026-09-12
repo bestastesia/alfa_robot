@@ -312,6 +312,10 @@ public:
         initial_state_->setVariablePosition(name, 0.0);
       }
     }
+    if (distance_demo_ && !initial_state_->setToDefaultValues(
+        robot_model_->getJointModelGroup("whole_body"), "home")) {
+      throw std::runtime_error("distance demo requires SRDF whole_body/home");
+    }
     initial_state_->update(true);
     display_state_ = std::make_shared<moveit::core::RobotState>(*initial_state_);
     if (distance_demo_) {
@@ -336,8 +340,8 @@ public:
       wall_center_y_ = getParameter<double>("wall_center_y", 0.0);
       wall_bottom_z_ = getParameter<double>("wall_bottom_z", 0.0);
       if (!std::isfinite(chassis_front_x_) || !std::isfinite(wall_center_y_) ||
-          !std::isfinite(wall_bottom_z_) || wall_bottom_z_ < 0.0 || collision_inset_ != 0.0) {
-        throw std::invalid_argument("distance demo requires finite placement, nonnegative bottom and zero collision_inset");
+          !std::isfinite(wall_bottom_z_) || collision_inset_ != 0.0) {
+        throw std::invalid_argument("distance demo requires finite placement and zero collision_inset");
       }
       updateWallTarget(getParameter<double>("x", -1.0), getParameter<int>("box_id", 0));
       initial_box_center_ = box_center_;
@@ -474,6 +478,82 @@ private:
     return get_parameter(name).get_value<T>();
   }
 
+  void loadEnvironment()
+  {
+    environment_objects_.clear();
+    environment_json_ = {{"enabled", getParameter<bool>("check_environment", true)},
+      {"frame_id", world_frame_}, {"boxes", nlohmann::json::array()}};
+    if (!environment_json_.at("enabled").get<bool>()) {
+      RCLCPP_WARN(get_logger(), "ENVIRONMENT COLLISIONS DISABLED: regression-only wall scene");
+      return;
+    }
+    try {
+      const auto config = nlohmann::json::parse(getParameter<std::string>("environment_json", ""));
+      if (config.at("frame_id").get<std::string>() != world_frame_)
+        throw std::invalid_argument("frame_id must match planning world frame");
+      const auto anchor = config.value("anchor", std::string("world"));
+      if (anchor != "world" && anchor != "box_wall_back")
+        throw std::invalid_argument("anchor must be world or box_wall_back");
+      const Eigen::Vector3d offset = anchor == "box_wall_back" ?
+        // Same micrometre tolerance as tool contact: avoid false penetration on attachment.
+        Eigen::Vector3d(chassis_front_x_ + wall_distance_ + box_depth_ + contact_numerical_gap_,
+                        wall_center_y_, 0.0) :
+        Eigen::Vector3d::Zero();
+      environment_json_["anchor"] = anchor;
+      const auto& boxes = config.at("boxes");
+      if (!boxes.is_array() || boxes.empty() || boxes.size() > 128)
+        throw std::invalid_argument("boxes must contain 1..128 axis-aligned boxes, including ground");
+      std::set<std::string> ids;
+      for (const auto& box : boxes) {
+        const auto id = box.at("id").get<std::string>();
+        if (id.empty() || id.find_first_not_of(
+              "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != std::string::npos ||
+            !ids.insert(id).second)
+          throw std::invalid_argument("box ids must be unique nonempty letters/digits/_/-");
+        // Reject unsupported rotation rather than silently drawing/checking a different obstacle.
+        for (auto it = box.begin(); it != box.end(); ++it)
+          if (it.key() != "id" && it.key() != "center" && it.key() != "size")
+            throw std::invalid_argument("box supports only id, center, size (world-axis aligned)");
+        for (const auto* key : {"center", "size"}) {
+          const auto& values = box.at(key);
+          if (!values.is_array() || values.size() != 3)
+            throw std::invalid_argument("center/size must be 3 numbers in metres");
+          for (const auto& value : values) {
+            if (!value.is_number() || !std::isfinite(value.get<double>()) ||
+                std::abs(value.get<double>()) > 10000.0 ||
+                (std::string(key) == "size" && value.get<double>() <= 0.0))
+              throw std::invalid_argument("finite center/positive size required, magnitude <=10000m");
+          }
+        }
+        moveit_msgs::msg::CollisionObject object;
+        object.header.frame_id = world_frame_;
+        object.id = "environment_" + id;
+        object.operation = moveit_msgs::msg::CollisionObject::ADD;
+        shape_msgs::msg::SolidPrimitive primitive;
+        primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
+        primitive.dimensions = {box.at("size")[0].get<double>(),
+          box.at("size")[1].get<double>(), box.at("size")[2].get<double>()};
+        geometry_msgs::msg::Pose pose;
+        pose.orientation.w = 1.0;
+        pose.position.x = box.at("center")[0].get<double>() + offset.x();
+        pose.position.y = box.at("center")[1].get<double>() + offset.y();
+        pose.position.z = box.at("center")[2].get<double>();
+        object.primitives.push_back(primitive);
+        object.primitive_poses.push_back(pose);
+        environment_objects_.push_back(object);
+        environment_json_["boxes"].push_back({{"id", object.id},
+          {"center", {pose.position.x, pose.position.y, pose.position.z}}, {"size", box.at("size")}});
+      }
+      if (!ids.count("ground")) throw std::invalid_argument("a box named ground is required");
+      environment_json_["description"] = config.at("description").get<std::string>();
+    } catch (const std::exception& error) {
+      throw std::invalid_argument(std::string("invalid environment configuration: ") + error.what());
+    }
+    RCLCPP_WARN(get_logger(), "Environment collision checking ON: %zu objects; %s. "
+      "Configured geometry only, not sensed/calibrated surroundings.", environment_objects_.size(),
+      environment_json_.at("description").get<std::string>().c_str());
+  }
+
   double modelChassisFrontX() const
   {
     const auto* base = robot_model_->getLinkModel("model_base");
@@ -509,6 +589,7 @@ private:
     wall_target_row_ = box_id / 5;
     wall_target_column_ = box_id % 5;
     box_center_ = center;
+    loadEnvironment();
   }
 
   void selectArm(const std::string& side)
@@ -764,6 +845,12 @@ private:
     // includes it until attachment; neither mode implements placement/release.
     auto scene = std::make_shared<planning_scene::PlanningScene>(robot_model_);
     scene->setCurrentState(*initial_state_);
+    // Shared by initial state, lift, IK, approach, attachment, retreat and loaded RRT.
+    // No robot/ground or carried-box/environment ACM exemptions.
+    for (const auto& object : environment_objects_) {
+      if (!scene->processCollisionObjectMsg(object))
+        throw std::runtime_error("failed to add " + object.id + " to planning scene");
+    }
     auto neighbors = neighborCenters(box_center);
     if (distance_demo_) neighbors.push_back(box_center);
     const double depth = std::max(0.001, box_depth_ - 2.0 * collision_inset_);
@@ -1227,7 +1314,7 @@ private:
       {"shoulder_box_offset", shoulder_box_offset_}, {"height_difference", difference},
       {"descent", descent}, {"initial_updown", initial}, {"target_updown", initial - descent},
       {"lower_limit", bounds.min_position_}, {"upper_limit", bounds.max_position_},
-      {"collision_sample_step_m", 0.005}, {"return_policy", "keep aligned lift; arms return to zero"}};
+      {"collision_sample_step_m", 0.005}, {"return_policy", "return arms to SRDF home, then restore lift to initial 0m with payload collision checks"}};
   }
 
   bool alignHeight(
@@ -1305,6 +1392,26 @@ private:
       return finish();
     }
 
+    // Validate the loaded lift return once; independent of the chosen arm IK branch.
+    std::vector<ReplayFrame> lift_return;
+    if (distance_demo_) {
+      moveit::core::RobotState restored(return_goal);
+      const double from = restored.getVariablePosition("updown");
+      const double to = initial_state_->getVariablePosition("updown");
+      const size_t steps = static_cast<size_t>(std::ceil(std::abs(to - from) / 0.005));
+      for (size_t step = 1; step <= steps; ++step) {
+        restored.setVariablePosition("updown", from + (to - from) * step / steps);
+        restored.update(true);
+        const auto reason = collisionReason(loaded, restored, &result.metrics);
+        if (!reason.empty()) {
+          result.failure_stage = "return_lift_collision";
+          result.failure_reason = reason;
+          return finish();
+        }
+        lift_return.push_back(ReplayFrame{"restore_default_height", allJoints(restored), true});
+      }
+    }
+
     std::string precontact_rejections;
     auto precontact_candidates = solvePoseCandidates(
       precontactPose(box_center), grasp_start, false, scene, &result.metrics,
@@ -1375,6 +1482,7 @@ private:
 
       result.frames = std::move(executable_prefix);
       appendStates(return_rrt.states, "rrt_return", true, true, &result.frames);
+      result.frames.insert(result.frames.end(), lift_return.begin(), lift_return.end());
       result.success = true;
       return finish();
     }
@@ -1396,8 +1504,11 @@ private:
     output["box_size"] = {box_depth_, box_width_, box_height_};
     output["collision_inset"] = collision_inset_;
     output["world_frame"] = world_frame_;
+    output["joint_names"] = all_joint_names_;
+    output["initial_joints"] = allJoints(*initial_state_);
     if (distance_demo_) {
       output["distance_demo"] = true;
+      output["environment"] = environment_json_;
       output["height_alignment"] = heightAlignment(box_center);
       output["contact_numerical_gap"] = contact_numerical_gap_;
       output["requested_arm"] = requested_arm_;
@@ -1535,6 +1646,29 @@ private:
       center = box_center_;
     }
     visualization_msgs::msg::MarkerArray markers;
+    if (distance_demo_) {
+      // A restarted planner may publish fewer obstacles; do not retain old RViz markers.
+      Marker clear;
+      clear.action = Marker::DELETEALL;
+      markers.markers.push_back(clear);
+    }
+    for (size_t index = 0; index < environment_objects_.size(); ++index) {
+      const auto& object = environment_objects_[index];
+      Marker obstacle;
+      obstacle.header.frame_id = world_frame_;
+      obstacle.header.stamp = now();
+      obstacle.ns = "environment";
+      obstacle.id = static_cast<int>(index);
+      obstacle.type = Marker::CUBE;
+      obstacle.action = Marker::ADD;
+      obstacle.pose = object.primitive_poses.front();
+      const auto& size = object.primitives.front().dimensions;
+      obstacle.scale.x = size[0];
+      obstacle.scale.y = size[1];
+      obstacle.scale.z = size[2];
+      obstacle.color = color(0.45F, 0.55F, 0.65F, 0.20F);
+      markers.markers.push_back(obstacle);
+    }
     Marker target;
     target.header.frame_id = world_frame_;
     target.header.stamp = now();
@@ -1675,6 +1809,8 @@ private:
   }
 
   bool display_box_attached_ = false;
+  std::vector<moveit_msgs::msg::CollisionObject> environment_objects_;
+  nlohmann::json environment_json_;
   bool distance_demo_ = false;
   bool align_height_ = false;
   double shoulder_box_offset_ = 0.25;

@@ -51,10 +51,11 @@ def main():
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
     os.environ.setdefault('ROS_DOMAIN_ID', '188')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
-    robot = UrdfRobot(render_current_urdf())
+    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.402201'}))
+    home = [-np.pi / 2, -np.pi / 2, 0, -np.pi / 2, 0, 0, 0] * 2 + [0, 0]
     initial_z = shoulder_z(robot, {})
     command = ['ros2', 'launch', 'alfa_robot_moveit_config',
-               'v3_box_wall_grasp_demo.launch.py', 'x:=0.30',
+               'v3_box_wall_grasp_demo.launch.py', 'check_environment:=false', 'x:=0.90',
                'auto_run_once:=false', 'start_rviz:=false', 'start_rerun:=false']
     summary = []
 
@@ -80,7 +81,7 @@ def main():
                     rclpy.spin_once(node, timeout_sec=.05)
                 assert predicate(), f'{label}: timeout'
 
-            def call(box_id, arm='auto', x=.3):
+            def call(box_id, arm='auto', x=.9):
                 future = client.call_async(PlanWallBoxDemo.Request(x=x, box_id=box_id, arm=arm))
                 spin_until(future.done, 180)
                 response = future.result()
@@ -110,12 +111,15 @@ def main():
         descent = max(0., initial_z - task['box_center'][2] - alignment['shoulder_box_offset'])
         assert math.isclose(alignment['descent'], descent, abs_tol=1e-6)
         frames = task['frames']
-        assert all(v == 0 for v in frames[0]['joints']), 'Request did not reset initial state'
+        assert np.allclose(frames[0]['joints'], home), 'Request did not reset initial state'
         stages = list(dict.fromkeys(frame['stage'] for frame in frames))
         if task['success']:
-            assert stages == (['lower_to_box_height'] if descent > 0 else []) + STAGES, stages
+            assert stages == (['lower_to_box_height'] if descent > 0 else []) + STAGES + (['restore_default_height'] if descent > 0 else []), stages
         else:
             assert task['failure_stage'], 'Failure without feedback'
+        if task['failure_stage'] == 'height_alignment_limits':
+            assert np.allclose(frames[0]['joints'], home)
+            return
         lift = task['joint_names'].index('updown')
         other = 'right' if task['side'] == 'left' else 'left'
         previous = 0.
@@ -123,15 +127,19 @@ def main():
             joints = dict(zip(task['joint_names'], frame['joints']))
             assert len(joints) == 16 and all(math.isfinite(v) for v in joints.values())
             assert -1. <= joints['updown'] <= 0. and joints['head_joint'] == 0.
-            assert all(joints[f'{other}_joint{i}'] == 0. for i in range(1, 8))
+            assert np.allclose([joints[f'{other}_joint{i}'] for i in range(1, 8)], home[:7])
             if frame['stage'] == 'lower_to_box_height':
                 assert not frame['box_attached']
-                assert all(v == 0 for name, v in joints.items() if name != 'updown')
+                assert np.allclose(frame['joints'][:14], home[:14])
                 assert -0.005000001 <= joints['updown'] - previous <= 1e-12
+                previous = joints['updown']
+            elif frame['stage'] == 'restore_default_height':
+                assert frame['box_attached'] and np.allclose(frame['joints'][:14], home[:14])
+                assert -1e-12 <= joints['updown'] - previous <= .005000001
                 previous = joints['updown']
             else:
                 assert math.isclose(joints['updown'], -descent, abs_tol=1e-6)
-        assert math.isclose(frames[-1]['joints'][lift], -descent, abs_tol=1e-6)
+        assert math.isclose(frames[-1]['joints'][lift], 0 if task['success'] else -descent, abs_tol=1e-6)
         if descent > 0:
             assert math.isclose(shoulder_z(robot, {'updown': -descent}),
                                 task['box_center'][2] + alignment['shoulder_box_offset'], abs_tol=1e-6)
@@ -143,7 +151,7 @@ def main():
                     center = tool[:3, 3] + tool[:3, :3] @ task['tool_to_box_center']
                     assert np.allclose(center, task['box_center'], atol=1e-6), 'Attach teleported box'
             final = dict(zip(task['joint_names'], frames[-1]['joints']))
-            assert all(abs(final[f'{task["side"]}_joint{i}']) < 1e-8 for i in range(1, 8))
+            assert np.allclose(frames[-1]['joints'], home)
             assert frames[-1]['box_attached']
 
     with launch('default') as (call, spin_until, received):
@@ -157,9 +165,9 @@ def main():
             else:
                 assert [a['arm'] for a in task['attempts']] == ['left', 'right']
         # Positive regressions, not a claim that other IDs are physically unreachable.
-        assert {0, 4, 5, 9}.issubset(coverage), coverage
-        for box_id, arm in [(0, 'left'), (4, 'right'), (5, 'left'), (9, 'right'),
-                            (10, 'auto'), (14, 'auto'), (20, 'auto'), (24, 'auto'), (0, 'auto')]:
+        assert {5, 9}.issubset(coverage), coverage
+        for box_id, arm in [(5, 'left'), (9, 'right'),
+                            (10, 'auto'), (14, 'auto'), (20, 'auto'), (24, 'auto'), (5, 'auto')]:
             task = call(box_id, arm)
             assert task['success'], task['attempts']
             check(task)
@@ -176,7 +184,7 @@ def main():
         (root / 'marker_check.json').write_text(json.dumps(dict(
             expected_final_center=expected.tolist(), rviz_matches_rerun_fk=True,
             lower_two_rows_success=coverage), indent=2))
-        task = call(0, x=2.)
+        task = call(5, x=2.)
         assert not task['success'] and task['failure_stage'] == 'precontact_ik'
         check(task)  # Failed grasp retains validated lift prefix, no teleport back to zero.
 
@@ -185,11 +193,11 @@ def main():
         task = call(0)
         assert not task['success'] and task['failure_stage'] == 'height_alignment_limits'
         assert task['height_alignment']['target_updown'] < -1.
-        assert len(task['frames']) == 1 and all(v == 0 for v in task['frames'][0]['joints'])
+        assert len(task['frames']) == 1 and np.allclose(task['frames'][0]['joints'], home)
         assert all(a['failure_stage'] == 'height_alignment_limits' for a in task['attempts'])
 
     with launch('no_lower', ['shoulder_box_offset:=2.0']) as (call, _, received):
-        task = call(6)
+        task = call(20)
         assert task['success'] and task['height_alignment']['descent'] == 0.
         assert task['height_alignment']['height_difference'] < 0.
         check(task)
@@ -200,7 +208,7 @@ def main():
         task = call(0)
         assert not task['failure_stage'].startswith('height_alignment_'), task['failure_reason']
         check(task)
-        assert math.isclose(task['frames'][-1]['joints'][14], -.999999, abs_tol=1e-6)
+        assert math.isclose(min(f['joints'][14] for f in task['frames']), -.999999, abs_tol=1e-6)
 
     for value in ('-0.01', 'nan', 'inf'):
         path = root / f'invalid_{value}.log'

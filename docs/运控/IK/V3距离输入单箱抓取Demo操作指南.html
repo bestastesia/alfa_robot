@@ -19,11 +19,12 @@
 <div class="eyebrow">Sevenova · Motion Control · Local Demo Guide</div>
 <h1>单箱抓取 Demo<br>操作与反馈指南</h1>
 <p>从“启动后应该看到什么”，到“如何指定下一箱、如何判断没有反应”——把当前版本能做什么、不能做什么讲清楚。</p>
-<div class="tags"><span>旧架构增量开发</span><span>5 × 5 箱墙</span><span>RViz + Rerun</span><span>仅仿真，不接实机</span><span>更新：2026-09-11</span></div>
+<div class="tags"><span>旧架构增量开发</span><span>5 × 5 箱墙</span><span>RViz + Rerun</span><span>仅仿真，不接实机</span><span>更新：2026-09-12</span></div>
 </header>
 <div class="layout">
 <nav aria-label="页面目录">
 <strong>操作速查</strong>
+<a href="#environment">新增　地面与环境避碰</a>
 <a href="#height">新增　按箱高下降</a>
 <a href="#quickstart">01　启动与发送请求</a>
 <a href="#motion">02　预期动作</a>
@@ -36,16 +37,28 @@
 <small>本页为离线说明。<br>命令需要在终端执行；<br>网页不会发送 ROS 请求。</small>
 </nav>
 <main id="main">
+<section id="environment">
+<h2>落地仓库 + 默认起终姿态（2026-09-12）</h2>
+<p><strong>仓库内尺寸：高2.35m × 宽2.38m × 长4m。</strong>正墙位于+X，−X一侧开口；两侧墙、正墙、地板、顶棚共五个灰蓝半透明碰撞实体。箱墙居中靠正墙，底面Z=0，顶面2.04m，两侧各留17cm。</p>
+<p>地面、箱墙底面、底盘落地基准统一Z=0。仅本demo使用 <code>model_ground_offset:=0.402201</code> 修正原CAD安装高度；底盘和正墙贴靠各留约1µm数值间隔，不是实机安全裕度。RViz、Rerun和规划器共用模型及环境几何。</p>
+<div class="note"><strong>起点和成功终点：</strong>左右臂J1～J7均为 <code>[-90,-90,0,-90,0,0,0]°</code>，共享 <code>updown=0m</code>、<code>head_joint=0°</code>，从SRDF home读取；不再用全零臂角。</div>
+<p>五个环境实体参与初态、下降、IK、接触、抽出、负重返回和携箱升回的碰撞检查，不给地板或仓库增加碰撞豁免。<code>check_environment:=true</code>默认开启。</p>
+<pre><code># 停止旧demo，重新source当前install后运行
+ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
+  x:=0.90 box_id:=5 arm:=auto</code></pre>
+<div class="note warn"><strong>旧距离不能照搬：</strong>0.30m时home伸入箱墙；0.75m时携箱home碰剩余箱体。0.90m/5号左臂、9号右臂已有完整成功样例，不是最优距离或实测推荐。底排0～4需要下降约1.2946m，超过1m行程而拒绝，不会偷偷抬箱或关碰撞。</div>
+<p>本轮固定0.90m全墙扫描成功17/25：5、6、8、9、10、11、13、14、15、16、18、19、20、21、22、23、24。0～4超行程，7/12/17接触路径未找到解；不是所有距离/策略的可达性证明。</p>
+<h3>自定义环境</h3>
+<p>默认文件 <code>config/v3_box_wall_environment.json</code>，通过 <code>environment_file:=/绝对路径/scene.json</code> 加载。每个盒体为唯一id、center和size（米，完整边长，world轴对齐）；必须有ground。默认 <code>anchor:box_wall_back</code> 相对箱墙背面中心XY，每个新距离请求同步移动仓库；绝对world坐标请去掉anchor或设为world。修改文件需重启。</p>
+<p>非法尺寸/坐标/anchor/旋转/重复ID拒绝启动；失败请看 <code>failure_stage/failure_reason</code> 的具体碰撞对。仅做静态场景离散几何验证，未接实机。</p>
+</section>
 <section id="height">
-<h2>新增：先降到箱体上方，再抓取</h2>
-<div class="note"><strong>当前为高度开发版</strong> <code>feature/wall-box-height-alignment</code>；冻结版分支和原PR保持不变。</div>
-<pre><code>高度差 = 初始肩部中心Z −（目标箱体中心Z + 0.25m）
-下降量 = max(0, 高度差)
-updown目标 = −下降量</code></pre>
-<p>肩部中心取左右肩部前三轴公共交点的中点，初始Z约1.34243m。底排下降约89.24cm，第二排约48.24cm；高箱不下降、不抬升。底盘和头部不动，两臂随共享升降架一起下降，只有选中臂随后抓取。</p>
-<p><code>shoulder_box_offset:=0.25</code> 可修改偏置（米）；<code>align_height:=false</code> 恢复冻结版固定高度。升降范围为[-1,0]m；越界拒绝，不偷偷截断。下降每至多5mm检查整机碰撞；回放不是实机执行。</p>
-<div class="note warn"><strong>实测：下面两排并非全部可抓。</strong> x=.30m、偏置=.25m时，0、4、5、9成功；1、2、3、6、7、8的左右臂均没有找到预接触IK。旧版可抓的6号在新高度下也会失败；可用 <code>align_height:=false</code> 回归旧动作，不将有限搜索失败称为绝对不可达。</div>
-<p>结果JSON的 <code>height_alignment</code> 显示基准、高度差、计划下降量和目标updown。返回阶段保持下降后的高度。下一次请求会重置整个仿真场景、升降和双臂，不是连续升回或连续拆墙。</p>
+<h2>先按箱高下降，携箱返回后升回默认高度</h2>
+<pre><code>下降量 = max(0, 初始肩部中心Z − 箱中心Z − 0.25m)
+落地后初始肩部中心Z ≈ 1.744634m
+updown限位 = [-1, 0]m</code></pre>
+<p>下降按最多5mm采样检查整机碰撞；下降后升降固定，执行抓取和携箱RRT返回home臂角，最后 <code>restore_default_height</code> 携箱升回0m（同样逐步碰撞检查）。上升碰撞返回 <code>return_lift_collision</code>，不会跳过这一段冒充成功。</p>
+<p>每个新请求重置完整箱墙和初态，是独立仿真，不是连续拆墙。成功后箱体仍附着，不放置释放。</p>
 </section>
 <section id="quickstart">
 <h2><span class="num">01 / QUICK START</span>启动一次，用服务重复发请求</h2>
@@ -58,7 +71,7 @@ export ROS_LOCALHOST_ONLY=1
 export ROS_DOMAIN_ID=188  # 先确保这个 domain 空闲，与实机隔离
 
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=0 arm:=auto shoulder_box_offset:=0.25</code></pre>
+  x:=0.90 box_id:=5 arm:=auto shoulder_box_offset:=0.25</code></pre>
 <p>默认打开 RViz、Rerun，并自动计算和回放一次0号箱先下降再抓取。只想先看场景，可在启动参数中加 <code>auto_run_once:=false</code>。</p>
 <h3>终端 B：加载同一环境，再发请求</h3>
 <pre><code>cd ~/Sevenova/alfa_robot
@@ -69,7 +82,7 @@ export ROS_DOMAIN_ID=188  # 必须与终端 A 一致
 
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 0, arm: auto}'</code></pre>
+  '{x: 0.90, box_id: 5, arm: auto}'</code></pre>
 <div class="note warn"><strong>每个新终端都要单独 source。</strong>进入仓库目录不等于加载接口。这里的0.30m是仿真成功样例，不是同事测量的结果或推荐最优距离。</div>
 </section>
 
@@ -81,11 +94,11 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 <tbody>
 <tr><td>选择目标</td><td>目标箱绿色，其余24箱橙色。RViz白色数字是固定墙格编号。</td></tr>
 <tr><td>规划</td><td>先计算完整路径；画面可能暂时不动，不代表卡死。</td></tr>
-<tr><td><code>lower_to_box_height</code></td><td>双臂零角随共享升降架下降；到目标高度后才开始抓取阶段。</td></tr>
+<tr><td><code>lower_to_box_height</code></td><td>双臂默认home角随共享升降架下降；到目标高度后才开始抓取阶段。</td></tr>
 <tr><td>到预接触点</td><td>一只手臂避障移动到箱体正面前约5cm。</td></tr>
 <tr><td>接触与吸附</td><td>末端直线前进到箱体正面中心；目标箱随后成为末端附着物。</td></tr>
 <tr><td>抽出</td><td>手臂携箱沿远离箱墙的方向直线退回35cm，原墙格留下空位。</td></tr>
-<tr><td>携箱返回</td><td>手臂带箱避障返回零臂角，升降保持下降后的高度，停在最后一帧。</td></tr>
+<tr><td>携箱返回</td><td>手臂带箱避障返回home臂角，再携箱升回updown=0，停在默认姿态。</td></tr>
 </tbody></table></div>
 <div class="note good"><strong>历史冻结版（align_height=false）：6号箱 / x=0.30m 已验证成功，用户也已确认动作正常。</strong>本机双视图验收录制包含87帧、完整接近—吸附—抽出—返回过程；后续规划路径及帧数可能变化。</div>
 <p><strong>底盘和转头轴不移动；另一只手臂的七个关节角保持不变，但会随共享升降架下降。</strong>最终箱体仍吸在手上，不会自动放下。RViz与Rerun播放相同结果，但播放速度不完全一致。</p>
@@ -120,7 +133,7 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 <h3>现在可以这样重新演示5号箱</h3>
 <pre><code>ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 5, arm: auto}'</code></pre>
+  '{x: 0.90, box_id: 5, arm: auto}'</code></pre>
 <h3>真正连续搬运还需要什么？</h3>
 <p>抓取0号 → 放到指定位置并释放 → 保留墙上的空位 → 从机器人当前姿态出发 → 抓取5号。</p>
 <div class="note warn"><strong>必要的待确认项：第一个箱体放在哪里？</strong>例如底盘上的指定位置，或外部固定放置点。需要明确放置位姿及过程，再补放置、释放和连续场景状态；不能把重置试验当成连续搬运。</div>
@@ -154,7 +167,7 @@ source ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 0, arm: auto}'</code></pre>
+  '{x: 0.90, box_id: 5, arm: auto}'</code></pre>
 <p>停止时建议在终端A按 <code>Ctrl+C</code> 并等待退出，再关闭窗口。突然关闭后，服务发现可能短暂缓存旧记录；不要把“窗口还在 / service list 有名字”当成真实请求已成功。</p>
 <h3>三处反馈入口</h3>
 <ul>
@@ -179,7 +192,7 @@ failure_reason: '...collision:neighbor_box_3&lt;-&gt;right_joint7'</code></pre>
 <div class="note good"><strong>当前 x=0.30m 实测：</strong>10号 <code>auto → left → success</code>；14号 <code>auto → left失败 → right成功</code>，显式 <code>arm: right</code> 也成功。终端A现在逐臂打印 <code>arm=... SUCCESS/FAILED</code>。</div>
 <pre><code>ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 14, arm: auto}'</code></pre>
+  '{x: 0.90, box_id: 14, arm: auto}'</code></pre>
 <div class="table-wrap"><table>
 <thead><tr><th scope="col">failure_stage</th><th scope="col">含义</th></tr></thead>
 <tbody>
@@ -226,9 +239,9 @@ failure_reason：____
 <section id="limits">
 <h2><span class="num">08 / SCOPE &amp; REFERENCES</span>当前版本的边界</h2>
 <ul>
-<li><strong>场景：</strong>5×5固定墙，默认箱体0.30×0.40×0.40m，横竖间隙1cm。默认墙居中、底面Z=0，额外地面碰撞障碍并未加入。</li>
+<li><strong>场景：</strong>5×5固定墙，默认箱体0.30×0.40×0.40m，横竖间隙1cm。默认墙居中靠正墙、底面Z=0；地面/底盘同为落地零基准，仓库内尺寸4×2.38×2.35m，−X端开口。</li>
 <li><strong>车头基准：</strong>默认是model_base碰撞网格的world最大X，本模型约0.310m；可通过启动参数 <code>chassis_front_x</code> 显式标定覆盖。实测基准仍需对齐。</li>
-<li><strong>状态：</strong>沿用旧demo零臂角初态，升降先按公式下降，抓取期间固定；头部固定，不搜索底盘/共享轴；不是正式SRDF home。</li>
+<li><strong>状态：</strong>正式SRDF home起终姿态，升降先按公式下降，抓取期间固定，携箱返回后升回0；头部固定，不搜索底盘/共享轴。</li>
 <li><strong>任务：</strong>单次独立抽箱并携箱返回；没有放置释放、连续拆墙、取消或实机执行。</li>
 <li><strong>安全边界：</strong>成功仅表示模型内找到几何路径，不是连续碰撞、吸附可靠性、载荷/动力学或实机安全证明。</li>
 </ul>

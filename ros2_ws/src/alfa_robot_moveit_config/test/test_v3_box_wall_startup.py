@@ -71,12 +71,12 @@ def main():
         for cycle in range(3):
             path = root / f'restart_{cycle + 1}.log'
             with path.open('w') as log:
-                process = subprocess.Popen(command + ['x:=0.30', 'arm:=auto'],
+                process = subprocess.Popen(command + ['x:=0.90', 'arm:=auto'],
                                            stdout=log, stderr=subprocess.STDOUT,
                                            start_new_session=True)
                 try:
                     assert client.wait_for_service(timeout_sec=40), path.read_text()
-                    request = PlanWallBoxDemo.Request(x=.30, box_id=6, arm='auto')
+                    request = PlanWallBoxDemo.Request(x=.90, box_id=20, arm='auto')
                     future = client.call_async(request)
                     rclpy.spin_until_future_complete(node, future, timeout_sec=120)
                     assert future.done(), 'Service response timeout'

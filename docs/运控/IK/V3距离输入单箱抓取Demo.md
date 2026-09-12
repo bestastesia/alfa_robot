@@ -8,14 +8,15 @@
 
 输入车头到箱墙近面的距离 `x`（米），指定 5×5 箱墙中任一 `box_id`，选择 `left/right/auto`。成功条件是找到完整的：
 
-0. 从零关节初态按目标高度下降共享升降轴（需要下降时）；
+0. 从文档/SRDF `whole_body/home` 初态按目标高度下降共享升降轴（需要下降时）；
 1. 保持调整后的升降高度 → RRT → 预接触；
 2. 解析笛卡尔直线接触；
 3. 吸附目标箱；
 4. 直线抽出 0.35m；
-5. 携箱 RRT 返回该臂原始零关节姿态，升降保持调整后的值。
+5. 携箱 RRT 返回该臂默认姿态；
+6. 携箱升回 `updown=0`，全程按5mm间隔检查整机/负载碰撞，成功终点16轴与初态一致。
 
-**不是双臂抓取、放置/释放、连续拆墙、共享轴搜索或实机轨迹。** 每次请求独立恢复完整箱墙和旧初态，不累计上次抽出的洞。
+**不是双臂抓取、放置/释放、连续拆墙、共享轴搜索或实机轨迹。** 每次请求独立恢复完整箱墙和默认初态，不累计上次抽出的洞。
 
 ## 2. 启动
 
@@ -29,10 +30,10 @@ export ROS_LOCALHOST_ONLY=1
 export ROS_DOMAIN_ID=188  # 新高度版示例；先确保该 domain 空闲
 
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=0 arm:=auto
+  x:=0.90 box_id:=5 arm:=auto
 ```
 
-默认同时打开 RViz、Rerun，并执行一次启动请求。`0.30m` 是已验证的**仿真样例**，不是同事的测量结果或推荐最优距离。`x` 必填，不能使用缺省距离冒充实测。
+默认同时打开 RViz、Rerun，并执行一次启动请求。`0.90m / 5号箱` 是已验证的**仿真样例**，不是同事的测量结果或推荐最优距离。`x` 必填，不能使用缺省距离冒充实测。
 
 只看场景、暂不规划：`auto_run_once:=false`。
 
@@ -40,7 +41,7 @@ ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
 
 ```bash
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=0 start_rviz:=false spawn_viewer:=false \
+  x:=0.90 box_id:=5 start_rviz:=false spawn_viewer:=false \
   rerun_recording_path:=/tmp/wall_grasp.rrd
 ```
 
@@ -71,7 +72,7 @@ source ros2_ws/install/setup.bash
 export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 0, arm: auto}'
+  '{x: 0.90, box_id: 5, arm: auto}'
 ```
 
 启动生命周期回归（安装环境已 source，188 须空闲）：
@@ -81,7 +82,7 @@ ROS_DOMAIN_ID=188 python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_
   --artifacts /tmp/wall_grasp_startup
 ```
 
-覆盖非法 arm 启动前拦截、非法 x 初始化失败联动退出、三次启动并真实请求六号箱、Ctrl+C / 规划进程退出 / 终端关闭信号以及服务下线。不会调用实机执行接口。
+覆盖非法 arm 启动前拦截、非法 x 初始化失败联动退出、三次启动并真实请求20号箱、Ctrl+C / 规划进程退出 / 终端关闭信号以及服务下线。不会调用实机执行接口。
 
 ## 2.1 新增：按箱体高度先下降（2026-09-11）
 
@@ -95,27 +96,15 @@ descent = max(0, height_difference)      # align_height=true 时
 updown_target = 0 - descent
 ```
 
-- `align_height:=true`：默认开启；`false` 完整恢复冻结版固定高度规划。
+- `align_height:=true`：默认开启；`false` 关闭升降；若要精确回归不含环境的冻结场景，还需显式 `check_environment:=false`（仅历史回归）。
 - `shoulder_box_offset:=0.25`：默认25cm，可在启动时修改，单位米，必须有限且非负；本轮不扩大服务请求类型。
-- 当前初始肩部中心 Z≈1.342432773m。底排0～4箱中心Z=.20m，下降≈.892432773m；第二排5～9中心Z=.61m，下降≈.482432773m；第三排10～14下降≈.072432773m。更高两排不下降，**也不向上升**。
+- 落地后的初始肩部中心 Z≈1.744633773m。底排0～4箱中心Z=.20m，需要下降≈1.294633773m，超过1m行程而拒绝；5～9下降≈.884633773m，10～14下降≈.474633773m，15～19下降≈.064633773m；最高排不下降。
 - `updown` 读取模型限位 `[-1, 0]m`；越界返回 `height_alignment_limits`，绝不静默截断。下降按至多5mm间隔检查全机器人关节边界/碰撞；失败返回 `height_alignment_collision` 和失败位置/碰撞对，不回放被拒绝的下降。
-- 合法下降前缀使用 `lower_to_box_height` 阶段和完整16轴帧；后续 IK 的基坐标变换、RRT 起态和负重返回目标均用下降后的状态。结束时不自动升回顶端。
+- 合法下降前缀使用 `lower_to_box_height` 阶段和完整16轴帧；后续 IK 的基坐标变换、RRT 起态和负重返回目标均用下降后的状态。携箱返回默认臂角后，以 `restore_default_height` 阶段升回初始0m；这段负重上升也做整机碰撞检查，碰撞时返回 `return_lift_collision`。
 - 仍然**先算几何路径，再可视化回放**；没有向实机下发升降或机械臂动作。抓取失败时可能只回放通过检查的下降用于诊断，不代表完成搬运。
 - `result_json.height_alignment` 给出基准、原始高度差、计划下降量、目标关节值、限位和采样步长。Rerun摘要及RViz成功提示显示升降信息；不是实际编码器反馈。
 
-**实测不是整两排全覆盖：**在 `x=.30m / offset=.25m / auto` 下逐箱检查0～9，成功为 **0、4、5、9**；1、2、3、6、7、8的左右臂均在 `precontact_ik` 无候选。特别是6号在冻结版可成功，新高度下没有找到解；升降通过不保证当前固定吸附姿态存在关节限位内的逆解，也不能据此断言物理上不可抓。
-
-```bash
-# 推荐先演示底排0号；启动后同一个服务可继续指定4、5、9等箱号
-ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=0 arm:=auto shoulder_box_offset:=0.25
-
-# 回归用户已确认的固定高度6号动作（需先停止同domain的已有服务）
-ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=6 arm:=auto align_height:=false
-```
-
-**状态重置边界：**每次新请求恢复 `updown=0`、双臂零角和完整箱墙，再按该箱重新下降。跨请求重置只是独立仿真场景复位，**不是规划过的连续升回运动**。若要真正连续搬多个箱，还缺释放/安放、从实际当前状态接续和升回避障策略。
+**姿态合同（2026-09-12更新）：**左右 `J1～J7=[-90,-90,0,-90,0,0,0]°`，`updown=0m`、`head_joint=0°`。直接读取 SRDF `whole_body/home`，不复制一套角度到规划器。每次请求都重置完整箱墙和默认姿态；成功路径返回该姿态且仍携箱，不实现放置/释放或连续拆墙。旧零姿态的距离/成功箱号不可照搬。
 
 ## 3. 选择接口
 
@@ -128,7 +117,7 @@ Demo-local ROS service：
 # 在另一个 source 了同一环境且 ROS_DOMAIN_ID 相同的终端
 ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
   alfa_robot_moveit_config/srv/PlanWallBoxDemo \
-  '{x: 0.30, box_id: 0, arm: auto}'
+  '{x: 0.90, box_id: 5, arm: auto}'
 ```
 
 请求字段：
@@ -172,7 +161,7 @@ row 0 (底层)    0  1  2  3  4
 
 ```bash
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
-  x:=0.30 box_id:=0 chassis_front_x:=0.42 \
+  x:=0.90 box_id:=5 chassis_front_x:=0.42 \
   wall_center_y:=0.0 wall_bottom_z:=0.0
 ```
 
@@ -199,12 +188,32 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 
 明确限制：
 
-- 初态沿用旧 demo **14个臂关节全0**，`updown=0、head_joint=0`；不是 NOW/SRDF 的 `home=[-90,-90,0,-90,0,0,0]°`。非选中臂及头部固定；仅在抓取前按公式下降 `updown`，抓取和返回期间升降固定，不进行共享轴联合搜索或底盘搜索。
+- 初态和成功终态均为文档/SRDF home；非选中臂关节及头部固定，双臂随共享升降架先下降、成功后携箱升回0。不搜索底盘或共享轴联合路径。
 - 固定姿态正面中心吸附、5°冗余角采样、最多8个预接触候选、单次RRT默认1秒。`auto` 最多两臂；失败可能由策略、初态或搜索预算造成。
 - 碰撞检测为离散采样（默认最大关节插值步长2.5°），不是连续扫掠体证明；真实末端接触容差、吸盘压缩、负载/扭矩/稳定性与真实动力学未建模（下述微米间隙仅用于数值处理）。
-- world 障碍仅包含箱墙；地板、顶棚、其他货架等额外环境障碍未建模。box底面为Z=0只是放置参数，不意味着已加入地面碰撞平面。
+- 默认 world 场景包含箱墙及五个仓库环境碰撞体；环境来自启动配置，不来自感知。地面、箱墙底面和底盘落地基准均为Z=0，见下节。只检查录入的有限尺寸障碍，不证明配置外区域安全；小于离散采样步长的障碍存在漏检风险。
 - `total_ms` 是两臂尝试的总计算时间；`metrics` 是最终/成功臂的原有统计，不含全部后验边检查，不作为精确性能计费。
 - 所有结果仅在上述模型和假设内成立，不用于承诺实机安全。
+
+### 落地单侧开口仓库（2026-09-12）
+
+默认**内尺寸：高2.35m、宽2.38m、长4m**。正墙在+X，−X端开口；两侧墙、正墙、地板、顶棚共五个碰撞体，墙厚10cm向外增加，不侵占内尺寸。箱墙沿Y居中（宽2.04m，两侧各17cm），背面靠正墙，底面Z=0，顶面Z=2.04m。
+
+- 导入CAD底面原本约Z=−0.4022m。仅该launch通过 `model_ground_offset:=0.402201` 调整 `base_to_model` 的固定安装高度，`world/base_link` 仍Z=0，机械臂相对几何/升降限位不变；其余demo默认偏移0。底盘网格离地约1µm，为浮点接触容差，非悬空40cm、非实机安全裕度。保留该标定参数。
+- `contact_numerical_gap:=0.000001` 同时用于正墙贴靠的1µm数值间隔，避免吸附FK微小误差将右臂携箱误判为穿正墙；未缩碰撞体、未添加地面/仓库碰撞豁免。
+- 环境进入共享 `makeScene()`，覆盖初态、下降、IK、RRT接近、附着、抽出、负重返回及恢复默认升降高度。RViz、Rerun和 `result_json.environment.boxes` 使用同一组world中心/尺寸。Rerun接收与规划器/RViz相同的完整URDF，预览也读取JSON的 `initial_joints`。
+- 环境文件默认 `config/v3_box_wall_environment.json`；`environment_file:=/绝对路径/scene.json` 启动时读取，修改后需重启。根字段 `frame_id:"world"`、`description`、`boxes`；可选 `anchor:"box_wall_back"` 表示盒体中心相对箱墙背面中心XY（Z仍world），每个新距离请求同步平移整个仓库，保持箱墙居中贴正墙。自定义绝对world坐标请删除anchor或设为 `world`。这是独立场景重置，不是底盘行走。
+- 每个盒体仅支持唯一 `id`、三维 `center`、正值完整边长 `size`，米、world轴对齐；必须包含 `ground`，最多128个，数值有限且绝对值≤10000。错误坐标系/anchor/旋转/重复ID等拒绝启动。`check_environment:=false` 仅作算法诊断，不代表仓库验收。
+
+**新姿态改变了可用距离：**x=.30m初态伸入箱墙；x=.75m携箱home与剩余箱体相交；x=.90m可演示5号左臂、9号右臂等完整抓取及默认姿态返回。底排0～4落地后按25cm肩部偏置需要下降约1.2946m，诚实返回 `height_alignment_limits`，不截断、不抬高箱墙。
+
+```bash
+ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=195 /usr/bin/python3 \
+  ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_environment.py \
+  --scan-wall --artifacts /tmp/warehouse_check
+```
+
+此回归检查尺寸/开口/贴墙、默认起终16轴、双臂完整流程、距离切换重建场景、五个仓库实体分别侵入整机、空闲臂/下降/携箱返回/上升/抽出障碍、非法配置、RViz同源几何、携箱FK地面净空。历史零姿态全墙扫描不再代表当前版本；旧结果保留在协作LOG及原验收目录。
 
 ### 10号能抓、14号失败：已定位的贴面数值问题
 
@@ -228,11 +237,11 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 
 ## 6. 仍缺的规范/接口（不阻塞独立 demo）
 
-新增升降仍缺：实机肩部中心基准与零位/行程标定、25cm偏置验收值、升降速度/加速度/负载稳定性合同、跨箱接续/回升策略。当前场景没有地板碰撞体，底排成功不构成带地板或实机安全验收。
+新增升降仍缺：实机肩部中心基准与零位/行程标定、25cm偏置验收值、升降速度/加速度/负载稳定性合同、跨箱接续策略。已加入地板与环境碰撞，但默认尺寸未经现场标定；底排超行程不能通过关闭碰撞掩盖；仿真不构成实机安全验收。
 
 1. **车头参考面合同**：同事测量采用外壳、保险杠、碰撞网格前沿还是另一标记？需交付 world/base 的标定关系与测量不确定度；当前可通过 `chassis_front_x` 覆盖。
 2. **墙摆放合同**：横向偏移、底面高度、箱体实际尺寸/间隙、正对关系是否符合默认值？x单独不能描述任意偏置/偏航墙。
-3. **初态/终态合同**：继续用旧demo零关节姿态，还是转为正式home？本次没有擅自改公共初态。
+3. **初态/终态合同**：本demo已按本轮要求切换到正式home，包含成功时升回0；其他旧demo的行为不变。
 4. **实机与生产合同**：尤其缺少真实吸盘接触面/TCP、压缩量及允许误差标定；1µm数值处理不能替代。吸附反馈、负载、环境障碍、状态/场景版本、执行/取消、验收人等仍需在正式runtime任务中确认；本服务不替代它们。
 5. 仓库 `AGENTS.md` 引用的 `/home/li/.codex/RTK.md` 本机不存在；本次遵循可读的 `.ai_teamwork` 和包职责边界，不声称遵循了缺失文件。
 
@@ -242,39 +251,30 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 cd /home/astesia/Sevenova/alfa_robot
 source tools/ros_humble_env.sh
 cd ros2_ws
-colcon build --packages-select alfa_robot_moveit_config alfa_robot_rerun \
+colcon build --packages-select alfa_robot_description alfa_robot_moveit_config alfa_robot_rerun \
   --cmake-args -DCMAKE_BUILD_TYPE=Release --parallel-workers 2
 source install/setup.bash
 cd ..
-/usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_grasp_demo.py \
-  --artifacts /tmp/wall_grasp_check
-/usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_preparation.py \
-  --artifacts /tmp/wall_legacy_check
+# 每条命令均选空闲domain；脚本只清理自己启动的进程
+ROS_DOMAIN_ID=195 /usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_environment.py \
+  --scan-wall --artifacts /tmp/warehouse_check
+ROS_DOMAIN_ID=196 /usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_grasp_demo.py \
+  --artifacts /tmp/warehouse_grasp
+ROS_DOMAIN_ID=197 /usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_height_alignment.py \
+  --artifacts /tmp/warehouse_height
+ROS_DOMAIN_ID=198 /usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_startup.py \
+  --artifacts /tmp/warehouse_startup
+ROS_DOMAIN_ID=198 /usr/bin/python3 ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_preparation.py \
+  --artifacts /tmp/warehouse_legacy
 ```
 
-新检查：25个箱号固定墙几何/远距离失败，7类非法请求不变更状态，成功完整路径/16轴固定约束，RViz携箱最终位置与Rerun FK对齐，0.30m全墙有限搜索，显式车头标定覆盖。测试自行启动并清理自己创建的进程组，不接管其他ROS进程。
+2026-09-12仓库/home版证据：`/home/astesia/Sevenova/日志/验收_2026-09-12/warehouse_home/`。
 
-2026-09-11 本机证据目录：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_demo/`。
+- 仓库回归：42真实请求 + 7类非法配置通过；独立STL测量所有初态机器人碰撞网格位于仓内，底盘最低Z≈0.947µm，`base_link`为Z=0；RViz/JSON几何相同。
+- 固定x=.90m、25cm肩部偏置、auto的25箱扫描：**成功17/25**，箱号5、6、8、9、10、11、13、14、15、16、18、19、20、21、22、23、24；0～4升降超限，7/12/17在接触路径未找到解。每箱独立重置，不是连续拆墙、最优距离或所有姿态的可达性证明。
+- 高度回归：21请求 + 3非法偏置通过，包含默认home起终、恢复升降、负高度差、限位边界、失败前缀、双臂及FK/marker。
+- 固定升降服务回归已迁移到新home/落地坐标，覆盖25墙格、7非法输入、20左/24右显式与auto、完整路径、零gap反例及车头标定覆盖；它关闭环境只验证算法接口，不冒充仓库验收。
+- 启动重启/退出检查通过；旧交互demo10项回归通过，旧launch仍保持原始行为。
+- 右臂9号录制 `visual/warehouse.rrd` 通过 `rerun rrd verify`，418帧完整回放到 `restore_default_height`，最后joint_states/携箱marker与同一落地URDF独立FK一致，录制进程干净退出。
 
-- `build.log`、`summary.json`、`successful_task.json`、`marker_check.json`：构建及接口/路径验证。
-- `legacy_regression/`：原10项检查。
-- `visual_launch.log`、`visual_task.json`、`grasp_trajectory.rrd`：实际RViz与Rerun启动，0.30m/6号左臂成功样例。
-- `rrd_verify.log`、`rrd_stages.txt`：录制校验与逐阶段日志，已记录到最后携箱返回帧。
-
-GUI启动和消息/FK验收不等同于用户确认画面交互效果，也不是全墙都能抓取的证明。
-
-本次左右臂/接触修复证据：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_grasp_arm_symmetry/`；包含修复前逐臂结果、网格测量、修复后全流程与零间隙对照。`test_v3_box_wall_grasp_demo.py` 已新增10/14号显式/auto选臂、非活动臂固定、吸附无跳变和右臂RViz FK检查。
-
-
-### 新高度版验收（2026-09-11）
-
-```bash
-# 已 source tools/ros_humble_env.sh 和 ros2_ws/install/setup.bash；188 须空闲
-ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=188 python3 \
-  ros2_ws/src/alfa_robot_moveit_config/test/test_v3_box_wall_height_alignment.py \
-  --artifacts /tmp/wall_height_alignment
-```
-
-新增检查实际完成23次请求、3类非法偏置拒绝，覆盖0～9扫描、0/4/5/9显式左右臂、10/14回归、高低切换重置、负高度差不抬升、超限拒绝和接近-1m边界。独立URDF FK核对肩中心/升降量、16轴保持、5mm插值、附着无跳变和RViz最终箱位。下降碰撞检查为离散采样，未声称连续碰撞证明；当前未构造自然的下降中间碰撞反例。
-
-证据：`/home/astesia/Sevenova/日志/验收_2026-09-11/wall_height_alignment/`。原 `test_v3_box_wall_grasp_demo.py` 和 startup 回归显式传 `align_height:=false`，其历史成功箱集合仅适用于冻结版，不适用于新高度版。
+仿真与GUI启动证据不等同于用户交互认可或实机安全验收。历史零姿态数据在2026-09-11/12原目录及协作LOG中保留，不作为当前版成功清单。

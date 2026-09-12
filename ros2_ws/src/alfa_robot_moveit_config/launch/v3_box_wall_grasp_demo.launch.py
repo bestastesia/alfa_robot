@@ -1,4 +1,8 @@
 """Simulation-only fixed-wall service demo; reuses the legacy single-arm planner."""
+import json
+import math
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction, Shutdown
 from launch.conditions import IfCondition
@@ -9,15 +13,24 @@ from moveit_configs_utils import MoveItConfigsBuilder
 
 
 def launch_nodes(context):
+    if not math.isfinite(float(LaunchConfiguration("model_ground_offset").perform(context))):
+        raise ValueError("model_ground_offset must be finite metres")
     config = (MoveItConfigsBuilder("alfa_robot", package_name="alfa_robot_moveit_config")
+              .robot_description(mappings={"model_ground_offset": LaunchConfiguration("model_ground_offset").perform(context)})
               .planning_pipelines(pipelines=["ompl"]).to_moveit_configs())
     name = "v3_box_wall_grasp_demo"
     params = {"distance_demo": True, "collision_inset": 0.0}
     for key, kind in (("x", float), ("box_id", int), ("arm", str),
                       ("auto_run_once", bool), ("wall_center_y", float),
                       ("wall_bottom_z", float), ("contact_numerical_gap", float),
-                      ("align_height", bool), ("shoulder_box_offset", float)):
+                      ("align_height", bool), ("shoulder_box_offset", float),
+                      ("check_environment", bool)):
         params[key] = ParameterValue(LaunchConfiguration(key), value_type=kind)
+    # Read once at startup; the C++ boundary validates exact geometry for every consumer.
+    if LaunchConfiguration("check_environment").perform(context).lower() == "true":
+        path = LaunchConfiguration("environment_file").perform(context)
+        path = Path(path).expanduser() if path else config.package_path / "config" / "v3_box_wall_environment.json"
+        params["environment_json"] = ParameterValue(json.dumps(json.loads(path.read_text())), value_type=str)
     front = LaunchConfiguration("chassis_front_x").perform(context)
     if front:
         params["chassis_front_x"] = float(front)
@@ -29,7 +42,7 @@ def launch_nodes(context):
              name=name, parameters=[config.to_dict(), params], output="screen",
              on_exit=[Shutdown(reason="Grasp service node exited; see its preceding error log")]),
         Node(package="alfa_robot_rerun", executable="v3_single_arm_box_extract_viewer",
-             parameters=[{"task_topic": f"/{name}/task_json",
+             parameters=[config.robot_description, {"task_topic": f"/{name}/task_json",
                           "spawn_viewer": ParameterValue(LaunchConfiguration("spawn_viewer"), value_type=bool),
                           "recording_path": LaunchConfiguration("rerun_recording_path")}],
              condition=IfCondition(LaunchConfiguration("start_rerun")), output="screen"),
@@ -49,7 +62,10 @@ def generate_launch_description():
                               description="auto stops at first successful arm"),
     ]
     for name, default, description in (
-        ("align_height", "true", "Lower shared lift before grasp; false restores frozen fixed-height mode"),
+        ("model_ground_offset", "0.402201", "Model Z grounding calibration (m); includes 1um contact tolerance"),
+        ("check_environment", "true", "Ground/surroundings collision checks; false ONLY for historical regression"),
+        ("environment_file", "", "World-axis aligned boxes JSON; empty uses 4 x 2.38 x 2.35m single-opening warehouse"),
+        ("align_height", "true", "Lower shared lift before grasp; false keeps fixed height without disabling environment checks"),
         ("shoulder_box_offset", "0.25", "Shoulder midpoint above target box center, finite nonnegative metres"),
         ("box_id", "0", "0..24; row=id/5 bottom-up, column=id%5 along +Y"),
         ("contact_numerical_gap", "0.000001", "Simulation-only contact gap in metres (0..0.0001), not suction calibration"),
