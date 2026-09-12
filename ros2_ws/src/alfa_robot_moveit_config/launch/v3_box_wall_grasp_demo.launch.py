@@ -24,7 +24,9 @@ def launch_nodes(context):
                       ("auto_run_once", bool), ("wall_center_y", float),
                       ("wall_bottom_z", float), ("contact_numerical_gap", float),
                       ("align_height", bool), ("shoulder_box_offset", float),
-                      ("check_environment", bool)):
+                      ("check_environment", bool), ("height_strategy", str), ("comfort_branch", str),
+                      ("comfort_ratio_min", float), ("comfort_ratio_preferred", float),
+                      ("comfort_ratio_max", float), ("planning_seed", int)):
         params[key] = ParameterValue(LaunchConfiguration(key), value_type=kind)
     # Read once at startup; the C++ boundary validates exact geometry for every consumer.
     if LaunchConfiguration("check_environment").perform(context).lower() == "true":
@@ -62,6 +64,12 @@ def generate_launch_description():
                               description="auto stops at first successful arm"),
     ]
     for name, default, description in (
+        ("height_strategy", "fixed_offset", "fixed_offset or comfort_radius; one height per arm"),
+        ("comfort_ratio_min", "0.8", "Minimum normalized shoulder-to-TCP comfort distance"),
+        ("comfort_ratio_preferred", "0.8", "Preferred normalized distance; experiment hypothesis"),
+        ("comfort_ratio_max", "0.8", "Maximum normalized comfort distance"),
+        ("comfort_branch", "auto", "auto in normal use; above/below for offline branch diagnostics only"),
+        ("planning_seed", "0", "0 keeps normal RNG; positive seed set before OMPL initialization"),
         ("model_ground_offset", "0.402201", "Model Z grounding calibration (m); includes 1um contact tolerance"),
         ("check_environment", "true", "Ground/surroundings collision checks; false ONLY for historical regression"),
         ("environment_file", "", "World-axis aligned boxes JSON; empty uses 4 x 2.38 x 2.35m single-opening warehouse"),

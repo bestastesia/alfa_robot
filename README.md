@@ -2,6 +2,10 @@
 
 基于 ROS2 的双臂工业机器人运控、电控与模型仓库。
 
+## Demo 操作
+
+启动、二次调用和用途统一看：[V3 Demo 启动速查](docs/运控/IK/V3Demo启动速查.md)。
+
 ## Repository Structure
 
 ```

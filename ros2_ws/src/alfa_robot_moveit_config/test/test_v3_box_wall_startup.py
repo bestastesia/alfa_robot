@@ -20,6 +20,8 @@ from test_v3_box_wall_grasp_demo import stop
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifacts', type=Path, required=True)
+    parser.add_argument('--launch', default='v3_box_wall_grasp_demo.launch.py',
+                        choices=['v3_box_wall_grasp_demo.launch.py', 'v3_box_wall_comfort_grasp_demo.launch.py'])
     args = parser.parse_args()
     root = args.artifacts.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -27,7 +29,7 @@ def main():
     os.environ.setdefault('ROS_DOMAIN_ID', '188')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
     command = ['ros2', 'launch', 'alfa_robot_moveit_config',
-               'v3_box_wall_grasp_demo.launch.py', 'align_height:=false', 'start_rviz:=false',
+               args.launch, 'align_height:=false', 'start_rviz:=false',
                'start_rerun:=false', 'auto_run_once:=false']
     checks = []
 
@@ -44,7 +46,12 @@ def main():
          'contact_numerical_gap must be finite'),
         ('oversized_gap', ['x:=0.30', 'contact_numerical_gap:=0.01'],
          'contact_numerical_gap must be finite'),
-    ]:
+    ] + ([
+        ('invalid_band', ['x:=0.90', 'comfort_ratio_min:=2.0'], 'invalid comfort interval'),
+        ('nan_ratio', ['x:=0.90', 'comfort_ratio_preferred:=nan'], 'comfort geometry must be finite'),
+        ('invalid_branch', ['x:=0.90', 'comfort_branch:=other'], 'invalid comfort interval'),
+        ('invalid_seed', ['x:=0.90', 'planning_seed:=-1'], 'planning_seed must be nonnegative'),
+    ] if 'comfort' in args.launch else []):
         path = root / f'{label}.log'
         with path.open('w') as log:
             process = subprocess.Popen(command + parameters, stdout=log,

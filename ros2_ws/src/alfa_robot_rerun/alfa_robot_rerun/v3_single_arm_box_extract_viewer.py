@@ -377,7 +377,15 @@ class V3SingleArmBoxExtractViewer(Node):
             body += (f"\n- 环境碰撞：{'开启' if environment['enabled'] else '关闭（仅回归）'}；"
                      f"{len(environment['boxes'])}个障碍；{environment.get('description', '')}")
         alignment = self.wall_request.get("height_alignment", {})
-        if alignment:
+        if alignment.get("strategy") == "comfort_radius":
+            body += (f"\n- 单高度距离策略：{alignment['arm']}臂，xy={alignment['xy']:.3f} m，"
+                     f"臂长={alignment['arm_length']:.3f} m"
+                     f"\n- 比例 {alignment['actual_ratio']:.3f}；区间 "
+                     f"[{alignment['ratio_min']:.3f}, {alignment['ratio_max']:.3f}]；"
+                     f"分支 {alignment['branch']}；目标updown={alignment['target_updown']:.3f} m"
+                     f"\n- 区间外原因：{alignment['outside_reason'] or '无'}；不换高重试"
+                     "\n- 升降 → 抓取抽出 → 携箱home → 升降归零（仅仿真）")
+        elif alignment:
             body += (f"\n- 高度调整：{'开启' if alignment['enabled'] else '关闭'}；"
                      f"肩部中心比箱中心高 {alignment['shoulder_box_offset']:.3f} m"
                      f"\n- 计划下降 {alignment['descent']:.3f} m；"

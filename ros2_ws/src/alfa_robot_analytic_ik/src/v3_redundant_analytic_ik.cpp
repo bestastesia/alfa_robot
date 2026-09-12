@@ -842,6 +842,12 @@ Eigen::Vector3d V3RedundantArmAnalyticIk::modelShoulderCenterInArmBase() const
   return geometry(model_).shoulder;
 }
 
+double V3RedundantArmAnalyticIk::modelArmLength() const
+{
+  const auto& g = geometry(model_);
+  return g.upper_arm_length + g.forearm_length;
+}
+
 Eigen::Vector3d V3RedundantArmAnalyticIk::shoulderCenterInArmBase()
 {
   return geometry(V3RedundantArmModel::LegacyV304).shoulder;

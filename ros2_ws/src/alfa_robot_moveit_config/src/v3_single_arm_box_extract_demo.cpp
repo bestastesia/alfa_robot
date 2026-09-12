@@ -1,5 +1,7 @@
 #include <alfa_robot_analytic_ik/v3_redundant_analytic_ik.hpp>
 #include <alfa_robot_moveit_config/planning_diagnostics.hpp>
+#include <alfa_robot_moveit_config/comfort_height.hpp>
+#include <ompl/util/RandomNumbers.h>
 #include <alfa_robot_moveit_config/srv/plan_wall_box_demo.hpp>
 
 #include <geometry_msgs/msg/pose.hpp>
@@ -277,6 +279,9 @@ public:
       throw std::invalid_argument("box center must be finite and collision_inset must preserve positive box dimensions");
     }
 
+    planning_seed_ = getParameter<int>("planning_seed", 0);
+    if (planning_seed_ < 0) throw std::invalid_argument("planning_seed must be nonnegative");
+    if (planning_seed_ > 0) ompl::RNG::setSeed(static_cast<unsigned int>(planning_seed_));
     robot_model_loader_ = std::make_shared<robot_model_loader::RobotModelLoader>(
       shared_from_this(), "robot_description");
     robot_model_ = robot_model_loader_->getModel();
@@ -327,6 +332,16 @@ public:
         throw std::invalid_argument("contact_numerical_gap must be finite and in [0, 0.0001] metres");
       }
       align_height_ = getParameter<bool>("align_height", true);
+      height_strategy_ = getParameter<std::string>("height_strategy", "fixed_offset");
+      comfort_branch_ = getParameter<std::string>("comfort_branch", "auto");
+      comfort_min_ = getParameter<double>("comfort_ratio_min", 0.8);
+      comfort_preferred_ = getParameter<double>("comfort_ratio_preferred", 0.8);
+      comfort_max_ = getParameter<double>("comfort_ratio_max", 0.8);
+      if (height_strategy_ != "fixed_offset" && height_strategy_ != "comfort_radius")
+        throw std::invalid_argument("height_strategy must be fixed_offset or comfort_radius");
+      // Validate even when disabled; do not silently accept a broken experiment config.
+      alfa_robot::motion::chooseComfortHeight(1, 0, 0, 1, 0, -1, 0,
+        comfort_min_, comfort_preferred_, comfort_max_, comfort_branch_);
       shoulder_box_offset_ = getParameter<double>("shoulder_box_offset", 0.25);
       if (!std::isfinite(shoulder_box_offset_) || shoulder_box_offset_ < 0.0) {
         throw std::invalid_argument("shoulder_box_offset must be finite and nonnegative metres");
@@ -445,6 +460,7 @@ public:
       std::chrono::milliseconds(25), [this]() {onWorkerTimer();});
     display_timer_ = create_wall_timer(
       std::chrono::milliseconds(50), [this]() {publishDisplayState();});
+    if (distance_demo_) selectArm(requested_arm_ == "auto" ? "left" : requested_arm_);
     publishPreview(distance_demo_ ? "用 plan_wall_box 服务选择距离和箱号" :
       "拖动箱体XYZ；右键箱体并选择“确认并计算当前箱位”");
     publishSceneMarkers();
@@ -712,8 +728,8 @@ private:
     if (distance_demo_) {
       const auto alignment = heightAlignment(box_center);
       RCLCPP_INFO(get_logger(),
-        "height alignment: enabled=%s shoulder_z=%.6fm offset=%.3fm descent=%.6fm target_updown=%.6fm",
-        align_height_ ? "true" : "false", initial_shoulder_z_, shoulder_box_offset_,
+        "height alignment: strategy=%s enabled=%s descent=%.6fm target_updown=%.6fm",
+        height_strategy_.c_str(), align_height_ ? "true" : "false",
         alignment.at("descent").get<double>(), alignment.at("target_updown").get<double>());
     }
 
@@ -735,7 +751,8 @@ private:
           selectArm(side);
           result = planTask(box_center);
           attempts.push_back({{"arm", side}, {"success", result.success},
-            {"failure_stage", result.failure_stage}, {"failure_reason", result.failure_reason}});
+            {"failure_stage", result.failure_stage}, {"failure_reason", result.failure_reason},
+            {"height_alignment", heightAlignment(box_center)}, {"height_selections", 1}});
           RCLCPP_INFO(get_logger(), "[%llu] arm=%s %s stage=%s reason=%s",
             static_cast<unsigned long long>(generation), side.c_str(),
             result.success ? "SUCCESS" : "FAILED", result.failure_stage.c_str(),
@@ -1308,7 +1325,42 @@ private:
     const double descent = align_height_ ? std::max(0.0, difference) : 0.0;
     const double initial = initial_state_->getVariablePosition("updown");
     const auto& bounds = robot_model_->getVariableBounds("updown");
-    return {{"enabled", align_height_},
+    if (distance_demo_ && height_strategy_ == "comfort_radius") {
+      const auto shoulder = (initial_state_->getGlobalLinkTransform(arm_base_link_) *
+        solver_->modelShoulderCenterInArmBase()).eval();
+      const Eigen::Vector3d target = contactPose(box_center).translation();
+      const Eigen::Vector3d delta = target - shoulder;
+      const double xy = delta.head<2>().norm();
+      const double length = solver_->modelArmLength();
+      auto choice = alfa_robot::motion::chooseComfortHeight(shoulder.z(), target.z(), xy,
+        length, initial, bounds.min_position_, bounds.max_position_,
+        comfort_min_, comfort_preferred_, comfort_max_, comfort_branch_);
+      if (!align_height_) {
+        choice.position = choice.ideal_position = initial;
+        choice.ratio = delta.norm() / length;
+        choice.projected = false;
+      }
+      const double final_dz = shoulder.z() + choice.position - initial - target.z();
+      const bool inside = choice.ratio >= comfort_min_ - 1e-9 && choice.ratio <= comfort_max_ + 1e-9;
+      return {{"enabled", align_height_}, {"strategy", height_strategy_}, {"arm", side_},
+        {"reference", "selected arm shoulder common-axis center to contact TCP in world"},
+        {"shoulder_world", {shoulder.x(), shoulder.y(), shoulder.z()}},
+        {"target_world", {target.x(), target.y(), target.z()}},
+        {"delta_world", {delta.x(), delta.y(), delta.z()}}, {"xy", xy},
+        {"arm_length", length}, {"initial_ratio", delta.norm() / length},
+        {"ratio_min", comfort_min_}, {"ratio_preferred", comfort_preferred_},
+        {"ratio_max", comfort_max_}, {"actual_ratio", choice.ratio}, {"inside_band", inside},
+        {"branch_policy", comfort_branch_}, {"branch", final_dz >= -1e-9 ? "above" : "below"},
+        {"ideal_updown", choice.ideal_position}, {"projected", choice.projected},
+        {"outside_reason", inside ? "" : (!align_height_ ? "alignment_disabled" :
+          (xy > comfort_max_ * length ? "xy_exceeds_band" : "lift_limits"))},
+        {"initial_shoulder_z", shoulder.z()}, {"box_center_z", box_center.z()},
+        {"descent", initial - choice.position}, {"initial_updown", initial},
+        {"target_updown", choice.position}, {"lower_limit", bounds.min_position_},
+        {"upper_limit", bounds.max_position_}, {"collision_sample_step_m", 0.005},
+        {"return_policy", "return arms to home then restore lift with payload collision checks"}};
+    }
+    return {{"enabled", align_height_}, {"strategy", "fixed_offset"},
       {"reference", "midpoint of left/right shoulder common-axis centers in world Z"},
       {"initial_shoulder_z", initial_shoulder_z_}, {"box_center_z", box_center.z()},
       {"shoulder_box_offset", shoulder_box_offset_}, {"height_difference", difference},
@@ -1334,8 +1386,9 @@ private:
     }
     const double initial = grasp_start.getVariablePosition("updown");
     if (target == initial) return true;
-    std::vector<ReplayFrame> prefix{
-      ReplayFrame{"lower_to_box_height", allJoints(grasp_start), false}};
+    const std::string stage = height_strategy_ == "comfort_radius" ?
+      "move_to_grasp_height" : "lower_to_box_height";
+    std::vector<ReplayFrame> prefix{ReplayFrame{stage, allJoints(grasp_start), false}};
     const size_t steps = static_cast<size_t>(std::ceil(std::abs(target - initial) / 0.005));
     for (size_t step = 1; step <= steps; ++step) {
       grasp_start.setVariablePosition("updown", initial + (target - initial) * step / steps);
@@ -1349,7 +1402,7 @@ private:
         // Reject the complete descent, not a replay that stops just before collision.
         return false;
       }
-      prefix.push_back(ReplayFrame{"lower_to_box_height", allJoints(grasp_start), false});
+      prefix.push_back(ReplayFrame{stage, allJoints(grasp_start), false});
     }
     result.frames = std::move(prefix);
     return true;
@@ -1508,6 +1561,7 @@ private:
     output["initial_joints"] = allJoints(*initial_state_);
     if (distance_demo_) {
       output["distance_demo"] = true;
+      output["planning_seed"] = planning_seed_;
       output["environment"] = environment_json_;
       output["height_alignment"] = heightAlignment(box_center);
       output["contact_numerical_gap"] = contact_numerical_gap_;
@@ -1634,6 +1688,17 @@ private:
     text.text = status;
     if (distance_demo_) text.text = "box=" + std::to_string(wall_target_row_ * 5 + wall_target_column_) +
       " x=" + std::to_string(wall_distance_) + "m arm=" + side_ + "\n" + status;
+    if (distance_demo_ && height_strategy_ == "comfort_radius") {
+      Eigen::Vector3d center;
+      { std::lock_guard<std::mutex> lock(box_mutex_); center = box_center_; }
+      const auto h = heightAlignment(center);
+      std::ostringstream geometry;
+      geometry << std::fixed << std::setprecision(3) << "\nxy=" << h.at("xy").get<double>()
+        << " rho=" << h.at("actual_ratio").get<double>() << " band=[" << comfort_min_
+        << "," << comfort_max_ << "] lift=" << h.at("target_updown").get<double>()
+        << " " << h.at("branch").get<std::string>() << " " << h.at("outside_reason").get<std::string>();
+      text.text += geometry.str();
+    }
     markers.markers.push_back(text);
     status_marker_publisher_->publish(markers);
   }
@@ -1813,6 +1878,10 @@ private:
   nlohmann::json environment_json_;
   bool distance_demo_ = false;
   bool align_height_ = false;
+  std::string height_strategy_ = "fixed_offset";
+  std::string comfort_branch_ = "auto";
+  double comfort_min_ = 0.8, comfort_preferred_ = 0.8, comfort_max_ = 0.8;
+  int planning_seed_ = 0;
   double shoulder_box_offset_ = 0.25;
   double initial_shoulder_z_ = 0.0;
   double chassis_front_x_ = 0.0;

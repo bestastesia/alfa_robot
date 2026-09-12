@@ -32,6 +32,7 @@ find_package(robot_motion_interfaces REQUIRED)
 find_package(robot_motion_core REQUIRED)
 find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(ompl REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
@@ -264,10 +265,12 @@ add_executable(v3_single_arm_box_extract_demo
 target_compile_features(v3_single_arm_box_extract_demo PUBLIC cxx_std_17)
 
 target_include_directories(v3_single_arm_box_extract_demo PRIVATE
+  ${OMPL_INCLUDE_DIRS}
   include
 )
 
 target_link_libraries(v3_single_arm_box_extract_demo
+  ${OMPL_LIBRARIES}
   "${cpp_typesupport_target}"
   alfa_robot_motion_scene_adapter
   alfa_robot_analytic_ik::alfa_robot_analytic_ik
@@ -422,6 +425,12 @@ if(BUILD_TESTING)
   target_link_libraries(test_analytic_moveit_fk alfa_robot_analytic_ik::alfa_robot_analytic_ik)
   ament_target_dependencies(test_analytic_moveit_fk alfa_robot_analytic_ik moveit_core srdfdom urdf)
   add_test(NAME test_analytic_moveit_fk COMMAND test_analytic_moveit_fk)
+
+  add_executable(test_comfort_height test/test_comfort_height.cpp)
+  target_compile_features(test_comfort_height PRIVATE cxx_std_17)
+  target_include_directories(test_comfort_height PRIVATE include)
+  target_compile_options(test_comfort_height PRIVATE -UNDEBUG)
+  add_test(NAME test_comfort_height COMMAND test_comfort_height)
 
   add_executable(test_loaded_pose_selector test/test_loaded_pose_selector.cpp)
   target_link_libraries(test_loaded_pose_selector alfa_robot_motion_scene_adapter)
