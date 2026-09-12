@@ -71,6 +71,22 @@ def inspect(task, robot, limits):
         assert math.isclose(xy, h['xy'], abs_tol=1e-6)
         q = h['target_updown']
         assert h['lower_limit'] <= q <= h['upper_limit']
+        # Historical artifacts predate clearance bounds; current launches must
+        # expose them (checked below at capture time).
+        clearance = h.get('reachable_lift', {})
+        if clearance.get('checked'):
+            lower, upper = clearance['lower'], clearance['upper']
+            assert h['lower_limit'] <= lower <= h['initial_updown'] <= upper <= h['upper_limit']
+            assert lower <= q <= upper
+            for blocked in clearance['blocked']:
+                endpoint = clearance[blocked['direction']]
+                assert 0 < abs(blocked['updown'] - endpoint) <= .005001
+                assert blocked['reason']
+            if h['branch_policy'] == 'auto':
+                grid = np.linspace(lower, upper, 10001)
+                ratios = np.hypot(xy, shoulder[2]+grid-target[2])/length
+                gap = lambda r: np.maximum(np.maximum(h['ratio_min']-r, r-h['ratio_max']), 0)
+                assert gap(h['actual_ratio']) <= np.min(gap(ratios)) + 1e-6
         rho = math.hypot(xy, shoulder[2]+q-target[2])/length
         assert math.isclose(rho, h['actual_ratio'], abs_tol=1e-6)
         assert h['inside_band'] == (h['ratio_min']-1e-9 <= h['actual_ratio'] <= h['ratio_max']+1e-9)
@@ -168,6 +184,10 @@ def main():
                             json.dump(task, raw)
                         assert task['height_alignment']['strategy'] == args.policy
                         assert task['planning_seed'] == args.seed
+                        if args.policy == 'comfort_radius':
+                            for attempt in task['attempts']:
+                                checked = attempt['height_alignment']['reachable_lift']['checked']
+                                assert checked == (attempt['failure_stage'] != 'initial_state')
                         assert task['success'] == response.success
                         assert task['failure_stage'] == response.failure_stage
                         row = dict(case=name, x=x, arm=arm, box=box, success=task['success'],

@@ -610,6 +610,7 @@ private:
 
   void selectArm(const std::string& side)
   {
+    height_clearance_ = {{"checked", false}};
     side_ = side;
     tool_link_ = side + "_tool0";
     planning_group_name_ = side + "_arm";
@@ -699,6 +700,7 @@ private:
     if (planning_active_.load() || planning_requested_.exchange(true)) {
       return false;
     }
+    if (distance_demo_) selectArm(requested_arm_ == "auto" ? "left" : requested_arm_);
     publishStatus("PLANNING REQUESTED", true);
     return true;
   }
@@ -717,7 +719,6 @@ private:
       box_center = box_center_;
     }
     const uint64_t generation = ++generation_;
-    if (distance_demo_) selectArm(requested_arm_ == "auto" ? "left" : requested_arm_);
     publishPlanningStarted(generation, box_center);
     publishStatus("CALCULATING", true);
     RCLCPP_INFO(
@@ -728,7 +729,7 @@ private:
     if (distance_demo_) {
       const auto alignment = heightAlignment(box_center);
       RCLCPP_INFO(get_logger(),
-        "height alignment: strategy=%s enabled=%s descent=%.6fm target_updown=%.6fm",
+        "height proposal (clearance unchecked): strategy=%s enabled=%s descent=%.6fm target_updown=%.6fm",
         height_strategy_.c_str(), align_height_ ? "true" : "false",
         alignment.at("descent").get<double>(), alignment.at("target_updown").get<double>());
     }
@@ -1333,7 +1334,8 @@ private:
       const double xy = delta.head<2>().norm();
       const double length = solver_->modelArmLength();
       auto choice = alfa_robot::motion::chooseComfortHeight(shoulder.z(), target.z(), xy,
-        length, initial, bounds.min_position_, bounds.max_position_,
+        length, initial, height_clearance_.value("lower", bounds.min_position_),
+        height_clearance_.value("upper", bounds.max_position_),
         comfort_min_, comfort_preferred_, comfort_max_, comfort_branch_);
       if (!align_height_) {
         choice.position = choice.ideal_position = initial;
@@ -1353,11 +1355,13 @@ private:
         {"branch_policy", comfort_branch_}, {"branch", final_dz >= -1e-9 ? "above" : "below"},
         {"ideal_updown", choice.ideal_position}, {"projected", choice.projected},
         {"outside_reason", inside ? "" : (!align_height_ ? "alignment_disabled" :
-          (xy > comfort_max_ * length ? "xy_exceeds_band" : "lift_limits"))},
+          (xy > comfort_max_ * length ? "xy_exceeds_band" :
+            (height_clearance_.value("checked", false) ? "reachable_lift_limits" : "lift_limits")))},
         {"initial_shoulder_z", shoulder.z()}, {"box_center_z", box_center.z()},
         {"descent", initial - choice.position}, {"initial_updown", initial},
         {"target_updown", choice.position}, {"lower_limit", bounds.min_position_},
-        {"upper_limit", bounds.max_position_}, {"collision_sample_step_m", 0.005},
+        {"upper_limit", bounds.max_position_}, {"reachable_lift", height_clearance_},
+        {"collision_sample_step_m", 0.005},
         {"return_policy", "return arms to home then restore lift with payload collision checks"}};
     }
     return {{"enabled", align_height_}, {"strategy", "fixed_offset"},
@@ -1367,6 +1371,35 @@ private:
       {"descent", descent}, {"initial_updown", initial}, {"target_updown", initial - descent},
       {"lower_limit", bounds.min_position_}, {"upper_limit", bounds.max_position_},
       {"collision_sample_step_m", 0.005}, {"return_policy", "return arms to SRDF home, then restore lift to initial 0m with payload collision checks"}};
+  }
+
+  void checkHeightClearance(
+    const planning_scene::PlanningScenePtr& scene, PlanningMetrics& metrics)
+  {
+    if (!distance_demo_ || !align_height_ || height_strategy_ != "comfort_radius") return;
+    const double initial = initial_state_->getVariablePosition("updown");
+    const auto& bounds = robot_model_->getVariableBounds("updown");
+    height_clearance_ = {{"checked", true}, {"lower", initial}, {"upper", initial},
+      {"blocked", nlohmann::json::array()}};
+    // Conservatively sample the component reachable from home. Never skip an
+    // obstacle to select a lower safe island. Same <=5mm sampling as replay validation.
+    for (const auto& endpoint : {std::make_pair("lower", bounds.min_position_),
+                                 std::make_pair("upper", bounds.max_position_)}) {
+      moveit::core::RobotState state(*initial_state_);
+      const size_t steps = static_cast<size_t>(std::ceil(std::abs(endpoint.second - initial) / 0.005));
+      for (size_t step = 1; step <= steps; ++step) {
+        const double q = initial + (endpoint.second - initial) * step / steps;
+        state.setVariablePosition("updown", q);
+        state.update(true);
+        const auto collision = collisionReason(scene, state, &metrics);
+        if (!state.satisfiesBounds() || !collision.empty()) {
+          height_clearance_["blocked"].push_back({{"direction", endpoint.first},
+            {"updown", q}, {"reason", collision.empty() ? "joint bounds violated" : collision}});
+          break;
+        }
+        height_clearance_[endpoint.first] = q;
+      }
+    }
   }
 
   bool alignHeight(
@@ -1410,6 +1443,7 @@ private:
 
   TaskResult planTask(const Eigen::Vector3d& box_center)
   {
+    height_clearance_ = {{"checked", false}};
     TaskResult result;
     const auto total_started = std::chrono::steady_clock::now();
     auto finish = [&]() {
@@ -1421,13 +1455,22 @@ private:
     const auto loaded = loadedScene(scene);
 
     const std::string initial_collision = collisionReason(scene, *initial_state_, &result.metrics);
-    if (!initial_collision.empty()) {
+    if (!initial_state_->satisfiesBounds() || !initial_collision.empty()) {
       result.failure_stage = "initial_state";
-      result.failure_reason = initial_collision;
+      result.failure_reason = initial_collision.empty() ? "joint bounds violated" : initial_collision;
       result.frames.push_back(ReplayFrame{"initial_state", allJoints(*initial_state_), false});
       return finish();
     }
 
+    checkHeightClearance(scene, result.metrics);
+    if (height_clearance_.value("checked", false)) {
+      const auto alignment = heightAlignment(box_center);
+      RCLCPP_INFO(get_logger(),
+        "height selected: arm=%s updown=%.6fm reachable=[%.6f, %.6f]m ratio=%.6f inside_band=%s",
+        side_.c_str(), alignment.at("target_updown").get<double>(),
+        height_clearance_.at("lower").get<double>(), height_clearance_.at("upper").get<double>(),
+        alignment.at("actual_ratio").get<double>(), alignment.at("inside_band").get<bool>() ? "true" : "false");
+    }
     moveit::core::RobotState grasp_start(*initial_state_);
     if (!alignHeight(box_center, scene, grasp_start, result)) {
       result.frames = {ReplayFrame{"initial_state", allJoints(*initial_state_), false}};
@@ -1696,7 +1739,8 @@ private:
       geometry << std::fixed << std::setprecision(3) << "\nxy=" << h.at("xy").get<double>()
         << " rho=" << h.at("actual_ratio").get<double>() << " band=[" << comfort_min_
         << "," << comfort_max_ << "] lift=" << h.at("target_updown").get<double>()
-        << " " << h.at("branch").get<std::string>() << " " << h.at("outside_reason").get<std::string>();
+        << " " << h.at("branch").get<std::string>() << " " << h.at("outside_reason").get<std::string>()
+        << (height_clearance_.value("checked", false) ? " lift_checked" : " proposal_unchecked");
       text.text += geometry.str();
     }
     markers.markers.push_back(text);
@@ -1879,6 +1923,7 @@ private:
   bool distance_demo_ = false;
   bool align_height_ = false;
   std::string height_strategy_ = "fixed_offset";
+  nlohmann::json height_clearance_ = {{"checked", false}};
   std::string comfort_branch_ = "auto";
   double comfort_min_ = 0.8, comfort_preferred_ = 0.8, comfort_max_ = 0.8;
   int planning_seed_ = 0;

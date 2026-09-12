@@ -23,6 +23,17 @@ int main()
   close(q.position, -.4);  // nonzero initial lift
   q = chooseComfortHeight(1, .5, .4, 1, 0, -.5, -.5 + .5, .4, .4, .4);
   close(q.position, -.5);
+  // x=.9, second-row boxes: constrain to home-connected lift clearance, not
+  // just the mechanical -1m stop. Box6 stays unchanged; box7 uses nearest safe Z.
+  q = chooseComfortHeight(1.744633752, .610, 1.031151421, .978999993,
+                          0, -.990, 0, 1.10, 1.15, 1.15);
+  close(q.position, -.682676949);
+  q = chooseComfortHeight(1.744633752, .610, 1.13400935, .978999993,
+                          0, -.990, 0, 1.10, 1.15, 1.15);
+  close(q.position, -.990); assert(q.projected); assert(q.ratio > 1.15);
+  q = chooseComfortHeight(1.744633752, .610, 1.13400935, .978999993,
+                          0, 0, 0, 1.10, 1.15, 1.15);
+  close(q.position, 0);  // no lift travel available: still try at home
   for (int bad=0; bad<5; ++bad) {
     bool rejected = false;
     try {

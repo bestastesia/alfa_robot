@@ -255,6 +255,47 @@ def main():
             assert task['failure_stage'] == stage, task['attempts']
             assert 'environment_' + label in task['failure_reason'] and collision in task['failure_reason']
 
+    comfort = ('height_strategy:=comfort_radius', 'comfort_ratio_min:=1.10',
+               'comfort_ratio_preferred:=1.15', 'comfort_ratio_max:=1.15', 'planning_seed:=104729')
+    with launch('comfort_clearance', extra=comfort) as (call, received):
+        assert not received['task']['height_alignment']['reachable_lift']['checked']
+        # Alternate box/arm in one process: no stale clearance or selected height.
+        for arm in ('left', 'right', 'auto'):
+            for box in (6, 7, 6):
+                task = call(box, arm)
+                assert task['height_alignment'] == task['attempts'][-1]['height_alignment']
+                for attempt in task['attempts']:
+                    h = attempt['height_alignment']
+                    c = h['reachable_lift']
+                    assert c['checked'] and np.isclose(c['lower'], -.990)
+                    assert c['lower'] <= h['target_updown'] <= c['upper']
+                    assert attempt['height_selections'] == 1
+                    assert attempt['failure_stage'] not in ('initial_state', 'height_alignment_collision')
+                    assert 'environment_ground' in c['blocked'][0]['reason']
+                    if box == 7:
+                        assert np.isclose(h['target_updown'], c['lower'])
+                    elif attempt['arm'] == 'left':
+                        assert np.isclose(h['target_updown'], -.682676949)
+                if box == 6 and arm in ('left', 'auto'):
+                    assert task['success'], task['attempts']
+
+    for label, center in (('comfort_initial', [.7565, .60755, 1.255875]),
+                          ('comfort_midpath', [.7565, .60755, .8])):
+        with launch(label, obstruct(label, center, [.04, .04, .04]), comfort) as (call, _):
+            task = call(7, 'left')
+            h = task['height_alignment']
+            c = h['reachable_lift']
+            if label == 'comfort_initial':
+                assert task['failure_stage'] == 'initial_state' and not c['checked']
+                assert len(task['frames']) == 1
+            else:
+                assert c['checked'] and c['lower'] > -.990
+                assert np.isclose(h['target_updown'], c['lower'])
+                assert 'environment_' + label in c['blocked'][0]['reason']
+                assert task['failure_stage'] not in ('initial_state', 'height_alignment_collision')
+                lift = task['joint_names'].index('updown')
+                assert all(f['joints'][lift] >= c['lower']-1e-9 for f in task['frames'])
+
     invalid = []
     for label, change in (
         ('missing_ground', lambda c: c['boxes'].pop(0)),
