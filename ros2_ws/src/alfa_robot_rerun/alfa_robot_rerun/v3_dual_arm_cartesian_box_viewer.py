@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from alfa_robot_rerun.demo_failure import replay_frames, log_failure
+
 import json
 import math
 import time
@@ -126,6 +128,9 @@ class V3DualArmCartesianBoxViewer(Node):
         except json.JSONDecodeError as exception:
             self.get_logger().error(f"非法任务JSON: {exception}")
             return
+        self.diagnostic = payload.get("diagnostic", {}) if not payload.get("success", False) else {}
+        rr.log("world/failure", rr.Clear(recursive=True))
+        rr.log("summary/failure", rr.Clear(recursive=True))
         self.update_scene(payload)
         kind = str(payload.get("kind", "preview"))
         if kind == "preview":
@@ -151,7 +156,7 @@ class V3DualArmCartesianBoxViewer(Node):
             return
         self.joint_names = tuple(str(name) for name in payload.get("joint_names", []))
         parsed: list[PlaybackFrame] = []
-        for frame in payload.get("frames", []):
+        for frame in replay_frames(payload):
             joints = tuple(float(value) for value in frame.get("joints", []))
             center = tuple(float(value) for value in frame.get("box_center", []))
             if len(joints) != len(self.joint_names) or len(center) != 3:
@@ -271,6 +276,8 @@ class V3DualArmCartesianBoxViewer(Node):
                 maximum_joint_delta_degrees(self.last_frame.joints, frame.joints)
                 / self.playback_joint_speed_deg_s,
             )
+        if self.frame_index + 1 == len(self.frames):
+            log_failure(getattr(self, "diagnostic", {}))
         self.last_frame = frame
         self.frame_index += 1
         self.next_frame_time = time.monotonic() + delay

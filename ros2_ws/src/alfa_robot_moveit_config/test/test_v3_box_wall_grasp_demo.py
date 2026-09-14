@@ -91,7 +91,7 @@ def main():
                 for box_id in range(25):
                     response, task = call(2.0, box_id)
                     assert not response.success and response.failure_stage == 'precontact_ik'
-                    assert [a['arm'] for a in task['attempts']] == ['left', 'right']
+                    assert [a['arm'] for a in task['attempts']] == ['left', 'right'] * (1 if box_id < 5 else 2)
                     center, size = task['box_center'], task['box_size']
                     assert math.isclose(center[0] - size[0] / 2 - front, 2.0, abs_tol=1e-9)
                     assert math.isclose(center[1], (box_id % 5 - 2) * .41, abs_tol=1e-9)
@@ -191,8 +191,10 @@ def main():
             try:
                 spin_until(lambda: received.get('task', {}).get('contact_numerical_gap') == 0.0)
                 response, task = call(.9, 24, 'right')
-                assert not response.success and response.failure_stage == 'cartesian_approach'
-                assert 'neighbor_box_19' in response.failure_reason and 'right_joint7' in response.failure_reason
+                assert not response.success
+                front = task['attempts'][0]
+                assert front['suction_mode'] == 'front' and front['failure_stage'] == 'cartesian_approach'
+                assert 'neighbor_box_19' in front['failure_reason'] and 'right_joint7' in front['failure_reason']
                 (root / 'zero_contact_gap.json').write_text(json.dumps(task, indent=2))
                 print('PASS: zero-gap control reproduces right_joint7/neighbor_box_19 contact failure')
             finally:

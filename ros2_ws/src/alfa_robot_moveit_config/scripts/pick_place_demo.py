@@ -32,6 +32,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from geometry_msgs.msg import Pose, PoseStamped
 from shape_msgs.msg import SolidPrimitive
 from sensor_msgs.msg import JointState
+from visualization_msgs.msg import Marker, MarkerArray
 
 # ── 常量 ──────────────────────────────────────────────────────
 
@@ -93,6 +94,10 @@ class PickPlaceDemo(Node):
         super().__init__('pick_place_demo')
         self.ik_timeout = ik_timeout
         self.step = step
+        self.failure_targets = []
+        self.failure_reason = ""
+        self.failure_publisher = self.create_publisher(MarkerArray, '/demo_failure_markers',
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
         self.current_js: dict = {}
         self.create_subscription(JointState, '/joint_states', self._js_cb, 10)
@@ -147,10 +152,43 @@ class PickPlaceDemo(Node):
         if self.step:
             input(f"  >> 按Enter继续: {label} ...")
 
+    def show_failure(self, stage):
+        """Only annotate the observer; never send rejected poses to controllers."""
+        markers = MarkerArray()
+        for index, pose in enumerate(self.failure_targets or [Pose()]):
+            marker = Marker()
+            marker.header.frame_id = BASE_FRAME
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = 'demo_failure'
+            marker.id = 2 * index
+            marker.type = Marker.SPHERE
+            marker.action = Marker.ADD
+            marker.pose = pose
+            marker.scale.x = marker.scale.y = marker.scale.z = .05
+            marker.color.r = marker.color.a = 1.0
+            markers.markers.append(marker)
+            text = Marker()
+            text.header = marker.header
+            text.ns = marker.ns
+            text.id = marker.id + 1
+            text.type = Marker.TEXT_VIEW_FACING
+            text.action = Marker.ADD
+            text.pose.position.x = pose.position.x
+            text.pose.position.y = pose.position.y
+            text.pose.position.z = pose.position.z + .1
+            text.pose.orientation.w = 1.0
+            text.scale.z = .035
+            text.color = marker.color
+            text.text = f'FAILED - HOLD (diagnostic only): {stage}\n{self.failure_reason}'
+            markers.markers.append(text)
+        self.failure_publisher.publish(markers)
+
     # ── IK ─────────────────────────────────────────────────────
 
     def solve_dual_ik(self, left_pose: Pose, right_pose: Pose,
                        timeout: float = None) -> dict | None:
+        self.failure_targets = [left_pose, right_pose]
+        self.failure_reason = ""
         timeout = timeout or self.ik_timeout
         req = GetPositionIK.Request()
         req.ik_request.group_name = DUAL_ARM_GROUP
@@ -177,12 +215,14 @@ class PickPlaceDemo(Node):
         rclpy.spin_until_future_complete(self, future, timeout_sec=timeout + 2.0)
 
         if not future.done() or future.result() is None:
-            self.get_logger().error("IK 服务调用失败/超时")
+            self.failure_reason = "IK 服务调用失败/超时；保留最后状态，未生成目标关节解"
+            self.get_logger().error(self.failure_reason)
             return None
 
         res = future.result()
         if res.error_code.val != MoveItErrorCodes.SUCCESS:
-            self.get_logger().error(f"IK 失败: code={res.error_code.val}")
+            self.failure_reason = f"IK 失败: code={res.error_code.val}；保留最后状态，未生成目标关节解"
+            self.get_logger().error(self.failure_reason)
             return None
 
         solution = {}
@@ -313,7 +353,8 @@ class PickPlaceDemo(Node):
             positions = list(ctrl_targets.values())
             if not self._send_trajectory(names, positions,
                                          self.controllers[ctrl_name], duration_sec):
-                ok = False
+                self.failure_reason = "controller execution failed; see preceding controller error"
+                return False
         uncovered = set(targets.keys()) - covered
         if uncovered:
             self.get_logger().warn(f"无控制器: {sorted(uncovered)}")
@@ -335,7 +376,8 @@ class PickPlaceDemo(Node):
             if not self._send_interpolated(names, sp, ep,
                                            self.controllers[ctrl_name],
                                            n_steps, step_sec):
-                ok = False
+                self.failure_reason = "controller execution failed; see preceding controller error"
+                return False
         return ok
 
     def move_dual_arms(self, left_pose: Pose, right_pose: Pose,
@@ -353,6 +395,8 @@ class PickPlaceDemo(Node):
                                left_end: Pose, right_end: Pose,
                                n_steps=10, step_sec=0.15) -> bool:
         sol_start = self.solve_dual_ik(left_start, right_start)
+        if sol_start is None:
+            return False
         sol_end = self.solve_dual_ik(left_end, right_end)
         if sol_start is None or sol_end is None:
             self.get_logger().error("直线运动 IK 失败")
@@ -667,8 +711,10 @@ def main():
 
             ok = demo.run_one_round(i, lp, rp)
             if not ok:
-                demo.get_logger().error(f"第 {i+1} 轮失败，终止")
-                break
+                demo.get_logger().error(f"第 {i+1} 轮失败，保持现场；Ctrl+C退出，不继续控制器执行")
+                demo.show_failure(f"round {i+1}")
+                rclpy.spin(demo)
+                return
 
             demo.get_logger().info(f"第 {i+1} 轮完成!")
 

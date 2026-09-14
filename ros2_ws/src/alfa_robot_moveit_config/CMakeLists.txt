@@ -426,6 +426,21 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_analytic_moveit_fk alfa_robot_analytic_ik moveit_core srdfdom urdf)
   add_test(NAME test_analytic_moveit_fk COMMAND test_analytic_moveit_fk)
 
+  add_executable(validate_v3_wall_replay test/validate_v3_wall_replay.cpp)
+  ament_target_dependencies(validate_v3_wall_replay moveit_core moveit_msgs moveit_ros_planning nlohmann_json srdfdom urdf)
+
+  add_executable(test_demo_failure test/test_demo_failure.cpp)
+  target_link_libraries(test_demo_failure alfa_robot_motion_scene_adapter)
+  ament_target_dependencies(test_demo_failure visualization_msgs)
+  target_compile_options(test_demo_failure PRIVATE -UNDEBUG)
+  add_test(NAME test_demo_failure COMMAND test_demo_failure)
+
+  add_executable(test_wall_sequence test/test_wall_sequence.cpp)
+  target_compile_features(test_wall_sequence PRIVATE cxx_std_17)
+  target_include_directories(test_wall_sequence PRIVATE include ${EIGEN3_INCLUDE_DIRS})
+  target_compile_options(test_wall_sequence PRIVATE -UNDEBUG)
+  add_test(NAME test_wall_sequence COMMAND test_wall_sequence)
+
   add_executable(test_comfort_height test/test_comfort_height.cpp)
   target_compile_features(test_comfort_height PRIVATE cxx_std_17)
   target_include_directories(test_comfort_height PRIVATE include)

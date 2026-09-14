@@ -99,8 +99,12 @@ def main():
                 assert np.allclose(task['initial_joints'], home, atol=1e-8)
                 if not response.success:
                     assert response.failure_stage and response.failure_reason
+                    if response.failure_stage == 'initial_state':
+                        assert task['diagnostic']['contacts'], 'Real initial collision must remain visible'
+                        assert all(np.allclose(f['joints'], home) and not f['box_attached']
+                                   for f in task['diagnostic_frames'])
                     if arm == 'auto':
-                        assert [a['arm'] for a in task['attempts']] == ['left', 'right']
+                        assert [a['arm'] for a in task['attempts']] == ['left', 'right'] * (1 if box_id < 5 else 2)
                 else:
                     assert response.selected_arm == task['side']
                     assert task['frames'][-1]['stage'] in ('rrt_return', 'restore_default_height')
@@ -204,8 +208,11 @@ def main():
             if box_id in known_success:
                 assert task['success'], task['attempts']
             if box_id < 5:
-                assert task['failure_stage'] == 'height_alignment_limits'
-                assert task['height_alignment']['target_updown'] < -1
+                assert task['failure_stage'] == 'precontact_ik'
+                assert task['suction_mode'] == 'top'
+                assert task['height_alignment']['strategy'] == 'top_wrist_alignment'
+                assert task['height_alignment']['xy'] > task['height_alignment']['arm_length']
+                assert not any(f['box_attached'] for f in task['diagnostic_frames'])
                 assert np.allclose(task['frames'][0]['joints'], home)
         for box_id, arm in [(5, 'left'), (9, 'right')]:
             assert call(box_id, arm)['success']
@@ -252,8 +259,9 @@ def main():
     ):
         with launch(label, obstruct(label, center, size)) as (call, _):
             task = call(5, 'left')
-            assert task['failure_stage'] == stage, task['attempts']
-            assert 'environment_' + label in task['failure_reason'] and collision in task['failure_reason']
+            front = task['attempts'][0]  # A later top fallback has its own failure stage.
+            assert front['suction_mode'] == 'front' and front['failure_stage'] == stage, task['attempts']
+            assert 'environment_' + label in front['failure_reason'] and collision in front['failure_reason']
 
     comfort = ('height_strategy:=comfort_radius', 'comfort_ratio_min:=1.10',
                'comfort_ratio_preferred:=1.15', 'comfort_ratio_max:=1.15', 'planning_seed:=104729')
@@ -263,10 +271,16 @@ def main():
         for arm in ('left', 'right', 'auto'):
             for box in (6, 7, 6):
                 task = call(box, arm)
-                assert task['height_alignment'] == task['attempts'][-1]['height_alignment']
+                assert task['height_alignment'] == next(a['height_alignment'] for a in task['attempts']
+                    if a['arm'] == task['side'] and a['suction_mode'] == task['suction_mode'])
                 for attempt in task['attempts']:
                     h = attempt['height_alignment']
                     c = h['reachable_lift']
+                    if attempt['suction_mode'] == 'top':
+                        assert h['strategy'] == 'top_wrist_alignment'
+                        assert h['xy'] > h['arm_length'] and not c['checked']
+                        assert attempt['failure_stage'] == 'precontact_ik'
+                        continue  # Proved XY-unreachable before any descent/preparation.
                     assert c['checked'] and np.isclose(c['lower'], -.990)
                     assert c['lower'] <= h['target_updown'] <= c['upper']
                     assert attempt['height_selections'] == 1
@@ -290,7 +304,7 @@ def main():
                 assert len(task['frames']) == 1
             else:
                 assert c['checked'] and c['lower'] > -.990
-                assert np.isclose(h['target_updown'], c['lower'])
+                assert c['lower'] <= h['target_updown'] <= c['upper']
                 assert 'environment_' + label in c['blocked'][0]['reason']
                 assert task['failure_stage'] not in ('initial_state', 'height_alignment_collision')
                 lift = task['joint_names'].index('updown')

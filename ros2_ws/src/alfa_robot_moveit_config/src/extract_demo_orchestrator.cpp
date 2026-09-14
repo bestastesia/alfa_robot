@@ -34,6 +34,7 @@ bool ExtractDemoOrchestrator::run()
     if (!ok && first_error.empty() && callbacks_.last_error) {
       first_error = callbacks_.last_error();
     }
+    if (!ok) break;  // Keep the failed scene/state for inspection; never run later rows.
     if (callbacks_.clear_scene) callbacks_.clear_scene();
     if (callbacks_.reset_commanded_state) callbacks_.reset_commanded_state();
   }

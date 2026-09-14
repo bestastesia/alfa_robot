@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""Live Rerun scene preview and trajectory playback for the V3 box-extract demo."""
+"""Write complete V3 box trajectories to Rerun; the viewer controls playback."""
 
 from __future__ import annotations
+
+from alfa_robot_rerun.demo_failure import replay_frames, log_failure
 
 import json
 import math
@@ -30,6 +32,8 @@ class PlaybackFrame:
     stage: str
     joints: tuple[float, ...]
     box_attached: bool
+    box_visible: bool = True
+    scene_index: int = 0
 
 
 def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
@@ -64,19 +68,6 @@ def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
     return [float(x), float(y), float(z), float(w)]
 
 
-def maximum_joint_delta_degrees(
-    previous: tuple[float, ...], current: tuple[float, ...]
-) -> float:
-    if len(previous) != len(current):
-        return 0.0
-    return math.degrees(
-        max(
-            abs(math.atan2(math.sin(after - before), math.cos(after - before)))
-            for before, after in zip(previous, current)
-        )
-    )
-
-
 class V3SingleArmBoxExtractViewer(Node):
     def __init__(self) -> None:
         super().__init__("v3_single_arm_box_extract_viewer")
@@ -87,22 +78,10 @@ class V3SingleArmBoxExtractViewer(Node):
         self.declare_parameter("spawn_viewer", True)
         self.declare_parameter("recording_path", "")
         self.declare_parameter("log_meshes", True)
-        self.declare_parameter("playback_joint_speed_deg_s", 25.0)
-        self.declare_parameter("maximum_frame_rate_hz", 30.0)
-        self.declare_parameter("stage_pause_s", 0.35)
-
         topic = str(self.get_parameter("task_topic").value)
         spawn_viewer = bool(self.get_parameter("spawn_viewer").value)
         recording_path = str(self.get_parameter("recording_path").value)
         log_meshes = bool(self.get_parameter("log_meshes").value)
-        self.playback_joint_speed_deg_s = max(
-            1.0, float(self.get_parameter("playback_joint_speed_deg_s").value)
-        )
-        self.minimum_frame_period = 1.0 / max(
-            1.0, float(self.get_parameter("maximum_frame_rate_hz").value)
-        )
-        self.stage_pause_s = max(0.0, float(self.get_parameter("stage_pause_s").value))
-
         prefer_matching_rerun_cli()
         rr.init("v3_single_arm_box_extract_demo", spawn=spawn_viewer)
         if recording_path:
@@ -123,10 +102,15 @@ class V3SingleArmBoxExtractViewer(Node):
                     rrb.TextDocumentView(origin="/summary", name="Task status"),
                     column_shares=[0.78, 0.22],
                 ),
-                collapse_panels=True,
+                rrb.TimePanel(timeline="task_frame", expanded=True, fps=20,
+                              play_state="Paused", loop_mode="Off"),
+                collapse_panels=False,
             )
         )
 
+        self.scenes: list[dict] = []
+        self.scene_index = -1
+        self.tool_to_box_rotation = np.eye(3)
         self.frames: list[PlaybackFrame] = []
         self.joint_names: tuple[str, ...] = ()
         self.box_center = np.zeros(3)
@@ -137,7 +121,6 @@ class V3SingleArmBoxExtractViewer(Node):
         self.generation = 0
         self.frame_index = 0
         self.global_frame = 1
-        self.next_frame_time = time.monotonic()
         self.last_frame: PlaybackFrame | None = None
         self.success = False
         self.failure_stage = ""
@@ -150,8 +133,7 @@ class V3SingleArmBoxExtractViewer(Node):
         qos.reliability = ReliabilityPolicy.RELIABLE
         qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.subscription = self.create_subscription(String, topic, self.on_task, qos)
-        self.timer = self.create_timer(0.01, self.on_timer)
-        self.get_logger().info(f"Rerun抽箱播放器已就绪: topic={topic}")
+        self.get_logger().info(f"Rerun轨迹时间轴已就绪（全量写入，界面控制播放）: topic={topic}")
 
     def on_task(self, message: String) -> None:
         try:
@@ -160,7 +142,12 @@ class V3SingleArmBoxExtractViewer(Node):
             self.get_logger().error(f"非法抽箱JSON: {exception}")
             return
 
+        started = time.perf_counter()
+        # A new message must not overwrite the previous result's final frame.
+        rr.set_time("task_frame", sequence=self.global_frame)
         self.wall_request = payload if payload.get("distance_demo") else {}
+        self.scenes = payload.get("scenes", [])
+        self.scene_index = -1
         if payload.get("kind") in ("preview", "planning"):
             self.frames = []
             self.metrics = {}
@@ -168,10 +155,14 @@ class V3SingleArmBoxExtractViewer(Node):
             log_robot_state(self.robot, dict(zip(payload.get("joint_names", []),
                                                 payload.get("initial_joints", []))), "world/robot")
         self.tool_link = str(payload.get("tool_link", self.tool_link))
+        self.diagnostic = payload.get("diagnostic", {}) if not payload.get("success", False) else {}
+        rr.log("world/failure", rr.Clear(recursive=True))
+        rr.log("summary/failure", rr.Clear(recursive=True))
         self.update_scene(payload)
         kind = str(payload.get("kind", "preview"))
         if kind == "preview":
             self.log_summary(str(payload.get("status", "调整箱体位置")), planning=False)
+            self.global_frame += 1
             return
         if kind == "planning":
             self.generation = int(payload.get("generation", self.generation + 1))
@@ -180,21 +171,31 @@ class V3SingleArmBoxExtractViewer(Node):
             self.get_logger().info(
                 f"generation={self.generation} 计算开始 box={self.box_center.tolist()}"
             )
+            self.global_frame += 1
             return
         if kind != "result":
             return
 
         parsed_frames: list[PlaybackFrame] = []
         joint_names = tuple(str(name) for name in payload.get("joint_names", []))
-        for frame in payload.get("frames", []):
+        for frame in replay_frames(payload):
             joints = tuple(float(value) for value in frame.get("joints", []))
-            if not joint_names or len(joints) != len(joint_names):
-                continue
+            if not joint_names or len(joints) != len(joint_names) or not all(map(math.isfinite, joints)):
+                self.frames = []
+                self.get_logger().error("非法轨迹关节帧：拒绝整段，不丢帧播放")
+                return
+            scene_index = int(frame.get("scene_index", 0))
+            if self.scenes and not 0 <= scene_index < len(self.scenes):
+                self.frames = []
+                self.get_logger().error(f"非法场景索引: {scene_index}")
+                return
             parsed_frames.append(
                 PlaybackFrame(
                     stage=str(frame.get("stage", "unknown")),
                     joints=joints,
                     box_attached=bool(frame.get("box_attached", False)),
+                    box_visible=bool(frame.get("box_visible", True)),
+                    scene_index=scene_index,
                 )
             )
         self.joint_names = joint_names
@@ -208,16 +209,24 @@ class V3SingleArmBoxExtractViewer(Node):
         self.tool_link = str(payload.get("tool_link", self.tool_link))
         self.frame_index = 0
         self.last_frame = None
-        self.next_frame_time = time.monotonic()
-        self.log_summary("计算完成，开始播放", planning=False)
+        self.log_summary("计算完成，正在写入完整时间轴", planning=False)
         outcome = "SUCCESS" if self.success else "FAILED"
         self.get_logger().info(
             f"generation={self.generation} {outcome} total={self.total_ms:.2f}ms "
             f"frames={len(self.frames)} stage={self.failure_stage or '-'} "
             f"reason={self.failure_reason or '-'}"
         )
+        self.write_trajectory()
+        self.write_elapsed_s = time.perf_counter() - started
+        self.get_logger().info(
+            f"RERUN_TIMELINE_READY generation={self.generation} frames={len(self.frames)} "
+            f"write_elapsed_s={self.write_elapsed_s:.3f} (含FK/写入/flush，不含规划；界面控制播放)")
 
-    def update_scene(self, payload: dict) -> None:
+    def update_scene(self, payload: dict, *, draw_boxes: bool = True) -> None:
+        self.tool_link = str(payload.get("tool_link", self.tool_link))
+        # Old recordings stored permuted dimensions in TCP axes; preserve their geometry.
+        self.tool_to_box_rotation = np.asarray(payload.get("tool_to_box_rotation",
+            [[0, 0, -1], [0, 1, 0], [1, 0, 0]]), dtype=float)
         # Clear first: a restarted planner may supply a different scene (or disabled regression mode).
         rr.log("world/environment", rr.Clear(recursive=True))
         for box in payload.get("environment", {}).get("boxes", []):
@@ -239,7 +248,19 @@ class V3SingleArmBoxExtractViewer(Node):
         if len(tool_offset) == 3:
             self.tool_to_box_center = np.asarray(tool_offset, dtype=float)
         self.log_scene_points(payload)
-        self.log_boxes(None, attached=False)
+        rr.log("world/boxes/neighbors", rr.Clear(recursive=True))
+        if self.neighbor_centers:
+            rr.log(
+                "world/boxes/neighbors",
+                rr.Boxes3D(
+                    centers=self.neighbor_centers,
+                    half_sizes=[(self.box_size * 0.5).tolist()],
+                    colors=[[255, 125, 25, 125]],
+                    labels=[f"neighbor {index + 1}" for index in range(len(self.neighbor_centers))],
+                ),
+            )
+        if draw_boxes:
+            self.log_boxes(None, attached=False)
 
     def log_scene_points(self, payload: dict) -> None:
         positions = []
@@ -277,18 +298,13 @@ class V3SingleArmBoxExtractViewer(Node):
             )
 
     def log_boxes(
-        self, joint_positions: dict[str, float] | None, *, attached: bool
+        self, joint_positions: dict[str, float] | None, *, attached: bool, visible: bool = True,
+        transforms: dict[str, np.ndarray] | None = None
     ) -> None:
-        if self.neighbor_centers:
-            rr.log(
-                "world/boxes/neighbors",
-                rr.Boxes3D(
-                    centers=self.neighbor_centers,
-                    half_sizes=[(self.box_size * 0.5).tolist()],
-                    colors=[[255, 125, 25, 125]],
-                    labels=[f"neighbor {index + 1}" for index in range(len(self.neighbor_centers))],
-                ),
-            )
+        if not visible:
+            rr.log("world/boxes/target", rr.Clear(recursive=True))
+            rr.log("world/boxes/carried", rr.Clear(recursive=True))
+            return
         if not attached or joint_positions is None:
             rr.log("world/boxes/carried", rr.Clear(recursive=True))
             rr.log(
@@ -302,11 +318,13 @@ class V3SingleArmBoxExtractViewer(Node):
             )
             return
 
-        transforms = self.robot.fk(joint_positions)
+        if transforms is None:
+            transforms = self.robot.fk(joint_positions)
         tool_transform = transforms.get(self.tool_link)
         if tool_transform is None:
             return
         box_transform = tool_transform.copy()
+        box_transform[:3, :3] = tool_transform[:3, :3] @ self.tool_to_box_rotation
         box_transform[:3, 3] = (
             tool_transform[:3, 3]
             + tool_transform[:3, :3] @ self.tool_to_box_center
@@ -316,13 +334,7 @@ class V3SingleArmBoxExtractViewer(Node):
             "world/boxes/carried",
             rr.Boxes3D(
                 centers=[box_transform[:3, 3].tolist()],
-                half_sizes=[
-                    [
-                        float(self.box_size[2] * 0.5),
-                        float(self.box_size[1] * 0.5),
-                        float(self.box_size[0] * 0.5),
-                    ]
-                ],
+                half_sizes=[(self.box_size * 0.5).tolist()],
                 quaternions=[matrix_to_quaternion(box_transform[:3, :3])],
                 colors=[[45, 225, 100, 190]],
                 labels=["carried target box"],
@@ -372,6 +384,9 @@ class V3SingleArmBoxExtractViewer(Node):
                      f"，arm={self.wall_request.get('side', '?')}"
                      f"\n- 车头基准 X={self.wall_request['chassis_front_x']:.6f}m"
                      "\n- 仅仿真：未找到路径不等于绝对不可抓取；失败回放仅供诊断。")
+        if self.wall_request.get("sequence"):
+            body += (f"\n- 整墙结果：{self.wall_request['completed_count']}/25；"
+                     f"失败箱 {self.wall_request['failed_box_id']}；逐帧释放消失，不跳箱。")
         environment = self.wall_request.get("environment", {})
         if environment:
             body += (f"\n- 环境碰撞：{'开启' if environment['enabled'] else '关闭（仅回归）'}；"
@@ -384,60 +399,68 @@ class V3SingleArmBoxExtractViewer(Node):
                      f"[{alignment['ratio_min']:.3f}, {alignment['ratio_max']:.3f}]；"
                      f"分支 {alignment['branch']}；目标updown={alignment['target_updown']:.3f} m"
                      f"\n- 区间外原因：{alignment['outside_reason'] or '无'}；不换高重试"
-                     "\n- 升降 → 抓取抽出 → 携箱home → 升降归零（仅仿真）")
+                     + ("\n- 升降 → 抓取抽出 → 后放 → 释放消失 → 保持末姿态接续下一箱（仅仿真）"
+                        if self.wall_request.get("release_after_transfer") else
+                        "\n- 升降 → 抓取抽出 → 携箱返回home → 携箱升降归零（仅仿真）"))
+        elif alignment.get("strategy") == "top_wrist_alignment":
+            body += (f"\n- 顶吸按腕心选高：水平距离 {alignment['xy']:.3f} m / 臂长 {alignment['arm_length']:.3f} m；"
+                     f"updown={alignment['target_updown']:.3f} m；{alignment['outside_reason'] or '水平可达'}"
+                     f"；肩高于腕心 {alignment.get('shoulder_above_wrist', 0.):.3f} m（独立于正吸比例）"
+                     "\n- 后放 → 释放消失，保持末姿态；失败仅回放实际连续前缀。")
         elif alignment:
             body += (f"\n- 高度调整：{'开启' if alignment['enabled'] else '关闭'}；"
                      f"肩部中心比箱中心高 {alignment['shoulder_box_offset']:.3f} m"
                      f"\n- 计划下降 {alignment['descent']:.3f} m；"
                      f"updown 目标 {alignment['target_updown']:.3f} m（不是实机反馈）"
-                     "\n- lower_to_box_height → 预接触 → 接触 → 附着 → 抽出 → 携箱返回home → restore_default_height升回0")
+                     "\n- lower_to_box_height → 预接触 → 接触 → 附着 → 抽出 → 后放释放消失（箱墙搬运）")
         rr.log(
             "summary",
             rr.TextDocument(body, media_type=rr.MediaType.MARKDOWN),
         )
 
-    def on_timer(self) -> None:
-        if not self.frames or time.monotonic() < self.next_frame_time:
-            return
-        if self.frame_index >= len(self.frames):
-            self.frames = []
-            self.log_summary("播放完成", planning=False)
-            return
+    def write_trajectory(self) -> None:
+        # Bounded batches reduce SDK overhead, never decimate the planner's frames.
+        for begin in range(0, len(self.frames), 1024):
+            batch = self.frames[begin:begin + 1024]
+            transforms = [self.robot.fk(dict(zip(self.joint_names, f.joints))) for f in batch]
+            times = [rr.TimeColumn("task_frame", sequence=np.arange(
+                self.global_frame, self.global_frame + len(batch)))]
+            for link in transforms[0]:
+                poses = np.asarray([tf[link] for tf in transforms])
+                rr.send_columns(f"world/robot/{link}", indexes=times,
+                    columns=rr.Transform3D.columns(translation=poses[:, :3, 3],
+                        quaternion=[matrix_to_quaternion(p[:3, :3]) for p in poses]))
+            for tf in transforms:
+                self.log_frame(tf)
+        self.log_summary("诊断轨迹已写入：末帧为失败点（非可执行轨迹）" if self.diagnostic else
+                         "完整轨迹已写入：使用时间轴播放、暂停和拖动", planning=False)
+        recording = rr.get_global_data_recording()
+        if recording is not None:
+            recording.flush()
 
+    def log_frame(self, transforms: dict[str, np.ndarray]) -> None:
         frame = self.frames[self.frame_index]
         rr.set_time("task_frame", sequence=self.global_frame)
         joint_positions = dict(zip(self.joint_names, frame.joints))
-        log_robot_state(self.robot, joint_positions, "world/robot")
-        self.log_boxes(joint_positions, attached=frame.box_attached)
+        if self.scenes and self.scene_index != frame.scene_index:
+            self.update_scene(self.scenes[frame.scene_index], draw_boxes=False)
+            self.scene_index = frame.scene_index
+        self.log_boxes(joint_positions, attached=frame.box_attached, visible=frame.box_visible,
+                       transforms=transforms)
         rr.log(
             "world/current_stage",
             rr.TextLog(
                 f"generation={self.generation} frame={self.frame_index + 1}/{len(self.frames)} "
-                f"stage={frame.stage} attached={frame.box_attached}"
+                f"stage={frame.stage} attached={frame.box_attached} "
+                f"visible={frame.box_visible} scene={frame.scene_index}"
             ),
         )
 
-        delay = self.minimum_frame_period
-        if self.last_frame is not None:
-            if self.last_frame.stage != frame.stage:
-                delay = self.stage_pause_s
-            else:
-                # updown is metres, not radians. Playback is illustrative, not a timed trajectory.
-                angular = [i for i, name in enumerate(self.joint_names) if name != "updown"]
-                delta = maximum_joint_delta_degrees(
-                    [self.last_frame.joints[i] for i in angular],
-                    [frame.joints[i] for i in angular])
-                delay = max(
-                    self.minimum_frame_period,
-                    min(0.25, delta / self.playback_joint_speed_deg_s),
-                )
-        if self.last_frame is not None and "updown" in self.joint_names:
-            lift = self.joint_names.index("updown")
-            delay = max(delay, abs(frame.joints[lift] - self.last_frame.joints[lift]) / 0.15)
+        if self.frame_index + 1 == len(self.frames):
+            log_failure(getattr(self, "diagnostic", {}))
         self.last_frame = frame
         self.frame_index += 1
         self.global_frame += 1
-        self.next_frame_time = time.monotonic() + delay
 
 
 def main() -> None:

@@ -107,11 +107,24 @@ def main():
 
     def check(task):
         alignment = task['height_alignment']
+        if task['suction_mode'] == 'top':
+            # This legacy fixed-offset suite uses x=.90: top CENTER is outside XY reach.
+            # Successful wrist-aligned top trajectories have their own full-scene replay test.
+            assert alignment['strategy'] == 'top_wrist_alignment'
+            assert not task['success'] and task['failure_stage'] == 'precontact_ik'
+            assert alignment['xy'] > alignment['arm_length']
+            assert len(task['frames']) == 1 and not task['frames'][0]['box_attached']
+            assert np.allclose(task['frames'][0]['joints'], home)
+            assert all(not f['box_attached'] for f in task['diagnostic_frames'])
+            return
         assert math.isclose(alignment['initial_shoulder_z'], initial_z, abs_tol=1e-6)
         descent = max(0., initial_z - task['box_center'][2] - alignment['shoulder_box_offset'])
         assert math.isclose(alignment['descent'], descent, abs_tol=1e-6)
         frames = task['frames']
         assert np.allclose(frames[0]['joints'], home), 'Request did not reset initial state'
+        if not task['success']:
+            assert len(frames) == 1 and not frames[0]['box_attached']
+            return  # Failed attempts are not executed before a top-suction retry.
         stages = list(dict.fromkeys(frame['stage'] for frame in frames))
         if task['success']:
             assert stages == (['lower_to_box_height'] if descent > 0 else []) + STAGES + (['restore_default_height'] if descent > 0 else []), stages
@@ -163,7 +176,9 @@ def main():
             if task['success']:
                 coverage.append(box_id)
             else:
-                assert [a['arm'] for a in task['attempts']] == ['left', 'right']
+                assert [(a['suction_mode'], a['arm']) for a in task['attempts']] == (
+                    [] if box_id < 5 else [('front', 'left'), ('front', 'right')]
+                ) + [('top', 'left'), ('top', 'right')]
         # Positive regressions, not a claim that other IDs are physically unreachable.
         assert {5, 9}.issubset(coverage), coverage
         for box_id, arm in [(5, 'left'), (9, 'right'),
@@ -186,15 +201,17 @@ def main():
             lower_two_rows_success=coverage), indent=2))
         task = call(5, x=2.)
         assert not task['success'] and task['failure_stage'] == 'precontact_ik'
-        check(task)  # Failed grasp retains validated lift prefix, no teleport back to zero.
+        check(task)  # Failed attempts leave the initial state untouched.
 
     with launch('overtravel', ['shoulder_box_offset:=0.0']) as (call, _, received):
-        assert received['task']['height_alignment']['shoulder_box_offset'] == 0.
-        task = call(0)
-        assert not task['success'] and task['failure_stage'] == 'height_alignment_limits'
-        assert task['height_alignment']['target_updown'] < -1.
+        task = call(5)  # Non-bottom front attempts still exercise the fixed-offset limit.
+        assert not task['success']
+        front = [a for a in task['attempts'] if a['suction_mode'] == 'front']
+        assert len(front) == 2
+        assert all(a['height_alignment']['shoulder_box_offset'] == 0 for a in front)
+        assert all(a['failure_stage'] == 'height_alignment_limits' and
+                   a['height_alignment']['target_updown'] < -1. for a in front)
         assert len(task['frames']) == 1 and np.allclose(task['frames'][0]['joints'], home)
-        assert all(a['failure_stage'] == 'height_alignment_limits' for a in task['attempts'])
 
     with launch('no_lower', ['shoulder_box_offset:=2.0']) as (call, _, received):
         task = call(20)
@@ -203,12 +220,16 @@ def main():
         check(task)
 
     # Just inside the URDF lower limit; requested height is not silently clamped.
-    offset = initial_z - .2 - .999999
+    offset = initial_z - .61 - .999999
     with launch('lower_limit', [f'shoulder_box_offset:={offset}']) as (call, _, received):
-        task = call(0)
-        assert not task['failure_stage'].startswith('height_alignment_'), task['failure_reason']
+        task = call(5)
+        front = task['attempts'][0]
+        assert front['suction_mode'] == 'front'
+        assert not front['failure_stage'].startswith('height_alignment_'), front['failure_reason']
         check(task)
-        assert math.isclose(min(f['joints'][14] for f in task['frames']), -.999999, abs_tol=1e-6)
+        assert math.isclose(front['height_alignment']['target_updown'], -.999999, abs_tol=1e-6)
+        if task['success']:
+            assert math.isclose(min(f['joints'][14] for f in task['frames']), -.999999, abs_tol=1e-6)
 
     for value in ('-0.01', 'nan', 'inf'):
         path = root / f'invalid_{value}.log'
