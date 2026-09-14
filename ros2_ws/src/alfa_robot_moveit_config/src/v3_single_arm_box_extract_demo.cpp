@@ -428,6 +428,10 @@ public:
 
     task_publisher_ = create_publisher<std_msgs::msg::String>(
       "~/task_json", rclcpp::QoS(1).reliable().transient_local());
+    // At most 25 checked box segments per task. The separate depth-1 topic remains
+    // the authoritative full snapshot for late subscribers/reconnects.
+    segment_publisher_ = create_publisher<std_msgs::msg::String>(
+      "~/task_json_segments", rclcpp::QoS(32).reliable().transient_local());
     joint_state_publisher_ = create_publisher<sensor_msgs::msg::JointState>("~/joint_states", 10);
     scene_marker_publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>(
       "~/scene_markers", rclcpp::QoS(1).reliable().transient_local());
@@ -862,17 +866,35 @@ private:
       }
       ensureFailurePlayback(result, box_center_);
       total.metrics.add(result.metrics);
+      const size_t scene_index = playback_scenes_.size();
+      auto context = sceneJson(box_center_);
+      context["side"] = side_;
+      playback_scenes_.push_back(context);
+      for (auto& frame : result.frames) frame.scene_index = scene_index;
+      for (auto& frame : result.diagnostic_frames) frame.scene_index = scene_index;
       publishTaskResult(generation, box_center_, result, false);
+      auto segment = last_result_;
+      segment["kind"] = "segment";
+      segment["sequence"] = true;
+      segment["segment_index"] = scene_index;
+      segment["frame_begin"] = total.frames.size();
+      segment["frame_end"] = total.frames.size() +
+        (result.success ? result.frames.size() : result.diagnostic_frames.size());
+      segment["scenes"] = playback_scenes_;
+      segment["planning_elapsed_ms"] = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+      // Only the selected final outcome of planWithFallback is publishable.
+      // No playback timer, UI acknowledgment, or candidate failure publication.
+      publishJson(segment, true);
+      RCLCPP_INFO(get_logger(), "SEQUENCE_SEGMENT_READY generation=%llu segment=%zu box=%d "
+        "frames=[%zu,%zu) planning_elapsed_ms=%.3f",
+        static_cast<unsigned long long>(generation), scene_index, id, total.frames.size(),
+        segment["frame_end"].get<size_t>(), segment["planning_elapsed_ms"].get<double>());
       auto record = last_result_;
       record.erase("frames");
       record.erase("diagnostic_frames");
       record["frame_begin"] = total.frames.size();
       if (result.success) {
-        const size_t scene_index = playback_scenes_.size();
-        auto context = sceneJson(box_center_);
-        context["side"] = side_;
-        playback_scenes_.push_back(context);
-        for (auto& frame : result.frames) frame.scene_index = scene_index;
         total.frames.insert(total.frames.end(), result.frames.begin(), result.frames.end());
         // Continue from the checked rear-release posture; no per-box home reset.
         const auto& end = result.frames.back();
@@ -886,12 +908,7 @@ private:
         total.failure_stage = result.failure_stage;
         total.failure_reason = result.failure_reason;
         failed_box = id;
-        auto context = sceneJson(box_center_);
-        context["side"] = side_;
-        const size_t scene_index = playback_scenes_.size();
-        playback_scenes_.push_back(context);
         total.diagnostic_frames = total.frames;
-        for (auto& frame : result.diagnostic_frames) frame.scene_index = scene_index;
         total.diagnostic_frames.insert(total.diagnostic_frames.end(),
           result.diagnostic_frames.begin(), result.diagnostic_frames.end());
         total.diagnostic = result.diagnostic;
@@ -910,6 +927,9 @@ private:
     publishTaskResult(generation, box_center_, total, false);
     for (auto it = first_scene.begin(); it != first_scene.end(); ++it) last_result_[it.key()] = it.value();
     last_result_["sequence"] = true;
+    last_result_["segment_count"] = boxes.size();
+    last_result_["frame_begin"] = 0;
+    last_result_["frame_end"] = total.success ? total.frames.size() : total.diagnostic_frames.size();
     last_result_["sequence_order"] = alfa_robot::motion::wallSequenceOrder();
     last_result_["completed_count"] = removed_boxes_.size();
     last_result_["remaining_count"] = 25 - removed_boxes_.size();
@@ -2130,11 +2150,14 @@ private:
     return output;
   }
 
-  void publishJson(const nlohmann::json& payload)
+  void publishJson(nlohmann::json payload, bool segment = false)
   {
+    payload["publisher_id"] = publisher_id_;
+    if (payload.contains("generation"))
+      payload["task_id"] = publisher_id_ + ":" + std::to_string(payload["generation"].get<uint64_t>());
     std_msgs::msg::String message;
     message.data = payload.dump();
-    task_publisher_->publish(message);
+    (segment ? segment_publisher_ : task_publisher_)->publish(message);
   }
 
   void publishPreview(const std::string& status)
@@ -2512,6 +2535,9 @@ private:
   interactive_markers::MenuHandler menu_handler_;
   interactive_markers::MenuHandler::EntryHandle confirm_menu_entry_ = 0;
   interactive_markers::MenuHandler::EntryHandle reset_menu_entry_ = 0;
+  const std::string publisher_id_ = std::to_string(
+    std::chrono::system_clock::now().time_since_epoch().count());
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr segment_publisher_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr task_publisher_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_publisher_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr scene_marker_publisher_;

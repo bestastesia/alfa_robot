@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Write complete V3 box trajectories to Rerun; the viewer controls playback."""
+"""Append checked V3 box trajectories to Rerun; the viewer controls playback."""
 
 from __future__ import annotations
 
 from alfa_robot_rerun.demo_failure import replay_frames, log_failure
+from alfa_robot_rerun.sequence_timeline import SequenceTimeline
 
 import json
 import math
@@ -108,6 +109,8 @@ class V3SingleArmBoxExtractViewer(Node):
             )
         )
 
+        self.sequence_timeline = SequenceTimeline()
+        self.sequence_started = time.perf_counter()
         self.scenes: list[dict] = []
         self.scene_index = -1
         self.tool_to_box_rotation = np.eye(3)
@@ -133,7 +136,11 @@ class V3SingleArmBoxExtractViewer(Node):
         qos.reliability = ReliabilityPolicy.RELIABLE
         qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
         self.subscription = self.create_subscription(String, topic, self.on_task, qos)
-        self.get_logger().info(f"Rerun轨迹时间轴已就绪（全量写入，界面控制播放）: topic={topic}")
+        segment_qos = QoSProfile(depth=32, reliability=ReliabilityPolicy.RELIABLE,
+                                 durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.segment_subscription = self.create_subscription(
+            String, topic + "_segments", self.on_task, segment_qos)
+        self.get_logger().info(f"Rerun轨迹时间轴已就绪（逐箱批量追加，界面控制播放）: topic={topic}")
 
     def on_task(self, message: String) -> None:
         try:
@@ -142,6 +149,47 @@ class V3SingleArmBoxExtractViewer(Node):
             self.get_logger().error(f"非法抽箱JSON: {exception}")
             return
 
+        if not isinstance(payload, dict) or (payload.get("kind") == "segment" and not payload.get("task_id")):
+            self.get_logger().error("非法任务JSON或分段缺少task_id")
+            return
+        if payload.get("task_id"):
+            previous = self.sequence_timeline.task_id
+            try:
+                if not self.sequence_timeline.select(payload):
+                    return
+            except (KeyError, TypeError, ValueError) as error:
+                self.get_logger().error(f"非法任务标识: {error}")
+                return
+            if previous != self.sequence_timeline.task_id:
+                self.sequence_started = time.perf_counter()
+            if payload.get("kind") == "planning" and (self.sequence_timeline.frames or self.sequence_timeline.pending):
+                return  # Cross-topic delivery may put planning after the first segment.
+        if payload.get("sequence") and payload.get("kind") in ("segment", "result") and "frame_end" in payload:
+            try:
+                # Validate before retaining a range, not after advancing the append cursor.
+                names = payload["joint_names"]
+                for frame in replay_frames(payload):
+                    joints = frame["joints"]
+                    if not names or len(joints) != len(names) or not all(map(math.isfinite, joints)):
+                        raise ValueError("invalid trajectory joints")
+                ready = self.sequence_timeline.append(payload)
+            except (KeyError, TypeError, ValueError) as error:
+                self.get_logger().error(f"拒绝序列分段（等待完整结果补齐）: {error}")
+                return
+            for segment in ready:
+                self.write_payload(segment)
+            if self.sequence_timeline.pending:
+                self.get_logger().warning(f"RERUN_SEQUENCE_GAP next_frame={len(self.sequence_timeline.frames)} "
+                                          f"pending={sorted(self.sequence_timeline.pending)}")
+            if payload["kind"] == "result":
+                self.get_logger().info(f"RERUN_SEQUENCE_READY task_id={payload['task_id']} "
+                    f"frames={len(self.sequence_timeline.frames)} appended={sum(len(p['frames']) for p in ready)} "
+                    f"receive_to_ready_s={time.perf_counter() - self.sequence_started:.3f} "
+                    f"planning_ms={payload.get('total_ms', 0):.3f}")
+            return
+        self.write_payload(payload)
+
+    def write_payload(self, payload: dict) -> None:
         started = time.perf_counter()
         # A new message must not overwrite the previous result's final frame.
         rr.set_time("task_frame", sequence=self.global_frame)
@@ -158,7 +206,9 @@ class V3SingleArmBoxExtractViewer(Node):
         self.diagnostic = payload.get("diagnostic", {}) if not payload.get("success", False) else {}
         rr.log("world/failure", rr.Clear(recursive=True))
         rr.log("summary/failure", rr.Clear(recursive=True))
-        self.update_scene(payload)
+        # Segment scenes become visible only at their first trajectory tick.
+        if not payload.get("stream_segment"):
+            self.update_scene(payload)
         kind = str(payload.get("kind", "preview"))
         if kind == "preview":
             self.log_summary(str(payload.get("status", "调整箱体位置")), planning=False)
@@ -209,7 +259,9 @@ class V3SingleArmBoxExtractViewer(Node):
         self.tool_link = str(payload.get("tool_link", self.tool_link))
         self.frame_index = 0
         self.last_frame = None
-        self.log_summary("计算完成，正在写入完整时间轴", planning=False)
+        self.stream_segment = bool(payload.get("stream_segment"))
+        self.log_summary("当前箱子规划完成，正在追加轨迹；后台继续规划" if self.stream_segment else
+                         "计算完成，正在写入完整时间轴", planning=False)
         outcome = "SUCCESS" if self.success else "FAILED"
         self.get_logger().info(
             f"generation={self.generation} {outcome} total={self.total_ms:.2f}ms "
@@ -220,7 +272,9 @@ class V3SingleArmBoxExtractViewer(Node):
         self.write_elapsed_s = time.perf_counter() - started
         self.get_logger().info(
             f"RERUN_TIMELINE_READY generation={self.generation} frames={len(self.frames)} "
-            f"write_elapsed_s={self.write_elapsed_s:.3f} (含FK/写入/flush，不含规划；界面控制播放)")
+            f"write_elapsed_s={self.write_elapsed_s:.3f} task_id={payload.get('task_id', '-')} "
+            f"range=[{payload.get('frame_begin', 0)},{payload.get('frame_end', len(self.frames))}) "
+            "(含FK/写入/flush，不含规划；界面控制播放)")
 
     def update_scene(self, payload: dict, *, draw_boxes: bool = True) -> None:
         self.tool_link = str(payload.get("tool_link", self.tool_link))
@@ -384,7 +438,10 @@ class V3SingleArmBoxExtractViewer(Node):
                      f"，arm={self.wall_request.get('side', '?')}"
                      f"\n- 车头基准 X={self.wall_request['chassis_front_x']:.6f}m"
                      "\n- 仅仿真：未找到路径不等于绝对不可抓取；失败回放仅供诊断。")
-        if self.wall_request.get("sequence"):
+        if self.wall_request.get("stream_segment") and "segment_index" in self.wall_request:
+            body += (f"\n- 已收到第 {self.wall_request['segment_index'] + 1} 箱完整分段；"
+                     "后续规划不等待播放，箱体按轨迹帧释放消失。")
+        elif self.wall_request.get("sequence"):
             body += (f"\n- 整墙结果：{self.wall_request['completed_count']}/25；"
                      f"失败箱 {self.wall_request['failed_box_id']}；逐帧释放消失，不跳箱。")
         environment = self.wall_request.get("environment", {})
@@ -433,7 +490,8 @@ class V3SingleArmBoxExtractViewer(Node):
             for tf in transforms:
                 self.log_frame(tf)
         self.log_summary("诊断轨迹已写入：末帧为失败点（非可执行轨迹）" if self.diagnostic else
-                         "完整轨迹已写入：使用时间轴播放、暂停和拖动", planning=False)
+                         ("当前分段已写入；后续轨迹自动追加，使用时间轴播放、暂停和拖动"
+                          if self.stream_segment else "完整轨迹已写入：使用时间轴播放、暂停和拖动"), planning=False)
         recording = rr.get_global_data_recording()
         if recording is not None:
             recording.flush()

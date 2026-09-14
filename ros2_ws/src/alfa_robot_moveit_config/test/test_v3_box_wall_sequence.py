@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import time
@@ -100,6 +101,7 @@ def main():
     parser.add_argument('--validator', type=Path)
     parser.add_argument('--wall-context', choices=['full', 'sequence_prefix'], default='full',
                         help='Sequence must still start with all25 even when this single-box fixture is requested')
+    parser.add_argument('--incremental-rerun', action='store_true', help='Record real incremental Rerun writes and timings')
     parser.add_argument('--require-complete', action='store_true')
     parser.add_argument('--environment-file', type=Path, help='Custom collision fixture')
     parser.add_argument('--wait-failure-playback', action='store_true', help='Verify live joints/markers freeze after the entire replay')
@@ -114,17 +116,31 @@ def main():
     rclpy.init(args=[])
     node = rclpy.create_node('wall_sequence_check')
     received = {}
+    segments = {}
+    received_at = {}
+    def receive_task(message):
+        task = json.loads(message.data)
+        received['task'] = task
+        received_at[task['kind']] = time.perf_counter()
+    def receive_segment(message):
+        task = json.loads(message.data)
+        segments[task['segment_index']] = task
+        (root / f"segment_{task['segment_index']:02d}.json").write_text(message.data)
+    if args.incremental_rerun:
+        node.create_subscription(String, TOPIC + '/task_json_segments', receive_segment,
+                                 QoSProfile(depth=32, durability=DurabilityPolicy.TRANSIENT_LOCAL))
     samples = []
     node.create_subscription(JointState, TOPIC + '/joint_states', lambda m: samples.append(list(m.position)), 10)
     node.create_subscription(MarkerArray, TOPIC + '/scene_markers', lambda m: received.update(markers=m.markers), 10)
     qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
     node.create_subscription(String, TOPIC + '/task_json',
-                             lambda m: received.update(task=json.loads(m.data)), qos)
+                             receive_task, qos)
     client = node.create_client(Trigger, TOPIC + '/plan_wall_sequence')
     single = node.create_client(PlanWallBoxDemo, TOPIC + '/plan_wall_box')
     assert not client.wait_for_service(timeout_sec=1), 'Use an unused ROS domain'
     command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_sequence_demo.launch.py',
-               f'x:={args.x}', 'auto_run_once:=false', 'start_rviz:=false', 'start_rerun:=false',
+               f'x:={args.x}', 'auto_run_once:=false', 'start_rviz:=false', f'start_rerun:={str(args.incremental_rerun).lower()}',
+               'spawn_viewer:=false', f'rerun_recording_path:={root / "live.rrd"}',
                f'planning_seed:={args.seed}', f'initial_pose:={args.initial_pose}', f'wall_bottom_z:={args.wall_bottom_z}']
     if args.front_ratio is not None:
         command.extend(f'comfort_ratio_{key}:={args.front_ratio}' for key in ('min', 'preferred', 'max'))
@@ -161,6 +177,7 @@ def main():
                 expected = ['front', 'front', 'top', 'top'] if box_id == 20 else ['top', 'top']
                 assert [a['suction_mode'] for a in task['attempts']] == expected
                 assert not task['removed_box_ids']
+            request_started = time.perf_counter()
             future = client.call_async(Trigger.Request())
             wait(future.done)
             assert future.result().success, future.result().message
@@ -168,6 +185,41 @@ def main():
             task = received['task']
             (root / 'sequence.json').write_text(json.dumps(task, indent=2))
             check_result(task, robot)
+            if args.incremental_rerun:
+                wait(lambda: len(segments) == task['segment_count'])
+                from alfa_robot_rerun.demo_failure import replay_frames
+                canonical = lambda fs: [{k: v for k, v in f.items() if k != 'diagnostic_only'} for f in fs]
+                joined = []
+                for index, segment in sorted(segments.items()):
+                    assert segment['task_id'] == task['task_id']
+                    assert segment['frame_begin'] == len(joined)
+                    assert segment['scenes'] == task['scenes'][:len(segment['scenes'])]
+                    joined.extend(canonical(replay_frames(segment)))
+                    assert segment['frame_end'] == len(joined)
+                    assert segment['success'] == task['boxes'][index]['success']
+                assert joined == canonical(replay_frames(task))
+                wait(lambda: 'RERUN_SEQUENCE_READY' in (root / 'launch.log').read_text())
+                ready_at = time.perf_counter()
+                # Real late transient-local subscription gets the authoritative full result,
+                # independently of whether the 32-deep segment history is available.
+                late = []
+                subscription = node.create_subscription(String, TOPIC + '/task_json',
+                    lambda message: late.append(json.loads(message.data)), qos)
+                wait(lambda: bool(late), 10)
+                assert late[-1] == task
+                node.destroy_subscription(subscription)
+                text = (root / 'launch.log').read_text()
+                write_times = [float(v) for v in re.findall(r'RERUN_TIMELINE_READY[^\n]*write_elapsed_s=([0-9.]+)', text)]
+                assert len(write_times) == task['segment_count'], 'missing or duplicate Rerun writes'
+                report = dict(first_box_available_s=segments[0]['planning_elapsed_ms'] / 1000,
+                    first_segment_write_s=write_times[0], planning_s=task['total_ms'] / 1000,
+                    request_to_all_written_s=ready_at-request_started,
+                    planning_received_to_all_written_s=ready_at-received_at.get('planning', request_started),
+                    segment_write_sum_s=sum(write_times), segments=len(segments), frames=len(joined),
+                    segment_equals_final=True, late_ros_snapshot_equals_final=True,
+                    completed_count=task['completed_count'], final_stage=joined[-1]['stage'])
+                (root / 'incremental_check.json').write_text(json.dumps(report, indent=2) + '\n')
+                print('PASS incremental:', json.dumps(report), flush=True)
             if args.validator and task['success']:
                 check = subprocess.run([str(args.validator.resolve()), str(root / 'sequence.json'),
                     str(root / 'robot.urdf'), str(root / 'robot.srdf')], capture_output=True, text=True)

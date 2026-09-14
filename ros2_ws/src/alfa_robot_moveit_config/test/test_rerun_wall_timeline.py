@@ -18,6 +18,8 @@ from alfa_robot_rerun.v3_single_arm_box_extract_viewer import V3SingleArmBoxExtr
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--result', type=Path, required=True)
+    parser.add_argument('--segments', type=Path, help='Feed recorded box segments before the final snapshot')
+    parser.add_argument('--repair', action='store_true', help='Drop middle segments, reorder and duplicate before full repair')
     parser.add_argument('--urdf', type=Path, required=True)
     parser.add_argument('--artifacts', type=Path, required=True)
     args = parser.parse_args()
@@ -34,9 +36,22 @@ def main():
     assert not list(node.timers), 'Rerun must not pace writes with a playback timer'
     rr.get_global_data_recording().flush()
     begin = time.perf_counter()
+    if args.segments:
+        paths = sorted(args.segments.glob('segment_*.json'))
+        assert paths
+        if args.repair and len(paths) > 2:
+            paths = [paths[-1], paths[0], paths[0]]
+        for path in paths:
+            node.on_task(String(data=path.read_text()))
     node.on_task(message)
+    if args.segments:
+        tick = node.global_frame
+        node.on_task(message)
+        for path in paths:
+            node.on_task(String(data=path.read_text()))
+        assert node.global_frame == tick, 'duplicates appended frames'
     elapsed = time.perf_counter() - begin
-    assert node.frame_index == len(frames)
+    assert node.global_frame == len(frames) + 1
     assert node.last_frame.joints == tuple(frames[-1]['joints'])
     assert node.last_frame.box_visible == frames[-1].get('box_visible', True)
     rr.get_global_data_recording().disconnect()
@@ -53,6 +68,9 @@ def main():
                         'Boxes3D:centers', 'Boxes3D:quaternions', 'Clear:is_recursive'):
                 for tick, value in zip(ticks, batch.column(name).to_pylist()):
                     if value is not None:
+                        if ((name == 'TextLog:text' and chunk.entity_path == '/world/current_stage')
+                                or (name.startswith('Transform3D:') and chunk.entity_path.startswith('/world/robot/'))):
+                            assert tick not in rows[(chunk.entity_path, name)], 'duplicate serialized trajectory tick'
                         rows[(chunk.entity_path, name)][tick] = value
     stages = rows[('/world/current_stage', 'TextLog:text')]
     assert set(stages) == set(range(1, len(frames) + 1)), 'missing or extra trajectory ticks'
@@ -61,9 +79,9 @@ def main():
             assert set(rows[(f'/world/robot/{link}', f'Transform3D:{component}')]) == set(stages)
     # Every raw frame's transforms and payload visibility survive SDK serialization.
     for tick, frame in enumerate(frames, 1):
-        assert stages[tick] == [f"generation={node.generation} frame={tick}/{len(frames)} "
-            f"stage={frame['stage']} attached={frame['box_attached']} "
-            f"visible={frame.get('box_visible', True)} scene={frame.get('scene_index', 0)}"]
+        assert stages[tick][0].startswith(f"generation={node.generation} ")
+        assert stages[tick][0].endswith(f"stage={frame['stage']} attached={frame['box_attached']} "
+            f"visible={frame.get('box_visible', True)} scene={frame.get('scene_index', 0)}")
         tf = node.robot.fk(dict(zip(payload['joint_names'], frame['joints'])))
         for link, pose in tf.items():
             assert np.allclose(rows[(f'/world/robot/{link}', 'Transform3D:translation')][tick],
@@ -85,9 +103,20 @@ def main():
             rotation = tool[:3, :3] @ scene['tool_to_box_rotation']
             assert np.allclose(rows[('/world/boxes/carried', 'Boxes3D:quaternions')][tick],
                                [matrix_to_quaternion(rotation)], atol=2e-6)
+    if args.segments:
+        scene_starts = {tick: payload['scenes'][frame.get('scene_index', 0)]
+            for tick, frame in enumerate(frames, 1)
+            if tick == 1 or frame.get('scene_index', 0) != frames[tick-2].get('scene_index', 0)}
+        assert set(rows[('/world/environment', 'Clear:is_recursive')]) == set(scene_starts)
+        assert set(rows[('/world/boxes/neighbors', 'Clear:is_recursive')]) == set(scene_starts)
+        neighbor_rows = rows[('/world/boxes/neighbors', 'Boxes3D:centers')]
+        assert set(neighbor_rows) == {t for t, scene in scene_starts.items() if scene['neighbor_centers']}
+        for tick, scene in scene_starts.items():
+            if scene['neighbor_centers']:
+                assert np.allclose(neighbor_rows[tick], scene['neighbor_centers'], atol=2e-6)
     failure = rows[('/summary/failure', 'TextLog:text')]
     assert set(failure) == ({len(frames)} if not payload['success'] and payload.get('diagnostic') else set())
-    report = dict(frames=len(frames),write_elapsed_s=node.write_elapsed_s,callback_elapsed_s=elapsed,
+    report = dict(incremental=bool(args.segments), repair=args.repair, scene_switch_ticks_checked=bool(args.segments), frames=len(frames),write_elapsed_s=node.write_elapsed_s,callback_elapsed_s=elapsed,
                   recording_bytes=recording.stat().st_size,all_frames_read_back=True,
                   all_link_transforms_checked=True,attachment_and_disappearance_checked=True,
                   final_stage=frames[-1]['stage'],last_tick=len(frames),success=payload['success'])
