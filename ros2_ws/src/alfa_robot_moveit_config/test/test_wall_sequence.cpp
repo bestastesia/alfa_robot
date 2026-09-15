@@ -23,12 +23,14 @@ int main()
     dual_rounds += round.dual();
     if (round.dual()) {
       assert(round.left_box / 5 == round.right_box / 5);
-      assert(round.left_box % 5 < 2);
-      assert(round.right_box % 5 > 2);
+      assert(round.left_box % 5 > 2);
+      assert(round.right_box % 5 < 2);
     }
   }
   assert(dual_rounds == 10);
   assert(round_ids.size() == 25);
+  assert(std::abs(chooseSharedUpdown(-0.017886, -0.000499, -0.5, 0.5) + 0.0091925) < 1e-9);
+  assert(chooseSharedUpdown(-0.8, -0.6, -0.5, 0.5) == -0.5);
   const std::array<double, 7> zero{};
   auto wrist = zero; wrist[6] = 0.5;
   auto shoulder = zero; shoulder[0] = 0.5;
@@ -53,6 +55,12 @@ int main()
   assert(wallGraspAttempts(false, "auto", true) == wallGraspAttempts(true, "auto"));
   assert(wallGraspAttempts(false, "left", true) == wallGraspAttempts(true, "left"));
   assert(wallGraspAttempts(true, "right", true) == wallGraspAttempts(true, "right"));
+  const auto center_fallback = wallGraspAttempts(false, "right", false, true);
+  assert(center_fallback.size() == 4);
+  assert(!center_fallback[0].first && center_fallback[0].second == "right");
+  assert(!center_fallback[1].first && center_fallback[1].second == "left");
+  assert(center_fallback[2].first && center_fallback[2].second == "right");
+  assert(center_fallback[3].first && center_fallback[3].second == "left");
   const Eigen::Vector3d size(0.3, 0.4, 0.5), center(1, 2, 3);
   for (bool top : {false, true}) {
     const auto contact = wallContactPose(center, size, 1e-6, top);
@@ -66,8 +74,9 @@ int main()
     // including folded transport orientations; TCP-behind alone is insufficient.
     for (double angle : {0.0, 0.7, -1.2}) {
       Eigen::Isometry3d transport = contact;
+      transport.translation().z() = -0.2;
       transport.linear() = Eigen::AngleAxisd(angle, Eigen::Vector3d::UnitY()).toRotationMatrix() * contact.linear();
-      const auto rear = wallRearPlacementPose(transport, offset, size, -0.5, 0.02);
+      const auto rear = wallRearPlacementPose(transport, offset, size, -0.5, 0.02, 0.0);
       assert(boxBehindChassis(rear * offset, size, -0.5));
       double max_x = -1e9;
       for (int i = 0; i < 8; ++i) {
@@ -76,6 +85,13 @@ int main()
         max_x = std::max(max_x, (rear * offset * corner).x());
       }
       assert(std::abs(max_x - (-0.52)) < 1e-9);
+      double min_z = 1e9;
+      for (int i = 0; i < 8; ++i) {
+        const Eigen::Vector3d corner((i & 1) ? size.x()/2 : -size.x()/2,
+          (i & 2) ? size.y()/2 : -size.y()/2, (i & 4) ? size.z()/2 : -size.z()/2);
+        min_z = std::min(min_z, (rear * offset * corner).z());
+      }
+      assert(min_z >= -1e-9);
     }
     // Eight non-cubic corners remain unchanged at attachment.
     for (int i = 0; i < 8; ++i) {

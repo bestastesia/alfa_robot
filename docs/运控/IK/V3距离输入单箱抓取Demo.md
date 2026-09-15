@@ -157,7 +157,7 @@ row 0 (底层)    0  1  2  3  4
 
 坐标系：当前 V3.0.9 模型中的 `world`，车头沿 +X，墙正面垂直 X 轴，不处理车辆/墙体偏航。
 
-当前模型没有命名的车头 frame。默认取 **`model_base` 碰撞网格所有顶点变换到 world 后的最大 X** 作为 `chassis_front_x`。当前安装资产结果约 `0.310000006814m`。
+当前模型没有命名的车头 frame。默认遍历 **V3 完整移动底盘（车架、主动悬挂、脚轮和车轮）的碰撞网格顶点**，变换到 world 后取最大 X 作为 `chassis_front_x`、最小 X 作为 `chassis_rear_x`。当前 V3 安装资产约为 `+0.505000002204m` / `-0.495m`。
 
 可用显式标定覆盖（单位仍是 world 米，不是额外偏移）：
 
@@ -201,7 +201,7 @@ Z = wall_bottom_z + box_height/2 + row*(box_height+gap)
 
 默认**内尺寸：高2.35m、宽2.38m、长4m**。正墙在+X，−X端开口；两侧墙、正墙、地板、顶棚共五个碰撞体，墙厚10cm向外增加，不侵占内尺寸。箱墙沿Y居中（宽2.04m，两侧各17cm），背面靠正墙，底面Z=0，顶面Z=2.04m。
 
-- 导入CAD底面原本约Z=−0.4022m。仅该launch通过 `model_ground_offset:=0.402201` 调整 `base_to_model` 的固定安装高度，`world/base_link` 仍Z=0，机械臂相对几何/升降限位不变；其余demo默认偏移0。底盘网格离地约1µm，为浮点接触容差，非悬空40cm、非实机安全裕度。保留该标定参数。
+- V3 主动悬挂模型已在 `base_footprint` 坐标中完成车轮落地对齐；该 launch 默认 `model_ground_offset:=0.000005`，只让整机相对 Z=0 地面留 5µm 导入网格容差，不改变机械臂相对几何或升降限位，也不是实机安全裕度。保留该标定参数。
 - `contact_numerical_gap:=0.000001` 同时用于正墙贴靠的1µm数值间隔，避免吸附FK微小误差将右臂携箱误判为穿正墙；未缩碰撞体、未添加地面/仓库碰撞豁免。
 - 环境进入共享 `makeScene()`，覆盖初态、下降、IK、RRT接近、附着、抽出、负重返回及恢复默认升降高度。RViz、Rerun和 `result_json.environment.boxes` 使用同一组world中心/尺寸。Rerun接收与规划器/RViz相同的完整URDF，预览也读取JSON的 `initial_joints`。
 - 环境文件默认 `config/v3_box_wall_environment.json`；`environment_file:=/绝对路径/scene.json` 启动时读取，修改后需重启。根字段 `frame_id:"world"`、`description`、`boxes`；可选 `anchor:"box_wall_back"` 表示盒体中心相对箱墙背面中心XY（Z仍world），每个新距离请求同步平移整个仓库，保持箱墙居中贴正墙。自定义绝对world坐标请删除anchor或设为 `world`。这是独立场景重置，不是底盘行走。

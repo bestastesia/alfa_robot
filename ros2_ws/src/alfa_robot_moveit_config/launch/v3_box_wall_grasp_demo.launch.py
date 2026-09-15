@@ -80,7 +80,7 @@ def generate_launch_description():
         ("comfort_ratio_max", "0.8", "Maximum normalized comfort distance"),
         ("comfort_branch", "auto", "auto in normal use; above/below for offline branch diagnostics only"),
         ("planning_seed", "0", "0 keeps normal RNG; positive seed set before OMPL initialization"),
-        ("model_ground_offset", "0.402201", "Model Z grounding calibration (m); includes 1um contact tolerance"),
+        ("model_ground_offset", "0.000005", "V3 base_footprint grounding gap (m); 5um clears imported mesh tolerance"),
         ("check_environment", "true", "Ground/surroundings collision checks; false ONLY for historical regression"),
         ("environment_file", "", "World-axis aligned boxes JSON; empty uses 4 x 2.38 x 2.35m single-opening warehouse"),
         ("align_height", "true", "Lower shared lift before grasp; false keeps fixed height without disabling environment checks"),

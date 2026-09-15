@@ -623,25 +623,32 @@ private:
 
   double modelChassisFrontX(bool rear = false) const
   {
-    const auto* base = robot_model_->getLinkModel("model_base");
-    if (!base) throw std::runtime_error("model_base missing: configure a supported chassis model");
+    constexpr std::array<const char*, 11> chassis_links = {
+      "model_base", "chassis_base", "active_suspension_carriage",
+      "caster01", "caster02", "caster03", "caster04",
+      "wheel01", "wheel02", "wheel03", "wheel04"};
     double front = rear ? std::numeric_limits<double>::infinity() :
       -std::numeric_limits<double>::infinity();
-    const auto& shapes = base->getShapes();
-    const auto& origins = base->getCollisionOriginTransforms();
-    for (size_t i = 0; i < shapes.size(); ++i) {
-      if (shapes[i]->type != shapes::MESH) {
-        throw std::runtime_error("chassis front extraction expects model_base collision meshes");
-      }
-      const auto* mesh = static_cast<const shapes::Mesh*>(shapes[i].get());
-      const Eigen::Isometry3d transform = initial_state_->getGlobalLinkTransform(base) * origins[i];
-      for (unsigned int v = 0; v < mesh->vertex_count; ++v) {
-        const Eigen::Vector3d point(mesh->vertices[3*v], mesh->vertices[3*v+1], mesh->vertices[3*v+2]);
-        front = rear ? std::min(front, (transform * point).x()) :
-          std::max(front, (transform * point).x());
+    for (const char* link_name : chassis_links) {
+      const auto* link = robot_model_->getLinkModel(link_name);
+      if (!link) throw std::runtime_error(std::string(link_name) + " missing from V3 chassis model");
+      const auto& shapes = link->getShapes();
+      const auto& origins = link->getCollisionOriginTransforms();
+      for (size_t i = 0; i < shapes.size(); ++i) {
+        if (shapes[i]->type != shapes::MESH) {
+          throw std::runtime_error(std::string(link_name) + " chassis collision must be a mesh");
+        }
+        const auto* mesh = static_cast<const shapes::Mesh*>(shapes[i].get());
+        const Eigen::Isometry3d transform = initial_state_->getGlobalLinkTransform(link) * origins[i];
+        for (unsigned int v = 0; v < mesh->vertex_count; ++v) {
+          const Eigen::Vector3d point(
+            mesh->vertices[3*v], mesh->vertices[3*v+1], mesh->vertices[3*v+2]);
+          front = rear ? std::min(front, (transform * point).x()) :
+            std::max(front, (transform * point).x());
+        }
       }
     }
-    if (!std::isfinite(front)) throw std::runtime_error("no chassis collision vertices");
+    if (!std::isfinite(front)) throw std::runtime_error("no V3 chassis collision vertices");
     return front;
   }
 
@@ -758,7 +765,7 @@ private:
     return planning_active_.load() || planning_requested_.load() || sequence_playback_;
   }
 
-  TaskResult planWithFallback(const Eigen::Vector3d& center)
+  TaskResult planWithFallback(const Eigen::Vector3d& center, bool allow_opposite_arm = false)
   {
     attempts_ = nlohmann::json::array();
     if (!distance_demo_) return planTask(center);
@@ -770,7 +777,7 @@ private:
     double elapsed = 0.0;
     for (const auto& [top, side] : alfa_robot::motion::wallGraspAttempts(
         alfa_robot::motion::isBottomBox(center.z(), box_height_, wall_bottom_z_), requested_arm_,
-        requested_suction_mode_ == "top")) {
+        requested_suction_mode_ == "top", allow_opposite_arm)) {
       top_suction_ = top;
       selectArm(side);
       result = planTask(center);
@@ -833,6 +840,14 @@ private:
         transform.translation().z()}}, {"tool_to_box_rotation", rotation}};
   }
 
+  double foldedElbowPosition(const std::string& side) const
+  {
+    const std::string joint = side + "_joint4";
+    const auto& bounds = robot_model_->getVariableBounds(joint);
+    return home_state_->getVariablePosition(joint) >= 0.0 ?
+      bounds.max_position_ - degToRad(5) : bounds.min_position_ + degToRad(5);
+  }
+
   std::array<double, 7> sideJoints(
     const moveit::core::RobotState& state, const std::string& side) const
   {
@@ -878,6 +893,13 @@ private:
     PlanningMetrics* metrics, std::string* reason) const
   {
     const auto scene = makeDualScene(left_id, right_id);
+    // Each independent approach already validates its own final suction contact.
+    // Preserve only those pairs while recombining; cross-arm and environment
+    // collisions remain checked.
+    scene->getAllowedCollisionMatrixNonConst().setEntry(kCarriedBoxLeftId, "left_tool0", true);
+    scene->getAllowedCollisionMatrixNonConst().setEntry(kCarriedBoxLeftId, "left_joint7", true);
+    scene->getAllowedCollisionMatrixNonConst().setEntry(kCarriedBoxRightId, "right_tool0", true);
+    scene->getAllowedCollisionMatrixNonConst().setEntry(kCarriedBoxRightId, "right_joint7", true);
     auto loaded = planning_scene::PlanningScene::clone(scene);
     loaded->getWorldNonConst()->removeObject(kCarriedBoxLeftId);
     loaded->getWorldNonConst()->removeObject(kCarriedBoxRightId);
@@ -896,7 +918,10 @@ private:
       state.update(true);
       if (!state.satisfiesBounds()) { if (reason) *reason = "dual_joint_bounds"; return false; }
       const std::string collision = collisionReason(attached ? loaded : scene, state, metrics);
-      if (!collision.empty()) { if (reason) *reason = "dual_" + collision; return false; }
+      if (!collision.empty()) {
+        if (reason) *reason = "dual_" + frame.stage + "_" + collision;
+        return false;
+      }
       if (previous) {
         if (!alfa_robot::motion::sameShoulderElbowBranch(sideJoints(*previous, "left"), sideJoints(state, "left")) ||
             !alfa_robot::motion::sameShoulderElbowBranch(sideJoints(*previous, "right"), sideJoints(state, "right"))) {
@@ -922,7 +947,8 @@ private:
             probe.update(true);
             const std::string edge_collision = collisionReason(attached ? loaded : scene, probe, metrics);
             if (!probe.satisfiesBounds() || !edge_collision.empty()) {
-              if (reason) *reason = "dual_edge_" + (edge_collision.empty() ? std::string("bounds") : edge_collision);
+              if (reason) *reason = "dual_edge_to_" + frame.stage + "_" +
+                (edge_collision.empty() ? std::string("bounds") : edge_collision);
               return false;
             }
           }
@@ -942,11 +968,26 @@ private:
     updateWallTarget(x, left_id);
     const auto left_center = box_center_;
     selectArm("left"); top_suction_ = top;
-    TaskResult left = planTask(left_center);
+    height_clearance_ = {{"checked", false}};
+    const double left_updown = heightAlignment(left_center).at("target_updown").get<double>();
     updateWallTarget(x, right_id);
     const auto right_center = box_center_;
     selectArm("right"); top_suction_ = top;
+    height_clearance_ = {{"checked", false}};
+    const double right_updown = heightAlignment(right_center).at("target_updown").get<double>();
+    const auto& updown_bounds = robot_model_->getVariableBounds("updown");
+    synchronized_updown_ = alfa_robot::motion::chooseSharedUpdown(
+      left_updown, right_updown, updown_bounds.min_position_, updown_bounds.max_position_);
+    RCLCPP_INFO(get_logger(),
+      "dual shared height: boxes=%d,%d left=%.6fm right=%.6fm selected=%.6fm",
+      left_id, right_id, left_updown, right_updown, *synchronized_updown_);
+    updateWallTarget(x, left_id);
+    selectArm("left"); top_suction_ = top;
+    TaskResult left = planTask(left_center);
+    updateWallTarget(x, right_id);
+    selectArm("right"); top_suction_ = top;
     TaskResult right = planTask(right_center);
+    synchronized_updown_.reset();
     result.metrics.add(left.metrics); result.metrics.add(right.metrics);
     if (!left.success || !right.success) {
       result.failure_stage = "dual_independent_plan";
@@ -1166,7 +1207,7 @@ private:
         const int id = round.left_box >= 0 ? round.left_box : round.right_box;
         updateWallTarget(x, id);
         requested_arm_ = round.left_box >= 0 ? "left" : "right";
-        TaskResult single = planWithFallback(box_center_);
+        TaskResult single = planWithFallback(box_center_, true);
         if (!append_result(single, {id}, false, "")) {
           rounds_json.push_back(round_record);
           break;
@@ -1958,7 +1999,8 @@ private:
       const double upper = height_clearance_.value("upper", bounds.max_position_);
       const double wrist_aligned = initial + wrist.z() - shoulder.z();
       const double ideal = wrist_aligned + top_shoulder_above_wrist_;
-      const double selected = align_height_ ? std::clamp(ideal, lower, upper) : initial;
+      const double selected = !align_height_ ? initial :
+        synchronized_updown_.value_or(std::clamp(ideal, lower, upper));
       const double xy = (wrist - shoulder).head<2>().norm();
       return {{"enabled", align_height_}, {"strategy", "top_wrist_alignment"}, {"arm", side_},
         {"reference", "independent top-suction shoulder-above-wrist height; vertical tool offset included"},
@@ -1966,6 +2008,7 @@ private:
         {"return_policy", "checked rear placement and release; retain final posture for next box"},
         {"target_world", {wrist.x(), wrist.y(), wrist.z()}},
         {"initial_updown", initial}, {"target_updown", selected}, {"ideal_updown", ideal},
+        {"dual_shared_updown", synchronized_updown_.has_value()},
         {"descent", initial - selected}, {"lower_limit", bounds.min_position_},
         {"upper_limit", bounds.max_position_}, {"reachable_lift", height_clearance_},
         {"collision_sample_step_m", 0.005}, {"xy", xy}, {"arm_length", solver_->modelArmLength()},
@@ -1989,6 +2032,11 @@ private:
         choice.position = choice.ideal_position = initial;
         choice.ratio = delta.norm() / length;
         choice.projected = false;
+      } else if (synchronized_updown_) {
+        choice.position = *synchronized_updown_;
+        const double dz = shoulder.z() + choice.position - initial - target.z();
+        choice.ratio = std::hypot(xy, dz) / length;
+        choice.projected = std::abs(choice.position - choice.ideal_position) > 1e-9;
       }
       const double final_dz = shoulder.z() + choice.position - initial - target.z();
       const bool inside = choice.ratio >= comfort_min_ - 1e-9 && choice.ratio <= comfort_max_ + 1e-9;
@@ -2002,6 +2050,7 @@ private:
         {"ratio_max", comfort_max_}, {"actual_ratio", choice.ratio}, {"inside_band", inside},
         {"branch_policy", comfort_branch_}, {"branch", final_dz >= -1e-9 ? "above" : "below"},
         {"ideal_updown", choice.ideal_position}, {"projected", choice.projected},
+        {"dual_shared_updown", synchronized_updown_.has_value()},
         {"outside_reason", inside ? "" : (!align_height_ ? "alignment_disabled" :
           (xy > comfort_max_ * length ? "xy_exceeds_band" :
             (height_clearance_.value("checked", false) ? "reachable_lift_limits" : "lift_limits")))},
@@ -2018,7 +2067,7 @@ private:
       {"shoulder_box_offset", shoulder_box_offset_}, {"height_difference", difference},
       {"descent", descent}, {"initial_updown", initial}, {"target_updown", initial - descent},
       {"lower_limit", bounds.min_position_}, {"upper_limit", bounds.max_position_},
-      {"collision_sample_step_m", 0.005}, {"return_policy", "return arms to SRDF home, then restore lift to initial 0m with payload collision checks"}};
+      {"collision_sample_step_m", 0.005}, {"return_policy", "checked rear placement and release; retain final posture for next box"}};
   }
 
   void checkHeightClearance(
@@ -2059,6 +2108,16 @@ private:
     const auto alignment = heightAlignment(box_center);
     const double target = alignment.at("target_updown").get<double>();
     const auto& bounds = robot_model_->getVariableBounds("updown");
+    if (height_clearance_.value("checked", false) &&
+        (target < height_clearance_.at("lower").get<double>() - 1e-9 ||
+         target > height_clearance_.at("upper").get<double>() + 1e-9)) {
+      result.failure_stage = "height_alignment_clearance";
+      result.failure_reason = "shared updown=" + std::to_string(target) +
+        " outside collision-free interval [" +
+        std::to_string(height_clearance_.at("lower").get<double>()) + ", " +
+        std::to_string(height_clearance_.at("upper").get<double>()) + "] metres";
+      return false;
+    }
     if (target < bounds.min_position_ || target > bounds.max_position_) {
       result.failure_stage = "height_alignment_limits";
       result.failure_reason = "required updown=" + std::to_string(target) +
@@ -2200,9 +2259,8 @@ private:
         for (const std::string side : {"left", "right"}) {
           selectArm(side);
           moveit::core::RobotState folded(grasp_start);
-          const auto& elbow_bounds = robot_model_->getVariableBounds(side + "_joint4");
           folded.setJointGroupPositions(planning_group_, armJoints(*home_state_).data());
-          folded.setVariablePosition(side + "_joint4", elbow_bounds.min_position_ + degToRad(5));
+          folded.setVariablePosition(side + "_joint4", foldedElbowPosition(side));
           folded.update(true);
           const auto path = planRrt(scene, grasp_start, folded);
           result.metrics.rrt_approach_ms += path.wall_ms;
@@ -2321,12 +2379,12 @@ private:
         // A folded top-suction payload can extend forward of its TCP.
         moveit::core::RobotState rear_reference(*home_state_);
         rear_reference.setVariablePosition("updown", grasp_start.getVariablePosition("updown"));
-        if (top_suction_) rear_reference.setVariablePosition(side_ + "_joint4",
-          robot_model_->getVariableBounds(side_ + "_joint4").min_position_ + degToRad(5));
+        if (top_suction_)
+          rear_reference.setVariablePosition(side_ + "_joint4", foldedElbowPosition(side_));
         rear_reference.update(true);
         const auto rear = alfa_robot::motion::wallRearPlacementPose(
           rear_reference.getGlobalLinkTransform(tool_link_), toolToBox(), boxSize(),
-          chassis_rear_x_, rear_clearance_);
+          chassis_rear_x_, rear_clearance_, wall_bottom_z_ + contact_numerical_gap_);
         std::string reason;
         auto candidates = solvePoseCandidates(rear, grasp_start, true, loaded, &result.metrics, false, &reason, &result.rejected_state);
         result.diagnostic["target"] = {rear.translation().x(), rear.translation().y(), rear.translation().z()};
@@ -2798,6 +2856,7 @@ private:
   bool align_height_ = false;
   std::string height_strategy_ = "fixed_offset";
   nlohmann::json height_clearance_ = {{"checked", false}};
+  std::optional<double> synchronized_updown_;
   std::string comfort_branch_ = "auto";
   double comfort_min_ = 0.8, comfort_preferred_ = 0.8, comfort_max_ = 0.8;
   int planning_seed_ = 0;

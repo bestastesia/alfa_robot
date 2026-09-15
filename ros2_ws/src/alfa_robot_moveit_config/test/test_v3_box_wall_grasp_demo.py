@@ -75,7 +75,7 @@ def main():
         return response, None
 
     command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py', 'check_environment:=false', 'align_height:=false',
-               'x:=0.9', 'box_id:=20', 'auto_run_once:=false', 'start_rviz:=false',
+               'x:=0.5', 'box_id:=9', 'auto_run_once:=false', 'start_rviz:=false',
                'start_rerun:=false']
     try:
         with (root / 'launch.log').open('w') as log:
@@ -86,7 +86,7 @@ def main():
                 spin_until(lambda: 'task' in received and 'joints' in received and markers)
                 preview = received['task']
                 front = preview['chassis_front_x']
-                assert math.isclose(front, 0.3100000068, abs_tol=1e-6), front
+                assert math.isclose(front, 0.5050000022, abs_tol=1e-6), front
                 fixed_wall = None
                 for box_id in range(25):
                     response, task = call(2.0, box_id)
@@ -109,43 +109,36 @@ def main():
                     response, task = call(x, box_id, arm)
                     assert not response.success and response.failure_stage == 'invalid_request'
                     assert task is None
-                response, task = call(.9, 20, 'left')
+                response, task = call(.5, 9, 'left')
                 assert response.generation == generation + 1, 'invalid input changed generation'
                 assert response.success, task['attempts']
                 assert [a['arm'] for a in task['attempts']] == ['left']
                 stages = list(dict.fromkeys(f['stage'] for f in task['frames']))
                 assert stages == ['rrt_to_precontact', 'cartesian_approach', 'attach_box',
-                                  'cartesian_retreat', 'rrt_return'], stages
+                                  'cartesian_retreat', 'rrt_return', 'rear_placement',
+                                  'release_box'], stages
                 for frame in task['frames']:
                     joints = dict(zip(task['joint_names'], frame['joints']))
                     assert len(joints) == 16 and all(math.isfinite(v) for v in joints.values())
                     assert joints['updown'] == joints['head_joint'] == 0
                     assert all(math.isclose(joints[f'right_joint{i}'], task['initial_joints'][7 + i - 1], abs_tol=1e-8) for i in range(1, 8))
-                # Wait until RViz output reaches the final loaded pose, then compare its FK with Rerun's.
+                # Wait until RViz reaches the released final frame and hides the transported target.
                 from alfa_robot_rerun.visualize_rerun import UrdfRobot, render_current_urdf
-                robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.402201'}))
-                final = dict(zip(task['joint_names'], task['frames'][-1]['joints']))
-                tool = robot.fk(final)[task['tool_link']]
+                robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.000005'}))
                 import numpy as np
-                expected_center = tool[:3, 3] + tool[:3, :3] @ np.array(task['tool_to_box_center'])
                 def final_marker():
-                    if not markers:
-                        return False
-                    for marker in markers[-1].markers:
-                        if marker.ns == 'target_box':
-                            actual = [marker.pose.position.x, marker.pose.position.y, marker.pose.position.z]
-                            return np.allclose(actual, expected_center, atol=1e-6)
-                    return False
+                    return (bool(markers) and markers[-1].markers[0].action == markers[-1].markers[0].DELETEALL
+                            and not any(marker.ns == 'target_box' for marker in markers[-1].markers))
                 spin_until(final_marker, max(45, len(task['frames']) * .05 + 5))
-                assert sum(m.type == m.CUBE for m in markers[-1].markers) == 25
+                assert sum(m.type == m.CUBE for m in markers[-1].markers) == 24
+                assert not task['frames'][-1]['box_attached'] and not task['frames'][-1]['box_visible']
                 (root / 'successful_task.json').write_text(json.dumps(task, indent=2))
                 (root / 'marker_check.json').write_text(json.dumps({
-                    'expected_final_center': expected_center.tolist(), 'frames': len(task['frames']),
-                    'rviz_marker_matches_rerun_fk': True}, indent=2))
+                    'frames': len(task['frames']), 'rviz_final_target_hidden': True}, indent=2))
                 # Opposite wall edges must exercise both arms, not only left-arm success.
-                for box_id, arm in [(20, 'left'), (24, 'right')]:
+                for box_id, arm in [(9, 'left'), (5, 'right')]:
                     for requested in (arm, 'auto'):
-                        response, task = call(.9, box_id, requested)
+                        response, task = call(.5, box_id, requested)
                         assert response.success and response.selected_arm == arm, task['attempts']
                         assert [a['arm'] for a in task['attempts']] == (
                             ['left', 'right'] if requested == 'auto' and arm == 'right' else [arm])
@@ -157,46 +150,48 @@ def main():
                         for frame in task['frames']:
                             values = dict(zip(task['joint_names'], frame['joints']))
                             assert values['updown'] == values['head_joint'] == 0
-                            assert all(math.isclose(values[f'{other}_joint{i}'], task['initial_joints'][i - 1], abs_tol=1e-8) for i in range(1, 8))
+                            offset_index = 0 if other == 'left' else 7
+                            assert all(math.isclose(values[f'{other}_joint{i}'], task['initial_joints'][offset_index + i - 1], abs_tol=1e-8) for i in range(1, 8))
                         attach = next(f for f in task['frames'] if f['stage'] == 'attach_box')
                         contact_tool = robot.fk(dict(zip(task['joint_names'], attach['joints'])))[task['tool_link']]
                         # The numerical gap must not teleport the box when attaching it.
                         assert np.allclose(contact_tool[:3, 3] + contact_tool[:3, :3] @ offset,
                                            task['box_center'], atol=2e-7, rtol=0)
-                        final = dict(zip(task['joint_names'], task['frames'][-1]['joints']))
-                        tool = robot.fk(final)[task['tool_link']]
-                        expected_center = tool[:3, 3] + tool[:3, :3] @ offset
-                        spin_until(final_marker)
-                print('PASS: 20 left / 24 right, explicit and auto, fixed inactive arm, continuous attach, RViz FK')
+                        rear = next(f for f in task['frames'] if f['stage'] == 'rear_placement')
+                        rear_tool = robot.fk(dict(zip(task['joint_names'], rear['joints'])))[task['tool_link']]
+                        rear_box = rear_tool[:3, 3] + rear_tool[:3, :3] @ offset
+                        extent_x = np.abs(rear_tool[0, :3] @ np.array(task['tool_to_box_rotation'])) @ (np.array(task['box_size']) / 2)
+                        assert rear_box[0] + extent_x <= task['chassis_rear_x'] - .01 + 1e-6
+                        spin_until(final_marker, max(45, len(task['frames']) * .05 + 5))
+                print('PASS: 9 left / 5 right, explicit and auto, fixed inactive arm, continuous attach, RViz FK')
                 found = []
                 for box_id in range(25):
-                    scan_response, _ = call(.9, box_id)
+                    scan_response, _ = call(.5, box_id)
                     if scan_response.success:
                         found.append(box_id)
-                print(f'INFO x=0.90m bounded-search successful IDs: {found}')
+                print(f'INFO x=0.50m bounded-search successful IDs: {found}')
                 # Explicit right and auto requests also keep the interface/replay usable after success.
-                right, right_task = call(.9, 24, 'right')
+                right, right_task = call(.5, 5, 'right')
                 assert [a['arm'] for a in right_task['attempts']] == ['right']
-                auto, auto_task = call(.9, 20, 'auto')
+                auto, auto_task = call(.5, 9, 'auto')
+                assert right.success and right.selected_arm == 'right'
                 assert auto.success and auto.selected_arm == 'left', auto_task['attempts']
                 (root / 'summary.json').write_text(json.dumps(summary, indent=2))
                 print('PASS: 25 fixed-wall IDs; 7 invalid inputs; left/right/auto; complete grasp; RViz FK replay')
             finally:
                 stop(process)
-        # Zero gap reproduces the reported near-coplanar wrist/neighbor collision.
+        # Zero gap remains a valid exact-contact configuration on the V3 wrist geometry.
         received.clear()
         with (root / 'zero_contact_gap.log').open('w') as log:
             process = subprocess.Popen(command + ['contact_numerical_gap:=0.0'], stdout=log,
                                        stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 spin_until(lambda: received.get('task', {}).get('contact_numerical_gap') == 0.0)
-                response, task = call(.9, 24, 'right')
-                assert not response.success
-                front = task['attempts'][0]
-                assert front['suction_mode'] == 'front' and front['failure_stage'] == 'cartesian_approach'
-                assert 'neighbor_box_19' in front['failure_reason'] and 'right_joint7' in front['failure_reason']
+                response, task = call(.5, 5, 'right')
+                assert response.success, task['attempts']
+                assert task['tool_to_box_center'][2] == task['box_size'][0] / 2
                 (root / 'zero_contact_gap.json').write_text(json.dumps(task, indent=2))
-                print('PASS: zero-gap control reproduces right_joint7/neighbor_box_19 contact failure')
+                print('PASS: V3 zero-gap exact contact remains plannable')
             finally:
                 stop(process)
         # A calibrated front override must change wall X exactly, not the definition of x.
@@ -206,7 +201,7 @@ def main():
                                        stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 spin_until(lambda: received.get('task', {}).get('chassis_front_x') == .42)
-                assert math.isclose(received['task']['box_center'][0], .42 + .9 + .15)
+                assert math.isclose(received['task']['box_center'][0], .42 + .5 + .15)
                 (root / 'override.json').write_text(json.dumps(received['task'], indent=2))
                 print('PASS: explicit calibrated chassis-front override')
             finally:

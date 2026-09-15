@@ -84,8 +84,22 @@
     <passive_joint name="wheel03_joint"/>
     <passive_joint name="caster04_joint"/>
     <passive_joint name="wheel04_joint"/>
+    <disable_collisions link1="base_link" link2="chassis_base" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="model_base" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="caster01" reason="Adjacent"/>
+    <disable_collisions link1="caster01" link2="wheel01" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="caster04" reason="Adjacent"/>
+    <disable_collisions link1="caster04" link2="wheel04" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="active_suspension_carriage" reason="Adjacent"/>
+    <disable_collisions link1="active_suspension_carriage" link2="caster02" reason="Adjacent"/>
+    <disable_collisions link1="caster02" link2="wheel02" reason="Adjacent"/>
+    <disable_collisions link1="active_suspension_carriage" link2="caster03" reason="Adjacent"/>
+    <disable_collisions link1="caster03" link2="wheel03" reason="Adjacent"/>
     <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="head_mount" reason="Adjacent"/>
+    <disable_collisions link1="head_mount" link2="head_yaw" reason="Adjacent"/>
+    <disable_collisions link1="head_yaw" link2="head" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="head" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>

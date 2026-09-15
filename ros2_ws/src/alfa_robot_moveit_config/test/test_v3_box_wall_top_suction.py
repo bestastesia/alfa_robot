@@ -57,7 +57,7 @@ def main():
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
     os.environ.setdefault('ROS_DOMAIN_ID', '199')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
-    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.402201'}))
+    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.000005'}))
     rclpy.init(args=[])
     node = rclpy.create_node('top_suction_check')
     received = {}

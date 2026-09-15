@@ -51,8 +51,9 @@ def main():
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
     os.environ.setdefault('ROS_DOMAIN_ID', '188')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
-    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.402201'}))
-    home = [-np.pi / 2, -np.pi / 2, 0, -np.pi / 2, 0, 0, 0] * 2 + [0, 0]
+    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.000005'}))
+    home = [2.61799387799, np.pi / 2, -0.0872664625997, 2.09439510239, 0, 0, 0,
+            -2.61799387799, -np.pi / 2, 0.0872664625997, -2.09439510239, 0, 0, 0, 0, 0]
     initial_z = shoulder_z(robot, {})
     command = ['ros2', 'launch', 'alfa_robot_moveit_config',
                'v3_box_wall_grasp_demo.launch.py', 'check_environment:=false', 'x:=0.90',

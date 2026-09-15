@@ -145,7 +145,7 @@ def main():
     os.environ.update(ROS_LOCALHOST_ONLY='1', ROS_DOMAIN_ID=str(args.domain), ROS_LOG_DIR=str(root/'ros'))
     config = vars(args).copy(); config['artifacts'] = str(root)
     (root/'config.json').write_text(json.dumps(config, indent=2))
-    urdf = render_current_urdf({'model_ground_offset': '0.402201'})
+    urdf = render_current_urdf({'model_ground_offset': '0.000005'})
     robot = UrdfRobot(urdf)
     limits = {j.attrib['name']: (float(j.find('limit').attrib['lower']),
                                float(j.find('limit').attrib['upper']))

@@ -25,75 +25,102 @@ ORDER = [r * 5 + c for r in range(4, -1, -1) for c in range(5)]
 
 
 def check_result(task, robot):
+    rows = [[(r * 5 + 4, r * 5), (r * 5 + 3, r * 5 + 1), (r * 5 + 2,)]
+            for r in range(4, -1, -1)]
+    rounds = [group for row in rows for group in row]
     assert task['sequence_order'] == ORDER
-    n = task['completed_count']
-    assert task['success'] == (n == 25)
-    assert task['remaining_count'] == 25 - n
-    assert set(task['final_removed_box_ids']) == set(ORDER[:n])
-    assert task['failed_box_id'] == (-1 if n == 25 else ORDER[n])
-    assert len(task['boxes']) == n + (n < 25)
+    assert task['dual_target_count'] == 10
+    assert task['segment_count'] == len(task['boxes'])
     assert task['environment']['enabled']
+
+    completed = [box_id for box in task['boxes'] if box['success'] for box_id in box['box_ids']]
+    assert task['completed_count'] == len(completed)
+    assert task['remaining_count'] == 25 - len(completed)
+    assert set(task['final_removed_box_ids']) == set(completed)
+    assert task['success'] == (len(completed) == 25)
+    assert task['failed_box_id'] == -1 if task['success'] else task['failed_box_id'] >= 0
+    assert task['dual_success_count'] == sum(box['success'] and box['dual'] for box in task['boxes'])
+    assert task['full_dual_pass'] == (
+        task['dual_success_count'] == task['dual_target_count'] and task['fallback_count'] == 0)
+
     if not task['success']:
+        assert task['failed_box_id'] not in completed
         diagnostic = task['diagnostic']
         assert diagnostic['diagnostic_only'] and diagnostic['freeze_at_end']
         replay = task['diagnostic_frames']
         assert replay and all(f['diagnostic_only'] for f in replay)
         context = task['scenes'][replay[-1]['scene_index']]
-        assert context['box_id'] == task['failed_box_id']
-        assert set(context['removed_box_ids']) == set(task['final_removed_box_ids'])
-        assert replay[-1]['box_visible']  # failed box never disappears/commits
-        if n:
-            assert [f['joints'] for f in replay[:len(task['frames'])]] == [f['joints'] for f in task['frames']]
+        assert task['failed_box_id'] in context['box_ids']
+        assert set(context['removed_box_ids']) == set(completed)
+        assert replay[-1]['box_visible']
+
     previous = task['initial_joints']
+    removed = []
     for i, box in enumerate(task['boxes']):
-        assert box['box_id'] == ORDER[i]
-        assert set(box['removed_box_ids']) == set(ORDER[:i])
-        assert len(box['neighbor_centers']) == 24 - i
-        expected = [('front', 'left'), ('front', 'right'), ('top', 'left'), ('top', 'right')]
-        if box['box_id'] < 5:
-            expected = expected[2:]
-        actual = [(a['suction_mode'], a['arm']) for a in box['attempts']]
-        assert actual == expected[:len(actual)]
-        assert all(not a['success'] for a in box['attempts'][:-1])
-        assert box['attempts'][-1]['success'] == box['success']
+        assert tuple(box['box_ids']) == rounds[i]
+        assert box['dual'] == (len(box['box_ids']) == 2)
+        assert set(box['removed_box_ids']) == set(removed)
+        assert len(box['neighbor_centers']) == 24 - len(removed)
         assert np.allclose(box['initial_joints'], previous)
         frames = task['frames'][box['frame_begin']:box['frame_end']]
         if not box['success']:
-            assert not frames and i == n
-            assert actual == expected
+            assert not frames
             break
-        releases = [j for j, f in enumerate(frames) if f['stage'] == 'release_box']
-        assert len(releases) == 1
-        release = releases[0]
-        assert frames[release - 1]['stage'] == 'rear_placement'
-        assert frames[release - 1]['box_attached'] and frames[release - 1]['box_visible']
-        assert all(not f['box_visible'] and not f['box_attached'] for f in frames[release:])
-        assert all(f['box_visible'] for f in frames[:release])
-        context = task['scenes'][frames[0]['scene_index']]
-        assert context['box_id'] == box['box_id']
-        offset = np.eye(4)
-        offset[:3, :3] = context['tool_to_box_rotation']
-        offset[:3, 3] = context['tool_to_box_center']
-        attach = next(f for f in frames if f['stage'] == 'attach_box')
-        fk = robot.fk(dict(zip(task['joint_names'], attach['joints'])))
-        world_box = fk[context['tool_link']] @ offset
-        assert np.allclose(world_box[:3, 3], context['box_center'], atol=1e-5)
-        assert np.allclose(world_box[:3, :3], np.eye(3), atol=1e-5)
-        fk = robot.fk(dict(zip(task['joint_names'], frames[release]['joints'])))
-        world_box = fk[context['tool_link']] @ offset
-        extent = np.abs(world_box[0, :3]) @ (np.asarray(context['box_size']) / 2)
-        assert world_box[0, 3] + extent <= task['chassis_rear_x'] - .01 + 1e-6
-        assert frames[-1]['stage'] == 'release_box'
-        assert frames[0]['joints'] == previous
-        assert frames[release]['joints'] == frames[release-1]['joints']
+        assert frames and frames[0]['joints'] == previous
+
+        if box['dual']:
+            carried_ids = {item['box_id'] for item in frames[0]['carried_boxes']}
+            assert carried_ids == set(box['box_ids'])
+            attached = [j for j, frame in enumerate(frames)
+                        if frame['carried_boxes'] and all(item['attached'] for item in frame['carried_boxes'])]
+            released = [j for j, frame in enumerate(frames)
+                        if j > attached[0] and all(not item['visible'] for item in frame['carried_boxes'])]
+            assert attached and released
+            attach, release = attached[0], released[0]
+            assert all(item['visible'] for item in frames[attach]['carried_boxes'])
+            assert all(item['attached'] for item in frames[release - 1]['carried_boxes'])
+            assert all(not item['attached'] and not item['visible']
+                       for item in frames[release]['carried_boxes'])
+            carried_boxes = frames[attach]['carried_boxes']
+        else:
+            attach = next(j for j, frame in enumerate(frames) if frame['stage'] == 'attach_box')
+            release = next(j for j, frame in enumerate(frames) if frame['stage'] == 'release_box')
+            assert frames[release - 1]['stage'] == 'rear_placement'
+            assert frames[release - 1]['box_attached'] and frames[release - 1]['box_visible']
+            assert not frames[release]['box_attached'] and not frames[release]['box_visible']
+            context = task['scenes'][frames[0]['scene_index']]
+            carried_boxes = [{
+                'box_center': context['box_center'],
+                'box_id': context['box_id'],
+                'tool_link': context['tool_link'],
+                'tool_to_box_center': context['tool_to_box_center'],
+                'tool_to_box_rotation': context['tool_to_box_rotation'],
+            }]
+        assert frames[release]['joints'] == frames[release - 1]['joints']
+
+        attach_fk = robot.fk(dict(zip(task['joint_names'], frames[attach]['joints'])))
+        release_fk = robot.fk(dict(zip(task['joint_names'], frames[release]['joints'])))
+        for carried in carried_boxes:
+            offset = np.eye(4)
+            offset[:3, :3] = carried['tool_to_box_rotation']
+            offset[:3, 3] = carried['tool_to_box_center']
+            world_box = attach_fk[carried['tool_link']] @ offset
+            assert np.allclose(world_box[:3, 3], carried['box_center'], atol=1e-5)
+            assert np.allclose(world_box[:3, :3], np.eye(3), atol=1e-5)
+            world_box = release_fk[carried['tool_link']] @ offset
+            extent = np.abs(world_box[0, :3]) @ (np.asarray(box['box_size']) / 2)
+            assert world_box[0, 3] + extent <= task['chassis_rear_x'] - .01 + 1e-6
+
+        removed.extend(box['box_ids'])
         previous = frames[-1]['joints']
+    assert set(removed) == set(completed)
     assert np.allclose(previous, task['final_joints'])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--artifacts', type=Path, required=True)
-    parser.add_argument('--x', type=float, default=.9)
+    parser.add_argument('--x', type=float, default=.5)
     parser.add_argument('--initial-pose', choices=['home', 'arms_down'], default='home')
     parser.add_argument('--wall-bottom-z', type=float, default=0.)
     parser.add_argument('--seed', type=int, default=104729)
@@ -112,7 +139,7 @@ def main():
     os.environ['ROS_LOCALHOST_ONLY'] = '1'
     os.environ.setdefault('ROS_DOMAIN_ID', '197')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
-    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.402201'}))
+    robot = UrdfRobot(render_current_urdf({'model_ground_offset': '0.000005'}))
     rclpy.init(args=[])
     node = rclpy.create_node('wall_sequence_check')
     received = {}
@@ -227,7 +254,7 @@ def main():
                 assert check.returncode == 0, check.stdout + check.stderr
             if task['completed_count']:
                 # A request during sequence playback must not reset the committed scene.
-                rejected = single.call_async(PlanWallBoxDemo.Request(x=.9, box_id=0, arm='auto'))
+                rejected = single.call_async(PlanWallBoxDemo.Request(x=args.x, box_id=0, arm='auto'))
                 wait(rejected.done, 10)
                 assert rejected.result().failure_stage == 'busy'
                 rejected = client.call_async(Trigger.Request())

@@ -37,11 +37,12 @@ def main():
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
     config = json.loads((Path(get_package_share_directory('alfa_robot_moveit_config')) /
                          'config/v3_box_wall_environment.json').read_text())
-    urdf = render_current_urdf({'model_ground_offset': '0.402201'})
+    urdf = render_current_urdf({'model_ground_offset': '0.000005'})
     robot = UrdfRobot(urdf)
-    home = [-np.pi / 2, -np.pi / 2, 0, -np.pi / 2, 0, 0, 0] * 2 + [0, 0]
+    home = [2.61799387799, np.pi / 2, -0.0872664625997, 2.09439510239, 0, 0, 0,
+            -2.61799387799, -np.pi / 2, 0.0872664625997, -2.09439510239, 0, 0, 0, 0, 0]
     command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py',
-               'x:=0.9', 'auto_run_once:=false', 'start_rviz:=false', 'start_rerun:=false']
+               'x:=0.5', 'auto_run_once:=false', 'start_rviz:=false', 'start_rerun:=false']
     summary = []
 
     @contextmanager
@@ -72,7 +73,7 @@ def main():
                     rclpy.spin_once(node, timeout_sec=.05)
                 assert predicate(), f'{label}: timeout'
 
-            def call(box_id, arm='auto', x=.9):
+            def call(box_id, arm='auto', x=.5):
                 future = client.call_async(PlanWallBoxDemo.Request(x=x, box_id=box_id, arm=arm))
                 spin_until(future.done)
                 response = future.result()
@@ -107,18 +108,20 @@ def main():
                         assert [a['arm'] for a in task['attempts']] == ['left', 'right'] * (1 if box_id < 5 else 2)
                 else:
                     assert response.selected_arm == task['side']
-                    assert task['frames'][-1]['stage'] in ('rrt_return', 'restore_default_height')
+                    assert task['frames'][-1]['stage'] == 'release_box'
                     assert np.allclose(task['frames'][0]['joints'], home, atol=1e-8)
-                    assert np.allclose(task['frames'][-1]['joints'], home, atol=1e-8)
                     assert {'rrt_to_precontact', 'cartesian_approach', 'attach_box',
-                            'cartesian_retreat', 'rrt_return'} <= {f['stage'] for f in task['frames']}
+                            'cartesian_retreat', 'rrt_return', 'rear_placement',
+                            'release_box'} <= {f['stage'] for f in task['frames']}
                     if task['height_alignment']['descent'] > 0:
-                        assert task['frames'][-1]['stage'] == 'restore_default_height'
+                        assert task['frames'][0]['stage'] == 'lower_to_box_height'
                     last_lift = 0.
                     idle = 'right' if task['side'] == 'left' else 'left'
+                    idle_offset = 0 if idle == 'left' else 7
                     for frame in task['frames']:
                         joints = dict(zip(task['joint_names'], frame['joints']))
-                        assert np.allclose([joints[f'{idle}_joint{i}'] for i in range(1, 8)], home[:7])
+                        assert np.allclose([joints[f'{idle}_joint{i}'] for i in range(1, 8)],
+                                           home[idle_offset:idle_offset + 7])
                         assert joints['head_joint'] == 0
                         assert abs(joints['updown'] - last_lift) <= .005001
                         last_lift = joints['updown']
@@ -126,7 +129,7 @@ def main():
                             tool = robot.fk(joints)[task['tool_link']]
                             center = tool[:3, 3] + tool[:3, :3] @ task['tool_to_box_center']
                             assert np.allclose(center, task['box_center'], atol=1e-6)
-                    assert task['frames'][-1]['box_attached']
+                    assert not task['frames'][-1]['box_attached']
                     # Independent full FK checks payload-floor clearance in every successful replay.
                     ground = next(b for b in expected['boxes'] if b['id'] == 'ground')
                     floor = ground['center'][2] + ground['size'][2] / 2
@@ -190,8 +193,14 @@ def main():
             assert low[1] > -1.19 and high[1] < 1.19
             assert low[2] >= 0 and high[2] < 2.35
             bounds[link.get('name')] = [low.tolist(), high.tolist()]
-        assert 0 <= bounds['model_base'][0][2] <= 2e-6
-        assert np.allclose(fk['base_link'][:3, 3], [0, 0, 0])
+        chassis_links = ('model_base', 'chassis_base', 'active_suspension_carriage',
+                         'caster01', 'caster02', 'caster03', 'caster04',
+                         'wheel01', 'wheel02', 'wheel03', 'wheel04')
+        chassis_ground_z = min(bounds[name][0][2] for name in chassis_links)
+        assert 0 <= chassis_ground_z <= 1e-5
+        assert np.allclose(fk['world'][:3, 3], [0, 0, 0])
+        assert np.allclose(fk['base_footprint'][:3, 3], [0, 0, 5e-6])
+        assert np.allclose(fk['base_link'][:3, 3], [.195, .015, .400005])
         (root / 'home_collision_mesh_bounds.json').write_text(json.dumps(bounds, indent=2))
         assert np.isclose(min(c[2] for c in preview['neighbor_centers']) - .2, 0)
         env_markers = [m for m in received['markers'] if m.ns == 'environment']
@@ -201,7 +210,7 @@ def main():
             assert np.allclose([marker.pose.position.x, marker.pose.position.y,
                                 marker.pose.position.z], box['center'])
             assert np.allclose([marker.scale.x, marker.scale.y, marker.scale.z], box['size'])
-        # Complete loaded returns on both arms; all 16 joints finish at documented home.
+        # Complete loaded transfers on both arms; the inactive arm stays at documented home.
         known_success = (5, 9, 10, 14, 20, 24)
         for box_id in range(25) if args.scan_wall else (0, *known_success):
             task = call(box_id)
@@ -211,10 +220,11 @@ def main():
                 assert task['failure_stage'] == 'precontact_ik'
                 assert task['suction_mode'] == 'top'
                 assert task['height_alignment']['strategy'] == 'top_wrist_alignment'
-                assert task['height_alignment']['xy'] > task['height_alignment']['arm_length']
+                assert any(a['height_alignment']['xy'] > a['height_alignment']['arm_length']
+                           for a in task['attempts'])
                 assert not any(f['box_attached'] for f in task['diagnostic_frames'])
                 assert np.allclose(task['frames'][0]['joints'], home)
-        for box_id, arm in [(5, 'left'), (9, 'right')]:
+        for box_id, arm in [(5, 'right'), (9, 'left')]:
             assert call(box_id, arm)['success']
         # Independent requests: changing distance reanchors all warehouse objects, not just boxes.
         task = call(20, x=1.)

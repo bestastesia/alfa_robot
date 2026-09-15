@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Eigen/Geometry>
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
@@ -22,8 +23,9 @@ inline std::vector<WallTransferRound> wallTransferRounds()
   rounds.reserve(15);
   for (int row = 4; row >= 0; --row) {
     const int first = row * 5;
-    rounds.push_back({first, first + 4});
-    rounds.push_back({first + 1, first + 3});
+    // REP-103 +Y is robot-left: pair each physical arm with its near-side box.
+    rounds.push_back({first + 4, first});
+    rounds.push_back({first + 3, first + 1});
     // Alternate the centre box to avoid making either arm the permanent fallback arm.
     rounds.push_back(row % 2 == 0 ? WallTransferRound{first + 2, -1} :
       WallTransferRound{-1, first + 2});
@@ -39,18 +41,26 @@ inline std::vector<int> wallSequenceOrder()
   return ids;
 }
 
+inline double chooseSharedUpdown(double left, double right, double lower, double upper)
+{
+  return std::clamp(0.5 * (left + right), lower, upper);
+}
+
 inline bool isBottomBox(double center_z, double height, double wall_bottom_z)
 {
   return std::abs(center_z - height / 2.0 - wall_bottom_z) <= 1e-6;
 }
 
-inline std::vector<std::pair<bool, std::string>> wallGraspAttempts(bool bottom, const std::string& arm, bool top_only = false)
+inline std::vector<std::pair<bool, std::string>> wallGraspAttempts(
+  bool bottom, const std::string& arm, bool top_only = false, bool allow_opposite = false)
 {
   std::vector<std::pair<bool, std::string>> attempts;
   for (bool top : {false, true}) {
     if ((bottom || top_only) && !top) continue;
     for (const std::string side : {"left", "right"})
       if (arm == "auto" || arm == side) attempts.emplace_back(top, side);
+    if (allow_opposite && arm != "auto")
+      attempts.emplace_back(top, arm == "left" ? "right" : "left");
   }
   return attempts;
 }
@@ -71,12 +81,13 @@ inline Eigen::Isometry3d wallContactPose(
 
 inline Eigen::Isometry3d wallRearPlacementPose(
   Eigen::Isometry3d tool, const Eigen::Isometry3d& tool_to_box,
-  const Eigen::Vector3d& size, double rear_x, double clearance)
+  const Eigen::Vector3d& size, double rear_x, double clearance, double minimum_z)
 {
   tool.linear() = Eigen::AngleAxisd(std::acos(-1.0), Eigen::Vector3d::UnitZ()).toRotationMatrix() * tool.linear();
   const Eigen::Isometry3d box = tool * tool_to_box;
-  const double max_x = box.translation().x() + box.linear().row(0).cwiseAbs().dot(size / 2.0);
-  tool.translation().x() += rear_x - clearance - max_x;
+  const Eigen::Vector3d extent = box.linear().cwiseAbs() * (size / 2.0);
+  tool.translation().x() += rear_x - clearance - (box.translation().x() + extent.x());
+  tool.translation().z() += std::max(0.0, minimum_z - (box.translation().z() - extent.z()));
   return tool;
 }
 
