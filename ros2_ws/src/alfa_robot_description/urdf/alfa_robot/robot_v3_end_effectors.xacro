@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="robot_v3_end_effectors">
+  <xacro:macro name="v3_gripper" params="side">
+    <link name="${side}_joint7">
+      <inertial>
+        <origin xyz="-0.007153 0.051039 0.078079" rpy="0 0 0" />
+        <mass value="4.750" />
+        <inertia ixx="0.023047048" ixy="0.001195672" ixz="0.000201380" iyy="0.013186943" iyz="-0.004207234" izz="0.024017065" />
+      </inertial>
+      <visual>
+        <material name="robot_v3_gray">
+          <color rgba="0.82 0.82 0.82 1" />
+        </material>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/ee_fixed_body_visual.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="-0.040201 -0.071594 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/ee_fixed_body_collision.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="${side}_moving_jaw">
+      <inertial>
+        <origin xyz="-0.021670 0.021614 0.107390" rpy="0 0 0" />
+        <mass value="0.342" />
+        <inertia ixx="0.000402893" ixy="0.000112258" ixz="-0.000147231" iyy="0.001185610" iyz="-0.000064995" izz="0.001057162" />
+      </inertial>
+      <visual>
+        <material name="robot_v3_gray">
+          <color rgba="0.82 0.82 0.82 1" />
+        </material>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/moving_jaw_visual.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/moving_jaw_collision.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="${side}_moving_jaw_joint" type="prismatic">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="${side}_joint7" />
+      <child link="${side}_moving_jaw" />
+      <axis xyz="1 0 0" />
+      <limit lower="0" upper="0.080" effort="500" velocity="0.10" />
+      <dynamics damping="2.0" friction="1.0" />
+    </joint>
+  </xacro:macro>
+
+  <xacro:macro name="v3_suction" params="side">
+    <link name="${side}_joint7">
+      <inertial>
+        <origin xyz="-0.000330 -0.000125 0.070303" rpy="0 0 0" />
+        <mass value="2.618" />
+        <inertia ixx="0.008369176" ixy="-0.000035407" ixz="-0.000011217" iyy="0.025870483" iyz="0.000004429" izz="0.027959973" />
+      </inertial>
+      <visual>
+        <material name="robot_v3_gray">
+          <color rgba="0.82 0.82 0.82 1" />
+        </material>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/suction_visual.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </visual>
+      <collision>
+        <origin xyz="-0.158443333 -0.088374996 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="package://alfa_robot_description/meshes/robot_v3/suction_collision.stl" scale="0.001 0.001 0.001" />
+        </geometry>
+      </collision>
+    </link>
+  </xacro:macro>
+</robot>

@@ -1,0 +1,16 @@
+# Simulation-only request; not a hardware or production runtime command.
+# x: clearance in metres from the configured chassis front plane to the wall near face.
+float64 x
+# 0..24: row=box_id/5 bottom to top (+Z), column=box_id%5 along +Y.
+int32 box_id
+# left, right, or auto (try both; success means a complete path was found).
+string arm
+---
+bool success
+uint64 generation
+# Successful arm; empty when no complete path was found.
+string selected_arm
+string failure_stage
+string failure_reason
+# Same result payload published on ~/task_json; contains scene and replay frames.
+string result_json

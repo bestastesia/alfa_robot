@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Active-suspension CAD frame: Z up, X forward, +Y left after package alignment. -->
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="robot_v3_chassis">
+  <xacro:macro name="v3_chassis_geometry" params="mesh_name">
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1"/>
+      </material>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/active_suspension/${mesh_name}" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/active_suspension/${mesh_name}" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+  </xacro:macro>
+
+  <xacro:macro name="v3_chassis_link" params="link_name mesh_name mass com ixx ixy ixz iyy iyz izz">
+    <link name="${link_name}">
+      <inertial>
+        <mass value="${mass}"/>
+        <origin xyz="${com}" rpy="0 0 0"/>
+        <inertia ixx="${ixx}" ixy="${ixy}" ixz="${ixz}" iyy="${iyy}" iyz="${iyz}" izz="${izz}"/>
+      </inertial>
+      <xacro:v3_chassis_geometry mesh_name="${mesh_name}"/>
+    </link>
+  </xacro:macro>
+
+  <xacro:macro name="v3_chassis_revolute" params="joint_name parent child xyz rpy">
+    <joint name="${joint_name}" type="revolute">
+      <parent link="${parent}"/>
+      <child link="${child}"/>
+      <origin xyz="${xyz}" rpy="${rpy}"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="-3.14159" upper="3.14159" effort="10" velocity="1"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Keep the reviewed fixed plate and mounting hardware. The active-suspension
+       source base_link contains the same plate plus the upper robot aggregate. -->
+  <link name="chassis_base">
+    <inertial>
+      <origin xyz="0.00064503082 0 -0.038059754" rpy="0 0 0"/>
+      <mass value="13.23965"/>
+      <inertia ixx="0.99304511" iyy="1.0896488" izz="2.0804482" ixy="-5.7524175e-12" ixz="1.3024357e-05" iyz="0"/>
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray"><color rgba="0.82 0.82 0.82 1"/></material>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_001_solid_001.stl" scale="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_001_solid_001.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+    <visual>
+      <material name="robot_v3_gray"><color rgba="0.82 0.82 0.82 1"/></material>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_015_solid_015.stl" scale="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_015_solid_015.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+    <visual>
+      <material name="robot_v3_gray"><color rgba="0.82 0.82 0.82 1"/></material>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_014_solid_014.stl" scale="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_014_solid_014.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+    <visual>
+      <material name="robot_v3_gray"><color rgba="0.82 0.82 0.82 1"/></material>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_016_solid_016.stl" scale="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_016_solid_016.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+    <visual>
+      <material name="robot_v3_gray"><color rgba="0.82 0.82 0.82 1"/></material>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_017_solid_017.stl" scale="0.001 0.001 0.001"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.045584858" rpy="0 0 0"/>
+      <geometry><mesh filename="package://alfa_robot_description/meshes/chassis/part_017_solid_017.stl" scale="0.001 0.001 0.001"/></geometry>
+    </collision>
+  </link>
+
+  <xacro:v3_chassis_link link_name="caster01" mesh_name="caster01.stl" mass="1.82149343"
+    com="-1e-8 0.0050135 0.05782901" ixx="0.03990461" ixy="-1e-8" ixz="0" iyy="0.036453" iyz="-0.00061638" izz="0.04366549"/>
+  <xacro:v3_chassis_link link_name="wheel01" mesh_name="wheel01.stl" mass="3.19082025"
+    com="1e-8 -1e-8 -0.02999999" ixx="0.00976451" ixy="0" ixz="0" iyy="0.00976451" iyz="0" izz="0.01761453"/>
+  <xacro:v3_chassis_link link_name="active_suspension_carriage" mesh_name="active_suspension_carriage.stl" mass="22.11504086"
+    com="0.07511946 0.075 -0.45050572" ixx="0.33942132" ixy="0" ixz="-0.00056414" iyy="2.14488094" iyz="0" izz="1.83858913"/>
+  <xacro:v3_chassis_link link_name="caster02" mesh_name="caster02.stl" mass="1.82149264"
+    com="-1e-8 -0.00501349 0.06282895" ixx="0.03990459" ixy="-1e-8" ixz="0" iyy="0.03645297" iyz="0.00061638" izz="0.04366546"/>
+  <xacro:v3_chassis_link link_name="wheel02" mesh_name="wheel02.stl" mass="3.19081971"
+    com="0 3e-8 -0.02999999" ixx="0.00976451" ixy="0" ixz="0" iyy="0.00976451" iyz="0" izz="0.01761453"/>
+  <xacro:v3_chassis_link link_name="caster03" mesh_name="caster03.stl" mass="1.82149299"
+    com="-1e-8 -0.00501347 0.06282889" ixx="0.03990459" ixy="-1e-8" ixz="0" iyy="0.03645297" iyz="0.00061638" izz="0.04366547"/>
+  <xacro:v3_chassis_link link_name="wheel03" mesh_name="wheel03.stl" mass="3.19082133"
+    com="0 3e-8 0.03" ixx="0.00976452" ixy="0" ixz="0" iyy="0.00976451" iyz="0" izz="0.01761454"/>
+  <xacro:v3_chassis_link link_name="caster04" mesh_name="caster04.stl" mass="1.82149378"
+    com="-1e-8 -0.00501346 0.06282901" ixx="0.03990462" ixy="-1e-8" ixz="0" iyy="0.03645301" iyz="0.00061638" izz="0.0436655"/>
+  <xacro:v3_chassis_link link_name="wheel04" mesh_name="wheel04.stl" mass="3.19082188"
+    com="-1e-8 0 0.03" ixx="0.00976452" ixy="0" ixz="0" iyy="0.00976452" iyz="0" izz="0.01761454"/>
+
+  <!-- Front axle remains fixed to chassis_base. These origins include the
+       source-base to chassis_base alignment used to retain the reviewed plate. -->
+  <xacro:v3_chassis_revolute joint_name="caster01_joint" parent="chassis_base" child="caster01"
+    xyz="0.30500113 -0.30495538 -0.05058520824" rpy="-3.14158898 0 0.00000367"/>
+  <xacro:v3_chassis_revolute joint_name="wheel01_joint" parent="caster01" child="wheel01"
+    xyz="-2e-8 0.03 0.215" rpy="-1.57079633 0 0"/>
+  <xacro:v3_chassis_revolute joint_name="caster04_joint" parent="chassis_base" child="caster04"
+    xyz="0.30499887 0.30504456 -0.04558296824" rpy="3.14158898 0 -3.14158898"/>
+  <xacro:v3_chassis_revolute joint_name="wheel04_joint" parent="caster04" child="wheel04"
+    xyz="-2e-8 0.03000002 0.22" rpy="-1.57079633 0 -3.14159265"/>
+
+  <!-- Source Joint_29, renamed. A 0.1565 mm zero-height correction removes
+       the source mesh tolerance so all four tyre minima coincide at z=0. -->
+  <joint name="active_suspension_joint" type="prismatic">
+    <parent link="chassis_base"/>
+    <child link="active_suspension_carriage"/>
+    <origin xyz="-0.22999973 -0.07495992 0.638259125" rpy="0 -0.00000367 1.5708"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-0.15" upper="0" effort="100" velocity="0.1"/>
+  </joint>
+
+  <xacro:v3_chassis_revolute joint_name="caster02_joint" parent="active_suspension_carriage" child="caster02"
+    xyz="-0.22999997 0.075 -0.68384998" rpy="-3.14159265 0 1.57079633"/>
+  <xacro:v3_chassis_revolute joint_name="wheel02_joint" parent="caster02" child="wheel02"
+    xyz="0 -0.03 0.22000006" rpy="-1.57079633 0 3.14159265"/>
+  <xacro:v3_chassis_revolute joint_name="caster03_joint" parent="active_suspension_carriage" child="caster03"
+    xyz="0.38 0.075 -0.68385004" rpy="-3.14159265 0 1.57079633"/>
+  <xacro:v3_chassis_revolute joint_name="wheel03_joint" parent="caster03" child="wheel03"
+    xyz="0 0.03000002 0.22" rpy="-1.57079633 0 3.14159265"/>
+</robot>

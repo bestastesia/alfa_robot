@@ -12,6 +12,7 @@
     </group>
     <group name="head">
         <joint name="head_joint"/>
+        <joint name="head_pitch_joint"/>
     </group>
     <group name="left_arm_with_updown">
         <joint name="updown"/>
@@ -28,6 +29,7 @@
     <group name="whole_body">
         <joint name="updown"/>
         <joint name="head_joint"/>
+        <joint name="head_pitch_joint"/>
         <group name="dual_arm"/>
     </group>
     <group name="left_tool_group">
@@ -37,17 +39,17 @@
         <link name="right_tool0"/>
     </group>
     <group_state name="home" group="dual_arm">
-        <joint name="left_joint1" value="-1.57079632679"/>
-        <joint name="left_joint2" value="-1.57079632679"/>
-        <joint name="left_joint3" value="0"/>
-        <joint name="left_joint4" value="-1.57079632679"/>
+        <joint name="left_joint1" value="2.61799387799"/>
+        <joint name="left_joint2" value="1.57079632679"/>
+        <joint name="left_joint3" value="-0.0872664625997"/>
+        <joint name="left_joint4" value="2.09439510239"/>
         <joint name="left_joint5" value="0"/>
         <joint name="left_joint6" value="0"/>
         <joint name="left_joint7" value="0"/>
-        <joint name="right_joint1" value="-1.57079632679"/>
+        <joint name="right_joint1" value="-2.61799387799"/>
         <joint name="right_joint2" value="-1.57079632679"/>
-        <joint name="right_joint3" value="0"/>
-        <joint name="right_joint4" value="-1.57079632679"/>
+        <joint name="right_joint3" value="0.0872664625997"/>
+        <joint name="right_joint4" value="-2.09439510239"/>
         <joint name="right_joint5" value="0"/>
         <joint name="right_joint6" value="0"/>
         <joint name="right_joint7" value="0"/>
@@ -55,26 +57,49 @@
     <group_state name="home" group="whole_body">
         <joint name="updown" value="0"/>
         <joint name="head_joint" value="0"/>
-        <joint name="left_joint1" value="-1.57079632679"/>
-        <joint name="left_joint2" value="-1.57079632679"/>
-        <joint name="left_joint3" value="0"/>
-        <joint name="left_joint4" value="-1.57079632679"/>
+        <joint name="head_pitch_joint" value="0"/>
+        <joint name="left_joint1" value="2.61799387799"/>
+        <joint name="left_joint2" value="1.57079632679"/>
+        <joint name="left_joint3" value="-0.0872664625997"/>
+        <joint name="left_joint4" value="2.09439510239"/>
         <joint name="left_joint5" value="0"/>
         <joint name="left_joint6" value="0"/>
         <joint name="left_joint7" value="0"/>
-        <joint name="right_joint1" value="-1.57079632679"/>
+        <joint name="right_joint1" value="-2.61799387799"/>
         <joint name="right_joint2" value="-1.57079632679"/>
-        <joint name="right_joint3" value="0"/>
-        <joint name="right_joint4" value="-1.57079632679"/>
+        <joint name="right_joint3" value="0.0872664625997"/>
+        <joint name="right_joint4" value="-2.09439510239"/>
         <joint name="right_joint5" value="0"/>
         <joint name="right_joint6" value="0"/>
         <joint name="right_joint7" value="0"/>
     </group_state>
     <end_effector name="left_tool" parent_link="left_tool0" group="left_tool_group" parent_group="left_arm"/>
     <end_effector name="right_tool" parent_link="right_tool0" group="right_tool_group" parent_group="right_arm"/>
-    <virtual_joint name="world_to_base" type="fixed" parent_frame="world" child_link="base_link"/>
+    <passive_joint name="active_suspension_joint"/>
+    <passive_joint name="caster01_joint"/>
+    <passive_joint name="wheel01_joint"/>
+    <passive_joint name="caster02_joint"/>
+    <passive_joint name="wheel02_joint"/>
+    <passive_joint name="caster03_joint"/>
+    <passive_joint name="wheel03_joint"/>
+    <passive_joint name="caster04_joint"/>
+    <passive_joint name="wheel04_joint"/>
+    <disable_collisions link1="base_link" link2="chassis_base" reason="Adjacent"/>
     <disable_collisions link1="base_link" link2="model_base" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="model_base" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="caster01" reason="Adjacent"/>
+    <disable_collisions link1="caster01" link2="wheel01" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="caster04" reason="Adjacent"/>
+    <disable_collisions link1="caster04" link2="wheel04" reason="Adjacent"/>
+    <disable_collisions link1="chassis_base" link2="active_suspension_carriage" reason="Adjacent"/>
+    <disable_collisions link1="active_suspension_carriage" link2="caster02" reason="Adjacent"/>
+    <disable_collisions link1="caster02" link2="wheel02" reason="Adjacent"/>
+    <disable_collisions link1="active_suspension_carriage" link2="caster03" reason="Adjacent"/>
+    <disable_collisions link1="caster03" link2="wheel03" reason="Adjacent"/>
     <disable_collisions link1="model_base" link2="arm_carriage" reason="Adjacent"/>
+    <disable_collisions link1="arm_carriage" link2="head_mount" reason="Adjacent"/>
+    <disable_collisions link1="head_mount" link2="head_yaw" reason="Adjacent"/>
+    <disable_collisions link1="head_yaw" link2="head" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="head" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_arm_base" reason="Adjacent"/>
     <disable_collisions link1="arm_carriage" link2="left_joint1" reason="Adjacent"/>

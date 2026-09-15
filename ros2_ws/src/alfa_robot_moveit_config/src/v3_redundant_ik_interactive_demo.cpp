@@ -408,6 +408,12 @@ private:
       std::chrono::steady_clock::now() - started).count();
     payload["segment_count"] = segment_id;
     payload["solve_ms"] = elapsed;
+    payload["collision_checked"] = false;
+    payload["diagnostic"] = representative ? nlohmann::json::object() : nlohmann::json{
+      {"diagnostic_only", true}, {"freeze_at_end", true}, {"stage", "analytic_ik"},
+      {"reason", "no legal IK family; holding last state (IK-only, no collision checking)"},
+      {"snapshot", "last_available_state_no_rejected_configuration"},
+      {"target", {target_pose_.position.x, target_pose_.position.y, target_pose_.position.z}}};
     std_msgs::msg::String message;
     message.data = payload.dump();
     family_publisher_->publish(message);
@@ -424,7 +430,7 @@ private:
              << " solve=" << std::fixed << std::setprecision(1) << elapsed << "ms";
       publishStatus(status.str(), true);
     } else {
-      publishStatus("NO LEGAL REDUNDANT IK FAMILY", false);
+      publishStatus("NO LEGAL IK - FROZEN AT LAST STATE\nRED TARGET: NO SOLUTION (IK ONLY, NOT COLLISION CHECKED)", false);
     }
   }
 
@@ -455,6 +461,13 @@ private:
       color(0.15F, 1.0F, 0.25F, 1.0F) : color(1.0F, 0.15F, 0.15F, 1.0F);
     text.text = message;
     array.markers.push_back(text);
+    Marker target = text;
+    target.id = 1;
+    target.type = Marker::SPHERE;
+    target.action = success ? Marker::DELETE : Marker::ADD;
+    target.pose.position = target_pose_.position;
+    target.scale.x = target.scale.y = target.scale.z = 0.045;
+    array.markers.push_back(target);
     status_publisher_->publish(array);
   }
 

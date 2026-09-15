@@ -1,0 +1,12 @@
+{
+  "frame_id": "world",
+  "anchor": "box_wall_back",
+  "description": "Simulation warehouse INNER dimensions: X length 4m, Y width 2.38m, Z height 2.35m. Closed +X wall flush with box-wall back; -X end open. Ground and box-wall bottom Z=0. Walls 0.1m thick outward. Not site calibration.",
+  "boxes": [
+    {"id": "ground", "center": [-2, 0, -0.05], "size": [4.2, 2.58, 0.1]},
+    {"id": "left_wall", "center": [-2, -1.24, 1.175], "size": [4, 0.1, 2.35]},
+    {"id": "right_wall", "center": [-2, 1.24, 1.175], "size": [4, 0.1, 2.35]},
+    {"id": "front_wall", "center": [0.05, 0, 1.175], "size": [0.1, 2.58, 2.35]},
+    {"id": "ceiling", "center": [-2, 0, 2.4], "size": [4.2, 2.58, 0.1]}
+  ]
+}

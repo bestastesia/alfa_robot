@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Source head: Z up, X forward. Mount disk bottom matches the carriage plate. -->
+<robot name="robot_v3_head">
+  <link name="head_mount">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.11917571" />
+      <inertia ixx="0.00011888471" iyy="0.00011888471" izz="0.00023578316" ixy="0" ixz="0" iyz="0" />
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0 0 0.005" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_004_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.005" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_004_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="head_yaw">
+    <inertial>
+      <origin xyz="0.0053059593 0 0.027131555" rpy="0 0 0" />
+      <mass value="0.15476448" />
+      <inertia ixx="0.00013500923" iyy="0.00019862629" izz="0.00014591322" ixy="0" ixz="-1.0625613e-05" iyz="0" />
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_001_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_001_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="head">
+    <inertial>
+      <origin xyz="0.041574319 -0.049784947 -0.004903311" rpy="0 0 0" />
+      <mass value="0.19975472" />
+      <inertia ixx="0.00045578413" iyy="0.00037483452" izz="0.00015903761" ixy="5.220145e-05" ixz="1.7450492e-07" iyz="-8.0682425e-07" />
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_003_ZED_X_Wide.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_002_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_005_mid-360-asm_V2.00126..5.3.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_003_ZED_X_Wide.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_002_part.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.04 0.05 -0.005" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/head/part_005_mid-360-asm_V2.00126..5.3.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="head_joint" type="revolute">
+    <origin xyz="0 0 0.005" rpy="0 0 0" />
+    <parent link="head_mount" />
+    <child link="head_yaw" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="5" />
+  </joint>
+  <joint name="head_pitch_joint" type="revolute">
+    <origin xyz="0.04 0.005 0.05" rpy="-1.5707963 0 0" />
+    <parent link="head_yaw" />
+    <child link="head" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="5" />
+  </joint>
+  <joint name="head_mount_fixed" type="fixed">
+    <parent link="arm_carriage" />
+    <child link="head_mount" />
+    <origin xyz="0.226 0 1.3806412" rpy="0 0 0" />
+  </joint>
+</robot>

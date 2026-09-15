@@ -19,9 +19,9 @@ enum class V3RedundantArmModel
   V307Right,
   V308Left,
   V308Right,
-  // V3.0.9 的双臂几何与 V3.0.8 逐字节一致，仅恢复整机升降和头部自由度。
-  V309Left = V308Left,
-  V309Right = V308Right,
+  // 新版 V3 双吸盘底盘按物理侧重命名双臂，并调整左腕逻辑零位。
+  V309Left,
+  V309Right,
 };
 
 struct V3RedundantIkSolution
@@ -68,6 +68,9 @@ public:
   double swivelAngle(
     const std::array<double, 7>& joints) const;
 
+  // Model-specific shoulder center; the static accessor below retains legacy semantics.
+  Eigen::Vector3d modelShoulderCenterInArmBase() const;
+  double modelArmLength() const;  // Shoulder-elbow plus elbow-wrist, excluding TCP.
   static Eigen::Vector3d shoulderCenterInArmBase();
   static double upperArmLength();
   static double forearmLength();

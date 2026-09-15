@@ -1,0 +1,1157 @@
+{
+  "date": "2026-09-12",
+  "scope": "simulation_only",
+  "conclusion": "未得到独立验证成立的优势舒适区间；训练提升但保留距离退化，共同成功姿态/行程指标不支持更自然。新入口仅实验，旧默认不变。",
+  "protocol": {
+    "training_x_m": [
+      0.8,
+      0.9,
+      1.0
+    ],
+    "heldout_x_m": [
+      0.85,
+      0.95
+    ],
+    "explicit_arms": [
+      "left",
+      "right"
+    ],
+    "box_ids": "0..24",
+    "seeds": [
+      104729,
+      130363,
+      155921
+    ],
+    "coarse_seed": 104729,
+    "coarse_ratio_range_step": [
+      0.5,
+      1.4,
+      0.05
+    ],
+    "extension": "在保留距离验证前将上限从1.10扩到1.40，保持步长和预算。",
+    "training_requests": 9600,
+    "heldout_requests": 600,
+    "runtime_auto_requests": 750,
+    "full_success": "抓取、抽离、携箱回home、升降归零全部完成",
+    "height_choice": "每臂仅一次几何选高；不按IK/碰撞结果换高；真实auto先左后右，不使用离线成功并集",
+    "geometry": "单臂肩心到contact TCP；L=上臂+前臂，不含腕到TCP，比例可大于1",
+    "unchanged": [
+      "grounded URDF",
+      "full warehouse collision",
+      "ACM",
+      "IK/RRT budgets",
+      "home"
+    ],
+    "freeze_sha256": "8e4d9d6fe4293aa90c8cd1a7ef786f697139ca6633ab8b45879c8a89cf634d8e",
+    "retuned_after_heldout": false
+  },
+  "frozen_candidate": {
+    "ratio_preferred": 1.15,
+    "ratio_min": 1.1,
+    "ratio_max": 1.15,
+    "branch": "auto",
+    "common_success_ranking_cases": 72,
+    "eligible": [
+      "auto:1.10",
+      "auto:1.15"
+    ],
+    "selection_order": [
+      "full_success",
+      "common_margin",
+      "common_motion",
+      "common_lift",
+      "distance_to_0.8"
+    ]
+  },
+  "training_selected": {
+    "baseline": {
+      "count": 450,
+      "success": 84,
+      "rate": 0.18666666666666668,
+      "failure_stages": {
+        "height_alignment_limits": 90,
+        "return_goal": 120,
+        "cartesian_approach": 36,
+        "precontact_ik": 120
+      }
+    },
+    "candidate": {
+      "count": 450,
+      "success": 102,
+      "rate": 0.22666666666666666,
+      "failure_stages": {
+        "height_alignment_collision": 144,
+        "return_goal": 114,
+        "precontact_ik": 90
+      }
+    },
+    "comparison": {
+      "common_success": 78,
+      "newly_successful": {
+        "104729": [
+          "x0.90_left_box12",
+          "x0.90_left_box17",
+          "x0.90_right_box12",
+          "x0.90_right_box17",
+          "x1.00_left_box10",
+          "x1.00_left_box15",
+          "x1.00_right_box14",
+          "x1.00_right_box19"
+        ],
+        "130363": [
+          "x0.90_left_box12",
+          "x0.90_left_box17",
+          "x0.90_right_box12",
+          "x0.90_right_box17",
+          "x1.00_left_box10",
+          "x1.00_left_box15",
+          "x1.00_right_box14",
+          "x1.00_right_box19"
+        ],
+        "155921": [
+          "x0.90_left_box12",
+          "x0.90_left_box17",
+          "x0.90_right_box12",
+          "x0.90_right_box17",
+          "x1.00_left_box10",
+          "x1.00_left_box15",
+          "x1.00_right_box14",
+          "x1.00_right_box19"
+        ]
+      },
+      "regressed": {
+        "104729": [
+          "x1.00_left_box06",
+          "x1.00_right_box08"
+        ],
+        "130363": [
+          "x1.00_left_box06",
+          "x1.00_right_box08"
+        ],
+        "155921": [
+          "x1.00_left_box06",
+          "x1.00_right_box08"
+        ]
+      },
+      "margin": {
+        "baseline": 0.07414375361311396,
+        "candidate": 0.06304481231046367,
+        "paired_delta_median": 0.0
+      },
+      "motion": {
+        "baseline": 2.840626375154126,
+        "candidate": 3.2741665497116976,
+        "paired_delta_median": 0.5375357125330215
+      },
+      "lift_travel": {
+        "baseline": 0.12926754561159592,
+        "candidate": 0.6292675456115957,
+        "paired_delta_median": 0.0
+      },
+      "per_seed": {
+        "104729": {
+          "baseline": 28,
+          "candidate": 34
+        },
+        "130363": {
+          "baseline": 28,
+          "candidate": 34
+        },
+        "155921": {
+          "baseline": 28,
+          "candidate": 34
+        }
+      }
+    }
+  },
+  "coarse": [
+    {
+      "branch": "auto",
+      "ratio": 0.5,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.55,
+      "count": 150,
+      "success": 29,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30,
+        "rrt_return": 1
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.6,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.65,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.7,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.75,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.8,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.85,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.9,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 0.95,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.0,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 58,
+        "return_goal": 32,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.05,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 56,
+        "return_goal": 34,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.1,
+      "count": 150,
+      "success": 32,
+      "failure_stages": {
+        "height_alignment_collision": 52,
+        "return_goal": 36,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.15,
+      "count": 150,
+      "success": 34,
+      "failure_stages": {
+        "height_alignment_collision": 48,
+        "return_goal": 38,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.2,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "return_goal": 38,
+        "height_alignment_collision": 42,
+        "precontact_ik": 38,
+        "cartesian_approach": 2
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.25,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "return_goal": 38,
+        "height_alignment_collision": 38,
+        "precontact_ik": 58,
+        "cartesian_approach": 16
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.3,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "return_goal": 36,
+        "height_alignment_collision": 36,
+        "precontact_ik": 78
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.35,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "return_goal": 38,
+        "height_alignment_collision": 38,
+        "precontact_ik": 74
+      }
+    },
+    {
+      "branch": "auto",
+      "ratio": 1.4,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "return_goal": 38,
+        "height_alignment_collision": 36,
+        "precontact_ik": 76
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.5,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.55,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.6,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.65,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.7,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.75,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.8,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.85,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.9,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 0.95,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.0,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 58,
+        "return_goal": 32,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.05,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 56,
+        "return_goal": 34,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.1,
+      "count": 150,
+      "success": 32,
+      "failure_stages": {
+        "height_alignment_collision": 52,
+        "return_goal": 36,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.15,
+      "count": 150,
+      "success": 34,
+      "failure_stages": {
+        "height_alignment_collision": 48,
+        "return_goal": 38,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.2,
+      "count": 150,
+      "success": 32,
+      "failure_stages": {
+        "return_goal": 40,
+        "height_alignment_collision": 40,
+        "precontact_ik": 38
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.25,
+      "count": 150,
+      "success": 16,
+      "failure_stages": {
+        "return_goal": 42,
+        "height_alignment_collision": 34,
+        "precontact_ik": 48,
+        "cartesian_approach": 10
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.3,
+      "count": 150,
+      "success": 16,
+      "failure_stages": {
+        "return_goal": 42,
+        "height_alignment_collision": 28,
+        "precontact_ik": 62,
+        "cartesian_approach": 2
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.35,
+      "count": 150,
+      "success": 16,
+      "failure_stages": {
+        "return_goal": 44,
+        "height_alignment_collision": 24,
+        "precontact_ik": 64,
+        "cartesian_approach": 2
+      }
+    },
+    {
+      "branch": "above",
+      "ratio": 1.4,
+      "count": 150,
+      "success": 16,
+      "failure_stages": {
+        "return_goal": 44,
+        "height_alignment_collision": 20,
+        "precontact_ik": 68,
+        "cartesian_approach": 2
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.5,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.55,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.6,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.65,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.7,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.75,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.8,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.85,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.9,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 0.95,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 60,
+        "return_goal": 30,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.0,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 62,
+        "return_goal": 28,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.05,
+      "count": 150,
+      "success": 30,
+      "failure_stages": {
+        "height_alignment_collision": 64,
+        "return_goal": 26,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.1,
+      "count": 150,
+      "success": 28,
+      "failure_stages": {
+        "height_alignment_collision": 66,
+        "return_goal": 26,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.15,
+      "count": 150,
+      "success": 26,
+      "failure_stages": {
+        "height_alignment_collision": 70,
+        "return_goal": 24,
+        "precontact_ik": 30
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.2,
+      "count": 150,
+      "success": 18,
+      "failure_stages": {
+        "height_alignment_collision": 76,
+        "return_goal": 22,
+        "precontact_ik": 30,
+        "cartesian_approach": 4
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.25,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "height_alignment_collision": 80,
+        "return_goal": 20,
+        "precontact_ik": 42,
+        "cartesian_approach": 8
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.3,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "height_alignment_collision": 86,
+        "return_goal": 18,
+        "precontact_ik": 46
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.35,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "height_alignment_collision": 94,
+        "return_goal": 16,
+        "precontact_ik": 40
+      }
+    },
+    {
+      "branch": "below",
+      "ratio": 1.4,
+      "count": 150,
+      "success": 0,
+      "failure_stages": {
+        "height_alignment_collision": 96,
+        "return_goal": 16,
+        "precontact_ik": 38
+      }
+    }
+  ],
+  "near_best_repeats": {
+    "auto:1.10": {
+      "count": 450,
+      "success": 96,
+      "rate": 0.21333333333333335,
+      "failure_stages": {
+        "height_alignment_collision": 156,
+        "return_goal": 108,
+        "precontact_ik": 90
+      },
+      "seeds": [
+        104729,
+        130363,
+        155921
+      ]
+    },
+    "auto:1.15": {
+      "count": 450,
+      "success": 102,
+      "rate": 0.22666666666666666,
+      "failure_stages": {
+        "height_alignment_collision": 144,
+        "return_goal": 114,
+        "precontact_ik": 90
+      },
+      "seeds": [
+        104729,
+        130363,
+        155921
+      ]
+    }
+  },
+  "heldout": {
+    "baseline": {
+      "count": 300,
+      "success": 48,
+      "rate": 0.16,
+      "failure_stages": {
+        "height_alignment_limits": 60,
+        "return_goal": 120,
+        "precontact_ik": 66,
+        "cartesian_approach": 6
+      }
+    },
+    "candidate": {
+      "count": 300,
+      "success": 42,
+      "rate": 0.14,
+      "failure_stages": {
+        "height_alignment_collision": 96,
+        "return_goal": 108,
+        "cartesian_approach": 18,
+        "precontact_ik": 36
+      }
+    },
+    "comparison": {
+      "common_success": 42,
+      "newly_successful": {
+        "104729": [],
+        "130363": [],
+        "155921": []
+      },
+      "regressed": {
+        "104729": [
+          "x0.95_left_box05",
+          "x0.95_right_box09"
+        ],
+        "130363": [
+          "x0.95_left_box05",
+          "x0.95_right_box09"
+        ],
+        "155921": [
+          "x0.95_left_box05",
+          "x0.95_right_box09"
+        ]
+      },
+      "margin": {
+        "baseline": 0.07660742852187705,
+        "candidate": 0.05803129228535915,
+        "paired_delta_median": -0.02023132057404697
+      },
+      "motion": {
+        "baseline": 2.7526742226577596,
+        "candidate": 3.1877103515643084,
+        "paired_delta_median": 0.2319816883399557
+      },
+      "lift_travel": {
+        "baseline": 0.12926754561159592,
+        "candidate": 0.6292675456115957,
+        "paired_delta_median": 0.0
+      },
+      "per_seed": {
+        "104729": {
+          "baseline": 16,
+          "candidate": 14
+        },
+        "130363": {
+          "baseline": 16,
+          "candidate": 14
+        },
+        "155921": {
+          "baseline": 16,
+          "candidate": 14
+        }
+      }
+    }
+  },
+  "runtime_auto": {
+    "baseline": {
+      "count": 375,
+      "success": 129,
+      "rate": 0.344,
+      "failure_stages": {
+        "height_alignment_limits": 75,
+        "return_goal": 120,
+        "cartesian_approach": 21,
+        "precontact_ik": 30
+      }
+    },
+    "candidate": {
+      "count": 375,
+      "success": 135,
+      "rate": 0.36,
+      "failure_stages": {
+        "height_alignment_collision": 111,
+        "return_goal": 111,
+        "cartesian_approach": 9,
+        "precontact_ik": 9
+      }
+    },
+    "comparison": {
+      "common_success": 117,
+      "newly_successful": {
+        "104729": [
+          "x0.90_auto_box12",
+          "x0.90_auto_box17",
+          "x1.00_auto_box10",
+          "x1.00_auto_box14",
+          "x1.00_auto_box15",
+          "x1.00_auto_box19"
+        ],
+        "130363": [
+          "x0.90_auto_box12",
+          "x0.90_auto_box17",
+          "x1.00_auto_box10",
+          "x1.00_auto_box14",
+          "x1.00_auto_box15",
+          "x1.00_auto_box19"
+        ],
+        "155921": [
+          "x0.90_auto_box12",
+          "x0.90_auto_box17",
+          "x1.00_auto_box10",
+          "x1.00_auto_box14",
+          "x1.00_auto_box15",
+          "x1.00_auto_box19"
+        ]
+      },
+      "regressed": {
+        "104729": [
+          "x0.95_auto_box05",
+          "x0.95_auto_box09",
+          "x1.00_auto_box06",
+          "x1.00_auto_box08"
+        ],
+        "130363": [
+          "x0.95_auto_box05",
+          "x0.95_auto_box09",
+          "x1.00_auto_box06",
+          "x1.00_auto_box08"
+        ],
+        "155921": [
+          "x0.95_auto_box05",
+          "x0.95_auto_box09",
+          "x1.00_auto_box06",
+          "x1.00_auto_box08"
+        ]
+      },
+      "margin": {
+        "baseline": 0.07660742955855977,
+        "candidate": 0.06492498777845394,
+        "paired_delta_median": -0.014428470370908726
+      },
+      "motion": {
+        "baseline": 2.7605447485174435,
+        "candidate": 3.158743797073563,
+        "paired_delta_median": 0.46917678909618044
+      },
+      "lift_travel": {
+        "baseline": 0.12926754561159592,
+        "candidate": 0.6292675876297933,
+        "paired_delta_median": 0.0
+      },
+      "per_seed": {
+        "104729": {
+          "baseline": 43,
+          "candidate": 45
+        },
+        "130363": {
+          "baseline": 43,
+          "candidate": 45
+        },
+        "155921": {
+          "baseline": 43,
+          "candidate": 45
+        }
+      }
+    },
+    "note": "五距离总计含训练数据，不是独立验证成绩。以下为真实auto服务，非左右臂结果并集。",
+    "by_distance_seed": [
+      {
+        "seed": 104729,
+        "x": 0.8,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 104729,
+        "x": 0.85,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 104729,
+        "x": 0.9,
+        "count_per_policy": 25,
+        "fixed": 17,
+        "comfort": 19
+      },
+      {
+        "seed": 104729,
+        "x": 0.95,
+        "count_per_policy": 25,
+        "fixed": 16,
+        "comfort": 14
+      },
+      {
+        "seed": 104729,
+        "x": 1.0,
+        "count_per_policy": 25,
+        "fixed": 10,
+        "comfort": 12
+      },
+      {
+        "seed": 130363,
+        "x": 0.8,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 130363,
+        "x": 0.85,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 130363,
+        "x": 0.9,
+        "count_per_policy": 25,
+        "fixed": 17,
+        "comfort": 19
+      },
+      {
+        "seed": 130363,
+        "x": 0.95,
+        "count_per_policy": 25,
+        "fixed": 16,
+        "comfort": 14
+      },
+      {
+        "seed": 130363,
+        "x": 1.0,
+        "count_per_policy": 25,
+        "fixed": 10,
+        "comfort": 12
+      },
+      {
+        "seed": 155921,
+        "x": 0.8,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 155921,
+        "x": 0.85,
+        "count_per_policy": 25,
+        "fixed": 0,
+        "comfort": 0
+      },
+      {
+        "seed": 155921,
+        "x": 0.9,
+        "count_per_policy": 25,
+        "fixed": 17,
+        "comfort": 19
+      },
+      {
+        "seed": 155921,
+        "x": 0.95,
+        "count_per_policy": 25,
+        "fixed": 16,
+        "comfort": 14
+      },
+      {
+        "seed": 155921,
+        "x": 1.0,
+        "count_per_policy": 25,
+        "fixed": 10,
+        "comfort": 12
+      }
+    ]
+  },
+  "metric_notes": {
+    "margin": "笛卡尔阶段最小归一化限位裕度，越大越好",
+    "motion": "完整单臂回放sum(abs(delta q)/关节范围)，越小越好",
+    "lift_travel": "升降总行程m，越小越好",
+    "comparison": "baseline/candidate为共同成功样本各自中位数；paired_delta_median为逐对新减旧的中位数",
+    "timing": "并行有时限规划，不作耗时优势结论；原始报告保留耗时",
+    "actual_ratio": "选定高度的几何值，失败时不证明实际到达"
+  },
+  "evidence": {
+    "root": "/home/astesia/Sevenova/日志/验收_2026-09-12/comfort_height",
+    "sources_sha256": {
+      "training_frozen.json": "8e4d9d6fe4293aa90c8cd1a7ef786f697139ca6633ab8b45879c8a89cf634d8e",
+      "validation_protocol.json": "e5df65aa7ad3b58918156bd28922ffce3d8c61635bf2dd7ad24ddbf30c39466b",
+      "heldout_report.json": "379e83a54cbb4f9ea03e2c3a77a39468736b0bc759dc9aa386de6cc7200c5881",
+      "service_report.json": "ee221b3de31880f03a650d9f9d7ae8f1415f138c63d96f4d2680febaa8eab37f",
+      "final_revalidation_summary.json": "132ceeb67fb51b3e1299e76944361939d3c577a05e096bd250f44c82f2c59530"
+    },
+    "checks": {
+      "ctest": "18/18",
+      "legacy_environment": "42 requests + 7 invalid configs",
+      "legacy_height": "21 requests + 3 invalid offsets",
+      "startup_old": 8,
+      "startup_new": 12,
+      "raw_revalidated": 10954,
+      "raw_runs": 77,
+      "rviz_and_rrd": [
+        "visual/left",
+        "visual/right"
+      ]
+    },
+    "caveats": [
+      "早期独立FK容差失败已归档harness_tolerance_failures；修正后整个进程序列重跑，不拼接。",
+      "可选Rerun原生截图进程panic，不计验收通过；RRD verify和RViz回放验收独立通过。"
+    ]
+  }
+}

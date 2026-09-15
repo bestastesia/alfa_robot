@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from alfa_robot_rerun.demo_failure import log_failure
+
 import json
 import math
 import time
@@ -133,6 +135,9 @@ class V3RedundantSolutionFamilyViewer(Node):
             self.get_logger().error(f"非法冗余解族消息: {exception}")
             return
 
+        rr.log("world/failure", rr.Clear(recursive=True))
+        rr.log("summary/failure", rr.Clear(recursive=True))
+        log_failure(payload.get("diagnostic", {}))
         self.frames = frames
         self.side = str(payload.get("side", "left"))
         self.target_pose = dict(payload.get("target_pose", {}))
@@ -163,7 +168,7 @@ class V3RedundantSolutionFamilyViewer(Node):
             "world/target/point",
             rr.Points3D(
                 positions=[[0.0, 0.0, 0.0]],
-                colors=[[30, 145, 255]],
+                colors=[[30, 145, 255] if self.frames else [255, 30, 30]],
                 radii=[0.035],
                 labels=[f"target generation {self.generation}"],
             ),

@@ -1,3 +1,4 @@
+#include "alfa_robot_moveit_config/demo_failure_markers.hpp"
 #include <alfa_robot_analytic_ik/v3_redundant_analytic_ik.hpp>
 #include <alfa_robot_moveit_config/planning_diagnostics.hpp>
 
@@ -174,6 +175,8 @@ struct TaskResult
   PlanningMetrics metrics;
   std::vector<ReplayFrame> frames;
   moveit::core::RobotStatePtr final_state;
+  std::vector<ReplayFrame> diagnostic_frames;
+  nlohmann::json diagnostic = nlohmann::json::object();
 };
 
 class V3DualArmCartesianBoxDemo : public rclcpp::Node
@@ -287,18 +290,23 @@ public:
     const auto initial = solveInitialGrasp(initial_box_center_, &initialization_metrics);
     initialization_metrics.initialization_ms = std::chrono::duration<double, std::milli>(
       std::chrono::steady_clock::now() - initialization_started).count();
+    initial_grasp_valid_ = initial.has_value();
+    current_state_ = initial ? initial->state : std::make_shared<moveit::core::RobotState>(robot_model_);
     if (!initial) {
-      throw std::runtime_error("no collision-free dual-arm grasp at initial_box_center");
+      current_state_->setToDefaultValues();
+      current_state_->setToDefaultValues(dual_group_, "home");
+      current_state_->update(true);
     }
-    current_state_ = initial->state;
     display_state_ = std::make_shared<moveit::core::RobotState>(*current_state_);
     display_box_center_ = initial_box_center_;
     display_box_roll_ = current_box_roll_;
-    left_orientation_ = initial->left_orientation;
-    right_orientation_ = initial->right_orientation;
-    setHeldBoxTransform(initial_box_center_, current_box_roll_);
-    attachHeldBox(*current_state_);
-    attachHeldBox(*display_state_);
+    if (initial) {
+      left_orientation_ = initial->left_orientation;
+      right_orientation_ = initial->right_orientation;
+      setHeldBoxTransform(initial_box_center_, current_box_roll_);
+      attachHeldBox(*current_state_);
+      attachHeldBox(*display_state_);
+    }
     scene_->setCurrentState(*current_state_);
     initialization_metrics_ = initialization_metrics;
     initial_state_ = std::make_shared<moveit::core::RobotState>(*current_state_);
@@ -317,7 +325,8 @@ public:
         std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
         response->success = requestPlanning();
         response->message = response->success ?
-          "planning request accepted" : "planner is already running";
+          "planning request accepted" : (initial_grasp_valid_ ? "planner is already running" :
+            "initial grasp failed; inspect diagnostic and restart with a reachable initial box pose");
       });
 
     marker_server_ = std::make_unique<interactive_markers::InteractiveMarkerServer>(
@@ -350,9 +359,22 @@ public:
       motion_mode_ == "roll" ?
       "拖动蓝色旋转环；右键确认后计算双臂同步解析绕箱体中心旋转" :
       "拖动青色控制球；右键确认后计算双臂同步解析直线");
-    publishStatus("READY", true);
+    if (!initial) {
+      TaskResult failure;
+      failure.failure_stage = "initial_grasp";
+      failure.failure_reason = "no collision-free dual-arm initial grasp; " + initial_grasp_reason_;
+      failure.frames.push_back({"initial_state", allJoints(*current_state_), initial_box_center_, 0.0});
+      makeFailureDiagnostic(failure, initial_rejected_state_, initial_box_center_, target_box_roll_);
+      display_diagnostic_ = failure.diagnostic;
+      playback_frames_ = failure.diagnostic_frames;
+      playback_index_ = 0;
+      publishTaskResult(++generation_, initial_box_center_, target_box_center_, failure);
+      publishStatus("INITIAL GRASP FAILED - DIAGNOSTIC ONLY", false);
+    } else {
+      publishStatus("READY", true);
+    }
 
-    if (auto_run_once_) {
+    if (auto_run_once_ && initial_grasp_valid_) {
       auto_run_timer_ = create_wall_timer(
         std::chrono::milliseconds(500), [this]() {
           auto_run_timer_->cancel();
@@ -585,7 +607,8 @@ private:
     const moveit::core::RobotState& from,
     const moveit::core::RobotState& to,
     PlanningMetrics* metrics,
-    std::string* reason) const
+    std::string* reason,
+    moveit::core::RobotStatePtr* rejected = nullptr) const
   {
     const auto left_from = armJoints(from, left_group_);
     const auto left_to = armJoints(to, left_group_);
@@ -609,11 +632,13 @@ private:
       probe.setJointGroupPositions(right_group_, right.data());
       probe.update(true);
       if (!probe.satisfiesBounds(left_group_) || !probe.satisfiesBounds(right_group_)) {
+        if (rejected) *rejected = std::make_shared<moveit::core::RobotState>(probe);
         if (reason) *reason = "joint_bounds";
         return false;
       }
       const std::string collision = collisionReason(probe, metrics);
       if (!collision.empty()) {
+        if (rejected) *rejected = std::make_shared<moveit::core::RobotState>(probe);
         if (reason) *reason = collision;
         return false;
       }
@@ -626,7 +651,8 @@ private:
     double box_roll,
     const moveit::core::RobotState& seed_state,
     PlanningMetrics* metrics,
-    std::string* rejection) const
+    std::string* rejection,
+    moveit::core::RobotStatePtr* rejected = nullptr) const
   {
     const auto left_candidates = solveArmCandidates(
       toolPose(box_center, true, left_orientation_, box_roll), seed_state,
@@ -669,19 +695,22 @@ private:
       candidate->update(true);
       if (!candidate->satisfiesBounds(left_group_) ||
           !candidate->satisfiesBounds(right_group_)) {
+        if (rejected) *rejected = candidate;
         last_reason = "joint_bounds";
         continue;
       }
       const std::string collision = collisionReason(*candidate, metrics);
       if (!collision.empty()) {
+        if (rejected) *rejected = candidate;
         last_reason = collision;
         continue;
       }
       std::string edge_reason;
-      if (!synchronizedEdgeClear(seed_state, *candidate, metrics, &edge_reason)) {
+      if (!synchronizedEdgeClear(seed_state, *candidate, metrics, &edge_reason, rejected)) {
         last_reason = edge_reason;
         continue;
       }
+      if (rejected) rejected->reset();
       return candidate;
     }
     if (rejection) {
@@ -730,6 +759,7 @@ private:
             left_roll * 180.0 / kPi, right_roll * 180.0 / kPi,
             target_left_candidates.size(), target_right_candidates.size());
           if (target_left_candidates.empty() || target_right_candidates.empty()) {
+            initial_grasp_reason_ = "no analytic configuration at requested roll endpoint";
             continue;
           }
         }
@@ -746,6 +776,8 @@ private:
             const std::string collision = collisionReason(*candidate, metrics);
             if (!collision.empty()) {
               ++collision_rejects;
+              initial_rejected_state_ = std::make_shared<moveit::core::RobotState>(*candidate);
+              initial_grasp_reason_ = collision;
               last_collision = collision;
               continue;
             }
@@ -779,6 +811,38 @@ private:
     return best;
   }
 
+  void makeFailureDiagnostic(TaskResult& result, const moveit::core::RobotStatePtr& rejected,
+    const Eigen::Vector3d& box_center, double box_roll) const
+  {
+    result.diagnostic_frames = result.frames;
+    result.diagnostic = {{"diagnostic_only", true}, {"freeze_at_end", true},
+      {"stage", result.failure_stage}, {"reason", result.failure_reason},
+      {"target", {box_center.x(), box_center.y(), box_center.z()}},
+      {"target_box_roll", box_roll}, {"contacts", nlohmann::json::array()},
+      {"snapshot", rejected ? "rejected_candidate_not_a_planned_path" : "last_available_state_no_rejected_configuration"}};
+    if (rejected) {
+      // Derive the displayed box from the same attached transform used by collision checking.
+      const auto* body = rejected->getAttachedBody(kHeldBoxId);
+      const auto pose = body->getGlobalCollisionBodyTransforms().front();
+      const double roll = std::atan2(pose.linear()(2, 1), pose.linear()(1, 1));
+      result.diagnostic_frames.push_back({"REJECTED_SNAPSHOT: " + result.failure_stage,
+        allJoints(*rejected), pose.translation(), roll});
+      collision_detection::CollisionRequest request;
+      collision_detection::CollisionResult contacts;
+      request.contacts = true;
+      request.max_contacts = 20;
+      request.max_contacts_per_pair = 1;
+      request.group_name = dual_group_name_;
+      scene_->checkCollision(request, contacts, *rejected);
+      for (const auto& pair : contacts.contacts)
+        for (const auto& contact : pair.second)
+          result.diagnostic["contacts"].push_back({{"bodies", {pair.first.first, pair.first.second}},
+            {"position", {contact.pos.x(), contact.pos.y(), contact.pos.z()}}});
+    } else {
+      result.diagnostic_frames.back().stage = "FAILED_HOLD: " + result.failure_stage;
+    }
+  }
+
   TaskResult planTask(
     const Eigen::Vector3d& start_center,
     const Eigen::Vector3d& target_center,
@@ -807,13 +871,15 @@ private:
       const double box_roll = motion_mode_ == "roll" ?
         normalizedAngle(start_roll + roll_delta * ratio) : start_roll;
       std::string rejection;
+      moveit::core::RobotStatePtr rejected;
       const auto next = solveSynchronizedStep(
-        box_center, box_roll, *current, &result.metrics, &rejection);
+        box_center, box_roll, *current, &result.metrics, &rejection, &rejected);
       if (!next) {
         result.failure_stage = motion_mode_ == "roll" ?
           "synchronized_box_roll" : "synchronized_cartesian";
         result.failure_reason = "step " + std::to_string(step) + "/" +
           std::to_string(steps) + " " + rejection;
+        makeFailureDiagnostic(result, rejected, box_center, box_roll);
         result.metrics.cartesian_ms = std::chrono::duration<double, std::milli>(
           std::chrono::steady_clock::now() - cartesian_started).count();
         result.total_ms = std::chrono::duration<double, std::milli>(
@@ -952,6 +1018,8 @@ private:
       display_state_ = std::make_shared<moveit::core::RobotState>(*initial_state_);
       display_box_center_ = initial_box_center_;
       display_box_roll_ = 0.0;
+      display_diagnostic_ = nlohmann::json::object();
+      display_failure_frozen_ = false;
       playback_frames_.clear();
       playback_index_ = 0;
       setMarkerToTarget();
@@ -961,6 +1029,7 @@ private:
 
   bool requestPlanning()
   {
+    if (!initial_grasp_valid_) return false;
     if (planning_active_.load() || planning_requested_.exchange(true)) {
       return false;
     }
@@ -986,6 +1055,12 @@ private:
       target_roll = target_box_roll_;
       start_state = std::make_shared<moveit::core::RobotState>(*current_state_);
     }
+    {
+      std::lock_guard<std::mutex> lock(display_mutex_);
+      playback_frames_.clear();
+      display_diagnostic_ = nlohmann::json::object();
+      display_failure_frozen_ = false;
+    }
     const uint64_t generation = ++generation_;
     publishPlanningStarted(generation, start_center, target_center);
     publishStatus("CALCULATING", true);
@@ -1006,10 +1081,13 @@ private:
     } catch (const std::exception& error) {
       result.failure_stage = "exception";
       result.failure_reason = error.what();
+      result.frames.push_back({"FAILED_HOLD: exception", allJoints(*start_state), start_center, start_roll});
+      makeFailureDiagnostic(result, nullptr, target_center, target_roll);
     }
     if (!result.frames.empty()) {
       std::lock_guard<std::mutex> lock(display_mutex_);
-      playback_frames_ = result.frames;
+      playback_frames_ = result.success || result.diagnostic_frames.empty() ? result.frames : result.diagnostic_frames;
+      display_diagnostic_ = result.success ? nlohmann::json::object() : result.diagnostic;
       playback_index_ = 0;
     }
     if (result.success && result.final_state) {
@@ -1127,7 +1205,7 @@ private:
     {
       std::lock_guard<std::mutex> lock(state_mutex_);
       start_roll = result.frames.empty() ? current_box_roll_ : result.frames.front().box_roll;
-      target_roll = result.frames.empty() ? target_box_roll_ : result.frames.back().box_roll;
+      target_roll = target_box_roll_;
     }
     auto payload = baseJson(start, target, start_roll, target_roll);
     payload["kind"] = "result";
@@ -1156,6 +1234,12 @@ private:
         {"box_roll", frame.box_roll},
       });
     }
+    payload["diagnostic"] = result.diagnostic;
+    payload["diagnostic_frames"] = nlohmann::json::array();
+    for (const auto& frame : result.diagnostic_frames)
+      payload["diagnostic_frames"].push_back({{"stage", frame.stage}, {"joints", frame.joints},
+        {"box_center", {frame.box_center.x(), frame.box_center.y(), frame.box_center.z()}},
+        {"box_roll", frame.box_roll}, {"diagnostic_only", true}});
     publishJson(payload);
   }
 
@@ -1267,6 +1351,8 @@ private:
       handle_line.points.push_back(message);
     }
     markers.markers.push_back(handle_line);
+    alfa_robot::motion::appendDemoFailureMarkers(
+      markers, display_diagnostic_, display_failure_frozen_, world_frame_, now());
     scene_marker_publisher_->publish(markers);
   }
 
@@ -1289,6 +1375,7 @@ private:
     {
       std::lock_guard<std::mutex> display_lock(display_mutex_);
       if (!playback_frames_.empty() && playback_index_ < playback_frames_.size()) {
+        display_failure_frozen_ = !display_diagnostic_.empty() && playback_index_ + 1U == playback_frames_.size();
         const auto& frame = playback_frames_[playback_index_];
         for (size_t index = 0;
              index < all_joint_names_.size() && index < frame.joints.size(); ++index) {
@@ -1307,11 +1394,19 @@ private:
       message.name = all_joint_names_;
       message.position = allJoints(*display_state_);
     }
+    if (display_failure_frozen_)
+      publishStatus("DIAGNOSTIC ONLY - FROZEN (not executable)\n" +
+        display_diagnostic_.value("stage", "") + "\n" + display_diagnostic_.value("reason", ""), false);
     joint_state_publisher_->publish(message);
     publishSceneMarkers(
       current, target, displayed, current_roll, target_roll, displayed_roll);
   }
 
+  bool initial_grasp_valid_ = false;
+  moveit::core::RobotStatePtr initial_rejected_state_;
+  std::string initial_grasp_reason_ = "no analytic configuration available";
+  bool display_failure_frozen_ = false;
+  nlohmann::json display_diagnostic_ = nlohmann::json::object();
   std::string world_frame_;
   std::string arm_base_link_;
   std::string left_group_name_;

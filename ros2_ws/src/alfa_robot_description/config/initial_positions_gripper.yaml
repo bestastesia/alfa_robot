@@ -1,0 +1,42 @@
+metadata:
+  schema_version: 1
+  robot: alfa_v3
+  model_revision: robot_v3.0.9
+  end_effector: gripper
+  side_semantics: left_is_positive_y
+  source_chain_mapping:
+    left: source_right
+    right: source_left
+  zero_offset_semantics:
+    left_joint5: source_right_joint5_at_positive_pi
+    left_joint7: previous_left_joint7_at_positive_pi
+
+initial_positions:
+  updown: 0.0
+  head_joint: 0.0
+  head_pitch_joint: 0.0
+  left_joint1: 2.61799387799
+  left_joint2: 1.57079632679
+  left_joint3: -0.0872664625997
+  left_joint4: 2.09439510239
+  left_joint5: 0.0
+  left_joint6: 0.0
+  left_joint7: 0.0
+  right_joint1: -2.61799387799
+  right_joint2: -1.57079632679
+  right_joint3: 0.0872664625997
+  right_joint4: -2.09439510239
+  right_joint5: 0.0
+  right_joint6: 0.0
+  right_joint7: 0.0
+  left_moving_jaw_joint: 0.0
+  right_moving_jaw_joint: 0.0
+  active_suspension_joint: 0.0
+  caster01_joint: 0.0
+  wheel01_joint: 0.0
+  caster02_joint: 0.0
+  wheel02_joint: 0.0
+  caster03_joint: 0.0
+  wheel03_joint: 0.0
+  caster04_joint: 0.0
+  wheel04_joint: 0.0
