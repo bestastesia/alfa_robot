@@ -22,7 +22,9 @@ def check(module, cls, single_arm):
     viewer.log_summary = MagicMock()
     viewer.log_boxes = MagicMock()
     frame = dict(stage='safe_prefix', joints=[0., 0.], box_center=[1., 2., 3.],
-                 box_attached=False, box_visible=True, scene_index=0)
+                 box_attached=False, box_visible=True, scene_index=0,
+                 carried_boxes=[dict(box_id=20, side='left', tool_link='left_tool0',
+                     attached=False, visible=True, box_center=[1., 2., 3.])])
     rejected = dict(frame, stage='REJECTED_SNAPSHOT: collision', joints=[.2, .3], box_attached=True)
     payload = dict(kind='result', success=False, generation=1, joint_names=['joint1', 'joint2'],
         frames=[frame], diagnostic_frames=[frame, rejected], failure_stage='collision',
@@ -36,6 +38,7 @@ def check(module, cls, single_arm):
         viewer.on_task(SimpleNamespace(data=json.dumps(payload)))
         assert len(viewer.frames) == 2 and viewer.frames[-1].joints == (.2, .3)
         if single_arm:
+            assert viewer.frames[0].carried_boxes[0]["box_id"] == 20
             assert viewer.frame_index == 2  # complete before on_task returns, no timer
             assert columns.call_count == 1
         else:

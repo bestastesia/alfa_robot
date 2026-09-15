@@ -1,4 +1,5 @@
 #include <alfa_robot_moveit_config/wall_sequence.hpp>
+#include <alfa_robot_moveit_config/natural_joint_motion.hpp>
 #include <cassert>
 #include <set>
 
@@ -12,6 +13,31 @@ int main()
     assert(order[i] / 5 <= order[i - 1] / 5);
     if (i % 5) assert(order[i] == order[i - 1] + 1);
   }
+  const auto rounds = wallTransferRounds();
+  assert(rounds.size() == 15);
+  std::set<int> round_ids;
+  size_t dual_rounds = 0;
+  for (const auto& round : rounds) {
+    if (round.left_box >= 0) round_ids.insert(round.left_box);
+    if (round.right_box >= 0) round_ids.insert(round.right_box);
+    dual_rounds += round.dual();
+    if (round.dual()) {
+      assert(round.left_box / 5 == round.right_box / 5);
+      assert(round.left_box % 5 < 2);
+      assert(round.right_box % 5 > 2);
+    }
+  }
+  assert(dual_rounds == 10);
+  assert(round_ids.size() == 25);
+  const std::array<double, 7> zero{};
+  auto wrist = zero; wrist[6] = 0.5;
+  auto shoulder = zero; shoulder[0] = 0.5;
+  assert(naturalJointDistanceSquared(zero, wrist) > naturalJointDistanceSquared(zero, shoulder));
+  auto elbow_flip = shoulder; elbow_flip[1] = 0.4;
+  auto elbow_flip_to = elbow_flip; elbow_flip_to[1] = -0.4;
+  assert(!sameShoulderElbowBranch(elbow_flip, elbow_flip_to));
+  assert(naturalJointPath({zero, shoulder}));
+  assert(!naturalJointPath({elbow_flip, elbow_flip_to}));
   assert(isBottomBox(0.2, 0.4, 0));
   assert(isBottomBox(1.2, 0.4, 1));
   assert(!isBottomBox(0.61, 0.4, 0));

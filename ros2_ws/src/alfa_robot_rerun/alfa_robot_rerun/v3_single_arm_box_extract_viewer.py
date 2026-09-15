@@ -35,6 +35,7 @@ class PlaybackFrame:
     box_attached: bool
     box_visible: bool = True
     scene_index: int = 0
+    carried_boxes: tuple[dict, ...] = ()
 
 
 def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
@@ -246,6 +247,7 @@ class V3SingleArmBoxExtractViewer(Node):
                     box_attached=bool(frame.get("box_attached", False)),
                     box_visible=bool(frame.get("box_visible", True)),
                     scene_index=scene_index,
+                    carried_boxes=tuple(dict(box) for box in frame.get("carried_boxes", [])),
                 )
             )
         self.joint_names = joint_names
@@ -353,25 +355,48 @@ class V3SingleArmBoxExtractViewer(Node):
 
     def log_boxes(
         self, joint_positions: dict[str, float] | None, *, attached: bool, visible: bool = True,
-        transforms: dict[str, np.ndarray] | None = None
+        transforms: dict[str, np.ndarray] | None = None, carried_boxes: tuple[dict, ...] = ()
     ) -> None:
+        if carried_boxes:
+            rr.log("world/boxes/target", rr.Clear(recursive=True))
+            rr.log("world/boxes/carried", rr.Clear(recursive=True))
+            if transforms is None and joint_positions is not None:
+                transforms = self.robot.fk(joint_positions)
+            for box in carried_boxes:
+                box_id = int(box.get("box_id", -1))
+                if not bool(box.get("visible", True)):
+                    continue
+                center = np.asarray(box.get("box_center", self.box_center), dtype=float)
+                if not bool(box.get("attached", False)) or transforms is None:
+                    rr.log(f"world/boxes/target/{box_id}", rr.Boxes3D(
+                        centers=[center.tolist()], half_sizes=[(self.box_size * 0.5).tolist()],
+                        colors=[[45, 220, 75, 180]], labels=[f"target box {box_id}"]))
+                    continue
+                tool_transform = transforms.get(str(box.get("tool_link", "")))
+                if tool_transform is None:
+                    continue
+                rotation = np.asarray(box.get("tool_to_box_rotation", np.eye(3)), dtype=float)
+                offset = np.asarray(box.get("tool_to_box_center", [0.0, 0.0, 0.0]), dtype=float)
+                box_transform = tool_transform.copy()
+                box_transform[:3, :3] = tool_transform[:3, :3] @ rotation
+                box_transform[:3, 3] = tool_transform[:3, 3] + tool_transform[:3, :3] @ offset
+                rr.log(f"world/boxes/carried/{box_id}", rr.Boxes3D(
+                    centers=[box_transform[:3, 3].tolist()],
+                    half_sizes=[(self.box_size * 0.5).tolist()],
+                    quaternions=[matrix_to_quaternion(box_transform[:3, :3])],
+                    colors=[[45, 225, 100, 190]], labels=[f"carried box {box_id}"]))
+            return
+
         if not visible:
             rr.log("world/boxes/target", rr.Clear(recursive=True))
             rr.log("world/boxes/carried", rr.Clear(recursive=True))
             return
         if not attached or joint_positions is None:
             rr.log("world/boxes/carried", rr.Clear(recursive=True))
-            rr.log(
-                "world/boxes/target",
-                rr.Boxes3D(
-                    centers=[self.box_center.tolist()],
-                    half_sizes=[(self.box_size * 0.5).tolist()],
-                    colors=[[45, 220, 75, 180]],
-                    labels=["target box"],
-                ),
-            )
+            rr.log("world/boxes/target", rr.Boxes3D(
+                centers=[self.box_center.tolist()], half_sizes=[(self.box_size * 0.5).tolist()],
+                colors=[[45, 220, 75, 180]], labels=["target box"]))
             return
-
         if transforms is None:
             transforms = self.robot.fk(joint_positions)
         tool_transform = transforms.get(self.tool_link)
@@ -379,21 +404,12 @@ class V3SingleArmBoxExtractViewer(Node):
             return
         box_transform = tool_transform.copy()
         box_transform[:3, :3] = tool_transform[:3, :3] @ self.tool_to_box_rotation
-        box_transform[:3, 3] = (
-            tool_transform[:3, 3]
-            + tool_transform[:3, :3] @ self.tool_to_box_center
-        )
+        box_transform[:3, 3] = tool_transform[:3, 3] + tool_transform[:3, :3] @ self.tool_to_box_center
         rr.log("world/boxes/target", rr.Clear(recursive=True))
-        rr.log(
-            "world/boxes/carried",
-            rr.Boxes3D(
-                centers=[box_transform[:3, 3].tolist()],
-                half_sizes=[(self.box_size * 0.5).tolist()],
-                quaternions=[matrix_to_quaternion(box_transform[:3, :3])],
-                colors=[[45, 225, 100, 190]],
-                labels=["carried target box"],
-            ),
-        )
+        rr.log("world/boxes/carried", rr.Boxes3D(
+            centers=[box_transform[:3, 3].tolist()], half_sizes=[(self.box_size * 0.5).tolist()],
+            quaternions=[matrix_to_quaternion(box_transform[:3, :3])],
+            colors=[[45, 225, 100, 190]], labels=["carried target box"]))
 
     def log_summary(self, status: str, *, planning: bool) -> None:
         if planning:
@@ -504,7 +520,7 @@ class V3SingleArmBoxExtractViewer(Node):
             self.update_scene(self.scenes[frame.scene_index], draw_boxes=False)
             self.scene_index = frame.scene_index
         self.log_boxes(joint_positions, attached=frame.box_attached, visible=frame.box_visible,
-                       transforms=transforms)
+                       transforms=transforms, carried_boxes=frame.carried_boxes)
         rr.log(
             "world/current_stage",
             rr.TextLog(

@@ -8,6 +8,29 @@
 
 namespace alfa_robot::motion
 {
+struct WallTransferRound
+{
+  int left_box = -1;
+  int right_box = -1;
+
+  bool dual() const { return left_box >= 0 && right_box >= 0; }
+};
+
+inline std::vector<WallTransferRound> wallTransferRounds()
+{
+  std::vector<WallTransferRound> rounds;
+  rounds.reserve(15);
+  for (int row = 4; row >= 0; --row) {
+    const int first = row * 5;
+    rounds.push_back({first, first + 4});
+    rounds.push_back({first + 1, first + 3});
+    // Alternate the centre box to avoid making either arm the permanent fallback arm.
+    rounds.push_back(row % 2 == 0 ? WallTransferRound{first + 2, -1} :
+      WallTransferRound{-1, first + 2});
+  }
+  return rounds;
+}
+
 inline std::vector<int> wallSequenceOrder()
 {
   std::vector<int> ids;
