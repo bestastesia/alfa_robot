@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="alfa_robot">
+  <xacro:arg name="end_effector" default="gripper"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot.urdf.xacro"/>
+</robot>

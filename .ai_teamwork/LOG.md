@@ -2079,3 +2079,9 @@
 - 做了什么：已核验PR #24仍open、head为`c0bf653`，复用原分支追加本轮增量，不新建重复PR；目标`alfa_v3_dev`，依赖#20→#21→#22→#23仍未合并。中文提交与六项PR说明、Codex署名；沿用无明确Issue留空约定。
 - 范围：只提交逐箱发布、分段校验/连续写入、三项测试、箱墙操作文档及本轮交接；其他AI的交互IK文件/文档/测试、短脚本、历史未归属日志保持原样。
 - 验证：6项实现/测试SHA256与实测证据一致；提交前再次运行CTest20/20及分段/场景回归。25箱与失败实跑、RRD全帧/场景读回、原生UI等待数据/主动暂停证据见`rerun_segments/summary.json`；发布核验在其`pr/`目录。只提交待审PR，不合并、不强推、不打tag。
+
+## 2026-09-15 运控 / Codex / V3 双吸盘主动悬挂模型接入
+- 做了什么：从 `SevenovaHangzhou/robot_description` 的 `robot_v3_suction_chassis` 分支导入提交 `17f5bdc46b8f2580ee81aed919da7b404da3bdaf`，将默认整机描述更新为 V3.0.9 双吸盘主动悬挂版本，并保留双夹爪入口及现有 `world` 根链接兼容层。
+- 改了哪里：更新 description 的 URDF/xacro、mesh、初始姿态、关节限位、mock ros2_control、查看 launch 和语义测试；同步 MoveIt SRDF、初始姿态、限位与 controller 配置。复用仓库已有且逐字节相同的 46 个 V3.0.8 机械臂 STL，未重复提交约 20 MB 资产。
+- 验证结果：description pytest 25/25、MoveIt CTest 17/17、`git diff --check` 通过；新模型双臂刚性箱体平移规划成功（pairs=12、collision=24、frames=13）。
+- 留给下个 AI：来源模型 `updown=[-0.5,0.5]m` 仅用于 description/mock/离线规划；真实执行桥仍保持 `[0.0,0.7]m` 安全合同，完成升降零位、方向、行程与吸盘 TCP 标定前不得直接用于实机执行。

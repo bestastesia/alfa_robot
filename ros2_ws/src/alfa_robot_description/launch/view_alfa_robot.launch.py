@@ -24,6 +24,8 @@ from launch.substitutions import Command, FindExecutable, LaunchConfiguration, P
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+import yaml
+
 
 def generate_launch_description():
     # Declare arguments
@@ -82,16 +84,12 @@ def generate_launch_description():
     def make_joint_state_publisher(context):
         parameters = [robot_description]
         if use_model_initial_positions.perform(context).lower() not in ("false", "0", "no", "off"):
-            # joint_state_publisher_gui does not read MoveIt's initial_positions.yaml.
-            initial_arm_positions = (-1.57079632679, -1.57079632679, 0.0,
-                                     -1.57079632679, 0.0, 0.0, 0.0)
-            parameters.append(
-                {
-                    f"zeros.{side}_joint{index}": initial_arm_positions[index - 1]
-                    for side in ("left", "right")
-                    for index in range(1, 8)
-                }
-            )
+            positions_path = PathJoinSubstitution(
+                [FindPackageShare(description_package), "config", "initial_positions.yaml"]
+            ).perform(context)
+            with open(positions_path, encoding="utf-8") as positions_file:
+                positions = yaml.safe_load(positions_file)["initial_positions"]
+            parameters.append({f"zeros.{name}": value for name, value in positions.items()})
         return [
             Node(
                 package="joint_state_publisher_gui",

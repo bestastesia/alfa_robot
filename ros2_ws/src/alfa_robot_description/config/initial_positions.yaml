@@ -1,4 +1,16 @@
-# V3.0.9 双吸盘主动悬挂整机默认姿态。
+metadata:
+  schema_version: 1
+  robot: alfa_v3
+  model_revision: robot_v3.0.9
+  end_effector: suction
+  side_semantics: left_is_positive_y
+  source_chain_mapping:
+    left: source_right
+    right: source_left
+  zero_offset_semantics:
+    left_joint5: source_right_joint5_at_positive_pi
+    left_joint7: previous_left_joint7_at_positive_pi
+
 initial_positions:
   updown: 0.0
   head_joint: 0.0

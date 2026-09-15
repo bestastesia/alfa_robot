@@ -17,39 +17,22 @@ install(
 )
 
 install(
-  DIRECTORY meshes/current_robot
-  DESTINATION share/${PROJECT_NAME}/meshes
+  FILES README.md
+  DESTINATION share/${PROJECT_NAME}
 )
 
 install(
-  DIRECTORY meshes/robot_v3_0_4
-  DESTINATION share/${PROJECT_NAME}/meshes
-)
-
-install(
-  DIRECTORY meshes/robot_v3_0_5
-  DESTINATION share/${PROJECT_NAME}/meshes
-)
-
-install(
-  DIRECTORY meshes/robot_v3_0_6
-  DESTINATION share/${PROJECT_NAME}/meshes
-)
-
-install(
-  DIRECTORY meshes/robot_v3_0_7
-  DESTINATION share/${PROJECT_NAME}/meshes
-)
-
-install(
-  DIRECTORY meshes/robot_v3_0_8
-  DESTINATION share/${PROJECT_NAME}/meshes
+  DIRECTORY meshes
+  DESTINATION share/${PROJECT_NAME}
 )
 
 # 根 xacro 已随 urdf/ 目录安装；运行时按需展开，避免首次构建时自查找本包失败。
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_alfa_robot_urdf_xacro test/alfa_robot_test_urdf_xacro.py)
+  ament_add_pytest_test(test_v3_description_semantics test/test_v3_description_semantics.py)
+  ament_add_pytest_test(test_v3_chassis_semantics test/test_v3_chassis_semantics.py)
+  ament_add_pytest_test(test_v3_head_semantics test/test_v3_head_semantics.py)
 endif()
 
 ament_package()

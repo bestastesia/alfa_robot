@@ -17,6 +17,7 @@ dual_arm_controller:
     joints:
       - updown
       - head_joint
+      - head_pitch_joint
       - left_joint1
       - left_joint2
       - left_joint3

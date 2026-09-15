@@ -1,0 +1,91 @@
+metadata:
+  schema_version: 1
+  robot: alfa_v3
+  model_revision: robot_v3.0.9
+  end_effector: gripper
+  status: design_description_requires_hardware_validation
+  source: robot_v3.0.9/robot.urdf
+  gripper_source: robot_dual_gripper.urdf
+  chassis_source: robot.urdf (active-suspension full-robot export)
+  head_source: robot.urdf (camera STEP export)
+  warning: >
+    Position limits match the reviewed V3.0.9 description contract. Hardware
+    velocity, acceleration and encoder direction require independent electrical
+    validation. The source right_joint5 +pi pose is frozen as logical
+    left_joint5 zero after correcting the left/right naming semantics. The
+    reviewed left_joint7 +pi wrist-roll pose is frozen as its new logical zero.
+    Gripper travel and dynamics are imported CAD description values and require
+    hardware validation.
+    The active-suspension and chassis joints retain the source joint types,
+    position limits, effort and velocity values and require hardware validation.
+  side_semantics: left_is_positive_y
+  source_chain_mapping:
+    left: source_right
+    right: source_left
+
+joints:
+  updown:
+    type: prismatic
+    lower_position_m: -0.5
+    upper_position_m: 0.5
+    coordinate_semantics: -0.5m_is_lowest_0.0m_is_midpoint_0.5m_is_highest
+  head_joint:
+    type: revolute
+    lower_position_rad: -1.57
+    upper_position_rad: 1.57
+  head_pitch_joint:
+    type: revolute
+    lower_position_rad: -1.57
+    upper_position_rad: 1.57
+  left_joint1: &joint_180
+    type: revolute
+    lower_position_rad: -3.14159265
+    upper_position_rad: 3.14159265
+  left_joint2: &joint_105
+    type: revolute
+    lower_position_rad: -1.8325957145940461
+    upper_position_rad: 1.8325957145940461
+  left_joint3: *joint_180
+  left_joint4: &joint_145
+    type: revolute
+    lower_position_rad: -2.53072742
+    upper_position_rad: 2.53072742
+  left_joint5:
+    <<: *joint_180
+    source_position_at_logical_zero_rad: 3.141592653589793
+  left_joint6: &joint_110
+    type: revolute
+    lower_position_rad: -1.91986218
+    upper_position_rad: 1.91986218
+  left_joint7:
+    <<: *joint_180
+    previous_position_at_logical_zero_rad: 3.141592653589793
+  right_joint1: *joint_180
+  right_joint2: *joint_105
+  right_joint3: *joint_180
+  right_joint4: *joint_145
+  right_joint5: *joint_180
+  right_joint6: *joint_110
+  right_joint7: *joint_180
+  left_moving_jaw_joint: &moving_jaw
+    type: prismatic
+    lower_position_m: 0.0
+    upper_position_m: 0.080
+    coordinate_semantics: 0.0m_is_cad_closed_0.080m_is_maximum_open
+  right_moving_jaw_joint: *moving_jaw
+  active_suspension_joint:
+    type: prismatic
+    lower_position_m: -0.15
+    upper_position_m: 0.0
+    coordinate_semantics: 0.0m_is_cad_retracted_-0.15m_is_maximum_extension
+  caster01_joint: &chassis_joint
+    type: revolute
+    lower_position_rad: -3.14159
+    upper_position_rad: 3.14159
+  wheel01_joint: *chassis_joint
+  caster02_joint: *chassis_joint
+  wheel02_joint: *chassis_joint
+  caster03_joint: *chassis_joint
+  wheel03_joint: *chassis_joint
+  caster04_joint: *chassis_joint
+  wheel04_joint: *chassis_joint
