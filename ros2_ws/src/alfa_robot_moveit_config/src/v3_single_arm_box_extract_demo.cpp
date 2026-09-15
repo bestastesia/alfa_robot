@@ -212,6 +212,13 @@ public:
   void init()
   {
     distance_demo_ = getParameter<bool>("distance_demo", false);
+    post_extract_policy_ = getParameter<std::string>(
+      "post_extract_policy", "rear_release");
+    if (post_extract_policy_ != "rear_release" &&
+        post_extract_policy_ != "loaded_home") {
+      throw std::invalid_argument(
+              "post_extract_policy must be rear_release or loaded_home");
+    }
     initial_pose_ = getParameter<std::string>("initial_pose", "home");
     if (initial_pose_ != "home" && (initial_pose_ != "arms_down" || !distance_demo_))
       throw std::invalid_argument("initial_pose must be home, or arms_down for wall simulation");
@@ -229,8 +236,11 @@ public:
     }
     box_center_ = Eigen::Vector3d(initial_box[0], initial_box[1], initial_box[2]);
     wall_context_ = getParameter<std::string>("wall_context", "full");
-    if (wall_context_ != "full" && wall_context_ != "sequence_prefix")
-      throw std::invalid_argument("wall_context must be full or sequence_prefix");
+    if (wall_context_ != "full" && wall_context_ != "sequence_prefix" &&
+        wall_context_ != "target_only") {
+      throw std::invalid_argument(
+              "wall_context must be full, sequence_prefix, or target_only");
+    }
     scene_layout_ = getParameter<std::string>("scene_layout", "cross");
     if (distance_demo_) scene_layout_ = "wall_5x5";
     wall_target_row_ = getParameter<int>("wall_target_row", 0);
@@ -284,7 +294,7 @@ public:
     }
     if (planning_group_name_ != side_ + "_arm" || tool_link_ != side_ + "_tool0" ||
         arm_base_link_ != "arm_carriage") {
-      throw std::invalid_argument("planning_group/tool_link/arm_base_link must match the V3.0.9 side");
+      throw std::invalid_argument("planning_group/tool_link/arm_base_link must match the V3.1.1 side");
     }
     for (const double value : {box_depth_, box_width_, box_height_, approach_distance_,
          retreat_distance_, cartesian_step_, psi_step_, maximum_cartesian_joint_step_,
@@ -372,8 +382,8 @@ public:
         throw std::invalid_argument("shoulder_box_offset must be finite and nonnegative metres");
       }
       const Eigen::Vector3d shoulder_midpoint = 0.5 * (
-        V3RedundantArmAnalyticIk(V3RedundantArmModel::V309Left).modelShoulderCenterInArmBase() +
-        V3RedundantArmAnalyticIk(V3RedundantArmModel::V309Right).modelShoulderCenterInArmBase());
+        V3RedundantArmAnalyticIk(V3RedundantArmModel::V311Left).modelShoulderCenterInArmBase() +
+        V3RedundantArmAnalyticIk(V3RedundantArmModel::V311Right).modelShoulderCenterInArmBase());
       initial_shoulder_z_ = (initial_state_->getGlobalLinkTransform(arm_base_link_) *
         shoulder_midpoint).z();
       chassis_front_x_ = getParameter<double>("chassis_front_x", modelChassisFrontX());
@@ -400,7 +410,7 @@ public:
     }
 
     solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      side_ == "left" ? V3RedundantArmModel::V309Left : V3RedundantArmModel::V309Right);
+      side_ == "left" ? V3RedundantArmModel::V311Left : V3RedundantArmModel::V311Right);
 
     std::vector<std::string> request_adapters = {
       "default_planner_request_adapters/AddTimeOptimalParameterization",
@@ -681,7 +691,7 @@ private:
     planning_group_name_ = side + "_arm";
     planning_group_ = robot_model_->getJointModelGroup(planning_group_name_);
     solver_ = std::make_unique<V3RedundantArmAnalyticIk>(
-      side == "left" ? V3RedundantArmModel::V309Left : V3RedundantArmModel::V309Right);
+      side == "left" ? V3RedundantArmModel::V311Left : V3RedundantArmModel::V311Right);
   }
 
   void createBoxMarker()
@@ -818,6 +828,7 @@ private:
     if (stage == "cartesian_approach") return 2;
     if (stage == "cartesian_retreat" || stage == "cartesian_lift") return 4;
     if (stage == "rrt_return") return 5;
+    if (stage == "updown_return" || stage == "loaded_home") return 6;
     if (stage == "rear_placement") return 6;
     if (stage == "release_box") return 7;
     if (stage == "rrt_approach") return 1;
@@ -1433,6 +1444,9 @@ private:
   std::vector<Eigen::Vector3d> neighborCenters(const Eigen::Vector3d& center) const
   {
     if (scene_layout_ == "wall_5x5") {
+      if (wall_context_ == "target_only") {
+        return {};
+      }
       std::vector<Eigen::Vector3d> neighbors;
       neighbors.reserve(24);
       for (int row = 0; row < 5; ++row) {
@@ -1609,6 +1623,48 @@ private:
       }
     }
     return true;
+  }
+
+  RrtPlanResult moveUpdown(
+    const planning_scene::PlanningSceneConstPtr& scene,
+    const moveit::core::RobotState& start,
+    double target,
+    bool attached,
+    PlanningMetrics* metrics) const
+  {
+    const auto started = std::chrono::steady_clock::now();
+    RrtPlanResult result;
+    result.states.push_back(std::make_shared<moveit::core::RobotState>(start));
+    const double initial = start.getVariablePosition("updown");
+    const size_t steps = std::max<size_t>(
+      1, static_cast<size_t>(std::ceil(std::abs(target - initial) / 0.005)));
+    for (size_t index = 1; index <= steps; ++index) {
+      auto state = std::make_shared<moveit::core::RobotState>(start);
+      state->setVariablePosition(
+        "updown",
+        initial + (target - initial) * static_cast<double>(index) /
+        static_cast<double>(steps));
+      if (attached && !state->hasAttachedBody(kCarriedBoxId)) {
+        attachCarriedBox(*state);
+      }
+      state->update(true);
+      if (!state->satisfiesBounds()) {
+        result.reason = "joint_bounds";
+        result.rejected_state = state;
+        break;
+      }
+      const std::string collision = collisionReason(scene, *state, metrics);
+      if (!collision.empty()) {
+        result.reason = collision;
+        result.rejected_state = state;
+        break;
+      }
+      result.states.push_back(std::move(state));
+    }
+    result.success = result.states.size() == steps + 1U;
+    result.wall_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - started).count();
+    return result;
   }
 
   std::vector<moveit::core::RobotStatePtr> directArmPath(
@@ -2059,7 +2115,7 @@ private:
         {"target_updown", choice.position}, {"lower_limit", bounds.min_position_},
         {"upper_limit", bounds.max_position_}, {"reachable_lift", height_clearance_},
         {"collision_sample_step_m", 0.005},
-        {"return_policy", "checked rear placement and release; retain final posture for next box"}};
+        {"return_policy", post_extract_policy_}};
     }
     return {{"enabled", align_height_}, {"strategy", "fixed_offset"},
       {"reference", "midpoint of left/right shoulder common-axis centers in world Z"},
@@ -2067,7 +2123,7 @@ private:
       {"shoulder_box_offset", shoulder_box_offset_}, {"height_difference", difference},
       {"descent", descent}, {"initial_updown", initial}, {"target_updown", initial - descent},
       {"lower_limit", bounds.min_position_}, {"upper_limit", bounds.max_position_},
-      {"collision_sample_step_m", 0.005}, {"return_policy", "checked rear placement and release; retain final posture for next box"}};
+      {"collision_sample_step_m", 0.005}, {"return_policy", post_extract_policy_}};
   }
 
   void checkHeightClearance(
@@ -2374,7 +2430,7 @@ private:
       last_failure_stage.clear();
       moveit::core::RobotState return_goal(grasp_start);
       attachCarriedBox(return_goal);
-      if (distance_demo_) {
+      if (distance_demo_ && post_extract_policy_ == "rear_release") {
         // Position the entire rotated payload behind the chassis, not just the TCP.
         // A folded top-suction payload can extend forward of its TCP.
         moveit::core::RobotState rear_reference(*home_state_);
@@ -2439,7 +2495,20 @@ private:
 
       result.frames = std::move(executable_prefix);
       appendStates(return_plan.states, "rrt_return", true, true, &result.frames);
-      if (distance_demo_) {
+      if (post_extract_policy_ == "loaded_home") {
+        const auto updown_return = moveUpdown(
+          loaded, *return_plan.states.back(),
+          home_state_->getVariablePosition("updown"), true, &result.metrics);
+        if (!updown_return.success) {
+          result.rejected_state = updown_return.rejected_state;
+          last_failure_stage = "updown_return";
+          last_failure_reason = updown_return.reason;
+          continue;
+        }
+        appendStates(updown_return.states, "updown_return", true, true, &result.frames);
+        result.frames.push_back(
+          ReplayFrame{"loaded_home", allJoints(*updown_return.states.back()), true});
+      } else if (distance_demo_) {
         // The loaded path is checked through this last visible pose. Removal is
         // a separate frame with identical joints, never an obstacle workaround.
         result.frames.push_back(ReplayFrame{"rear_placement", allJoints(return_goal), true});
@@ -2470,7 +2539,8 @@ private:
     output["initial_joints"] = allJoints(*initial_state_);
     if (distance_demo_) {
       output["distance_demo"] = true;
-      output["release_after_transfer"] = true;
+      output["post_extract_policy"] = post_extract_policy_;
+      output["release_after_transfer"] = post_extract_policy_ == "rear_release";
       output["initial_pose"] = initial_pose_;
       output["planning_seed"] = planning_seed_;
       output["edge_collision_resolution_deg"] = edge_joint_resolution_ * 180.0 / kPi;
@@ -2853,6 +2923,7 @@ private:
   std::vector<moveit_msgs::msg::CollisionObject> environment_objects_;
   nlohmann::json environment_json_;
   bool distance_demo_ = false;
+  std::string post_extract_policy_ = "rear_release";
   bool align_height_ = false;
   std::string height_strategy_ = "fixed_offset";
   nlohmann::json height_clearance_ = {{"checked", false}};

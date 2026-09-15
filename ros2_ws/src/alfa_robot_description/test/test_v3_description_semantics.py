@@ -58,16 +58,23 @@ def test_v3_side_zero_and_group_semantics(end_effector):
     footprint = joints["base_footprint_to_base_link"]
     assert footprint.find("parent").attrib["link"] == "base_footprint"
     assert footprint.find("child").attrib["link"] == "base_link"
-    assert footprint.find("origin").attrib["xyz"] == "0.195 0.015 0.400"
+    assert footprint.find("origin").attrib["xyz"] == (
+        "0.190000002779484 -0.0000442724271391554 0.40000250599116"
+    )
 
     # ROS base coordinates use +Y as robot left.
-    assert float(joints["left_joint1"].find("origin").attrib["xyz"].split()[1]) > 0.0
-    assert float(joints["right_joint1"].find("origin").attrib["xyz"].split()[1]) < 0.0
+    mount_rotation = rpy_matrix((0.0, 0.0, math.pi / 2.0))
+    left_origin = tuple(float(value) for value in joints["left_joint1"].find("origin").attrib["xyz"].split())
+    right_origin = tuple(float(value) for value in joints["right_joint1"].find("origin").attrib["xyz"].split())
+    left_in_carriage = tuple(sum(mount_rotation[row][column] * left_origin[column] for column in range(3)) for row in range(3))
+    right_in_carriage = tuple(sum(mount_rotation[row][column] * right_origin[column] for column in range(3)) for row in range(3))
+    assert left_in_carriage[1] > 0.0
+    assert right_in_carriage[1] < 0.0
 
     updown = joints["updown"]
-    assert updown.find("origin").attrib["xyz"] == "-6.505e-09 -1.14829997 0.19"
-    assert float(updown.find("limit").attrib["lower"]) == -0.5
-    assert float(updown.find("limit").attrib["upper"]) == 0.5
+    assert updown.find("origin").attrib["xyz"] == "-6.50744829443e-09 -0.64829997 0.19"
+    assert float(updown.find("limit").attrib["lower"]) == -1.0
+    assert float(updown.find("limit").attrib["upper"]) == 0.0
 
     exact_joint2_limit = math.radians(105.0)
     for side in ("left", "right"):
@@ -75,37 +82,18 @@ def test_v3_side_zero_and_group_semantics(end_effector):
         assert abs(float(limit.attrib["lower"]) + exact_joint2_limit) < 1e-15
         assert abs(float(limit.attrib["upper"]) - exact_joint2_limit) < 1e-15
 
-    # Final left_joint5 is the source model's right_joint5 chain. Its logical
-    # zero must be exactly the source +pi pose while retaining +/-pi limits.
-    source_origin = rpy_matrix((1.5707963, 0.0, 1.8325957))
-    source_plus_pi = matrix_multiply(
-        source_origin,
-        rpy_matrix((0.0, 0.0, math.pi)),
-    )
-    final_left_rpy = tuple(
-        float(value)
-        for value in joints["left_joint5"].find("origin").attrib["rpy"].split()
-    )
-    assert_matrix_close(rpy_matrix(final_left_rpy), source_plus_pi)
-    left_joint5_limit = joints["left_joint5"].find("limit")
-    assert float(left_joint5_limit.attrib["lower"]) == -3.14159265
-    assert float(left_joint5_limit.attrib["upper"]) == 3.14159265
-
-    # The current left_joint7 logical zero must equal the previous model's
-    # physical +pi wrist-roll pose without changing its +/-pi logical limits.
-    previous_joint7_origin = rpy_matrix((0.0, -1.5707963, math.pi))
-    previous_joint7_plus_pi = matrix_multiply(
-        previous_joint7_origin,
-        rpy_matrix((0.0, 0.0, math.pi)),
-    )
-    current_left_joint7_rpy = tuple(
-        float(value)
-        for value in joints["left_joint7"].find("origin").attrib["rpy"].split()
-    )
-    assert_matrix_close(rpy_matrix(current_left_joint7_rpy), previous_joint7_plus_pi)
-    left_joint7_limit = joints["left_joint7"].find("limit")
-    assert float(left_joint7_limit.attrib["lower"]) == -3.14159265
-    assert float(left_joint7_limit.attrib["upper"]) == 3.14159265
+    assert joints["left_joint5"].find("origin").attrib == {
+        "xyz": "0.22457775 0.060175428 0.068",
+        "rpy": "1.5707963 0 1.8325957",
+    }
+    assert joints["left_joint7"].find("origin").attrib == {
+        "xyz": "0.0993 0 -0.0615",
+        "rpy": "0 -1.5707963 3.1415927",
+    }
+    for name in ("left_joint5", "left_joint7"):
+        limit = joints[name].find("limit")
+        assert float(limit.attrib["lower"]) == -3.14159265
+        assert float(limit.attrib["upper"]) == 3.14159265
 
     suffix = f"_{end_effector}"
     initial_positions = yaml.safe_load(

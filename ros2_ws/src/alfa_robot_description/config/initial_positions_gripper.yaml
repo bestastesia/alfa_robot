@@ -1,15 +1,11 @@
 metadata:
   schema_version: 1
   robot: alfa_v3
-  model_revision: robot_v3.0.9
+  model_revision: robot_v3.1.1-hybrid
   end_effector: gripper
   side_semantics: left_is_positive_y
-  source_chain_mapping:
-    left: source_right
-    right: source_left
-  zero_offset_semantics:
-    left_joint5: source_right_joint5_at_positive_pi
-    left_joint7: previous_left_joint7_at_positive_pi
+  arm_source: robot_v3.1.1
+  integration_policy: v3_1_1_arms_updown_with_kkozia_modules
 
 initial_positions:
   updown: 0.0

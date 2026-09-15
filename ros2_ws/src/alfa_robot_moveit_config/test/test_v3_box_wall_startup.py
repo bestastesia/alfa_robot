@@ -29,14 +29,23 @@ def main():
     os.environ.setdefault('ROS_DOMAIN_ID', '188')
     os.environ['ROS_LOG_DIR'] = str(root / 'ros')
     command = ['ros2', 'launch', 'alfa_robot_moveit_config',
-               args.launch, 'align_height:=false', 'start_rviz:=false',
+               args.launch, 'align_height:=true', 'wall_context:=target_only',
+               'post_extract_policy:=loaded_home', 'start_rviz:=false',
                'start_rerun:=false', 'auto_run_once:=false']
     checks = []
 
     def assert_children_stopped(log):
-        for pid in re.findall(r'process started with pid \[(\d+)\]', log):
-            status = Path(f'/proc/{pid}/status')
-            assert not status.exists() or 'State:\tZ' in status.read_text(), pid
+        statuses = [Path(f'/proc/{pid}/status')
+                    for pid in re.findall(r'process started with pid \[(\d+)\]', log)]
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if all(not status.exists() or 'State:\tZ' in status.read_text()
+                   for status in statuses):
+                return
+            time.sleep(.05)
+        live = [status.parent.name for status in statuses
+                if status.exists() and 'State:\tZ' not in status.read_text()]
+        assert not live, live
 
     # The original typo must fail before launching even robot_state_publisher.
     for label, parameters, expected in [
@@ -83,7 +92,7 @@ def main():
                                            start_new_session=True)
                 try:
                     assert client.wait_for_service(timeout_sec=40), path.read_text()
-                    request = PlanWallBoxDemo.Request(x=.90, box_id=20, arm='auto')
+                    request = PlanWallBoxDemo.Request(x=.50, box_id=9, arm='left')
                     future = client.call_async(request)
                     rclpy.spin_until_future_complete(node, future, timeout_sec=120)
                     assert future.done(), 'Service response timeout'
@@ -92,8 +101,13 @@ def main():
                     assert response.generation == 1, 'Not a fresh server'
                     task = json.loads(response.result_json)
                     stages = list(dict.fromkeys(frame['stage'] for frame in task['frames']))
-                    assert stages == ['rrt_to_precontact', 'cartesian_approach', 'attach_box',
-                                      'cartesian_retreat', 'rrt_return'], stages
+                    assert stages == ['lower_to_box_height', 'rrt_to_precontact',
+                                      'cartesian_approach', 'attach_box',
+                                      'cartesian_retreat', 'rrt_return',
+                                      'updown_return', 'loaded_home'], stages
+                    assert task['post_extract_policy'] == 'loaded_home'
+                    assert not task['release_after_transfer']
+                    assert task['frames'][-1]['box_attached']
                     (root / f'restart_{cycle + 1}_task.json').write_text(
                         json.dumps(task, indent=2))
                     checks.append({'case': f'restart_{cycle + 1}', 'passed': True,

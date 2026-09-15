@@ -19,9 +19,12 @@ enum class V3RedundantArmModel
   V307Right,
   V308Left,
   V308Right,
-  // 新版 V3 双吸盘底盘按物理侧重命名双臂，并调整左腕逻辑零位。
+  // Historical V3.0.9 profile retained for regression only.
   V309Left,
   V309Right,
+  // Active V3.1.1 arms with the Kkozia carriage adapter and Tool0.
+  V311Left,
+  V311Right,
 };
 
 struct V3RedundantIkSolution

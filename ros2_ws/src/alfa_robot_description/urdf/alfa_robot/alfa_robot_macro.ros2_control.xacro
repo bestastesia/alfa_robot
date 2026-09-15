@@ -55,7 +55,7 @@
         </joint>
       </xacro:macro>
 
-      <xacro:control_joint joint_name="updown" initial_value="${updown_initial}" lower="-0.5" upper="0.5"/>
+      <xacro:control_joint joint_name="updown" initial_value="${updown_initial}" lower="-1.0" upper="0.0"/>
       <xacro:control_joint joint_name="head_joint" initial_value="${head_joint_initial}" lower="-1.57" upper="1.57"/>
       <xacro:control_joint joint_name="head_pitch_joint" initial_value="${head_pitch_joint_initial}" lower="-1.57" upper="1.57"/>
       <xacro:control_joint joint_name="left_joint1" initial_value="${left_joint1_initial}" lower="-3.14159265" upper="3.14159265"/>

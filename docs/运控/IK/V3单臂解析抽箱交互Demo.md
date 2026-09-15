@@ -2,7 +2,7 @@
 
 ## 目标
 
-验证 V3.0.9 左臂完成以下固定流程：
+验证 V3.1.1 左臂完成以下固定流程。该交互入口仅作历史研究；当前主编排及本地策略兼容方式见 [V3.1.1远端流程整合说明](V3.1.1远端流程整合说明.md)。
 
 1. 使用 RRTConnect 从初始关节位移动到箱体正面前 5cm；
 2. 使用七轴冗余解析 IK 沿笛卡尔直线前进 5cm；
@@ -64,7 +64,7 @@ ros2 launch alfa_robot_moveit_config v3_single_arm_box_extract_demo.launch.py \
 
 ```text
 launch + demo_config YAML
-  → init：V3.0.9 模型、7轴活动臂、固定共享轴、场景参数
+  → init：V3.1.1 模型、7轴活动臂、固定共享轴、场景参数
   → ~/run_current_box (Trigger)：仅接受计算请求
   → planTask
       makeScene → 检查起点与携箱回程终点

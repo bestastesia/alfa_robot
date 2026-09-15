@@ -33,6 +33,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_v3_description_semantics test/test_v3_description_semantics.py)
   ament_add_pytest_test(test_v3_chassis_semantics test/test_v3_chassis_semantics.py)
   ament_add_pytest_test(test_v3_head_semantics test/test_v3_head_semantics.py)
+  ament_add_pytest_test(test_v311_consumer_contract test/test_v311_consumer_contract.py)
 endif()
 
 ament_package()

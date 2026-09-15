@@ -132,6 +132,60 @@ Eigen::Isometry3d rotationAroundLine(
 
 TransformArray fixedJointTransforms(V3RedundantArmModel model)
 {
+  if (model == V3RedundantArmModel::V311Left) {
+    const Eigen::Isometry3d arm_mount = transformFromOrigin(
+      {0.0, 0.0, -0.0142}, {0.0, 0.0, kPi / 2.0});
+    return {
+      arm_mount * transformFromOrigin(
+        {0.32201385, -0.181, 1.3500054},
+        {0.0, -1.3089969, kUrdfPi}),
+      transformFromOrigin(
+        {0.039999999, 0.0, 0.1512},
+        {0.0, -kUrdfHalfPi, -kUrdfPi}),
+      transformFromOrigin(
+        {0.1795, 0.0, -0.040000001},
+        {0.0, -kUrdfHalfPi, kUrdfPi}),
+      transformFromOrigin(
+        {-1.2261866e-09, -0.068, 0.3265},
+        {kUrdfHalfPi, -1.3089969, -kUrdfPi}),
+      transformFromOrigin(
+        {0.22457775, 0.060175428, 0.068},
+        {kUrdfHalfPi, 0.0, 1.8325957}),
+      transformFromOrigin(
+        {0.061499999, 0.0, 0.2415},
+        {0.0, -kUrdfHalfPi, -kUrdfPi}),
+      transformFromOrigin(
+        {0.0993, 0.0, -0.0615},
+        {0.0, -kUrdfHalfPi, kUrdfPi}),
+    };
+  }
+  if (model == V3RedundantArmModel::V311Right) {
+    const Eigen::Isometry3d arm_mount = transformFromOrigin(
+      {0.0, 0.0, -0.0142}, {0.0, 0.0, kPi / 2.0});
+    return {
+      arm_mount * transformFromOrigin(
+        {-0.33054221, -0.181, 1.3500054},
+        {0.0, -1.3089969, 0.0}),
+      transformFromOrigin(
+        {0.039999999, 0.0, 0.1512},
+        {0.0, kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {-0.1795, 0.0, -0.040000001},
+        {0.0, -kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {-1.2287747e-09, 0.068, 0.3265},
+        {kUrdfHalfPi, 1.3089969, 0.0}),
+      transformFromOrigin(
+        {-0.22457775, 0.060175428, 0.068},
+        {-kUrdfHalfPi, 0.0, 1.3089969}),
+      transformFromOrigin(
+        {0.061499999, 0.0, 0.2415},
+        {0.0, kUrdfHalfPi, 0.0}),
+      transformFromOrigin(
+        {-0.0993, 0.0, -0.0615},
+        {0.0, -kUrdfHalfPi, 0.0}),
+    };
+  }
   if (model == V3RedundantArmModel::V309Left) {
     return {
       rotationTransform(rotZ(kPi / 2.0)) * transformFromOrigin(
@@ -401,7 +455,9 @@ Eigen::Isometry3d toolTransform(V3RedundantArmModel model)
   } else if (model == V3RedundantArmModel::V308Left ||
              model == V3RedundantArmModel::V308Right ||
              model == V3RedundantArmModel::V309Left ||
-             model == V3RedundantArmModel::V309Right) {
+             model == V3RedundantArmModel::V309Right ||
+             model == V3RedundantArmModel::V311Left ||
+             model == V3RedundantArmModel::V311Right) {
     transform.translation().z() = 0.13585;
   }
   return transform;
@@ -483,6 +539,14 @@ const Geometry& geometry(V3RedundantArmModel model)
   static const Geometry v308_right = makeGeometry(V3RedundantArmModel::V308Right);
   static const Geometry v309_left = makeGeometry(V3RedundantArmModel::V309Left);
   static const Geometry v309_right = makeGeometry(V3RedundantArmModel::V309Right);
+  static const Geometry v311_left = makeGeometry(V3RedundantArmModel::V311Left);
+  static const Geometry v311_right = makeGeometry(V3RedundantArmModel::V311Right);
+  if (model == V3RedundantArmModel::V311Left) {
+    return v311_left;
+  }
+  if (model == V3RedundantArmModel::V311Right) {
+    return v311_right;
+  }
   if (model == V3RedundantArmModel::V309Left) {
     return v309_left;
   }
@@ -523,7 +587,9 @@ const JointVector& lowerLimits(V3RedundantArmModel model)
       model == V3RedundantArmModel::V308Left ||
       model == V3RedundantArmModel::V308Right ||
       model == V3RedundantArmModel::V309Left ||
-      model == V3RedundantArmModel::V309Right) {
+      model == V3RedundantArmModel::V309Right ||
+      model == V3RedundantArmModel::V311Left ||
+      model == V3RedundantArmModel::V311Right) {
     return kV307LowerLimits;
   }
   return model == V3RedundantArmModel::LegacyV304 ?
@@ -537,7 +603,9 @@ const JointVector& upperLimits(V3RedundantArmModel model)
       model == V3RedundantArmModel::V308Left ||
       model == V3RedundantArmModel::V308Right ||
       model == V3RedundantArmModel::V309Left ||
-      model == V3RedundantArmModel::V309Right) {
+      model == V3RedundantArmModel::V309Right ||
+      model == V3RedundantArmModel::V311Left ||
+      model == V3RedundantArmModel::V311Right) {
     return kV307UpperLimits;
   }
   return model == V3RedundantArmModel::LegacyV304 ?

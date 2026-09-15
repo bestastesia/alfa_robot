@@ -1,4 +1,4 @@
-# V3.0.9 双吸盘主动悬挂整机默认姿态。
+# V3.1.1 双臂与 Kkozia 双吸盘主动悬挂整机默认姿态。
 initial_positions:
   updown: 0.0
   head_joint: 0.0

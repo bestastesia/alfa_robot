@@ -74,7 +74,7 @@ def main():
             return response, task
         return response, None
 
-    command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py', 'check_environment:=false', 'align_height:=false',
+    command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py', 'check_environment:=false', 'align_height:=true',
                'x:=0.5', 'box_id:=9', 'auto_run_once:=false', 'start_rviz:=false',
                'start_rerun:=false']
     try:
@@ -86,7 +86,7 @@ def main():
                 spin_until(lambda: 'task' in received and 'joints' in received and markers)
                 preview = received['task']
                 front = preview['chassis_front_x']
-                assert math.isclose(front, 0.5050000022, abs_tol=1e-6), front
+                assert math.isclose(front, 0.5000000050, abs_tol=1e-6), front
                 fixed_wall = None
                 for box_id in range(25):
                     response, task = call(2.0, box_id)
@@ -120,7 +120,8 @@ def main():
                 for frame in task['frames']:
                     joints = dict(zip(task['joint_names'], frame['joints']))
                     assert len(joints) == 16 and all(math.isfinite(v) for v in joints.values())
-                    assert joints['updown'] == joints['head_joint'] == 0
+                    assert -1.0 <= joints['updown'] <= 0.0
+                    assert joints['head_joint'] == 0
                     assert all(math.isclose(joints[f'right_joint{i}'], task['initial_joints'][7 + i - 1], abs_tol=1e-8) for i in range(1, 8))
                 # Wait until RViz reaches the released final frame and hides the transported target.
                 from alfa_robot_rerun.visualize_rerun import UrdfRobot, render_current_urdf
@@ -149,7 +150,8 @@ def main():
                         other = 'left' if arm == 'right' else 'right'
                         for frame in task['frames']:
                             values = dict(zip(task['joint_names'], frame['joints']))
-                            assert values['updown'] == values['head_joint'] == 0
+                            assert -1.0 <= values['updown'] <= 0.0
+                            assert values['head_joint'] == 0
                             offset_index = 0 if other == 'left' else 7
                             assert all(math.isclose(values[f'{other}_joint{i}'], task['initial_joints'][offset_index + i - 1], abs_tol=1e-8) for i in range(1, 8))
                         attach = next(f for f in task['frames'] if f['stage'] == 'attach_box')

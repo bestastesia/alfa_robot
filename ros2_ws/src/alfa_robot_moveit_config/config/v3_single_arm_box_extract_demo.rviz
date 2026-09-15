@@ -18,7 +18,7 @@ Visualization Manager:
       Description Topic:
         Value: /robot_description
       Enabled: true
-      Name: V3.0.9 Robot
+      Name: V3.1.1 Robot
       Value: true
       Visual Enabled: true
     - Class: rviz_default_plugins/InteractiveMarkers

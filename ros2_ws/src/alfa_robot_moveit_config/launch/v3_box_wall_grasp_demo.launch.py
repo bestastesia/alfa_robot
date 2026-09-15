@@ -24,7 +24,7 @@ def launch_nodes(context):
         config.planning_pipelines["ompl"][arm]["longest_valid_segment_fraction"] = 0.0005
     name = "v3_box_wall_grasp_demo"
     params = {"distance_demo": True, "collision_inset": 0.0}
-    for key, kind in (("x", float), ("box_id", int), ("arm", str), ("suction_mode", str), ("wall_context", str), ("initial_pose", str),
+    for key, kind in (("x", float), ("box_id", int), ("arm", str), ("suction_mode", str), ("wall_context", str), ("initial_pose", str), ("post_extract_policy", str),
                       ("auto_run_once", bool), ("sequence_mode", bool), ("rear_clearance", float), ("wall_center_y", float),
                       ("wall_bottom_z", float), ("contact_numerical_gap", float),
                       ("align_height", bool), ("shoulder_box_offset", float), ("top_shoulder_above_wrist", float),
@@ -65,8 +65,8 @@ def generate_launch_description():
     arguments = [
         DeclareLaunchArgument("initial_pose", default_value="home", choices=["home", "arms_down"],
                               description="Explicit simulation start: home (unchanged default), or arms_down with both J4=0; no simulated transition from home"),
-        DeclareLaunchArgument("wall_context", default_value="full", choices=["full", "sequence_prefix"],
-                              description="full: all 25 boxes; sequence_prefix: explicitly reproduce the scene before this box in top-down order"),
+        DeclareLaunchArgument("wall_context", default_value="full", choices=["full", "sequence_prefix", "target_only"],
+                              description="full: all 25 boxes; sequence_prefix: scene before this box; target_only: explicit local research compatibility without neighbor boxes"),
         DeclareLaunchArgument("suction_mode", default_value="auto", choices=["auto", "top"],
                               description="auto: front then top (bottom top only); top: diagnostic top-only"),
         DeclareLaunchArgument("x", description="Metres from chassis front to wall near face; >0"),
@@ -74,6 +74,7 @@ def generate_launch_description():
                               description="auto stops at first successful arm"),
     ]
     for name, default, description in (
+        ("post_extract_policy", "rear_release", "rear_release places/releases behind chassis; loaded_home preserves the local attached return"),
         ("height_strategy", "fixed_offset", "fixed_offset or comfort_radius; one height per arm"),
         ("comfort_ratio_min", "0.8", "Minimum normalized shoulder-to-TCP comfort distance"),
         ("comfort_ratio_preferred", "0.8", "Preferred normalized distance; experiment hypothesis"),

@@ -240,9 +240,9 @@ failure_reason：____
 <h2><span class="num">08 / SCOPE &amp; REFERENCES</span>当前版本的边界</h2>
 <ul>
 <li><strong>场景：</strong>5×5固定墙，默认箱体0.30×0.40×0.40m，横竖间隙1cm。默认墙居中靠正墙、底面Z=0；地面/底盘同为落地零基准，仓库内尺寸4×2.38×2.35m，−X端开口。</li>
-<li><strong>底盘基准：</strong>默认遍历V3完整移动底盘（车架、主动悬挂、脚轮和车轮）的碰撞网格顶点，world最大X约为+0.505m，最小X约为-0.495m；可通过启动参数 <code>chassis_front_x</code> 显式标定覆盖前沿。实测基准仍需对齐。</li>
+<li><strong>底盘基准：</strong>默认遍历V3完整移动底盘（车架、主动悬挂、脚轮和车轮）的碰撞网格顶点；按四轮轴心定义 <code>base_footprint</code> 后，world最大X约为+0.500m。可通过启动参数 <code>chassis_front_x</code> 显式标定覆盖前沿，实测基准仍需对齐。</li>
 <li><strong>状态：</strong>正式SRDF home起终姿态，升降先按公式下降，抓取期间固定，携箱返回后升回0；头部固定，不搜索底盘/共享轴。</li>
-<li><strong>任务：</strong>单次独立抽箱并携箱返回；没有放置释放、连续拆墙、取消或实机执行。</li>
+<li><strong>任务：</strong>默认采用远端主编排完成单次抽箱、后置和释放；显式 <code>target_only + loaded_home</code> 仅用于本地携箱回Home研究。没有实机执行。</li>
 <li><strong>安全边界：</strong>成功仅表示模型内找到几何路径，不是连续碰撞、吸附可靠性、载荷/动力学或实机安全证明。</li>
 </ul>
 <h3>本地资料</h3>

@@ -1,32 +1,27 @@
 metadata:
   schema_version: 1
   robot: alfa_v3
-  model_revision: robot_v3.0.9
+  model_revision: robot_v3.1.1-hybrid
   end_effector: suction
   status: design_description_requires_hardware_validation
-  source: robot_v3.0.9/robot.urdf
+  source: robot_v3.1.1 arms/updown with Kkozia modular robot
   suction_source: robot_dual_suction.urdf
   chassis_source: robot.urdf (active-suspension full-robot export)
   head_source: robot.urdf (camera STEP export)
   warning: >
-    Position limits match the reviewed V3.0.9 description contract. Hardware
+    Arm position limits match the reviewed V3.1.1 description contract. Hardware
     velocity, acceleration and encoder direction require independent electrical
-    validation. The source right_joint5 +pi pose is frozen as logical
-    left_joint5 zero after correcting the left/right naming semantics. The
-    reviewed left_joint7 +pi wrist-roll pose is frozen as its new logical zero.
+    validation. Arm joint origins, axes and link geometry come from V3.1.1.
     The active-suspension and chassis joints retain the source joint types,
     position limits, effort and velocity values and require hardware validation.
   side_semantics: left_is_positive_y
-  source_chain_mapping:
-    left: source_right
-    right: source_left
 
 joints:
   updown:
     type: prismatic
-    lower_position_m: -0.5
-    upper_position_m: 0.5
-    coordinate_semantics: -0.5m_is_lowest_0.0m_is_midpoint_0.5m_is_highest
+    lower_position_m: -1.0
+    upper_position_m: 0.0
+    coordinate_semantics: -1.0m_is_lowest_0.0m_is_highest
   head_joint:
     type: revolute
     lower_position_rad: -1.57
@@ -48,16 +43,12 @@ joints:
     type: revolute
     lower_position_rad: -2.53072742
     upper_position_rad: 2.53072742
-  left_joint5:
-    <<: *joint_180
-    source_position_at_logical_zero_rad: 3.141592653589793
+  left_joint5: *joint_180
   left_joint6: &joint_110
     type: revolute
     lower_position_rad: -1.91986218
     upper_position_rad: 1.91986218
-  left_joint7:
-    <<: *joint_180
-    previous_position_at_logical_zero_rad: 3.141592653589793
+  left_joint7: *joint_180
   right_joint1: *joint_180
   right_joint2: *joint_105
   right_joint3: *joint_180

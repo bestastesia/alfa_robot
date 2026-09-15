@@ -2091,3 +2091,8 @@
 - 改了哪里：解析 IK、箱墙序列/规划节点、SRDF、launch、测试及 V3 单箱文档。
 - 验证结果：V3 完整序列 25/25，双臂 10/10，fallback 0；MoveIt 20/20；IK 2/2；description 24 passed。证据 `/home/astesia/Sevenova/日志/验收_2026-09-15/v3_full_wall/`。
 - 留给下个 AI：仅完成离线/仿真几何、运动学和碰撞轨迹验收，不代表实机吸盘动力学安全；实机前仍需升降、TCP、负载、吸附力和速度/加速度标定。
+## 2026-09-15 运控 / Codex / V3.1.1 解析几何与远端流程整合
+- 做了什么：以 `origin/alfa_v3_dev@8ce2e23` 的远端箱墙流程为主编排，接入权威 `robot_v3.1.1-hybrid` 模型；新增 `V311Left/V311Right` 解析模型并切换所有活跃 V3 Demo，`V309Left/V309Right` 仅保留历史回归。完整旧本地方案冻结于 `feat/motion-94-v3-local-extract-preserved@e33146c`。
+- 改了哪里：当前整合分支 `feat/motion-94-v311-remote-integration`；解析几何位于 `alfa_robot_analytic_ik`，MoveIt 随机回代测试位于 `test_v311_analytic_moveit_fk.cpp`。远端主入口仍为 `v3_box_wall_grasp_demo.launch.py`；同一入口新增显式 `target_only + loaded_home` 研究策略，复用原有边插值碰撞、刚体附着和失败诊断，不复制第二套规划器。
+- 验证结果：权威 description 源锁与本地快照均通过；Release 三包共60项测试零失败。左右臂各256组随机 MoveIt FK/解析 IK 回代，最大 FK 位置差约 `8.4e-12m`，最大 IK 回代位置误差约 `6.3e-8m`，平均解析 IK 约 `12.4～14.7us`。`target_only + loaded_home` 连续三次 ROS 启动规划成功，并通过异常退出/服务下线检查。
+- 留给下个 AI：默认仍为远端 `full + rear_release`。旧 V3.0.9 后置落地目标在 V3.1.1 工作区可能无解析 IK，需要单独重新标定任务目标；禁止通过关闭碰撞或移动障碍伪造成功。`target_only` 明确省略其他24箱，只用于保留本地研究流程，不能作为整墙成功率证据。

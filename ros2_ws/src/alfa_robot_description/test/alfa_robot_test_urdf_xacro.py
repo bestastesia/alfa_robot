@@ -42,13 +42,13 @@ def test_urdf_xacro():
         assert joints["world_to_base"].find("parent").attrib["link"] == "world"
         assert joints["world_to_base"].find("child").attrib["link"] == "base_footprint"
         assert joints["base_footprint_to_base_link"].find("origin").attrib["xyz"] == (
-            "0.195 0.015 0.400"
+            "0.190000002779484 -0.0000442724271391554 0.40000250599116"
         )
         assert joints["base_to_model"].find("origin").attrib["xyz"] == (
             "-0.190000017371 6.50500004219e-09 0.662499964909"
         )
-        assert joints["updown"].find("limit").attrib["lower"] == "-0.5"
-        assert joints["updown"].find("limit").attrib["upper"] == "0.5"
+        assert joints["updown"].find("limit").attrib["lower"] == "-1"
+        assert joints["updown"].find("limit").attrib["upper"] == "0"
         assert "head_pitch_joint" in joints
         assert "active_suspension_joint" in joints
         assert all(f"caster{index:02d}_joint" in joints for index in range(1, 5))

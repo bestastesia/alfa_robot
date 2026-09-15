@@ -39,7 +39,7 @@
   <xacro:arg name="wheel04_joint_initial" default="0.0"/>
 
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/alfa_robot_macro.ros2_control.xacro"/>
-  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_0_9.xacro"/>
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_1_1.xacro"/>
   <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_chassis.xacro"/>
 
   <link name="world"/>
@@ -53,7 +53,7 @@
   <joint name="base_footprint_to_base_link" type="fixed">
     <parent link="base_footprint"/>
     <child link="base_link"/>
-    <origin xyz="0.195 0.015 0.400" rpy="0 0 0"/>
+    <origin xyz="0.190000002779484 -0.0000442724271391554 0.40000250599116" rpy="0 0 0"/>
   </joint>
 
   <link name="base_link"/>

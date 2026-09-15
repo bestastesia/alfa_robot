@@ -311,8 +311,8 @@ public:
       throw std::invalid_argument("side must be left or right");
     }
     solver_ = V3RedundantArmAnalyticIk(
-      side_ == "left" ? V3RedundantArmModel::V309Left :
-      V3RedundantArmModel::V309Right);
+      side_ == "left" ? V3RedundantArmModel::V311Left :
+      V3RedundantArmModel::V311Right);
     if (test_pattern_ != "linear_x" && test_pattern_ != "linear_vector" &&
         test_pattern_ != "planar_disk") {
       throw std::invalid_argument(
@@ -1015,7 +1015,7 @@ private:
     output["schema"] = "alfa.v3_continuous_reachability.v2";
     output["config"] = {
       {"side", side_},
-      {"analytic_model", "V3.0.9"},
+      {"analytic_model", "V3.1.1"},
       {"frame", "world"},
       {"front_axis", "world +X"},
       {"test_pattern", test_pattern_},

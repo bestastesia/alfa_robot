@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  V3.1.1 双臂运动链集成到 Kkozia 模块化整机。
+  底盘、主动悬挂、双轴头部、夹爪/吸盘和 Tool0 保持目标分支定义。
+  Updown 保持同一 1m 实体行程，重标为 -1m 最低、0m 最高。
+-->
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name="robot_v3_1_1_hybrid_model">
+  <xacro:arg name="end_effector" default="suction" />
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_end_effectors.xacro" />
+  <xacro:include filename="$(find alfa_robot_description)/urdf/alfa_robot/robot_v3_head.xacro" />
+  <link name="model_base">
+    <!-- Subtract the legacy chassis (parts 038-046) from the source aggregate. -->
+    <inertial>
+      <origin xyz="3.29536501166e-07 -0.0749149604820 0.212516887943" rpy="0 0 0" />
+      <mass value="30.1449868854" />
+      <inertia ixx="9.34604656910" iyy="0.775485502676" izz="9.63693915058" ixy="5.60440224250e-06" ixz="-2.85802943049e-07" iyz="-0.0352490739796" />
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_001_solid_001.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_005_solid_005.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_009_solid_009.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_011_solid_011.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_007_solid_007.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_014_solid_014.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_013_solid_013.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_016_solid_016.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_017_solid_017.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_020_solid_020.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_001_solid_001.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_005_solid_005.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_009_solid_009.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_011_solid_011.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_007_solid_007.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_014_solid_014.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_013_solid_013.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_016_solid_016.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_017_solid_017.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.22515633 0.1942373 0.11" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_020_solid_020.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="arm_carriage">
+    <inertial>
+      <origin xyz="0.15709162 4.2972544e-05 1.2571504" rpy="0 0 1.57079632679" />
+      <mass value="12.409893" />
+      <inertia ixx="0.55779767" iyy="0.1599828" izz="0.56148062" ixy="0.00011152283" ixz="-0.019500541" iyz="-0.0044490853" />
+    </inertial>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_003_solid_003.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_002_solid_002.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_029_solid_029.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_037_solid_037.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_008_solid_008.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_004_solid_004.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_006_solid_006.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <visual>
+      <material name="robot_v3_gray">
+        <color rgba="0.82 0.82 0.82 1" />
+      </material>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_010_solid_010.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_003_solid_003.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_002_solid_002.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_029_solid_029.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_037_solid_037.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_008_solid_008.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_004_solid_004.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_006_solid_006.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.08 0.22515633 0.84253728" rpy="1.5707963 0 1.57079632679" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3/part_010_solid_010.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint1">
+    <inertial>
+      <origin xyz="0.026713078 -0.00035041598 0.12770383" rpy="0 0 0" />
+      <mass value="3.4800784" />
+      <inertia ixx="0.019990671" iyy="0.023084514" izz="0.018380907" ixy="-1.7698217e-05" ixz="-0.00075603007" iyz="-8.1890443e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.34635123 0.261 -0.668106" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_031_solid_031.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.34635123 0.261 -0.668106" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_031_solid_031.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint2">
+    <inertial>
+      <origin xyz="-0.16472334 -1.1230144e-08 -0.040000126" rpy="0 0 0" />
+      <mass value="4.20294" />
+      <inertia ixx="0.014698616" iyy="0.015742815" izz="0.021103613" ixy="6.0405033e-09" ixz="5.5773205e-08" iyz="2.0954468e-08" />
+    </inertial>
+    <visual>
+      <origin xyz="0.819306 0.261 -0.38635123" rpy="1.5707963 -0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_032_solid_032.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.819306 0.261 -0.38635123" rpy="1.5707963 -0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_032_solid_032.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint3">
+    <inertial>
+      <origin xyz="-5.896457e-08 9.5061022e-10 0.23006341" rpy="0 0 0" />
+      <mass value="3.6348933" />
+      <inertia ixx="0.039501207" iyy="0.037988453" izz="0.011543294" ixy="-2.7986338e-10" ixz="-1.0220005e-08" iyz="2.5352711e-09" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.34635123 0.261 -0.998806" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_033_solid_033.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.34635123 0.261 -0.998806" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_033_solid_033.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint4">
+    <inertial>
+      <origin xyz="-0.12628065 0.0338368 0.067995266" rpy="0 0 0" />
+      <mass value="3.5816414" />
+      <inertia ixx="0.016515852" iyy="0.034995692" izz="0.029719473" ixy="0.0053346708" ixz="2.262619e-06" iyz="-6.0604321e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="1.190505 -0.67756403 -0.193" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_034_solid_034.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="1.190505 -0.67756403 -0.193" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_034_solid_034.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint5">
+    <inertial>
+      <origin xyz="-0.026166805 0 0.12943329" rpy="0 0 0" />
+      <mass value="2.5714852" />
+      <inertia ixx="0.0133841" iyy="0.016999468" izz="0.0092322376" ixy="-4.8880228e-11" ixz="-0.00036895645" iyz="-3.280144e-11" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.34635123 0.261 -1.557806" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_035_solid_035.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.34635123 0.261 -1.557806" rpy="1.5707963 1.3089969 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_035_solid_035.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_joint6">
+    <inertial>
+      <origin xyz="-0.05437806 0 -0.061500007" rpy="0 0 0" />
+      <mass value="0.4671031" />
+      <inertia ixx="0.00042456776" iyy="0.00052425348" izz="0.00053281307" ixy="1.7956352e-12" ixz="-9.302396e-11" iyz="2.7467158e-12" />
+    </inertial>
+    <visual>
+      <origin xyz="1.799306 0.261 -0.40785123" rpy="1.5707963 -0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_036_solid_036.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="1.799306 0.261 -0.40785123" rpy="1.5707963 -0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_036_solid_036.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <xacro:call macro="v3_$(arg end_effector)" side="right" />
+  <link name="left_joint1">
+    <inertial>
+      <origin xyz="0.026713079 -0.00035041871 0.12770383" rpy="0 0 0" />
+      <mass value="3.4800785" />
+      <inertia ixx="0.019990672" iyy="0.023084515" izz="0.018380907" ixy="-1.7697964e-05" ixz="-0.00075602927" iyz="-8.1890411e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.46510803 -0.261 -0.22489961" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_022_solid_022.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.46510803 -0.261 -0.22489961" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_022_solid_022.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_joint2">
+    <inertial>
+      <origin xyz="0.16472335 1.2730856e-08 -0.040000127" rpy="0 0 0" />
+      <mass value="4.2029403" />
+      <inertia ixx="0.014698617" iyy="0.015742817" izz="0.021103615" ixy="5.4991019e-09" ixz="-5.5614112e-08" iyz="-2.0916153e-08" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.37609961 0.261 -0.50510803" rpy="1.5707963 0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_023_solid_023.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.37609961 0.261 -0.50510803" rpy="1.5707963 0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_023_solid_023.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_joint3">
+    <inertial>
+      <origin xyz="-5.9080015e-08 2.5764869e-09 0.23006341" rpy="0 0 0" />
+      <mass value="3.6348934" />
+      <inertia ixx="0.039501204" iyy="0.03798845" izz="0.011543294" ixy="-3.3853139e-10" ixz="-9.1325076e-09" iyz="2.5994844e-09" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.46510803 -0.261 -0.55559961" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_024_solid_024.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.46510803 -0.261 -0.55559961" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_024_solid_024.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_joint4">
+    <inertial>
+      <origin xyz="0.12628066 0.033836802 0.068004734" rpy="0 0 0" />
+      <mass value="3.5816422" />
+      <inertia ixx="0.016515855" iyy="0.034995701" izz="0.029719482" ixy="-0.0053346723" ixz="2.2629901e-06" iyz="6.0627704e-07" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.73166397 -0.67756403 -0.193" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_025_solid_025.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.73166397 -0.67756403 -0.193" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_025_solid_025.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_joint5">
+    <inertial>
+      <origin xyz="-0.026166799 2.9314955e-10 0.12943328" rpy="0 0 0" />
+      <mass value="2.5714853" />
+      <inertia ixx="0.013384094" iyy="0.016999459" izz="0.0092322348" ixy="-4.7934427e-12" ixz="-0.0003689586" iyz="-4.3290592e-11" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.46510802 -0.261 -1.1145996" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_026_solid_026.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.46510802 -0.261 -1.1145996" rpy="1.5707963 -1.3089969 -3.1415927" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_026_solid_026.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_joint6">
+    <inertial>
+      <origin xyz="0.054378045 -1.1235669e-09 -0.061499998" rpy="0 0 0" />
+      <mass value="0.4671032" />
+      <inertia ixx="0.00042456777" iyy="0.00052425357" izz="0.00053281318" ixy="2.0503291e-13" ixz="-1.1611109e-10" iyz="-2.6960516e-12" />
+    </inertial>
+    <visual>
+      <origin xyz="-1.3560996 0.261 -0.52660802" rpy="1.5707963 0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_027_solid_027.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-1.3560996 0.261 -0.52660802" rpy="1.5707963 0.26179939 0" />
+      <geometry>
+        <mesh filename="package://alfa_robot_description/meshes/robot_v3_1_1/part_027_solid_027.stl" scale="0.001 0.001 0.001" />
+      </geometry>
+    </collision>
+  </link>
+  <xacro:call macro="v3_$(arg end_effector)" side="left" />
+  <joint name="updown" type="prismatic">
+    <origin xyz="-6.50744829443e-09 -0.64829997 0.19" rpy="-1.57079632679 -1.5707963 0" />
+    <parent link="model_base" />
+    <child link="arm_carriage" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1" upper="0" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint1" type="revolute">
+    <origin xyz="-0.33054221 -0.181 1.3500054" rpy="0 -1.3089969 0" />
+    <parent link="right_arm_base" />
+    <child link="right_joint1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint2" type="revolute">
+    <origin xyz="0.039999999 0 0.1512" rpy="0 1.5707963 0" />
+    <parent link="right_joint1" />
+    <child link="right_joint2" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.8325957145940461" upper="1.8325957145940461" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint3" type="revolute">
+    <origin xyz="-0.1795 0 -0.040000001" rpy="0 -1.5707963 0" />
+    <parent link="right_joint2" />
+    <child link="right_joint3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint4" type="revolute">
+    <origin xyz="-1.2287747e-09 0.068 0.3265" rpy="1.5707963 1.3089969 0" />
+    <parent link="right_joint3" />
+    <child link="right_joint4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint5" type="revolute">
+    <origin xyz="-0.22457775 0.060175428 0.068" rpy="-1.5707963 0 1.3089969" />
+    <parent link="right_joint4" />
+    <child link="right_joint5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint6" type="revolute">
+    <origin xyz="0.061499999 0 0.2415" rpy="0 1.5707963 0" />
+    <parent link="right_joint5" />
+    <child link="right_joint6" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.91986218" upper="1.91986218" effort="10" velocity="5" />
+  </joint>
+  <joint name="right_joint7" type="revolute">
+    <origin xyz="-0.0993 0 -0.0615" rpy="0 -1.5707963 0" />
+    <parent link="right_joint6" />
+    <child link="right_joint7" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint1" type="revolute">
+    <origin xyz="0.32201385 -0.181 1.3500054" rpy="0 -1.3089969 3.1415927" />
+    <parent link="left_arm_base" />
+    <child link="left_joint1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint2" type="revolute">
+    <origin xyz="0.039999999 0 0.1512" rpy="0 -1.5707963 -3.1415927" />
+    <parent link="left_joint1" />
+    <child link="left_joint2" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.8325957145940461" upper="1.8325957145940461" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint3" type="revolute">
+    <origin xyz="0.1795 0 -0.040000001" rpy="0 -1.5707963 3.1415927" />
+    <parent link="left_joint2" />
+    <child link="left_joint3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint4" type="revolute">
+    <origin xyz="-1.2261866e-09 -0.068 0.3265" rpy="1.5707963 -1.3089969 -3.1415927" />
+    <parent link="left_joint3" />
+    <child link="left_joint4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint5" type="revolute">
+    <origin xyz="0.22457775 0.060175428 0.068" rpy="1.5707963 0 1.8325957" />
+    <parent link="left_joint4" />
+    <child link="left_joint5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint6" type="revolute">
+    <origin xyz="0.061499999 0 0.2415" rpy="0 -1.5707963 -3.1415927" />
+    <parent link="left_joint5" />
+    <child link="left_joint6" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.91986218" upper="1.91986218" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint7" type="revolute">
+    <origin xyz="0.0993 0 -0.0615" rpy="0 -1.5707963 3.1415927" />
+    <parent link="left_joint6" />
+    <child link="left_joint7" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="10" velocity="5" />
+  </joint>
+  <link name="right_arm_base" />
+  <link name="left_arm_base" />
+  <joint name="right_arm_mount" type="fixed">
+    <parent link="arm_carriage" />
+    <child link="right_arm_base" />
+    <origin xyz="0 0 -0.0142" rpy="0 0 1.57079632679" />
+  </joint>
+  <link name="right_tool0" />
+  <joint name="right_tool0_fixed" type="fixed">
+    <parent link="right_joint7" />
+    <child link="right_tool0" />
+    <origin xyz="0 0 0.13585" rpy="0 0 0" />
+  </joint>
+  <joint name="left_arm_mount" type="fixed">
+    <parent link="arm_carriage" />
+    <child link="left_arm_base" />
+    <origin xyz="0 0 -0.0142" rpy="0 0 1.57079632679" />
+  </joint>
+  <link name="left_tool0" />
+  <joint name="left_tool0_fixed" type="fixed">
+    <parent link="left_joint7" />
+    <child link="left_tool0" />
+    <origin xyz="0 0 0.13585" rpy="0 0 0" />
+  </joint>
+</robot>

@@ -63,6 +63,18 @@ def mesh_points_in_footprint(robot, link_name, mesh_name, positions=None):
             yield point
 
 
+def link_origin_in_footprint(robot, link_name, positions=None):
+    positions = positions or {}
+    parents = {joint.find("child").attrib["link"]: joint for joint in robot.findall("joint")}
+    point = (0.0, 0.0, 0.0)
+    while link_name != "base_footprint":
+        joint = parents[link_name]
+        rotation, translation = joint_transform(joint, positions.get(joint.attrib["name"], 0.0))
+        point = transform_point(point, rotation, translation)
+        link_name = joint.find("parent").attrib["link"]
+    return point
+
+
 @pytest.mark.parametrize("variant", ("gripper", "suction"))
 def test_chassis_tree_preserves_active_suspension_topology(variant):
     robot = ET.fromstring(render_urdf(variant))
@@ -103,23 +115,28 @@ def test_chassis_tree_preserves_active_suspension_topology(variant):
 @pytest.mark.parametrize("variant", ("gripper", "suction"))
 def test_wheels_ground_and_column_mounting_faces_meet(variant):
     robot = ET.fromstring(render_urdf(variant))
+    wheel_centers = [link_origin_in_footprint(robot, f"wheel{index:02d}") for index in range(1, 5)]
+    average_center = tuple(sum(point[axis] for point in wheel_centers) / 4.0 for axis in range(3))
+    assert abs(average_center[0]) < 1e-9
+    assert abs(average_center[1]) < 1e-9
+    assert abs(average_center[2] - 0.1) < 1e-9
     for index in range(1, 5):
         mesh = f"wheel{index:02d}.stl"
         for steering in (0.0, 0.7):
             points = list(mesh_points_in_footprint(
                 robot, f"wheel{index:02d}", mesh, {f"caster{index:02d}_joint": steering}
             ))
-            assert abs(min(p[2] for p in points)) < 3e-6
+            assert abs(min(p[2] for p in points)) < 5e-6
             assert abs(max(p[2] for p in points) - 0.2) < 2e-5
     for index in (2, 3):
         points = list(mesh_points_in_footprint(
             robot, f"wheel{index:02d}", f"wheel{index:02d}.stl",
             {"active_suspension_joint": -0.15},
         ))
-        assert abs(min(p[2] for p in points) + 0.15) < 3e-6
+        assert abs(min(p[2] for p in points) + 0.15) < 5e-6
     plate = list(mesh_points_in_footprint(robot, "chassis_base", "part_001_solid_001.stl"))
     column = list(mesh_points_in_footprint(robot, "model_base", "part_001_solid_001.stl"))
-    assert abs(min(p[2] for p in plate) - 0.32) < 2e-6
+    assert abs(min(p[2] for p in plate) - 0.32000250599116) < 2e-6
     assert abs(max(p[2] for p in plate) - min(p[2] for p in column)) < 2e-6
 
 

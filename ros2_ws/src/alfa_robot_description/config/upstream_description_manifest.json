@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "model_revision": "robot_v3.1.1-hybrid",
+  "source_revision": "robot_v3@b0c53aa",
+  "source_files": {
+    "model_sources/robot_v3_1_1/robot.urdf": "8293a59fd74b97d1af3636434cd853316039919be68bd52359fe2b038f2d998d",
+    "model_sources/robot_v3_1_1/user_model.json": "2e5b697a4d21d941a35d54e08f95ef807a56c8865b2dd97976a0df7b5db39593",
+    "model_sources/robot_v3_1_1/parts.json": "9115e7b93b6f4b17b464ff1c62866d4460c2d76122266492b6b2bdb07bbb7058",
+    "model_sources/robot_v3_1_1/export_report.json": "6f0e940bcfa8e019167cdc2ebe562c60571cbf0198e48d5b4773e09a276e3f9d"
+  },
+  "integration_policy": {
+    "v3_1_1": [
+      "left_joint1..left_joint7 kinematics",
+      "right_joint1..right_joint7 kinematics",
+      "left_joint1..left_joint6 geometry and inertial data",
+      "right_joint1..right_joint6 geometry and inertial data",
+      "updown upper-zero coordinate semantics"
+    ],
+    "kkozia_profile": [
+      "model_base and arm_carriage",
+      "active suspension and swerve chassis",
+      "two-axis head",
+      "gripper or suction end effector",
+      "Tool0 frames"
+    ]
+  },
+  "updown": {
+    "position_mapping": "old_position = new_position + 0.5",
+    "range_m": [-1.0, 0.0],
+    "zero": "highest",
+    "origin_xyz": [-6.50744829443e-09, -0.64829997, 0.19],
+    "origin_rpy": [-1.57079632679, -1.5707963, 0.0]
+  },
+  "arm_frame_adapter": {
+    "parent": "arm_carriage",
+    "children": ["left_arm_base", "right_arm_base"],
+    "xyz_m": [0.0, 0.0, -0.0142],
+    "rpy_rad": [0.0, 0.0, 1.57079632679]
+  },
+  "base_footprint": {
+    "definition": "mean of four zero-position wheel centers, translated down by 0.1m wheel radius",
+    "base_footprint_to_base_link_xyz_m": [0.190000002779484, -0.0000442724271391554, 0.40000250599116]
+  }
+}

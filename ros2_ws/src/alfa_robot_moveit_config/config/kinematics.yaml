@@ -1,4 +1,4 @@
-# V3.0.9 为双链 7 自由度机械臂；升降和头部不进入单臂 KDL 链。
+# V3.1.1 为双链 7 自由度机械臂；升降和头部不进入单臂 KDL 链。
 left_arm:
   kinematics_solver: kdl_kinematics_plugin/KDLKinematicsPlugin
   kinematics_solver_search_resolution: 0.005

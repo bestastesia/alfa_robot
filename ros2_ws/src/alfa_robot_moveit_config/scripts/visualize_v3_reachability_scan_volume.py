@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Preview the V3.0.9 reachability scan volume without running IK."""
+"""Preview the active V3.1.1 reachability scan volume without running IK."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def inclusive_axis(start: float, stop: float, step: float) -> np.ndarray:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="预览 V3.0.9 左臂连续可达性测试将采用的三维点云范围"
+        description="预览 V3.1.1 左臂连续可达性测试将采用的三维点云范围"
     )
     parser.add_argument(
         "--save",
@@ -128,7 +128,7 @@ def main() -> int:
     rr.log(
         "summary",
         rr.TextLog(
-            f"V3.0.9 planned scan volume: {len(points)} points; "
+            f"V3.1.1 planned scan volume: {len(points)} points; "
             f"X=[{args.x_min:.3f},{args.x_max:.3f}]m, "
             f"Y=[{args.y_min:.3f},{args.y_max:.3f}]m, "
             f"Z=[{args.z_min:.3f},{args.z_max:.3f}]m. Gray means untested."
