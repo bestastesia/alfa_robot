@@ -438,6 +438,17 @@ if(BUILD_TESTING)
   )
   add_test(NAME test_v311_analytic_moveit_fk COMMAND test_v311_analytic_moveit_fk)
 
+  add_executable(test_v311_named_pose_collision test/test_v311_named_pose_collision.cpp)
+  ament_target_dependencies(
+    test_v311_named_pose_collision
+    ament_index_cpp
+    moveit_core
+    moveit_ros_planning
+    srdfdom
+    urdf
+  )
+  add_test(NAME test_v311_named_pose_collision COMMAND test_v311_named_pose_collision)
+
   add_executable(validate_v3_wall_replay test/validate_v3_wall_replay.cpp)
   ament_target_dependencies(validate_v3_wall_replay moveit_core moveit_msgs moveit_ros_planning nlohmann_json srdfdom urdf)
 

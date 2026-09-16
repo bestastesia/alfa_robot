@@ -63,6 +63,14 @@ def main():
     updown = limits["updown"]
     if updown["min_position"] != -1.0 or updown["max_position"] != 0.0:
         fail("MoveIt updown range is not V3.1.1 [-1, 0] m")
+    source_initial = yaml.safe_load(
+        (SOURCE_MOVEIT / "config/initial_positions.yaml").read_text()
+    )["initial_positions"]
+    description_home = yaml.safe_load(
+        (SOURCE_DESCRIPTION / "config/named_poses.yaml").read_text()
+    )["named_poses"]["home"]
+    if source_initial != description_home:
+        fail("MoveIt initial positions differ from description named pose home")
 
     source_srdf_path = SOURCE_MOVEIT / "config/alfa_robot.srdf"
     installed_srdf_path = INSTALL_MOVEIT / "config/alfa_robot.srdf"

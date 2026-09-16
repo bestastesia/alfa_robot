@@ -1,0 +1,66 @@
+metadata:
+  schema_version: 1
+  robot: alfa_v3
+  model_revision: robot_v3.1.1-hybrid
+  end_effector: gripper
+  units: revolute_rad_prismatic_m
+
+named_poses:
+  home:
+    updown: -0.3
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    left_joint1: 2.70526034059121
+    left_joint2: -1.832595714594046
+    left_joint3: 0.34906585039887
+    left_joint4: 1.57079632679490
+    left_joint5: -1.57079632679490
+    left_joint6: -0.69813170079773
+    left_joint7: 0.0
+    right_joint1: 0.43633231299858
+    right_joint2: -1.832595714594046
+    right_joint3: -0.34906585039887
+    right_joint4: 1.57079632679490
+    right_joint5: -1.57079632679490
+    right_joint6: 0.69813170079773
+    right_joint7: 0.0
+    left_moving_jaw_joint: 0.0
+    right_moving_jaw_joint: 0.0
+    active_suspension_joint: 0.0
+    caster01_joint: 0.0
+    wheel01_joint: 0.0
+    caster02_joint: 0.0
+    wheel02_joint: 0.0
+    caster03_joint: 0.0
+    wheel03_joint: 0.0
+    caster04_joint: 0.0
+    wheel04_joint: 0.0
+  unloading:
+    updown: -0.3
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    left_joint1: -0.87266462599716
+    left_joint2: 1.57079632679490
+    left_joint3: -0.87266462599716
+    left_joint4: 0.87266462599716
+    left_joint5: 0.34906585039887
+    left_joint6: -0.69813170079773
+    left_joint7: -1.04719755119660
+    right_joint1: -2.26892802759263
+    right_joint2: 1.57079632679490
+    right_joint3: 0.87266462599716
+    right_joint4: 0.87266462599716
+    right_joint5: -0.34906585039887
+    right_joint6: -0.69813170079773
+    right_joint7: 1.04719755119660
+    left_moving_jaw_joint: 0.0
+    right_moving_jaw_joint: 0.0
+    active_suspension_joint: 0.0
+    caster01_joint: 0.0
+    wheel01_joint: 0.0
+    caster02_joint: 0.0
+    wheel02_joint: 0.0
+    caster03_joint: 0.0
+    wheel03_joint: 0.0
+    caster04_joint: 0.0
+    wheel04_joint: 0.0

@@ -1,12 +1,15 @@
 {
   "integration_status": "moveit_demo_consumer_snapshot",
   "managed_destination_files": {
-    "config/initial_positions.yaml": "53354c2b07e0ff41e395b40f77590119212ad1e47ad2cc79445e1587e7eca28c",
-    "config/initial_positions_gripper.yaml": "4709f7264770a307fe522060b36ea99ea4a1329ab70962ab98f14b3295d8fd5e",
-    "config/initial_positions_suction.yaml": "53354c2b07e0ff41e395b40f77590119212ad1e47ad2cc79445e1587e7eca28c",
+    "config/initial_positions.yaml": "045a1af9d005e403c9d16f38002e69cd8a9e1b107b03d982aaada429d1ee8141",
+    "config/initial_positions_gripper.yaml": "bad64a37472e138da636c9bb414f93c346cbd924150befd4c9f1eb0b2dd1f4de",
+    "config/initial_positions_suction.yaml": "045a1af9d005e403c9d16f38002e69cd8a9e1b107b03d982aaada429d1ee8141",
     "config/joint_limits.yaml": "c52af46c4649f6372755f19e48e8e1c0e6418f8f8f21e235f7a497653f760b59",
     "config/joint_limits_gripper.yaml": "9c48bfb0aa232c59c9fbd0672bfeb4f32bbd105aff9b609147d243dc4e92034f",
     "config/joint_limits_suction.yaml": "c52af46c4649f6372755f19e48e8e1c0e6418f8f8f21e235f7a497653f760b59",
+    "config/named_poses.yaml": "df81f429d8b08a7f21ff50db73ad9dedfd043f19aeddfd16bb2604a32146e95d",
+    "config/named_poses_gripper.yaml": "25f43e958f66747a9e40f534a88b971efe12098dd2e2a7ae2352a673be5189d6",
+    "config/named_poses_suction.yaml": "df81f429d8b08a7f21ff50db73ad9dedfd043f19aeddfd16bb2604a32146e95d",
     "config/upstream_description_manifest.json": "c0f967b27516b69839e98e185c84b914a01351cf7011e668b9a39d2fc60f7425",
     "meshes/active_suspension/active_suspension_carriage.stl": "5234b8d16dafb4466dd401977e9a0c9cf7966bd31256cc000b772b96711e4549",
     "meshes/active_suspension/caster01.stl": "50835c654a3d022c994c2561e49c286886822ae9c788b94aacc0af33b6da4762",
@@ -105,12 +108,15 @@
     "urdf/alfa_robot/robot_v3_head.xacro": "c204be79705d502170218c14bd3275331e0b0beda3d35786c4105107322afc46"
   },
   "managed_source_files": {
-    "config/initial_positions.yaml": "53354c2b07e0ff41e395b40f77590119212ad1e47ad2cc79445e1587e7eca28c",
-    "config/initial_positions_gripper.yaml": "4709f7264770a307fe522060b36ea99ea4a1329ab70962ab98f14b3295d8fd5e",
-    "config/initial_positions_suction.yaml": "53354c2b07e0ff41e395b40f77590119212ad1e47ad2cc79445e1587e7eca28c",
+    "config/initial_positions.yaml": "045a1af9d005e403c9d16f38002e69cd8a9e1b107b03d982aaada429d1ee8141",
+    "config/initial_positions_gripper.yaml": "bad64a37472e138da636c9bb414f93c346cbd924150befd4c9f1eb0b2dd1f4de",
+    "config/initial_positions_suction.yaml": "045a1af9d005e403c9d16f38002e69cd8a9e1b107b03d982aaada429d1ee8141",
     "config/joint_limits.yaml": "c52af46c4649f6372755f19e48e8e1c0e6418f8f8f21e235f7a497653f760b59",
     "config/joint_limits_gripper.yaml": "9c48bfb0aa232c59c9fbd0672bfeb4f32bbd105aff9b609147d243dc4e92034f",
     "config/joint_limits_suction.yaml": "c52af46c4649f6372755f19e48e8e1c0e6418f8f8f21e235f7a497653f760b59",
+    "config/named_poses.yaml": "df81f429d8b08a7f21ff50db73ad9dedfd043f19aeddfd16bb2604a32146e95d",
+    "config/named_poses_gripper.yaml": "25f43e958f66747a9e40f534a88b971efe12098dd2e2a7ae2352a673be5189d6",
+    "config/named_poses_suction.yaml": "df81f429d8b08a7f21ff50db73ad9dedfd043f19aeddfd16bb2604a32146e95d",
     "meshes/active_suspension/active_suspension_carriage.stl": "5234b8d16dafb4466dd401977e9a0c9cf7966bd31256cc000b772b96711e4549",
     "meshes/active_suspension/caster01.stl": "50835c654a3d022c994c2561e49c286886822ae9c788b94aacc0af33b6da4762",
     "meshes/active_suspension/caster02.stl": "2c3166468b04afb453fb0c42e633c15114883459a2cffd220b0e8f18aac3ea7e",
@@ -219,8 +225,8 @@
   "profile": "suction",
   "schema_version": 2,
   "upstream_branch": "robot_v3_suction_chassis",
-  "upstream_commit": "30313fb54999f9e09a1245c9f77d8e0243e1d11c",
+  "upstream_commit": "62662f48548fa475340b55f8ed251064d5c02cba",
   "upstream_manifest_sha256": "c0f967b27516b69839e98e185c84b914a01351cf7011e668b9a39d2fc60f7425",
-  "upstream_ref_used_for_sync": "origin/robot_v3_suction_chassis",
+  "upstream_ref_used_for_sync": "feat/motion-94-v311-named-poses",
   "upstream_repository": "ssh://git@192.168.100.141:2222/SevenovaHangzhou/robot_description.git"
 }

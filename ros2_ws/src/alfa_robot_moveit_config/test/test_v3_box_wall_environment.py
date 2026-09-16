@@ -13,6 +13,7 @@ import time
 
 import numpy as np
 import rclpy
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from std_msgs.msg import String
@@ -39,8 +40,11 @@ def main():
                          'config/v3_box_wall_environment.json').read_text())
     urdf = render_current_urdf({'model_ground_offset': '0.000005'})
     robot = UrdfRobot(urdf)
-    home = [2.61799387799, np.pi / 2, -0.0872664625997, 2.09439510239, 0, 0, 0,
-            -2.61799387799, -np.pi / 2, 0.0872664625997, -2.09439510239, 0, 0, 0, 0, 0]
+    joint_names = [f'{side}_joint{index}' for side in ('left', 'right') for index in range(1, 8)]
+    joint_names += ['updown', 'head_joint']
+    initial = yaml.safe_load((Path(get_package_share_directory('alfa_robot_moveit_config')) /
+                              'config/initial_positions.yaml').read_text())['initial_positions']
+    home = [initial[name] for name in joint_names]
     command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_grasp_demo.launch.py',
                'x:=0.5', 'auto_run_once:=false', 'start_rviz:=false', 'start_rerun:=false']
     summary = []

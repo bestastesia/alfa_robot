@@ -41,7 +41,7 @@
 <h2>落地仓库 + 默认起终姿态（2026-09-12）</h2>
 <p><strong>仓库内尺寸：高2.35m × 宽2.38m × 长4m。</strong>正墙位于+X，−X一侧开口；两侧墙、正墙、地板、顶棚共五个灰蓝半透明碰撞实体。箱墙居中靠正墙，底面Z=0，顶面2.04m，两侧各留17cm。</p>
 <p>地面、箱墙底面、底盘落地基准统一Z=0。V3主动悬挂模型已在 <code>base_footprint</code> 中完成车轮落地对齐；本demo默认 <code>model_ground_offset:=0.000005</code>，只保留约5µm数值接触间隔，不是实机安全裕度。RViz、Rerun和规划器共用模型及环境几何。</p>
-<div class="note"><strong>起点和成功终点：</strong>左右臂J1～J7均为 <code>[-90,-90,0,-90,0,0,0]°</code>，共享 <code>updown=0m</code>、<code>head_joint=0°</code>，从SRDF home读取；不再用全零臂角。</div>
+<div class="note"><strong>起点：</strong>共享 <code>updown=-0.3m</code>；左臂 <code>[155,-105,20,90,-90,-40,0]°</code>，右臂 <code>[25,-105,-20,90,-90,40,0]°</code>，头部为0，从SRDF <code>home</code>读取。卸货姿态以 <code>unloading</code> 命名。</div>
 <p>五个环境实体参与初态、下降、IK、接触、抽出、负重返回和携箱升回的碰撞检查，不给地板或仓库增加碰撞豁免。<code>check_environment:=true</code>默认开启。</p>
 <pre><code># 停止旧demo，重新source当前install后运行
 ros2 launch alfa_robot_moveit_config v3_box_wall_grasp_demo.launch.py \
@@ -98,7 +98,7 @@ ros2 service call /v3_box_wall_grasp_demo/plan_wall_box \
 <tr><td>到预接触点</td><td>一只手臂避障移动到箱体正面前约5cm。</td></tr>
 <tr><td>接触与吸附</td><td>末端直线前进到箱体正面中心；目标箱随后成为末端附着物。</td></tr>
 <tr><td>抽出</td><td>手臂携箱沿远离箱墙的方向直线退回35cm，原墙格留下空位。</td></tr>
-<tr><td>携箱返回</td><td>手臂带箱避障返回home臂角，再携箱升回updown=0，停在默认姿态。</td></tr>
+<tr><td>携箱返回</td><td><code>loaded_home</code> 策略返回完整Home并恢复到updown=-0.3m；默认流程采用后置释放。</td></tr>
 </tbody></table></div>
 <div class="note good"><strong>历史冻结版（align_height=false）：6号箱 / x=0.30m 已验证成功，用户也已确认动作正常。</strong>本机双视图验收录制包含87帧、完整接近—吸附—抽出—返回过程；后续规划路径及帧数可能变化。</div>
 <p><strong>底盘和转头轴不移动；另一只手臂的七个关节角保持不变，但会随共享升降架下降。</strong>最终箱体仍吸在手上，不会自动放下。RViz与Rerun播放相同结果，但播放速度不完全一致。</p>
@@ -241,7 +241,7 @@ failure_reason：____
 <ul>
 <li><strong>场景：</strong>5×5固定墙，默认箱体0.30×0.40×0.40m，横竖间隙1cm。默认墙居中靠正墙、底面Z=0；地面/底盘同为落地零基准，仓库内尺寸4×2.38×2.35m，−X端开口。</li>
 <li><strong>底盘基准：</strong>默认遍历V3完整移动底盘（车架、主动悬挂、脚轮和车轮）的碰撞网格顶点；按四轮轴心定义 <code>base_footprint</code> 后，world最大X约为+0.500m。可通过启动参数 <code>chassis_front_x</code> 显式标定覆盖前沿，实测基准仍需对齐。</li>
-<li><strong>状态：</strong>正式SRDF home起终姿态，升降先按公式下降，抓取期间固定，携箱返回后升回0；头部固定，不搜索底盘/共享轴。</li>
+<li><strong>状态：</strong>正式SRDF <code>home</code> 为初态，另定义 <code>unloading</code>；头部固定为0，不搜索底盘。</li>
 <li><strong>任务：</strong>默认采用远端主编排完成单次抽箱、后置和释放；显式 <code>target_only + loaded_home</code> 仅用于本地携箱回Home研究。没有实机执行。</li>
 <li><strong>安全边界：</strong>成功仅表示模型内找到几何路径，不是连续碰撞、吸附可靠性、载荷/动力学或实机安全证明。</li>
 </ul>

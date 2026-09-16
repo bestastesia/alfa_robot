@@ -2096,3 +2096,8 @@
 - 改了哪里：当前整合分支 `feat/motion-94-v311-remote-integration`；解析几何位于 `alfa_robot_analytic_ik`，MoveIt 随机回代测试位于 `test_v311_analytic_moveit_fk.cpp`。远端主入口仍为 `v3_box_wall_grasp_demo.launch.py`；同一入口新增显式 `target_only + loaded_home` 研究策略，复用原有边插值碰撞、刚体附着和失败诊断，不复制第二套规划器。
 - 验证结果：权威 description 源锁与本地快照均通过；Release 三包共60项测试零失败。左右臂各256组随机 MoveIt FK/解析 IK 回代，最大 FK 位置差约 `8.4e-12m`，最大 IK 回代位置误差约 `6.3e-8m`，平均解析 IK 约 `12.4～14.7us`。`target_only + loaded_home` 连续三次 ROS 启动规划成功，并通过异常退出/服务下线检查。
 - 留给下个 AI：默认仍为远端 `full + rear_release`。旧 V3.0.9 后置落地目标在 V3.1.1 工作区可能无解析 IK，需要单独重新标定任务目标；禁止通过关闭碰撞或移动障碍伪造成功。`target_only` 明确省略其他24箱，只用于保留本地研究流程，不能作为整墙成功率证据。
+## 2026-09-16 运控 / Codex / V3.1.1 初始与卸货命名姿态
+- 做了什么：将用户确认的第一组姿态固化为默认 `home`（updown=-0.3m，左臂[155,-105,20,90,-90,-40,0]deg，右臂[25,-105,-20,90,-90,40,0]deg）；第二组固化为 `unloading`（左臂[-50,90,-50,50,20,-40,-60]deg，右臂[-130,90,50,50,-20,-40,60]deg），未列出的关节全部为0。
+- 改了哪里：权威 description 变更位于 `robot_description` 分支 `feat/motion-94-v311-named-poses@62662f4`、Gitea PR #9；消费仓同名功能分支同步 description 哈希锁，更新 MoveIt SRDF、初始位置、mock ros2_control/Xacro 默认值及文档。
+- 验证结果：两组姿态经运行中 MoveIt `/check_state_validity` 返回 `valid=True, contacts=[]`；description 36项测试通过；消费仓 Release 构建及63项测试通过，新增 `test_v311_named_pose_collision` 使用安装后的URDF/SRDF和FCL校验两组命名姿态无自碰撞、无越界。
+- 留给下个 AI：建议先合并 description PR #9，再合并消费仓 PR；消费仓锁定内容源提交 `62662f4`，同步器允许目标分支 merge/squash 后在所有受管文件哈希完全相同时视为等价。

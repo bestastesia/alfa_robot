@@ -24,6 +24,9 @@ SOURCE_CONFIGS = (
     "config/initial_positions.yaml",
     "config/initial_positions_gripper.yaml",
     "config/initial_positions_suction.yaml",
+    "config/named_poses.yaml",
+    "config/named_poses_gripper.yaml",
+    "config/named_poses_suction.yaml",
     "config/joint_limits.yaml",
     "config/joint_limits_gripper.yaml",
     "config/joint_limits_suction.yaml",
@@ -139,6 +142,10 @@ def check_snapshot(files, allow_equivalent_source_ref=False):
             expected_lock = json.loads(expected)
             actual_lock.pop("upstream_ref_used_for_sync", None)
             expected_lock.pop("upstream_ref_used_for_sync", None)
+            # A reviewed PR may add a merge/squash commit without changing any
+            # managed description bytes. The per-file hashes remain authoritative.
+            actual_lock.pop("upstream_commit", None)
+            expected_lock.pop("upstream_commit", None)
             if actual_lock == expected_lock:
                 continue
         mismatches.append(f"content differs: {path.relative_to(REPOSITORY_ROOT)}")

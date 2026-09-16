@@ -9,22 +9,22 @@
   <xacro:arg name="model_ground_offset" default="0"/>
   <xacro:arg name="arm_mount_forward_offset" default="0"/>
 
-  <xacro:arg name="updown_initial" default="0.0"/>
+  <xacro:arg name="updown_initial" default="-0.3"/>
   <xacro:arg name="head_joint_initial" default="0.0"/>
   <xacro:arg name="head_pitch_joint_initial" default="0.0"/>
-  <xacro:arg name="left_joint1_initial" default="2.61799387799"/>
-  <xacro:arg name="left_joint2_initial" default="1.57079632679"/>
-  <xacro:arg name="left_joint3_initial" default="-0.0872664625997"/>
-  <xacro:arg name="left_joint4_initial" default="2.09439510239"/>
-  <xacro:arg name="left_joint5_initial" default="0.0"/>
-  <xacro:arg name="left_joint6_initial" default="0.0"/>
+  <xacro:arg name="left_joint1_initial" default="2.70526034059121"/>
+  <xacro:arg name="left_joint2_initial" default="-1.832595714594046"/>
+  <xacro:arg name="left_joint3_initial" default="0.34906585039887"/>
+  <xacro:arg name="left_joint4_initial" default="1.57079632679490"/>
+  <xacro:arg name="left_joint5_initial" default="-1.57079632679490"/>
+  <xacro:arg name="left_joint6_initial" default="-0.69813170079773"/>
   <xacro:arg name="left_joint7_initial" default="0.0"/>
-  <xacro:arg name="right_joint1_initial" default="-2.61799387799"/>
-  <xacro:arg name="right_joint2_initial" default="-1.57079632679"/>
-  <xacro:arg name="right_joint3_initial" default="0.0872664625997"/>
-  <xacro:arg name="right_joint4_initial" default="-2.09439510239"/>
-  <xacro:arg name="right_joint5_initial" default="0.0"/>
-  <xacro:arg name="right_joint6_initial" default="0.0"/>
+  <xacro:arg name="right_joint1_initial" default="0.43633231299858"/>
+  <xacro:arg name="right_joint2_initial" default="-1.832595714594046"/>
+  <xacro:arg name="right_joint3_initial" default="-0.34906585039887"/>
+  <xacro:arg name="right_joint4_initial" default="1.57079632679490"/>
+  <xacro:arg name="right_joint5_initial" default="-1.57079632679490"/>
+  <xacro:arg name="right_joint6_initial" default="0.69813170079773"/>
   <xacro:arg name="right_joint7_initial" default="0.0"/>
   <xacro:arg name="left_moving_jaw_initial" default="0.0"/>
   <xacro:arg name="right_moving_jaw_initial" default="0.0"/>

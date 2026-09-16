@@ -10,6 +10,61 @@ import yaml
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
+ARM_POSES = {
+    "home": {
+        "left_joint1": math.radians(155.0),
+        "left_joint2": math.radians(-105.0),
+        "left_joint3": math.radians(20.0),
+        "left_joint4": math.radians(90.0),
+        "left_joint5": math.radians(-90.0),
+        "left_joint6": math.radians(-40.0),
+        "left_joint7": 0.0,
+        "right_joint1": math.radians(25.0),
+        "right_joint2": math.radians(-105.0),
+        "right_joint3": math.radians(-20.0),
+        "right_joint4": math.radians(90.0),
+        "right_joint5": math.radians(-90.0),
+        "right_joint6": math.radians(40.0),
+        "right_joint7": 0.0,
+    },
+    "unloading": {
+        "left_joint1": math.radians(-50.0),
+        "left_joint2": math.radians(90.0),
+        "left_joint3": math.radians(-50.0),
+        "left_joint4": math.radians(50.0),
+        "left_joint5": math.radians(20.0),
+        "left_joint6": math.radians(-40.0),
+        "left_joint7": math.radians(-60.0),
+        "right_joint1": math.radians(-130.0),
+        "right_joint2": math.radians(90.0),
+        "right_joint3": math.radians(50.0),
+        "right_joint4": math.radians(50.0),
+        "right_joint5": math.radians(-20.0),
+        "right_joint6": math.radians(-40.0),
+        "right_joint7": math.radians(60.0),
+    },
+}
+
+
+def expected_pose(name, end_effector):
+    pose = {
+        "updown": -0.3,
+        "head_joint": 0.0,
+        "head_pitch_joint": 0.0,
+        **ARM_POSES[name],
+        **{
+            f"{kind}{index:02d}_joint": 0.0
+            for kind in ("caster", "wheel") for index in range(1, 5)
+        },
+        "active_suspension_joint": 0.0,
+    }
+    if end_effector == "gripper":
+        pose.update({
+            "left_moving_jaw_joint": 0.0,
+            "right_moving_jaw_joint": 0.0,
+        })
+    return pose
+
 
 def rpy_matrix(rpy):
     roll, pitch, yaw = rpy
@@ -99,35 +154,7 @@ def test_v3_side_zero_and_group_semantics(end_effector):
     initial_positions = yaml.safe_load(
         (PACKAGE_ROOT / "config" / f"initial_positions{suffix}.yaml").read_text()
     )["initial_positions"]
-    expected_initial_positions = {
-        "updown": 0.0,
-        "head_joint": 0.0,
-        "head_pitch_joint": 0.0,
-        "left_joint1": math.radians(150.0),
-        "left_joint2": math.radians(90.0),
-        "left_joint3": math.radians(-5.0),
-        "left_joint4": math.radians(120.0),
-        "left_joint5": 0.0,
-        "left_joint6": 0.0,
-        "left_joint7": 0.0,
-        "right_joint1": math.radians(-150.0),
-        "right_joint2": math.radians(-90.0),
-        "right_joint3": math.radians(5.0),
-        "right_joint4": math.radians(-120.0),
-        "right_joint5": 0.0,
-        "right_joint6": 0.0,
-        "right_joint7": 0.0,
-    }
-    expected_initial_positions.update({
-        f"{kind}{index:02d}_joint": 0.0
-        for kind in ("caster", "wheel") for index in range(1, 5)
-    })
-    expected_initial_positions["active_suspension_joint"] = 0.0
-    if end_effector == "gripper":
-        expected_initial_positions.update({
-            "left_moving_jaw_joint": 0.0,
-            "right_moving_jaw_joint": 0.0,
-        })
+    expected_initial_positions = expected_pose("home", end_effector)
     assert set(initial_positions) == set(expected_initial_positions)
     for joint_name, expected in expected_initial_positions.items():
         assert abs(float(initial_positions[joint_name]) - expected) < 1e-10
@@ -208,6 +235,30 @@ def test_all_movable_joints_have_consistent_configuration(end_effector):
 
 
 @pytest.mark.parametrize("end_effector", ("gripper", "suction"))
+def test_named_poses_cover_all_joints_and_respect_limits(end_effector):
+    suffix = f"_{end_effector}"
+    initial = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / f"initial_positions{suffix}.yaml").read_text()
+    )["initial_positions"]
+    named = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / f"named_poses{suffix}.yaml").read_text()
+    )["named_poses"]
+    limits = yaml.safe_load(
+        (PACKAGE_ROOT / "config" / f"joint_limits{suffix}.yaml").read_text()
+    )["joints"]
+    assert set(named) == {"home", "unloading"}
+    assert named["home"] == initial
+    for pose_name, positions in named.items():
+        expected = expected_pose(pose_name, end_effector)
+        assert set(positions) == set(limits) == set(expected)
+        for joint_name, value in positions.items():
+            assert float(value) == pytest.approx(expected[joint_name], abs=1e-12)
+            unit = "m" if limits[joint_name]["type"] == "prismatic" else "rad"
+            assert limits[joint_name][f"lower_position_{unit}"] <= value
+            assert value <= limits[joint_name][f"upper_position_{unit}"]
+
+
+@pytest.mark.parametrize("end_effector", ("gripper", "suction"))
 def test_mesh_resources_resolve_with_millimeter_scale(end_effector):
     robot = ET.fromstring(render_urdf(end_effector))
     prefix = "package://alfa_robot_description/"
@@ -270,7 +321,7 @@ def test_variant_entrypoints_and_branch_defaults():
 
     positions = yaml.safe_load((PACKAGE_ROOT / "config" / "initial_positions.yaml").read_text())
     variant = positions["metadata"]["end_effector"]
-    for stem in ("initial_positions", "joint_limits"):
+    for stem in ("initial_positions", "joint_limits", "named_poses"):
         default = yaml.safe_load((PACKAGE_ROOT / "config" / f"{stem}.yaml").read_text())
         explicit = yaml.safe_load((PACKAGE_ROOT / "config" / f"{stem}_{variant}.yaml").read_text())
         assert default == explicit

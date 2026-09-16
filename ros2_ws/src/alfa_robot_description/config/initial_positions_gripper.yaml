@@ -8,22 +8,22 @@ metadata:
   integration_policy: v3_1_1_arms_updown_with_kkozia_modules
 
 initial_positions:
-  updown: 0.0
+  updown: -0.3
   head_joint: 0.0
   head_pitch_joint: 0.0
-  left_joint1: 2.61799387799
-  left_joint2: 1.57079632679
-  left_joint3: -0.0872664625997
-  left_joint4: 2.09439510239
-  left_joint5: 0.0
-  left_joint6: 0.0
+  left_joint1: 2.70526034059121
+  left_joint2: -1.832595714594046
+  left_joint3: 0.34906585039887
+  left_joint4: 1.57079632679490
+  left_joint5: -1.57079632679490
+  left_joint6: -0.69813170079773
   left_joint7: 0.0
-  right_joint1: -2.61799387799
-  right_joint2: -1.57079632679
-  right_joint3: 0.0872664625997
-  right_joint4: -2.09439510239
-  right_joint5: 0.0
-  right_joint6: 0.0
+  right_joint1: 0.43633231299858
+  right_joint2: -1.832595714594046
+  right_joint3: -0.34906585039887
+  right_joint4: 1.57079632679490
+  right_joint5: -1.57079632679490
+  right_joint6: 0.69813170079773
   right_joint7: 0.0
   left_moving_jaw_joint: 0.0
   right_moving_jaw_joint: 0.0
