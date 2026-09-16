@@ -117,6 +117,121 @@ void validateCycle(const Json& task, const moveit::core::RobotModelPtr& model)
               << (release ? "released behind chassis, final posture retained" : "retained") << "\n";
 }
 
+
+void validateDualCycle(const Json& task, const moveit::core::RobotModelPtr& model)
+{
+    require(task.at("success") && task.at("dual"), "requires a successful dual cycle");
+    planning_scene::PlanningScene scene(model);
+    const auto size = vec(task.at("box_size"));
+    auto add = [&](const std::string& id, const Eigen::Vector3d& p) {
+      moveit_msgs::msg::CollisionObject obj;
+      obj.header.frame_id = model->getModelFrame(); obj.id = id; obj.operation = obj.ADD;
+      shape_msgs::msg::SolidPrimitive box; box.type = box.BOX;
+      box.dimensions = {size.x(), size.y(), size.z()};
+      geometry_msgs::msg::Pose pose; pose.orientation.w = 1;
+      pose.position.x = p.x(); pose.position.y = p.y(); pose.position.z = p.z();
+      obj.primitives.push_back(box); obj.primitive_poses.push_back(pose);
+      require(scene.processCollisionObjectMsg(obj), "cannot add " + id);
+    };
+    for (const auto& b : task.at("environment").at("boxes")) {
+      moveit_msgs::msg::CollisionObject obj;
+      obj.header.frame_id = model->getModelFrame(); obj.id = b.at("id"); obj.operation = obj.ADD;
+      shape_msgs::msg::SolidPrimitive box; box.type = box.BOX;
+      const auto dimensions = vec(b.at("size")); box.dimensions = {dimensions.x(), dimensions.y(), dimensions.z()};
+      const auto center = vec(b.at("center")); geometry_msgs::msg::Pose pose; pose.orientation.w = 1;
+      pose.position.x = center.x(); pose.position.y = center.y(); pose.position.z = center.z();
+      obj.primitives.push_back(box); obj.primitive_poses.push_back(pose);
+      require(scene.processCollisionObjectMsg(obj), "cannot add environment object");
+    }
+    const auto frames = task.at("frames");
+    require(frames.size() > 2 && frames.front().at("carried_boxes").size() == 2, "missing dual payload metadata");
+    struct Payload { int id; std::string object; std::string side; std::string tool; Eigen::Vector3d center; Eigen::Isometry3d offset; };
+    std::vector<Payload> payloads;
+    for (const auto& carried : frames.front().at("carried_boxes")) {
+      Payload payload;
+      payload.id = carried.at("box_id"); payload.object = "dual_target_" + std::to_string(payload.id);
+      payload.side = carried.at("side"); payload.tool = carried.at("tool_link");
+      payload.center = vec(carried.at("box_center")); payload.offset = Eigen::Isometry3d::Identity();
+      payload.offset.translation() = vec(carried.at("tool_to_box_center"));
+      for (int i = 0; i < 3; ++i) for (int j = 0; j < 3; ++j)
+        payload.offset.linear()(i,j) = carried.at("tool_to_box_rotation")[i][j];
+      payloads.push_back(payload);
+    }
+    size_t neighbor = 0;
+    for (const auto& center_json : task.at("neighbor_centers")) {
+      const auto center = vec(center_json); bool target = false;
+      for (const auto& payload : payloads) target = target || center.isApprox(payload.center, 1e-6);
+      if (!target) add("neighbor_" + std::to_string(neighbor++), center);
+    }
+    for (const auto& payload : payloads) add(payload.object, payload.center);
+
+    const auto names = task.at("joint_names").get<std::vector<std::string>>();
+    moveit::core::RobotState state(model); state.setToDefaultValues();
+    bool attached = false; size_t attachments = 0, releases = 0, checks = 0;
+    for (size_t f = 0; f < frames.size(); ++f) {
+      const auto q = frames[f].at("joints").get<std::vector<double>>();
+      const auto prev = f ? frames[f-1].at("joints").get<std::vector<double>>() : q;
+      require(q.size() == names.size(), "invalid dual frame joint count");
+      const bool now_attached = frames[f].at("box_attached");
+      if (now_attached != attached) {
+        require(q == prev, "dual attachment/release teleported");
+        for (size_t j = 0; j < names.size(); ++j) state.setVariablePosition(names[j], q[j]);
+        state.update(true);
+        if (now_attached) {
+          require(frames[f].at("stage") == "dual_3", "unexpected dual attachment");
+          for (const auto& payload : payloads) {
+            require((state.getGlobalLinkTransform(payload.tool) * payload.offset).translation().isApprox(payload.center, 1e-5),
+              "dual payload not at source during attachment");
+            scene.getWorldNonConst()->removeObject(payload.object);
+            state.attachBody(payload.object, Eigen::Isometry3d::Identity(),
+              {shapes::ShapeConstPtr(new shapes::Box(size.x(), size.y(), size.z()))},
+              EigenSTL::vector_Isometry3d{payload.offset},
+              std::set<std::string>{payload.tool, payload.side + "_joint7"}, payload.tool);
+          }
+          ++attachments;
+        } else {
+          require(frames[f].at("stage") == "dual_7", "unexpected dual release");
+          for (const auto& payload : payloads) {
+            const Eigen::Isometry3d box = state.getGlobalLinkTransform(payload.tool) * payload.offset;
+            for (int i = 0; i < 8; ++i) {
+              const Eigen::Vector3d corner((i & 1) ? size.x()/2 : -size.x()/2,
+                (i & 2) ? size.y()/2 : -size.y()/2, (i & 4) ? size.z()/2 : -size.z()/2);
+              require((box * corner).x() <= task.at("chassis_rear_x").get<double>() - .01 + 1e-8,
+                "dual box not fully behind chassis at release");
+            }
+            state.clearAttachedBody(payload.object);
+          }
+          ++releases;
+        }
+        attached = now_attached;
+      }
+      size_t steps = 1;
+      for (size_t j = 0; j < names.size(); ++j)
+        steps = std::max(steps, static_cast<size_t>(std::ceil(std::abs(q[j]-prev[j]) /
+          (names[j] == "updown" ? .0025 : .5 * std::acos(-1.) / 180.))));
+      for (size_t step = 1; step <= steps; ++step) {
+        for (size_t j = 0; j < names.size(); ++j)
+          state.setVariablePosition(names[j], prev[j] + (q[j]-prev[j])*step/steps);
+        state.update(true); require(state.satisfiesBounds(), "dual joint limit at frame " + std::to_string(f));
+        auto acm = scene.getAllowedCollisionMatrix();
+        if (!attached) for (const auto& payload : payloads)
+          if ((state.getGlobalLinkTransform(payload.tool) * payload.offset).translation().isApprox(payload.center, 1e-5)) {
+            acm.setEntry(payload.object, payload.tool, true);
+            acm.setEntry(payload.object, payload.side + "_joint7", true);
+          }
+        collision_detection::CollisionRequest request; request.contacts = true; request.max_contacts = 10;
+        collision_detection::CollisionResult result; scene.checkCollision(request, result, state, acm); ++checks;
+        if (result.collision) {
+          std::string pairs; for (const auto& contact : result.contacts)
+            pairs += contact.first.first + "<->" + contact.first.second + " ";
+          throw std::runtime_error("dual collision frame=" + std::to_string(f) + " " + pairs);
+        }
+      }
+    }
+    require(attachments == 1 && releases == 1 && !attached, "wrong dual payload lifecycle");
+    std::cout << "PASS independent dual replay: " << frames.size() << " frames, " << checks << " probes\n";
+}
+
 int main(int argc, char** argv)
 {
   try {
@@ -142,14 +257,17 @@ int main(int argc, char** argv)
         require(box.at("neighbor_centers").size() == 24 - removed.size(), "missing neighbors");
         cycle["frames"] = Json::array();
         for (size_t f = begin; f < next; ++f) cycle["frames"].push_back(task.at("frames").at(f));
-        validateCycle(cycle, model);
+        const auto ids = box.contains("box_ids") ? box.at("box_ids").get<std::vector<int>>() :
+          std::vector<int>{box.at("box_id").get<int>()};
+        require(ids.size() == (box.value("dual", false) ? 2u : 1u), "invalid transfer box_ids");
+        if (ids.size() == 2) validateDualCycle(cycle, model); else validateCycle(cycle, model);
         previous = cycle.at("frames").back().at("joints");
-        removed.insert(box.at("box_id").get<int>());
+        removed.insert(ids.begin(), ids.end());
         end = next;
       }
       require(removed.size() == 25 && end == task.at("frames").size(), "incomplete sequence");
       require(previous == task.at("final_joints"), "wrong final posture");
-      std::cout << "PASS all 25 cycles, unchanged-joint handoff and exact prior-box removal\n";
+      std::cout << "PASS all 25 boxes, unchanged-joint handoff and exact prior-box removal\n";
     }
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

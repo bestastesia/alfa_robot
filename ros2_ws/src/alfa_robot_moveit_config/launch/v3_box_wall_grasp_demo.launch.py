@@ -30,7 +30,11 @@ def launch_nodes(context):
                       ("align_height", bool), ("shoulder_box_offset", float), ("top_shoulder_above_wrist", float),
                       ("check_environment", bool), ("height_strategy", str), ("comfort_branch", str),
                       ("comfort_ratio_min", float), ("comfort_ratio_preferred", float),
-                      ("comfort_ratio_max", float), ("planning_seed", int)):
+                      ("comfort_ratio_max", float), ("planning_seed", int), ("trajectory_variant", str),
+                      ("top_k_complete", int), ("trajectory_sample_period", float),
+                      ("empty_velocity_scaling", float), ("empty_acceleration_scaling", float),
+                      ("loaded_velocity_scaling", float), ("loaded_acceleration_scaling", float),
+                      ("arm_max_jerk", float), ("head_max_jerk", float), ("updown_max_jerk", float)):
         params[key] = ParameterValue(LaunchConfiguration(key), value_type=kind)
     # Read once at startup; the C++ boundary validates exact geometry for every consumer.
     if LaunchConfiguration("check_environment").perform(context).lower() == "true":
@@ -71,7 +75,10 @@ def generate_launch_description():
                               description="auto: front then top (bottom top only); top: diagnostic top-only"),
         DeclareLaunchArgument("x", description="Metres from chassis front to wall near face; >0"),
         DeclareLaunchArgument("arm", default_value="auto", choices=["left", "right", "auto"],
-                              description="auto stops at first successful arm"),
+                              description="auto searches arms in the existing fallback order"),
+        DeclareLaunchArgument("trajectory_variant", default_value="topk",
+                              choices=["topk", "shortcut_ruckig", "chomp_ruckig"],
+                              description="Cumulative trajectory postprocessing variant"),
     ]
     for name, default, description in (
         ("post_extract_policy", "rear_release", "rear_release places/releases behind chassis; loaded_home preserves the local attached return"),
@@ -81,6 +88,15 @@ def generate_launch_description():
         ("comfort_ratio_max", "0.8", "Maximum normalized comfort distance"),
         ("comfort_branch", "auto", "auto in normal use; above/below for offline branch diagnostics only"),
         ("planning_seed", "0", "0 keeps normal RNG; positive seed set before OMPL initialization"),
+        ("top_k_complete", "3", "Complete geometric candidates retained per transfer round; 1..8"),
+        ("trajectory_sample_period", "0.05", "Simulation replay sampling period in seconds"),
+        ("empty_velocity_scaling", "0.50", "Empty-motion velocity scaling in (0,1]"),
+        ("empty_acceleration_scaling", "0.50", "Empty-motion acceleration scaling in (0,1]"),
+        ("loaded_velocity_scaling", "0.25", "Loaded-motion velocity scaling in (0,1]"),
+        ("loaded_acceleration_scaling", "0.25", "Loaded-motion acceleration scaling in (0,1]"),
+        ("arm_max_jerk", "2.0", "Simulation-only arm jerk limit rad/s^3"),
+        ("head_max_jerk", "2.0", "Simulation-only head jerk limit rad/s^3"),
+        ("updown_max_jerk", "0.30", "Simulation-only lift jerk limit m/s^3"),
         ("model_ground_offset", "0.000005", "V3 base_footprint grounding gap (m); 5um clears imported mesh tolerance"),
         ("check_environment", "true", "Ground/surroundings collision checks; false ONLY for historical regression"),
         ("environment_file", "", "World-axis aligned boxes JSON; empty uses 4 x 2.38 x 2.35m single-opening warehouse"),

@@ -49,6 +49,7 @@
   <depend>tf2_eigen</depend>
   <depend>alfa_robot_analytic_ik</depend>
   <depend>ompl</depend>
+  <depend>chomp_motion_planner</depend>
   <depend>std_msgs</depend>
 
   <!-- Runtime deps (MoveIt launch / plugins) -->

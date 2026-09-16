@@ -4,6 +4,7 @@
 #include <alfa_robot_moveit_config/natural_joint_motion.hpp>
 #include <alfa_robot_moveit_config/comfort_height.hpp>
 #include <alfa_robot_moveit_config/wall_sequence.hpp>
+#include <alfa_robot_moveit_config/wall_trajectory_postprocessing.hpp>
 #include <ompl/util/RandomNumbers.h>
 #include <alfa_robot_moveit_config/srv/plan_wall_box_demo.hpp>
 
@@ -140,15 +141,7 @@ geometry_msgs::msg::Pose eigenToPose(const Eigen::Isometry3d& transform)
   return pose;
 }
 
-struct ReplayFrame
-{
-  std::string stage;
-  std::vector<double> joints;
-  bool box_attached = false;
-  bool box_visible = true;
-  size_t scene_index = 0;
-  nlohmann::json carried_boxes = nlohmann::json::array();
-};
+using ReplayFrame = alfa_robot::motion::TrajectoryFrame;
 
 struct AnalyticCandidate
 {
@@ -176,6 +169,10 @@ struct PlanningMetrics
   double analytic_path_ms = 0.0;
   double rrt_approach_ms = 0.0;
   double rrt_return_ms = 0.0;
+  double shortcut_ms = 0.0;
+  double chomp_ms = 0.0;
+  double totg_ms = 0.0;
+  double ruckig_ms = 0.0;
 
   void add(const PlanningMetrics& other)
   {
@@ -186,6 +183,10 @@ struct PlanningMetrics
     analytic_path_ms += other.analytic_path_ms;
     rrt_approach_ms += other.rrt_approach_ms;
     rrt_return_ms += other.rrt_return_ms;
+    shortcut_ms += other.shortcut_ms;
+    chomp_ms += other.chomp_ms;
+    totg_ms += other.totg_ms;
+    ruckig_ms += other.ruckig_ms;
   }
 };
 
@@ -200,6 +201,17 @@ struct TaskResult
   std::vector<ReplayFrame> diagnostic_frames;
   moveit::core::RobotStatePtr rejected_state;
   nlohmann::json diagnostic = nlohmann::json::object();
+  size_t complete_candidate_count = 0;
+  size_t selected_candidate_rank = 0;
+  double selection_score = std::numeric_limits<double>::infinity();
+  double execution_duration_s = 0.0;
+  bool timing_valid = false;
+  std::string effective_trajectory_variant = "topk";
+  std::string optimizer_status = "not_requested";
+  std::string variant_fallback_reason;
+  double max_velocity = 0.0;
+  double max_acceleration = 0.0;
+  double max_jerk = 0.0;
 };
 
 class V3SingleArmBoxExtractDemo : public rclcpp::Node
@@ -311,6 +323,30 @@ public:
 
     planning_seed_ = getParameter<int>("planning_seed", 0);
     if (planning_seed_ < 0) throw std::invalid_argument("planning_seed must be nonnegative");
+    trajectory_variant_ = getParameter<std::string>("trajectory_variant", "topk");
+    if (trajectory_variant_ != "topk" && trajectory_variant_ != "shortcut_ruckig" &&
+        trajectory_variant_ != "chomp_ruckig")
+      throw std::invalid_argument("trajectory_variant must be topk, shortcut_ruckig, or chomp_ruckig");
+    top_k_complete_ = getParameter<int>("top_k_complete", 3);
+    if (top_k_complete_ < 1 || top_k_complete_ > 8)
+      throw std::invalid_argument("top_k_complete must be in [1, 8]");
+    trajectory_sample_period_ = getParameter<double>("trajectory_sample_period", 0.05);
+    if (!std::isfinite(trajectory_sample_period_) || trajectory_sample_period_ <= 0.0)
+      throw std::invalid_argument("trajectory_sample_period must be finite and positive");
+    empty_velocity_scaling_ = getParameter<double>("empty_velocity_scaling", 0.50);
+    empty_acceleration_scaling_ = getParameter<double>("empty_acceleration_scaling", 0.50);
+    loaded_velocity_scaling_ = getParameter<double>("loaded_velocity_scaling", 0.25);
+    loaded_acceleration_scaling_ = getParameter<double>("loaded_acceleration_scaling", 0.25);
+    arm_max_jerk_ = getParameter<double>("arm_max_jerk", 2.0);
+    head_max_jerk_ = getParameter<double>("head_max_jerk", 2.0);
+    updown_max_jerk_ = getParameter<double>("updown_max_jerk", 0.30);
+    for (const double value : {empty_velocity_scaling_, empty_acceleration_scaling_,
+         loaded_velocity_scaling_, loaded_acceleration_scaling_})
+      if (!std::isfinite(value) || value <= 0.0 || value > 1.0)
+        throw std::invalid_argument("trajectory velocity/acceleration scaling must be in (0, 1]");
+    for (const double value : {arm_max_jerk_, head_max_jerk_, updown_max_jerk_})
+      if (!std::isfinite(value) || value <= 0.0)
+        throw std::invalid_argument("trajectory jerk limits must be finite and positive");
     if (planning_seed_ > 0) ompl::RNG::setSeed(static_cast<unsigned int>(planning_seed_));
     robot_model_loader_ = std::make_shared<robot_model_loader::RobotModelLoader>(
       shared_from_this(), "robot_description");
@@ -779,46 +815,97 @@ private:
   {
     attempts_ = nlohmann::json::array();
     if (!distance_demo_) return planTask(center);
-    TaskResult result, deepest_failure;
+    const auto started = std::chrono::steady_clock::now();
+    struct Choice { TaskResult result; std::string side; bool top; };
+    std::vector<Choice> complete;
+    TaskResult deepest_failure;
     std::string failure_side;
     bool failure_top = false;
     nlohmann::json failure_height;
     PlanningMetrics metrics;
-    double elapsed = 0.0;
     for (const auto& [top, side] : alfa_robot::motion::wallGraspAttempts(
         alfa_robot::motion::isBottomBox(center.z(), box_height_, wall_bottom_z_), requested_arm_,
         requested_suction_mode_ == "top", allow_opposite_arm)) {
       top_suction_ = top;
       selectArm(side);
-      result = planTask(center);
+      std::vector<TaskResult> candidates;
+      TaskResult result = planTask(center, &candidates);
       metrics.add(result.metrics);
-      elapsed += result.total_ms;
       attempts_.push_back({{"arm", side}, {"suction_mode", top ? "top" : "front"},
         {"success", result.success}, {"failure_stage", result.failure_stage},
         {"failure_reason", result.failure_reason}, {"total_ms", result.total_ms},
+        {"complete_candidate_count", candidates.size()},
         {"height_alignment", heightAlignment(center)}, {"height_selections", 1}});
-      RCLCPP_INFO(get_logger(), "box=%d arm=%s suction=%s %s stage=%s reason=%s",
+      RCLCPP_INFO(get_logger(), "box=%d arm=%s suction=%s %s candidates=%zu stage=%s reason=%s",
         wall_target_row_ * 5 + wall_target_column_, side.c_str(), top ? "top" : "front",
-        result.success ? "SUCCESS" : "FAILED", result.failure_stage.c_str(), result.failure_reason.c_str());
-      if (result.success) break;
-      // A later unreachable fallback must not erase a real connected collision prefix.
-      if (result.diagnostic_frames.size() >= deepest_failure.diagnostic_frames.size()) {
-        deepest_failure = result;
+        result.success ? "SUCCESS" : "FAILED", candidates.size(), result.failure_stage.c_str(),
+        result.failure_reason.c_str());
+      for (auto& candidate : candidates) {
+        complete.push_back({std::move(candidate), side, top});
+        if (complete.size() >= static_cast<size_t>(top_k_complete_)) break;
+      }
+      if (complete.size() >= static_cast<size_t>(top_k_complete_)) break;
+      if (!result.success && result.diagnostic_frames.size() >= deepest_failure.diagnostic_frames.size()) {
+        deepest_failure = std::move(result);
         failure_side = side;
         failure_top = top;
         failure_height = height_clearance_;
       }
     }
-    if (!result.success && !failure_side.empty()) {
-      result = std::move(deepest_failure);
+    if (!complete.empty()) {
+      std::stable_sort(complete.begin(), complete.end(), [](const Choice& left, const Choice& right) {
+        return left.result.selection_score < right.result.selection_score;
+      });
+      std::string postprocess_reason;
+      for (size_t rank = 0; rank < complete.size(); ++rank) {
+        selectArm(complete[rank].side);
+        top_suction_ = complete[rank].top;
+        const auto scene = makeScene(center);
+        const auto loaded = loadedScene(scene);
+        const auto edge_validator = [&](const ReplayFrame& from, const ReplayFrame& to, std::string* reason) {
+          if (from.box_attached != to.box_attached) return from.joints == to.joints;
+          moveit::core::RobotState from_state(*initial_state_), to_state(*initial_state_);
+          for (size_t i = 0; i < all_joint_names_.size(); ++i) {
+            from_state.setVariablePosition(all_joint_names_[i], from.joints[i]);
+            to_state.setVariablePosition(all_joint_names_[i], to.joints[i]);
+          }
+          if (from.box_attached) { attachCarriedBox(from_state); attachCarriedBox(to_state); }
+          from_state.update(true); to_state.update(true);
+          return edgeClear(from.box_attached ? loaded : scene, from_state, to_state,
+            from.box_attached, &metrics, reason);
+        };
+        const auto path_validator = [&](const std::vector<ReplayFrame>& frames, std::string* reason) {
+          return validateSingleArmFrames(frames, scene, loaded, &metrics, reason);
+        };
+        TaskResult result = complete[rank].result;
+        if (!postprocessCandidate(&result, scene, loaded, planning_group_name_, edge_validator, path_validator,
+            &postprocess_reason)) {
+          metrics.shortcut_ms += result.metrics.shortcut_ms;
+          metrics.chomp_ms += result.metrics.chomp_ms;
+          metrics.totg_ms += result.metrics.totg_ms;
+          metrics.ruckig_ms += result.metrics.ruckig_ms;
+          continue;
+        }
+        result.metrics.add(metrics);
+        result.total_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count();
+        result.complete_candidate_count = complete.size();
+        result.selected_candidate_rank = rank + 1;
+        return result;
+      }
+      deepest_failure.failure_stage = "trajectory_postprocess";
+      deepest_failure.failure_reason = "all ranked candidates failed: " + postprocess_reason;
+    }
+    TaskResult result = std::move(deepest_failure);
+    if (!failure_side.empty()) {
       top_suction_ = failure_top;
       selectArm(failure_side);
       height_clearance_ = std::move(failure_height);
     }
     result.metrics = metrics;
-    result.total_ms = elapsed;
-    // Planning is transactional: never replay a failed front prefix before trying top.
-    if (!result.success) result.frames.clear();
+    result.total_ms = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - started).count();
+    result.frames.clear();
     return result;
   }
 
@@ -900,7 +987,7 @@ private:
   }
 
   bool validateDualFrames(
-    std::vector<ReplayFrame>& frames, int left_id, int right_id, bool top,
+    const std::vector<ReplayFrame>& frames, int left_id, int right_id, bool top,
     PlanningMetrics* metrics, std::string* reason) const
   {
     const auto scene = makeDualScene(left_id, right_id);
@@ -971,43 +1058,12 @@ private:
     return true;
   }
 
-  TaskResult planDualPair(int left_id, int right_id, bool top, double x)
+  TaskResult mergeDualCandidate(
+    const TaskResult& left, const TaskResult& right, int left_id, int right_id, bool top,
+    const Eigen::Vector3d& left_center, const Eigen::Vector3d& right_center,
+    const std::vector<double>& common_joints, PlanningMetrics* metrics)
   {
     TaskResult result;
-    const auto started = std::chrono::steady_clock::now();
-    const auto common_joints = allJoints(*initial_state_);
-    updateWallTarget(x, left_id);
-    const auto left_center = box_center_;
-    selectArm("left"); top_suction_ = top;
-    height_clearance_ = {{"checked", false}};
-    const double left_updown = heightAlignment(left_center).at("target_updown").get<double>();
-    updateWallTarget(x, right_id);
-    const auto right_center = box_center_;
-    selectArm("right"); top_suction_ = top;
-    height_clearance_ = {{"checked", false}};
-    const double right_updown = heightAlignment(right_center).at("target_updown").get<double>();
-    const auto& updown_bounds = robot_model_->getVariableBounds("updown");
-    synchronized_updown_ = alfa_robot::motion::chooseSharedUpdown(
-      left_updown, right_updown, updown_bounds.min_position_, updown_bounds.max_position_);
-    RCLCPP_INFO(get_logger(),
-      "dual shared height: boxes=%d,%d left=%.6fm right=%.6fm selected=%.6fm",
-      left_id, right_id, left_updown, right_updown, *synchronized_updown_);
-    updateWallTarget(x, left_id);
-    selectArm("left"); top_suction_ = top;
-    TaskResult left = planTask(left_center);
-    updateWallTarget(x, right_id);
-    selectArm("right"); top_suction_ = top;
-    TaskResult right = planTask(right_center);
-    synchronized_updown_.reset();
-    result.metrics.add(left.metrics); result.metrics.add(right.metrics);
-    if (!left.success || !right.success) {
-      result.failure_stage = "dual_independent_plan";
-      result.failure_reason = "left=" + (left.success ? std::string("ok") : left.failure_stage + ":" + left.failure_reason) +
-        " right=" + (right.success ? std::string("ok") : right.failure_stage + ":" + right.failure_reason);
-      result.total_ms = std::chrono::duration<double, std::milli>(
-        std::chrono::steady_clock::now() - started).count();
-      return result;
-    }
 
     std::vector<double> left_hold = common_joints, right_hold = common_joints;
     bool left_attached = false, right_attached = false, left_visible = true, right_visible = true;
@@ -1033,7 +1089,6 @@ private:
         if (left_attached != right_attached || left_visible != right_visible) {
           result.failure_stage = "dual_stage_sync";
           result.failure_reason = "independent plans changed attachment at different phase boundaries";
-          result.frames.clear();
           return result;
         }
         ReplayFrame merged;
@@ -1047,11 +1102,8 @@ private:
             if (phase > 0 && std::abs(left_hold[j] - right_hold[j]) > 1e-4) {
               result.failure_stage = "dual_height_sync";
               result.failure_reason = "left/right updown goals differ after alignment";
-              result.frames.clear();
               return result;
             }
-            // The lift is shared. During phase 0 independently sampled lift frames are
-            // resynchronized to one midpoint trajectory, then both arms keep one height.
             merged.joints[j] = 0.5 * (left_hold[j] + right_hold[j]);
           } else merged.joints[j] = left_hold[j];
         }
@@ -1065,14 +1117,133 @@ private:
       }
     }
     std::string validation_reason;
-    if (!validateDualFrames(result.frames, left_id, right_id, top, &result.metrics, &validation_reason)) {
+    if (!validateDualFrames(result.frames, left_id, right_id, top, metrics, &validation_reason)) {
       result.failure_stage = "dual_combined_validation";
       result.failure_reason = validation_reason;
       result.frames.clear();
-    } else result.success = true;
-    result.total_ms = std::chrono::duration<double, std::milli>(
-      std::chrono::steady_clock::now() - started).count();
+      return result;
+    }
+    result.selection_score = naturalPathLength(result.frames);
+    result.success = true;
     return result;
+  }
+
+  TaskResult planDualPair(int left_id, int right_id, bool top, double x)
+  {
+    const auto started = std::chrono::steady_clock::now();
+    const auto common_joints = allJoints(*initial_state_);
+
+    updateWallTarget(x, left_id);
+    const auto left_center = box_center_;
+    selectArm("left");
+    top_suction_ = top;
+    height_clearance_ = {{"checked", false}};
+    const double left_updown =
+      heightAlignment(left_center).at("target_updown").get<double>();
+
+    updateWallTarget(x, right_id);
+    const auto right_center = box_center_;
+    selectArm("right");
+    top_suction_ = top;
+    height_clearance_ = {{"checked", false}};
+    const double right_updown =
+      heightAlignment(right_center).at("target_updown").get<double>();
+
+    const auto& updown_bounds = robot_model_->getVariableBounds("updown");
+    synchronized_updown_ = alfa_robot::motion::chooseSharedUpdown(
+      left_updown, right_updown,
+      updown_bounds.min_position_, updown_bounds.max_position_);
+    RCLCPP_INFO(
+      get_logger(),
+      "dual shared height: boxes=%d,%d left=%.6fm right=%.6fm selected=%.6fm",
+      left_id, right_id, left_updown, right_updown, *synchronized_updown_);
+
+    updateWallTarget(x, left_id);
+    selectArm("left");
+    top_suction_ = top;
+    std::vector<TaskResult> left_candidates;
+    TaskResult left = planTask(left_center, &left_candidates);
+
+    updateWallTarget(x, right_id);
+    selectArm("right");
+    top_suction_ = top;
+    std::vector<TaskResult> right_candidates;
+    TaskResult right = planTask(right_center, &right_candidates);
+
+    synchronized_updown_.reset();
+    PlanningMetrics metrics;
+    metrics.add(left.metrics); metrics.add(right.metrics);
+    if (!left.success || !right.success) {
+      TaskResult result;
+      result.metrics = metrics;
+      result.failure_stage = "dual_independent_plan";
+      result.failure_reason = "left=" + (left.success ? std::string("ok") : left.failure_stage + ":" + left.failure_reason) +
+        " right=" + (right.success ? std::string("ok") : right.failure_stage + ":" + right.failure_reason);
+      result.total_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+      return result;
+    }
+
+    struct Pair { size_t left; size_t right; double score; };
+    std::vector<Pair> pairs;
+    for (size_t l = 0; l < left_candidates.size(); ++l)
+      for (size_t r = 0; r < right_candidates.size(); ++r)
+        pairs.push_back({l, r, left_candidates[l].selection_score + right_candidates[r].selection_score});
+    std::stable_sort(pairs.begin(), pairs.end(), [](const Pair& a, const Pair& b) { return a.score < b.score; });
+
+    std::vector<TaskResult> complete;
+    TaskResult last_failure;
+    for (const auto& pair : pairs) {
+      TaskResult candidate = mergeDualCandidate(left_candidates[pair.left], right_candidates[pair.right],
+        left_id, right_id, top, left_center, right_center, common_joints, &metrics);
+      if (candidate.success) {
+        complete.push_back(std::move(candidate));
+        if (complete.size() >= static_cast<size_t>(top_k_complete_)) break;
+      } else last_failure = std::move(candidate);
+    }
+    if (!complete.empty()) {
+      std::stable_sort(complete.begin(), complete.end(), [](const TaskResult& left, const TaskResult& right) {
+        return left.selection_score < right.selection_score;
+      });
+      const auto edge_validator = [&](const ReplayFrame& from, const ReplayFrame& to, std::string* edge_reason) {
+        std::vector<ReplayFrame> edge{from, to};
+        return validateDualFrames(edge, left_id, right_id, top, &metrics, edge_reason);
+      };
+      const auto dual_scene = makeDualScene(left_id, right_id);
+      const auto dual_loaded = planning_scene::PlanningScene::clone(dual_scene);
+      const auto path_validator = [&](const std::vector<ReplayFrame>& frames, std::string* path_reason) {
+        return validateDualFrames(frames, left_id, right_id, top, &metrics, path_reason);
+      };
+      for (size_t rank = 0; rank < complete.size(); ++rank) {
+        TaskResult candidate = complete[rank];
+        std::string postprocess_reason;
+        if (!postprocessCandidate(&candidate, dual_scene, dual_loaded, "whole_body", edge_validator, path_validator,
+            &postprocess_reason)) {
+          metrics.shortcut_ms += candidate.metrics.shortcut_ms;
+          metrics.chomp_ms += candidate.metrics.chomp_ms;
+          metrics.totg_ms += candidate.metrics.totg_ms;
+          metrics.ruckig_ms += candidate.metrics.ruckig_ms;
+          last_failure.failure_stage = "trajectory_postprocess";
+          last_failure.failure_reason = "candidate rank " + std::to_string(rank + 1) + " " + postprocess_reason;
+          continue;
+        }
+        candidate.metrics.add(metrics);
+        candidate.total_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count();
+        candidate.complete_candidate_count = complete.size();
+        candidate.selected_candidate_rank = rank + 1;
+        return candidate;
+      }
+    }
+    const double elapsed = std::chrono::duration<double, std::milli>(
+      std::chrono::steady_clock::now() - started).count();
+    last_failure.metrics = metrics;
+    last_failure.total_ms = elapsed;
+    if (last_failure.failure_stage.empty()) {
+      last_failure.failure_stage = "dual_candidate_search";
+      last_failure.failure_reason = "no whole-body candidate combination passed validation";
+    }
+    return last_failure;
   }
 
   void ensureFailurePlayback(TaskResult& result, const Eigen::Vector3d& target) const
@@ -1129,6 +1300,26 @@ private:
                              bool dual, const std::string& fallback_reason) {
       ensureFailurePlayback(result, box_center_);
       total.metrics.add(result.metrics);
+      if (result.success) {
+        const bool first_success = total.frames.empty();
+        total.execution_duration_s += result.execution_duration_s;
+        total.timing_valid = first_success ? result.timing_valid : total.timing_valid && result.timing_valid;
+        total.max_velocity = std::max(total.max_velocity, result.max_velocity);
+        total.max_acceleration = std::max(total.max_acceleration, result.max_acceleration);
+        total.max_jerk = std::max(total.max_jerk, result.max_jerk);
+        if (first_success) {
+          total.effective_trajectory_variant = result.effective_trajectory_variant;
+          total.optimizer_status = result.optimizer_status;
+        } else {
+          if (total.effective_trajectory_variant != result.effective_trajectory_variant)
+            total.effective_trajectory_variant = "mixed";
+          if (total.optimizer_status != result.optimizer_status) total.optimizer_status = "mixed";
+        }
+        if (!result.variant_fallback_reason.empty()) {
+          if (!total.variant_fallback_reason.empty()) total.variant_fallback_reason += "; ";
+          total.variant_fallback_reason += result.variant_fallback_reason;
+        }
+      }
       const size_t scene_index = playback_scenes_.size();
       auto context = sceneJson(box_center_);
       context["side"] = dual ? "dual" : side_;
@@ -1195,6 +1386,7 @@ private:
             {"success", dual_result.success}, {"failure_stage", dual_result.failure_stage},
             {"failure_reason", dual_result.failure_reason}});
           if (dual_result.success) break;
+          total.metrics.add(dual_result.metrics);
           dual_failure = dual_result.failure_stage + ": " + dual_result.failure_reason;
           RCLCPP_WARN(get_logger(), "DUAL_ATTEMPT boxes=%d,%d suction=%s failed: %s",
             round.left_box, round.right_box, top ? "top" : "front", dual_failure.c_str());
@@ -1557,6 +1749,188 @@ private:
       output.push_back(state.getVariablePosition(name));
     }
     return output;
+  }
+
+  bool validateSingleArmFrames(
+    const std::vector<ReplayFrame>& frames,
+    const planning_scene::PlanningSceneConstPtr& empty_scene,
+    const planning_scene::PlanningSceneConstPtr& loaded_scene,
+    PlanningMetrics* metrics,
+    std::string* reason) const
+  {
+    const auto fullCollisionReason = [&](const planning_scene::PlanningSceneConstPtr& scene,
+                                         const moveit::core::RobotState& state) {
+      const auto started = std::chrono::steady_clock::now();
+      const std::string collision = alfa_robot::motion::scene_collision_reason(scene, state, nullptr);
+      if (metrics) {
+        ++metrics->collision_checks;
+        metrics->collision_ms += std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - started).count();
+      }
+      return collision;
+    };
+
+    moveit::core::RobotStatePtr previous;
+    bool previous_attached = false;
+    std::vector<double> previous_joints;
+    for (size_t frame_index = 0; frame_index < frames.size(); ++frame_index) {
+      const auto& frame = frames[frame_index];
+      if (frame.joints.size() != all_joint_names_.size()) {
+        if (reason) *reason = "whole_body_joint_count at frame " + std::to_string(frame_index);
+        return false;
+      }
+      moveit::core::RobotState state(*initial_state_);
+      for (size_t joint = 0; joint < all_joint_names_.size(); ++joint)
+        state.setVariablePosition(all_joint_names_[joint], frame.joints[joint]);
+      if (frame.box_attached) {
+        attachCarriedBox(state);
+      } else if (state.hasAttachedBody(kCarriedBoxId)) {
+        state.clearAttachedBody(kCarriedBoxId);
+      }
+      state.update(true);
+      if (!state.satisfiesBounds()) {
+        if (reason) *reason = "whole_body_joint_bounds at frame " + std::to_string(frame_index);
+        return false;
+      }
+      const std::string collision = fullCollisionReason(
+        frame.box_attached ? loaded_scene : empty_scene, state);
+      if (!collision.empty()) {
+        if (reason) *reason = "whole_body_" + collision + " at frame " + std::to_string(frame_index);
+        return false;
+      }
+      if (previous) {
+        if (!alfa_robot::motion::sameShoulderElbowBranch(
+              sideJoints(*previous, "left"), sideJoints(state, "left")) ||
+            !alfa_robot::motion::sameShoulderElbowBranch(
+              sideJoints(*previous, "right"), sideJoints(state, "right"))) {
+          if (reason) *reason = "whole_body_shoulder_elbow_branch_flip at frame " +
+            std::to_string(frame_index - 1) + " -> " + std::to_string(frame_index);
+          return false;
+        }
+        if (frame.box_attached != previous_attached) {
+          if (frame.joints != previous_joints) {
+            if (reason) *reason = "attachment_transition_changes_joints at frame " +
+              std::to_string(frame_index - 1) + " -> " + std::to_string(frame_index);
+            return false;
+          }
+        } else {
+          double maximum_delta = 0.0;
+          for (const auto& name : all_joint_names_)
+            maximum_delta = std::max(maximum_delta, std::abs(
+              state.getVariablePosition(name) - previous->getVariablePosition(name)));
+          const size_t steps = std::max<size_t>(
+            1, static_cast<size_t>(std::ceil(maximum_delta / edge_joint_resolution_)));
+          for (size_t step = 1; step < steps; ++step) {
+            moveit::core::RobotState probe(*previous);
+            const double ratio = static_cast<double>(step) / static_cast<double>(steps);
+            for (const auto& name : all_joint_names_)
+              probe.setVariablePosition(name, previous->getVariablePosition(name) +
+                (state.getVariablePosition(name) - previous->getVariablePosition(name)) * ratio);
+            probe.update(true);
+            if (!probe.satisfiesBounds()) {
+              if (reason) *reason = "whole_body_edge_joint_bounds at frame " +
+                std::to_string(frame_index - 1) + " -> " + std::to_string(frame_index);
+              return false;
+            }
+            const std::string edge_collision = fullCollisionReason(
+              frame.box_attached ? loaded_scene : empty_scene, probe);
+            if (!edge_collision.empty()) {
+              if (reason) *reason = "whole_body_edge_" + edge_collision + " at frame " +
+                std::to_string(frame_index - 1) + " -> " +
+                std::to_string(frame_index);
+              return false;
+            }
+          }
+        }
+      }
+      previous = std::make_shared<moveit::core::RobotState>(state);
+      previous_attached = frame.box_attached;
+      previous_joints = frame.joints;
+    }
+    return true;
+  }
+
+  double naturalPathLength(const std::vector<ReplayFrame>& frames) const
+  {
+    constexpr std::array<double, 7> weights{1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 5.0};
+    double length = 0.0;
+    for (size_t i = 1; i < frames.size(); ++i) {
+      if (frames[i - 1].joints.size() != all_joint_names_.size() ||
+          frames[i].joints.size() != all_joint_names_.size()) continue;
+      double squared = 0.0;
+      for (size_t arm = 0; arm < 2; ++arm)
+        for (size_t joint = 0; joint < weights.size(); ++joint) {
+          const size_t index = arm * weights.size() + joint;
+          const double delta = alfa_robot::motion::shortestAngleDelta(
+            frames[i - 1].joints[index], frames[i].joints[index]);
+          squared += weights[joint] * delta * delta;
+        }
+      for (size_t index = 14; index < frames[i].joints.size(); ++index) {
+        const double delta = frames[i].joints[index] - frames[i - 1].joints[index];
+        squared += delta * delta;
+      }
+      length += std::sqrt(squared);
+    }
+    return length;
+  }
+
+  TaskResult selectBestCandidate(
+    std::vector<TaskResult> candidates, const PlanningMetrics& metrics, double total_ms = 0.0) const
+  {
+    if (candidates.empty()) return {};
+    std::stable_sort(candidates.begin(), candidates.end(), [](const TaskResult& left, const TaskResult& right) {
+      return left.selection_score < right.selection_score;
+    });
+    TaskResult selected = std::move(candidates.front());
+    selected.metrics.add(metrics);
+    selected.total_ms = total_ms;
+    selected.complete_candidate_count = candidates.size();
+    selected.selected_candidate_rank = 1;
+    return selected;
+  }
+
+  bool postprocessCandidate(
+    TaskResult* candidate,
+    const planning_scene::PlanningSceneConstPtr& empty_scene,
+    const planning_scene::PlanningSceneConstPtr& loaded_scene,
+    const std::string& chomp_group,
+    const alfa_robot::motion::EdgeValidator& edge_validator,
+    const alfa_robot::motion::PathValidator& path_validator,
+    std::string* reason)
+  {
+    alfa_robot::motion::TrajectoryPostprocessOptions options;
+    options.variant = trajectory_variant_;
+    options.sample_period = trajectory_sample_period_;
+    options.empty_velocity_scaling = empty_velocity_scaling_;
+    options.empty_acceleration_scaling = empty_acceleration_scaling_;
+    options.loaded_velocity_scaling = loaded_velocity_scaling_;
+    options.loaded_acceleration_scaling = loaded_acceleration_scaling_;
+    options.arm_max_jerk = arm_max_jerk_;
+    options.head_max_jerk = head_max_jerk_;
+    options.updown_max_jerk = updown_max_jerk_;
+    alfa_robot::motion::TrajectoryPostprocessMetrics post;
+    const auto chomp = [&](std::vector<ReplayFrame>* frames, double* wall_ms, std::string* chomp_reason) {
+      return alfa_robot::motion::optimizeChompFreeSpace(
+        frames, robot_model_, empty_scene, loaded_scene, all_joint_names_, chomp_group,
+        wall_ms, chomp_reason);
+    };
+    const bool success = alfa_robot::motion::postprocessWallTrajectory(
+      &candidate->frames, robot_model_, all_joint_names_, options, edge_validator, path_validator, chomp,
+      &post, reason);
+    candidate->metrics.shortcut_ms += post.shortcut_ms;
+    candidate->metrics.chomp_ms += post.chomp_ms;
+    candidate->metrics.totg_ms += post.totg_ms;
+    candidate->metrics.ruckig_ms += post.ruckig_ms;
+    if (!success) return false;
+    candidate->execution_duration_s = post.execution_duration_s;
+    candidate->timing_valid = post.timing_valid;
+    candidate->effective_trajectory_variant = post.effective_variant;
+    candidate->optimizer_status = post.optimizer_status;
+    candidate->variant_fallback_reason = post.fallback_reason;
+    candidate->max_velocity = post.max_velocity;
+    candidate->max_acceleration = post.max_acceleration;
+    candidate->max_jerk = post.max_jerk;
+    return true;
   }
 
   std::string collisionReason(
@@ -2208,10 +2582,12 @@ private:
     return true;
   }
 
-  TaskResult planTask(const Eigen::Vector3d& box_center)
+  TaskResult planTask(
+    const Eigen::Vector3d& box_center, std::vector<TaskResult>* complete_candidates_out = nullptr)
   {
     height_clearance_ = {{"checked", false}};
     TaskResult result;
+    std::vector<TaskResult> complete_candidates;
     const auto total_started = std::chrono::steady_clock::now();
     const auto scene = makeScene(box_center);
     const auto loaded = loadedScene(scene);
@@ -2493,8 +2869,9 @@ private:
         continue;
       }
 
-      result.frames = std::move(executable_prefix);
-      appendStates(return_plan.states, "rrt_return", true, true, &result.frames);
+      TaskResult candidate;
+      candidate.frames = std::move(executable_prefix);
+      appendStates(return_plan.states, "rrt_return", true, true, &candidate.frames);
       if (post_extract_policy_ == "loaded_home") {
         const auto updown_return = moveUpdown(
           loaded, *return_plan.states.back(),
@@ -2505,17 +2882,69 @@ private:
           last_failure_reason = updown_return.reason;
           continue;
         }
-        appendStates(updown_return.states, "updown_return", true, true, &result.frames);
-        result.frames.push_back(
+        appendStates(
+          updown_return.states, "updown_return", true, true, &candidate.frames);
+        candidate.frames.push_back(
           ReplayFrame{"loaded_home", allJoints(*updown_return.states.back()), true});
       } else if (distance_demo_) {
         // The loaded path is checked through this last visible pose. Removal is
         // a separate frame with identical joints, never an obstacle workaround.
-        result.frames.push_back(ReplayFrame{"rear_placement", allJoints(return_goal), true});
-        result.frames.push_back(ReplayFrame{"release_box", allJoints(return_goal), false, false});
+        candidate.frames.push_back(ReplayFrame{"rear_placement", allJoints(return_goal), true});
+        candidate.frames.push_back(ReplayFrame{"release_box", allJoints(return_goal), false, false});
       }
-      result.success = true;
-      return finish();
+      candidate.selection_score = naturalPathLength(candidate.frames);
+      candidate.success = true;
+      complete_candidates.push_back(std::move(candidate));
+      if (complete_candidates.size() >= static_cast<size_t>(top_k_complete_)) break;
+    }
+
+    if (!complete_candidates.empty()) {
+      std::stable_sort(complete_candidates.begin(), complete_candidates.end(),
+        [](const TaskResult& left, const TaskResult& right) {
+          return left.selection_score < right.selection_score;
+        });
+      if (complete_candidates_out) {
+        *complete_candidates_out = complete_candidates;
+        result = selectBestCandidate(std::move(complete_candidates), result.metrics,
+          std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - total_started).count());
+        return result;
+      }
+      const auto edge_validator = [&](const ReplayFrame& from, const ReplayFrame& to, std::string* reason) {
+        if (from.box_attached != to.box_attached) return from.joints == to.joints;
+        moveit::core::RobotState from_state(*initial_state_), to_state(*initial_state_);
+        for (size_t i = 0; i < all_joint_names_.size(); ++i) {
+          from_state.setVariablePosition(all_joint_names_[i], from.joints[i]);
+          to_state.setVariablePosition(all_joint_names_[i], to.joints[i]);
+        }
+        if (from.box_attached) { attachCarriedBox(from_state); attachCarriedBox(to_state); }
+        from_state.update(true); to_state.update(true);
+        return edgeClear(from.box_attached ? loaded : scene, from_state, to_state,
+          from.box_attached, &result.metrics, reason);
+      };
+      const auto path_validator = [&](const std::vector<ReplayFrame>& frames, std::string* reason) {
+        return validateSingleArmFrames(frames, scene, loaded, &result.metrics, reason);
+      };
+      for (size_t rank = 0; rank < complete_candidates.size(); ++rank) {
+        TaskResult candidate = complete_candidates[rank];
+        std::string postprocess_reason;
+        if (!postprocessCandidate(&candidate, scene, loaded, planning_group_name_, edge_validator, path_validator,
+            &postprocess_reason)) {
+          result.metrics.shortcut_ms += candidate.metrics.shortcut_ms;
+          result.metrics.chomp_ms += candidate.metrics.chomp_ms;
+          result.metrics.totg_ms += candidate.metrics.totg_ms;
+          result.metrics.ruckig_ms += candidate.metrics.ruckig_ms;
+          last_failure_stage = "trajectory_postprocess";
+          last_failure_reason = "candidate rank " + std::to_string(rank + 1) + " " + postprocess_reason;
+          continue;
+        }
+        candidate.metrics.add(result.metrics);
+        candidate.total_ms = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - total_started).count();
+        candidate.complete_candidate_count = complete_candidates.size();
+        candidate.selected_candidate_rank = rank + 1;
+        return candidate;
+      }
     }
 
     result.failure_stage = last_failure_stage;
@@ -2543,6 +2972,16 @@ private:
       output["release_after_transfer"] = post_extract_policy_ == "rear_release";
       output["initial_pose"] = initial_pose_;
       output["planning_seed"] = planning_seed_;
+      output["requested_trajectory_variant"] = trajectory_variant_;
+      output["top_k_complete"] = top_k_complete_;
+      output["trajectory_sample_period"] = trajectory_sample_period_;
+      output["empty_velocity_scaling"] = empty_velocity_scaling_;
+      output["empty_acceleration_scaling"] = empty_acceleration_scaling_;
+      output["loaded_velocity_scaling"] = loaded_velocity_scaling_;
+      output["loaded_acceleration_scaling"] = loaded_acceleration_scaling_;
+      output["arm_max_jerk"] = arm_max_jerk_;
+      output["head_max_jerk"] = head_max_jerk_;
+      output["updown_max_jerk"] = updown_max_jerk_;
       output["edge_collision_resolution_deg"] = edge_joint_resolution_ * 180.0 / kPi;
       output["lift_after_attach_m"] = top_suction_ ? approach_distance_ : 0.0;
       output["lift_backoff_m"] = top_suction_ ? std::min(0.02, retreat_distance_) : 0.0;
@@ -2649,7 +3088,25 @@ private:
       {"analytic_path_ms", result.metrics.analytic_path_ms},
       {"rrt_approach_ms", result.metrics.rrt_approach_ms},
       {"rrt_return_ms", result.metrics.rrt_return_ms},
+      {"shortcut_ms", result.metrics.shortcut_ms},
+      {"chomp_ms", result.metrics.chomp_ms},
+      {"totg_ms", result.metrics.totg_ms},
+      {"ruckig_ms", result.metrics.ruckig_ms},
     };
+    payload["requested_trajectory_variant"] = trajectory_variant_;
+    payload["effective_trajectory_variant"] = result.effective_trajectory_variant;
+    payload["top_k_complete"] = top_k_complete_;
+    payload["complete_candidate_count"] = result.complete_candidate_count;
+    payload["selected_candidate_rank"] = result.selected_candidate_rank;
+    payload["selection_score"] = std::isfinite(result.selection_score) ?
+      nlohmann::json(result.selection_score) : nlohmann::json(nullptr);
+    payload["execution_duration_s"] = result.execution_duration_s;
+    payload["timing_valid"] = result.timing_valid;
+    payload["optimizer_status"] = result.optimizer_status;
+    payload["variant_fallback_reason"] = result.variant_fallback_reason;
+    payload["max_velocity"] = result.max_velocity;
+    payload["max_acceleration"] = result.max_acceleration;
+    payload["max_jerk"] = result.max_jerk;
     payload["joint_names"] = all_joint_names_;
     payload["attempts"] = attempts_;
     payload["verdict"] = result.success ? "path_found" : "no_path_found";
@@ -2663,6 +3120,7 @@ private:
         {"box_visible", frame.box_visible},
         {"scene_index", frame.scene_index},
         {"carried_boxes", frame.carried_boxes},
+        {"time_from_start_s", frame.time_from_start_s},
       });
     }
     payload["diagnostic"] = result.diagnostic;
@@ -2673,7 +3131,7 @@ private:
       payload["diagnostic_frames"].push_back({{"stage", frame.stage}, {"joints", frame.joints},
         {"box_attached", frame.box_attached}, {"box_visible", frame.box_visible},
         {"scene_index", frame.scene_index}, {"carried_boxes", frame.carried_boxes},
-        {"diagnostic_only", true}});
+        {"time_from_start_s", frame.time_from_start_s}, {"diagnostic_only", true}});
     if (publish) publishJson(payload);
   }
 
@@ -2931,6 +3389,16 @@ private:
   std::string comfort_branch_ = "auto";
   double comfort_min_ = 0.8, comfort_preferred_ = 0.8, comfort_max_ = 0.8;
   int planning_seed_ = 0;
+  std::string trajectory_variant_ = "topk";
+  int top_k_complete_ = 3;
+  double trajectory_sample_period_ = 0.05;
+  double empty_velocity_scaling_ = 0.50;
+  double empty_acceleration_scaling_ = 0.50;
+  double loaded_velocity_scaling_ = 0.25;
+  double loaded_acceleration_scaling_ = 0.25;
+  double arm_max_jerk_ = 2.0;
+  double head_max_jerk_ = 2.0;
+  double updown_max_jerk_ = 0.30;
   double shoulder_box_offset_ = 0.25;
   double initial_shoulder_z_ = 0.0;
   double chassis_front_x_ = 0.0;

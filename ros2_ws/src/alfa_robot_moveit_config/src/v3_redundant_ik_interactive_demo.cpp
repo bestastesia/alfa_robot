@@ -192,7 +192,9 @@ public:
       }
     }
     active_joint_offset_ = side_ == "left" ? 0U : 7U;
-    all_joint_positions_.assign(14, 0.0);
+    all_joint_names_.push_back("updown");
+    all_joint_names_.push_back("head_joint");
+    all_joint_positions_.assign(all_joint_names_.size(), 0.0);
 
     family_publisher_ = create_publisher<std_msgs::msg::String>(
       "~/solution_family_json", rclcpp::QoS(1).transient_local());
@@ -285,11 +287,12 @@ private:
 
   void onTimer()
   {
+    // robot_state_publisher needs the movable lift state before it can supply TF.
+    publishJointState();
     if (!transform_ready_ && !updateArmBaseTransform()) {
       publishStatus("WAITING TF", false);
       return;
     }
-    publishJointState();
     if (!pending_generation_) {
       return;
     }

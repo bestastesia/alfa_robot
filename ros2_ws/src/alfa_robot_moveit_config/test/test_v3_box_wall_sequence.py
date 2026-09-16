@@ -67,6 +67,27 @@ def check_result(task, robot):
             assert not frames
             break
         assert frames and frames[0]['joints'] == previous
+        assert all(frame['scene_index'] == i for frame in frames)
+        assert box['requested_trajectory_variant'] == task['requested_trajectory_variant']
+        assert box['top_k_complete'] == task['top_k_complete']
+        assert 1 <= box['complete_candidate_count'] <= task['top_k_complete']
+        assert 1 <= box['selected_candidate_rank'] <= box['complete_candidate_count']
+        assert box['selection_score'] >= 0
+
+        times = [frame['time_from_start_s'] for frame in frames]
+        assert times[0] == 0
+        assert all(a <= b for a, b in zip(times, times[1:]))
+
+        requested = box['requested_trajectory_variant']
+        effective = box['effective_trajectory_variant']
+        if requested == 'topk':
+            assert effective == 'topk'
+            assert not box['timing_valid']
+        else:
+            assert requested in ('shortcut_ruckig', 'chomp_ruckig')
+            assert effective == 'shortcut_ruckig' or requested == effective
+            assert box['timing_valid']
+            assert np.isclose(box['execution_duration_s'], times[-1])
 
         if box['dual']:
             carried_ids = {item['box_id'] for item in frames[0]['carried_boxes']}
@@ -124,6 +145,8 @@ def main():
     parser.add_argument('--initial-pose', choices=['home', 'arms_down'], default='home')
     parser.add_argument('--wall-bottom-z', type=float, default=0.)
     parser.add_argument('--seed', type=int, default=104729)
+    parser.add_argument('--trajectory-variant', choices=['topk', 'shortcut_ruckig', 'chomp_ruckig'], default='topk')
+    parser.add_argument('--top-k-complete', type=int, choices=range(1, 9), default=3)
     parser.add_argument('--front-ratio', type=float)
     parser.add_argument('--validator', type=Path)
     parser.add_argument('--wall-context', choices=['full', 'sequence_prefix'], default='full',
@@ -168,7 +191,9 @@ def main():
     command = ['ros2', 'launch', 'alfa_robot_moveit_config', 'v3_box_wall_sequence_demo.launch.py',
                f'x:={args.x}', 'auto_run_once:=false', 'start_rviz:=false', f'start_rerun:={str(args.incremental_rerun).lower()}',
                'spawn_viewer:=false', f'rerun_recording_path:={root / "live.rrd"}',
-               f'planning_seed:={args.seed}', f'initial_pose:={args.initial_pose}', f'wall_bottom_z:={args.wall_bottom_z}']
+               f'planning_seed:={args.seed}', f'trajectory_variant:={args.trajectory_variant}',
+               f'top_k_complete:={args.top_k_complete}', f'initial_pose:={args.initial_pose}',
+               f'wall_bottom_z:={args.wall_bottom_z}']
     if args.front_ratio is not None:
         command.extend(f'comfort_ratio_{key}:={args.front_ratio}' for key in ('min', 'preferred', 'max'))
     if args.environment_file:
@@ -211,6 +236,10 @@ def main():
             wait(lambda: received.get('task', {}).get('sequence', False))
             task = received['task']
             (root / 'sequence.json').write_text(json.dumps(task, indent=2))
+            assert task['requested_trajectory_variant'] == args.trajectory_variant, \
+                'sequence requested_trajectory_variant does not match --trajectory-variant'
+            assert task['planning_seed'] == args.seed, \
+                'sequence planning_seed does not match --seed'
             check_result(task, robot)
             if args.incremental_rerun:
                 wait(lambda: len(segments) == task['segment_count'])
@@ -270,6 +299,10 @@ def main():
                 print('PASS complete sequence replay frozen at rejected frame, failed scene retained', flush=True)
             if args.require_complete:
                 assert task['success'], task['failure_reason']
+                assert task['segment_count'] == 15
+                assert task['dual_success_count'] == 10
+                assert task['fallback_count'] == 0
+                assert task.get('full_dual_pass') is True
         finally:
             stop(process)
             node.destroy_node()

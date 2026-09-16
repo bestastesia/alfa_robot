@@ -1891,6 +1891,24 @@
 - 验证结果：环境检查通过；CMake 选择 `/usr/bin/python3`，`robot_motion_core` 单包构建成功，原 catkin_pkg 报错消失。
 - 留给下个 AI：完整 `build_v3_moveit_demo.sh` 仍被缺失 `moveit_core` 阻塞；本机 apt 显示 `ros-humble-moveit` 和 `ros-humble-moveit-core` 均未安装，本轮未安装系统依赖。
 
+## 2026-09-10 Codex / 整仓全量编译首轮（系统依赖待安装）
+- 做了什么：按主工作区13包 + `scripts/ik_benchmark` + 独立 `armmotion_demo` 共15包执行 Release、BUILD_TESTING=ON 的全量构建，没有通过跳过包缩小范围；保留已有 Conda 修复。
+- 构建命令：`source tools/ros_humble_env.sh; cd ros2_ws; CMAKE_BUILD_PARALLEL_LEVEL=2 colcon build --base-paths src ../scripts/ik_benchmark ../tools/demonstration0720/armmotion/ros2_ws/src --symlink-install --cmake-clean-cache --continue-on-error --executor sequential --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON`。
+- 验证结果：9包成功；`robot_motion_interfaces` 缺 `moveit_msgs`、`robot_motion_scene_service` 缺 `moveit_core` 导致2包失败；MoveIt config、runtime、benchmark、armmotion_demo 4包因依赖失败未处理。日志：`ros2_ws/log/build_2026-09-10_14-54-49/`。解析IK CTest 2/2通过；138个Python文件AST语法检查通过；环境隔离检查通过；description 因系统缺pytest未注册测试，但直接调用现有 `test_urdf_xacro()` 通过。
+- 环境问题：沙箱内 colcon 在CMake退出后挂起，中止该构建并授权在沙箱外重试后正常推进；`/home/li/.codex/RTK.md` 不存在；rosdep 未初始化。
+- 留给下个 AI：全量编译尚未完成。已请求安装 Dockerfile 现有依赖，但沙箱外 `sudo -n apt-get install` 仍提示需要密码；需用户终端安装 `ros-humble-moveit ros-humble-ros2-controllers ros-humble-tf2-eigen-kdl libnlopt-cxx-dev nlohmann-json3-dev python3-pytest`，之后重新执行全量构建与测试。不要把本次部分通过当成全量通过，不要索取用户密码。
+
+## 2026-09-10 Codex / 本机 V3 MoveIt Demo 启动验收
+- 做了什么：用户补齐 MoveIt、nlohmann-json3-dev、ros2_control/controllers 和 joint-state-publisher 依赖后，重新构建并启动默认模拟硬件 Demo。
+- 验证结果：`./build_v3_moveit_demo.sh` 全部7包成功；`./run_v3_moveit_demo.sh` 启动 RViz 和 move_group，规划接口 ready；ROS_DOMAIN_ID=79 下两个控制器均 active，joint_states 包含16轴。
+- 留给下个 AI：本机源找不到 warehouse-ros-mongo，默认 Demo 的 db=false，无需安装；未验证交互规划/轨迹执行。description 配置仍有 pytest 检测警告，不影响本次构建；RViz 的 recognize_objects 服务未启动，不阻塞当前规划界面。
+
+## 2026-09-10 Codex / V3 冗余 IK 独立启动修复
+- 做了什么：独立本机 domain 中复现 `WAITING TF`，无 joint_states/解族；修复先等 TF 后发状态的循环依赖，并补齐 V3.0.9 可动升降及头部状态。
+- 改了哪里：`src/v3_redundant_ik_interactive_demo.cpp`（位于 alfa_robot_moveit_config）；新增该包 `test/test_v3_redundant_ik_startup.py`；更新 `docs/运控/IK/V3冗余解析IK交互Demo.md`。未改 IK 数学、目标、模型或其他 demo，未提交 Git；已有环境修复保持不变。
+- 验证结果：Release 单包 colcon 构建通过；同一消息级检查修复前25秒失败、status=WAITING TF，修复后通过，默认左臂376解/8段、完整16轴（updown/head_joint=0）。不含碰撞与执行证明。
+- 留给下个 AI：从仓库根目录 source Humble/工作区后，使用空闲本机 domain 执行文档中的 test 命令；其自行启动关闭无界面 launch。完整25箱抽取后放任务仍缺交接引用的箱墙源码/基线，勿将本修复当作该任务验收。
+
 ## 2026-09-11 Codex / 旧架构单臂 demo 的箱墙前置开发
 - 做了什么：用户已向 mentor 确认允许在本地旧架构单臂 demo 开发完整任务；此前“必须等待新架构视频工作树”的阻塞判断失效。同事负责固定距离，我们先做场景/配置/回归，不代替其测量。
 - 改了哪里：单臂 demo C++/launch，新增默认参数 YAML 与 `test/test_v3_box_wall_preparation.py`；更新 `docs/运控/IK/V3单臂解析抽箱交互Demo.md`。增加显式 wall_origin 的5×5/1cm场景，目标选择不移动墙，完整16轴输出及配置拒绝；保留旧cross模式与既有未提交改动。未提交、推送、安装软件或控制实机。
@@ -1937,6 +1955,11 @@
 - Issue按用户授权留空；源码与先前冻结树一致，只更新PR/交接文档。保留未归属冗余IK修改和历史日志，不扩大暂存范围。
 - GitHub API可用但github.com Git传输仍超时，改用GitHub Git数据库API发布同一Git对象；必须校验远端tree/commit SHA与本地完全相同后才创建新分支，不强制更新已有分支。实际提交/PR结果记录到仓库外冻结清单；未经核心review/CI和合并，不发布正式tag。
 
+## 2026-09-11 Git / Codex / 单箱抓取冻结提交已发布
+- 结果：commit `27ea05e3823cdb0a474142a1354cafef8f5b80b7`；fork分支 `bestastesia/alfa_robot:feature/wall-box-grasp`；上游PR #20（https://github.com/kkozia188/alfa_robot/pull/20），目标alfa_v3_dev，open且未合并。
+- 验证：GitHub API再次确认远端branch/PR head与本地commit一致，tree亦一致；环境回归、提交内Python语法/HTML锚点通过。当前无CI check/status记录，reviewer尚待维护者安排，不宣称审查或CI通过。Issue留空，不打正式tag。
+- 留给下个AI：最终凭据和可校验增量Git bundle在 `/home/astesia/Sevenova/日志/冻结_2026-09-11/wall-box-grasp_165456`（依赖基线1e6c58ff718782a8c2b5bde76e03909f89670f8b）；fork remote及分支tracking已配置，origin未改。无关未提交修改保持原样，本条仅为本地交接，不再更改已发布冻结提交。
+
 ## 2026-09-11 Codex / 单箱抓取前按箱高下降共享升降轴
 - 做了什么：在冻结提交 `27ea05e` 上新建 `feature/wall-box-height-alignment`，按用户要求实现 `max(0, 肩部中心Z-(箱中心Z+offset))` 的下降预阶段；offset默认0.25m。冻结分支和原PR未改，本轮未提交/推送。保留原冗余IK未提交工作，不混入本功能。
 - 高度合同：中心取左右肩部前三关节公共轴交点的中点；复用解析IK几何，新增模型级肩中心读取，旧static接口仍保持LegacyV304语义。当前world Z≈1.342432773m；底排下降≈.892432773m、第二排≈.482432773m。updown按模型[-1,0]m限位拒绝越界，至多5mm采样整机碰撞；不做静默clamp、不放松ACM。非正差不抬升。下降后IK基坐标/RRT起态/负重返回目标一致；返回保持升降高度。
@@ -1949,6 +1972,11 @@
 - 用户明确要求将本次高度版提交PR；仅暂存高度版代码/文档/测试和本任务交接，不混入冗余IK修复或既有未归属日志。
 - GitHub API核验账号bestastesia；上游PR #20仍open未合并，目标alfa_v3_dev仍为1e6c58f。新PR沿用该目标，标注依赖#20并要求先合并#20；合并前累计diff包含前序内容，可用27ea05e到本次HEAD单独审阅升降增量。Issue无明确对应，按用户授权留空。
 - PR说明记录默认行为变化、0/4/5/9成功及6号回归差异、离散碰撞/无地板/无实机验收边界和复现命令。只发布待审查分支，不合并、不打正式tag。远端发布结果另存仓库外清单。
+
+## 2026-09-11 Git / Codex / 升降抓取版PR已发布
+- 已提交 `7d2defec72b7e43dc5094f5519f9332288cb47b3`，12个任务范围文件；fork分支 `bestastesia/alfa_robot:feature/wall-box-height-alignment`，上游PR #21（https://github.com/kkozia188/alfa_robot/pull/21），目标alfa_v3_dev，依赖#20先合并。Issue留空，未合并、未打tag。
+- 提交前再次运行高度版23次请求/3类非法偏置检查通过；暂存Python语法/HTML锚点/差异检查通过，无关文件哈希未变。使用已核验的VS Code凭据，经GitHub Git数据库API发布；再次确认remote branch、PR head、commit/tree均与本地完全一致。分支tracking已设置，origin和冻结分支不变。
+- 发布时PR为open、mergeable/clean，无CI check/status记录、尚无请求reviewer；不宣称已通过核心审查或CI。发布清单在 `/home/astesia/Sevenova/日志/验收_2026-09-11/wall_height_alignment/pr_published.json`；本条仅为本地发布后交接，不改写已发布提交。
 
 ## 2026-09-12 Codex / 距离升降单箱Demo加入地面与四周碰撞
 - 做了什么：在7d2defe上新建 `feature/wall-box-environment-collision`；共享makeScene统一加入原生CollisionObject环境盒体，复用现有整机状态/边检查覆盖初态、下降、IK、接触附着、抽出和负重RRT返回。未放松ACM、未缩小碰撞网格，保留原冗余IK未提交修改。本轮未提交/推送/创建PR。
@@ -1978,6 +2006,12 @@
 - 验证/边界：源码与完整验收的6项实现/二进制SHA256一致，提交前重跑仓库环境与25箱扫描42请求+7非法配置通过，解析IK CTest 2/2、暂存语法/JSON/diff检查通过，无关文件哈希未变；完整历史验收见`/home/astesia/Sevenova/日志/验收_2026-09-12/warehouse_home/`，本次发布核验见其`pr/`子目录。本机证据不是远端附件；PR给出复验命令和17/25覆盖、升降超限、离散碰撞及非实机边界。
 - 发布约束：中文提交/PR及Codex协作署名；只创建待审查PR，不合并、不打tag、不强推。发布后的PR编号、commit/tree一致性和CI/review状态另存发布清单并追加交接。
 
+## 2026-09-12 Git / Codex / 仓库碰撞与home版PR已发布
+- 已提交`cc3aa861ff7d6ca992fb10fcaa52cc9b930bb0f9`（12个任务文件，中文说明/Codex署名），fork分支`feature/wall-box-environment-collision`；上游PR #22（https://github.com/kkozia188/alfa_robot/pull/22）目标`alfa_v3_dev`，明确依赖#20→#21先合并，Issue沿用前序留空。
+- 通过已有VS Code GitHub凭据及本机SteamTools证书校验的GitHub Git数据库API发布；未关闭TLS验证或泄露凭据。本地commit/tree与远端branch/PR head均一致，tracking已设置；未改写历史、未强推、未合并、未打tag。
+- 发布后核验open、mergeable/clean，check runs/status/reviews/requested reviewers均为0，不宣称CI或核心review通过。复验42请求+7非法配置、CTest2/2及无关文件哈希检查通过；冗余IK修复及既有未归属文档/日志原样保留。
+- 发布清单与复验：`/home/astesia/Sevenova/日志/验收_2026-09-12/warehouse_home/pr/published.json`、`environment/summary.json`、`ctest.log`、`remote_pr.json`。本条为本地发布后交接，不改写已发布commit；下一步由维护者按依赖顺序审查合并。
+
 ## 2026-09-12 运控 / Codex / 单次肩心-TCP舒适高度实验收口
 - 做了什么：在 `feature/wall-box-comfort-height` 完成每臂一次几何选高的新实验入口，先调整 updown 再抓取，保持携箱 home + 升降归零；原 launch 的固定0.25m默认不变。仅仿真，未连接硬件。
 - 改了哪里：共享单臂Demo、解析IK模型臂长接口、纯选高头文件/测试、新comfort launch、Rerun诊断、实验/分析脚本；新增 `docs/运控/IK/V3单次舒适高度抓取Demo.md` 和 `V3单次舒适高度实验.json`。
@@ -1997,12 +2031,24 @@
 - 验证/风险：保留旧默认、完整碰撞和规划预算；独立验证未证明舒适区间优势，PR不得写成成功率或自然度全面提升。发布前核验历史证据与源码哈希、重跑CTest及启动回归；不接实机，不合并、不强推、不打tag。
 - 留给下个AI：发布清单与最终检查在 `/home/astesia/Sevenova/日志/验收_2026-09-12/comfort_height/pr/`；日常操作入口为README链接的速查，不新增冗长PR操作文档。发布后的编号另行追加。
 
+## 2026-09-12 Git / Codex / 舒适高度实验与Demo速查PR已发布
+- 已提交 `c6834d527512d3550508524fa7580e246e60448a`（19个任务文件，中文说明/Codex署名），fork分支 `feature/wall-box-comfort-height`；上游PR #23（https://github.com/kkozia188/alfa_robot/pull/23）目标 `alfa_v3_dev`，依赖 #20→#21→#22 先合并，Issue留空。
+- 发布前重跑CTest18+2、新旧启动8+12项全通过，暂存语法/JSON/操作命令检查通过，18项最终来源哈希匹配；无关文件哈希未变。PR保留独立验证负结论和旧默认，不宣传普适舒适优势。
+- 通过既有GitHub认证/API及已配置信任证书发布，本地commit/tree与远端分支和PR head一致，tracking已设置；未关闭TLS校验、未强推、未合并、未打tag。发布核验open、mergeable/clean，check runs/status条目/reviews/requested reviewers均为0，不宣称远端CI或review通过。
+- 发布清单、PR正文和验证结果：`/home/astesia/Sevenova/日志/验收_2026-09-12/comfort_height/pr/`。此发布后交接追加仅保留本地，未再为PR编号制造额外提交；其他AI的独立IK修改及历史未归属日志仍留在工作区。
+
 ## 2026-09-12 运控 / Codex / 舒适选高加入初态相连的升降碰撞边界
 - 做了什么：按用户要求，不能进入候选舒适区间时取当前姿态可达范围内最近高度；先以≤5mm检查升降首个碰撞边界，再复用一次几何选高。保留整机/负载碰撞、固定偏移默认、home归零及原IK/RRT预算；请求/换臂清理边界，JSON/RViz区分未检查提案和最终选高。
 - 改了哪里：共享单臂Demo、现有选高单测/benchmark/环境回归；速查仅改用途一句，详细说明标明大规模实验是修正前历史结果，未混写冻结参数或实验JSON。
 - 验证结果：Release构建、CTest18/18、新入口启动12项、环境35请求+7非法配置断言通过；6组独立FK/回放对照通过（不表示全抓取成功）。x=.90时6号左/auto完整成功、q=-.682676949；7号两臂q=-.990，绕开-.995的地面碰撞但接近第5/5步仍无IK候选。中途障碍-.280时选-.275，不跨越阻挡。
 - 进一步诊断：7号q=-.990固定接触姿态，离线0.1°冗余角扫描启用限位0解，禁用限位每臂28800解，最接近限位候选仍需|J2|≈105.43°>105°；不是臂长不足，也不能推成改变整机/接触姿态后的全局无解。诊断未改变运行时限位/预算。
 - 留给下个AI：新证据在`/home/astesia/Sevenova/日志/验收_2026-09-12/comfort_height/safe_lift_fix/`（final回归、独立腕心/接触IK诊断、源码哈希）；旧training_frozen哈希保持8e4d9d6f…634d8e。未重启用户domain188可见旧进程，使用新代码须按原命令重启；本轮未提交/推送PR，保留独立交互IK和原有未归属改动。
+
+## 2026-09-12 Git / Codex / 舒适升降边界修正追加PR #23
+- 已提交并发布`557b53f6768311cd6586491de0a7d765f8c65a0b`（7个任务文件，中文fix说明/Codex署名），追加原`feature/wall-box-comfort-height`/PR #23，目标`alfa_v3_dev`；依赖#20→#21→#22仍未合并，不另建重复PR。
+- PR按六项模板更新，区分原大规模实验与本次碰撞边界回归，明确7号接触IK仍失败；无明确Issue继续留空。发布前CTest18+2全通过，8项验收来源哈希匹配；仅暂存本轮LOG段，其他AI文件及未归属LOG原样保留。
+- 已核验本地/远端commit和tree、fork分支及PR head一致；open、mergeable/clean，无check/status条目或review，不宣称CI/审查通过。非强制快进发布，未合并、未打tag、未动可见Demo进程。
+- 发布/验证证据：`/home/astesia/Sevenova/日志/验收_2026-09-12/comfort_height/safe_lift_fix/pr/verified.json`。本条是发布后本地交接，未为记录PR编号再制造提交。
 
 ## 2026-09-12 运控 / Codex / 5×5连续吸附后放序列实现与部分验收
 - 做了什么：基于现有comfort版本新增连续25箱入口，默认x=0.90m/auto，按20–24→15–19→10–14→5–9→0–4。非底排正吸失败再顶吸（auto先正吸左右再顶吸左右），底排只顶吸；后方悬空释放消失前保留携箱碰撞，空载回home/升降归零；完整周期成功才提交，失败保留剩余箱并停止。未连接硬件，未提交/推送，未关闭用户已有GUI（PID228870）。
@@ -2050,6 +2096,10 @@
 - 验证结果：安装版x=.50/box7/top/auto/sequence_prefix/seed104731真实回放成功，1966帧、1879不同关节状态、1984箱标记；独立2661次碰撞/限位采样通过、附着连续，Rerun及瞬移/碰撞负例通过。证据confirmed_prefix_live。另原样保留x=.75做prefix对照，确认前17箱确实删除后，仍因中心腕心XY1.134010m超过.979m在precontact_ik停止，不再把上方遮挡当作已清场后的失败原因；证据confirmed_prefix_x075。
 - 留给下个AI：此前“等待上方是否清空”的阻塞已由用户解除，目标仍active（上一轮打断前并未调用update_goal blocked）。给用户的可跑通演示命令明确使用.50m，不暗称.75/.90顶吸已通过；.75偏心策略的密封/IK/运动仍未验收，完整序列仍17/25。保留工作区改动，无实机执行、无提交推送。
 
+## 2026-09-14 运控 / Codex / 箱7启动改为一条短命令
+- 用户再次反馈长命令不可用，未提供本次具体报错；不猜测错误原因。新增tools/box7_top.sh，复用ROS环境脚本并自动cd/source，以原已验证.50/box7/auto/top/sequence_prefix/seed104731启动，默认localhost域199。给用户只需bash加脚本绝对路径，无需自己拼参数或补续行符。
+- 验证：bash -n、从/tmp用env -i和bash --noprofile --norc运行--show-args均通过；同样空环境以无GUI真实启动，3.165秒规划SUCCESS，20秒后测试timeout只停止自身进程（预期124），不是完整GUI回放验收。上一轮相同场景完整回放已通过。日志box7_top_fix/short_command。AGENTS命令约定和诊断文档短入口同步；无需colcon重建。
+
 ## 2026-09-14 运控 / Codex / 箱墙连续后放释放与可复制长命令
 - 做了什么：按用户要求将完整可编辑长命令约定写入AGENTS.md（环境、路径、全部续行符齐全，不以短包装脚本替代）。箱墙单箱和序列统一后放→消失，无每箱home/升降复位，下一箱继承真实末态；失败只播放相连前缀，未连接搜索候选不瞬移。
 - 改了哪里：v3_single_arm_box_extract_demo.cpp、箱墙launch、Rerun描述、独立回放检查器和安装版单箱/序列/失败测试、两份箱墙/失败诊断文档。顶吸独立肩高于腕心0.10m策略；当前姿态可安全升降则不强制折臂；先提5cm并后退2cm，再水平抽离。墙任务边检查收紧0.25°，按得分顺序检查实际消费的笛卡尔候选，保留全部障碍和负载碰撞。
@@ -2067,6 +2117,11 @@
 - 提交范围：箱墙连续后放/正吸顶吸回退、各Demo失败观察、Rerun完整时间轴及其测试/当前文档/命令偏好。独立冗余IK启动修复只暂存失败标记相关hunk，其余启动修复、启动回归、本机交接、旧短脚本及未归属历史日志留在工作区。
 - 验证结果：实际暂存树独立构建2包通过、该树CTest20/20、既有解析IK2/2、独立安装版本8类失败冻结、两项Rerun观察器回归通过；11项关键源码哈希与最终验收一致。重写54,830帧23.6816s（含FK/flush），全回调23.9639s，实际RRD全部23个link逐帧变换与箱体状态读回通过。初次中文验收目录触发rosidl路径解析失败，换ASCII临时目录构建通过，未因此改实现。
 - 留给下个AI：完整25箱证据沿用本日`wall_rear_release/summary.json`，仅该显式参数组成立；Rerun未缩短约203s规划时间，非实机或GUI渲染耗时证明。本次复验/发布清单在`/home/astesia/Sevenova/日志/验收_2026-09-14/wall_sequence_pr/`，本机证据非远端附件；PR合并仍需规范要求的审查及CI。未停止用户Demo，未操作硬件。
+
+## 2026-09-14 Git / Codex / 箱墙与Rerun PR #24 已发布
+- 已通过普通非强制`git push`发布`c0bf653393dfd164a1cf75de303e5c236034a75d`，分支`feature/wall-sequence-rerun-timeline`；PR #24（https://github.com/kkozia188/alfa_robot/pull/24）目标`alfa_v3_dev`，明确依赖#20→#21→#22→#23。中文提交/六项PR模板/Codex署名齐全，无明确Issue继续留空。
+- 已核验本地与远端commit/tree、fork分支和PR head一致，32个任务文件中的所有代码与独立构建快照一致，无关文件及历史日志保留。状态open、非draft、mergeable/clean；未合并、未打tag。
+- 尚无CI check/status条目、review或已指派reviewer，不宣称CI/审查通过。请求`kkozia188`为reviewer的接口返回404，需维护者安排规范要求的审查。发布核验证据：`/home/astesia/Sevenova/日志/验收_2026-09-14/wall_sequence_pr/verified.json`。本条为发布后本地交接，不为记录PR编号再制造提交。
 
 ## 2026-09-14 Codex / 箱墙Rerun逐箱增量接收验收
 - 做了什么：在 `c0bf653` 基础上，每箱 `planWithFallback` 与失败诊断补帧完成后一次性发布完整段；不发布中间失败候选。后台继续规划，Rerun复用1024帧批量写入、不等播放；RViz逻辑、规划顺序、末态衔接与0.25°碰撞检查不变。
@@ -2101,3 +2156,29 @@
 - 改了哪里：权威 description 变更位于 `robot_description` 分支 `feat/motion-94-v311-named-poses@62662f4`、Gitea PR #9；消费仓同名功能分支同步 description 哈希锁，更新 MoveIt SRDF、初始位置、mock ros2_control/Xacro 默认值及文档。
 - 验证结果：两组姿态经运行中 MoveIt `/check_state_validity` 返回 `valid=True, contacts=[]`；description 36项测试通过；消费仓 Release 构建及63项测试通过，新增 `test_v311_named_pose_collision` 使用安装后的URDF/SRDF和FCL校验两组命名姿态无自碰撞、无越界。
 - 留给下个 AI：建议先合并 description PR #9，再合并消费仓 PR；消费仓锁定内容源提交 `62662f4`，同步器允许目标分支 merge/squash 后在所有受管文件哈希完全相同时视为等价。
+## 2026-09-14 Git / Codex / Rerun逐箱增量追加PR #24 已发布
+- 已将8个当前任务文件提交为`e75857e1e6f23390edfc3ae6952f4f9c9afea718`（中文提交、Codex署名），经普通非强制`git push`追加到原分支`feature/wall-sequence-rerun-timeline`、上游PR #24（https://github.com/kkozia188/alfa_robot/pull/24），目标`alfa_v3_dev`；更新PR标题与六项说明、逐箱时间指标/失败和UI实测、启动命令；依赖#20→#21→#22→#23仍open，无明确Issue留空，不合并/打tag。
+- 发布后核验：本地/远端commit及tree、PR head/base一致；PR open、非draft、mergeable/clean。CTest20/20及单测重新通过，6项实测源码哈希与发布提交一致，其他AI的交互IK文件及历史未归属日志未进入提交、哈希保持。已发布验收清单：`/home/astesia/Sevenova/日志/验收_2026-09-14/rerun_segments/pr/verified.json`，全量仿真和真实UI证据见上一条`summary.json`。
+- 待核心维护者按规范安排审查：目前PR无check/status记录、无review/指定reviewer，不宣称CI或审查通过；上述PR编号交接仅写在本地未提交的LOG末尾，不为记录编号再生成提交。
+
+## 2026-09-14 运控 / Codex / 双臂箱墙搬运与自然姿态约束
+- 做了什么：完整25箱改为每排“外侧对称双箱→内侧对称双箱→中心单箱”，共10个双臂轮次+5个单臂轮次；双臂按阶段同步并在合成后复核整机、双负载、环境、关节限位及帧间插值，失败保留原因并降级为两个原单箱任务。IK/RRT加入腕部与冗余轴加权、肩肘分支连续和绕远拒绝；后放优先碰撞安全直接插值。仅做simulation-only几何验证，不代表实机吸盘动力学安全。
+- 改了哪里：`wall_sequence.hpp`、新`natural_joint_motion.hpp`及`test_wall_sequence.cpp`；`v3_single_arm_box_extract_demo.cpp`新增双臂合成/降级、双附着箱JSON、最终统计，并修正distance demo直接路径与碰撞验证使用同一关节差值；最终大JSON改为直接构造`last_result_`并预留数组容量，避免30MB快照的多次深拷贝。Rerun viewer按box_id分别回放双箱，扩展解析测试；更新`docs/运控/IK/V3箱墙连续搬运测试.md`并明确序列默认话题为`/v3_box_wall_grasp_demo/task_json[_segments]`。
+- 验证结果：安装版两包构建通过；MoveIt CTest 20/20、Rerun两项pytest及真实单双箱viewer解析测试通过；`git diff --check`通过。独立ROS_DOMAIN_ID=208、x=0.50、seed=104731完整仿真：25/25、15段、34746帧、`dual_success_count=10/10`、`fallback_count=0`、`full_dual_pass=true`、规划211421.321ms。16+18正吸被真实臂臂碰撞拒绝后双顶吸成功，未放宽碰撞。证据：`/home/astesia/Sevenova/日志/验收_2026-09-14/dual_wall_sequence/`。
+- 留给下个 AI：当前结果只证明该确定性仿真配置下的几何轨迹全部通过；尚未做速度/时间参数化、吸盘保持力、箱体惯量和执行器动态验证，不能宣称实机箱体不会甩脱。用户原有交互IK文档/源码/测试、`HANDOFF_V3_MOVEIT.md`和`tools/box7_top.sh`均未覆盖或纳入本轮修改。
+
+## 2026-09-15 Git / Codex / 双臂箱墙搬运追加PR #24
+- 已将本轮7个双臂搬运相关文件提交为 `a723bb2e64b140eb1de575dc91f831be0f1cab46` 并普通推送到 `feature/wall-sequence-rerun-timeline`，复用上游PR #24，目标 `alfa_v3_dev`；未提交其他AI的交互IK、启动测试、HANDOFF和短脚本改动，不强推、不合并、不打tag。
+- 验证：两包构建、CTest20/20、Rerun回归及25/25完整仿真通过；双臂10/10、fallback 0，证据见 `/home/astesia/Sevenova/日志/验收_2026-09-14/dual_wall_sequence/`。
+- PR核验：远端head与本地一致，PR开放、非草稿、mergeable_state=clean；待维护者审查，不宣称CI/review通过，实机吸盘动力学仍未验证。
+
+## 2026-09-16 运控工程师 / Codex / 七轴机械臂静态避障轨迹方案对比
+- 做了什么：实现并封装三种可切换累计方案：`topk`、`shortcut_ruckig`、`chomp_ruckig`；按轮保留前 K 条完整成功轨迹，以自然关节权重选优，增加确定性 shortcut、TOTG/Ruckig 时间参数化、CHOMP 当前轨迹优化及显式 V3→V2 失败回退。方案4动力学优化继续延期且命令行明确拒绝。
+- 改了哪里：新增墙轨迹后处理/CHOMP 模块与单元测试，接入完整25箱单双臂规划；补充全16轴路径碰撞复核、近零运动时间处理、requested/effective variant 与 seed 身份校验；扩展独立回放验证、Rerun `execution_time` 时间线、逐段与最终汇总，并新增 `tools/compare_wall_trajectory_variants.sh` 输出独立 RRD、CSV/JSON/Markdown。
+- 验证结果：两包构建通过；MoveIt CTest 22/22、Rerun pytest 11/11、`bash -n`、`py_compile`、`git diff --check`通过。V2完整25箱验收通过；V3 seed 104731 完整25箱、15段、双臂10/10、fallback 0，严格汇总中 `variant_identity_valid=true`、`seed_identity_valid=true`、`run_complete=true`，独立验证器与 RRD 校验通过。证据位于 `日志/验收_2026-09-15/wall_trajectory_v2_fixed/` 与 `日志/验收_2026-09-16/wall_trajectory_v3_final/`。
+- 留给下个 AI：正式三方案×三种子全矩阵命令已具备但耗时较长，尚未整批执行；V1时间线是标记 `timing_valid=false` 的名义时间，V3允许带原因的 CHOMP→V2 回退。未做方案4、未提交或推送，也不应把仿真几何/运动学验收表述为实机动力学安全。
+
+## 2026-09-16 Git / Codex / 墙轨迹优化迁移到最新 V3 主线
+- 做了什么：将墙轨迹优化工作迁移到已包含 PR #26、#27、#28 的 `alfa_v3_dev@8649d6a`；解决 launch、双臂共享升降/回程策略、序列验收和工程日志冲突，并删除主线已淘汰的 `HANDOFF_V3_MOVEIT.md`。保留轨迹 top-K、shortcut+Ruckig、CHOMP+Ruckig，以及主线 5µm 接地值和 `post_extract_policy` 行为。
+- 验证结果：干净系统工具链下两目标包构建通过；`alfa_robot_moveit_config` CTest 25/25、`alfa_robot_rerun` pytest 11/11 通过；Python `py_compile`、两个 Shell 脚本 `bash -n`、冲突标记扫描和 `git diff --check` 均通过。首次构建受当前 shell 的 Conda Python/OpenSSL 污染失败，清理 PATH/LD_LIBRARY_PATH 并重建后通过，非源码失败。
+- 留给下个 AI：三方案×三种子完整矩阵仍未整批执行，不应把现有仿真/单测表述为实机动力学安全。后续发布分支为 `feature/wall-trajectory-optimization`，PR 目标必须是 `kkozia188/alfa_robot:alfa_v3_dev`。

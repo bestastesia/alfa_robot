@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from alfa_robot_rerun.demo_failure import replay_frames, log_failure
-from alfa_robot_rerun.sequence_timeline import SequenceTimeline
+from alfa_robot_rerun.sequence_timeline import SequenceTimeline, payload_execution_times
 
 import json
 import math
@@ -36,6 +36,7 @@ class PlaybackFrame:
     box_visible: bool = True
     scene_index: int = 0
     carried_boxes: tuple[dict, ...] = ()
+    execution_time_s: float = 0.0
 
 
 def matrix_to_quaternion(matrix: np.ndarray) -> list[float]:
@@ -104,7 +105,7 @@ class V3SingleArmBoxExtractViewer(Node):
                     rrb.TextDocumentView(origin="/summary", name="Task status"),
                     column_shares=[0.78, 0.22],
                 ),
-                rrb.TimePanel(timeline="task_frame", expanded=True, fps=20,
+                rrb.TimePanel(timeline="execution_time", expanded=True, fps=20,
                               play_state="Paused", loop_mode="Off"),
                 collapse_panels=False,
             )
@@ -173,12 +174,16 @@ class V3SingleArmBoxExtractViewer(Node):
                     joints = frame["joints"]
                     if not names or len(joints) != len(names) or not all(map(math.isfinite, joints)):
                         raise ValueError("invalid trajectory joints")
+                summary_only = payload["kind"] == "result" and self.sequence_timeline.final_count is None
                 ready = self.sequence_timeline.append(payload)
             except (KeyError, TypeError, ValueError) as error:
                 self.get_logger().error(f"拒绝序列分段（等待完整结果补齐）: {error}")
                 return
             for segment in ready:
                 self.write_payload(segment)
+            if summary_only and not ready:
+                self.write_payload(dict(payload, frames=[], diagnostic_frames=[],
+                                        execution_times_s=[], summary_only=True))
             if self.sequence_timeline.pending:
                 self.get_logger().warning(f"RERUN_SEQUENCE_GAP next_frame={len(self.sequence_timeline.frames)} "
                                           f"pending={sorted(self.sequence_timeline.pending)}")
@@ -195,6 +200,21 @@ class V3SingleArmBoxExtractViewer(Node):
         # A new message must not overwrite the previous result's final frame.
         rr.set_time("task_frame", sequence=self.global_frame)
         self.wall_request = payload if payload.get("distance_demo") else {}
+        if payload.get("summary_only"):
+            self.generation = int(payload.get("generation", self.generation))
+            self.success = bool(payload.get("success", False))
+            self.failure_stage = str(payload.get("failure_stage", ""))
+            self.failure_reason = str(payload.get("failure_reason", ""))
+            self.total_ms = float(payload.get("total_ms", 0.0))
+            self.metrics = dict(payload.get("metrics", {}))
+            self.diagnostic = payload.get("diagnostic", {}) if not self.success else {}
+            status = str(payload.get("status") or
+                         ("最终整墙结果已写入" if self.success else "最终整墙结果：失败"))
+            self.log_summary(status, planning=False)
+            recording = rr.get_global_data_recording()
+            if recording is not None:
+                recording.flush()
+            return
         self.scenes = payload.get("scenes", [])
         self.scene_index = -1
         if payload.get("kind") in ("preview", "planning"):
@@ -229,7 +249,24 @@ class V3SingleArmBoxExtractViewer(Node):
 
         parsed_frames: list[PlaybackFrame] = []
         joint_names = tuple(str(name) for name in payload.get("joint_names", []))
-        for frame in replay_frames(payload):
+        replay = replay_frames(payload)
+        execution_times = payload.get("execution_times_s")
+        supplied_times_valid = isinstance(execution_times, list) and len(execution_times) == len(replay)
+        if supplied_times_valid:
+            try:
+                execution_times = [float(value) for value in execution_times]
+                supplied_times_valid = all(math.isfinite(value) and value >= 0.0 for value in execution_times) and not any(
+                    right < left for left, right in zip(execution_times, execution_times[1:]))
+            except (TypeError, ValueError):
+                supplied_times_valid = False
+        if not supplied_times_valid:
+            try:
+                execution_times, _ = payload_execution_times(payload, replay)
+            except ValueError as error:
+                self.frames = []
+                self.get_logger().error(f"非法执行时间轴：{error}")
+                return
+        for frame, execution_time_s in zip(replay, execution_times):
             joints = tuple(float(value) for value in frame.get("joints", []))
             if not joint_names or len(joints) != len(joint_names) or not all(map(math.isfinite, joints)):
                 self.frames = []
@@ -248,6 +285,7 @@ class V3SingleArmBoxExtractViewer(Node):
                     box_visible=bool(frame.get("box_visible", True)),
                     scene_index=scene_index,
                     carried_boxes=tuple(dict(box) for box in frame.get("carried_boxes", [])),
+                    execution_time_s=float(execution_time_s),
                 )
             )
         self.joint_names = joint_names
@@ -460,6 +498,19 @@ class V3SingleArmBoxExtractViewer(Node):
         elif self.wall_request.get("sequence"):
             body += (f"\n- 整墙结果：{self.wall_request['completed_count']}/25；"
                      f"失败箱 {self.wall_request['failed_box_id']}；逐帧释放消失，不跳箱。")
+        requested = self.wall_request.get("requested_trajectory_variant")
+        if requested:
+            body += (f"\n- 轨迹方案：`{requested}` → "
+                     f"`{self.wall_request.get('effective_trajectory_variant', requested)}`；"
+                     f"时间轴：{'真实执行时间' if self.wall_request.get('timing_valid') else 'nominal帧时间'}；"
+                     f"执行时长 {float(self.wall_request.get('execution_duration_s', 0.0)):.3f} s"
+                     f"\n- 后处理：shortcut {float(self.metrics.get('shortcut_ms', 0.0)):.2f} / "
+                     f"CHOMP {float(self.metrics.get('chomp_ms', 0.0)):.2f} / "
+                     f"TOTG {float(self.metrics.get('totg_ms', 0.0)):.2f} / "
+                     f"Ruckig {float(self.metrics.get('ruckig_ms', 0.0)):.2f} ms；"
+                     f"峰值 v/a/j={float(self.wall_request.get('max_velocity', 0.0)):.3f}/"
+                     f"{float(self.wall_request.get('max_acceleration', 0.0)):.3f}/"
+                     f"{float(self.wall_request.get('max_jerk', 0.0)):.3f}")
         environment = self.wall_request.get("environment", {})
         if environment:
             body += (f"\n- 环境碰撞：{'开启' if environment['enabled'] else '关闭（仅回归）'}；"
@@ -496,8 +547,11 @@ class V3SingleArmBoxExtractViewer(Node):
         for begin in range(0, len(self.frames), 1024):
             batch = self.frames[begin:begin + 1024]
             transforms = [self.robot.fk(dict(zip(self.joint_names, f.joints))) for f in batch]
-            times = [rr.TimeColumn("task_frame", sequence=np.arange(
-                self.global_frame, self.global_frame + len(batch)))]
+            times = [
+                rr.TimeColumn("task_frame", sequence=np.arange(
+                    self.global_frame, self.global_frame + len(batch))),
+                rr.TimeColumn("execution_time", duration=[frame.execution_time_s for frame in batch]),
+            ]
             for link in transforms[0]:
                 poses = np.asarray([tf[link] for tf in transforms])
                 rr.send_columns(f"world/robot/{link}", indexes=times,
@@ -515,6 +569,7 @@ class V3SingleArmBoxExtractViewer(Node):
     def log_frame(self, transforms: dict[str, np.ndarray]) -> None:
         frame = self.frames[self.frame_index]
         rr.set_time("task_frame", sequence=self.global_frame)
+        rr.set_time("execution_time", duration=frame.execution_time_s)
         joint_positions = dict(zip(self.joint_names, frame.joints))
         if self.scenes and self.scene_index != frame.scene_index:
             self.update_scene(self.scenes[frame.scene_index], draw_boxes=False)

@@ -33,6 +33,7 @@ find_package(robot_motion_core REQUIRED)
 find_package(alfa_robot_analytic_ik REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(ompl REQUIRED)
+find_package(chomp_motion_planner REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ConfigureExtractMonitor.srv"
@@ -260,6 +261,8 @@ ament_target_dependencies(v3_redundant_ik_interactive_demo
 
 add_executable(v3_single_arm_box_extract_demo
   src/v3_single_arm_box_extract_demo.cpp
+  src/wall_trajectory_postprocessing.cpp
+  src/wall_chomp_optimizer.cpp
 )
 
 target_compile_features(v3_single_arm_box_extract_demo PUBLIC cxx_std_17)
@@ -277,6 +280,7 @@ target_link_libraries(v3_single_arm_box_extract_demo
 )
 
 ament_target_dependencies(v3_single_arm_box_extract_demo
+  chomp_motion_planner
   alfa_robot_analytic_ik
   geometry_msgs
   interactive_markers
@@ -463,6 +467,27 @@ if(BUILD_TESTING)
   target_include_directories(test_wall_sequence PRIVATE include ${EIGEN3_INCLUDE_DIRS})
   target_compile_options(test_wall_sequence PRIVATE -UNDEBUG)
   add_test(NAME test_wall_sequence COMMAND test_wall_sequence)
+
+  add_executable(test_wall_trajectory_postprocessing
+    test/test_wall_trajectory_postprocessing.cpp
+    src/wall_trajectory_postprocessing.cpp
+  )
+  target_compile_features(test_wall_trajectory_postprocessing PRIVATE cxx_std_17)
+  target_include_directories(test_wall_trajectory_postprocessing PRIVATE include)
+  target_compile_options(test_wall_trajectory_postprocessing PRIVATE -UNDEBUG)
+  ament_target_dependencies(test_wall_trajectory_postprocessing
+    moveit_core moveit_ros_planning nlohmann_json srdfdom urdf)
+  add_test(NAME test_wall_trajectory_postprocessing COMMAND test_wall_trajectory_postprocessing)
+
+  add_executable(test_wall_chomp_optimizer
+    test/test_wall_chomp_optimizer.cpp
+    src/wall_chomp_optimizer.cpp
+  )
+  target_compile_features(test_wall_chomp_optimizer PRIVATE cxx_std_17)
+  target_include_directories(test_wall_chomp_optimizer PRIVATE include)
+  target_compile_options(test_wall_chomp_optimizer PRIVATE -UNDEBUG)
+  ament_target_dependencies(test_wall_chomp_optimizer chomp_motion_planner moveit_core nlohmann_json srdfdom urdf)
+  add_test(NAME test_wall_chomp_optimizer COMMAND test_wall_chomp_optimizer)
 
   add_executable(test_comfort_height test/test_comfort_height.cpp)
   target_compile_features(test_comfort_height PRIVATE cxx_std_17)
