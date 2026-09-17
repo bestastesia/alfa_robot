@@ -4,6 +4,7 @@
 #include <alfa_robot_moveit_config/natural_joint_motion.hpp>
 #include <alfa_robot_moveit_config/comfort_height.hpp>
 #include <alfa_robot_moveit_config/wall_sequence.hpp>
+#include <alfa_robot_moveit_config/transfer_cache.hpp>
 #include <ompl/util/RandomNumbers.h>
 #include <alfa_robot_moveit_config/srv/plan_wall_box_demo.hpp>
 
@@ -200,6 +201,7 @@ struct TaskResult
   std::vector<ReplayFrame> diagnostic_frames;
   moveit::core::RobotStatePtr rejected_state;
   nlohmann::json diagnostic = nlohmann::json::object();
+  nlohmann::json transfer = nlohmann::json::object();
 };
 
 class V3SingleArmBoxExtractDemo : public rclcpp::Node
@@ -219,6 +221,16 @@ public:
       throw std::invalid_argument(
               "post_extract_policy must be rear_release or loaded_home");
     }
+    transfer_mode_ = getParameter<std::string>("transfer_mode", "disabled");
+    transfer_cache_file_ = getParameter<std::string>("transfer_cache_file", "");
+    transfer_named_pose_ = getParameter<std::string>("transfer_named_pose", "home");
+    transfer_joint_config_ = nlohmann::json::parse(
+      getParameter<std::string>("transfer_joints_json", "{}"));
+    if (transfer_mode_ != "disabled" && transfer_mode_ != "build" && transfer_mode_ != "use")
+      throw std::invalid_argument("transfer_mode must be disabled, build or use");
+    if (transfer_mode_ != "disabled" &&
+        (!distance_demo_ || post_extract_policy_ != "rear_release" || transfer_cache_file_.empty()))
+      throw std::invalid_argument("transfer cache requires wall rear_release and a cache file");
     initial_pose_ = getParameter<std::string>("initial_pose", "home");
     if (initial_pose_ != "home" && (initial_pose_ != "arms_down" || !distance_demo_))
       throw std::invalid_argument("initial_pose must be home, or arms_down for wall simulation");
@@ -327,6 +339,13 @@ public:
     }
     if (!robot_model_->hasLinkModel(tool_link_) || !robot_model_->hasLinkModel(arm_base_link_)) {
       throw std::runtime_error("missing tool or arm base link");
+    }
+
+    if (transfer_mode_ != "disabled") {
+      transfer_cache_ = alfa_robot::motion::readTransferCache(transfer_cache_file_,
+        {{"urdf", get_parameter("robot_description").as_string()},
+         {"srdf", get_parameter("robot_description_semantic").as_string()}},
+        transfer_mode_ == "build");
     }
 
     all_joint_names_.reserve(16);
@@ -822,15 +841,16 @@ private:
     return result;
   }
 
-  static int transferPhase(const std::string& stage)
+  int transferPhase(const std::string& stage) const
   {
     if (stage == "attach_box") return 3;
     if (stage == "cartesian_approach") return 2;
     if (stage == "cartesian_retreat" || stage == "cartesian_lift") return 4;
-    if (stage == "rrt_return") return 5;
-    if (stage == "updown_return" || stage == "loaded_home") return 6;
-    if (stage == "rear_placement") return 6;
-    if (stage == "release_box") return 7;
+    if (stage == "rrt_return" || stage == "rrt_to_midpoint") return 5;
+    if (stage == "offline_carry") return 6;
+    if (stage == "updown_return" || stage == "loaded_home") return transfer_mode_ == "disabled" ? 6 : 7;
+    if (stage == "rear_placement") return transfer_mode_ == "disabled" ? 6 : 7;
+    if (stage == "release_box") return transfer_mode_ == "disabled" ? 7 : 8;
     if (stage == "rrt_approach") return 1;
     return 0;
   }
@@ -1000,6 +1020,7 @@ private:
     TaskResult right = planTask(right_center);
     synchronized_updown_.reset();
     result.metrics.add(left.metrics); result.metrics.add(right.metrics);
+    result.transfer = {{"left", left.transfer}, {"right", right.transfer}};
     if (!left.success || !right.success) {
       result.failure_stage = "dual_independent_plan";
       result.failure_reason = "left=" + (left.success ? std::string("ok") : left.failure_stage + ":" + left.failure_reason) +
@@ -1011,7 +1032,7 @@ private:
 
     std::vector<double> left_hold = common_joints, right_hold = common_joints;
     bool left_attached = false, right_attached = false, left_visible = true, right_visible = true;
-    for (int phase = 0; phase <= 7; ++phase) {
+    for (int phase = 0; phase <= 8; ++phase) {
       std::vector<const ReplayFrame*> left_phase, right_phase;
       for (const auto& frame : left.frames) if (transferPhase(frame.stage) == phase) left_phase.push_back(&frame);
       for (const auto& frame : right.frames) if (transferPhase(frame.stage) == phase) right_phase.push_back(&frame);
@@ -2208,6 +2229,96 @@ private:
     return true;
   }
 
+  moveit::core::RobotState transferMidpoint(const moveit::core::RobotState& context) const
+  {
+    moveit::core::RobotState named(context);
+    if (!named.setToDefaultValues(robot_model_->getJointModelGroup("whole_body"), transfer_named_pose_))
+      throw std::runtime_error("unknown transfer named pose: " + transfer_named_pose_);
+    moveit::core::RobotState midpoint(context);
+    auto joints = armJoints(named);
+    if (transfer_joint_config_.contains(side_)) {
+      const auto path = alfa_robot::motion::decodeTransferPath(
+        nlohmann::json::array({transfer_joint_config_.at(side_), transfer_joint_config_.at(side_)}));
+      joints = path.front();
+    }
+    midpoint.setJointGroupPositions(planning_group_, joints.data());
+    attachCarriedBox(midpoint);
+    midpoint.update(true);
+    return midpoint;
+  }
+
+  std::string transferKey(const moveit::core::RobotState& midpoint) const
+  {
+    nlohmann::json fixed = nlohmann::json::object();
+    for (const auto& name : robot_model_->getVariableNames())
+      if (std::find(planning_group_->getVariableNames().begin(),
+          planning_group_->getVariableNames().end(), name) == planning_group_->getVariableNames().end())
+        fixed[name] = midpoint.getVariablePosition(name);
+    const auto transform = toolToBox();
+    nlohmann::json offset = nlohmann::json::array();
+    for (int row = 0; row < 3; ++row)
+      for (int col = 0; col < 4; ++col) offset.push_back(transform.matrix()(row, col));
+    // Scene obstacles are deliberately not a cache key: every replay is checked in its current scene.
+    return nlohmann::json({{"side", side_}, {"top", top_suction_}, {"fixed", fixed},
+      {"midpoint", armJoints(midpoint)}, {"payload", {box_depth_, box_width_, box_height_}},
+      {"tool_to_box", offset}, {"rear", {chassis_rear_x_, rear_clearance_, wall_bottom_z_, contact_numerical_gap_}}}).dump();
+  }
+
+  RrtPlanResult planLoadedEdge(const planning_scene::PlanningSceneConstPtr& scene,
+    const moveit::core::RobotState& start, const moveit::core::RobotState& goal,
+    PlanningMetrics* metrics)
+  {
+    RrtPlanResult plan;
+    if (alfa_robot::motion::sameShoulderElbowBranch(armJoints(start), armJoints(goal)) &&
+        edgeClear(scene, start, goal, true, metrics, &plan.reason, &plan.rejected_state)) {
+      plan.success = true;
+      plan.states = directArmPath(start, goal);
+    } else {
+      plan = planRrt(scene, start, goal);
+      if (metrics) metrics->rrt_return_ms += plan.wall_ms;
+    }
+    return plan;
+  }
+
+  bool validateTransferPath(const planning_scene::PlanningSceneConstPtr& scene,
+    const std::vector<moveit::core::RobotStatePtr>& states, PlanningMetrics* metrics,
+    std::string* reason, moveit::core::RobotStatePtr* rejected) const
+  {
+    std::vector<std::array<double, 7>> joints;
+    for (size_t i = 0; i < states.size(); ++i) {
+      joints.push_back(armJoints(*states[i]));
+      const auto collision = collisionReason(scene, *states[i], metrics);
+      if (!states[i]->satisfiesBounds() || !collision.empty()) {
+        *reason = collision.empty() ? "cached_joint_bounds" : "cached_" + collision;
+        *rejected = states[i];
+        return false;
+      }
+      if (i && !edgeClear(scene, *states[i-1], *states[i], true, metrics, reason, rejected))
+        return false;
+    }
+    if (!alfa_robot::motion::naturalJointPath(joints, 8.0, 3.0, false)) {
+      *reason = "cached_unnatural_path";
+      return false;
+    }
+    moveit::core::RobotState reference(*home_state_);
+    reference.setVariablePosition("updown", states.front()->getVariablePosition("updown"));
+    if (top_suction_) reference.setVariablePosition(side_ + "_joint4", foldedElbowPosition(side_));
+    reference.update(true);
+    const auto expected = alfa_robot::motion::wallRearPlacementPose(
+      reference.getGlobalLinkTransform(tool_link_), toolToBox(), boxSize(),
+      chassis_rear_x_, rear_clearance_, wall_bottom_z_ + contact_numerical_gap_);
+    if ((states.back()->getGlobalLinkTransform(tool_link_).matrix() - expected.matrix()).norm() > 1e-3) {
+      *reason = "cached_placement_pose_mismatch";
+      return false;
+    }
+    if (!alfa_robot::motion::boxBehindChassis(
+        states.back()->getGlobalLinkTransform(tool_link_) * toolToBox(), boxSize(), chassis_rear_x_)) {
+      *reason = "cached_payload_not_behind_chassis";
+      return false;
+    }
+    return true;
+  }
+
   TaskResult planTask(const Eigen::Vector3d& box_center)
   {
     height_clearance_ = {{"checked", false}};
@@ -2351,6 +2462,130 @@ private:
     result.frames.insert(result.frames.begin(), preparation.begin(), preparation.end());
     const auto lift_prefix = result.frames;
     std::string precontact_rejections;
+    moveit::core::RobotState midpoint(grasp_start);
+    moveit::core::RobotState offline_return_goal(grasp_start);
+    std::vector<moveit::core::RobotStatePtr> carry_states;
+    bool cache_hit = false;
+    nlohmann::json transfer_template = nlohmann::json::object();
+    // The suffix depends only on the fixed midpoint/payload/shared axes, not on a contact IK candidate.
+    // Prepare and validate it once before the expensive candidate loop.
+    if (transfer_mode_ != "disabled") {
+      midpoint = transferMidpoint(grasp_start);
+      const auto contact = contactPose(box_center);
+      const std::string cache_key = transferKey(midpoint);
+      const auto& entries = transfer_cache_.at("entries");
+      cache_hit = entries.contains(cache_key);
+      transfer_template = {{"mode", transfer_mode_}, {"cache_hit", cache_hit},
+        {"midpoint_joints", armJoints(midpoint)}, {"updown", midpoint.getVariablePosition("updown")},
+        {"placement_ik_calls", 0}, {"suffix_planner_calls", 0}, {"suffix_shortcut_checks", 0},
+        {"contact_to_midpoint_tcp_distance_m", (contact.translation() -
+           midpoint.getGlobalLinkTransform(tool_link_).translation()).norm()}};
+      result.transfer = transfer_template;
+      std::string reason = collisionReason(loaded, midpoint, &result.metrics);
+      if (!midpoint.satisfiesBounds() || !reason.empty()) {
+        result.failure_stage = "transfer_midpoint";
+        result.failure_reason = reason.empty() ? "midpoint joint bounds" : reason;
+        result.rejected_state = std::make_shared<moveit::core::RobotState>(midpoint);
+        return finish();
+      }
+      if (cache_hit) {
+        try {
+          const auto path = alfa_robot::motion::decodeTransferPath(entries.at(cache_key));
+          if (path.front() != armJoints(midpoint))
+            throw std::runtime_error("cached midpoint seam mismatch");
+          for (const auto& joints : path) {
+            auto state = std::make_shared<moveit::core::RobotState>(midpoint);
+            state->setJointGroupPositions(planning_group_, joints.data());
+            state->update(true);
+            carry_states.push_back(state);
+          }
+          offline_return_goal = *carry_states.back();
+        } catch (const std::exception& error) {
+          result.failure_stage = "transfer_cache";
+          result.failure_reason = error.what();
+          return finish();
+        }
+      } else if (transfer_mode_ == "use") {
+        result.failure_stage = "transfer_cache";
+        result.failure_reason = "no offline suffix for this midpoint/payload/shared-axis configuration";
+        return finish();
+      } else {
+        moveit::core::RobotState rear_reference(*home_state_);
+        rear_reference.setVariablePosition("updown", grasp_start.getVariablePosition("updown"));
+        if (top_suction_)
+          rear_reference.setVariablePosition(side_ + "_joint4", foldedElbowPosition(side_));
+        rear_reference.update(true);
+        const auto rear = alfa_robot::motion::wallRearPlacementPose(
+          rear_reference.getGlobalLinkTransform(tool_link_), toolToBox(), boxSize(),
+          chassis_rear_x_, rear_clearance_, wall_bottom_z_ + contact_numerical_gap_);
+        result.transfer["placement_ik_calls"] = 1;
+        auto candidates = solvePoseCandidates(
+          rear, grasp_start, true, loaded, &result.metrics, false, &reason, &result.rejected_state);
+        bool found = false;
+        for (size_t i = 0; i < std::min(candidates.size(), precontact_candidate_limit_); ++i) {
+          const auto& goal = *candidates[i].state;
+          if (!alfa_robot::motion::boxBehindChassis(
+              goal.getGlobalLinkTransform(tool_link_) * toolToBox(), boxSize(), chassis_rear_x_)) {
+            reason = "rear target does not put the entire box at least 1cm behind chassis";
+            continue;
+          }
+          offline_return_goal = goal;
+          found = true;
+          break;
+        }
+        if (!found) {
+          result.failure_stage = "rear_placement";
+          result.failure_reason = reason;
+          return finish();
+        }
+        auto suffix = planLoadedEdge(loaded, midpoint, offline_return_goal, &result.metrics);
+        result.transfer["suffix_planner_calls"] = 1;
+        if (!suffix.success) {
+          result.failure_stage = "offline_carry";
+          result.failure_reason = suffix.reason;
+          result.rejected_state = suffix.rejected_state;
+          return finish();
+        }
+        carry_states = suffix.states;
+        // Offline-only local improvement. Bound expensive collision trials; this is not a global optimum proof.
+        constexpr size_t kShortcutChecks = 64;
+        size_t shortcut_checks = 0;
+        for (size_t i = 0; i + 2 < carry_states.size() && shortcut_checks < kShortcutChecks; ++i) {
+          size_t span = carry_states.size() - 1 - i;
+          while (span > 1 && shortcut_checks < kShortcutChecks) {
+            const size_t j = i + span;
+            if (alfa_robot::motion::sameShoulderElbowBranch(
+                  armJoints(*carry_states[i]), armJoints(*carry_states[j]))) {
+              ++shortcut_checks;
+              if (edgeClear(loaded, *carry_states[i], *carry_states[j], true,
+                  &result.metrics, &reason)) {
+                carry_states.erase(carry_states.begin() + i + 1, carry_states.begin() + j);
+                break;
+              }
+            }
+            span = (span + 1) / 2;
+          }
+        }
+        result.transfer["suffix_shortcut_checks"] = shortcut_checks;
+      }
+      const auto validation_started = std::chrono::steady_clock::now();
+      if (!validateTransferPath(loaded, carry_states, &result.metrics, &reason, &result.rejected_state)) {
+        result.failure_stage = "transfer_cache_validation";
+        result.failure_reason = reason;
+        return finish();
+      }
+      result.transfer["suffix_validation_ms"] = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - validation_started).count();
+      result.transfer["suffix_points"] = carry_states.size();
+      if (!cache_hit) {
+        alfa_robot::motion::TransferPath path;
+        for (const auto& state : carry_states) path.push_back(armJoints(*state));
+        transfer_cache_["entries"][cache_key] = path;
+        alfa_robot::motion::writeTransferCache(transfer_cache_file_, transfer_cache_);
+      }
+      transfer_template = result.transfer;
+    }
+
     auto precontact_candidates = solvePoseCandidates(
       precontactPose(box_center), grasp_start, false, scene, &result.metrics,
       false, &precontact_rejections, &result.rejected_state);
@@ -2379,6 +2614,7 @@ private:
     std::vector<ReplayFrame> best_partial = lift_prefix;
     for (size_t candidate_index = 0; candidate_index < precontact_candidates.size(); ++candidate_index) {
       result.rejected_state.reset();
+      result.transfer = transfer_template;
       result.diagnostic = nlohmann::json::object();
       result.diagnostic_frames.clear();
       best_partial = lift_prefix;
@@ -2428,9 +2664,10 @@ private:
       }
 
       last_failure_stage.clear();
-      moveit::core::RobotState return_goal(grasp_start);
-      attachCarriedBox(return_goal);
-      if (distance_demo_ && post_extract_policy_ == "rear_release") {
+      moveit::core::RobotState return_goal = transfer_mode_ == "disabled" ?
+        moveit::core::RobotState(grasp_start) : offline_return_goal;
+      if (transfer_mode_ == "disabled") attachCarriedBox(return_goal);
+      if (transfer_mode_ == "disabled" && distance_demo_ && post_extract_policy_ == "rear_release") {
         // Position the entire rotated payload behind the chassis, not just the TCP.
         // A folded top-suction payload can extend forward of its TCP.
         moveit::core::RobotState rear_reference(*home_state_);
@@ -2461,7 +2698,7 @@ private:
           last_failure_reason = reason;
           continue;
         }
-      } else {
+      } else if (transfer_mode_ == "disabled") {
         const auto reason = collisionReason(loaded, return_goal, &result.metrics);
         if (!reason.empty()) {
           result.rejected_state = std::make_shared<moveit::core::RobotState>(return_goal);
@@ -2471,17 +2708,21 @@ private:
         }
       }
 
-      RrtPlanResult return_plan;
-      std::string direct_reason;
-      if (edgeClear(loaded, *retreat_states.back(), return_goal, true, &result.metrics,
-          &direct_reason, &return_plan.rejected_state) &&
-          alfa_robot::motion::sameShoulderElbowBranch(
-            armJoints(*retreat_states.back()), armJoints(return_goal))) {
-        return_plan.success = true;
-        return_plan.states = directArmPath(*retreat_states.back(), return_goal);
-      } else {
-        return_plan = planRrt(loaded, *retreat_states.back(), return_goal);
-        result.metrics.rrt_return_ms += return_plan.wall_ms;
+      const auto dynamic_started = std::chrono::steady_clock::now();
+      auto return_plan = planLoadedEdge(loaded, *retreat_states.back(),
+        transfer_mode_ == "disabled" ? return_goal : midpoint, &result.metrics);
+      if (transfer_mode_ != "disabled") {
+        result.transfer["dynamic_return_ms"] = std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - dynamic_started).count();
+        std::vector<std::array<double, 7>> path;
+        for (const auto& state : return_plan.states) path.push_back(armJoints(*state));
+        result.transfer["dynamic_weighted_length"] = alfa_robot::motion::naturalJointPathLength(path, false);
+        result.transfer["retreat_to_midpoint_joint_distance"] = std::sqrt(
+          alfa_robot::motion::naturalJointDistanceSquared(armJoints(*retreat_states.back()), armJoints(midpoint), false));
+        result.transfer["retreat_to_midpoint_tcp_distance_m"] =
+          (retreat_states.back()->getGlobalLinkTransform(tool_link_).translation() -
+           midpoint.getGlobalLinkTransform(tool_link_).translation()).norm();
+        result.transfer["suffix_points"] = carry_states.size();
       }
       if (!return_plan.success) {
         result.rejected_state = return_plan.rejected_state;
@@ -2489,12 +2730,17 @@ private:
         result.diagnostic["target"] = {target.x(), target.y(), target.z()};
         last_failure_stage = "rrt_return";
         last_failure_reason = "candidate " + std::to_string(candidate_index) + " " +
-          (return_plan.reason.empty() ? direct_reason : return_plan.reason);
+          return_plan.reason;
         continue;
       }
 
       result.frames = std::move(executable_prefix);
-      appendStates(return_plan.states, "rrt_return", true, true, &result.frames);
+      appendStates(return_plan.states, transfer_mode_ == "disabled" ? "rrt_return" : "rrt_to_midpoint",
+        true, true, &result.frames);
+      if (!carry_states.empty()) {
+        // Duplicate seam is deliberate: zero positional jump, explicit stage boundary.
+        appendStates(carry_states, "offline_carry", true, false, &result.frames);
+      }
       if (post_extract_policy_ == "loaded_home") {
         const auto updown_return = moveUpdown(
           loaded, *return_plan.states.back(),
@@ -2638,6 +2884,8 @@ private:
     payload["side"] = side_;
     payload["tool_link"] = tool_link_;
     payload["success"] = result.success;
+    payload["transfer"] = result.transfer;
+    payload["transfer_mode"] = transfer_mode_;
     payload["failure_stage"] = result.failure_stage;
     payload["failure_reason"] = result.failure_reason;
     payload["total_ms"] = result.total_ms;
@@ -2922,6 +3170,11 @@ private:
   bool display_box_attached_ = false;
   std::vector<moveit_msgs::msg::CollisionObject> environment_objects_;
   nlohmann::json environment_json_;
+  std::string transfer_mode_ = "disabled";
+  std::string transfer_cache_file_;
+  std::string transfer_named_pose_;
+  nlohmann::json transfer_joint_config_;
+  nlohmann::json transfer_cache_;
   bool distance_demo_ = false;
   std::string post_extract_policy_ = "rear_release";
   bool align_height_ = false;

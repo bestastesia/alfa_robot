@@ -30,7 +30,8 @@ def launch_nodes(context):
                       ("align_height", bool), ("shoulder_box_offset", float), ("top_shoulder_above_wrist", float),
                       ("check_environment", bool), ("height_strategy", str), ("comfort_branch", str),
                       ("comfort_ratio_min", float), ("comfort_ratio_preferred", float),
-                      ("comfort_ratio_max", float), ("planning_seed", int)):
+                      ("comfort_ratio_max", float), ("planning_seed", int), ("transfer_mode", str), ("transfer_cache_file", str),
+                      ("transfer_named_pose", str), ("transfer_joints_json", str)):
         params[key] = ParameterValue(LaunchConfiguration(key), value_type=kind)
     # Read once at startup; the C++ boundary validates exact geometry for every consumer.
     if LaunchConfiguration("check_environment").perform(context).lower() == "true":
@@ -74,6 +75,10 @@ def generate_launch_description():
                               description="auto stops at first successful arm"),
     ]
     for name, default, description in (
+        ("transfer_mode", "disabled", "disabled: original planner; build: offline suffix generation; use: read-only, fail closed on missing/invalid suffix"),
+        ("transfer_cache_file", "", "Absolute cache JSON path; one offline writer per file"),
+        ("transfer_named_pose", "home", "SRDF whole_body named arm pose, keeping current shared axes"),
+        ("transfer_joints_json", "{}", "Optional fixed arm radians JSON keyed by left/right; overrides named arm pose"),
         ("post_extract_policy", "rear_release", "rear_release places/releases behind chassis; loaded_home preserves the local attached return"),
         ("height_strategy", "fixed_offset", "fixed_offset or comfort_radius; one height per arm"),
         ("comfort_ratio_min", "0.8", "Minimum normalized shoulder-to-TCP comfort distance"),
