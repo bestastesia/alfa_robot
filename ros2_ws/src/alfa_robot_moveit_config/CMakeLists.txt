@@ -464,6 +464,16 @@ if(BUILD_TESTING)
   target_compile_options(test_wall_sequence PRIVATE -UNDEBUG)
   add_test(NAME test_wall_sequence COMMAND test_wall_sequence)
 
+  add_test(NAME test_transfer_midpoint_ranking
+    COMMAND /usr/bin/python3 ${CMAKE_CURRENT_SOURCE_DIR}/test/test_transfer_midpoint_ranking.py)
+
+  add_executable(test_transfer_cache test/test_transfer_cache.cpp)
+  target_compile_features(test_transfer_cache PRIVATE cxx_std_17)
+  target_include_directories(test_transfer_cache PRIVATE include)
+  ament_target_dependencies(test_transfer_cache nlohmann_json)
+  target_compile_options(test_transfer_cache PRIVATE -UNDEBUG)
+  add_test(NAME test_transfer_cache COMMAND test_transfer_cache)
+
   add_executable(test_comfort_height test/test_comfort_height.cpp)
   target_compile_features(test_comfort_height PRIVATE cxx_std_17)
   target_include_directories(test_comfort_height PRIVATE include)

@@ -13,13 +13,14 @@ inline double shortestAngleDelta(double from, double to)
 }
 
 inline double naturalJointDistanceSquared(
-  const std::array<double, 7>& from, const std::array<double, 7>& to)
+  const std::array<double, 7>& from, const std::array<double, 7>& to,
+  bool wrap_angles = true)
 {
   // Shoulder/elbow motion is useful; distal wrist/swivel motion should earn its cost.
   constexpr std::array<double, 7> weights{1.0, 1.0, 1.0, 1.0, 2.0, 3.0, 5.0};
   double distance = 0.0;
   for (size_t i = 0; i < from.size(); ++i) {
-    const double delta = shortestAngleDelta(from[i], to[i]);
+    const double delta = wrap_angles ? shortestAngleDelta(from[i], to[i]) : to[i] - from[i];
     distance += weights[i] * delta * delta;
   }
   return distance;
@@ -36,22 +37,23 @@ inline bool sameShoulderElbowBranch(
   return true;
 }
 
-inline double naturalJointPathLength(const std::vector<std::array<double, 7>>& path)
+inline double naturalJointPathLength(
+  const std::vector<std::array<double, 7>>& path, bool wrap_angles = true)
 {
   double length = 0.0;
   for (size_t i = 1; i < path.size(); ++i)
-    length += std::sqrt(naturalJointDistanceSquared(path[i - 1], path[i]));
+    length += std::sqrt(naturalJointDistanceSquared(path[i - 1], path[i], wrap_angles));
   return length;
 }
 
 inline bool naturalJointPath(
   const std::vector<std::array<double, 7>>& path, double maximum_ratio = 4.0,
-  double minimum_allowance = 1.0)
+  double minimum_allowance = 1.0, bool wrap_angles = true)
 {
   if (path.size() < 2) return true;
   for (size_t i = 1; i < path.size(); ++i)
     if (!sameShoulderElbowBranch(path[i - 1], path[i])) return false;
-  const double direct = std::sqrt(naturalJointDistanceSquared(path.front(), path.back()));
-  return naturalJointPathLength(path) <= std::max(minimum_allowance, maximum_ratio * direct);
+  const double direct = std::sqrt(naturalJointDistanceSquared(path.front(), path.back(), wrap_angles));
+  return naturalJointPathLength(path, wrap_angles) <= std::max(minimum_allowance, maximum_ratio * direct);
 }
 }  // namespace alfa_robot::motion
