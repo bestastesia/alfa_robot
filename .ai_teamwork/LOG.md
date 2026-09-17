@@ -2101,3 +2101,9 @@
 - 改了哪里：权威 description 变更位于 `robot_description` 分支 `feat/motion-94-v311-named-poses@62662f4`、Gitea PR #9；消费仓同名功能分支同步 description 哈希锁，更新 MoveIt SRDF、初始位置、mock ros2_control/Xacro 默认值及文档。
 - 验证结果：两组姿态经运行中 MoveIt `/check_state_validity` 返回 `valid=True, contacts=[]`；description 36项测试通过；消费仓 Release 构建及63项测试通过，新增 `test_v311_named_pose_collision` 使用安装后的URDF/SRDF和FCL校验两组命名姿态无自碰撞、无越界。
 - 留给下个 AI：建议先合并 description PR #9，再合并消费仓 PR；消费仓锁定内容源提交 `62662f4`，同步器允许目标分支 merge/squash 后在所有受管文件哈希完全相同时视为等价。
+
+## 2026-09-17 进度管理 / Codex / 功能规范与PR #26历史补录
+- 做了什么：按功能统一Issue、开发分支、逐提交评论及最终PR压缩合并流程；将PR #26范围内的搬运基础设施/完整箱墙搬运补录为Linear MOTION-201，负责人文子轩，10条历史提交评论+最终验收评论后设为Done。
+- 改了哪里：精简`.ai_teamwork/LINEAR_WORKFLOW.md`；完成锚点为GitHub PR #26及主干压缩提交`8ce2e234a2e269b6cfd662e410d0c5f279c350e8`，实际合并日期为2026-09-15，2026-09-17仅为补录日期。
+- 验证结果：GitHub确认PR已合并，Linear确认负责人/里程碑/Done；使用历史本机测试结论，不声称本次重新仿真或实机通过。 文档diff check通过；原9个工作文件中8个哈希未变，`v3_single_arm_box_extract_demo.cpp`在本次期间被并行开发更新（未由本任务写入或回退），分支和HEAD未变。
+- 留给下个AI：多维算法开发与比较、回归点算法是两项独立的开发中功能，本次均未创建或更新Issue；不把`ec36fc0`或回归点/转运缓存代码和测试数据计入MOTION-201。未切换分支、未提交/暂存/修改现有功能代码；规范文件尚未提交。
