@@ -15,7 +15,8 @@ from curobo.types import JointState
 from v3_batched_loaded_search import GpuValidity, densify
 from .backend import CuroboBackend, WORKSPACE_ROOT, goal
 from v3_wall_ik_benchmark import ACTIVE_JOINTS, canonical_side_suction_quaternion_wxyz
-from .adapter import task_contact_positions, task_attachments
+from .adapter import (task_contact_positions, task_attachments, suction_quaternion,
+                      carry_targets, top_lift_blockers)
 from .contracts import PlanRequest
 from .scene import Pose, SceneStore
 from .sequence import plan_sequence
@@ -83,7 +84,7 @@ class FullCyclePlanner(CuroboBackend):
             raise ValueError("current model locks both head joints at zero")
         self.set_snapshot(request.snapshot)
         self.home_values = np.asarray(request.snapshot.state.ordered(ACTIVE_JOINTS), dtype=np.float32)
-        self.target_poses = {name: {"position": pose.position, "quaternion": pose.quaternion_wxyz}
+        requested_targets = {name: {"position": pose.position, "quaternion": pose.quaternion_wxyz}
                              for name, pose in request.targets}
         boxes = dict(request.tasks)
         for box_id in boxes.values():
@@ -92,16 +93,37 @@ class FullCyclePlanner(CuroboBackend):
                 raise ValueError("current extraction contract requires axis-aligned task boxes")
             if not np.allclose(item.dimensions_m, self.box_fit["dimensions_m"], atol=1e-12):
                 raise ValueError("task box dimensions differ from payload sphere model")
-        try:
-            result = self._full_cycle(boxes, progress)
-        except CycleBlocked as error:
-            result = error.partial or self.last_partial
-            result["blocked_stage"] = error.stage
-            result["blocked_details"] = str(error.details)
-        except RuntimeError as error:
-            result = self.last_partial or {"success": False, "frames": [], "phases": [], "payload": []}
-            result["blocked_stage"] = "planning_failure"
-            result["blocked_details"] = str(error)
+        started = time.perf_counter()
+        attempts = []
+        modes = ("side", "top") if request.suction_mode == "auto" else (request.suction_mode,)
+        for mode in modes:
+            self.suction_mode = mode
+            self.target_poses = carry_targets(request.snapshot, boxes, requested_targets, mode)
+            attempt_started = time.perf_counter()
+            self.last_partial = None
+            try:
+                blockers = top_lift_blockers(request.snapshot, boxes) if mode == "top" else []
+                if blockers:
+                    raise CycleBlocked("顶吸净空", f"垂直抬升通道被占用: {blockers}")
+                progress(f"尝试{'顶吸' if mode == 'top' else '侧吸'}")
+                result = self._full_cycle(boxes, progress)
+            except (CycleBlocked, RuntimeError) as error:
+                result = getattr(error, "partial", None) or self.last_partial or {
+                    "success": False, "task": boxes, "frames": [], "phases": [], "payload": []}
+                result["blocked_stage"] = getattr(error, "stage", "planning_failure")
+                result["blocked_details"] = str(getattr(error, "details", error))
+            attempts.append({"mode": mode, "success": result["success"],
+                             "wall_ms": (time.perf_counter()-attempt_started)*1000,
+                             "blocked_stage": result.get("blocked_stage"),
+                             "blocked_details": result.get("blocked_details"),
+                             "contact_ik_diagnostics": result.get("contact_ik_diagnostics")})
+            if result["success"] or result.get("blocked_stage") not in ("接触IK", "候选筛选"):
+                break
+        result["suction_mode"] = self.suction_mode
+        result["suction_attempts"] = attempts
+        result["selected_mode_total_ms"] = result.get("total_ms")
+        result["total_ms"] = (time.perf_counter()-started)*1000
+        result["carry_tool_targets"] = self.target_poses
         result["request_id"] = request.identity
         result["model_id"] = request.snapshot.model_id
         result["scene_id"] = request.snapshot.identity
@@ -138,7 +160,7 @@ class FullCyclePlanner(CuroboBackend):
     def _predicted_events(self, request, result):
         predicted = SceneStore(request.snapshot)
         events = []
-        attachments = task_attachments(request.snapshot, dict(request.tasks))
+        attachments = task_attachments(request.snapshot, dict(request.tasks), result["suction_mode"])
         for index, phase in enumerate(result.get("phases", ())):
             if phase == "attach" and not events:
                 values = dict(zip(result["joint_names"], result["frames"][index]))
@@ -174,8 +196,17 @@ class FullCyclePlanner(CuroboBackend):
         swivels = [self.analytic.swivel(side, contact[1 + side * 7:8 + side * 7])
                    for side in range(2)]
         rows = [np.asarray(contact, dtype=np.float64)]
+        top = self.suction_mode == "top"
+        if top:
+            lower, upper = loaded_validity.checker.kinematics.get_joint_limits().position
+            if contact[0] < float(lower[0]) or contact[0]+0.35 > float(upper[0]):
+                return None, "顶吸抬升35cm超出升降限位"
         for distance in np.linspace(0.01, 0.35, 35):
             next_row = rows[-1].copy()
+            if top:
+                next_row[0] = contact[0] + distance
+                rows.append(next_row)
+                continue
             for side_index, side in enumerate(("left", "right")):
                 if side not in active_sides:
                     continue
@@ -204,12 +235,18 @@ class FullCyclePlanner(CuroboBackend):
             for side in active_sides:
                 actual = self.fk_robot.get_transform(f"{side}_tool0", self.fk_robot.base_link)
                 maximum_line_error = max(maximum_line_error,
-                                         float(np.linalg.norm(actual[1:3, 3] - targets[side][1:3, 3])))
+                                         float(np.linalg.norm(actual[[0, 1] if top else [1, 2], 3] -
+                                                              targets[side][[0, 1] if top else [1, 2], 3])))
                 maximum_orientation_error = max(maximum_orientation_error, float(Rotation.from_matrix(
                     actual[:3, :3].T @ targets[side][:3, :3]).magnitude()))
         if maximum_line_error > 0.002 or maximum_orientation_error > math.radians(1.0):
             return None, f"抽离插值偏离直线/朝向: {maximum_line_error*1000:.3f}mm"
-        return dense, {"fixed_updown_m": float(contact[0]), "fixed_psi_rad": swivels,
+        if top and any(abs(self.fk_robot.get_transform(f"{side}_tool0", self.fk_robot.base_link)[2, 3]
+                           - targets[side][2, 3] - .35) > .002 for side in active_sides):
+            return None, "升降轴未实现世界Z方向35cm顶升"
+        return dense, {"method": "updown_lift" if top else "fixed_updown_analytic",
+                       "direction_world": [0, 0, 1] if top else [-1, 0, 0],
+                       "start_updown_m": float(contact[0]), "fixed_psi_rad": swivels,
                        "max_line_error_mm": maximum_line_error * 1000,
                        "max_orientation_error_deg": math.degrees(maximum_orientation_error)}
 
@@ -265,14 +302,21 @@ class FullCyclePlanner(CuroboBackend):
         timing["contact_solver_setup"] = (time.perf_counter()-segment_started)*1000
         segment_started = time.perf_counter()
         contact_poses = {}
-        for side, position in task_contact_positions(self.snapshot, boxes).items():
+        for side, position in task_contact_positions(self.snapshot, boxes, suction_mode=self.suction_mode).items():
             contact_poses[f"{side}_tool0"] = {
-                "position": position, "quaternion": canonical_side_suction_quaternion_wxyz(side)}
+                "position": position, "quaternion": suction_quaternion(side, self.suction_mode)}
+        report["contact_tool_poses"] = {name: {k: [float(v) for v in values] for k, values in pose.items()}
+                                        for name, pose in contact_poses.items()}
         result = solver.solve_pose(goal(contact_poses), JointState.from_position(
             torch.tensor(self.home_values[None], device="cuda"), joint_names=ACTIVE_JOINTS), return_seeds=128)
         names = list(result.js_solution.joint_names)
         values = result.js_solution.position.reshape(-1, len(names))
         successful = result.success.reshape(-1).bool()
+        report["contact_ik_diagnostics"] = {
+            "successful_candidates": int(successful.sum().item()),
+            "minimum_position_error_m": float(result.position_error.min().item()),
+            "minimum_rotation_error_rad": float(result.rotation_error.min().item()),
+        }
         candidates = values[successful][:, [names.index(name) for name in ACTIVE_JOINTS]].cpu().numpy()
         if len(candidates) == 0:
             raise CycleBlocked("接触IK", "cuRobo没有返回成功候选", report)
@@ -295,9 +339,11 @@ class FullCyclePlanner(CuroboBackend):
         segment_started = time.perf_counter()
         loaded_checker = self.checker(boxes, payload=True)
         loaded_validity = GpuValidity(loaded_checker, active_sides=tuple(boxes),
+                                      attachments=task_attachments(self.snapshot, boxes, self.suction_mode),
                                       max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                       ground_z=self.snapshot.policy.ground_z_m)
         extracting_validity = GpuValidity(empty_checker, active_sides=tuple(boxes),
+                                      attachments=task_attachments(self.snapshot, boxes, self.suction_mode),
                                           max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                           ground_z=self.snapshot.policy.ground_z_m)
         torch.cuda.synchronize()
@@ -306,7 +352,7 @@ class FullCyclePlanner(CuroboBackend):
         timing["approach_rrt_and_validation"] = 0.0
         selected = None
         for index, contact in enumerate(candidates):
-            progress(f"候选{index+1}/{len(candidates)}：固定Updown解析抽离")
+            progress(f"候选{index+1}/{len(candidates)}：{'升降轴顶升' if self.suction_mode == 'top' else '固定Updown解析抽离'}")
             attempt_started = time.perf_counter()
             extracted, details = self.analytic_extract(contact, extracting_validity, loaded_validity, tuple(boxes))
             torch.cuda.synchronize()
@@ -318,8 +364,12 @@ class FullCyclePlanner(CuroboBackend):
                 continue
             progress(f"候选{index+1}抽离成功：规划初始→接触")
             segment_started = time.perf_counter()
-            approach, stats = self.joint_plan(self.home_values, contact, empty_checker,
+            approach_target = extracted[-1] if self.suction_mode == "top" else contact
+            approach, stats = self.joint_plan(self.home_values, approach_target, empty_checker,
                                                empty_validity, 20261003 + index)
+            if approach is not None and self.suction_mode == "top":
+                # Reach above the box, then descend along the already checked vertical path.
+                approach = np.vstack((approach, extracted[::-1]))
             torch.cuda.synchronize()
             timing["approach_rrt_and_validation"] += (time.perf_counter()-segment_started)*1000
             attempt["approach"] = stats
@@ -349,6 +399,7 @@ class FullCyclePlanner(CuroboBackend):
         append(transport["frames"][transport["transport_frames"]:], "turn_loaded", True)
         report["transport_timing_ms"] = transport["total_ms"]
         report["transport_search_stats"] = transport["rrt_stats"]
+        report["transport_max_box_tilt_deg"] = transport["max_box_tilt_deg"]
         append([report["frames"][-1]], "release", False)
         progress("检查箱体释放后原地转回")
         segment_started = time.perf_counter()

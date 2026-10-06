@@ -24,7 +24,7 @@ from v3_wall_ik_benchmark import (
     canonical_side_tool_to_box, chassis_front_x, make_scene,
 )
 from .fixtures import WallLayout, tasks
-from .adapter import from_curobo_scene, task_attachments, to_curobo_scene, task_contact_positions
+from .adapter import from_curobo_scene, task_attachments, to_curobo_scene, task_contact_positions, suction_quaternion
 from .scene import RobotState, SceneSnapshot, digest
 from .cache import resource_key
 
@@ -79,6 +79,7 @@ class CuroboBackend:
         self.busy = False
         self.random_counter = 0
         self.planner_kind = "informed_rrt"
+        self.suction_mode = "side"
         self.model_id = self._model_identity()
         self.snapshot = SceneSnapshot(
             self.model_id, RobotState.from_mapping(self.home, time.time_ns()),
@@ -109,7 +110,7 @@ class CuroboBackend:
         )
 
     def prepare_task(self, boxes):
-        key = resource_key(self.snapshot, boxes, self.box_fit)
+        key = resource_key(self.snapshot, boxes, self.box_fit, self.suction_mode)
         if key != self._cached_task:
             self._cached_solver = None
             self._cached_checkers.clear()
@@ -155,7 +156,7 @@ class CuroboBackend:
         if key not in self._cached_checkers:
             robot = self.mobile_robot if mobile else self.robot
             configured = loaded_robot(robot, self.box_fit, active_sides=tuple(boxes), attachments=task_attachments(
-                self.snapshot, boxes)) if payload else copy.deepcopy(robot)
+                self.snapshot, boxes, self.suction_mode)) if payload else copy.deepcopy(robot)
             self._cached_checkers[key] = RobotCollisionChecker(
                 RobotCollisionCheckerCfg.load_from_config(
                     robot_config=configured, scene_model=self.scene(boxes, mobile=mobile),
@@ -185,10 +186,10 @@ class CuroboBackend:
             joint_names=ACTIVE_JOINTS,
         )
         contact_poses = {}
-        for side, position in task_contact_positions(self.snapshot, boxes, 1e-6).items():
+        for side, position in task_contact_positions(self.snapshot, boxes, 1e-6, self.suction_mode).items():
             contact_poses[f"{side}_tool0"] = {
                 "position": position,
-                "quaternion": canonical_side_suction_quaternion_wxyz(side),
+                "quaternion": suction_quaternion(side, self.suction_mode),
             }
         contact = solver.solve_pose(goal(contact_poses), home_state, return_seeds=32)
         names = list(contact.js_solution.joint_names)
@@ -202,14 +203,15 @@ class CuroboBackend:
         generator.manual_seed(20261003 + self.random_counter)
         order = torch.randperm(len(contact_candidates), generator=generator, device="cuda")
         contact_candidates = contact_candidates[order]
-        loaded = loaded_robot(self.robot, self.box_fit, active_sides=tuple(boxes))
+        loaded = loaded_robot(self.robot, self.box_fit, active_sides=tuple(boxes),
+                              attachments=task_attachments(self.snapshot, boxes, self.suction_mode))
         checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
             robot_config=copy.deepcopy(loaded), scene_model=scene,
             n_cuboids=max(40, len(self.snapshot.objects)), n_meshes=len(self.snapshot.meshes),
             collision_activation_distance=0.0,
         ))
         validity = GpuValidity(
-            checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            checker, active_sides=tuple(boxes), attachments=task_attachments(self.snapshot, boxes, self.suction_mode), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=ACTIVE_JOINTS,
         )
@@ -224,7 +226,8 @@ class CuroboBackend:
                 if frame.removesuffix("_tool0") not in boxes:
                     continue
                 extract_poses[frame]["position"] = extract_poses[frame]["position"].copy()
-                extract_poses[frame]["position"][0] -= 0.35
+                axis = 2 if self.suction_mode == "top" else 0
+                extract_poses[frame]["position"][axis] += 0.35 if self.suction_mode == "top" else -0.35
             extracted = solver.solve_pose(
                 goal(extract_poses), contact_state, return_seeds=16
             )
@@ -265,7 +268,7 @@ class CuroboBackend:
         scene = self.scene(boxes)
         checker = self.collision_checker(boxes, payload=True)
         validity = GpuValidity(
-            checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            checker, active_sides=tuple(boxes), attachments=task_attachments(self.snapshot, boxes, self.suction_mode), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=ACTIVE_JOINTS,
         )
@@ -310,6 +313,24 @@ class CuroboBackend:
                 f"箱体稳定性通过{int(stability_valid.sum().item())}个；联合合法0个"
             )
         goals = goals[full_valid]
+        if self.suction_mode == "top":
+            # A static carry IK is insufficient: reject elbow/box poses that hit the room during yaw.
+            mobile_names = list(self.mobile_robot["kinematics"]["cspace"]["joint_names"])
+            mobile_checker = self.collision_checker(boxes, payload=True, mobile=True)
+            turn_validity = GpuValidity(
+                mobile_checker, active_sides=tuple(boxes),
+                attachments=task_attachments(self.snapshot, boxes, self.suction_mode),
+                max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
+                ground_z=self.snapshot.policy.ground_z_m, joint_names=mobile_names,
+                weights=[2., 2., 1., 5.] + [1.] * 14)
+            turning = torch.zeros((len(goals), 361, len(mobile_names)), device=goals.device, dtype=goals.dtype)
+            for j, name in enumerate(ACTIVE_JOINTS):
+                turning[:, :, mobile_names.index(name)] = goals[:, j, None]
+            turning[:, :, mobile_names.index("base_yaw")] = torch.linspace(0., math.pi, 361, device=goals.device)
+            safe = turn_validity.mask(turning.reshape(-1, len(mobile_names))).reshape(len(goals), 361).all(dim=1)
+            goals = goals[safe]
+            if not len(goals):
+                raise RuntimeError("顶吸搬运目标无可安全转身的IK候选")
         metric = torch.tensor([5.0] + [1.0] * 14, device="cuda")
         goals = goals[torch.argsort(torch.sum(((goals - start) * metric) ** 2, dim=1))[:16]]
         torch.cuda.synchronize()
@@ -344,7 +365,7 @@ class CuroboBackend:
         started_mobile_setup = time.perf_counter()
         mobile_checker = self.collision_checker(boxes, payload=True, mobile=True)
         mobile_validity = GpuValidity(
-            mobile_checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            mobile_checker, active_sides=tuple(boxes), attachments=task_attachments(self.snapshot, boxes, self.suction_mode), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=mobile_names,
             weights=[2.0, 2.0, 1.0, 5.0] + [1.0] * 14,

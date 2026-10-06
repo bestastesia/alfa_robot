@@ -16,6 +16,7 @@ def main():
     for name in ("robot_config", "mobile_robot_config", "urdf", "named_poses", "box_fit", "target_poses"):
         parser.add_argument("--" + name.replace("_", "-"), type=Path, default=getattr(defaults, name))
     parser.add_argument("--request", type=Path)
+    parser.add_argument("--suction-mode", choices=("auto", "side", "top"), default=None)
     parser.add_argument("--left-box", type=int, default=24)
     parser.add_argument("--right-box", type=int, default=20)
     parser.add_argument("--runs", type=int, default=1)
@@ -31,6 +32,8 @@ def main():
         parser.error("--request already owns scene geometry; do not combine it with wall overrides")
     if args.runs < 1:
         parser.error("runs must be positive")
+    if args.sequence and args.suction_mode not in (None, "auto"):
+        parser.error("wall sequence selects suction per round; use --request to force a mode")
     if args.sequence and (args.request or args.runs != 1 or args.left_box != 24 or args.right_box != 20):
         parser.error("--sequence owns its rounds; do not combine it with --request, repeated --runs or box selection")
     planner = FullCyclePlanner(args)
@@ -42,6 +45,9 @@ def main():
         raise SystemExit(0 if result['success'] else 1)
     request = PlanRequest.from_dict(json.loads(args.request.read_text())) if args.request else planner.demo_request(
         {"left": args.left_box, "right": args.right_box})
+    if args.suction_mode is not None:
+        from dataclasses import replace
+        request = replace(request, suction_mode=args.suction_mode)
     results = []
     for _ in range(args.runs):
         result = planner.plan_request(request, lambda message: print(message, file=sys.stderr, flush=True))

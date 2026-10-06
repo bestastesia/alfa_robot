@@ -22,11 +22,15 @@ class PlannerAssets:
 
 @dataclass(frozen=True)
 class PlanRequest:
+    """Targets are side-grasp reference Tool0 poses; top mode preserves the implied box destination."""
     snapshot: SceneSnapshot
     tasks: tuple
     targets: tuple
+    suction_mode: str = "auto"
 
     def __post_init__(self):
+        if self.suction_mode not in ("auto", "side", "top"):
+            raise ValueError("suction_mode must be auto, side or top")
         object.__setattr__(self, "tasks", tuple(tuple(item) for item in self.tasks))
         object.__setattr__(self, "targets", tuple(tuple(item) for item in self.targets))
         sides = {side for side, _ in self.tasks}
@@ -49,14 +53,18 @@ class PlanRequest:
     def to_dict(self):
         from dataclasses import asdict
 
-        return {"snapshot": self.snapshot.to_dict(), "tasks": dict(self.tasks),
-                "targets": {name: asdict(pose) for name, pose in self.targets}}
+        document = {"snapshot": self.snapshot.to_dict(), "tasks": dict(self.tasks),
+                    "targets": {name: asdict(pose) for name, pose in self.targets}}
+        if self.suction_mode != "side":  # Preserve identities of legacy side-only requests.
+            document["suction_mode"] = self.suction_mode
+        return document
 
     @classmethod
     def from_dict(cls, document):
         return cls(SceneSnapshot.from_dict(document["snapshot"]),
                    tuple(document["tasks"].items()),
-                   tuple((name, Pose(**pose)) for name, pose in document["targets"].items()))
+                   tuple((name, Pose(**pose)) for name, pose in document["targets"].items()),
+                   document.get("suction_mode", "side"))
 
     @property
     def identity(self):

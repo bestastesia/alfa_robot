@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import replace
 import json
 from pathlib import Path
 import threading
@@ -11,6 +12,8 @@ from viser.extras import ViserUrdf
 import yourdfpy
 
 from v3_full_cycle_planner import FullCyclePlanner, CycleBlocked
+from curobo_core.adapter import pose_matrix
+from curobo_core.scene import Pose
 from curobo_core.fixtures import WallLayout, add_wall_arguments, wall_layout_from_args, wall_sequence
 from v3_interactive_60_tasks import (
     DEFAULT_ROBOT_CONFIG, DEFAULT_URDF, DEFAULT_NAMED_POSES, DEFAULT_BOX_FIT,
@@ -21,7 +24,7 @@ from v3_wall_ik_benchmark import canonical_side_tool_to_box, wall_center
 
 PHASE_NAMES = {
     "home": "第一初始姿态", "approach": "初始→吸附起点", "attach": "吸附箱体",
-    "extract": "固定Updown解析直线抽离35cm", "transport": "抽离终点→放置姿态",
+    "extract": "直线脱离35cm（侧退/顶升）", "transport": "抽离终点→放置姿态",
     "turn_loaded": "携箱转身180°", "release": "放置释放，箱体消失",
     "turn_empty": "空载转身回来", "return_home": "双臂回到原第一初始姿态",
     "transport_diagnostic": "失败轨迹诊断",
@@ -37,7 +40,10 @@ def main():
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
+    parser.add_argument("--suction-mode", choices=("auto", "side", "top"), default="auto")
     parser.add_argument("--sequence", action="store_true", help="show the complete wall sequence")
+    parser.add_argument("--replay-only", action="store_true", help="disable planning controls; visualization only, no GPU planning")
+    parser.add_argument("--cycle-json", type=Path, help="replay a matching headless request/results file")
     parser.add_argument("--sequence-json", type=Path, help="replay a matching sequence result; not a fresh plan")
     add_wall_arguments(parser)
     args = parser.parse_args()
@@ -47,6 +53,10 @@ def main():
         parser.error(str(error))
     if args.comparison_json and args.wall_layout != WallLayout():
         parser.error("preloaded comparisons belong to the default wall; recompute a custom layout")
+    if args.replay_only and not (args.sequence_json or args.cycle_json):
+        parser.error("--replay-only requires --sequence-json or --cycle-json")
+    if args.cycle_json and (args.sequence or args.sequence_json or args.comparison_json):
+        parser.error("--cycle-json cannot be combined with sequence/comparison replay")
     if args.comparison_json and (args.sequence or args.sequence_json):
         parser.error("single-task comparisons cannot preload a wall sequence")
     comparisons = {}
@@ -58,6 +68,19 @@ def main():
     planner = FullCyclePlanner(args)
     initial_snapshot = planner.snapshot
     preloaded_sequence = None
+    preloaded_cycle = None
+    if args.cycle_json:
+        from curobo_core.contracts import PlanRequest
+        document = json.loads(args.cycle_json.read_text())
+        recorded_request = PlanRequest.from_dict(document["request"])
+        preloaded_cycle = document["results"][-1]
+        if (recorded_request.snapshot.geometry_key != initial_snapshot.geometry_key or
+                not np.allclose(recorded_request.snapshot.state.ordered(tuple(planner.home)),
+                                initial_snapshot.state.ordered(tuple(planner.home)), atol=1e-7, rtol=0) or
+                recorded_request.identity != preloaded_cycle["request_id"] or
+                dict(recorded_request.tasks) != planner.selected_task):
+            parser.error("cycle replay does not match the model, scene, state or selected task")
+        args.suction_mode = recorded_request.suction_mode
     if args.sequence_json:
         from curobo_core.scene import SceneSnapshot
         preloaded_sequence = json.loads(args.sequence_json.read_text())
@@ -118,16 +141,23 @@ def main():
         round_selector = server.gui.add_dropdown("查看轮次", options=round_labels, initial_value=round_labels[0])
         with server.gui.add_folder("完整搬运顺序", expand_by_default=False) as sequence_folder:
             sequence_table = server.gui.add_markdown("")
-        provenance = server.gui.add_markdown("已保存结果回放；点击计算可实时重算。" if args.sequence_json else "尚未计算。")
+        provenance = server.gui.add_markdown("只读回放，不启动GPU规划。" if args.replay_only else
+                                             ("已保存结果回放；点击计算可实时重算。" if args.sequence_json or args.cycle_json else "尚未计算。"))
         task = server.gui.add_dropdown("组合任务", options=labels, initial_value=labels[0])
+        suction_modes = {"自动（侧吸→顶吸）": "auto", "仅侧吸": "side", "仅顶吸": "top"}
+        suction = server.gui.add_dropdown("吸附策略", options=tuple(suction_modes),
+                                         initial_value=next(k for k, v in suction_modes.items() if v == args.suction_mode))
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Informed RRT")
-        run = server.gui.add_button("计算完整流程并播放")
+        run = server.gui.add_button("仅回放（实时规划已禁用）" if args.replay_only else "计算完整流程并播放")
+        run.disabled = args.replay_only
+        mode.disabled = args.replay_only
+        planner_selector.disabled = args.replay_only
         play = server.gui.add_checkbox("播放", initial_value=False)
         playback_step = server.gui.add_slider("回放步进（非实机速度）", min=1, max=20, step=1,
                                               initial_value=5 if args.sequence or args.sequence_json else 1)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
-        stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
+        stage = server.gui.add_dropdown("跳转阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
@@ -136,7 +166,8 @@ def main():
 
     def refresh_sequence():
         whole_wall = mode.value == "整墙序列"
-        task.disabled = whole_wall or current["busy"]
+        task.disabled = whole_wall or current["busy"] or args.replay_only
+        suction.disabled = whole_wall or current["busy"] or args.replay_only
         round_selector.visible = whole_wall
         sequence_folder.visible = whole_wall
         result = current["result"]
@@ -145,7 +176,9 @@ def main():
         lines = ["**完整搬运顺序：逐轮移除已搬箱，失败即停止。**", ""]
         for i, label in enumerate(round_labels):
             state = states[records[i]["status"]] if records else "待规划"
-            lines.append(f"- {label} — {state}")
+            selected_mode = records[i].get("result", {}).get("suction_mode") if records else None
+            suction_label = " · 顶吸" if selected_mode == "top" else (" · 侧吸" if selected_mode == "side" else "")
+            lines.append(f"- {label} — {state}{suction_label}")
         sequence_table.content = "\n".join(lines) if whole_wall else ""
 
 
@@ -178,13 +211,22 @@ def main():
         active_task = planner.selected_task
         removed = set()
         round_number = None
+        cycle_result = result
         if result and result.get("sequence") and result["frames"]:
             round_number = result["frame_rounds"][index]
             record = result["rounds"][round_number]
             active_task = record["task"]
             removed = set(record["removed_before"])
+            cycle_result = record["result"]
+        attachment_transforms = {}
+        if cycle_result:
+            for event in cycle_result.get("predicted_scene_events", ()):
+                if event["phase"] == "attach":
+                    attachment_transforms = {item["parent_link"].removesuffix("_tool0"):
+                                             pose_matrix(Pose(**item["tool_to_object"]))
+                                             for item in event["snapshot"]["attachments"]}
         for side, node in attached.items():
-            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ canonical_side_tool_to_box(side)
+            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ attachment_transforms.get(side, canonical_side_tool_to_box(side))
             node.position = matrix[:3, 3]
             node.wxyz = quaternion(matrix)
             node.visible = has_payload and side in active_task
@@ -205,6 +247,8 @@ def main():
                     f"当前第{round_number+1 if round_number is not None else 1}/{len(result['rounds'])}轮 · {PHASE_NAMES[phase]}  \n"
                     f"帧：**{index+1}/{len(result['frames'])}** · 累计规划：{result['total_ms']/1000:.3f}s"
                 )
+            mode_name = "顶吸" if cycle_result.get("suction_mode", "side") == "top" else "侧吸"
+            status.content += f"  \n吸附模式：**{mode_name}**"
             if not result["success"]:
                 blocked = f"阻塞第{result['blocked_round']}轮：" if result.get("sequence") else ""
                 status.content += f"  \n{blocked}{result.get('error') or result.get('blocked_details')}"
@@ -277,6 +321,10 @@ def main():
         frame.value = 1
         show_frame(0)
 
+    @suction.on_update
+    def on_suction(event):
+        on_task(event)
+
     @planner_selector.on_update
     def on_planner(_event):
         if current["busy"]:
@@ -295,13 +343,14 @@ def main():
 
     @run.on_click
     def on_run(_event):
-        if current["busy"]:
+        if args.replay_only or current["busy"]:
             return
         current["busy"] = True
         run.disabled = True
         task.disabled = True
         planner_selector.disabled = True
         mode.disabled = True
+        suction.disabled = True
         round_selector.disabled = True
         play.value = False
         current["result"] = None
@@ -317,7 +366,8 @@ def main():
                     planner.comparison_contact = None
                     progress = lambda text: setattr(status, "content", text)
                     result = (planner.plan_sequence(initial_snapshot, progress) if mode.value == "整墙序列"
-                              else planner.full_cycle(planner.selected_task, progress))
+                              else planner.plan_request(replace(planner.demo_request(planner.selected_task),
+                                                        suction_mode=suction_modes[suction.value]), progress))
                 except Exception as error:
                     result = {"success": False, "frames": [], "blocked_stage": "程序异常",
                               "blocked_details": f"{type(error).__name__}: {error}"}
@@ -356,6 +406,9 @@ def main():
             planner.comparison_contact = baseline["contact_candidates"][baseline["selected_candidate"]-1]
         current["result"] = baseline
         frame.max = len(baseline["frames"]) if baseline else 1
+    if preloaded_cycle:
+        current["result"] = preloaded_cycle
+        frame.max = max(1, len(preloaded_cycle["frames"]))
     if preloaded_sequence:
         current["result"] = preloaded_sequence
         frame.max = max(1, len(preloaded_sequence["frames"]))
