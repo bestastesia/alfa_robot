@@ -12,7 +12,7 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
-- MOTION-233布局增量：固定f044模型，接入行列/缺箱/平移/净距，默认及稀疏所选双箱通过；8095现为0.75m实际重算页。复验和边界见 `docs/motion233_curobo_wall_layout.md`。单臂/全25箱/原固定种子与FCL验收仍未完成。
+- MOTION-233布局增量：固定f044模型，接入行列/缺箱/平移/净距，默认及稀疏所选双箱通过；8095现为0.75m实际重算页。复验和边界见 `docs/motion233_curobo_wall_layout.md`。严格六规划器实际5/6（PRM搬运碰箱），总门禁未通过；原始与候选对同条失败轨迹判定一致，重跑各2次通过不能覆盖该失败。单臂/全25箱/原固定种子与FCL验收仍未完成。
 
 - 本地 `motion-233-curobo-f044bf1` 按用户纠正基于 **alfa_v3_curobo@f044bf1**，不能回到此前误选的 MoveIt Stage 分支。255文件/模型对拍、L24/R20新计算和Viser验证见 `docs/motion233_curobo_rebase.md`；研究碰撞策略不等同于FCL/OBB全墙验收。
 

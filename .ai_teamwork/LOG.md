@@ -2179,5 +2179,10 @@
 ## 2026-10-06 Codex / MOTION-233 cuRobo布局增量
 - 做了什么：在f044bf1现有核心接入行列、缺箱、平移、车头净距；接触位置改取实际SceneSnapshot，保持默认几何/缓存合同，不改机械模型/碰撞政策。
 - 改了哪里：curobo_core fixtures/adapter/backend/contracts/planner，两个现有CLI/Viser入口，4个CPU测试及布局证据校验器。
-- 验证结果：CPU26、GPU6、默认双周期、六规划器、cache/mesh；3×4和4×3仅所选双箱、0.75m L24/R20新计算通过。浏览器真实点击、分阶段截图及最终Home已记录；完整证据在motion233-acceptance/curobo-layout-v1。
+- 验证结果：CPU26、GPU6、默认双周期、cache/mesh通过；六规划器实际5/6（见下方纠正），总门禁未通过；3×4和4×3仅所选双箱、0.75m L24/R20新计算通过。浏览器真实点击、分阶段截图及最终Home已记录；完整证据在motion233-acceptance/curobo-layout-v1。
 - 留给下个AI：8095留0.75m页面，8090是其他窗口。模型/SDK继续锁定；未push/写Linear。下一批是单臂和整墙状态继承/序列，再做公开种子与原安全/性能合同；不要把本轮单对成功冒认25/25或FCL认证。详见docs/motion233_curobo_wall_layout.md。
+
+## 2026-10-06 Codex / 严格核验纠正PRM回归状态
+- 交接摘要误称六规划器全通过，实际six-planners.json的PRM在搬运第464帧碰wall_box_19（left_link7侧球，1.817mm），无自碰撞/越限。原始失败证据保持不变。
+- 原始f044与候选使用同接触点各重跑2次均成功；同条失败轨迹在两者的checker中同样拒绝4帧，首帧及碰撞量完全一致。碰撞判据一致已证实，生成该路径的偶发条件/修复未完成。
+- verifier完成源码/模型/其他检查后写出acceptance_passed=false并exit1；不要把布局或后续单次成功当作严格回归全过。下一步先解决PRM搜索与稠密复核不一致，再推进整墙。

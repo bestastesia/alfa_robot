@@ -92,8 +92,12 @@ def main():
         cycle(result)
     planners = load('six-planners.json')
     assert set(planners) == {'informed_rrt', 'rrt', 'rrtconnect', 'prm', 'informed_connect', 'bitstar'}
-    for result in planners.values():
-        cycle(result)
+    failed_planners = {}
+    for kind, result in planners.items():
+        if result['success']:
+            cycle(result)
+        else:
+            failed_planners[kind] = result.get('error', result.get('blocked_stage'))
     imports = load('imports.json')
     assert imports['import_pairs_checked'] == 21 and not imports['errors']
     smoke = load('core-smoke.json')
@@ -111,10 +115,15 @@ def main():
         'branch': git('branch', '--show-current').decode().strip(),
         'curobo_commit': SDK, 'research_files_verified': len(hashes),
         'normalized_relocated_assets_identical': True, 'same_reference_request_except_local_ids_timestamps': True,
-        'two_cycles_passed': True, 'six_planners_passed': True, 'live_visual_cycle_passed': True,
+        'two_cycles_passed': True, 'six_planners_passed': not failed_planners,
+        'failed_planners': failed_planners, 'acceptance_passed': not failed_planners,
+        'live_visual_cycle_passed': True,
         'policy': request['snapshot']['policy'], 'source_sha256': hashes,
         'scope': 'f044bf1 research L24/R20 only; not 25-box, mesh/FCL/OBB or hardware acceptance'}
     (args.artifacts / 'rebase-audit.json').write_text(json.dumps(report, indent=2) + '\n')
+    if failed_planners:
+        raise SystemExit(f'FAIL: {len(hashes)} files/models and default/live cycles verified, '
+                         f'but planner regression failed: {failed_planners}')
     print(f'PASS: {len(hashes)} candidate files; mentor models identical; same default task/policy; 2 cycles, 6 planners and live UI.')
 
 
