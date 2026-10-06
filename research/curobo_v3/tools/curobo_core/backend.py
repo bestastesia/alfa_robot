@@ -21,10 +21,10 @@ from v3_batched_loaded_search import (
 from v3_search_helpers import audit_state
 from v3_wall_ik_benchmark import (
     ACTIVE_JOINTS, canonical_side_suction_quaternion_wxyz,
-    canonical_side_tool_to_box, chassis_front_x, make_scene, wall_center,
+    canonical_side_tool_to_box, chassis_front_x, make_scene,
 )
-from .fixtures import tasks
-from .adapter import from_curobo_scene, task_attachments, to_curobo_scene
+from .fixtures import WallLayout, tasks
+from .adapter import from_curobo_scene, task_attachments, to_curobo_scene, task_contact_positions
 from .scene import RobotState, SceneSnapshot, digest
 from .cache import resource_key
 
@@ -66,7 +66,12 @@ class CuroboBackend:
             130, -105, 10, 90, -90, -40, 0,
             -130, 105, -10, -90, 90, 40, 0,
         ])
-        self.task_options = tasks()
+        self.wall_layout = getattr(args, "wall_layout", WallLayout())
+        if not isinstance(self.wall_layout, WallLayout):
+            raise TypeError("wall_layout must be a WallLayout")
+        self.task_options = tasks(self.wall_layout)
+        if not self.task_options:
+            raise ValueError("wall layout has no eligible dual-arm pairs in occupied upper rows")
         self.task_map = dict(self.task_options)
         self.selected_task = self.task_options[0][1]
         self.random_start = None
@@ -77,7 +82,8 @@ class CuroboBackend:
         self.model_id = self._model_identity()
         self.snapshot = SceneSnapshot(
             self.model_id, RobotState.from_mapping(self.home, time.time_ns()),
-            from_curobo_scene(make_scene(self.front, 0.9, set())),
+            from_curobo_scene(make_scene(self.front, self.wall_layout.distance_m, set(range(25)))) +
+            self.wall_layout.objects(self.front),
         )
         self.target_poses = json.loads(Path(getattr(args, "target_poses", DEFAULT_TARGET_POSES)).read_text())
         self._cached_task = None
@@ -174,9 +180,7 @@ class CuroboBackend:
             joint_names=ACTIVE_JOINTS,
         )
         contact_poses = {}
-        for side, box_id in boxes.items():
-            position = wall_center(self.front, 0.9, box_id)
-            position[0] -= 0.150001
+        for side, position in task_contact_positions(self.snapshot, boxes, 1e-6).items():
             contact_poses[f"{side}_tool0"] = {
                 "position": position,
                 "quaternion": canonical_side_suction_quaternion_wxyz(side),

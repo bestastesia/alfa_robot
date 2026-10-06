@@ -11,6 +11,7 @@ from viser.extras import ViserUrdf
 import yourdfpy
 
 from v3_full_cycle_planner import FullCyclePlanner, CycleBlocked
+from curobo_core.fixtures import WallLayout, add_wall_arguments, wall_layout_from_args
 from v3_interactive_60_tasks import (
     DEFAULT_ROBOT_CONFIG, DEFAULT_URDF, DEFAULT_NAMED_POSES, DEFAULT_BOX_FIT,
     DEFAULT_MOBILE_ROBOT_CONFIG, quaternion,
@@ -36,7 +37,14 @@ def main():
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
+    add_wall_arguments(parser)
     args = parser.parse_args()
+    try:
+        args.wall_layout = wall_layout_from_args(args)
+    except (ValueError, TypeError) as error:
+        parser.error(str(error))
+    if args.comparison_json and args.wall_layout != WallLayout():
+        parser.error("preloaded comparisons belong to the default wall; recompute a custom layout")
     comparisons = {}
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
@@ -81,6 +89,12 @@ def main():
                                  color=(149, 160, 174), opacity=.06)
     labels = [entry[0] for entry in planner.task_options]
     with server.gui.add_folder("完整任务实时规划"):
+        layout = planner.wall_layout
+        server.gui.add_markdown(
+            f"箱墙：**{layout.rows}×{layout.columns}** · 实箱 **{len(layout.active_box_ids)}**  \n"
+            f"初始车头→箱墙近面：**{layout.distance_m:.3f} m**  \n"
+            "仅当前双箱任务；研究碰撞策略，不代表整墙或实机验收。"
+        )
         task = server.gui.add_dropdown("组合任务", options=labels, initial_value=labels[0])
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Informed RRT")

@@ -2174,3 +2174,10 @@
 - 用户明确目标为alfa_v3_curobo@f044bf1，建立独立motion-233-curobo-f044bf1，旧MoveIt Stage误选支线/其他窗口worktree均保留。未搬入错误Stage/KDL补丁，采用071cb95解析代理模型和SDK78fd485f，不把raw6bb生产壳体与其混用。
 - 255个上游源码/模型文件与运行副本重定位前后核验通过；任务L24/R20、场景、具名初态、完整目标、策略与隔壁成功输入一致。CPU22、导入21、GPU3+3、独立核心cache/过期结果、龙头车Mesh测试通过；2次完整周期+6种规划器+Viser新点击计算全部成功、最终Home误差0、步长≤0.5度。
 - 证据 /home/astesia/Sevenova/motion233-acceptance/curobo-f044bf1/；本支线Viser8095，隔壁8090未干预。研究policy保持原样，不宣称25箱、全三角网格FCL/OBB或实机认证。复现命令与验证脚本见docs/motion233_curobo_rebase.md。未push/改PR/改Linear。
+
+
+## 2026-10-06 Codex / MOTION-233 cuRobo布局增量
+- 做了什么：在f044bf1现有核心接入行列、缺箱、平移、车头净距；接触位置改取实际SceneSnapshot，保持默认几何/缓存合同，不改机械模型/碰撞政策。
+- 改了哪里：curobo_core fixtures/adapter/backend/contracts/planner，两个现有CLI/Viser入口，4个CPU测试及布局证据校验器。
+- 验证结果：CPU26、GPU6、默认双周期、六规划器、cache/mesh；3×4和4×3仅所选双箱、0.75m L24/R20新计算通过。浏览器真实点击、分阶段截图及最终Home已记录；完整证据在motion233-acceptance/curobo-layout-v1。
+- 留给下个AI：8095留0.75m页面，8090是其他窗口。模型/SDK继续锁定；未push/写Linear。下一批是单臂和整墙状态继承/序列，再做公开种子与原安全/性能合同；不要把本轮单对成功冒认25/25或FCL认证。详见docs/motion233_curobo_wall_layout.md。

@@ -1,5 +1,8 @@
 # MOTION-233：对齐指定 cuRobo 基线（2026-10-06）
 
+> 本页记录最初 `2959ef6` 的冻结基线验收。后续布局增量及当前8095的0.75m页面见 `motion233_curobo_wall_layout.md`；下方原始产物与运行命令仍指向冻结副本。
+
+
 ## 正确基线与替代关系
 
 - 指定目标：`alfa_robot/alfa_v3_curobo@f044bf1463d6ab138bb5aac078056d1e3d17a1b9`，本地分支 `motion-233-curobo-f044bf1`，工作树 `/home/astesia/Sevenova/.motion-233-curobo`。
@@ -64,14 +67,15 @@ PYTORCH_ALLOC_CONF=expandable_segments:True \
   --comparison-json /home/astesia/Sevenova/motion233-acceptance/curobo-f044bf1/six-planners.json
 ```
 
-再次核验本轮数据和与隔壁基线的相同输入：
+再次核验当前候选提交、未改动的导师模型以及与隔壁基线相同的默认输入：
 
 ```bash
 cd /home/astesia/Sevenova/.motion-233-curobo
 PYTHONPATH=/home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main \
 /home/astesia/Sevenova/curobo_v2_ros/bin/python tools/verify_motion233_curobo_rebase.py \
-  --artifacts /home/astesia/Sevenova/motion233-acceptance/curobo-f044bf1 \
-  --runtime-root /home/astesia/Sevenova/motion233-acceptance/curobo-f044bf1/runtime/research/curobo_v3 \
+  --source-ref HEAD \
+  --artifacts /home/astesia/Sevenova/motion233-acceptance/curobo-layout-v1 \
+  --runtime-root /home/astesia/Sevenova/motion233-acceptance/curobo-layout-v1/runtime/research/curobo_v3 \
   --sdk-repository /home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main \
   --reference-cycle /home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/plan-cycle-pinned-sdk.json
 ```

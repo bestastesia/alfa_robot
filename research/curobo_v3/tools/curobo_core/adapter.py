@@ -1,3 +1,4 @@
+import math
 import numpy as np
 from scipy.spatial.transform import Rotation
 
@@ -76,3 +77,17 @@ def task_attachments(snapshot, tasks):
             matrix_pose(canonical_side_tool_to_box(side)), (side + "_link7", side + "_tool0"),
         ))
     return tuple(attachments)
+
+
+def task_contact_positions(snapshot, tasks, gap_m=0.0):
+    """Derive contacts from actual task objects, never from a fixed wall index."""
+    if not math.isfinite(gap_m) or gap_m < 0:
+        raise ValueError("contact gap must be finite and nonnegative")
+    positions = {}
+    for side, box_id in tasks.items():
+        item = snapshot.object(f"wall_box_{box_id:02d}")
+        if side not in ("left", "right") or item.pose.quaternion_wxyz != Pose().quaternion_wxyz:
+            raise ValueError("side contacts require left/right and axis-aligned task boxes")
+        x, y, z = item.pose.position
+        positions[side] = (x - (item.dimensions_m[0] / 2 + gap_m), y, z)
+    return positions

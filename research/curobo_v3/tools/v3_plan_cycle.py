@@ -7,6 +7,7 @@ import sys
 
 from curobo_core.contracts import PlanRequest, PlannerAssets
 from curobo_core.planner import FullCyclePlanner
+from curobo_core.fixtures import WallLayout, add_wall_arguments, wall_layout_from_args
 
 
 def main():
@@ -19,7 +20,14 @@ def main():
     parser.add_argument("--right-box", type=int, default=20)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
+    add_wall_arguments(parser)
     args = parser.parse_args()
+    try:
+        args.wall_layout = wall_layout_from_args(args)
+    except (ValueError, TypeError) as error:
+        parser.error(str(error))
+    if args.request and args.wall_layout != WallLayout():
+        parser.error("--request already owns scene geometry; do not combine it with wall overrides")
     if args.runs < 1:
         parser.error("runs must be positive")
     planner = FullCyclePlanner(args)

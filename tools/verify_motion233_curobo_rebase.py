@@ -50,20 +50,25 @@ def cycle(result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source-ref', default=BASE, help='exact candidate commit to audit; default freezes mentor source')
     parser.add_argument('--artifacts', required=True, type=Path)
     parser.add_argument('--runtime-root', required=True, type=Path)
     parser.add_argument('--sdk-repository', required=True, type=Path)
     parser.add_argument('--reference-cycle', required=True, type=Path)
     args = parser.parse_args()
-    git('merge-base', '--is-ancestor', BASE, 'HEAD')
+    source = git('rev-parse', args.source_ref + '^{commit}').decode().strip()
+    git('merge-base', '--is-ancestor', BASE, source)
+    git('merge-base', '--is-ancestor', source, 'HEAD')
     assert git('rev-parse', 'HEAD', root=args.sdk_repository).decode().strip() == SDK
     import curobo
     assert Path(curobo.__file__).resolve().is_relative_to(args.sdk_repository.resolve())
     hashes = {}
-    for name in git('ls-tree', '-r', '--name-only', BASE, '--', PREFIX).decode().splitlines():
-        expected = git('show', f'{BASE}:{name}')
-        assert (ROOT / name).read_bytes() == expected, f'mentor source changed: {name}'
+    for name in git('ls-tree', '-r', '--name-only', source, '--', PREFIX).decode().splitlines():
+        expected = git('show', f'{source}:{name}')
+        assert (ROOT / name).read_bytes() == expected, f'uncommitted candidate source: {name}'
         path = Path(name.removeprefix(PREFIX))
+        if path.parts[0] in ('generated', 'models', 'vendor'):
+            assert expected == git('show', f'{BASE}:{name}'), f'mentor model/solver asset changed: {name}'
         actual = (args.runtime_root / path).read_bytes()
         if path.parts[0] == 'generated' and path.suffix == '.yml':
             assert relocated(yaml.safe_load(expected)) == relocated(yaml.safe_load(actual)), path
@@ -102,7 +107,7 @@ def main():
     ui = load('ui-check.json')
     assert ui['livePlanningClicked'] and ui['sawBusy'] and ui['success'] and ui['finalFrameConfirmed']
     cycle(load('ui-live-cycle.json'))
-    report = {'base_commit': BASE, 'head_commit': git('rev-parse', 'HEAD').decode().strip(),
+    report = {'base_commit': BASE, 'source_commit': source, 'head_commit': git('rev-parse', 'HEAD').decode().strip(),
         'branch': git('branch', '--show-current').decode().strip(),
         'curobo_commit': SDK, 'research_files_verified': len(hashes),
         'normalized_relocated_assets_identical': True, 'same_reference_request_except_local_ids_timestamps': True,
@@ -110,7 +115,7 @@ def main():
         'policy': request['snapshot']['policy'], 'source_sha256': hashes,
         'scope': 'f044bf1 research L24/R20 only; not 25-box, mesh/FCL/OBB or hardware acceptance'}
     (args.artifacts / 'rebase-audit.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(f'PASS: {len(hashes)} mentor files; relocated models identical; same task/policy; 2 cycles, 6 planners and live UI.')
+    print(f'PASS: {len(hashes)} candidate files; mentor models identical; same default task/policy; 2 cycles, 6 planners and live UI.')
 
 
 if __name__ == '__main__':

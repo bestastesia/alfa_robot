@@ -15,7 +15,7 @@ from curobo.types import JointState
 from v3_batched_loaded_search import GpuValidity, densify
 from .backend import CuroboBackend, WORKSPACE_ROOT, goal
 from v3_wall_ik_benchmark import ACTIVE_JOINTS, canonical_side_suction_quaternion_wxyz
-from .adapter import task_attachments
+from .adapter import task_contact_positions, task_attachments
 from .contracts import PlanRequest
 from .scene import Pose, SceneStore
 
@@ -254,10 +254,7 @@ class FullCyclePlanner(CuroboBackend):
         timing["contact_solver_setup"] = (time.perf_counter()-segment_started)*1000
         segment_started = time.perf_counter()
         contact_poses = {}
-        for side, box_id in boxes.items():
-            item = self.snapshot.object(f"wall_box_{box_id:02d}")
-            position = np.asarray(item.pose.position).copy()
-            position[0] -= item.dimensions_m[0] * 0.5
+        for side, position in task_contact_positions(self.snapshot, boxes).items():
             contact_poses[f"{side}_tool0"] = {
                 "position": position, "quaternion": canonical_side_suction_quaternion_wxyz(side)}
         result = solver.solve_pose(goal(contact_poses), JointState.from_position(
