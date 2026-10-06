@@ -12,6 +12,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
+- 本地 `motion-233-curobo-f044bf1` 按用户纠正基于 **alfa_v3_curobo@f044bf1**，不能回到此前误选的 MoveIt Stage 分支。255文件/模型对拍、L24/R20新计算和Viser验证见 `docs/motion233_curobo_rebase.md`；研究碰撞策略不等同于FCL/OBB全墙验收。
+
 - `alfa_v3_curobo` 当前方向：MoveIt替代的基础阶段1～3（MOTION-276），研究入口在
   `research/curobo_v3`。独立快照/状态与规划核心见该目录`CORE.md`；GPU搜索算法仍跟踪
   MOTION-275。以下旧V3/旧主线信息属于历史上下文，不作为此分支当前模型和入口。

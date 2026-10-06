@@ -2169,3 +2169,8 @@
 - 验证结果：21组直接cuRobo导入通过，CPU核心22项、旧连接器2项、本仓连接器GPU3项、BIT3项通过，六种规划器首组全周期均成功且回Home误差0、步长≤0.5°。核心GPU缓存/SCENE_CHANGED测试通过；Mesh远离/重叠/关闭、IK/checker网格缓存通过。完整适配摘要见research/curobo_v3/generated/main_compatibility/validation.json。
 - 龙头车功能：复用米制STL与5cm双车布局，实时组合根独立；LiveScene筛选并冻结Mesh/货物到SceneSnapshot。8094页面可编辑实时xyyaw、播放跟随、冻结并切换显示，碰撞按钮只消费冻结快照。用户移动实时车不会影响旧检查；重新冻结重叠才报告碰撞，禁用后快照无龙头车。
 - 留给下个AI：CUROBO_MAIN.md/CONVEYOR.md提供完整命令。此处不含导航、ROS实时接口、环境-环境碰撞或带龙头车完整取放验收；完整动作继续248。当前正式工作树alfa_robot_v3_curobo；compare是同仓历史对比/压测工作树，含后续提交及本地改动，本次未删除、未复制新仓库。
+
+## 2026-10-06 Codex / MOTION-233 纠正目标分支并复现cuRobo基线
+- 用户明确目标为alfa_v3_curobo@f044bf1，建立独立motion-233-curobo-f044bf1，旧MoveIt Stage误选支线/其他窗口worktree均保留。未搬入错误Stage/KDL补丁，采用071cb95解析代理模型和SDK78fd485f，不把raw6bb生产壳体与其混用。
+- 255个上游源码/模型文件与运行副本重定位前后核验通过；任务L24/R20、场景、具名初态、完整目标、策略与隔壁成功输入一致。CPU22、导入21、GPU3+3、独立核心cache/过期结果、龙头车Mesh测试通过；2次完整周期+6种规划器+Viser新点击计算全部成功、最终Home误差0、步长≤0.5度。
+- 证据 /home/astesia/Sevenova/motion233-acceptance/curobo-f044bf1/；本支线Viser8095，隔壁8090未干预。研究policy保持原样，不宣称25箱、全三角网格FCL/OBB或实机认证。复现命令与验证脚本见docs/motion233_curobo_rebase.md。未push/改PR/改Linear。
