@@ -63,7 +63,7 @@ def wall_layout_from_args(args):
 def tasks(layout=WallLayout()):
     output = []
     occupied = set(layout.active_box_ids)
-    task_rows = sorted({box_id // layout.columns for box_id in occupied}, reverse=True)[:3]
+    task_rows = sorted({box_id // layout.columns for box_id in occupied}, reverse=True)
     left_columns = range(layout.columns - 1, layout.columns // 2 - 1, -1)
     right_columns = range((layout.columns + 1) // 2)
     for left_row in task_rows:
@@ -81,4 +81,37 @@ def tasks(layout=WallLayout()):
                         f"R{right_box:02d}(排{layout.rows-right_row}/列{layout.columns-right_column})"
                     )
                     output.append((label, {"left": left_box, "right": right_box}))
+    # Single-box choices also allow sparse walls and odd-column cleanup.
+    for pair in wall_sequence(layout):
+        if len(pair) == 1:
+            side, box_id = next(iter(pair.items()))
+            row, column = divmod(box_id, layout.columns)
+            output.append((f"{side[0].upper()}{box_id:02d}(排{layout.rows-row}/列{layout.columns-column}) · 单臂", pair))
+    return output
+
+
+def wall_sequence(layout):
+    """Top to bottom, outer pairs first, then the centre/remaining singleton(s)."""
+    occupied = set(layout.active_box_ids)
+    output = []
+    for rank, row in enumerate(sorted({i // layout.columns for i in occupied}, reverse=True)):
+        left = [row * layout.columns + c for c in range(layout.columns-1, layout.columns//2, -1)
+                if row * layout.columns + c in occupied]
+        right = [row * layout.columns + c for c in range(layout.columns//2)
+                 if row * layout.columns + c in occupied]
+        if layout.columns % 2 == 0:
+            middle = row * layout.columns + layout.columns//2
+            if middle in occupied:
+                left.append(middle)
+        for index in range(max(len(left), len(right))):
+            pair = {}
+            if index < len(left):
+                pair['left'] = left[index]
+            if index < len(right):
+                pair['right'] = right[index]
+            output.append(pair)
+        if layout.columns % 2:
+            middle = row * layout.columns + layout.columns//2
+            if middle in occupied:
+                output.append({('left' if rank % 2 == 0 else 'right'): middle})
     return output

@@ -48,6 +48,25 @@ def cycle(result):
             'return_home'} <= set(result['phases'])
 
 
+def verify_source(source, runtime_root):
+    hashes = {}
+    for name in git('ls-tree', '-r', '--name-only', source, '--', PREFIX).decode().splitlines():
+        expected = git('show', f'{source}:{name}')
+        assert (ROOT / name).read_bytes() == expected, f'uncommitted candidate source: {name}'
+        path = Path(name.removeprefix(PREFIX))
+        if path.parts[0] in ('generated', 'models', 'vendor'):
+            assert expected == git('show', f'{BASE}:{name}'), f'mentor model/solver asset changed: {name}'
+        actual = (runtime_root / path).read_bytes()
+        if path.parts[0] == 'generated' and path.suffix == '.yml':
+            assert relocated(yaml.safe_load(expected)) == relocated(yaml.safe_load(actual)), path
+        elif path.parts[0] == 'generated' and path.suffix == '.urdf':
+            assert xml(ET.fromstring(expected)) == xml(ET.fromstring(actual)), path
+        else:
+            assert expected == actual, f'runtime source/model changed: {path}'
+        hashes[str(path)] = hashlib.sha256(expected).hexdigest()
+    return hashes
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-ref', default=BASE, help='exact candidate commit to audit; default freezes mentor source')
@@ -62,21 +81,7 @@ def main():
     assert git('rev-parse', 'HEAD', root=args.sdk_repository).decode().strip() == SDK
     import curobo
     assert Path(curobo.__file__).resolve().is_relative_to(args.sdk_repository.resolve())
-    hashes = {}
-    for name in git('ls-tree', '-r', '--name-only', source, '--', PREFIX).decode().splitlines():
-        expected = git('show', f'{source}:{name}')
-        assert (ROOT / name).read_bytes() == expected, f'uncommitted candidate source: {name}'
-        path = Path(name.removeprefix(PREFIX))
-        if path.parts[0] in ('generated', 'models', 'vendor'):
-            assert expected == git('show', f'{BASE}:{name}'), f'mentor model/solver asset changed: {name}'
-        actual = (args.runtime_root / path).read_bytes()
-        if path.parts[0] == 'generated' and path.suffix == '.yml':
-            assert relocated(yaml.safe_load(expected)) == relocated(yaml.safe_load(actual)), path
-        elif path.parts[0] == 'generated' and path.suffix == '.urdf':
-            assert xml(ET.fromstring(expected)) == xml(ET.fromstring(actual)), path
-        else:
-            assert expected == actual, f'runtime source/model changed: {path}'
-        hashes[str(path)] = hashlib.sha256(expected).hexdigest()
+    hashes = verify_source(source, args.runtime_root)
     load = lambda name: json.loads((args.artifacts / name).read_text())
     runs = load('cycle.json')
     reference = json.loads(args.reference_cycle.read_text())['request']

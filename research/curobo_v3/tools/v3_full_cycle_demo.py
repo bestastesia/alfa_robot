@@ -11,7 +11,7 @@ from viser.extras import ViserUrdf
 import yourdfpy
 
 from v3_full_cycle_planner import FullCyclePlanner, CycleBlocked
-from curobo_core.fixtures import WallLayout, add_wall_arguments, wall_layout_from_args
+from curobo_core.fixtures import WallLayout, add_wall_arguments, wall_layout_from_args, wall_sequence
 from v3_interactive_60_tasks import (
     DEFAULT_ROBOT_CONFIG, DEFAULT_URDF, DEFAULT_NAMED_POSES, DEFAULT_BOX_FIT,
     DEFAULT_MOBILE_ROBOT_CONFIG, quaternion,
@@ -37,6 +37,8 @@ def main():
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
+    parser.add_argument("--sequence", action="store_true", help="show the complete wall sequence")
+    parser.add_argument("--sequence-json", type=Path, help="replay a matching sequence result; not a fresh plan")
     add_wall_arguments(parser)
     args = parser.parse_args()
     try:
@@ -45,6 +47,8 @@ def main():
         parser.error(str(error))
     if args.comparison_json and args.wall_layout != WallLayout():
         parser.error("preloaded comparisons belong to the default wall; recompute a custom layout")
+    if args.comparison_json and (args.sequence or args.sequence_json):
+        parser.error("single-task comparisons cannot preload a wall sequence")
     comparisons = {}
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
@@ -52,6 +56,16 @@ def main():
                       "Batched RRTConnect": "rrtconnect", "GPU PRM": "prm",
                       "Connect + Informed": "informed_connect", "BIT* + GPU": "bitstar"}
     planner = FullCyclePlanner(args)
+    initial_snapshot = planner.snapshot
+    preloaded_sequence = None
+    if args.sequence_json:
+        from curobo_core.scene import SceneSnapshot
+        preloaded_sequence = json.loads(args.sequence_json.read_text())
+        recorded = SceneSnapshot.from_dict(preloaded_sequence["initial_snapshot"])
+        if not preloaded_sequence.get("sequence") or recorded.geometry_key != initial_snapshot.geometry_key:
+            parser.error("sequence replay belongs to a different model, layout or collision policy")
+        if recorded.state.ordered(tuple(planner.home)) != initial_snapshot.state.ordered(tuple(planner.home)):
+            parser.error("sequence replay initial robot state differs")
     config = planner.mobile_robot["kinematics"]
     joint_names = config["cspace"]["joint_names"]
     urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=True, build_scene_graph=True)
@@ -93,13 +107,25 @@ def main():
         server.gui.add_markdown(
             f"箱墙：**{layout.rows}×{layout.columns}** · 实箱 **{len(layout.active_box_ids)}**  \n"
             f"初始车头→箱墙近面：**{layout.distance_m:.3f} m**  \n"
-            "仅当前双箱任务；研究碰撞策略，不代表整墙或实机验收。"
+            "研究碰撞策略；不代表完整网格碰撞或实机验收。"
         )
+        mode = server.gui.add_dropdown("规划范围", options=("单任务", "整墙序列"),
+                                       initial_value="整墙序列" if args.sequence or args.sequence_json else "单任务")
+        sequence_tasks = wall_sequence(layout)
+        round_labels = [f"{i+1:02d} · 排{layout.rows-next(iter(t.values()))//layout.columns} · " +
+                        " / ".join(f"{side[0].upper()}{box_id:02d}" for side, box_id in t.items())
+                        for i, t in enumerate(sequence_tasks)]
+        round_selector = server.gui.add_dropdown("查看轮次", options=round_labels, initial_value=round_labels[0])
+        with server.gui.add_folder("完整搬运顺序", expand_by_default=False) as sequence_folder:
+            sequence_table = server.gui.add_markdown("")
+        provenance = server.gui.add_markdown("已保存结果回放；点击计算可实时重算。" if args.sequence_json else "尚未计算。")
         task = server.gui.add_dropdown("组合任务", options=labels, initial_value=labels[0])
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Informed RRT")
         run = server.gui.add_button("计算完整流程并播放")
         play = server.gui.add_checkbox("播放", initial_value=False)
+        playback_step = server.gui.add_slider("回放步进（非实机速度）", min=1, max=20, step=1,
+                                              initial_value=5 if args.sequence or args.sequence_json else 1)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
@@ -108,22 +134,37 @@ def main():
         comparison_status = server.gui.add_markdown("")
     current = {"result": None, "busy": False}
 
+    def refresh_sequence():
+        whole_wall = mode.value == "整墙序列"
+        task.disabled = whole_wall or current["busy"]
+        round_selector.visible = whole_wall
+        sequence_folder.visible = whole_wall
+        result = current["result"]
+        records = result["rounds"] if result and result.get("sequence") else []
+        states = {"completed": "通过", "failed": "失败停在此轮", "pending": "待规划"}
+        lines = ["**完整搬运顺序：逐轮移除已搬箱，失败即停止。**", ""]
+        for i, label in enumerate(round_labels):
+            state = states[records[i]["status"]] if records else "待规划"
+            lines.append(f"- {label} — {state}")
+        sequence_table.content = "\n".join(lines) if whole_wall else ""
+
+
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
                  "| --- | --- | --- |"]
         for label, kind in planner_labels.items():
             result = comparisons.get(kind)
-            if result is None:
+            if result is None or not result["frames"]:
                 continue
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
             seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "预载首组对比为热态。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；无Shortcut/TrajOpt。"]
+        lines += ["", "对比表是计算结果回放。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；无Shortcut/TrajOpt。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
         result = current["result"]
-        if result is None:
+        if result is None or not result["frames"]:
             values = {**planner.home, "base_x": 0., "base_y": 0., "base_yaw": 0.}
             phase = "home"
             has_payload = False
@@ -134,13 +175,21 @@ def main():
         cfg = np.array([values.get(name, 0.) for name in urdf.actuated_joint_names])
         urdf.update_cfg(cfg)
         robot.update_cfg(cfg)
+        active_task = planner.selected_task
+        removed = set()
+        round_number = None
+        if result and result.get("sequence") and result["frames"]:
+            round_number = result["frame_rounds"][index]
+            record = result["rounds"][round_number]
+            active_task = record["task"]
+            removed = set(record["removed_before"])
         for side, node in attached.items():
             matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ canonical_side_tool_to_box(side)
             node.position = matrix[:3, 3]
             node.wxyz = quaternion(matrix)
-            node.visible = has_payload
+            node.visible = has_payload and side in active_task
         for box_id, box in source_boxes.items():
-            box.visible = box_id not in planner.selected_task.values() or phase in ("home", "approach")
+            box.visible = box_id not in removed and (box_id not in active_task.values() or phase in ("home", "approach"))
         if result:
             status.content = (
                 f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
@@ -149,8 +198,16 @@ def main():
                 f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
                 f"最终Home误差：**{result.get('final_home_error', 0):.8f}**"
             )
+            if result.get("sequence"):
+                status.content = (
+                    f"**整墙{'通过' if result['success'] else '未通过'} · "
+                    f"已完成{len(result['completed_box_ids'])}/{len(layout.active_box_ids)}箱**  \n"
+                    f"当前第{round_number+1 if round_number is not None else 1}/{len(result['rounds'])}轮 · {PHASE_NAMES[phase]}  \n"
+                    f"帧：**{index+1}/{len(result['frames'])}** · 累计规划：{result['total_ms']/1000:.3f}s"
+                )
             if not result["success"]:
-                status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
+                blocked = f"阻塞第{result['blocked_round']}轮：" if result.get("sequence") else ""
+                status.content += f"  \n{blocked}{result.get('error') or result.get('blocked_details')}"
 
     @frame.on_update
     def on_frame(_event):
@@ -163,9 +220,41 @@ def main():
             return
         selected = next(key for key, label in PHASE_NAMES.items() if label == stage.value)
         phases = current["result"]["phases"]
-        if selected in phases:
+        indices = range(len(phases))
+        result = current["result"]
+        if result.get("sequence"):
+            number = round_labels.index(round_selector.value)
+            indices = [i for i in indices if result["frame_rounds"][i] == number]
+        index = next((i for i in indices if phases[i] == selected), None)
+        if index is not None:
             play.value = False
-            frame.value = phases.index(selected)+1
+            frame.value = index+1
+
+    @round_selector.on_update
+    def on_round(_event):
+        result = current["result"]
+        if current["busy"] or not result or not result.get("sequence"):
+            return
+        number = round_labels.index(round_selector.value)
+        play.value = False
+        if number in result["frame_rounds"]:
+            frame.value = result["frame_rounds"].index(number)+1
+            stage.value = PHASE_NAMES["home"]
+        else:
+            status.content = f"第{number+1}轮没有通过的轨迹；未跳过失败继续播放。"
+
+    @mode.on_update
+    def on_mode(_event):
+        if current["busy"]:
+            return
+        play.value = False
+        current["result"] = preloaded_sequence if mode.value == "整墙序列" else None
+        result = current["result"]
+        frame.max = max(1, len(result["frames"])) if result else 1
+        frame.value = 1
+        provenance.content = "已保存结果回放。" if result else "尚未计算。"
+        refresh_sequence()
+        show_frame(0)
 
     @spheres.on_update
     def on_spheres(_event):
@@ -181,6 +270,7 @@ def main():
         current["result"] = None
         planner.selected_task = planner.task_map[task.value]
         comparisons.clear()
+        provenance.content = "任务已改变，尚未计算。"
         planner.comparison_contact = None
         refresh_comparison()
         frame.max = 1
@@ -193,8 +283,10 @@ def main():
             return
         play.value = False
         planner.planner_kind = planner_labels[planner_selector.value]
-        result = comparisons.get(planner.planner_kind)
+        result = comparisons.get(planner.planner_kind) if mode.value == "单任务" else None
         current["result"] = result
+        provenance.content = "已计算结果回放。" if result else "规划器已改变，尚未计算。"
+        refresh_sequence()
         frame.max = max(1, len(result["frames"])) if result else 1
         frame.value = 1
         show_frame(0)
@@ -209,39 +301,47 @@ def main():
         run.disabled = True
         task.disabled = True
         planner_selector.disabled = True
+        mode.disabled = True
+        round_selector.disabled = True
         play.value = False
         current["result"] = None
+        provenance.content = "正在实时计算，不使用预存轨迹。"
+        round_selector.value = round_labels[0]
+        refresh_sequence()
         show_frame(0)
 
         def worker():
             try:
-                result = planner.full_cycle(planner.selected_task,
-                                            lambda text: setattr(status, "content", text))
-            except CycleBlocked as error:
-                result = error.partial or planner.last_partial
-                result["blocked_stage"] = error.stage
-                result["blocked_details"] = error.details
-            except Exception as error:
-                result = planner.last_partial or {"success": False, "frames": []}
-                result["blocked_stage"] = "程序异常"
-                result["blocked_details"] = f"{type(error).__name__}: {error}"
+                try:
+                    planner.set_snapshot(initial_snapshot)
+                    planner.comparison_contact = None
+                    progress = lambda text: setattr(status, "content", text)
+                    result = (planner.plan_sequence(initial_snapshot, progress) if mode.value == "整墙序列"
+                              else planner.full_cycle(planner.selected_task, progress))
+                except Exception as error:
+                    result = {"success": False, "frames": [], "blocked_stage": "程序异常",
+                              "blocked_details": f"{type(error).__name__}: {error}"}
+                path = args.robot_config.parent / ("full_wall_latest.json" if mode.value == "整墙序列" else "full_cycle_latest.json")
+                path.write_text(json.dumps(result, indent=2, ensure_ascii=False)+"\n")
+                current["result"] = result
+                provenance.content = "本次实时计算结果；轨迹仅在当前研究碰撞策略下验收。"
+                if mode.value == "单任务":
+                    comparisons[planner.planner_kind] = result
+                refresh_comparison()
+                if result["frames"]:
+                    frame.max = len(result["frames"])
+                    frame.value = 1
+                    show_frame(0)
+                    play.value = result["success"]
+                else:
+                    status.content = f"**已停止** {result.get('blocked_stage')}: {result.get('blocked_details')}"
             finally:
                 current["busy"] = False
                 run.disabled = False
-                task.disabled = False
                 planner_selector.disabled = False
-            path = args.robot_config.parent / "full_cycle_latest.json"
-            path.write_text(json.dumps(result, indent=2, ensure_ascii=False)+"\n")
-            current["result"] = result
-            comparisons[planner.planner_kind] = result
-            refresh_comparison()
-            if result["frames"]:
-                frame.max = len(result["frames"])
-                frame.value = 1
-                show_frame(0)
-                play.value = result["success"]
-            else:
-                status.content = f"**已停止** {result.get('blocked_stage')}: {result.get('blocked_details')}"
+                mode.disabled = False
+                round_selector.disabled = False
+                refresh_sequence()
         threading.Thread(target=worker, daemon=True).start()
 
     @server.on_client_connect
@@ -256,7 +356,11 @@ def main():
             planner.comparison_contact = baseline["contact_candidates"][baseline["selected_candidate"]-1]
         current["result"] = baseline
         frame.max = len(baseline["frames"]) if baseline else 1
+    if preloaded_sequence:
+        current["result"] = preloaded_sequence
+        frame.max = max(1, len(preloaded_sequence["frames"]))
     refresh_comparison()
+    refresh_sequence()
     show_frame(0)
     print(f"Ready: http://localhost:{args.port}", flush=True)
     while True:
@@ -264,7 +368,7 @@ def main():
             if int(frame.value) >= len(current["result"]["frames"]):
                 play.value = False
             else:
-                frame.value = int(frame.value)+1
+                frame.value = min(frame.max, int(frame.value)+int(playback_step.value))
         time.sleep(.03)
 
 

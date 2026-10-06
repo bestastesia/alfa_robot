@@ -18,6 +18,7 @@ from v3_wall_ik_benchmark import ACTIVE_JOINTS, canonical_side_suction_quaternio
 from .adapter import task_contact_positions, task_attachments
 from .contracts import PlanRequest
 from .scene import Pose, SceneStore
+from .sequence import plan_sequence
 
 
 class CycleBlocked(RuntimeError):
@@ -64,7 +65,7 @@ class FullCyclePlanner(CuroboBackend):
     def demo_request(self, boxes):
         return PlanRequest(self.snapshot, tuple(boxes.items()), tuple(
             (name, Pose(tuple(pose["position"]), tuple(pose["quaternion"])))
-            for name, pose in self.target_poses.items()))
+            for name, pose in self.default_target_poses.items()))
 
     def plan_request(self, request, progress=lambda text: None):
         if not self._planning_lock.acquire(blocking=False):
@@ -126,6 +127,14 @@ class FullCyclePlanner(CuroboBackend):
     def full_cycle(self, boxes, progress=lambda text: None):
         return self.plan_request(self.demo_request(boxes), progress)
 
+    def plan_sequence(self, snapshot, progress=lambda text: None):
+        if not self._planning_lock.acquire(blocking=False):
+            raise RuntimeError("planning core is busy")
+        try:
+            return plan_sequence(self, snapshot, progress)
+        finally:
+            self._planning_lock.release()
+
     def _predicted_events(self, request, result):
         predicted = SceneStore(request.snapshot)
         events = []
@@ -156,18 +165,20 @@ class FullCyclePlanner(CuroboBackend):
         self.fk_robot.update_cfg({name: mapping.get(name, 0.0)
                                   for name in self.fk_robot.actuated_joint_names})
 
-    def analytic_extract(self, contact, empty_validity, loaded_validity):
+    def analytic_extract(self, contact, empty_validity, loaded_validity, active_sides=("left", "right")):
         self.fk(contact)
         world_to_carriage = np.linalg.inv(
             self.fk_robot.get_transform("arm_carriage", self.fk_robot.base_link))
         targets = {side: self.fk_robot.get_transform(f"{side}_tool0", self.fk_robot.base_link).copy()
-                   for side in ("left", "right")}
+                   for side in active_sides}
         swivels = [self.analytic.swivel(side, contact[1 + side * 7:8 + side * 7])
                    for side in range(2)]
         rows = [np.asarray(contact, dtype=np.float64)]
         for distance in np.linspace(0.01, 0.35, 35):
             next_row = rows[-1].copy()
             for side_index, side in enumerate(("left", "right")):
+                if side not in active_sides:
+                    continue
                 target = targets[side].copy()
                 target[0, 3] -= distance
                 offset = 1 + side_index * 7
@@ -190,7 +201,7 @@ class FullCyclePlanner(CuroboBackend):
         maximum_orientation_error = 0.0
         for values in dense:
             self.fk(values)
-            for side in ("left", "right"):
+            for side in active_sides:
                 actual = self.fk_robot.get_transform(f"{side}_tool0", self.fk_robot.base_link)
                 maximum_line_error = max(maximum_line_error,
                                          float(np.linalg.norm(actual[1:3, 3] - targets[side][1:3, 3])))
@@ -238,7 +249,7 @@ class FullCyclePlanner(CuroboBackend):
                 report["phases"].append(phase)
                 report["payload"].append(payload)
 
-        progress("检查初始状态并求32个接触IK")
+        progress("检查初始状态并求接触IK（保留原32候选优先，扩展至128）")
         segment_started = time.perf_counter()
         empty_checker = self.checker(boxes)
         empty_validity = GpuValidity(empty_checker, check_ground=True,
@@ -258,7 +269,7 @@ class FullCyclePlanner(CuroboBackend):
             contact_poses[f"{side}_tool0"] = {
                 "position": position, "quaternion": canonical_side_suction_quaternion_wxyz(side)}
         result = solver.solve_pose(goal(contact_poses), JointState.from_position(
-            torch.tensor(self.home_values[None], device="cuda"), joint_names=ACTIVE_JOINTS), return_seeds=32)
+            torch.tensor(self.home_values[None], device="cuda"), joint_names=ACTIVE_JOINTS), return_seeds=128)
         names = list(result.js_solution.joint_names)
         values = result.js_solution.position.reshape(-1, len(names))
         successful = result.success.reshape(-1).bool()
@@ -266,7 +277,13 @@ class FullCyclePlanner(CuroboBackend):
         if len(candidates) == 0:
             raise CycleBlocked("接触IK", "cuRobo没有返回成功候选", report)
         weights = np.array([5.0] + [1.0] * 14)
-        candidates = candidates[np.argsort(np.sum(((candidates - self.home_values) * weights) ** 2, axis=1))]
+        # Keep the original 32-solution priority, then try additional IK branches.
+        chunks = (candidates[:32], candidates[32:])
+        candidates = np.concatenate([chunk[np.argsort(np.sum(((chunk-self.home_values)*weights)**2, axis=1))]
+                                     for chunk in chunks])
+        _, unique = np.unique(np.round(candidates, 6), axis=0, return_index=True)
+        candidates = candidates[np.sort(unique)]
+        report["contact_candidate_limit"] = 128
         report["contact_ik_count"] = len(candidates)
         report["contact_candidates"] = candidates.tolist()
         fixed_contact = getattr(self, "comparison_contact", None)
@@ -277,10 +294,10 @@ class FullCyclePlanner(CuroboBackend):
         timing["contact_ik_and_ranking"] = (time.perf_counter()-segment_started)*1000
         segment_started = time.perf_counter()
         loaded_checker = self.checker(boxes, payload=True)
-        loaded_validity = GpuValidity(loaded_checker, active_sides=("left", "right"),
+        loaded_validity = GpuValidity(loaded_checker, active_sides=tuple(boxes),
                                       max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                       ground_z=self.snapshot.policy.ground_z_m)
-        extracting_validity = GpuValidity(empty_checker, active_sides=("left", "right"),
+        extracting_validity = GpuValidity(empty_checker, active_sides=tuple(boxes),
                                           max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                           ground_z=self.snapshot.policy.ground_z_m)
         torch.cuda.synchronize()
@@ -291,7 +308,7 @@ class FullCyclePlanner(CuroboBackend):
         for index, contact in enumerate(candidates):
             progress(f"候选{index+1}/{len(candidates)}：固定Updown解析抽离")
             attempt_started = time.perf_counter()
-            extracted, details = self.analytic_extract(contact, extracting_validity, loaded_validity)
+            extracted, details = self.analytic_extract(contact, extracting_validity, loaded_validity, tuple(boxes))
             torch.cuda.synchronize()
             timing["analytic_extract_and_validation"] += (time.perf_counter()-attempt_started)*1000
             attempt = {"candidate": index+1, "extraction": details}
@@ -360,7 +377,23 @@ class FullCyclePlanner(CuroboBackend):
         torch.cuda.synchronize()
         timing["home_rrt_and_validation"] = (time.perf_counter()-segment_started)*1000
         if home_path is None:
-            raise CycleBlocked("空载回Home", f"2秒内无路径或验收失败: {stats}", report)
+            # Empty return can retrace this request's validated outbound route, but recheck it.
+            reuse_started = time.perf_counter()
+            indices = [mobile_names.index(name) for name in ACTIVE_JOINTS]
+            carried = np.asarray(transport["frames"][:transport["transport_frames"]])[:, indices]
+            reverse = np.vstack((carried[::-1], extracted[::-1], approach[::-1]))
+            reusable = (np.allclose(reverse[0], return_start, atol=1e-7, rtol=0) and
+                        np.allclose(reverse[-1], self.home_values, atol=1e-7, rtol=0) and
+                        bool(empty_validity.mask(torch.tensor(reverse, device="cuda", dtype=torch.float32)).all().item()))
+            torch.cuda.synchronize()
+            reuse_ms = (time.perf_counter()-reuse_started)*1000
+            stats = {"strategy": "reverse_validated_empty_path", "fallback": True,
+                     "failed_search": stats, "dense_validated": reusable, "reuse_validation_ms": reuse_ms}
+            timing["home_rrt_and_validation"] += reuse_ms
+            if not reusable:
+                raise CycleBlocked("空载回Home", f"搜索及反向空载复核均失败: {stats}", report)
+            progress("空载回程搜索失败：显式复用去程反向路径，空载逐帧复核通过")
+            home_path = reverse
         report["home_search_stats"] = stats
         append(home_path, "return_home", False)
         rows = np.asarray(report["frames"])

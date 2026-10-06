@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--right-box", type=int, default=20)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--sequence", action="store_true", help="plan every occupied wall cell, stopping at the first failed round")
     add_wall_arguments(parser)
     args = parser.parse_args()
     try:
@@ -30,7 +31,15 @@ def main():
         parser.error("--request already owns scene geometry; do not combine it with wall overrides")
     if args.runs < 1:
         parser.error("runs must be positive")
+    if args.sequence and (args.request or args.runs != 1 or args.left_box != 24 or args.right_box != 20):
+        parser.error("--sequence owns its rounds; do not combine it with --request, repeated --runs or box selection")
     planner = FullCyclePlanner(args)
+    if args.sequence:
+        result = planner.plan_sequence(planner.snapshot, lambda message: print(message, file=sys.stderr, flush=True))
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
+        print(json.dumps({k: result.get(k) for k in ('success', 'completed_box_ids', 'remaining_box_ids', 'total_ms', 'error')}, ensure_ascii=False))
+        raise SystemExit(0 if result['success'] else 1)
     request = PlanRequest.from_dict(json.loads(args.request.read_text())) if args.request else planner.demo_request(
         {"left": args.left_box, "right": args.right_box})
     results = []

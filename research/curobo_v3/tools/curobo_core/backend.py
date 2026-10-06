@@ -33,7 +33,7 @@ DEFAULT_TARGET_POSES = WORKSPACE_ROOT / 'generated/current_carry_target_6d.json'
 
 
 def goal(poses):
-    frames = ['left_tool0', 'right_tool0']
+    frames = [frame for frame in ('left_tool0', 'right_tool0') if frame in poses]
     return GoalToolPose.from_poses({
         frame: Pose(
             position=torch.tensor(poses[frame]['position'], device='cuda', dtype=torch.float32).reshape(1, 3),
@@ -71,7 +71,7 @@ class CuroboBackend:
             raise TypeError("wall_layout must be a WallLayout")
         self.task_options = tasks(self.wall_layout)
         if not self.task_options:
-            raise ValueError("wall layout has no eligible dual-arm pairs in occupied upper rows")
+            raise ValueError("wall layout contains no task boxes")
         self.task_map = dict(self.task_options)
         self.selected_task = self.task_options[0][1]
         self.random_start = None
@@ -86,6 +86,7 @@ class CuroboBackend:
             self.wall_layout.objects(self.front),
         )
         self.target_poses = json.loads(Path(getattr(args, "target_poses", DEFAULT_TARGET_POSES)).read_text())
+        self.default_target_poses = copy.deepcopy(self.target_poses)
         self._cached_task = None
         self._cached_solver = None
         self._cached_checkers = {}
@@ -130,11 +131,15 @@ class CuroboBackend:
             raise ValueError("current checker only exempts base_link support")
         self.snapshot = snapshot
 
-    def ik_solver(self, boxes):
+    def ik_solver(self, boxes, all_tools=False):
         self.prepare_task(boxes)
-        if self._cached_solver is None:
+        frames = [side + "_tool0" for side in ("left", "right") if all_tools or side in boxes]
+        if self._cached_solver is None or frames != self._cached_solver_frames:
+            self._cached_solver_frames = frames
+            robot = copy.deepcopy(self.robot)
+            robot.get("robot_cfg", robot)["kinematics"]["tool_frames"] = frames
             self._cached_solver = InverseKinematics(InverseKinematicsCfg.create(
-                robot=copy.deepcopy(self.robot), scene_model=self.scene(boxes),
+                robot=robot, scene_model=self.scene(boxes),
                 collision_cache={"cuboid": max(40, len(self.snapshot.objects)),
                                  "mesh": len(self.snapshot.meshes)}, num_seeds=512,
                 self_collision_check=True, use_cuda_graph=False,
@@ -149,7 +154,7 @@ class CuroboBackend:
         key = (payload, mobile)
         if key not in self._cached_checkers:
             robot = self.mobile_robot if mobile else self.robot
-            configured = loaded_robot(robot, self.box_fit, attachments=task_attachments(
+            configured = loaded_robot(robot, self.box_fit, active_sides=tuple(boxes), attachments=task_attachments(
                 self.snapshot, boxes)) if payload else copy.deepcopy(robot)
             self._cached_checkers[key] = RobotCollisionChecker(
                 RobotCollisionCheckerCfg.load_from_config(
@@ -197,14 +202,14 @@ class CuroboBackend:
         generator.manual_seed(20261003 + self.random_counter)
         order = torch.randperm(len(contact_candidates), generator=generator, device="cuda")
         contact_candidates = contact_candidates[order]
-        loaded = loaded_robot(self.robot, self.box_fit, active_sides=("left", "right"))
+        loaded = loaded_robot(self.robot, self.box_fit, active_sides=tuple(boxes))
         checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
             robot_config=copy.deepcopy(loaded), scene_model=scene,
             n_cuboids=max(40, len(self.snapshot.objects)), n_meshes=len(self.snapshot.meshes),
             collision_activation_distance=0.0,
         ))
         validity = GpuValidity(
-            checker, active_sides=("left", "right"), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=ACTIVE_JOINTS,
         )
@@ -216,6 +221,8 @@ class CuroboBackend:
             actual = solver.compute_kinematics(contact_state).tool_poses.to_dict()
             extract_poses = {frame: pose_dict(actual[frame]) for frame in contact_poses}
             for frame in extract_poses:
+                if frame.removesuffix("_tool0") not in boxes:
+                    continue
                 extract_poses[frame]["position"] = extract_poses[frame]["position"].copy()
                 extract_poses[frame]["position"][0] -= 0.35
             extracted = solver.solve_pose(
@@ -258,12 +265,13 @@ class CuroboBackend:
         scene = self.scene(boxes)
         checker = self.collision_checker(boxes, payload=True)
         validity = GpuValidity(
-            checker, active_sides=("left", "right"), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=ACTIVE_JOINTS,
         )
         start = torch.tensor(start_values, device="cuda", dtype=torch.float32)
-        target_solver = self.ik_solver(boxes)
+        # The empty arm must also reach its specified carry pose before the chassis turns.
+        target_solver = self.ik_solver(boxes, all_tools=True)
         target_poses = self.target_poses
         torch.cuda.synchronize()
         timings["setup"] = (time.perf_counter() - started_all) * 1000
@@ -336,7 +344,7 @@ class CuroboBackend:
         started_mobile_setup = time.perf_counter()
         mobile_checker = self.collision_checker(boxes, payload=True, mobile=True)
         mobile_validity = GpuValidity(
-            mobile_checker, active_sides=("left", "right"), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
+            mobile_checker, active_sides=tuple(boxes), max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg,
             stability_weight=10.0, check_ground=True, ground_z=self.snapshot.policy.ground_z_m,
             joint_names=mobile_names,
             weights=[2.0, 2.0, 1.0, 5.0] + [1.0] * 14,
