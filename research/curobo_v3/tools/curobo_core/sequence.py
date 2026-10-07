@@ -52,6 +52,8 @@ def plan_sequence(planner, snapshot, progress):
         report["error"] = None
     report["final_snapshot"] = current.to_dict()
     report["total_ms"] = (time.perf_counter() - started) * 1000
+    report["grasp_search_rounds"] = [i+1 for i, r in enumerate(report["rounds"])
+                                    if len(r.get("result", {}).get("suction_attempts", [])) > 1]
     report["fallback_rounds"] = [i+1 for i, r in enumerate(report["rounds"])
                                  if r.get("result", {}).get("home_search_stats", {}).get("fallback")]
     report["remaining_box_ids"] = sorted(set(ids) - set(report["completed_box_ids"]))

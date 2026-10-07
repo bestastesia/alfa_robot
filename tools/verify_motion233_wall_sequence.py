@@ -5,6 +5,8 @@ import json
 import math
 from pathlib import Path
 import sys
+import xml.etree.ElementTree as ET
+import yaml
 
 from verify_motion233_curobo_rebase import BASE, ROOT, SDK, cycle, git, verify_source
 
@@ -44,6 +46,17 @@ def main():
                       'ground_z_m': 0., 'max_box_tilt_deg': 89., 'ground_support_link': 'base_link'}
     assert [r['task'] for r in data['rounds']] == wall_sequence(layout)
     assert len(data['frames']) == len(data['phases']) == len(data['payload']) == len(data['frame_rounds'])
+    mobile = yaml.safe_load((args.runtime_root/'generated/v3_analytic_071cb95/mobile18/alfa_v322_suction_mobile18.yml').read_text())
+    limits = {j.attrib['name']: j.find('limit').attrib for j in ET.parse(mobile['kinematics']['urdf_path']).findall('joint')
+              if j.find('limit') is not None}
+    limit_overshoot = {}
+    for column, name in enumerate(data['joint_names']):
+        bounds = limits[name]
+        low, high = float(bounds['lower']), float(bounds['upper'])
+        values = [row[column] for row in data['frames']]
+        excess = max(0., low-min(values), max(values)-high)
+        assert excess <= 1e-6, (name, excess)
+        limit_overshoot[name] = excess
     current = data['initial_snapshot']
     completed, offset, fallbacks = [], 0, []
     for number, record in enumerate(data['rounds']):
@@ -95,7 +108,7 @@ def main():
               'research_files_verified': len(hashes), 'source_sha256': hashes,
               'passed': data['success'], 'completed_boxes': len(completed), 'rounds': 15,
               'completed_rounds': sum(r['status'] == 'completed' for r in data['rounds']),
-              'error': data['error'],
+              'error': data['error'], 'joint_limit_overshoot': limit_overshoot,
               'single_arm_rounds': 5, 'front_to_wall_m': .75, 'frames': offset,
               'fallback_rounds': fallbacks, 'total_ms': data['total_ms'],
               'scope': 'full ordered wall and validated completed prefix; original f044 research collision policy; no mesh/hardware certification'}

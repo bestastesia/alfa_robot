@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a completed top-suction cycle, payload transforms and the frozen pad footprint."""
+"""Validate a completed suction cycle, payload transforms and the frozen pad footprint."""
 import argparse
 import json
 from pathlib import Path
@@ -22,15 +22,19 @@ from curobo_core.scene import Pose
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--suction-mode', choices=('side', 'top'), default='top')
     parser.add_argument('--result', type=Path, required=True)
     parser.add_argument('--runtime-root', type=Path, required=True)
     args = parser.parse_args()
     document = json.loads(args.result.read_text())
     request, result = PlanRequest.from_dict(document['request']), document['results'][-1]
     cycle(result)
-    assert result['request_id'] == request.identity and result['suction_mode'] == 'top'
+    mode = args.suction_mode
+    offsets = result.get('contact_offsets_m', {})
+    assert result['request_id'] == request.identity and result['suction_mode'] == mode
     assert result['suction_attempts'][-1]['success']
-    assert not top_lift_blockers(request.snapshot, dict(request.tasks))
+    if mode == 'top':
+        assert not top_lift_blockers(request.snapshot, dict(request.tasks))
     config = yaml.safe_load((args.runtime_root/'generated/v3_analytic_071cb95/mobile18/alfa_v322_suction_mobile18.yml').read_text())
     urdf_path = Path(config['kinematics']['urdf_path'])
     robot = yourdfpy.URDF.load(urdf_path, load_meshes=False, build_scene_graph=True)
@@ -46,7 +50,7 @@ def main():
         size = np.ptp(face[:, :2], axis=0)
         np.testing.assert_allclose(size, TOP_PAD_SIZE_M, atol=1e-6)
         pad_measurements[side] = size.tolist()
-    attachments = task_attachments(request.snapshot, dict(request.tasks), 'top')
+    attachments = task_attachments(request.snapshot, dict(request.tasks), mode, offsets)
     attach_index = result['phases'].index('attach')
     extract_index = max(i for i, p in enumerate(result['phases']) if p == 'extract')
     errors = {}
@@ -64,12 +68,14 @@ def main():
         actual_box = contact @ pose_matrix(attachment.tool_to_object)
         position_error = np.linalg.norm(actual_box[:3, 3]-box.pose.position)
         assert position_error < .004
-        np.testing.assert_allclose(extracted[:3, 3]-contact[:3, 3], (0., 0., .35), atol=1e-6)
-        np.testing.assert_allclose(extracted[:3, :3], contact[:3, :3], atol=1e-7)
+        np.testing.assert_allclose(extracted[:3, 3]-contact[:3, 3], (0., 0., .35) if mode == 'top' else (-.35, 0., 0.), atol=1e-6)
+        assert Rotation.from_matrix(contact[:3,:3].T @ extracted[:3,:3]).magnitude() < 1e-5
         corners = np.array([[x, y, 0.] for x in (-.0875, .0875) for y in (-.1775, .1775)])
         corners = corners @ contact[:3, :3].T + contact[:3, 3]
-        lower, upper = np.array(box.pose.position[:2])-np.array(box.dimensions_m[:2])/2, np.array(box.pose.position[:2])+np.array(box.dimensions_m[:2])/2
-        edge_margin = float(min((corners[:, :2]-lower).min(), (upper-corners[:, :2]).min()))
+        axes = [0, 1] if mode == 'top' else [1, 2]
+        center, half = np.array(box.pose.position)[axes], np.array(box.dimensions_m)[axes]/2
+        lower, upper = center-half, center+half
+        edge_margin = float(min((corners[:, axes]-lower).min(), (upper-corners[:, axes]).min()))
         assert edge_margin >= 0, f'{side} suction plate overhang'
         reference = dict(request.targets)[name]
         effective = result['carry_tool_targets'][name]
@@ -77,12 +83,12 @@ def main():
         top_box = pose_matrix(Pose(effective['position'], effective['quaternion'])) @ pose_matrix(attachment.tool_to_object)
         np.testing.assert_allclose(top_box, nominal_box, atol=1e-12)
         errors[side] = {'attachment_position_error_m': float(position_error), 'minimum_actual_pad_edge_clearance_m': edge_margin}
-    report = {'passed': True, 'suction_mode': 'top', 'task': dict(request.tasks),
+    report = {'passed': True, 'suction_mode': mode, 'contact_offsets_m': offsets, 'task': dict(request.tasks),
               'pad_dimensions_measured_m': pad_measurements, 'geometry': errors,
-              'lift_m': .35, 'box_destination_preserved': True, 'frames': len(result['frames']),
+              'linear_extract_m': .35, 'box_destination_preserved': True, 'frames': len(result['frames']),
               'total_ms': result['total_ms'], 'scope': 'f044 research policy; not vacuum-force or hardware certification'}
     args.result.with_suffix('.audit.json').write_text(json.dumps(report, indent=2)+'\n')
-    print('PASS: top contact, pad footprint, 35cm lift, attachment geometry, box destination and full cycle.')
+    print(f'PASS: {mode} contact, pad footprint, 35cm extraction, attachment geometry, box destination and full cycle.')
 
 
 if __name__ == '__main__':

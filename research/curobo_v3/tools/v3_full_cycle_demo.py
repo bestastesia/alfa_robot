@@ -249,6 +249,8 @@ def main():
                 )
             mode_name = "顶吸" if cycle_result.get("suction_mode", "side") == "top" else "侧吸"
             status.content += f"  \n吸附模式：**{mode_name}**"
+            if cycle_result.get("contact_offsets_m"):
+                status.content += f"  \n吸附面内偏移(m)：{cycle_result['contact_offsets_m']}"
             if not result["success"]:
                 blocked = f"阻塞第{result['blocked_round']}轮：" if result.get("sequence") else ""
                 status.content += f"  \n{blocked}{result.get('error') or result.get('blocked_details')}"

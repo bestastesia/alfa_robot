@@ -8,7 +8,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from curobo_core.adapter import (carry_targets, pose_matrix, suction_quaternion,
-                                 task_attachments, task_contact_positions, top_lift_blockers)
+                                 task_attachments, task_contact_positions, top_lift_blockers,
+                                 contact_offset, side_face_variants, tool_to_box)
 from curobo_core.cache import resource_key
 from curobo_core.contracts import ACTIVE_JOINTS, PlanRequest
 from curobo_core.scene import Pose, RobotState, SceneObject, SceneSnapshot, MeshObject
@@ -57,6 +58,40 @@ class TopSuctionTest(unittest.TestCase):
         self.assertEqual(top_lift_blockers(replace(self.snapshot, meshes=(roof,)), self.tasks), ['roof'])
         with self.assertRaises(ValueError):
             top_lift_blockers(self.snapshot, self.tasks, -1)
+
+    def test_side_face_search_preserves_box_pose_and_stays_inside_contact_face(self):
+        for offsets in side_face_variants(self.snapshot, self.tasks):
+            self.assertAlmostEqual(abs(offsets['left'][2]), .05375)
+            position = task_contact_positions(self.snapshot, self.tasks, offsets=offsets)['left']
+            contact = pose_matrix(Pose(position, tuple(suction_quaternion('left', 'side'))))
+            attachment, = task_attachments(self.snapshot, self.tasks, offsets=offsets)
+            np.testing.assert_allclose(contact @ pose_matrix(attachment.tool_to_object), pose_matrix(self.box.pose), atol=1e-12)
+            corners = np.array([[x,y,0.] for x in (-.0875,.0875) for y in (-.1775,.1775)])
+            corners = corners @ contact[:3,:3].T + contact[:3,3]
+            self.assertTrue(np.all(np.abs(corners[:,1:] - self.box.pose.position[1:]) <= np.array(self.box.dimensions_m[1:])/2-.005+1e-12))
+            converted = carry_targets(self.snapshot, self.tasks, self.targets, 'side', offsets)
+            new = converted['left_tool0']; old = self.targets['left_tool0']
+            np.testing.assert_allclose(pose_matrix(Pose(new['position'],new['quaternion'])) @ pose_matrix(attachment.tool_to_object),
+                pose_matrix(Pose(old['position'],old['quaternion'])) @ tool_to_box('left',self.box.dimensions_m,'side'), atol=1e-12)
+        for invalid in ((.01,0,0),(0,.1,0),(0,0,.15),(0,0,float('nan'))):
+            with self.assertRaises(ValueError):
+                contact_offset(self.box.dimensions_m,'side',invalid)
+
+    def test_grasp_offset_invalidates_cached_robot_payload(self):
+        from curobo_core.backend import CuroboBackend
+        backend = object.__new__(CuroboBackend)
+        backend.snapshot, backend.box_fit = self.snapshot, {}
+        backend.suction_mode, backend.contact_offsets = 'side', {}
+        backend._cached_task, backend._cached_solver, backend._cached_checkers = None, None, {}
+        backend.prepare_task(self.tasks)
+        before = backend._cached_task
+        backend._cached_solver = object()
+        backend._cached_checkers['payload'] = object()
+        backend.contact_offsets = next(side_face_variants(self.snapshot, self.tasks))
+        backend.prepare_task(self.tasks)
+        self.assertNotEqual(before, backend._cached_task)
+        self.assertIsNone(backend._cached_solver)
+        self.assertEqual(backend._cached_checkers, {})
 
     def test_stability_uses_the_selected_attachment_not_side_grasp_axes(self):
         import torch

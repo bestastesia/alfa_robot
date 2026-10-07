@@ -16,7 +16,7 @@ from v3_batched_loaded_search import GpuValidity, densify
 from .backend import CuroboBackend, WORKSPACE_ROOT, goal
 from v3_wall_ik_benchmark import ACTIVE_JOINTS, canonical_side_suction_quaternion_wxyz
 from .adapter import (task_contact_positions, task_attachments, suction_quaternion,
-                      carry_targets, top_lift_blockers)
+                      carry_targets, top_lift_blockers, side_face_variants)
 from .contracts import PlanRequest
 from .scene import Pose, SceneStore
 from .sequence import plan_sequence
@@ -95,24 +95,26 @@ class FullCyclePlanner(CuroboBackend):
                 raise ValueError("task box dimensions differ from payload sphere model")
         started = time.perf_counter()
         attempts = []
-        modes = ("side", "top") if request.suction_mode == "auto" else (request.suction_mode,)
-        for mode in modes:
+        variants = ([('side', {}), *[('side', offset) for offset in side_face_variants(request.snapshot, boxes)],
+                     ('top', {})] if request.suction_mode == "auto" else [(request.suction_mode, {})])
+        for mode, offsets in variants:
             self.suction_mode = mode
-            self.target_poses = carry_targets(request.snapshot, boxes, requested_targets, mode)
+            self.contact_offsets = offsets
+            self.target_poses = carry_targets(request.snapshot, boxes, requested_targets, mode, offsets)
             attempt_started = time.perf_counter()
             self.last_partial = None
             try:
                 blockers = top_lift_blockers(request.snapshot, boxes) if mode == "top" else []
                 if blockers:
                     raise CycleBlocked("顶吸净空", f"垂直抬升通道被占用: {blockers}")
-                progress(f"尝试{'顶吸' if mode == 'top' else '侧吸'}")
+                progress(f"尝试{'顶吸' if mode == 'top' else '侧吸'}，面内偏移={offsets or '默认'}")
                 result = self._full_cycle(boxes, progress)
             except (CycleBlocked, RuntimeError) as error:
                 result = getattr(error, "partial", None) or self.last_partial or {
                     "success": False, "task": boxes, "frames": [], "phases": [], "payload": []}
                 result["blocked_stage"] = getattr(error, "stage", "planning_failure")
                 result["blocked_details"] = str(getattr(error, "details", error))
-            attempts.append({"mode": mode, "success": result["success"],
+            attempts.append({"mode": mode, "contact_offsets_m": offsets, "success": result["success"],
                              "wall_ms": (time.perf_counter()-attempt_started)*1000,
                              "blocked_stage": result.get("blocked_stage"),
                              "blocked_details": result.get("blocked_details"),
@@ -120,6 +122,7 @@ class FullCyclePlanner(CuroboBackend):
             if result["success"] or result.get("blocked_stage") not in ("接触IK", "候选筛选"):
                 break
         result["suction_mode"] = self.suction_mode
+        result["contact_offsets_m"] = self.contact_offsets
         result["suction_attempts"] = attempts
         result["selected_mode_total_ms"] = result.get("total_ms")
         result["total_ms"] = (time.perf_counter()-started)*1000
@@ -160,7 +163,7 @@ class FullCyclePlanner(CuroboBackend):
     def _predicted_events(self, request, result):
         predicted = SceneStore(request.snapshot)
         events = []
-        attachments = task_attachments(request.snapshot, dict(request.tasks), result["suction_mode"])
+        attachments = self.attachments(dict(request.tasks))
         for index, phase in enumerate(result.get("phases", ())):
             if phase == "attach" and not events:
                 values = dict(zip(result["joint_names"], result["frames"][index]))
@@ -302,7 +305,7 @@ class FullCyclePlanner(CuroboBackend):
         timing["contact_solver_setup"] = (time.perf_counter()-segment_started)*1000
         segment_started = time.perf_counter()
         contact_poses = {}
-        for side, position in task_contact_positions(self.snapshot, boxes, suction_mode=self.suction_mode).items():
+        for side, position in task_contact_positions(self.snapshot, boxes, suction_mode=self.suction_mode, offsets=self.contact_offsets).items():
             contact_poses[f"{side}_tool0"] = {
                 "position": position, "quaternion": suction_quaternion(side, self.suction_mode)}
         report["contact_tool_poses"] = {name: {k: [float(v) for v in values] for k, values in pose.items()}
@@ -313,6 +316,8 @@ class FullCyclePlanner(CuroboBackend):
         values = result.js_solution.position.reshape(-1, len(names))
         successful = result.success.reshape(-1).bool()
         report["contact_ik_diagnostics"] = {
+            "statistics_scope": "returned_candidates_only_not_global_best",
+            "returned_candidates": int(len(successful)),
             "successful_candidates": int(successful.sum().item()),
             "minimum_position_error_m": float(result.position_error.min().item()),
             "minimum_rotation_error_rad": float(result.rotation_error.min().item()),
@@ -339,11 +344,11 @@ class FullCyclePlanner(CuroboBackend):
         segment_started = time.perf_counter()
         loaded_checker = self.checker(boxes, payload=True)
         loaded_validity = GpuValidity(loaded_checker, active_sides=tuple(boxes),
-                                      attachments=task_attachments(self.snapshot, boxes, self.suction_mode),
+                                      attachments=self.attachments(boxes),
                                       max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                       ground_z=self.snapshot.policy.ground_z_m)
         extracting_validity = GpuValidity(empty_checker, active_sides=tuple(boxes),
-                                      attachments=task_attachments(self.snapshot, boxes, self.suction_mode),
+                                      attachments=self.attachments(boxes),
                                           max_box_tilt_deg=self.snapshot.policy.max_box_tilt_deg, check_ground=True,
                                           ground_z=self.snapshot.policy.ground_z_m)
         torch.cuda.synchronize()
