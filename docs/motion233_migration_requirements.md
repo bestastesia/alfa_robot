@@ -2,6 +2,8 @@
 
 ## 基线和提交边界
 
+**临时开发快照：** 用户要求先远程保存到个人fork `bestastesia/alfa_robot` 的独立分支 `motion-233-curobo-f044bf1`，不创建PR、不更新原PR分支、不合并基线。此版本仍有网格安全及其它迁移缺口，不是最终验收版本。下文“未push”记载为此前各验证节点的历史状态。
+
 用户明确指定 `alfa_robot/alfa_v3_curobo@f044bf1`，并再次确认主线保留RRT。2026-10-07只读核对远端，`alfa_v3_curobo`仍为完整SHA `f044bf1463d6ab138bb5aac078056d1e3d17a1b9`。本地候选工作树为`.motion-233-curobo`，分支`motion-233-curobo-f044bf1`。
 
 原PR #43仍是`b72ba30`→`alfa_v3_dev`，Open/Conflicting。mentor的2026-09-28评论明确禁止合并旧模型/旧流程，要求重建替代PR、选择性迁移，不回退模型/planar/执行链。**因此不是强行解决冲突再重放整个旧栈。** 本轮没有push、改PR或写Linear。
@@ -14,12 +16,12 @@
 | mentor统一机械坐标、零位、限位、TCP，不回退右J2/J4与joint origin | 相对f044，模型、vendor、生成模型资产未修改；全墙逐帧URDF限位复核 | 已保留，面内抓取变化不是修改TCP或机械限位 |
 | 不删除planar根、底盘TF、Stage Action、轨迹缓存 | `git diff f044bf1 -- ros2_ws`为空 | 源码保留；没有声称新研究入口已接入/验证实机执行 |
 | 用户要求RRT主线 | 默认informed_rrt；三种已有RRT函数AST与f044一致；25箱记录全为informed_rrt | 已保留。PRM修复隔离，不是本迁移门禁 |
-| 车头净距0.75m、完整搬运序列、单臂收尾及顶吸 | 15轮25箱实跑，实际模型前缘差值、状态继承、面内足迹/附着/目标位姿和只读回放 | 当前研究碰撞口径通过；旧固定中心点没有被冒报可达 |
+| 车头净距0.75m、完整搬运序列、单臂收尾及顶吸 | 923baa4一次完整实跑25/25、15轮、143.085s；263文件核验、全轨迹限位/继承及15轮接触几何复核通过 | 当前研究碰撞口径通过；旧固定中心点没有被冒报可达 |
 | 原PR参数化箱墙/缺箱 | WallLayout、快照取接触点、CPU合同；历史3×4/4×3选中双箱实跑 | 接口已迁；不同尺寸仍受冻结负载模型限制，不能说原全部L4场景已迁完 |
-| 原PR固定公开种子 | 复用原8数值并保存原manifest；新请求/CLI将seed传入RRT各阶段，8例各一次25箱 | 球模型口径8/8通过；不等于旧OMPL轨迹或位级确定性已等价 |
+| 原PR固定公开种子 | 复用原8数值并保存原manifest；新请求/CLI将seed传入RRT各阶段，8例各一次25箱 | 41a9602球模型口径8/8通过；当前空载shortcut版本尚未重跑8种子，不等于旧OMPL轨迹或位级确定性等价 |
 | 原固定种子C/D精确轨迹对拍 | 新同请求同seed两次预检都成功，但运输阶段轨迹/冗余终点不同 | 尚未达到严格位级重现；不能用“有seed参数”冒认完成 |
 | 原逐箱时延、预算、时间参数化、质量指标 | 新入口记录总时间及阶段/失败尝试；当前单轮多为8～12s，仍输出未计时关节帧 | 不能继承旧3s/5s门槛或实机时序结论；未完成 |
-| 原完整FCL复核 | 新基线原样保留球模型。CPU对旧默认25箱抽查90个关键状态，发现3处未豁免网格相交，成对复查可复现 | 不可沿用旧模型FCL结论；需要专门处理模型表示差异，未改豁免/阈值 |
+| 原完整FCL复核 | 923baa4新整墙逐帧网格复核，在第2轮approach零基帧210检测right_link7 / wall_box_11相交，累计2238帧后停止 | 当前网格门禁未通过；不可用球模型成功替代；未改豁免/阈值 |
 | 原Golden算法与参考资产的最终取舍 | 原PR/Git对象和冻结报告仍在；新实现复用导师核心，未移植旧坐标补丁 | 不宣称旧全部算法/预算/执行接口已迁移；需按要求继续收口 |
 
 **整体目标仍未完成。** 已通过的研究序列、种子矩阵和模型对拍只是上述相应项的证据，不替代其它门禁。
@@ -64,12 +66,42 @@
 
 - 原快照第12轮重新计算一次成功：2596帧（旧2993），接近折点27→10、回程26→6。抽离、携箱运输、携箱转身、释放、空载转身的全部关节帧与旧记录逐值相同。新总规划13.452s，旧10.850s；**减少几何绕行不等于降低规划耗时**。
 - 默认双箱原快照单次回归成功：2027帧、10.693s。两例接触/35cm抽离/足迹/附着/目的箱位姿复核通过；CPU40项通过，三种RRT函数AST保持与f044一致。
-- 未重跑整墙或8种子矩阵，旧25/25和8/8只属于先前版本；新版本不能直接继承那些全量回归结论。精确网格门禁仍未通过。
+- 局部检查后已补一次完整整墙回归（见下节）；8种子仍只有旧版本证据，不能直接继承到当前shortcut版本。精确网格门禁仍未通过。
 - Viser新增“中文阶段耗时与统计”：当前轮各规划阶段、运输子项、首解/搜索时间、原始与精简路径点、迭代/树节点/解数量、候选/种子及动作帧数；切换轮次更新，缺失字段显示未记录。明确子项不可重复累计，帧数不是执行时间。
-- 8095已更新显示代码，但仍读取原`l02-diagnosis/sequence.json`，**没有将局部重算伪装成新整墙结果**。因此原第12轮显示27→27、捷径未启用是正确的历史记录；新结果在`round12-shortcut/round12-cycle.json`。
+- 中文面板首次部署时保留原`l02-diagnosis/sequence.json`，没有把局部重算混入旧序列；随后在真实整墙回归结束后切换到新序列（见下节）。`round12-cycle.json`仍保留为独立单轮对照。
 - 浏览器实际切换第12轮并检查中文字段与原记录数值，截图`round12-shortcut/viser-chinese-stage-timing.png`、`viser-chinese-search-stats.png`；`ui-check.json`记录界面核验。
 
 证据目录：`motion233-acceptance/round12-idle-arm/shortcut-audit.json`为同轨迹对照；`motion233-acceptance/round12-shortcut/`为两次局部/默认任务回归、几何审计和UI证据。GPU已释放；只读回放不进行GPU规划。
+
+## 当前完整回归与回放（2026-10-07，代码923baa4）
+
+在共享GPU锁下只执行一次整墙规划，上限300秒；实际**143.085秒、25/25箱、15/15轮、27498帧**，没有反向回程回退。不是拼接局部结果。源码/模型263文件核验、18轴限位、逐轮场景/状态继承，以及全部15轮接触足迹/35cm抽离/附着/箱体目的位姿复核通过。
+
+本次整墙中的第12轮为2576帧（旧2993）；接近路径点27→10、回程27→6，携箱仍未启用捷径。之前单独重算的2596帧保留在独立文件，不能与这次整墙记录混淆。搜索仍有壁钟预算影响，不承诺位级重现。
+
+**独立网格复核未通过：**第1轮2027帧未检出相交，第2轮approach零基帧210（本轮第211帧、整墙第2238帧）检测到`robot:right_link7:0 / world:wall_box_11`相交，FCL局部接触深度约0.595mm；此处停止，未宣称后续网格全部检查或安全通过。
+
+8095现在读取`round12-shortcut/sequence.json`，已真实切换第12轮检查中文计时、27→10和捷径启用等显示。界面仅只读回放，GPU已释放；“规划完成”不是硬件安全认证。
+
+证据均在`/home/astesia/Sevenova/motion233-acceptance/round12-shortcut/`：
+- `sequence.json`、`sequence-run.log`、`sequence.audit.json`、`sequence-audit.log`。
+- `sequence-geometry/summary.json`及15份逐轮几何报告。
+- `sequence-mesh-audit.json/.log`保留未通过结果。
+- `latest-wall-ui-check.json`、`viser-latest-wall-stage-timing.png`、`viser-latest-wall-search-stats.png`。
+
+当前回放启动命令（完整可复制，不再使用旧模型路径覆盖）：
+
+```bash
+cd /home/astesia/Sevenova/motion233-acceptance/round12-shortcut/runtime/research/curobo_v3
+CUDA_VISIBLE_DEVICES='' \
+PYTHONPATH=/home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/v3_full_cycle_demo.py \
+  --port 8095 \
+  --wall-distance 0.75 \
+  --sequence \
+  --sequence-json /home/astesia/Sevenova/motion233-acceptance/round12-shortcut/sequence.json \
+  --replay-only
+```
 
 ## 逐帧离线检查收尾（2026-10-07）
 
