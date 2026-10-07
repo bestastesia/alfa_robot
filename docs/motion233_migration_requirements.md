@@ -44,6 +44,28 @@
 
 两个独立组织方式的FCL查询都报告网格相交；上述球对仍分离，说明当前模型表示给出了不同判断。OBB这里只是辅助包围盒，不把非凸网格的OBB重叠当作实物碰撞证明。没有新增忽略项、没有缩放网格/球半径，也没有据此更换RRT。最终物理安全结论需要继续核对碰撞表示及完整路径。
 
+## 逐帧离线检查收尾（2026-10-07）
+
+规划和8种子矩阵均已结束；以下是CPU读取既有轨迹的检查，不是再次规划，也没有更换RRT或模型。
+
+- `tools/verify_motion233_mesh.py`从第1轮开始检查，在首次检测到相交时停止；核对模型身份、关节集合、阶段/载荷标志后调用独立URDF FK与FCL。
+- 已修复检查器对URDF省略collision origin的处理（单位矩阵），以及STL重复顶点导致凸体识别失败的问题（仅精确去重，不改表面坐标）。合成测试同时覆盖机器人相交/分离、重合世界箱、限位及NaN拒绝；CPU核心测试 **38/38**。
+- 修正后的检查再次得到同一失败：第1轮2054帧未检出相交；第2轮approach的**零基帧3（本轮第4帧）**，`base_link:0 / left_link7:0`报告相交。累计检查2058帧后退出码1，未检查后续完整序列，不声称全路径通过。
+- FCL报告的局部接触深度约26.413mm，不能等同于精确最小分离距离或实物穿透结论。非凸BVH检查不证明实体完全包含的安全性，也不是连续路径/硬件认证。
+- 证据目录：`/home/astesia/Sevenova/motion233-acceptance/mesh-representation/`，其中`full-mesh-audit-verified.json/.log`是修正后结果，`cpu-tests.log`是38项测试。旧报告保留，不覆盖。
+- 可视化仍使用现有8095只读整墙回放；其中“整墙通过”指基线球模型的规划结果，**不能视为此次网格验收通过**。本次无GPU规划、无模型/豁免/ROS执行树修改。
+
+复核命令（只用CPU；预期在上述相交位置退出码1）：
+
+```bash
+cd /home/astesia/Sevenova/.motion-233-curobo
+CUDA_VISIBLE_DEVICES='' \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/verify_motion233_mesh.py \
+  --sequence /home/astesia/Sevenova/motion233-acceptance/l02-diagnosis/sequence.json \
+  --runtime-root /home/astesia/Sevenova/motion233-acceptance/l02-diagnosis/runtime/research/curobo_v3 \
+  --output /tmp/motion233-mesh-manual-audit.json
+```
+
 ## 本轮产物
 
 `/home/astesia/Sevenova/motion233-acceptance/rrt-seed-contract/`：

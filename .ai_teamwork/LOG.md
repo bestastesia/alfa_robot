@@ -2219,3 +2219,9 @@
 - 模型复核新增证据：对l02-diagnosis旧默认轨迹90关键状态做CPU网格抽查，3处未豁免网格相交；成对FCL复查同样相交，而相应球对分离。arm_carriage/left_link5、base_link/right_link2、right_link4/right_link7。仅诊断，未改模型/碰撞策略，不能直接把球结果当完整FCL安全证明。
 - 范围：远端alfa_v3_curobo仍f044bf1，旧PR43仍Open/Conflicting且禁止直接合并；候选对ROS执行树无修改，3个RRT函数AST与f044一致。完整要求/缺口在docs/motion233_migration_requirements.md。
 - 资源/后续：每seed独立flock，已结束并通知协调线程，允许其阶段计时/抬肘窗口；本轮无新GPU任务。下一步优先核对模型表示差异、原安全/时间合同，不再扩展PRM。未push/改PR/写Linear，整体目标保持未完成。
+
+## 2026-10-07 Codex / 有限收尾离线网格验收
+- 做了什么：停止扩展规划实验，完成此前未提交CPU检查器；缺省collision origin使用单位矩阵，STL精确顶点去重恢复凸体识别，保留几何/模型/豁免原值。
+- 验证结果：核心CPU38项通过；对既有默认25箱序列的逐帧复核在第2轮approach零基帧3检测base_link:0/left_link7:0相交，2058帧后退出1。原报告保留，修正后证据为mesh-representation/full-mesh-audit-verified.json/.log。
+- 边界：仅离线FCL检测，不证明非凸实体包含/连续路径/硬件安全。完整规划已结束，既有8095仍为只读回放；无GPU、模型、主规划器、ROS执行树变更，未push/改PR/写Linear。
+- 遗留：网格安全门禁仍失败，原时延/确定性/接口迁移缺口仍以docs/motion233_migration_requirements.md为准，整体目标不标完成。
