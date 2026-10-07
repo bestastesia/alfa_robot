@@ -12,6 +12,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
+- **RRT主线范围（2026-10-07用户再次确认）：** 默认与25箱验证均为导师原有Informed RRT，未切换PRM。PRM只是上游可选对照项；本次额外修复已撤出候选工作树，仅保存于`motion233-acceptance/prm-refinement/optional-prm-fix.patch`。不要把可选六规划器实验变成本次RRT rebase的必需门禁，也不得未经充分对照和用户确认更换主规划器。
+
 - **2026-10-07：L02专项阻塞已修复，0.75m整墙25/25、15/15轮实跑通过。** 预算扩大无效；根因是抓取点过度固定在面中心，改为有界合法面内选点（最后一箱Z+53.75mm），模型/限位/TCP/箱体位置/放置目的位姿均不变。证据 `motion233-acceptance/l02-diagnosis/`，最新文档 `docs/motion233_l02_contact_diagnosis.md`；8095只读整墙回放。GPU窗口已结束并交回协调线程，后续计算须共享flock。下面24/25节点为历史记录，不代表最新状态；原PRM/全网格/多种子/整体迁移收口尚未因此完成。
 
 - MOTION-233顶吸已接入：auto侧吸失败后检查顶升通道再顶吸，模式贯穿附着球/稳定性/缓存/放置目标/Viser。L03/R01顶吸完整周期通过；整墙auto依旧24/25，L02两种接触IK均失败，不冒称全过。最新证据 `curobo-top-v1` 和 `docs/motion233_curobo_top_suction.md`；8096顶吸、8095整墙均只读回放。GPU队列已结束并通知协调线程，后续必须持有 `/tmp/sevenova-curobo-gpu.lock` 或先协调。
