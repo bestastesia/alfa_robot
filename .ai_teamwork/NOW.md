@@ -12,6 +12,8 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
+- **2026-10-07第12轮诊断：** R07单箱空闲左臂大幅运动属实；但直接锁Home的局部实验失败。原接触updown=-0.715465m时，把左臂改回Home会与底盘球相交，右TCP不变。不能把全部左臂运动判为冗余；应定位安全停放/目标/路径精简。锁Home补丁已撤回，证据round12-idle-arm，未重跑整墙/未改现有回放。
+
 - **2026-10-07离线验收收尾：** 规划/种子矩阵已结束，不追加GPU实验。修好独立网格检查器的缺省origin和STL重复顶点处理，CPU38/38；逐帧复核仍在第2轮approach零基帧3检测base_link/left_link7相交，共检2058帧后停止。详见迁移要求表及mesh-representation/full-mesh-audit-verified.json；不可宣布安全验收通过。
 
 - **2026-10-07迁移收口：** 已接原PR公开RRT种子入口，旧8数值逐字节保留；8例独立进程各一次25/25，算法仍Informed RRT、IK/预算/模型不变。默认/显式seed接线预检通过；同seed暖重复轨迹不同，旧时延/位级等价未达成。CPU对此前默认25箱的90个网格关键点抽查发现3处球/网格差异，成对复核可复现；未改模型、豁免或阈值，不能把球模型通过当FCL完成。最新要求表见 `docs/motion233_migration_requirements.md`，证据 `motion233-acceptance/rrt-seed-contract/`，整体目标未完成。GPU矩阵已结束并交回协调线程，当前只CPU工作。
