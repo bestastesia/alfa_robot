@@ -98,7 +98,7 @@ class CuroboBackend:
         base = 20261003 if self.search_seed is None else self.search_seed
         return (base + offset) % 2**32
 
-    def search_path(self, start, goals, lower, upper, validity, budget, seed):
+    def search_path(self, start, goals, lower, upper, validity, budget, seed, apply_shortcut=False):
         if self.planner_kind in ("rrtconnect", "informed_connect"):
             return batched_rrt_connect_multi_goal(
                 start, goals, lower, upper, validity, budget, seed,
@@ -112,7 +112,7 @@ class CuroboBackend:
             return batched_prm_multi_goal(start, goals, lower, upper, validity, budget, seed)
         return batched_rrt_multi_goal(
             start, goals, lower, upper, validity, budget, seed,
-            apply_shortcut=False, informed_sampling=self.planner_kind == "informed_rrt",
+            apply_shortcut=apply_shortcut, informed_sampling=self.planner_kind == "informed_rrt",
         )
 
     def prepare_task(self, boxes):

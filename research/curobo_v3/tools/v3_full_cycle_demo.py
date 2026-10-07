@@ -31,6 +31,63 @@ PHASE_NAMES = {
 }
 
 
+
+def planning_statistics(result):
+    """Display recorded planning telemetry, never infer execution time from frames."""
+    timing_labels = {
+        "initial_checker_setup_and_validation": "初始碰撞检查器初始化与检查",
+        "contact_solver_setup": "接触IK求解器初始化",
+        "contact_ik_and_ranking": "接触IK求解与排序",
+        "loaded_checker_setup": "载荷碰撞检查器初始化",
+        "analytic_extract_and_validation": "抽离路径生成与检查",
+        "approach_rrt_and_validation": "接近路径搜索与检查（含候选尝试）",
+        "transport_pipeline_total": "携箱运输流程（包含下表子项）",
+        "empty_turn_checker_setup": "空载转身检查器初始化",
+        "empty_turn_validation": "空载转身检查",
+        "home_rrt_and_validation": "回Home搜索与检查",
+        "other_assembly_and_bookkeeping": "其他组装与记录",
+    }
+    transport_labels = {
+        "setup": "运输求解器准备", "target_ik": "搬运目标IK", "target_filter": "目标筛选",
+        "rrt": "携箱路径搜索", "frame_assembly": "轨迹帧组装",
+        "mobile_checker_setup": "移动底盘检查器初始化",
+        "transport_and_turn_validation": "运输与携箱转身检查", "cleanup": "资源清理",
+    }
+    ms = lambda value: "未记录" if value is None else f"{value:.2f} ms"
+    lines = [f"**本轮累计规划耗时：{ms(result.get('total_ms'))}**（包含失败尝试）",
+             f"选中方案耗时：{ms(result.get('selected_mode_total_ms'))}",
+             "以下是规划计算耗时，不是动作执行耗时；回放帧未做时间参数化。",
+             "", "| 规划阶段 | 耗时 |", "|---|---:|"]
+    lines += [f"| {label} | {ms(result.get('timing_ms', {}).get(key))} |"
+              for key, label in timing_labels.items()]
+    if result.get("transport_timing_breakdown_ms"):
+        lines += ["", "**携箱运输子项（已包含在上表，不能重复累加）**", "", "| 子项 | 耗时 |", "|---|---:|"]
+        lines += [f"| {label} | {ms(result['transport_timing_breakdown_ms'].get(key))} |"
+                  for key, label in transport_labels.items()]
+    selected = next((a.get("approach", {}) for a in result.get("attempts", [])
+                     if a.get("candidate") == result.get("selected_candidate")), {})
+    lines += ["", "**搜索统计**"]
+    for label, stats in (("接近", selected), ("携箱", result.get("transport_search_stats", {})),
+                         ("回Home", result.get("home_search_stats", {}))):
+        if stats.get("fallback"):
+            label += "（反向复用；下列为失败搜索）"
+            stats = stats.get("failed_search", {})
+        shortcut = "未记录" if "shortcut_applied" not in stats else ("启用" if stats["shortcut_applied"] else "未启用")
+        lines += ["", f"**{label} · 捷径{shortcut}**", "",
+                  f"首解：{ms(stats.get('first_solution_ms'))} · 搜索：{ms(stats.get('search_ms'))}  ",
+                  f"路径点（原始→精简）：{stats.get('raw_waypoints', '—')}→{stats.get('shortcut_waypoints', '—')}  ",
+                  f"迭代：{stats.get('iterations', '未记录')} · 树节点：{stats.get('tree_nodes', '未记录')} · "
+                  f"发现解：{stats.get('solutions_found', '未记录')}  ",
+                  f"搜索种子：{stats.get('search_seed', '未记录')}"]
+    lines += ["", f"接触IK成功候选：{result.get('contact_ik_count', '未记录')} · "
+              f"选中候选：{result.get('selected_candidate', '未记录')} · 候选尝试：{len(result.get('attempts', []))}",
+              f"抓取方案尝试：{len(result.get('suction_attempts', []))} · 轨迹帧：{len(result.get('frames', []))}",
+              "", "| 动作阶段 | 帧数（非耗时） |", "|---|---:|"]
+    phases = result.get("phases", [])
+    lines += [f"| {label} | {phases.count(key)} |" for key, label in PHASE_NAMES.items() if key in phases]
+    return "\n".join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
@@ -172,7 +229,9 @@ def main():
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         comparison_status = server.gui.add_markdown("")
-    current = {"result": None, "busy": False}
+        with server.gui.add_folder("中文阶段耗时与统计", expand_by_default=False):
+            statistics = server.gui.add_markdown("尚无规划记录。")
+    current = {"result": None, "busy": False, "statistics_result": None}
 
     def refresh_sequence():
         whole_wall = mode.value == "整墙序列"
@@ -202,7 +261,7 @@ def main():
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
             seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "对比表是计算结果回放。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；无Shortcut/TrajOpt。"]
+        lines += ["", "对比表是计算结果回放。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；捷径是否启用以各阶段记录为准，未使用TrajOpt。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
@@ -228,6 +287,14 @@ def main():
             active_task = record["task"]
             removed = set(record["removed_before"])
             cycle_result = record["result"]
+        if cycle_result is not current["statistics_result"]:
+            summary = ""
+            if result and result.get("sequence"):
+                summary = (f"**整墙累计规划：{result['total_ms']/1000:.3f} s · "
+                           f"完成{len(result['completed_box_ids'])}/{len(layout.active_box_ids)}箱**  \n"
+                           f"当前统计：第{round_number+1}轮  \n\n")
+            statistics.content = summary + planning_statistics(cycle_result) if cycle_result else "尚无规划记录。"
+            current["statistics_result"] = cycle_result
         attachment_transforms = {}
         if cycle_result:
             for event in cycle_result.get("predicted_scene_events", ()):
@@ -244,7 +311,7 @@ def main():
             box.visible = box_id not in removed and (box_id not in active_task.values() or phase in ("home", "approach"))
         if result:
             status.content = (
-                f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
+                f"**{'完整流程规划成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
                 f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
@@ -252,7 +319,7 @@ def main():
             )
             if result.get("sequence"):
                 status.content = (
-                    f"**整墙{'通过' if result['success'] else '未通过'} · "
+                    f"**整墙规划{'完成' if result['success'] else '未完成'} · "
                     f"已完成{len(result['completed_box_ids'])}/{len(layout.active_box_ids)}箱**  \n"
                     f"当前第{round_number+1 if round_number is not None else 1}/{len(result['rounds'])}轮 · {PHASE_NAMES[phase]}  \n"
                     f"帧：**{index+1}/{len(result['frames'])}** · 累计规划：{result['total_ms']/1000:.3f}s"

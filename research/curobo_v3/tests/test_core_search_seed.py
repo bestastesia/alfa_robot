@@ -27,6 +27,20 @@ class SearchSeedTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 replace(self.request, search_seed=invalid)
 
+    def test_rrt_shortcut_is_explicit_and_loaded_default_unchanged(self):
+        from unittest.mock import patch
+        from curobo_core.backend import CuroboBackend
+        backend = object.__new__(CuroboBackend)
+        with patch("curobo_core.backend.batched_rrt_multi_goal", return_value=(None, {})) as search:
+            for kind in ("rrt", "informed_rrt"):
+                backend.planner_kind = kind
+                backend.search_path(None, None, None, None, None, 2., 104729)
+                self.assertFalse(search.call_args.kwargs["apply_shortcut"])
+                backend.search_path(None, None, None, None, None, 2., 104729, apply_shortcut=True)
+                self.assertTrue(search.call_args.kwargs["apply_shortcut"])
+                self.assertEqual(search.call_args.kwargs["informed_sampling"], kind == "informed_rrt")
+                self.assertEqual(search.call_args.args[-2:], (2., 104729))
+
     def test_legacy_stage_seeds_and_explicit_wrap(self):
         from curobo_core.backend import CuroboBackend
         backend = object.__new__(CuroboBackend)

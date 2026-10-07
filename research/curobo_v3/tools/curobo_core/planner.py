@@ -264,7 +264,7 @@ class FullCyclePlanner(CuroboBackend):
         path, stats = self.search_path(
             torch.tensor(start, device="cuda", dtype=torch.float32),
             torch.tensor(np.asarray(target).reshape(1, -1), device="cuda", dtype=torch.float32),
-            lower + 1e-5, upper - 1e-5, validity, 2.0, seed,
+            lower + 1e-5, upper - 1e-5, validity, 2.0, seed, apply_shortcut=True,
         )
         stats["search_seed"] = seed
         if path is None:
