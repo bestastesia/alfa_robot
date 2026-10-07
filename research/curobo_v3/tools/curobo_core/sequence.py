@@ -7,13 +7,13 @@ from .fixtures import wall_sequence
 from .scene import Pose, SceneSnapshot, SceneStore
 
 
-def plan_sequence(planner, snapshot, progress):
+def plan_sequence(planner, snapshot, progress, search_seed=None):
     from dataclasses import replace
 
     ids = tuple(int(o.object_id.removeprefix("wall_box_")) for o in snapshot.objects
                 if o.object_id.startswith("wall_box_"))
     rounds = wall_sequence(replace(planner.wall_layout, active_box_ids=ids))
-    report = {"success": False, "sequence": True, "frames": [], "phases": [], "payload": [],
+    report = {"success": False, "sequence": True, "search_seed": search_seed, "frames": [], "phases": [], "payload": [],
               "frame_rounds": [], "rounds": [{"task": task, "status": "pending"} for task in rounds],
               "initial_snapshot": snapshot.to_dict(), "completed_box_ids": [], "total_ms": 0.0}
     started = time.perf_counter()
@@ -24,7 +24,7 @@ def plan_sequence(planner, snapshot, progress):
         request = PlanRequest(current, tuple(task.items()), tuple(
             (side + "_tool0", Pose(tuple(planner.default_target_poses[side + "_tool0"]["position"]),
                                    tuple(planner.default_target_poses[side + "_tool0"]["quaternion"])))
-            for side in ("left", "right")))
+            for side in ("left", "right")), search_seed=search_seed)
         progress(f"整墙第{number+1}/{len(rounds)}轮 {task}")
         result = planner._plan_request(request, lambda text: progress(f"第{number+1}/{len(rounds)}轮 · {text}"))
         record.update(request=request.to_dict(), result=result,

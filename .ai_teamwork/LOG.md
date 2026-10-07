@@ -2212,3 +2212,10 @@
 - 用户质询后复核：f044bf1及当前backend默认都是informed_rrt，25箱15轮结果全部为informed_rrt，未发生主规划器更换。
 - 本轮额外修复PRM是范围扩大，不是RRT迁移必要条件；未提交的PRM代码/测试已完整导出到motion233-acceptance/prm-refinement并撤出候选树。6/6结果属于该实验副本，不冒认主线结果。
 - 后续继续RRT及mentor明确要求的模型/接口迁移；若提议换算法，先做同任务/约束/预算的完整证据并请用户确认。
+
+## 2026-10-07 Codex / 保持RRT的固定种子迁移及要求审计
+- 依据：原PR b72ba30的OMPL_SEEDS.json明确8公开种子；现入口原来只有硬编码种子。添加可选search_seed到请求/CLI/序列，各搜索阶段记录实际seed，旧请求ID/默认种子不变，不修改RRT函数、IK策略或2秒预算。主线核验默认不再要求可选六规划器，仅显式flag才检查。
+- 验证：CPU37通过；默认预检1次、显式104729预检2次通过且阶段seed接线正确。8公开种子各一次25箱全部通过，runtime代码/模型前后哈希一致，未重跑挑成功。暖重复从运输阶段出现不同冗余终点，不能宣称位级确定性或继承旧3s/5s合同。
+- 模型复核新增证据：对l02-diagnosis旧默认轨迹90关键状态做CPU网格抽查，3处未豁免网格相交；成对FCL复查同样相交，而相应球对分离。arm_carriage/left_link5、base_link/right_link2、right_link4/right_link7。仅诊断，未改模型/碰撞策略，不能直接把球结果当完整FCL安全证明。
+- 范围：远端alfa_v3_curobo仍f044bf1，旧PR43仍Open/Conflicting且禁止直接合并；候选对ROS执行树无修改，3个RRT函数AST与f044一致。完整要求/缺口在docs/motion233_migration_requirements.md。
+- 资源/后续：每seed独立flock，已结束并通知协调线程，允许其阶段计时/抬肘窗口；本轮无新GPU任务。下一步优先核对模型表示差异、原安全/时间合同，不再扩展PRM。未push/改PR/写Linear，整体目标保持未完成。

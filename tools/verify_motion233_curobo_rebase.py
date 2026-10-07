@@ -70,6 +70,8 @@ def verify_source(source, runtime_root):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-ref', default=BASE, help='exact candidate commit to audit; default freezes mentor source')
+    parser.add_argument('--check-optional-planners', action='store_true',
+                        help='also gate optional planner comparisons; not required for the RRT migration')
     parser.add_argument('--artifacts', required=True, type=Path)
     parser.add_argument('--runtime-root', required=True, type=Path)
     parser.add_argument('--sdk-repository', required=True, type=Path)
@@ -94,15 +96,17 @@ def main():
         assert request['snapshot']['state'][key] == reference['snapshot']['state'][key], key
     assert len(runs['results']) == 2
     for result in runs['results']:
+        assert result['planner'] == 'informed_rrt'
         cycle(result)
-    planners = load('six-planners.json')
-    assert set(planners) == {'informed_rrt', 'rrt', 'rrtconnect', 'prm', 'informed_connect', 'bitstar'}
     failed_planners = {}
-    for kind, result in planners.items():
-        if result['success']:
-            cycle(result)
-        else:
-            failed_planners[kind] = result.get('error', result.get('blocked_stage'))
+    if args.check_optional_planners:
+        planners = load('six-planners.json')
+        assert set(planners) == {'informed_rrt', 'rrt', 'rrtconnect', 'prm', 'informed_connect', 'bitstar'}
+        for kind, result in planners.items():
+            if result['success']:
+                cycle(result)
+            else:
+                failed_planners[kind] = result.get('error', result.get('blocked_stage'))
     imports = load('imports.json')
     assert imports['import_pairs_checked'] == 21 and not imports['errors']
     smoke = load('core-smoke.json')
@@ -119,8 +123,10 @@ def main():
     report = {'base_commit': BASE, 'source_commit': source, 'head_commit': git('rev-parse', 'HEAD').decode().strip(),
         'branch': git('branch', '--show-current').decode().strip(),
         'curobo_commit': SDK, 'research_files_verified': len(hashes),
-        'normalized_relocated_assets_identical': True, 'same_reference_request_except_local_ids_timestamps': True,
-        'two_cycles_passed': True, 'six_planners_passed': not failed_planners,
+        'normalized_relocated_assets_identical': True, 'same_reference_geometry_state_targets': True,
+        'request_strategy': {'suction_mode': request.get('suction_mode', 'side'), 'search_seed': request.get('search_seed')},
+        'two_rrt_cycles_passed': True, 'optional_planners_checked': args.check_optional_planners,
+        'six_planners_passed': (not failed_planners) if args.check_optional_planners else None,
         'failed_planners': failed_planners, 'acceptance_passed': not failed_planners,
         'live_visual_cycle_passed': True,
         'policy': request['snapshot']['policy'], 'source_sha256': hashes,
@@ -129,7 +135,7 @@ def main():
     if failed_planners:
         raise SystemExit(f'FAIL: {len(hashes)} files/models and default/live cycles verified, '
                          f'but planner regression failed: {failed_planners}')
-    print(f'PASS: {len(hashes)} candidate files; mentor models identical; same default task/policy; 2 cycles, 6 planners and live UI.')
+    print(f'PASS: {len(hashes)} candidate files; mentor models identical; same default task/policy; 2 default Informed RRT cycles and live UI (optional planners checked: {args.check_optional_planners}).')
 
 
 if __name__ == '__main__':

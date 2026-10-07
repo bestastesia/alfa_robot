@@ -66,7 +66,8 @@ class FullCyclePlanner(CuroboBackend):
     def demo_request(self, boxes):
         return PlanRequest(self.snapshot, tuple(boxes.items()), tuple(
             (name, Pose(tuple(pose["position"]), tuple(pose["quaternion"])))
-            for name, pose in self.default_target_poses.items()))
+            for name, pose in self.default_target_poses.items()),
+            search_seed=getattr(self.args, "search_seed", None))
 
     def plan_request(self, request, progress=lambda text: None):
         if not self._planning_lock.acquire(blocking=False):
@@ -83,6 +84,7 @@ class FullCyclePlanner(CuroboBackend):
         if any(abs(state.get(name, 0.0)) > 1e-12 for name in ("head_joint", "head_pitch_joint")):
             raise ValueError("current model locks both head joints at zero")
         self.set_snapshot(request.snapshot)
+        self.search_seed = request.search_seed
         self.home_values = np.asarray(request.snapshot.state.ordered(ACTIVE_JOINTS), dtype=np.float32)
         requested_targets = {name: {"position": pose.position, "quaternion": pose.quaternion_wxyz}
                              for name, pose in request.targets}
@@ -127,6 +129,10 @@ class FullCyclePlanner(CuroboBackend):
         result["selected_mode_total_ms"] = result.get("total_ms")
         result["total_ms"] = (time.perf_counter()-started)*1000
         result["carry_tool_targets"] = self.target_poses
+        result["search_seed"] = request.search_seed
+        result["seed_policy"] = {"scope": "RRT_sampling_only", "effective_search_seed_base": self.search_seed_for(),
+                                 "ik_random_seed_unchanged": True, "per_search_budget_s": 2.0,
+                                 "bitwise_reproducibility_guaranteed": False}
         result["request_id"] = request.identity
         result["model_id"] = request.snapshot.model_id
         result["scene_id"] = request.snapshot.identity
@@ -140,8 +146,8 @@ class FullCyclePlanner(CuroboBackend):
         result["predicted_scene_events"] = self._predicted_events(request, result)
         return result
 
-    def plan_from_store(self, store, tasks, targets, progress=lambda text: None):
-        request = PlanRequest(store.snapshot(), tuple(tasks.items()), tuple(targets.items()))
+    def plan_from_store(self, store, tasks, targets, progress=lambda text: None, search_seed=None):
+        request = PlanRequest(store.snapshot(), tuple(tasks.items()), tuple(targets.items()), search_seed=search_seed)
         result = self.plan_request(request, progress)
         if not store.is_current(request.snapshot):
             result["success"] = False
@@ -152,11 +158,11 @@ class FullCyclePlanner(CuroboBackend):
     def full_cycle(self, boxes, progress=lambda text: None):
         return self.plan_request(self.demo_request(boxes), progress)
 
-    def plan_sequence(self, snapshot, progress=lambda text: None):
+    def plan_sequence(self, snapshot, progress=lambda text: None, search_seed=None):
         if not self._planning_lock.acquire(blocking=False):
             raise RuntimeError("planning core is busy")
         try:
-            return plan_sequence(self, snapshot, progress)
+            return plan_sequence(self, snapshot, progress, search_seed=search_seed)
         finally:
             self._planning_lock.release()
 
@@ -260,11 +266,12 @@ class FullCyclePlanner(CuroboBackend):
             torch.tensor(np.asarray(target).reshape(1, -1), device="cuda", dtype=torch.float32),
             lower + 1e-5, upper - 1e-5, validity, 2.0, seed,
         )
+        stats["search_seed"] = seed
         if path is None:
             return None, stats
         dense = np.asarray(densify(path))
         if not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
-            return None, {"failure": "密化轨迹验收失败"}
+            return None, {**stats, "failure": "密化轨迹验收失败"}
         return dense, stats
 
     def _full_cycle(self, boxes, progress=lambda text: None):
@@ -371,7 +378,7 @@ class FullCyclePlanner(CuroboBackend):
             segment_started = time.perf_counter()
             approach_target = extracted[-1] if self.suction_mode == "top" else contact
             approach, stats = self.joint_plan(self.home_values, approach_target, empty_checker,
-                                               empty_validity, 20261003 + index)
+                                               empty_validity, self.search_seed_for(index))
             if approach is not None and self.suction_mode == "top":
                 # Reach above the box, then descend along the already checked vertical path.
                 approach = np.vstack((approach, extracted[::-1]))
@@ -429,7 +436,7 @@ class FullCyclePlanner(CuroboBackend):
         segment_started = time.perf_counter()
         return_start = np.array([turn_back[-1, mobile_names.index(name)] for name in ACTIVE_JOINTS])
         home_path, stats = self.joint_plan(return_start, self.home_values, empty_checker,
-                                            empty_validity, 20261004)
+                                            empty_validity, self.search_seed_for(1))
         torch.cuda.synchronize()
         timing["home_rrt_and_validation"] = (time.perf_counter()-segment_started)*1000
         if home_path is None:

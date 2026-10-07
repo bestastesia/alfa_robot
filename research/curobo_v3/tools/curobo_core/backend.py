@@ -79,6 +79,7 @@ class CuroboBackend:
         self.busy = False
         self.random_counter = 0
         self.planner_kind = "informed_rrt"
+        self.search_seed = None
         self.suction_mode = "side"
         self.contact_offsets = {}
         self.model_id = self._model_identity()
@@ -92,6 +93,10 @@ class CuroboBackend:
         self._cached_task = None
         self._cached_solver = None
         self._cached_checkers = {}
+
+    def search_seed_for(self, offset=0):
+        base = 20261003 if self.search_seed is None else self.search_seed
+        return (base + offset) % 2**32
 
     def search_path(self, start, goals, lower, upper, validity, budget, seed):
         if self.planner_kind in ("rrtconnect", "informed_connect"):
@@ -341,12 +346,14 @@ class CuroboBackend:
         torch.cuda.synchronize()
         timings["target_filter"] = (time.perf_counter() - started_filter) * 1000
         started_search = time.perf_counter()
+        search_seed = self.search_seed_for(self.random_counter if self.search_seed is None else 0)
         path, stats = self.search_path(
             start, goals,
             checker.kinematics.get_joint_limits().position[0] + 1e-5,
             checker.kinematics.get_joint_limits().position[1] - 1e-5,
-            validity, 2.0, 20261003 + self.random_counter,
+            validity, 2.0, search_seed,
         )
+        stats["search_seed"] = search_seed
         search_ms = (time.perf_counter() - started_search) * 1000.0
         timings["rrt"] = search_ms
         started_assembly = time.perf_counter()

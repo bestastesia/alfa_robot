@@ -27,8 +27,11 @@ class PlanRequest:
     tasks: tuple
     targets: tuple
     suction_mode: str = "auto"
+    search_seed: int | None = None
 
     def __post_init__(self):
+        if self.search_seed is not None and (type(self.search_seed) is not int or not 0 <= self.search_seed < 2**32):
+            raise ValueError("search_seed must be an unsigned 32-bit integer or None")
         if self.suction_mode not in ("auto", "side", "top"):
             raise ValueError("suction_mode must be auto, side or top")
         object.__setattr__(self, "tasks", tuple(tuple(item) for item in self.tasks))
@@ -57,6 +60,8 @@ class PlanRequest:
                     "targets": {name: asdict(pose) for name, pose in self.targets}}
         if self.suction_mode != "side":  # Preserve identities of legacy side-only requests.
             document["suction_mode"] = self.suction_mode
+        if self.search_seed is not None:
+            document["search_seed"] = self.search_seed
         return document
 
     @classmethod
@@ -64,7 +69,7 @@ class PlanRequest:
         return cls(SceneSnapshot.from_dict(document["snapshot"]),
                    tuple(document["tasks"].items()),
                    tuple((name, Pose(**pose)) for name, pose in document["targets"].items()),
-                   document.get("suction_mode", "side"))
+                   document.get("suction_mode", "side"), document.get("search_seed"))
 
     @property
     def identity(self):

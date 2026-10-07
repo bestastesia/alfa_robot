@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
+    parser.add_argument("--search-seed", type=int, help="RRT sampling seed; defaults preserve the mentor baseline")
     parser.add_argument("--suction-mode", choices=("auto", "side", "top"), default="auto")
     parser.add_argument("--sequence", action="store_true", help="show the complete wall sequence")
     parser.add_argument("--replay-only", action="store_true", help="disable planning controls; visualization only, no GPU planning")
@@ -47,6 +48,8 @@ def main():
     parser.add_argument("--sequence-json", type=Path, help="replay a matching sequence result; not a fresh plan")
     add_wall_arguments(parser)
     args = parser.parse_args()
+    if args.search_seed is not None and not 0 <= args.search_seed < 2**32:
+        parser.error("--search-seed must be an unsigned 32-bit integer")
     try:
         args.wall_layout = wall_layout_from_args(args)
     except (ValueError, TypeError) as error:
@@ -81,9 +84,16 @@ def main():
                 dict(recorded_request.tasks) != planner.selected_task):
             parser.error("cycle replay does not match the model, scene, state or selected task")
         args.suction_mode = recorded_request.suction_mode
+        if args.search_seed is not None and args.search_seed != recorded_request.search_seed:
+            parser.error("cycle replay has a different search seed; recompute instead")
+        args.search_seed = recorded_request.search_seed
     if args.sequence_json:
         from curobo_core.scene import SceneSnapshot
         preloaded_sequence = json.loads(args.sequence_json.read_text())
+        recorded_seed = preloaded_sequence.get("search_seed")
+        if args.search_seed is not None and args.search_seed != recorded_seed:
+            parser.error("sequence replay has a different search seed; recompute instead")
+        args.search_seed = recorded_seed
         recorded = SceneSnapshot.from_dict(preloaded_sequence["initial_snapshot"])
         if not preloaded_sequence.get("sequence") or recorded.geometry_key != initial_snapshot.geometry_key:
             parser.error("sequence replay belongs to a different model, layout or collision policy")
@@ -247,6 +257,8 @@ def main():
                     f"当前第{round_number+1 if round_number is not None else 1}/{len(result['rounds'])}轮 · {PHASE_NAMES[phase]}  \n"
                     f"帧：**{index+1}/{len(result['frames'])}** · 累计规划：{result['total_ms']/1000:.3f}s"
                 )
+            if cycle_result.get("search_seed") is not None:
+                status.content += f"  \nRRT搜索种子：{cycle_result['search_seed']}"
             mode_name = "顶吸" if cycle_result.get("suction_mode", "side") == "top" else "侧吸"
             status.content += f"  \n吸附模式：**{mode_name}**"
             if cycle_result.get("contact_offsets_m"):
@@ -367,7 +379,7 @@ def main():
                     planner.set_snapshot(initial_snapshot)
                     planner.comparison_contact = None
                     progress = lambda text: setattr(status, "content", text)
-                    result = (planner.plan_sequence(initial_snapshot, progress) if mode.value == "整墙序列"
+                    result = (planner.plan_sequence(initial_snapshot, progress, search_seed=args.search_seed) if mode.value == "整墙序列"
                               else planner.plan_request(replace(planner.demo_request(planner.selected_task),
                                                         suction_mode=suction_modes[suction.value]), progress))
                 except Exception as error:

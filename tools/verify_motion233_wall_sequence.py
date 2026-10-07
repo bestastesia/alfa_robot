@@ -70,6 +70,20 @@ def main():
         assert request['snapshot'] == current
         assert record['removed_before'] == completed
         assert request['tasks'] == result['task'] == record['task']
+        assert result['planner'] == 'informed_rrt'
+        seed = data.get('search_seed')
+        assert request.get('search_seed') == result.get('search_seed') == seed
+        if seed is not None:
+            assert result['seed_policy']['effective_search_seed_base'] == seed
+            assert result['seed_policy']['ik_random_seed_unchanged']
+            assert result['transport_search_stats']['search_seed'] == seed
+            for attempt in result['attempts']:
+                if 'approach' in attempt:
+                    assert attempt['approach']['search_seed'] == (seed + attempt['candidate']-1) % 2**32
+            home_stats = result['home_search_stats']
+            if home_stats.get('fallback'):
+                home_stats = home_stats['failed_search']
+            assert home_stats['search_seed'] == (seed+1) % 2**32
         assert result['request_id'] == PlanRequest.from_dict(request).identity
         assert result['policy'] == policy and result['joint_names'] == data['joint_names']
         cycle(result)
@@ -109,7 +123,7 @@ def main():
               'passed': data['success'], 'completed_boxes': len(completed), 'rounds': 15,
               'completed_rounds': sum(r['status'] == 'completed' for r in data['rounds']),
               'error': data['error'], 'joint_limit_overshoot': limit_overshoot,
-              'single_arm_rounds': 5, 'front_to_wall_m': .75, 'frames': offset,
+              'single_arm_rounds': 5, 'planner': 'informed_rrt', 'search_seed': data.get('search_seed'), 'front_to_wall_m': .75, 'frames': offset,
               'fallback_rounds': fallbacks, 'total_ms': data['total_ms'],
               'scope': 'full ordered wall and validated completed prefix; original f044 research collision policy; no mesh/hardware certification'}
     output = args.result.with_suffix('.audit.json')
