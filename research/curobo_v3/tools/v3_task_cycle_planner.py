@@ -29,6 +29,9 @@ class TaskCyclePlanner(FullCyclePlanner):
         self.original_snapshot = self.snapshot
         self.original_targets = copy.deepcopy(self.target_poses)
         self.planner_kind = 'informed_connect'
+        # Preserve the 4200247 TaskCycle baseline while the generic planner explores 128 candidates.
+        self.contact_candidate_limit = 32
+        self.preserve_contact_candidate_order = True
 
     def configure_task(self, boxes):
         if boxes not in self.task_map.values():
@@ -57,6 +60,12 @@ class TaskCyclePlanner(FullCyclePlanner):
         self.target_poses = placement_tool_poses()
         self.planner_kind = 'informed_connect'
         return centers, obstacles
+
+    def demo_request(self, boxes):
+        request = super().demo_request(boxes)
+        targets = tuple((name, Pose(tuple(pose["position"]), tuple(pose["quaternion"])))
+                        for name, pose in self.target_poses.items())
+        return replace(request, targets=targets, suction_mode="side")
 
     def contact_poses_for_task(self, boxes):
         if not self.top_grasp:

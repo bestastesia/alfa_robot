@@ -1,0 +1,20 @@
+{
+  "schema": "alfa.v3_scoop_ompl_seed_set.v1",
+  "date": "2026-09-25",
+  "seeds": [
+    104729,
+    104743,
+    104759,
+    104761,
+    104773,
+    104779,
+    104789,
+    104801
+  ],
+  "acceptance": {
+    "completed_boxes": 25,
+    "validated_transitions": 25,
+    "maximum_selected_core_planning_s": 5.0,
+    "all_seeds_must_pass": true
+  }
+}

@@ -27,6 +27,13 @@ jobs:
       - name: Independent scene and state tests
         working-directory: research/curobo_v3
         run: python -m unittest discover -s tests -p 'test_core_*.py' -v
+      - name: Install independent mesh audit dependencies
+        run: python -m pip install trimesh==5.1.0 yourdfpy==0.0.60 python-fcl==0.7.0.11
+      - name: Independent mesh audit test (required, not skipped)
+        working-directory: research/curobo_v3
+        run: |
+          python -c "import trimesh, yourdfpy, fcl"
+          python -m unittest discover -s tests -p 'test_core_mesh_validation.py' -v
       - name: Core syntax
         working-directory: research/curobo_v3
         run: python -m compileall -q tools

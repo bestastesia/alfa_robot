@@ -11,6 +11,12 @@ from v3_placement_target import placement_tool_poses
 
 
 class TaskSceneTest(unittest.TestCase):
+    def test_task_cycle_preserves_4200247_request_contract(self):
+        source = (Path(__file__).resolve().parents[1] / 'tools/v3_task_cycle_planner.py').read_text()
+        self.assertIn('self.contact_candidate_limit = 32', source)
+        self.assertIn('self.preserve_contact_candidate_order = True', source)
+        self.assertIn('return replace(request, targets=targets, suction_mode="side")', source)
+
     def test_task_partition_and_unique_pairs(self):
         original = tasks()
         bottom = tasks([1, 0])

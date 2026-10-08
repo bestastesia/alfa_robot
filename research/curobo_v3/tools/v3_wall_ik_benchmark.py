@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 
 import argparse
 import copy
@@ -10,13 +11,7 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 from scipy.spatial.transform import Rotation
-import torch
-import trimesh
-import yaml
 
-from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
-from curobo.scene import Cuboid, Scene
-from curobo.types import GoalToolPose, JointState, Pose
 
 
 ACTIVE_JOINTS = [
@@ -113,6 +108,8 @@ def urdf_link_transforms(urdf: Path, joint_values: dict[str, float]) -> tuple[ET
 
 
 def chassis_front_x(urdf: Path, joint_values: dict[str, float]) -> float:
+    import trimesh
+
     root, poses = urdf_link_transforms(urdf, joint_values)
     maximum = -math.inf
     for link in root.findall("link"):
@@ -138,6 +135,8 @@ def chassis_front_x(urdf: Path, joint_values: dict[str, float]) -> float:
 
 
 def derive_robot_config(source: Path, destination: Path, home: dict[str, float]) -> None:
+    import yaml
+
     data = yaml.safe_load(source.read_text())
     kinematics = data.get("robot_cfg", data)["kinematics"]
     kinematics.pop("load_collision_spheres", None)
@@ -231,6 +230,8 @@ def contact_position(
 
 
 def make_scene(front_x: float, wall_distance: float, excluded: set[int]) -> Scene:
+    from curobo.scene import Cuboid, Scene
+
     wall_back = front_x + wall_distance + 0.30 + 1e-6
     cuboids = [
         Cuboid(name="ground", pose=[wall_back - 2.0, 0.0, -0.05, 1, 0, 0, 0], dims=[4.2, 2.6, 0.1]),
@@ -259,6 +260,9 @@ def goal_for_round(
     front_x: float,
     wall_distance: float,
 ) -> GoalToolPose:
+    import torch
+    from curobo.types import GoalToolPose, Pose
+
     poses = {}
     for side, box_id in zip(("left", "right"), round_pair):
         frame = f"{side}_tool0"
@@ -275,6 +279,8 @@ def goal_for_round(
 
 
 def solve_one(ik: InverseKinematics, goal: GoalToolPose, current_state: JointState) -> dict:
+    from curobo.types import JointState
+
     started = time.perf_counter()
     try:
         result = ik.solve_pose(goal, current_state=current_state, return_seeds=8)
@@ -309,6 +315,11 @@ def solve_one(ik: InverseKinematics, goal: GoalToolPose, current_state: JointSta
 
 
 def main() -> None:
+    import torch
+    import yaml
+    from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
+    from curobo.types import JointState
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, required=True)
     parser.add_argument("--urdf", type=Path, required=True)
