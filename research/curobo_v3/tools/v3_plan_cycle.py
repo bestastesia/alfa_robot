@@ -1,4 +1,4 @@
-"""Headless planning demo. Produces untimed joint frames, never hardware commands."""
+"""Headless planning demo. Optionally records timed TrajOpt segments; never sends hardware commands."""
 
 import argparse
 import json
@@ -17,6 +17,10 @@ def main():
         parser.add_argument("--" + name.replace("_", "-"), type=Path, default=getattr(defaults, name))
     parser.add_argument("--request", type=Path)
     parser.add_argument("--search-seed", type=int, help="RRT sampling seed; IK and search budgets are unchanged")
+    parser.add_argument("--trajopt-rrt", action="store_true",
+                        help="seed cuRobo TrajOpt from 15-DoF RRT segments; dynamics/torque stay disabled")
+    parser.add_argument("--trajopt-interpolation-dt", type=float, default=0.025,
+                        help="seconds between optimized q/qdot/qddot/jerk samples")
     parser.add_argument("--suction-mode", choices=("auto", "side", "top"), default=None)
     parser.add_argument("--left-box", type=int, default=24)
     parser.add_argument("--right-box", type=int, default=20)
@@ -27,6 +31,8 @@ def main():
     args = parser.parse_args()
     if args.search_seed is not None and not 0 <= args.search_seed < 2**32:
         parser.error("--search-seed must be an unsigned 32-bit integer")
+    if args.trajopt_interpolation_dt <= 0:
+        parser.error("--trajopt-interpolation-dt must be positive")
     try:
         args.wall_layout = wall_layout_from_args(args)
     except (ValueError, TypeError) as error:
@@ -45,7 +51,7 @@ def main():
                                        search_seed=args.search_seed)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
-        print(json.dumps({k: result.get(k) for k in ('success', 'completed_box_ids', 'remaining_box_ids', 'total_ms', 'error')}, ensure_ascii=False))
+        print(json.dumps({k: result.get(k) for k in ('success', 'completed_box_ids', 'remaining_box_ids', 'total_ms', 'motion_duration_s', 'error')}, ensure_ascii=False))
         raise SystemExit(0 if result['success'] else 1)
     request = PlanRequest.from_dict(json.loads(args.request.read_text())) if args.request else planner.demo_request(
         {"left": args.left_box, "right": args.right_box})

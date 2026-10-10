@@ -108,8 +108,11 @@ class SequenceTest(unittest.TestCase):
                 removed = {i for _, i in request.tasks}
                 released = replace(request.snapshot, objects=tuple(o for o in request.snapshot.objects
                                    if int(o.object_id.removeprefix('wall_box_')) not in removed), revision=3)
-                return {'success': True, 'joint_names': list(ACTIVE_JOINTS), 'frames': [[0.] * 15] * 2,
+                zeros = [[0.] * 15] * 2
+                return {'success': True, 'joint_names': list(ACTIVE_JOINTS), 'frames': zeros,
                         'phases': ['home', 'return_home'], 'payload': [False, False],
+                        'time_from_start_s': [0., 1.], 'velocities': zeros,
+                        'accelerations': zeros, 'jerks': zeros,
                         'predicted_scene_events': [{'phase': 'release', 'snapshot': released.to_dict()}]}
             def set_snapshot(self, current):
                 self.snapshot = current
@@ -132,7 +135,40 @@ class SequenceTest(unittest.TestCase):
         self.assertEqual(complete['completed_box_ids'], [2, 0, 1])
         self.assertEqual(complete['remaining_box_ids'], [])
         self.assertEqual(complete['frame_rounds'], [0, 0, 1, 1])
+        self.assertEqual(complete['time_from_start_s'], [0., 1., 1., 2.])
+        self.assertEqual(complete['motion_duration_s'], 2.)
+        self.assertEqual(len(complete['velocities']), len(complete['frames']))
         self.assertEqual(planner.snapshot.objects, ())
+
+        class MixedTimingPlanner(Planner):
+            fail_single = False
+
+            def _plan_request(self, request, progress):
+                result = super()._plan_request(request, progress)
+                if len(request.tasks) == untimed_task_size:
+                    for key in ("time_from_start_s", "velocities", "accelerations", "jerks"):
+                        result.pop(key)
+                return result
+
+        class BadTimingPlanner(Planner):
+            fail_single = False
+
+            def _plan_request(self, request, progress):
+                result = super()._plan_request(request, progress)
+                result["velocities"] = []
+                return result
+
+        with self.assertRaisesRegex(RuntimeError, "timing arrays"):
+            plan_sequence(BadTimingPlanner(), snapshot, lambda _: None)
+
+        for untimed_task_size in (1, 2):
+            with self.subTest(untimed_task_size=untimed_task_size):
+                mixed = plan_sequence(MixedTimingPlanner(), snapshot, lambda _: None)
+                self.assertTrue(mixed["success"])
+                self.assertEqual(len(mixed["frames"]), 4)
+                for key in ("time_from_start_s", "velocities", "accelerations", "jerks", "motion_duration_s"):
+                    self.assertNotIn(key, mixed)
+                self.assertEqual(sum("time_from_start_s" in r["result"] for r in mixed["rounds"]), 1)
 
 
 if __name__ == '__main__':

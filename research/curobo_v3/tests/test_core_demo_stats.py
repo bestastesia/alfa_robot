@@ -31,7 +31,8 @@ assert not {'torch', 'curobo', 'viser', 'trimesh', 'yourdfpy', 'fcl'} & sys.modu
             'selected_candidate': 2, 'contact_ik_count': 8,
             'attempts': [{'candidate': 1, 'approach': {'first_solution_ms': 999.}},
                          {'candidate': 2, 'approach': {'first_solution_ms': 12., 'search_ms': 20.,
-                          'raw_waypoints': 27, 'shortcut_waypoints': 10, 'shortcut_applied': True}}],
+                          'raw_waypoints': 27, 'shortcut_waypoints': 10, 'shortcut_applied': True,
+                          'trajectory_optimization': {'accepted': True, 'wall_ms': 34., 'output_frames': 81}}}],
             'home_search_stats': {'fallback': True, 'failed_search': {'search_ms': 2000.}},
             'phases': ['home', 'approach', 'approach'], 'frames': [[0], [1], [2]],
         }
@@ -42,7 +43,7 @@ assert not {'torch', 'curobo', 'viser', 'trimesh', 'yourdfpy', 'fcl'} & sys.modu
         for expected in ('本轮累计规划耗时：1234.50 ms', '选中方案耗时：900.00 ms',
                          '接近路径搜索与检查', '40.00 ms', '27→10', '12.00 ms',
                          '不能重复累加', '不是动作执行耗时', '反向复用', '2000.00 ms',
-                         '| 初始→吸附起点 | 2 |', '未记录', '解析垂直补偿', '0.12 m', '不是速度限制'):
+                         '| 初始→吸附起点 | 2 |', '未记录', '解析垂直补偿', '0.12 m', '不是速度限制', 'cuRobo TrajOpt：**采纳**', '34.00 ms', '输出81帧'):
             self.assertIn(expected, text)
         self.assertNotIn('999.00 ms', text)
         empty = planning_statistics({})

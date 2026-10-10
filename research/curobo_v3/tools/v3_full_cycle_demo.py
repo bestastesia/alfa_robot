@@ -64,6 +64,12 @@ def planning_statistics(result):
                   f"迭代：{stats.get('iterations', '未记录')} · 树节点：{stats.get('tree_nodes', '未记录')} · "
                   f"发现解：{stats.get('solutions_found', '未记录')}  ",
                   f"搜索种子：{stats.get('search_seed', '未记录')}"]
+        optimization = stats.get("trajectory_optimization")
+        if optimization:
+            verdict = "采纳" if optimization.get("accepted") else "回退原RRT"
+            lines.append(
+                f"cuRobo TrajOpt：**{verdict}** · {ms(optimization.get('wall_ms'))} · "
+                f"输出{optimization.get('output_frames', '—')}帧 · 动力学/扭矩未启用")
     if result.get("idle_contact_policy"):
         source = result.get("idle_contact_source")
         idle_text = ("接触时空闲手采用解析垂直补偿，保持初始水平位置与朝向。"
@@ -107,6 +113,10 @@ def main():
     parser.add_argument("--port", type=int, default=8090)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument("--search-seed", type=int, help="RRT sampling seed; defaults preserve the mentor baseline")
+    parser.add_argument("--trajopt-rrt", action="store_true",
+                        help="seed cuRobo TrajOpt from 15-DoF RRT segments; dynamics/torque stay disabled")
+    parser.add_argument("--trajopt-interpolation-dt", type=float, default=0.025,
+                        help="seconds between optimized q/qdot/qddot/jerk samples")
     parser.add_argument("--suction-mode", choices=("auto", "side", "top"), default="auto")
     parser.add_argument("--sequence", action="store_true", help="show the complete wall sequence")
     parser.add_argument("--replay-only", action="store_true", help="disable planning controls; visualization only, no GPU planning")
@@ -116,6 +126,8 @@ def main():
     args = parser.parse_args()
     if args.search_seed is not None and not 0 <= args.search_seed < 2**32:
         parser.error("--search-seed must be an unsigned 32-bit integer")
+    if args.trajopt_interpolation_dt <= 0:
+        parser.error("--trajopt-interpolation-dt must be positive")
     try:
         args.wall_layout = wall_layout_from_args(args)
     except (ValueError, TypeError) as error:
@@ -190,6 +202,13 @@ def main():
     server.scene.add_grid("/ground", width=5, height=3)
     robot = ViserUrdf(server, urdf, root_node_name="/robot",
                       mesh_color_override=(0.68, 0.73, 0.80, 0.8))
+    joint_models = {joint.name: joint for joint in urdf.robot.joints if joint.type != "fixed"}
+    velocity_arrows = server.scene.add_arrows(
+        "/trajectory/joint_velocity",
+        points=np.zeros((len(joint_names), 2, 3), dtype=np.float32),
+        colors=np.array([(61, 170, 210) if joint_models[name].type == "prismatic" else (239, 146, 62)
+                         for name in joint_names], dtype=np.uint8),
+        shaft_radius=.006, head_radius=.014, head_length=.025, visible=False)
     attached = {}
     sphere_mesh = trimesh.creation.icosphere(subdivisions=2)
     for side in ("left", "right"):
@@ -246,17 +265,33 @@ def main():
         mode.disabled = args.replay_only
         planner_selector.disabled = args.replay_only
         play = server.gui.add_checkbox("播放", initial_value=False)
-        playback_step = server.gui.add_slider("回放步进（非实机速度）", min=1, max=20, step=1,
+        playback_step = server.gui.add_slider("无时间轨迹回放步进", min=1, max=20, step=1,
                                               initial_value=5 if args.sequence or args.sequence_json else 1)
+        playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=3., step=.1, initial_value=1.)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("跳转阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
+        with server.gui.add_folder("优化轨迹 q / qdot", expand_by_default=False):
+            show_velocity = server.gui.add_checkbox("显示关节速度轴矢量", initial_value=True)
+            curve_joint = server.gui.add_dropdown(
+                "曲线关节", options=tuple(joint_names), initial_value="left_joint1")
+            trajectory_state = server.gui.add_markdown(
+                "当前阶段没有时间化轨迹。箭头长度表示速度上限利用率，不是TCP线速度。")
+            trajectory_curve = server.gui.add_uplot(
+                data=(np.array([0., 1.]), np.zeros(2), np.zeros(2)),
+                series=(viser.uplot.Series(label="time"),
+                        viser.uplot.Series(label="q", stroke="#3daad2"),
+                        viser.uplot.Series(label="qdot", stroke="#ef923e")),
+                mode=1, scales={"x": {"time": False}},
+                title="选中关节的时间轨迹（秒）", height=320, visible=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         comparison_status = server.gui.add_markdown("")
         with server.gui.add_folder("中文阶段耗时与统计", expand_by_default=False):
             statistics = server.gui.add_markdown("尚无规划记录。")
-    current = {"result": None, "busy": False, "statistics_result": None}
+    current = {"result": None, "busy": False, "statistics_result": None,
+               "curve_binding": None, "driving_playback": False,
+               "playback_result": None, "playback_start_wall": 0., "playback_start_time": 0.}
 
     def refresh_sequence():
         whole_wall = mode.value == "整墙序列"
@@ -286,8 +321,53 @@ def main():
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
             seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "对比表是计算结果回放。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；捷径是否启用以各阶段记录为准，未使用TrajOpt。"]
+        lines += ["", "对比表是计算结果回放。实时重算包含当次初始化状态；同一接触起点、每段2秒预算；捷径与TrajOpt是否启用以各阶段记录为准。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
+
+    def timed_sample(cycle_result, index):
+        for segment in cycle_result.get("timed_segments", ()) if cycle_result else ():
+            if segment["frame_start"] <= index <= segment["frame_end"]:
+                return segment, index - segment["frame_start"]
+        return None, None
+
+    def update_trajectory_visualization(cycle_result, index, values):
+        segment, local_index = timed_sample(cycle_result, index)
+        if segment is None:
+            velocity_arrows.visible = False
+            trajectory_curve.visible = False
+            trajectory_state.content = "当前阶段没有时间化轨迹。"
+            current["curve_binding"] = None
+            return
+        names = segment["joint_names"]
+        velocity = dict(zip(names, segment["velocities"][local_index]))
+        rows = ["| joint | q | qdot | units (q / qdot) |", "|---|---:|---:|---|"]
+        for name in names:
+            unit = "m" if joint_models[name].type == "prismatic" else "rad"
+            rows.append(f"| {name} | {values.get(name, 0.):.5f} | {velocity[name]:.5f} | {unit} / {unit}/s |")
+        trajectory_state.content = (
+            f"**{segment['name']} · t={segment['time_from_start_s'][local_index]:.3f}s · "
+            "研究轨迹，不可直接执行**  \n\n" + "\n".join(rows))
+        binding = (id(cycle_result), segment["name"], curve_joint.value)
+        if current["curve_binding"] != binding:
+            joint_index = names.index(curve_joint.value)
+            trajectory_curve.data = (
+                np.asarray(segment["time_from_start_s"]),
+                np.asarray(segment["positions"])[:, joint_index],
+                np.asarray(segment["velocities"])[:, joint_index],
+            )
+            trajectory_curve.visible = True
+            current["curve_binding"] = binding
+        points = np.zeros((len(joint_names), 2, 3), dtype=np.float32)
+        for joint_index, name in enumerate(joint_names):
+            joint = joint_models[name]
+            transform = urdf.get_transform(joint.child, urdf.base_link)
+            axis = transform[:3, :3] @ np.asarray(joint.axis)
+            limit = joint.limit.velocity if joint.limit and joint.limit.velocity else 1.0
+            speed = velocity.get(name, 0.0)
+            points[joint_index, 0] = transform[:3, 3]
+            points[joint_index, 1] = transform[:3, 3] + axis * np.clip(speed / limit, -1., 1.) * .15
+        velocity_arrows.points = points
+        velocity_arrows.visible = show_velocity.value
 
     def show_frame(index):
         result = current["result"]
@@ -306,12 +386,15 @@ def main():
         removed = set()
         round_number = None
         cycle_result = result
+        cycle_frame_index = index
         if result and result.get("sequence") and result["frames"]:
             round_number = result["frame_rounds"][index]
             record = result["rounds"][round_number]
             active_task = record["task"]
             removed = set(record["removed_before"])
             cycle_result = record["result"]
+            cycle_frame_index = index - result["frame_rounds"].index(round_number)
+        update_trajectory_visualization(cycle_result, cycle_frame_index, values)
         if cycle_result is not current["statistics_result"]:
             summary = ""
             if result and result.get("sequence"):
@@ -359,10 +442,36 @@ def main():
                 blocked = f"阻塞第{result['blocked_round']}轮：" if result.get("sequence") else ""
                 status.content += f"  \n{blocked}{result.get('error') or result.get('blocked_details')}"
 
+    def reset_playback_clock():
+        result = current["result"]
+        times = result.get("time_from_start_s") if result else None
+        index = max(0, int(frame.value)-1)
+        current["playback_result"] = result
+        current["playback_start_wall"] = time.monotonic()
+        current["playback_start_time"] = float(times[index]) if times else 0.0
+
+    @play.on_update
+    def on_play(_event):
+        if play.value:
+            reset_playback_clock()
+
+    @curve_joint.on_update
+    def on_curve_joint(_event):
+        current["curve_binding"] = None
+        if current["result"]:
+            show_frame(int(frame.value)-1)
+
+    @show_velocity.on_update
+    def on_show_velocity(_event):
+        if current["result"]:
+            show_frame(int(frame.value)-1)
+
     @frame.on_update
     def on_frame(_event):
         if current["result"]:
             show_frame(int(frame.value)-1)
+            if not current["driving_playback"]:
+                reset_playback_clock()
 
     @stage.on_update
     def on_stage(_event):
@@ -523,11 +632,27 @@ def main():
     show_frame(0)
     print(f"Ready: http://localhost:{args.port}", flush=True)
     while True:
-        if play.value and current["result"]:
-            if int(frame.value) >= len(current["result"]["frames"]):
+        result = current["result"]
+        if play.value and result:
+            times = result.get("time_from_start_s")
+            if times:
+                if current["playback_result"] is not result:
+                    reset_playback_clock()
+                target_time = (current["playback_start_time"]
+                               + (time.monotonic()-current["playback_start_wall"])*playback_speed.value)
+                index = int(np.searchsorted(times, target_time, side="right") - 1)
+                if target_time >= times[-1]:
+                    index = len(times)-1
+                    play.value = False
+                current["driving_playback"] = True
+                frame.value = index+1
+                current["driving_playback"] = False
+            elif int(frame.value) >= len(result["frames"]):
                 play.value = False
             else:
+                current["driving_playback"] = True
                 frame.value = min(frame.max, int(frame.value)+int(playback_step.value))
+                current["driving_playback"] = False
         time.sleep(.03)
 
 

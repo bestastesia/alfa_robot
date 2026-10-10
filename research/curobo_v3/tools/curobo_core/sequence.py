@@ -40,6 +40,23 @@ def plan_sequence(planner, snapshot, progress, search_seed=None):
         report["joint_names"] = result["joint_names"]
         for key in ("frames", "phases", "payload"):
             report[key].extend(result[key])
+        previous_frames = len(report["frames"]) - len(result["frames"])
+        if ("time_from_start_s" in result and
+                len(report.get("time_from_start_s", [])) == previous_frames):
+            if any(len(result.get(key, [])) != len(result["frames"]) for key in
+                   ("time_from_start_s", "velocities", "accelerations", "jerks")):
+                raise RuntimeError("sequence round timing arrays do not match its frames")
+            if "time_from_start_s" not in report:
+                report.update(time_from_start_s=[], velocities=[], accelerations=[], jerks=[])
+            offset = report["time_from_start_s"][-1] if report["time_from_start_s"] else 0.0
+            report["time_from_start_s"].extend(offset + value for value in result["time_from_start_s"])
+            for key in ("velocities", "accelerations", "jerks"):
+                report[key].extend(result[key])
+            report["motion_duration_s"] = report["time_from_start_s"][-1]
+        else:
+            # Keep per-round timing, but never publish a partial sequence clock.
+            for key in ("time_from_start_s", "velocities", "accelerations", "jerks", "motion_duration_s"):
+                report.pop(key, None)
         report["frame_rounds"].extend([number] * len(result["frames"]))
         released = next(e["snapshot"] for e in result["predicted_scene_events"] if e["phase"] == "release")
         store = SceneStore(SceneSnapshot.from_dict(released))
