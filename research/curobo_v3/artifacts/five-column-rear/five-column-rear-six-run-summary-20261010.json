@@ -37,48 +37,488 @@
       "max_joint_step_deg": 0.4998646100284832,
       "max_base_step_m": 0.010000000000000009,
       "compressed_result": "artifacts/five-column-rear/five-column-rear-s11-r1.json.gz",
-      "compressed_sha256": "4390e8ab87dca53db0b244f19c553d68bf535fba428d5aa489774f70b9e91693",
+      "compressed_sha256": "64cb689fe7bead18cd23a84dbdc03e21d59c281ed682c181ffa7e4b384b3941f",
       "audit": "artifacts/five-column-rear/five-column-rear-s11-audit.json",
       "audit_sha256": "fb92b2dda1c1aee8845ab709ca316fcbd7f7837147809851390e751216c74c4c",
       "planning_timing": {
-        "total_ms": 208375.5397319983,
-        "transition_ms": 56863.65228899922,
-        "component_ms": 151511.88744299908,
+        "total_ms": 208716.6039570002,
+        "transition_ms": 56812.55925500045,
+        "component_ms": 151904.04470199972,
         "rows": [
           {
             "column": 2,
-            "transition_ms": 21.61717499984661,
-            "component_ms": 34674.45712500012,
-            "total_ms": 34696.074299999964,
-            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e"
+            "transition_ms": 25.425400001040543,
+            "component_ms": 34725.493345999894,
+            "total_ms": 34750.918746000934,
+            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
+            "stages": [
+              {
+                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
+                "ms": 25.425400001040543,
+                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+              },
+              {
+                "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
+                "ms": 1296.832269999868,
+                "method": "cuRobo \u78b0\u649e/\u9650\u4f4d\u68c0\u67e5 + URDF FK"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 0.7529600006819237,
+                "method": "\u539f\u5de5\u5177\u7f51\u683c\u534a\u7a7a\u95f4/\u63a5\u89e6\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5230\u4e0a\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 4205.777821999618,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u53f3\u81c2\u63a5\u89e6\u4e0a\u7bb1",
+                "ms": 679.6044630000324,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3 + \u901a\u9053\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5438\u9644\u4e0a\u7bb1",
+                "ms": 420.9966110001915,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 3.4919299996545305,
+                "method": "\u7bb1\u9762\u5185\u6293\u53d6\u5019\u9009 + \u7f51\u683c\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u62bd\u79bb\u7ec8\u70b9\u6c42\u89e3",
+                "ms": 5786.1643790001835,
+                "method": "cuRobo IK\uff08\u5de6\u81c2 7 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5230\u4e0b\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 2926.6038300002037,
+                "method": "cuRobo IK + GPU RRTConnect\uff08\u5de6\u81c2 7 \u7ef4\u4f18\u5148\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 3434.661444000085,
+                "method": "\u7ec8\u70b9\u5f15\u5bfc\u9009\u89e3\u6790\u5206\u652f + \u6b63\u5411\u56fa\u5b9a\u5197\u4f59\u89d2 IK\uff081 cm\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u63a5\u89e6\u4e0b\u7bb1",
+                "ms": 912.1133170001485,
+                "method": "\u6b63\u5411\u89e3\u6790 IK\uff08\u56fa\u5b9a\u5197\u4f59\u89d2\u30011 cm \u91c7\u6837\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5438\u9644\u4e0b\u7bb1",
+                "ms": 562.1199389997855,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u642c\u8fd0\u81f3\u5de6\u540e\u5378\u8f7d\u533a",
+                "ms": 5121.333314999902,
+                "method": "cuRobo IK + GPU RRTConnect\uff087 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u91ca\u653e",
+                "ms": 0.697383999977319,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              },
+              {
+                "stage": "\u5de6\u81c2\u7a7a\u8f7d\u64a4\u79bb",
+                "ms": 960.4554839997945,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5b89\u5168\u505c\u9760",
+                "ms": 2820.794547999867,
+                "method": "\u547d\u540d\u59ff\u6001/\u5347\u964d\u626b\u63a0\u7b5b\u9009 + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u7ad6\u76f4\u4e0b\u964d\u81f3\u4e0b\u5c42",
+                "ms": 875.3028490000361,
+                "method": "\u56fa\u5b9a\u5197\u4f59\u89d2\u89e3\u6790 IK + \u5347\u964d\u63d2\u503c + \u8def\u5f84\u6821\u9a8c\uff08\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 1890.7493010001417,
+                "method": "\u56fa\u5b9a\u89d2\u57fa\u7ebf\uff1b\u5fc5\u8981\u65f68\u7ef4\u7ec8\u70b9 IK + 1 cm\u5c40\u90e8\u5197\u4f59\u7eed\u89e3\uff08\u6bcf\u5931\u8d25\u6bb5\u6700\u591a14\u5019\u9009\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u642c\u8fd0\u81f3\u53f3\u540e\u5378\u8f7d\u533a",
+                "ms": 2574.791809999624,
+                "method": "cuRobo IK + GPU RRTConnect\uff088 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u91ca\u653e\u4e0e\u5b8c\u6210",
+                "ms": 0.692305000484339,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              }
+            ]
           },
           {
             "column": 1,
-            "transition_ms": 15508.510546000252,
-            "component_ms": 35518.41189100014,
-            "total_ms": 51026.922437000394,
-            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e"
+            "transition_ms": 15471.95527599979,
+            "component_ms": 35589.365818999795,
+            "total_ms": 51061.321094999585,
+            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
+            "stages": [
+              {
+                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
+                "ms": 15471.95527599979,
+                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+              },
+              {
+                "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
+                "ms": 1234.425077999731,
+                "method": "cuRobo \u78b0\u649e/\u9650\u4f4d\u68c0\u67e5 + URDF FK"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 0.943180999456672,
+                "method": "\u539f\u5de5\u5177\u7f51\u683c\u534a\u7a7a\u95f4/\u63a5\u89e6\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5230\u4e0a\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 4189.028603000224,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u53f3\u81c2\u63a5\u89e6\u4e0a\u7bb1",
+                "ms": 687.0759049998014,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3 + \u901a\u9053\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5438\u9644\u4e0a\u7bb1",
+                "ms": 416.45287800020014,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 3.644260999863036,
+                "method": "\u7bb1\u9762\u5185\u6293\u53d6\u5019\u9009 + \u7f51\u683c\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u62bd\u79bb\u7ec8\u70b9\u6c42\u89e3",
+                "ms": 5802.9912650008555,
+                "method": "cuRobo IK\uff08\u5de6\u81c2 7 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5230\u4e0b\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 2803.9122929994846,
+                "method": "cuRobo IK + GPU RRTConnect\uff08\u5de6\u81c2 7 \u7ef4\u4f18\u5148\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 4640.754265999931,
+                "method": "\u7ec8\u70b9\u5f15\u5bfc\u9009\u89e3\u6790\u5206\u652f + \u6b63\u5411\u56fa\u5b9a\u5197\u4f59\u89d2 IK\uff081 cm\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u63a5\u89e6\u4e0b\u7bb1",
+                "ms": 934.4070409997585,
+                "method": "\u6b63\u5411\u89e3\u6790 IK\uff08\u56fa\u5b9a\u5197\u4f59\u89d2\u30011 cm \u91c7\u6837\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5438\u9644\u4e0b\u7bb1",
+                "ms": 550.7590260003781,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u642c\u8fd0\u81f3\u5de6\u540e\u5378\u8f7d\u533a",
+                "ms": 5546.646552999846,
+                "method": "cuRobo IK + GPU RRTConnect\uff087 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u91ca\u653e",
+                "ms": 0.686985000356799,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              },
+              {
+                "stage": "\u5de6\u81c2\u7a7a\u8f7d\u64a4\u79bb",
+                "ms": 973.8451039993379,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5b89\u5168\u505c\u9760",
+                "ms": 2705.0239950003743,
+                "method": "\u547d\u540d\u59ff\u6001/\u5347\u964d\u626b\u63a0\u7b5b\u9009 + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u7ad6\u76f4\u4e0b\u964d\u81f3\u4e0b\u5c42",
+                "ms": 878.065468999921,
+                "method": "\u56fa\u5b9a\u5197\u4f59\u89d2\u89e3\u6790 IK + \u5347\u964d\u63d2\u503c + \u8def\u5f84\u6821\u9a8c\uff08\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 1413.0654480004523,
+                "method": "\u56fa\u5b9a\u89d2\u57fa\u7ebf\uff1b\u5fc5\u8981\u65f68\u7ef4\u7ec8\u70b9 IK + 1 cm\u5c40\u90e8\u5197\u4f59\u7eed\u89e3\uff08\u6bcf\u5931\u8d25\u6bb5\u6700\u591a14\u5019\u9009\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u642c\u8fd0\u81f3\u53f3\u540e\u5378\u8f7d\u533a",
+                "ms": 2524.635275000037,
+                "method": "cuRobo IK + GPU RRTConnect\uff088 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u91ca\u653e\u4e0e\u5b8c\u6210",
+                "ms": 0.6404059995475109,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              }
+            ]
           },
           {
             "column": 3,
-            "transition_ms": 14595.323413999722,
-            "component_ms": 31380.548391000048,
-            "total_ms": 45975.87180499977,
-            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e"
+            "transition_ms": 14589.476185001331,
+            "component_ms": 31975.214230000347,
+            "total_ms": 46564.69041500168,
+            "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
+            "stages": [
+              {
+                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
+                "ms": 14589.476185001331,
+                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+              },
+              {
+                "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
+                "ms": 1319.7890719993666,
+                "method": "cuRobo \u78b0\u649e/\u9650\u4f4d\u68c0\u67e5 + URDF FK"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 0.9042179999596556,
+                "method": "\u539f\u5de5\u5177\u7f51\u683c\u534a\u7a7a\u95f4/\u63a5\u89e6\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5230\u4e0a\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 4202.582927000549,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u53f3\u81c2\u63a5\u89e6\u4e0a\u7bb1",
+                "ms": 670.0690990001021,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3 + \u901a\u9053\u68c0\u67e5"
+              },
+              {
+                "stage": "\u53f3\u81c2\u5438\u9644\u4e0a\u7bb1",
+                "ms": 411.65842699956556,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u63a5\u89e6\u51e0\u4f55\u8bc4\u4f30",
+                "ms": 3.2948460002444335,
+                "method": "\u7bb1\u9762\u5185\u6293\u53d6\u5019\u9009 + \u7f51\u683c\u8db3\u8ff9\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u62bd\u79bb\u7ec8\u70b9\u6c42\u89e3",
+                "ms": 4350.7902000001195,
+                "method": "cuRobo IK\uff08\u5de6\u81c2 7 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5230\u4e0b\u7bb1\u9884\u63a5\u89e6\u70b9",
+                "ms": 2845.5034679991513,
+                "method": "cuRobo IK + GPU RRTConnect\uff08\u5de6\u81c2 7 \u7ef4\u4f18\u5148\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 2979.025360000378,
+                "method": "\u7ec8\u70b9\u5f15\u5bfc\u9009\u89e3\u6790\u5206\u652f + \u6b63\u5411\u56fa\u5b9a\u5197\u4f59\u89d2 IK\uff081 cm\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u63a5\u89e6\u4e0b\u7bb1",
+                "ms": 920.7422870003938,
+                "method": "\u6b63\u5411\u89e3\u6790 IK\uff08\u56fa\u5b9a\u5197\u4f59\u89d2\u30011 cm \u91c7\u6837\uff09"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5438\u9644\u4e0b\u7bb1",
+                "ms": 566.4980860001378,
+                "method": "\u5b9e\u9645 FK \u9644\u4ef6\u53d8\u6362 + \u643a\u7bb1\u68c0\u67e5"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u642c\u8fd0\u81f3\u5de6\u540e\u5378\u8f7d\u533a",
+                "ms": 4305.188649999764,
+                "method": "cuRobo IK + GPU RRTConnect\uff087 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u91ca\u653e",
+                "ms": 0.6021030003466876,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              },
+              {
+                "stage": "\u5de6\u81c2\u7a7a\u8f7d\u64a4\u79bb",
+                "ms": 990.3111189996707,
+                "method": "\u89e3\u6790 IK \u7b1b\u5361\u5c14\u7eed\u89e3"
+              },
+              {
+                "stage": "\u5de6\u81c2\u5b89\u5168\u505c\u9760",
+                "ms": 2712.6248980002856,
+                "method": "\u547d\u540d\u59ff\u6001/\u5347\u964d\u626b\u63a0\u7b5b\u9009 + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u7ad6\u76f4\u4e0b\u964d\u81f3\u4e0b\u5c42",
+                "ms": 889.0678499992646,
+                "method": "\u56fa\u5b9a\u5197\u4f59\u89d2\u89e3\u6790 IK + \u5347\u964d\u63d2\u503c + \u8def\u5f84\u6821\u9a8c\uff08\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u76f4\u7ebf\u62bd\u79bb 36 \u5398\u7c73",
+                "ms": 1956.0564820003492,
+                "method": "\u56fa\u5b9a\u89d2\u57fa\u7ebf\uff1b\u5fc5\u8981\u65f68\u7ef4\u7ec8\u70b9 IK + 1 cm\u5c40\u90e8\u5197\u4f59\u7eed\u89e3\uff08\u6bcf\u5931\u8d25\u6bb5\u6700\u591a14\u5019\u9009\uff1b\u65e0 RRT\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u642c\u8fd0\u81f3\u53f3\u540e\u5378\u8f7d\u533a",
+                "ms": 2562.328910999895,
+                "method": "cuRobo IK + GPU RRTConnect\uff088 \u7ef4\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u91ca\u653e\u4e0e\u5b8c\u6210",
+                "ms": 0.5577990004894673,
+                "method": "\u5b9e\u9645 FK \u4f4d\u59ff\u6838\u9a8c + \u79fb\u9664\u9644\u4ef6"
+              }
+            ]
           },
           {
             "column": 4,
-            "transition_ms": 12185.801761999755,
-            "component_ms": 26638.644589999785,
-            "total_ms": 38824.44635199954,
-            "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e"
+            "transition_ms": 12166.54731699964,
+            "component_ms": 26224.3359109998,
+            "total_ms": 38390.88322799944,
+            "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e",
+            "stages": [
+              {
+                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
+                "ms": 12166.54731699964,
+                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
+                "ms": 2110.469462000765,
+                "method": "cuRobo IK\uff08512/500/return32\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5411\u5185\u6a2a\u79fb0.4m",
+                "ms": 798.452679001457,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u4e0b\u964d0.4m",
+                "ms": 586.5090799989048,
+                "method": "\u5347\u964d+\u5355\u81c21cm\u89e3\u6790\u7b1b\u5361\u5c14"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5411\u5916\u62bd\u79bb0.36m",
+                "ms": 362.4870479998208,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14\uff0c\u5fc5\u8981\u65f6\u5c40\u90e8\u5197\u4f59\u7eed\u89e3"
+              },
+              {
+                "stage": "\u4e0a\u7bb1RRTConnect\u63a5\u8fd1\u4e0e5cm\u63a5\u89e6",
+                "ms": 2724.915198999952,
+                "method": "GPU RRTConnect + \u89e3\u6790\u63a5\u89e6"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u642c\u5230\u8f66\u8f86\u540e\u65b9\u5e76\u91ca\u653e",
+                "ms": 3562.5402039995606,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5019\u9009\u9644\u4ef6\u4e0e\u78b0\u649e\u9a8c\u8bc1",
+                "ms": 1952.1908979995715,
+                "method": "cuRobo\u78b0\u649e/\u9644\u4ef6/FK\u9a8c\u8bc1"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
+                "ms": 2015.746823999507,
+                "method": "cuRobo IK\uff08512/500/return32\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u5411\u5916\u62bd\u79bb0.36m",
+                "ms": 1352.922593000585,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14\uff0c\u5fc5\u8981\u65f6\u5c40\u90e8\u5197\u4f59\u7eed\u89e3"
+              },
+              {
+                "stage": "\u4e0b\u7bb1RRTConnect\u63a5\u8fd1\u4e0e5cm\u63a5\u89e6",
+                "ms": 2731.4256159997967,
+                "method": "GPU RRTConnect + \u89e3\u6790\u63a5\u89e6"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u642c\u5230\u8f66\u8f86\u540e\u65b9\u5e76\u91ca\u653e",
+                "ms": 3443.002446999344,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u5019\u9009\u9644\u4ef6\u4e0e\u78b0\u649e\u9a8c\u8bc1",
+                "ms": 4583.673861000534,
+                "method": "cuRobo\u78b0\u649e/\u9644\u4ef6/FK\u9a8c\u8bc1"
+              }
+            ]
           },
           {
             "column": 0,
-            "transition_ms": 14552.399391999643,
-            "component_ms": 23299.825445998977,
-            "total_ms": 37852.22483799862,
-            "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e"
+            "transition_ms": 14559.15507699865,
+            "component_ms": 23389.635395999903,
+            "total_ms": 37948.79047299855,
+            "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e",
+            "stages": [
+              {
+                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
+                "ms": 14559.15507699865,
+                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
+                "ms": 2151.253588000145,
+                "method": "cuRobo IK\uff08512/500/return32\uff09"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5411\u5185\u6a2a\u79fb0.4m",
+                "ms": 393.9127469993764,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u4e0b\u964d0.4m",
+                "ms": 292.05655500027206,
+                "method": "\u5347\u964d+\u5355\u81c21cm\u89e3\u6790\u7b1b\u5361\u5c14"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5411\u5916\u62bd\u79bb0.36m",
+                "ms": 349.87398100020073,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14\uff0c\u5fc5\u8981\u65f6\u5c40\u90e8\u5197\u4f59\u7eed\u89e3"
+              },
+              {
+                "stage": "\u4e0a\u7bb1RRTConnect\u63a5\u8fd1\u4e0e5cm\u63a5\u89e6",
+                "ms": 2767.1491339997374,
+                "method": "GPU RRTConnect + \u89e3\u6790\u63a5\u89e6"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u642c\u5230\u8f66\u8f86\u540e\u65b9\u5e76\u91ca\u653e",
+                "ms": 3602.5189649999447,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0a\u7bb1\u5019\u9009\u9644\u4ef6\u4e0e\u78b0\u649e\u9a8c\u8bc1",
+                "ms": 1109.5512680003594,
+                "method": "cuRobo\u78b0\u649e/\u9644\u4ef6/FK\u9a8c\u8bc1"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
+                "ms": 2114.5745650001118,
+                "method": "cuRobo IK\uff08512/500/return32\uff09"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u5411\u5916\u62bd\u79bb0.36m",
+                "ms": 1037.1768660006637,
+                "method": "1cm\u89e3\u6790\u7b1b\u5361\u5c14\uff0c\u5fc5\u8981\u65f6\u5c40\u90e8\u5197\u4f59\u7eed\u89e3"
+              },
+              {
+                "stage": "\u4e0b\u7bb1RRTConnect\u63a5\u8fd1\u4e0e5cm\u63a5\u89e6",
+                "ms": 2869.7493249992476,
+                "method": "GPU RRTConnect + \u89e3\u6790\u63a5\u89e6"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u642c\u5230\u8f66\u8f86\u540e\u65b9\u5e76\u91ca\u653e",
+                "ms": 3430.7249439998486,
+                "method": "cuRobo IK + GPU RRTConnect"
+              },
+              {
+                "stage": "\u4e0b\u7bb1\u5019\u9009\u9644\u4ef6\u4e0e\u78b0\u649e\u9a8c\u8bc1",
+                "ms": 3271.0934579999957,
+                "method": "cuRobo\u78b0\u649e/\u9644\u4ef6/FK\u9a8c\u8bc1"
+              }
+            ]
           }
         ],
         "note": "\u7d2f\u8ba1\u89c4\u5212\u8ba1\u7b97\u5899\u949f\uff0c\u4e0d\u662f\u64ad\u653e\u6216\u52a8\u529b\u5b66\u6267\u884c\u65f6\u95f4"

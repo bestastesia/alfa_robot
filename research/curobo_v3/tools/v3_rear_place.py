@@ -1,5 +1,6 @@
 """Reuse the sequential baseline's rear-place/release stage from any attached state."""
 from types import SimpleNamespace
+import time
 
 import numpy as np
 
@@ -15,6 +16,7 @@ def place_at_rear(planner, snapshot, q, side, seed):
         support_elbow_rise_m=0., cartesian_geometry_tolerance_m=.0001,
         snapshot=snapshot,
     )
+    started = time.perf_counter()
     task = _SequentialTask(planner, request, lambda _message: None)
     task.store = SceneStore(snapshot)
     task.q = np.asarray(q, dtype=float).copy()
@@ -28,4 +30,6 @@ def place_at_rear(planner, snapshot, q, side, seed):
         "events": task.report["predicted_scene_events"],
         "final_q": task.q.tolist(), "final_snapshot": task.store.snapshot().to_dict(),
         "attempts": task.report["attempts"], "stage_audits": task.report["stage_audits"],
+        "measured_wall_ms": (time.perf_counter()-started)*1000,
+        "stage_timing_ms": task.report["stage_timing_ms"],
     }

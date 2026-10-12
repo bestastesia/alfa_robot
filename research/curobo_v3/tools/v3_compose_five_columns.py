@@ -13,6 +13,7 @@ from curobo_core.sequential import sequential_request
 from curobo_core.sequential_validity import ReducedValidity
 from v3_batched_loaded_search import GpuValidity, batched_rrt_connect_multi_goal, densify
 from v3_plan_cycle import gpu_processes
+from v3_stage_timing import stage_label, stage_method
 
 ORDER=(2,1,3,4,0);STATIONS={2:0.,1:-.4,3:.4,4:.5,0:-.5}
 
@@ -69,10 +70,17 @@ def component(root,column,seed):
    events.append(row)
   measured=r.get('measured_wall_ms',sum(r.get('stage_timing_ms',{}).values()))
   method='双臂顺序：cuRobo IK + GPU RRTConnect + 1cm解析笛卡尔 + 左右车后放置'
-  return np.asarray(r['frames']),list(r['phases']),np.asarray(r['frames'][0]),np.asarray(r['frames'][-1]),[15+column,20+column],events,measured,method
+  stage_rows=[{'stage':stage_label(phase),'ms':ms,'method':stage_method(phase,r)}
+              for phase,ms in r.get('stage_timing_ms',{}).items()]
+  return np.asarray(r['frames']),list(r['phases']),np.asarray(r['frames'][0]),np.asarray(r['frames'][-1]),[15+column,20+column],events,measured,method,stage_rows
  u=json.loads((root/f'outer{column}-upper-rear-s{seed}-20261010.json').read_text());ua=next(x for x in u['attempts'] if x.get('candidate')==u['selected_candidate'] and x.get('trajectory_frames'));l=json.loads((root/f'outer{column}-pair-rear-s{seed}-20261010.json').read_text());la=l['selected'];frames=np.asarray(ua['trajectory_frames']+la['trajectory_frames']);phases=list(ua['trajectory_phases']+la['trajectory_phases']);upper_n=len(ua['trajectory_frames']);upper_id=f'wall_box_{20+column:02d}';lower_id=f'wall_box_{15+column:02d}';upper_attach=next(i for i,x in enumerate(ua['trajectory_phases']) if x.endswith('_lateral'));lower_attach=next(i for i,x in enumerate(la['trajectory_phases']) if x.endswith('_lower_extract'));upper_release=upper_n-len(ua['rear_place']['frames'])+ua['rear_place']['events'][-1]['frame_index'];lower_release=len(frames)-len(la['rear_place']['frames'])+la['rear_place']['events'][-1]['frame_index'];events=[{'phase':ua['trajectory_phases'][upper_attach],'object_id':upper_id,'frame_index':upper_attach,'attachment':ua['attachment']},{**{key:value for key,value in ua['rear_place']['events'][-1].items() if key!='snapshot'},'frame_index':upper_release},{'phase':la['trajectory_phases'][lower_attach],'object_id':lower_id,'frame_index':upper_n+lower_attach,'attachment':la['attachment']},{**{key:value for key,value in la['rear_place']['events'][-1].items() if key!='snapshot'},'frame_index':lower_release}];measured=u.get('measured_wall_ms',0.)+l.get('measured_wall_ms',0.)
  method='近侧单臂：RRTConnect接近 + 内移/下降/抽离 + 两次车后放置'
- return frames,phases,np.asarray(ua['approach_start_q']),np.asarray(la['final_q']),[15+column,20+column],events,measured,method
+ labels={'contact_ik':'接触IK与候选筛选','lateral':'向内横移0.4m','lower':'下降0.4m','extract':'向外抽离0.36m','approach_contact':'RRTConnect接近与5cm接触','rear_place':'搬到车辆后方并释放','other':'候选附件与碰撞验证'}
+ methods={'contact_ik':'cuRobo IK（512/500/return32）','lateral':'1cm解析笛卡尔','lower':'升降+单臂1cm解析笛卡尔','extract':'1cm解析笛卡尔，必要时局部冗余续解','approach_contact':'GPU RRTConnect + 解析接触','rear_place':'cuRobo IK + GPU RRTConnect','other':'cuRobo碰撞/附件/FK验证'}
+ stage_rows=[]
+ for prefix,data in (('上箱',u.get('stage_timing_ms',{})),('下箱',l.get('stage_timing_ms',{}))):
+  stage_rows.extend({'stage':prefix+labels[key],'ms':ms,'method':methods[key]} for key,ms in data.items())
+ return frames,phases,np.asarray(ua['approach_start_q']),np.asarray(la['final_q']),[15+column,20+column],events,measured,method,stage_rows
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--components',type=Path,required=True);p.add_argument('--seed',type=int,default=11);p.add_argument('--output',type=Path,required=True);a=p.parse_args()
@@ -92,7 +100,7 @@ def main():
     route,mobile_names=mobile_route(planner,world,q,base_y,target_y)
     if route is None:raise RuntimeError(f'column {column}: base route invalid')
     frames.extend(route.tolist());phases.extend(['base_translate']*len(route));base_y=target_y
-   part,part_phases,start,end,removed,part_events,component_ms,method=component(a.components,column,a.seed);local=local_snapshot(world,base_y,q);to_start,stats=move_posture(planner,q,start,local,a.seed*100+10+order_index*20);join_index=0
+   part,part_phases,start,end,removed,part_events,component_ms,method,stage_rows=component(a.components,column,a.seed);local=local_snapshot(world,base_y,q);to_start,stats=move_posture(planner,q,start,local,a.seed*100+10+order_index*20);join_index=0
    if to_start is None:
     first_approach_phase=next((phase for phase in part_phases if 'precontact' in phase or 'approach' in phase),None)
     approach_indices=[i for i,phase in enumerate(part_phases) if phase==first_approach_phase]
@@ -107,7 +115,8 @@ def main():
    if np.max(np.abs(q-part[join_index]))>1e-5:raise RuntimeError(f'column {column}: join mismatch')
    transition_ms=(time.perf_counter()-transition_started)*1000
    timing_rows.append({'column':column,'transition_ms':transition_ms,'component_ms':component_ms,
-                       'total_ms':transition_ms+component_ms,'method':method})
+                       'total_ms':transition_ms+component_ms,'method':method,
+                       'stages':[{'stage':'列间准备与底盘横移','ms':transition_ms,'method':'GPU RRTConnect + 1cm底盘插值'}]+stage_rows})
    component_start=len(frames);append15(part[join_index:],'column_'+str(column),base_y)
    for event in part_events:
     if event['frame_index']<join_index:raise RuntimeError(f'column {column}: join skipped lifecycle event {event}')
