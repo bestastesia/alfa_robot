@@ -45,12 +45,13 @@ def plan_multi(planner,start,goals,active,snapshot,seed):
 
 
 def move_posture(planner,q,target,snapshot,seed):
- frames=[];stats=[]
- for active in (list(range(1,8)),list(range(8,15)),[0]):
-  path,detail=plan_active(planner,q,target,active,snapshot,seed+len(stats));stats.append(detail)
-  if path is None:return None,stats
+ frames=[];stats=[];timings=[]
+ groups=((list(range(1,8)),'左臂空载姿态规划'),(list(range(8,15)),'右臂空载姿态规划'),([0],'升降轴调整'))
+ for active,label in groups:
+  started=time.perf_counter();path,detail=plan_active(planner,q,target,active,snapshot,seed+len(stats));elapsed=(time.perf_counter()-started)*1000;stats.append(detail);timings.append({'stage':label,'ms':elapsed,'method':'无需运动' if detail.get('skipped') else 'GPU RRTConnect（2秒预算）+密化验收'})
+  if path is None:return None,stats,timings
   frames.extend(path[1:]);q=path[-1]
- return np.asarray([q] if not frames else frames),stats
+ return np.asarray([q] if not frames else frames),stats,timings
 
 def mobile_route(planner,world,q,start_y,end_y):
  names=list(planner.mobile_robot.get('robot_cfg',planner.mobile_robot)['kinematics']['cspace']['joint_names']);checker=RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(robot_config=planner.mobile_robot,scene_model=to_curobo_scene(world,mobile=True),n_cuboids=max(40,len(world.objects)),n_meshes=0,collision_activation_distance=0.));validity=GpuValidity(checker,check_ground=True,ground_z=world.policy.ground_z_m,joint_names=names,weights=[2.,2.,1.,5.]+[1.]*14);steps=max(1,math.ceil(abs(end_y-start_y)/.01));rows=[]
@@ -92,36 +93,37 @@ def main():
    for row in rows:
     frames.append([0.,y,0.,*map(float,row)]);phases.append(phase)
   for order_index,column in enumerate(ORDER):
-   transition_started=time.perf_counter();target_y=STATIONS[column]
+   transition_started=time.perf_counter();transition_stages=[];target_y=STATIONS[column]
    if abs(target_y-base_y)>1e-9:
-    local=local_snapshot(world,base_y,q);park_path,stats=move_posture(planner,q,transit,local,a.seed*100+order_index*20)
+    local=local_snapshot(world,base_y,q);park_path,stats,move_timings=move_posture(planner,q,transit,local,a.seed*100+order_index*20);transition_stages.extend({**row,'stage':'移动前'+row['stage']} for row in move_timings)
     if park_path is None:raise RuntimeError(f'column {column}: cannot reach transit posture: {stats}')
     append15(park_path,'park_for_base_move',base_y);q=park_path[-1]
-    route,mobile_names=mobile_route(planner,world,q,base_y,target_y)
+    operation_started=time.perf_counter();route,mobile_names=mobile_route(planner,world,q,base_y,target_y);transition_stages.append({'stage':'底盘横移路径构造与碰撞检查','ms':(time.perf_counter()-operation_started)*1000,'method':'1cm底盘插值 + GPU逐帧碰撞检查'})
     if route is None:raise RuntimeError(f'column {column}: base route invalid')
     frames.extend(route.tolist());phases.extend(['base_translate']*len(route));base_y=target_y
-   part,part_phases,start,end,removed,part_events,component_ms,method,stage_rows=component(a.components,column,a.seed);local=local_snapshot(world,base_y,q);to_start,stats=move_posture(planner,q,start,local,a.seed*100+10+order_index*20);join_index=0
+   operation_started=time.perf_counter();part,part_phases,start,end,removed,part_events,component_ms,method,stage_rows=component(a.components,column,a.seed);transition_stages.append({'stage':'读取并准备本列规划上下文','ms':(time.perf_counter()-operation_started)*1000,'method':'场景快照变换 + 已规划组件载入'});local=local_snapshot(world,base_y,q);to_start,stats,move_timings=move_posture(planner,q,start,local,a.seed*100+10+order_index*20);transition_stages.extend({**row,'stage':'到站后'+row['stage']} for row in move_timings);join_index=0
    if to_start is None:
     first_approach_phase=next((phase for phase in part_phases if 'precontact' in phase or 'approach' in phase),None)
     approach_indices=[i for i,phase in enumerate(part_phases) if phase==first_approach_phase]
     sampled=approach_indices[::max(1,len(approach_indices)//32)]
     if approach_indices and approach_indices[-1] not in sampled:sampled.append(approach_indices[-1])
     active=[0]+(list(range(1,8)) if column==4 else list(range(8,15)))
-    connection,connection_stats=plan_multi(planner,q,part[sampled],active,local,a.seed*100+15+order_index*20)
+    operation_started=time.perf_counter();connection,connection_stats=plan_multi(planner,q,part[sampled],active,local,a.seed*100+15+order_index*20);transition_stages.append({'stage':'接入本列首次接近轨迹','ms':(time.perf_counter()-operation_started)*1000,'method':'GPU多目标RRTConnect（2秒预算）'})
     stats.append(connection_stats)
     if connection is None:raise RuntimeError(f'column {column}: cannot connect component approach: {stats}')
     join_index=sampled[int(connection_stats['selected_goal'])];to_start=connection
    append15(to_start,'prepare_column',base_y);q=to_start[-1]
    if np.max(np.abs(q-part[join_index]))>1e-5:raise RuntimeError(f'column {column}: join mismatch')
    transition_ms=(time.perf_counter()-transition_started)*1000
+   detailed=sum(row['ms'] for row in transition_stages);transition_stages.append({'stage':'列间其他编排开销','ms':max(0.,transition_ms-detailed),'method':'数据拼接与同步'})
    timing_rows.append({'column':column,'transition_ms':transition_ms,'component_ms':component_ms,
                        'total_ms':transition_ms+component_ms,'method':method,
-                       'stages':[{'stage':'列间准备与底盘横移','ms':transition_ms,'method':'GPU RRTConnect + 1cm底盘插值'}]+stage_rows})
+                       'stages':transition_stages+stage_rows})
    component_start=len(frames);append15(part[join_index:],'column_'+str(column),base_y)
    for event in part_events:
     if event['frame_index']<join_index:raise RuntimeError(f'column {column}: join skipped lifecycle event {event}')
     lifecycle.append({**event,'column':column,'global_frame_index':component_start+event['frame_index']-join_index})
    q=end.copy();world=replace(world,objects=tuple(x for x in world.objects if x.object_id not in {f'wall_box_{i:02d}' for i in removed}));segments.append({'column':column,'base_y_m':base_y,'component_frames':len(part)-join_index,'component_join_index':join_index,'removed_boxes':removed})
-  output={'success':True,'seed':a.seed,'kind':'composed_five_column_top_pairs','order':list(ORDER),'joint_names':joint_names,'frames':frames,'phases':phases,'segments':segments,'lifecycle':lifecycle,'planning_timing':{'total_ms':sum(x['total_ms'] for x in timing_rows),'transition_ms':sum(x['transition_ms'] for x in timing_rows),'component_ms':sum(x['component_ms'] for x in timing_rows),'rows':timing_rows,'note':'累计规划计算墙钟，不是播放或动力学执行时间'},'final_q15':q.tolist(),'final_base_y_m':base_y,'remaining_wall_boxes':sorted(x.object_id for x in world.objects if x.object_id.startswith('wall_box_'))}
+  output={'success':True,'seed':a.seed,'kind':'composed_five_column_top_pairs','order':list(ORDER),'joint_names':joint_names,'frames':frames,'phases':phases,'segments':segments,'lifecycle':lifecycle,'planning_timing':{'total_ms':sum(x['total_ms'] for x in timing_rows),'transition_ms':sum(x['transition_ms'] for x in timing_rows),'component_ms':sum(x['component_ms'] for x in timing_rows),'rows':timing_rows,'note':'全部为规划计算墙钟；未做时间参数化，不提供底盘或机械臂执行时间','execution_time_available':False},'final_q15':q.tolist(),'final_base_y_m':base_y,'remaining_wall_boxes':sorted(x.object_id for x in world.objects if x.object_id.startswith('wall_box_'))}
   a.output.parent.mkdir(parents=True,exist_ok=True);a.output.write_text(json.dumps(output,indent=2)+'\n');print(json.dumps({'success':True,'frames':len(frames),'order':list(ORDER),'segments':segments,'remaining_boxes':len(output['remaining_wall_boxes'])},indent=2))
 if __name__=='__main__':main()

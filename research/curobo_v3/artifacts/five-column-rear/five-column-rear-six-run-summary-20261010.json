@@ -37,25 +37,45 @@
       "max_joint_step_deg": 0.4998646100284832,
       "max_base_step_m": 0.010000000000000009,
       "compressed_result": "artifacts/five-column-rear/five-column-rear-s11-r1.json.gz",
-      "compressed_sha256": "64cb689fe7bead18cd23a84dbdc03e21d59c281ed682c181ffa7e4b384b3941f",
+      "compressed_sha256": "9747c8b5a5ac02621e27504b7b6d47c5b894c2463fa06921ea84e4bbfb7297c2",
       "audit": "artifacts/five-column-rear/five-column-rear-s11-audit.json",
       "audit_sha256": "fb92b2dda1c1aee8845ab709ca316fcbd7f7837147809851390e751216c74c4c",
       "planning_timing": {
-        "total_ms": 208716.6039570002,
-        "transition_ms": 56812.55925500045,
+        "total_ms": 209030.82692199858,
+        "transition_ms": 57126.78221999886,
         "component_ms": 151904.04470199972,
         "rows": [
           {
             "column": 2,
-            "transition_ms": 25.425400001040543,
+            "transition_ms": 19.0542149994144,
             "component_ms": 34725.493345999894,
-            "total_ms": 34750.918746000934,
+            "total_ms": 34744.54756099931,
             "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
             "stages": [
               {
-                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
-                "ms": 25.425400001040543,
-                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+                "stage": "\u8bfb\u53d6\u5e76\u51c6\u5907\u672c\u5217\u89c4\u5212\u4e0a\u4e0b\u6587",
+                "ms": 18.775339998683194,
+                "method": "\u573a\u666f\u5feb\u7167\u53d8\u6362 + \u5df2\u89c4\u5212\u7ec4\u4ef6\u8f7d\u5165"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 0.04404299943416845,
+                "method": "\u65e0\u9700\u8fd0\u52a8"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 0.006452999514294788,
+                "method": "\u65e0\u9700\u8fd0\u52a8"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5347\u964d\u8f74\u8c03\u6574",
+                "ms": 0.004798999725608155,
+                "method": "\u65e0\u9700\u8fd0\u52a8"
+              },
+              {
+                "stage": "\u5217\u95f4\u5176\u4ed6\u7f16\u6392\u5f00\u9500",
+                "ms": 0.22358000205713324,
+                "method": "\u6570\u636e\u62fc\u63a5\u4e0e\u540c\u6b65"
               },
               {
                 "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
@@ -156,15 +176,55 @@
           },
           {
             "column": 1,
-            "transition_ms": 15471.95527599979,
+            "transition_ms": 15463.133855999331,
             "component_ms": 35589.365818999795,
-            "total_ms": 51061.321094999585,
+            "total_ms": 51052.499674999126,
             "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
             "stages": [
               {
-                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
-                "ms": 15471.95527599979,
-                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+                "stage": "\u79fb\u52a8\u524d\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 3087.2439299982943,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2372.4578720011777,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u5347\u964d\u8f74\u8c03\u6574",
+                "ms": 2328.6746710000443,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5e95\u76d8\u6a2a\u79fb\u8def\u5f84\u6784\u9020\u4e0e\u78b0\u649e\u68c0\u67e5",
+                "ms": 565.4896640007792,
+                "method": "1cm\u5e95\u76d8\u63d2\u503c + GPU\u9010\u5e27\u78b0\u649e\u68c0\u67e5"
+              },
+              {
+                "stage": "\u8bfb\u53d6\u5e76\u51c6\u5907\u672c\u5217\u89c4\u5212\u4e0a\u4e0b\u6587",
+                "ms": 21.97627100031241,
+                "method": "\u573a\u666f\u5feb\u7167\u53d8\u6362 + \u5df2\u89c4\u5212\u7ec4\u4ef6\u8f7d\u5165"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2362.2356849991775,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2351.6788209999504,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u63a5\u5165\u672c\u5217\u9996\u6b21\u63a5\u8fd1\u8f68\u8ff9",
+                "ms": 2371.6670499998145,
+                "method": "GPU\u591a\u76ee\u6807RRTConnect\uff082\u79d2\u9884\u7b97\uff09"
+              },
+              {
+                "stage": "\u5217\u95f4\u5176\u4ed6\u7f16\u6392\u5f00\u9500",
+                "ms": 1.709891999780666,
+                "method": "\u6570\u636e\u62fc\u63a5\u4e0e\u540c\u6b65"
               },
               {
                 "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
@@ -265,15 +325,55 @@
           },
           {
             "column": 3,
-            "transition_ms": 14589.476185001331,
+            "transition_ms": 14665.603231000205,
             "component_ms": 31975.214230000347,
-            "total_ms": 46564.69041500168,
+            "total_ms": 46640.81746100055,
             "method": "\u53cc\u81c2\u987a\u5e8f\uff1acuRobo IK + GPU RRTConnect + 1cm\u89e3\u6790\u7b1b\u5361\u5c14 + \u5de6\u53f3\u8f66\u540e\u653e\u7f6e",
             "stages": [
               {
-                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
-                "ms": 14589.476185001331,
-                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+                "stage": "\u79fb\u52a8\u524d\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2358.6330729995097,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2347.178795000218,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u5347\u964d\u8f74\u8c03\u6574",
+                "ms": 2349.510238000221,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5e95\u76d8\u6a2a\u79fb\u8def\u5f84\u6784\u9020\u4e0e\u78b0\u649e\u68c0\u67e5",
+                "ms": 326.1223280005652,
+                "method": "1cm\u5e95\u76d8\u63d2\u503c + GPU\u9010\u5e27\u78b0\u649e\u68c0\u67e5"
+              },
+              {
+                "stage": "\u8bfb\u53d6\u5e76\u51c6\u5907\u672c\u5217\u89c4\u5212\u4e0a\u4e0b\u6587",
+                "ms": 21.735961998274433,
+                "method": "\u573a\u666f\u5feb\u7167\u53d8\u6362 + \u5df2\u89c4\u5212\u7ec4\u4ef6\u8f7d\u5165"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2400.4962340004568,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2417.6562190004915,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u63a5\u5165\u672c\u5217\u9996\u6b21\u63a5\u8fd1\u8f68\u8ff9",
+                "ms": 2442.361465000431,
+                "method": "GPU\u591a\u76ee\u6807RRTConnect\uff082\u79d2\u9884\u7b97\uff09"
+              },
+              {
+                "stage": "\u5217\u95f4\u5176\u4ed6\u7f16\u6392\u5f00\u9500",
+                "ms": 1.908917000037036,
+                "method": "\u6570\u636e\u62fc\u63a5\u4e0e\u540c\u6b65"
               },
               {
                 "stage": "\u521d\u59cb\u5316\u4e0e\u521d\u59cb\u72b6\u6001\u68c0\u67e5",
@@ -374,15 +474,50 @@
           },
           {
             "column": 4,
-            "transition_ms": 12166.54731699964,
+            "transition_ms": 12332.175822999488,
             "component_ms": 26224.3359109998,
-            "total_ms": 38390.88322799944,
+            "total_ms": 38556.51173399929,
             "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e",
             "stages": [
               {
-                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
-                "ms": 12166.54731699964,
-                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+                "stage": "\u79fb\u52a8\u524d\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2502.058088000922,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2357.134291998591,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u5347\u964d\u8f74\u8c03\u6574",
+                "ms": 2350.9360820007714,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5e95\u76d8\u6a2a\u79fb\u8def\u5f84\u6784\u9020\u4e0e\u78b0\u649e\u68c0\u67e5",
+                "ms": 343.17908999946667,
+                "method": "1cm\u5e95\u76d8\u63d2\u503c + GPU\u9010\u5e27\u78b0\u649e\u68c0\u67e5"
+              },
+              {
+                "stage": "\u8bfb\u53d6\u5e76\u51c6\u5907\u672c\u5217\u89c4\u5212\u4e0a\u4e0b\u6587",
+                "ms": 18.625003000124707,
+                "method": "\u573a\u666f\u5feb\u7167\u53d8\u6362 + \u5df2\u89c4\u5212\u7ec4\u4ef6\u8f7d\u5165"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2362.498468000922,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u63a5\u5165\u672c\u5217\u9996\u6b21\u63a5\u8fd1\u8f68\u8ff9",
+                "ms": 2396.1914829997113,
+                "method": "GPU\u591a\u76ee\u6807RRTConnect\uff082\u79d2\u9884\u7b97\uff09"
+              },
+              {
+                "stage": "\u5217\u95f4\u5176\u4ed6\u7f16\u6392\u5f00\u9500",
+                "ms": 1.553316998979426,
+                "method": "\u6570\u636e\u62fc\u63a5\u4e0e\u540c\u6b65"
               },
               {
                 "stage": "\u4e0a\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
@@ -448,15 +583,55 @@
           },
           {
             "column": 0,
-            "transition_ms": 14559.15507699865,
+            "transition_ms": 14646.81509500042,
             "component_ms": 23389.635395999903,
-            "total_ms": 37948.79047299855,
+            "total_ms": 38036.45049100032,
             "method": "\u8fd1\u4fa7\u5355\u81c2\uff1aRRTConnect\u63a5\u8fd1 + \u5185\u79fb/\u4e0b\u964d/\u62bd\u79bb + \u4e24\u6b21\u8f66\u540e\u653e\u7f6e",
             "stages": [
               {
-                "stage": "\u5217\u95f4\u51c6\u5907\u4e0e\u5e95\u76d8\u6a2a\u79fb",
-                "ms": 14559.15507699865,
-                "method": "GPU RRTConnect + 1cm\u5e95\u76d8\u63d2\u503c"
+                "stage": "\u79fb\u52a8\u524d\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2394.818705999569,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2353.9635020006244,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u79fb\u52a8\u524d\u5347\u964d\u8f74\u8c03\u6574",
+                "ms": 2378.7944190007693,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5e95\u76d8\u6a2a\u79fb\u8def\u5f84\u6784\u9020\u4e0e\u78b0\u649e\u68c0\u67e5",
+                "ms": 333.44647500052815,
+                "method": "1cm\u5e95\u76d8\u63d2\u503c + GPU\u9010\u5e27\u78b0\u649e\u68c0\u67e5"
+              },
+              {
+                "stage": "\u8bfb\u53d6\u5e76\u51c6\u5907\u672c\u5217\u89c4\u5212\u4e0a\u4e0b\u6587",
+                "ms": 16.62811299866007,
+                "method": "\u573a\u666f\u5feb\u7167\u53d8\u6362 + \u5df2\u89c4\u5212\u7ec4\u4ef6\u8f7d\u5165"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u5de6\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2380.1457839999784,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u5230\u7ad9\u540e\u53f3\u81c2\u7a7a\u8f7d\u59ff\u6001\u89c4\u5212",
+                "ms": 2393.2696619995113,
+                "method": "GPU RRTConnect\uff082\u79d2\u9884\u7b97\uff09+\u5bc6\u5316\u9a8c\u6536"
+              },
+              {
+                "stage": "\u63a5\u5165\u672c\u5217\u9996\u6b21\u63a5\u8fd1\u8f68\u8ff9",
+                "ms": 2394.058739999309,
+                "method": "GPU\u591a\u76ee\u6807RRTConnect\uff082\u79d2\u9884\u7b97\uff09"
+              },
+              {
+                "stage": "\u5217\u95f4\u5176\u4ed6\u7f16\u6392\u5f00\u9500",
+                "ms": 1.6896940014703432,
+                "method": "\u6570\u636e\u62fc\u63a5\u4e0e\u540c\u6b65"
               },
               {
                 "stage": "\u4e0a\u7bb1\u63a5\u89e6IK\u4e0e\u5019\u9009\u7b5b\u9009",
@@ -521,7 +696,8 @@
             ]
           }
         ],
-        "note": "\u7d2f\u8ba1\u89c4\u5212\u8ba1\u7b97\u5899\u949f\uff0c\u4e0d\u662f\u64ad\u653e\u6216\u52a8\u529b\u5b66\u6267\u884c\u65f6\u95f4"
+        "note": "\u5168\u90e8\u4e3a\u89c4\u5212\u8ba1\u7b97\u5899\u949f\uff1b\u672a\u505a\u65f6\u95f4\u53c2\u6570\u5316\uff0c\u4e0d\u63d0\u4f9b\u5e95\u76d8\u6216\u673a\u68b0\u81c2\u6267\u884c\u65f6\u95f4",
+        "execution_time_available": false
       }
     },
     {

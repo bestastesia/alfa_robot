@@ -33,14 +33,14 @@ def main():
  planning=result.get('planning_timing',{})
  timing_rows={row['column']:row for row in planning.get('rows',[])}
  with server.gui.add_folder('各列规划耗时与求解方式',expand_by_default=True):
-  server.gui.add_markdown(f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**  \n不是播放/执行时间；不包含GPU锁等待。")
+  server.gui.add_markdown(f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**  \n全部为规划计算墙钟；不包含GPU锁等待。  \n**执行时间：未提供（轨迹未做动力学时间参数化）**")
   timing_column=server.gui.add_dropdown('选择耗时列',options=[f"第{column}列" for column in result['order']],initial_value=f"第{result['order'][0]}列")
   column_summary=server.gui.add_markdown('')
   stage_slots=[server.gui.add_markdown('') for _ in range(max((len(row.get('stages',[])) for row in timing_rows.values()),default=0))]
  def update_timing_column():
   column=int(timing_column.value.removeprefix('第').removesuffix('列'));row=timing_rows[column]
   column_summary.content=(f"### 第{column}列 · 合计 **{row['total_ms']/1000:.3f} 秒**  \n"
-      f"列间准备/底盘移动：**{row['transition_ms']/1000:.3f}秒** · 本列规划：**{row['component_ms']/1000:.3f}秒**  \n{row['method']}")
+      f"列间状态衔接与底盘路径检查（规划计算）：**{row['transition_ms']/1000:.3f}秒** · 本列规划：**{row['component_ms']/1000:.3f}秒**  \n{row['method']}")
   stages=row.get('stages',[])
   for index,slot in enumerate(stage_slots):
    slot.content=(f"**{index+1}. {stages[index]['stage']}**  \n耗时：**{stages[index]['ms']/1000:.3f}秒**  \n求解：{stages[index]['method']}" if index<len(stages) else '')
