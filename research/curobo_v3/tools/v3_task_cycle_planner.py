@@ -53,8 +53,7 @@ class TaskCyclePlanner(FullCyclePlanner):
             position = np.asarray(item['center'], dtype=float)
             position[0] -= self.base_advance
             objects.append(SceneObject(f'task_fill_{index}', tuple(item['dimensions']), Pose(tuple(position))))
-        self.snapshot = replace(self.original_snapshot, objects=tuple(objects), revision=self.original_snapshot.revision + 1,
-                                policy=replace(self.original_snapshot.policy, max_box_tilt_deg=180.0))
+        self.snapshot = replace(self.original_snapshot, objects=tuple(objects), revision=self.original_snapshot.revision + 1)
         self.target_poses = placement_tool_poses()
         self.planner_kind = 'informed_connect'
         return centers, obstacles

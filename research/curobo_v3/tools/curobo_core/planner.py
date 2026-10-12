@@ -354,14 +354,16 @@ class FullCyclePlanner(CuroboBackend):
         yaw_index = mobile_names.index("base_yaw")
         turn_back = np.repeat(endpoint[None], 361, axis=0)
         turn_back[:, yaw_index] = np.linspace(math.pi, 0, 361)
-        mobile_checker = self.checker(boxes, mobile=True)
-        mobile_validity = GpuValidity(mobile_checker, check_ground=True, joint_names=mobile_names,
-                                      ground_z=self.snapshot.policy.ground_z_m,
-                                      weights=[2., 2., 1., 5.] + [1.] * 14)
+        validate_turns=getattr(self,'validate_turns',True)
+        if validate_turns:
+            mobile_checker = self.checker(boxes, mobile=True)
+            mobile_validity = GpuValidity(mobile_checker, check_ground=True, joint_names=mobile_names,
+                                          ground_z=self.snapshot.policy.ground_z_m,
+                                          weights=[2., 2., 1., 5.] + [1.] * 14)
         torch.cuda.synchronize()
         timing["empty_turn_checker_setup"] = (time.perf_counter()-segment_started)*1000
         segment_started = time.perf_counter()
-        mask = mobile_validity.mask(torch.tensor(turn_back, device="cuda", dtype=torch.float32))
+        mask = mobile_validity.mask(torch.tensor(turn_back, device="cuda", dtype=torch.float32)) if validate_turns else torch.ones(len(turn_back),device='cuda',dtype=torch.bool)
         torch.cuda.synchronize()
         timing["empty_turn_validation"] = (time.perf_counter()-segment_started)*1000
         if not bool(mask.all().item()):

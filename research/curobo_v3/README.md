@@ -7,7 +7,7 @@ GPU缓存失效、无GUI规划入口和回归命令。现有Viser入口复用同
 
 正式开发分支：`alfa_v3_curobo`，基于`alfa_v3_dev@d9c330ce`。算法研究跟踪[MOTION-275](https://linear.app/sevenova/issue/MOTION-275)，初步适配证据见已收口的MOTION-238～243。
 
-`tools/`保存已有研究源码；当前支持入口是`v3_full_cycle_demo.py`。历史实验脚本保留原路径/模型合同，仅用于追溯，不作为当前可直接运行的入口。`historical_artifacts_manifest.json`记录旧实验数据路径、大小和SHA256；大型旧回放、完整第三方仓库和虚拟环境未导入本分支。
+`tools/`保存已有研究源码；当前完整方案入口是`v3_mixed_placement_demo.py`（我方8140），解析64接触、多根联合搬运、侧吸朝上/顶吸朝下目标及球/cuboid研究合同见[RESEARCH_SYNC.md](RESEARCH_SYNC.md)。旧`v3_full_cycle_demo.py`及初版94任务入口保留作历史对照。`historical_artifacts_manifest.json`记录旧实验路径、大小和SHA256；大型轨迹不导入PR。
 
 当前冻结模型、米制mesh、40球箱体、完整目标Pose、解析源码和主要结果一同保存；description来源`feat/v3-analytic-proxy@071cb954d8c626626c41cdeff599bc451a56c117`。模型是实验代理，不是实机标定。移动配置与固定配置同源，运输使用15维，yaw仅作确定性转身。
 

@@ -1,0 +1,29 @@
+{
+  "scope": "frozen research runtime inputs, no STL turn validation",
+  "assets": [
+    {
+      "path": "config/placement_task_policy.json",
+      "sha256": "455a92bc6128595f56a9776b6e1f552467dea7e45bf9ae56c2cca90d08172d99"
+    },
+    {
+      "path": "config/base_link_collision_frozen.json",
+      "sha256": "400d305ada34f10585a77b8c5f08f536fa65c5607ad5e04deacd4d66b4e6dfce"
+    },
+    {
+      "path": "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json",
+      "sha256": "9892bf6e3712a85c5bf724d4d734b1faf533cf9b153321bbddcdce8ab494f4fd"
+    },
+    {
+      "path": "generated/placement_analytic_atlas/top.npz",
+      "sha256": "16af23bf2167238dd185aebe6dd70ad193fb6e60c165fd834b2d663724b34042"
+    },
+    {
+      "path": "generated/side_upward_placement/atlas/side.npz",
+      "sha256": "beff1c2924f562b45f6a483424b2bb619a3dde2bd6fad8ecbe860c5a1bf73ed2"
+    },
+    {
+      "path": "models/robot_description_analytic_071cb95/config/named_poses_analytic_proxy.yaml",
+      "sha256": "7ec8116e7742d2847b86481a470fa6abb434d44863636f28ca4df1e1c5f5672c"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "side": {
+    "position": {
+      "x": 0.55,
+      "y_left": 0.425,
+      "y_right": -0.425,
+      "z": 1.4
+    },
+    "quaternion_wxyz": [
+      0,
+      0,
+      0,
+      1
+    ]
+  },
+  "top": {
+    "position": {
+      "x": 0.55,
+      "y_left": 0.425,
+      "y_right": -0.425,
+      "z": 1.0
+    },
+    "quaternion_wxyz": [
+      0,
+      1,
+      0,
+      0
+    ]
+  },
+  "contact_candidates": {
+    "method": "analytic enumeration",
+    "updown_step_m": 0.05,
+    "swivel_step_deg": 10,
+    "count": 64
+  },
+  "home": "original",
+  "search_joint_weights": "original",
+  "turn_collision_check": false,
+  "live_entry": "tools/v3_mixed_placement_demo.py --port 8137"
+}

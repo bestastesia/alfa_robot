@@ -1,0 +1,137 @@
+{
+  "link": "base_link",
+  "frame": "base_link",
+  "units": "m",
+  "cuboids": [
+    {
+      "name": "base_box_001",
+      "center": [
+        0.0,
+        0.0,
+        -0.1
+      ],
+      "dimensions": [
+        1.0,
+        1.0,
+        0.45
+      ],
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pose": [
+        0.0,
+        0.0,
+        -0.1,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dims": [
+        1.0,
+        1.0,
+        0.45
+      ]
+    },
+    {
+      "name": "base_box_002",
+      "center": [
+        -0.08,
+        0.0,
+        0.2
+      ],
+      "dimensions": [
+        0.85,
+        1.0,
+        0.17
+      ],
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pose": [
+        -0.08,
+        0.0,
+        0.2,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dims": [
+        0.85,
+        1.0,
+        0.17
+      ]
+    },
+    {
+      "name": "base_box_003",
+      "center": [
+        -0.33,
+        0.0,
+        0.39
+      ],
+      "dimensions": [
+        0.35,
+        1.0,
+        0.21
+      ],
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pose": [
+        -0.33,
+        0.0,
+        0.39,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dims": [
+        0.35,
+        1.0,
+        0.21
+      ]
+    },
+    {
+      "name": "base_box_004",
+      "center": [
+        0.06,
+        0.0,
+        1.0
+      ],
+      "dimensions": [
+        0.53,
+        0.4,
+        1.35
+      ],
+      "rotation_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pose": [
+        0.06,
+        0.0,
+        1.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dims": [
+        0.53,
+        0.4,
+        1.35
+      ]
+    }
+  ],
+  "source_config": "/mnt/mydisk/ALFA/alfa_robot_v3_curobo/research/curobo_v3/generated/v3_analytic_071cb95/alfa_v322_suction_final.yml",
+  "applied_to_planner": false
+}

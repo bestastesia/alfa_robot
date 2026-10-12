@@ -56,9 +56,8 @@ class CuroboBackend:
         self.robot = yaml.safe_load(args.robot_config.read_text())
         self.mobile_robot = yaml.safe_load(args.mobile_robot_config.read_text())
         for robot in (self.robot, self.mobile_robot):
-            cspace = robot.get("robot_cfg", robot)["kinematics"]["cspace"]
-            cspace["cspace_distance_weight"] = joint_distance_weights(
-                cspace["joint_names"], cspace.get("cspace_distance_weight"))
+            cspace = robot.get('robot_cfg', robot)['kinematics']['cspace']
+            cspace['cspace_distance_weight'] = joint_distance_weights(cspace['joint_names'], cspace.get('cspace_distance_weight'))
         self.box_fit = json.loads(args.box_fit.read_text())
         self.home = yaml.safe_load(args.named_poses.read_text())["named_poses"]["home"]
         self.front = chassis_front_x(args.urdf, self.home)
@@ -95,6 +94,7 @@ class CuroboBackend:
                 start, goals, lower, upper, validity, budget, seed,
                 informed_sampling=self.planner_kind == "informed_connect",
                 stop_at_first_valid=self.planner_kind == 'informed_connect',
+                refinement_s=getattr(validity,'refinement_s',0.0),
             )
         if self.planner_kind == "bitstar":
             from v3_gpu_bitstar import batched_bitstar_multi_goal

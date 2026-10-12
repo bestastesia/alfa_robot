@@ -12,6 +12,10 @@ ALFA Robot 是 ROS2 双臂工业机器人项目；当前仓库只保留运控、
 
 ## 当前推进重点
 
+- 当前cuRobo完整研究方案迁移：RESEARCH_SYNC.md，解析64候选、多抽离根联合搜索、
+  侧吸朝上z1.4与顶吸朝下z1.0、71底盘球/4内部cuboid，实时入口v3_mixed_placement_demo.py。
+  保留统一Updown10cm=关节15°；转身碰撞按研究合同跳过，未完成生产接口/实机验收。
+
 - `alfa_v3_curobo` 当前方向：MoveIt替代的基础阶段1～3（MOTION-276），研究入口在
   `research/curobo_v3`。独立快照/状态与规划核心见该目录`CORE.md`；GPU搜索算法仍跟踪
   MOTION-275。以下旧V3/旧主线信息属于历史上下文，不作为此分支当前模型和入口。

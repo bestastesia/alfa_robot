@@ -2169,3 +2169,9 @@
 - 验证结果：21组直接cuRobo导入通过，CPU核心22项、旧连接器2项、本仓连接器GPU3项、BIT3项通过，六种规划器首组全周期均成功且回Home误差0、步长≤0.5°。核心GPU缓存/SCENE_CHANGED测试通过；Mesh远离/重叠/关闭、IK/checker网格缓存通过。完整适配摘要见research/curobo_v3/generated/main_compatibility/validation.json。
 - 龙头车功能：复用米制STL与5cm双车布局，实时组合根独立；LiveScene筛选并冻结Mesh/货物到SceneSnapshot。8094页面可编辑实时xyyaw、播放跟随、冻结并切换显示，碰撞按钮只消费冻结快照。用户移动实时车不会影响旧检查；重新冻结重叠才报告碰撞，禁用后快照无龙头车。
 - 留给下个AI：CUROBO_MAIN.md/CONVEYOR.md提供完整命令。此处不含导航、ROS实时接口、环境-环境碰撞或带龙头车完整取放验收；完整动作继续248。当前正式工作树alfa_robot_v3_curobo；compare是同仓历史对比/压测工作树，含后续提交及本地改动，本次未删除、未复制新仓库。
+
+## 2026-10-11 运控 / Codex / cuRobo解析64与多根方案收口
+- 做了什么：按handoff-oFc145定向同步到alfa_robot_v3，分支feature/motion-275-multiroot-sync，保留#55统一Updown度量。源alfa_robot_v3_curobo未提交工作不改，没有创建新工作树；目标本地模型备份/tmp/motion-research-local-models.patch。
+- 工程处理：取消源root硬编码/import时chdir及prepare_roots全局替换，改显式方法。缓存身份加入场景/模型/目标/atlas/cuboid/payload/grid；两atlas逐行FK匹配当前Pose。失败空数组/旧选择清理、任务切换与按钮busy恢复完成。71底盘球逐字段合并，ROS Home/本地URDF不覆盖，研究代理Home改左右J2=-90/+90。
+- 验证：31项CPU、1项多根GPU通过；L24/R20侧吸与L9/R1顶吸完整周期与移动URDF独立FK通过，Home误差6.38e-8。8140实时中列L22/R17成功7.659s/2204帧；页面切顶吸成功4.667s，重复热态1.404s；负向目标/atlas拒绝、缓存身份和失败空帧恢复通过。摘要generated/research_sync/validation.json，不把源60/60外推目标94/94。
+- 留给下个AI：RESEARCH_SYNC.md给出完整算法/命令/合同；实时入口8140用户级临时服务alfa-curobo-sync-8140，不预载结果且后台持续；源8137保留。4内部cuboid不是STL，40箱球内接、3cm排除目标/抽离负载延后、两段转身碰撞跳过均是现有研究边界。Home末端多转圈未解决，非生产并发接口/时间参数化/真机安全验收。Linear由专门工程师跟踪，本次不批量补评论。

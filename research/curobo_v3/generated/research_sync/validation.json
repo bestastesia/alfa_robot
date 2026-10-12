@@ -1,0 +1,637 @@
+{
+  "date": "2026-10-11",
+  "base_commit": "8e396a3f",
+  "scope": "migration regression, not 94-task batch acceptance",
+  "updown_distance": "10cm=15deg",
+  "cpu_tests_passed": 31,
+  "multiroot_gpu_test_passed": 1,
+  "negative_checks": {
+    "target_change_invalidated_cache": true,
+    "mismatched_atlas_rejected": true,
+    "valid_atlas_recovered": true,
+    "failed_empty_frames_normalized": true,
+    "stale_selection_cleared": true,
+    "switch_to_top_after_failure": true
+  },
+  "ui_checks": [
+    "no preload",
+    "side compute",
+    "switch to top",
+    "top compute",
+    "repeat top"
+  ],
+  "runs": [
+    {
+      "task": {
+        "left": 24,
+        "right": 20
+      },
+      "success": true,
+      "total_ms": 12491.400236991467,
+      "final_home_error": 6.379677630619085e-08,
+      "selected_candidate": 62,
+      "pipeline_timing_ms": {
+        "prepare_checkers": 4120.444581989432,
+        "contact_ik": 0.026121007977053523,
+        "all_extract_and_validation": 5841.062178980792,
+        "goal_matching": 465.91271401848644,
+        "multiroot_search": 109.62316900258884,
+        "selected_prefix_suffix_validation": 126.47128399112262,
+        "assembly_and_repeat_validation": 1823.598884016974
+      },
+      "validation_detail_ms": {
+        "approach_plan_validate": 63.3626859926153,
+        "loaded_turn_setup_validate": 1.3618590019177645,
+        "empty_turn_setup_validate": 0.011872994946315885,
+        "home_plan_validate": 57.65997298294678,
+        "rotation_and_bookkeeping": 4.074893018696457,
+        "initial_home_checker_setup_validate": 1596.433105005417,
+        "assembly_revalidate_actual": 80.70710097672418
+      },
+      "analytic_contact_generation": {
+        "updown_step_m": 0.05,
+        "swivel_step_deg": 10,
+        "raw_pair_count": 829440,
+        "valid_unique_count": 829440,
+        "selected_count": 64,
+        "cost": "Home weighted L2, updown10cm=joint15deg, no joint4 penalty, no cylinder requirement at contact",
+        "enumeration_ms": 67.07662911503576,
+        "collision_and_fk_filter_ms": 1482.1307010715827,
+        "total_ms": 3276.845571992453,
+        "cost_min": 3.8608722157415163,
+        "cost_max": 4.014788111101265
+      },
+      "turn_collision_validation": "skipped per user instruction; turn actions retained",
+      "transport_rotation_metrics": {
+        "left": {
+          "required_rotation_deg": 90.0,
+          "total_rotation_deg": 100.12198638916016,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 14.014904022216797
+        },
+        "right": {
+          "required_rotation_deg": 89.99999237060547,
+          "total_rotation_deg": 99.41271209716797,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 14.989411354064941
+        }
+      },
+      "frame_count": 2060,
+      "fk_audit": {
+        "left": {
+          "position_error_mm": 2.0135456687823967e-05,
+          "orientation_error_deg": 9.922273862141886e-07,
+          "attached_box_pose": [
+            [
+              8.399407551013662e-09,
+              8.869840299420181e-09,
+              -1.0000000000000002,
+              0.5500000082260917
+            ],
+            [
+              1.2275030002612849e-08,
+              1.0,
+              8.869840355287218e-09,
+              0.4250000197538373
+            ],
+            [
+              1.0,
+              -1.2275029975365417e-08,
+              8.399407528941965e-09,
+              1.5500000060040253
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        "right": {
+          "position_error_mm": 4.648259685838002e-05,
+          "orientation_error_deg": 6.777729947144553e-06,
+          "attached_box_pose": [
+            [
+              9.480356345588969e-08,
+              7.20048262653405e-09,
+              -0.9999999999999954,
+              0.5500000432237513
+            ],
+            [
+              7.03835039037486e-08,
+              0.9999999999999976,
+              7.200489344412004e-09,
+              -0.42499997501903186
+            ],
+            [
+              0.999999999999993,
+              -7.038350469498616e-08,
+              9.480356283978641e-08,
+              1.5499999666621895
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      },
+      "source_result": "/tmp/research_sync_L24_R20.json",
+      "sha256": "3b6cb280c2a240f3467cab6be270db0c57716179b57d9eecff2705ac0621b691"
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "total_ms": 5320.417425013147,
+      "final_home_error": 6.379677630619085e-08,
+      "selected_candidate": 21,
+      "pipeline_timing_ms": {
+        "prepare_checkers": 2028.8834860257339,
+        "contact_ik": 0.018997001461684704,
+        "all_extract_and_validation": 946.9400490052067,
+        "goal_matching": 63.165589002892375,
+        "multiroot_search": 51.86583602335304,
+        "selected_prefix_suffix_validation": 299.88338600378484,
+        "assembly_and_repeat_validation": 578.2144819386303
+      },
+      "validation_detail_ms": {
+        "approach_plan_validate": 263.08943002368324,
+        "loaded_turn_setup_validate": 0.5057999806012958,
+        "empty_turn_setup_validate": 0.010685995221138,
+        "home_plan_validate": 31.64572300738655,
+        "rotation_and_bookkeeping": 4.631746996892616,
+        "initial_home_checker_setup_validate": 352.91873500682414,
+        "assembly_revalidate_actual": 59.63923901435919
+      },
+      "analytic_contact_generation": {
+        "updown_step_m": 0.05,
+        "swivel_step_deg": 10,
+        "raw_pair_count": 353024,
+        "valid_unique_count": 334544,
+        "selected_count": 64,
+        "cost": "Home weighted L2, updown10cm=joint15deg, no joint4 penalty, no cylinder requirement at contact",
+        "enumeration_ms": 59.450454980833456,
+        "collision_and_fk_filter_ms": 623.9477901544888,
+        "total_ms": 1196.7480830207933,
+        "cost_min": 4.648326773291605,
+        "cost_max": 4.743460115695738
+      },
+      "turn_collision_validation": "skipped per user instruction; turn actions retained",
+      "transport_rotation_metrics": {
+        "left": {
+          "required_rotation_deg": 3.1399763429362793e-06,
+          "total_rotation_deg": 43.296470642089844,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 19.200698852539062
+        },
+        "right": {
+          "required_rotation_deg": 5.253480594547e-06,
+          "total_rotation_deg": 36.571327209472656,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 17.915611267089844
+        }
+      },
+      "frame_count": 1897,
+      "fk_audit": {
+        "left": {
+          "position_error_mm": 6.35436994856572e-05,
+          "orientation_error_deg": 3.597349063500544e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999981,
+              -4.981440875851816e-08,
+              -3.804960271294181e-08,
+              0.8500000230470538
+            ],
+            [
+              4.9814408931020495e-08,
+              0.9999999999999989,
+              3.5752130068111547e-09,
+              0.4249999459253986
+            ],
+            [
+              3.804960263500101e-08,
+              -3.575214834986124e-09,
+              0.9999999999999993,
+              0.7999999691413847
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        "right": {
+          "position_error_mm": 5.346062491898108e-05,
+          "orientation_error_deg": 5.886244511890321e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999949,
+              -3.696262793346436e-08,
+              -9.585170829286378e-08,
+              0.8500000394899031
+            ],
+            [
+              3.696262818139636e-08,
+              0.9999999999999988,
+              7.48502116968433e-10,
+              -0.42499996699965686
+            ],
+            [
+              9.585170833098263e-08,
+              -7.485055274671633e-10,
+              0.9999999999999953,
+              0.800000036690987
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      },
+      "source_result": "/tmp/research_sync_L9_R1.json",
+      "sha256": "b024299bf8e103041311a2fa119d3704fa9abd6cd540fa6d395c94ab92a2e59b"
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "total_ms": 7659.453030995792,
+      "final_home_error": 6.379677630619085e-08,
+      "selected_candidate": 58,
+      "pipeline_timing_ms": {
+        "prepare_checkers": 1098.7735930248164,
+        "contact_ik": 0.020184001186862588,
+        "all_extract_and_validation": 4115.168912016088,
+        "goal_matching": 260.90345199918374,
+        "multiroot_search": 247.10840298212133,
+        "selected_prefix_suffix_validation": 243.40170098003,
+        "assembly_and_repeat_validation": 1690.3641459939536
+      },
+      "validation_detail_ms": {
+        "approach_plan_validate": 172.91022598510608,
+        "loaded_turn_setup_validate": 0.7812339754309505,
+        "empty_turn_setup_validate": 0.011872994946315885,
+        "home_plan_validate": 66.38821799424477,
+        "rotation_and_bookkeeping": 3.310150030301884,
+        "initial_home_checker_setup_validate": 1451.6118729952723,
+        "assembly_revalidate_actual": 86.89381397562101
+      },
+      "analytic_contact_generation": {
+        "updown_step_m": 0.05,
+        "swivel_step_deg": 10,
+        "raw_pair_count": 95872,
+        "valid_unique_count": 95872,
+        "selected_count": 64,
+        "cost": "Home weighted L2, updown10cm=joint15deg, no joint4 penalty, no cylinder requirement at contact",
+        "enumeration_ms": 41.531211871188134,
+        "collision_and_fk_filter_ms": 157.1537239360623,
+        "total_ms": 322.7466690004803,
+        "cost_min": 4.7327899740479085,
+        "cost_max": 5.022847988660941
+      },
+      "turn_collision_validation": "skipped per user instruction; turn actions retained",
+      "transport_rotation_metrics": {
+        "left": {
+          "required_rotation_deg": 90.00001525878906,
+          "total_rotation_deg": 120.51701354980469,
+          "backtracking_deg": 2.892571449279785,
+          "max_deviation_deg": 22.942970275878906
+        },
+        "right": {
+          "required_rotation_deg": 89.99999237060547,
+          "total_rotation_deg": 160.85008239746094,
+          "backtracking_deg": 0.016337811946868896,
+          "max_deviation_deg": 39.26411056518555
+        }
+      },
+      "frame_count": 2204,
+      "fk_audit": {
+        "left": {
+          "position_error_mm": 0.00013465907958353637,
+          "orientation_error_deg": 1.1949511234314405e-05,
+          "attached_box_pose": [
+            [
+              -1.941051790607659e-07,
+              4.253322972324722e-08,
+              -0.9999999999999803,
+              0.5499998693084809
+            ],
+            [
+              6.332989136452951e-08,
+              0.9999999999999972,
+              4.253321751462478e-08,
+              0.4249999960860954
+            ],
+            [
+              0.9999999999999793,
+              -6.332988325001186e-08,
+              -1.9410518162393826e-07,
+              1.550000087381444
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        "right": {
+          "position_error_mm": 3.6244365642142846e-05,
+          "orientation_error_deg": 5.235454231724261e-06,
+          "attached_box_pose": [
+            [
+              -4.1792364146064365e-08,
+              2.997740349108732e-08,
+              -0.9999999999999988,
+              0.5499999927753291
+            ],
+            [
+              -7.552689033425446e-08,
+              0.9999999999999967,
+              2.997740688054516e-08,
+              -0.4250000428788586
+            ],
+            [
+              0.9999999999999963,
+              7.552689159346391e-08,
+              -4.179236202045184e-08,
+              1.5500000178142912
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      },
+      "source_result": "generated/mixed_placement_live/runs/1791733661564794293.json",
+      "sha256": "9a6bcb82ff60254c6cb7e41152d8b2e7ecbaaf69ccec0e6cbf7d2fd2f969a9a2"
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "total_ms": 4666.815712989774,
+      "final_home_error": 6.379677630619085e-08,
+      "selected_candidate": 21,
+      "pipeline_timing_ms": {
+        "prepare_checkers": 1794.0731819835491,
+        "contact_ik": 0.01781000173650682,
+        "all_extract_and_validation": 905.8659499860369,
+        "goal_matching": 43.65798001526855,
+        "multiroot_search": 41.03406102512963,
+        "selected_prefix_suffix_validation": 236.82474298402667,
+        "assembly_and_repeat_validation": 378.6944370076526
+      },
+      "validation_detail_ms": {
+        "approach_plan_validate": 205.72595699923113,
+        "loaded_turn_setup_validate": 0.46185700921341777,
+        "empty_turn_setup_validate": 0.010684976587072015,
+        "home_plan_validate": 26.956318004522473,
+        "rotation_and_bookkeeping": 3.669925994472578,
+        "initial_home_checker_setup_validate": 297.98102198401466,
+        "assembly_revalidate_actual": 46.043252979870886
+      },
+      "analytic_contact_generation": {
+        "updown_step_m": 0.05,
+        "swivel_step_deg": 10,
+        "raw_pair_count": 353024,
+        "valid_unique_count": 334544,
+        "selected_count": 64,
+        "cost": "Home weighted L2, updown10cm=joint15deg, no joint4 penalty, no cylinder requirement at contact",
+        "enumeration_ms": 55.776681925635785,
+        "collision_and_fk_filter_ms": 511.0029024654068,
+        "total_ms": 1033.6127810005564,
+        "cost_min": 4.648326773291605,
+        "cost_max": 4.743460115695738
+      },
+      "turn_collision_validation": "skipped per user instruction; turn actions retained",
+      "transport_rotation_metrics": {
+        "left": {
+          "required_rotation_deg": 3.1399763429362793e-06,
+          "total_rotation_deg": 43.296470642089844,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 19.200698852539062
+        },
+        "right": {
+          "required_rotation_deg": 5.253480594547e-06,
+          "total_rotation_deg": 36.571327209472656,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 17.915611267089844
+        }
+      },
+      "frame_count": 1897,
+      "fk_audit": {
+        "left": {
+          "position_error_mm": 6.35436994856572e-05,
+          "orientation_error_deg": 3.597349063500544e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999981,
+              -4.981440875851816e-08,
+              -3.804960271294181e-08,
+              0.8500000230470538
+            ],
+            [
+              4.9814408931020495e-08,
+              0.9999999999999989,
+              3.5752130068111547e-09,
+              0.4249999459253986
+            ],
+            [
+              3.804960263500101e-08,
+              -3.575214834986124e-09,
+              0.9999999999999993,
+              0.7999999691413847
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        "right": {
+          "position_error_mm": 5.346062491898108e-05,
+          "orientation_error_deg": 5.886244511890321e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999949,
+              -3.696262793346436e-08,
+              -9.585170829286378e-08,
+              0.8500000394899031
+            ],
+            [
+              3.696262818139636e-08,
+              0.9999999999999988,
+              7.48502116968433e-10,
+              -0.42499996699965686
+            ],
+            [
+              9.585170833098263e-08,
+              -7.485055274671633e-10,
+              0.9999999999999953,
+              0.800000036690987
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      },
+      "source_result": "generated/mixed_placement_live/runs/1791733819523856176.json",
+      "sha256": "5bf00d738c8b6857f800b2454fa5f0228fbb521c82e6dd5df425e3d3a9e6d1d2"
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "total_ms": 1403.6012080032378,
+      "final_home_error": 6.379677630619085e-08,
+      "selected_candidate": 21,
+      "pipeline_timing_ms": {
+        "prepare_checkers": 2.771153987850994,
+        "contact_ik": 0.02849500742740929,
+        "all_extract_and_validation": 982.1412609890103,
+        "goal_matching": 44.47737199370749,
+        "multiroot_search": 49.77034800685942,
+        "selected_prefix_suffix_validation": 242.578056990169,
+        "assembly_and_repeat_validation": 58.02325904369354
+      },
+      "validation_detail_ms": {
+        "approach_plan_validate": 211.77360697765835,
+        "loaded_turn_setup_validate": 0.4737319832202047,
+        "empty_turn_setup_validate": 0.010685995221138,
+        "home_plan_validate": 27.299545996356755,
+        "rotation_and_bookkeeping": 3.020486037712544,
+        "initial_home_checker_setup_validate": 2.8328940097708255,
+        "assembly_revalidate_actual": 46.63469499791972
+      },
+      "analytic_contact_generation": {
+        "updown_step_m": 0.05,
+        "swivel_step_deg": 10,
+        "raw_pair_count": 353024,
+        "valid_unique_count": 334544,
+        "selected_count": 64,
+        "cost": "Home weighted L2, updown10cm=joint15deg, no joint4 penalty, no cylinder requirement at contact",
+        "enumeration_ms": 55.776681925635785,
+        "collision_and_fk_filter_ms": 511.0029024654068,
+        "total_ms": 1033.6127810005564,
+        "cost_min": 4.648326773291605,
+        "cost_max": 4.743460115695738
+      },
+      "turn_collision_validation": "skipped per user instruction; turn actions retained",
+      "transport_rotation_metrics": {
+        "left": {
+          "required_rotation_deg": 3.1399763429362793e-06,
+          "total_rotation_deg": 43.296470642089844,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 19.200698852539062
+        },
+        "right": {
+          "required_rotation_deg": 5.253480594547e-06,
+          "total_rotation_deg": 36.571327209472656,
+          "backtracking_deg": 0.0,
+          "max_deviation_deg": 17.915611267089844
+        }
+      },
+      "frame_count": 1897,
+      "fk_audit": {
+        "left": {
+          "position_error_mm": 6.35436994856572e-05,
+          "orientation_error_deg": 3.597349063500544e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999981,
+              -4.981440875851816e-08,
+              -3.804960271294181e-08,
+              0.8500000230470538
+            ],
+            [
+              4.9814408931020495e-08,
+              0.9999999999999989,
+              3.5752130068111547e-09,
+              0.4249999459253986
+            ],
+            [
+              3.804960263500101e-08,
+              -3.575214834986124e-09,
+              0.9999999999999993,
+              0.7999999691413847
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        "right": {
+          "position_error_mm": 5.346062491898108e-05,
+          "orientation_error_deg": 5.886244511890321e-06,
+          "attached_box_pose": [
+            [
+              0.9999999999999949,
+              -3.696262793346436e-08,
+              -9.585170829286378e-08,
+              0.8500000394899031
+            ],
+            [
+              3.696262818139636e-08,
+              0.9999999999999988,
+              7.48502116968433e-10,
+              -0.42499996699965686
+            ],
+            [
+              9.585170833098263e-08,
+              -7.485055274671633e-10,
+              0.9999999999999953,
+              0.800000036690987
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      },
+      "source_result": "generated/mixed_placement_live/runs/1791733917086296314.json",
+      "sha256": "156b2c2aacf633286b122cc0afdfc8f63cab31e2eefe65e34841cfe942a16f5c"
+    }
+  ],
+  "limitations": [
+    "turn collision skipped",
+    "4 cuboids, no STL recheck",
+    "inner payload spheres",
+    "contact exclusion and deferred payload collision",
+    "no hardware/timing acceptance"
+  ]
+}

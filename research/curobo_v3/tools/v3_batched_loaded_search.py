@@ -146,7 +146,7 @@ class GpuValidity:
         return self.evaluate(values)[0]
 
     def edges(self, starts, goals, resolution=0.05, return_stability=False):
-        weighted = torch.abs((goals - starts) * self.weights.to(starts.device))
+        weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
         steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=1)
         horizon = int(steps.max().item()) + 1
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
@@ -508,7 +508,7 @@ def batched_rrt_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
 
 
 def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
-                                  informed_sampling=False, stop_at_first_valid=False):
+                                  informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0):
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
     weights = validity.weights
@@ -525,6 +525,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     solutions_found = 0
     accepted_total = 0
     started = time.perf_counter()
+    first_verified_ms=None
+    best_valid_path=None
+    best_valid_connection=None
+    rotation_cost=getattr(validity,'box_rotation_cost',None)
 
     def nearest(tree, samples):
         best_values, best_indices = [], []
@@ -544,6 +548,8 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     fine_checked = set()
     fine_rejections = 0
     while time.perf_counter() - started < budget_s:
+        if first_verified_ms is not None and (time.perf_counter()-started)*1000 >= first_verified_ms+refinement_s*1000:
+            break
         batch = 1024
         goal_indices = torch.randint(len(goals), (batch,), device="cuda", generator=generator)
         progress = torch.rand((batch, 1), device="cuda", generator=generator)
@@ -589,6 +595,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         accepted_cost = tree_cost[parent_indices] + accepted_length * (
             1.0 + validity.stability_weight * edge_stability[edge_valid]
         )
+        if rotation_cost is not None:
+            edge_start=nearest_values[edge_valid] if expand_start else accepted
+            edge_end=accepted if expand_start else nearest_values[edge_valid]
+            accepted_cost=accepted_cost+rotation_cost.edge_cost(edge_start,edge_end)
         first_new = len(tree)
         tree = torch.cat((tree, accepted), dim=0)
         tree_parents.extend(parent_indices.detach().cpu().tolist())
@@ -616,6 +626,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             connect_cost = connect_length * (
                 1.0 + validity.stability_weight * connect_stability[valid_local]
             )
+            if rotation_cost is not None:
+                edge_start=accepted[accepted_indices] if expand_start else other_values[candidate_indices][valid_local]
+                edge_end=other_values[candidate_indices][valid_local] if expand_start else accepted[accepted_indices]
+                connect_cost=connect_cost+rotation_cost.edge_cost(edge_start,edge_end)
             if expand_start:
                 total_cost = accepted_cost[accepted_indices] + goal_cost[opposite_indices] + connect_cost
             else:
@@ -658,8 +672,13 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                     if identity in fine_checked:
                         continue
                     fine_checked.add(identity)
-                    dense = densify(candidate_path.detach().cpu().numpy(), weights.detach().cpu().tolist())
+                    dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
                     if bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all().item()):
+                        if first_verified_ms is None:first_verified_ms=(time.perf_counter()-started)*1000
+                        if best_valid_connection is None or connection['cost']<best_valid_connection['cost']:
+                            best_valid_path=candidate_path.detach().clone();best_valid_connection=dict(connection)
+                        if refinement_s>0:
+                            break
                         return candidate_path.detach().cpu().numpy(), dict(
                             informed_sampling=informed_sampling, stop_at_first_valid=True,
                             iterations=iterations, start_nodes=len(start_tree), goal_nodes=len(goal_tree),
@@ -677,7 +696,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     selected_path = None
     selected = None
     checked = 0
+    if best_valid_path is not None:
+        selected_path=best_valid_path;selected=best_valid_connection
     for connection in best_connections:
+        if selected is not None and connection['cost']>=selected['cost']:break
         left_indices = []
         current = connection["start_node"]
         while current >= 0:
@@ -690,7 +712,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             right_indices.append(current)
             current = goal_parents[current]
         path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
-        dense_path = densify(path.detach().cpu().numpy(), weights.detach().cpu().tolist())
+        dense_path = densify(path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
         checked += 1
         if bool(validity.mask(torch.tensor(dense_path, device="cuda", dtype=torch.float32)).all().item()):
             selected_path = path
@@ -715,7 +737,12 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         "search_ms": elapsed_ms, "solutions_found": solutions_found,
         "best_weighted_length": selected["cost"],
         "raw_waypoints": len(selected_path), "shortcut_applied": False,
-        "fine_candidates_checked": checked,
+        "fine_candidates_checked": checked + len(fine_checked),
+        "first_verified_solution_ms": first_verified_ms,
+        "fine_rejections": fine_rejections,
+        "total_search_cap_ms": budget_s*1000,
+        "refinement_requested_ms":refinement_s*1000,
+        "box_rotation_cost_enabled":rotation_cost is not None,
     }
 
 
