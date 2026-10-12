@@ -30,12 +30,23 @@ def main():
   label=LABELS.get(phase,phase)
   if label not in options:options.append(label)
  jump=server.gui.add_dropdown('跳转阶段',options=options);play=server.gui.add_checkbox('播放',initial_value=False);speed=server.gui.add_slider('播放倍速',min=0.1,max=5.0,step=0.1,initial_value=1.0);status=server.gui.add_markdown('')
- planning=result.get('planning_timing',{});lines=[f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**",'',"不是播放/执行时间；不包含GPU锁等待。",'',"| 列 | 列间准备/底盘移动(s) | 本列规划(s) | 合计(s) | 求解方式 |","|---:|---:|---:|---:|---|"]
- for row in planning.get('rows',[]):lines.append(f"| {row['column']} | {row['transition_ms']/1000:.3f} | {row['component_ms']/1000:.3f} | {row['total_ms']/1000:.3f} | {row['method']} |")
- lines += ['', '### 每列各阶段', '', '| 列 | 阶段 | 耗时(s) | 求解方式 |', '|---:|---|---:|---|']
- for row in planning.get('rows',[]):
-  for stage_row in row.get('stages',[]):lines.append(f"| {row['column']} | {stage_row['stage']} | {stage_row['ms']/1000:.3f} | {stage_row['method']} |")
- with server.gui.add_folder('各列规划耗时与求解方式',expand_by_default=True):server.gui.add_markdown('\n'.join(lines))
+ planning=result.get('planning_timing',{})
+ timing_rows={row['column']:row for row in planning.get('rows',[])}
+ with server.gui.add_folder('各列规划耗时与求解方式',expand_by_default=True):
+  server.gui.add_markdown(f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**  \n不是播放/执行时间；不包含GPU锁等待。")
+  timing_column=server.gui.add_dropdown('选择耗时列',options=[f"第{column}列" for column in result['order']],initial_value=f"第{result['order'][0]}列")
+  column_summary=server.gui.add_markdown('')
+  stage_slots=[server.gui.add_markdown('') for _ in range(max((len(row.get('stages',[])) for row in timing_rows.values()),default=0))]
+ def update_timing_column():
+  column=int(timing_column.value.removeprefix('第').removesuffix('列'));row=timing_rows[column]
+  column_summary.content=(f"### 第{column}列 · 合计 **{row['total_ms']/1000:.3f} 秒**  \n"
+      f"列间准备/底盘移动：**{row['transition_ms']/1000:.3f}秒** · 本列规划：**{row['component_ms']/1000:.3f}秒**  \n{row['method']}")
+  stages=row.get('stages',[])
+  for index,slot in enumerate(stage_slots):
+   slot.content=(f"**{index+1}. {stages[index]['stage']}**  \n耗时：**{stages[index]['ms']/1000:.3f}秒**  \n求解：{stages[index]['method']}" if index<len(stages) else '')
+ @timing_column.on_update
+ def _(_event):update_timing_column()
+ update_timing_column()
  def update():
   i=int(slider.value);values=dict(zip(result['joint_names'],frames[i]));cfg=[values.get(n,0.) for n in urdf.actuated_joint_names];urdf.update_cfg(cfg);robot.update_cfg(cfg);active=attachments(i);active_ids={x['object_id'] for x in active};removed={x['object_id'] for x in result['lifecycle'] if x['global_frame_index']<=i and ('release' in x['phase'] or 'disappear' in x['phase'])}
   for oid,node in world.items():node.visible=oid not in active_ids and oid not in removed
