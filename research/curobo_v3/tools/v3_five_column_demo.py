@@ -32,18 +32,32 @@ def main():
  jump=server.gui.add_dropdown('跳转阶段',options=options);play=server.gui.add_checkbox('播放',initial_value=False);speed=server.gui.add_slider('播放倍速',min=0.1,max=5.0,step=0.1,initial_value=1.0);status=server.gui.add_markdown('')
  planning=result.get('planning_timing',{})
  timing_rows={row['column']:row for row in planning.get('rows',[])}
- with server.gui.add_folder('各列规划耗时与求解方式',expand_by_default=True):
-  server.gui.add_markdown(f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**  \n全部为规划计算墙钟；不包含GPU锁等待。  \n**执行时间：未提供（轨迹未做动力学时间参数化）**")
-  timing_column=server.gui.add_dropdown('选择耗时列',options=[f"第{column}列" for column in result['order']],initial_value=f"第{result['order'][0]}列")
+ def timing_group(stage):
+  if stage.startswith(('移动前','到站后','底盘','读取并准备','接入本列','列间')):return 'transition'
+  if '上箱' in stage or stage.startswith('右臂'):return 'upper'
+  if '下箱' in stage or stage.startswith('左臂'):return 'lower'
+  return 'other'
+ def stage_table(rows,total_ms):
+  lines=['| 阶段 | 秒 | 占本列 | 求解方式 |','|---|---:|---:|---|']
+  lines += [f"| {row['stage']} | {row['ms']/1000:.3f} | {row['ms']/total_ms*100:.1f}% | {row['method']} |" for row in rows]
+  return '\n'.join(lines) if rows else '无阶段记录。'
+ with server.gui.add_folder('规划耗时',expand_by_default=True):
+  server.gui.add_markdown(f"**累计规划计算：{planning.get('total_ms',0.)/1000:.3f} 秒**  \n全部为规划计算墙钟，不包含GPU锁等待。  \n**执行时间未提供：轨迹未做动力学时间参数化。**")
+  timing_column=server.gui.add_dropdown('选择列',options=[f"第{column}列" for column in result['order']],initial_value=f"第{result['order'][0]}列")
   column_summary=server.gui.add_markdown('')
-  stage_slots=[server.gui.add_markdown('') for _ in range(max((len(row.get('stages',[])) for row in timing_rows.values()),default=0))]
+  with server.gui.add_folder('① 列间状态衔接',expand_by_default=True):transition_table=server.gui.add_markdown('')
+  with server.gui.add_folder('② 上箱流程',expand_by_default=True):upper_table=server.gui.add_markdown('')
+  with server.gui.add_folder('③ 下箱流程',expand_by_default=True):lower_table=server.gui.add_markdown('')
+  with server.gui.add_folder('④ 初始化与其他',expand_by_default=False):other_table=server.gui.add_markdown('')
  def update_timing_column():
-  column=int(timing_column.value.removeprefix('第').removesuffix('列'));row=timing_rows[column]
-  column_summary.content=(f"### 第{column}列 · 合计 **{row['total_ms']/1000:.3f} 秒**  \n"
-      f"列间状态衔接与底盘路径检查（规划计算）：**{row['transition_ms']/1000:.3f}秒** · 本列规划：**{row['component_ms']/1000:.3f}秒**  \n{row['method']}")
-  stages=row.get('stages',[])
-  for index,slot in enumerate(stage_slots):
-   slot.content=(f"**{index+1}. {stages[index]['stage']}**  \n耗时：**{stages[index]['ms']/1000:.3f}秒**  \n求解：{stages[index]['method']}" if index<len(stages) else '')
+  column=int(timing_column.value.removeprefix('第').removesuffix('列'));row=timing_rows[column];stages=row.get('stages',[])
+  grouped={key:[stage for stage in stages if timing_group(stage['stage'])==key] for key in ('transition','upper','lower','other')}
+  totals={key:sum(stage['ms'] for stage in values) for key,values in grouped.items()}
+  column_summary.content=(f"### 第{column}列 · 规划合计 **{row['total_ms']/1000:.3f}秒**\n"
+      f"| 层级 | 秒 | 占本列 |\n|---|---:|---:|\n"
+      f"| 列间状态衔接 | {totals['transition']/1000:.3f} | {totals['transition']/row['total_ms']*100:.1f}% |\n"
+      f"| 本列卸载动作 | {(row['total_ms']-totals['transition'])/1000:.3f} | {(row['total_ms']-totals['transition'])/row['total_ms']*100:.1f}% |")
+  transition_table.content=stage_table(grouped['transition'],row['total_ms']);upper_table.content=stage_table(grouped['upper'],row['total_ms']);lower_table.content=stage_table(grouped['lower'],row['total_ms']);other_table.content=stage_table(grouped['other'],row['total_ms'])
  @timing_column.on_update
  def _(_event):update_timing_column()
  update_timing_column()
