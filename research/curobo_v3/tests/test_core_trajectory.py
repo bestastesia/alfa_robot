@@ -67,6 +67,33 @@ class TrajectoryHelpersTest(unittest.TestCase):
         self.assertTrue(np.max(np.abs(trajectory["jerks"])) <= 10.)
         np.testing.assert_allclose(validation[[0, -1]], path[[0, -1]])
         self.assertEqual(trajectory["maximum_linear_deviation"], 0.)
+        samples = trajectory["sampled_trajectory"]
+        np.testing.assert_array_equal(samples["positions"], validation)
+        self.assertGreater(len(samples["positions"]), len(path))
+        self.assertTrue(np.all(np.diff(samples["time_from_start_s"]) > 0))
+        self.assertLessEqual(np.max(np.diff(samples["time_from_start_s"])), .01 + 1e-12)
+        self.assertGreater(np.max(np.abs(samples["velocities"])), 0.)
+        for field, limit in (("velocities", 1.), ("accelerations", 2.), ("jerks", 10.)):
+            self.assertEqual(np.asarray(samples[field]).shape, validation.shape)
+            self.assertLessEqual(np.max(np.abs(samples[field])), limit * (1 + 1e-6))
+
+        # Exercise the real recording helper without importing the CUDA planner.
+        import ast
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/planner.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "record_timed_trajectory")
+        report = {"frames": path.tolist(), "phases": ["attach", "transport", "transport"],
+                  "payload": [True] * 3, "timed_segments": []}
+        namespace = {"np": np, "report": report, "mobile_names": ["a", "b"],
+                     "expand_timed_trajectory": expand_timed_trajectory}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        self.assertTrue(namespace["record_timed_trajectory"]("transport", 1, trajectory))
+        self.assertEqual(report["phases"], ["attach"] + ["transport"] * (len(validation) - 1))
+        self.assertEqual(report["payload"], [True] * len(validation))
+        np.testing.assert_array_equal(report["frames"], validation)
+        segment = report["timed_segments"][0]
+        self.assertEqual(segment["frame_end"], len(validation) - 1)
+        np.testing.assert_array_equal(segment["velocities"], samples["velocities"])
 
     def test_validate_timed_cycle_rejects_uncovered_motion(self):
         result = validate_timed_cycle(
@@ -114,6 +141,32 @@ class TrajectoryHelpersTest(unittest.TestCase):
         result = expand_timed_trajectory(source, ["base", "arm"])
         self.assertEqual(result["positions"], [[0., 1.], [0., 2.]])
         self.assertEqual(result["velocities"], [[0., 3.], [0., 4.]])
+
+    def test_joint_state_serialization_rejects_invalid_contracts(self):
+        from types import SimpleNamespace
+        state = dict(joint_names=["a"], position=_Tensor([[0.], [1.]]),
+                     velocity=_Tensor([[0.], [0.]]), acceleration=_Tensor([[0.], [0.]]),
+                     jerk=_Tensor([[0.], [0.]]), dt=_Tensor([.025]))
+        for field, value in (("velocity", _Tensor([[0.]])), ("jerk", None),
+                             ("position", _Tensor([[[0.], [1.]], [[2.], [3.]]])),
+                             ("dt", None), ("dt", _Tensor([.025, -1.])),
+                             ("dt", _Tensor([.025, .05])), ("dt", _Tensor([float("nan")])),
+                             ("joint_names", ["a", "a"])):
+            with self.subTest(field=field, value=value):
+                with self.assertRaises(ValueError):
+                    joint_state_trajectory(SimpleNamespace(**{**state, field: value}), ["a"])
+
+    def test_joint_state_serialization_removes_repeated_optimizer_padding(self):
+        from types import SimpleNamespace
+        state = SimpleNamespace(
+            joint_names=["a"], position=_Tensor([[0.], [1.], [1.], [1.]]),
+            velocity=_Tensor([[0.], [.5], [0.], [0.]]),
+            acceleration=_Tensor([[0.], [.1], [0.], [0.]]),
+            jerk=_Tensor([[0.], [.01], [0.], [0.]]), dt=_Tensor([.025]))
+        result = joint_state_trajectory(state, ["a"])
+        self.assertEqual(result["time_from_start_s"], [0., .025])
+        self.assertEqual(result["positions"], [[0.], [1.]])
+        self.assertEqual(result["velocities"], [[0.], [.5]])
 
     def test_joint_state_serialization_reorders_all_derivatives(self):
         class State:

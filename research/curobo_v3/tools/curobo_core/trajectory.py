@@ -24,30 +24,47 @@ def resample_path(path, horizon, weights=None):
 def joint_state_trajectory(state, joint_names):
     """Serialize a single interpolated cuRobo JointState in the requested joint order."""
     source_names = list(state.joint_names)
+    joint_names = list(joint_names)
+    if (not source_names or len(set(source_names)) != len(source_names) or
+            not joint_names or len(set(joint_names)) != len(joint_names)):
+        raise ValueError("trajectory joint names must be nonempty and unique")
     indices = [source_names.index(name) for name in joint_names]
 
     def rows(field):
         value = getattr(state, field)
         if value is None:
             raise ValueError(f"trajectory has no {field}")
-        array = value.detach().cpu().numpy().reshape(-1, len(source_names))[:, indices]
+        array = value.detach().cpu().numpy()
+        if (array.ndim < 2 or array.shape[-1] != len(source_names) or
+                any(size != 1 for size in array.shape[:-2])):
+            raise ValueError(f"trajectory {field} must describe a single joint trajectory")
+        array = array.reshape(-1, len(source_names))[:, indices]
+        if not len(array) or (field != "position" and array.shape != position.shape):
+            raise ValueError(f"trajectory {field} shape must match nonempty positions")
         if not np.isfinite(array).all():
             raise ValueError(f"trajectory {field} contains non-finite values")
         return array
 
     position = rows("position")
+    derivatives = [rows(field) for field in ("velocity", "acceleration", "jerk")]
+    keep = np.concatenate(([True], np.any(np.abs(np.diff(position, axis=0)) > 1e-10, axis=1)))
+    position = position[keep]
+    derivatives = [value[keep] for value in derivatives]
+    if state.dt is None:
+        raise ValueError("trajectory has no dt")
     dt_values = state.dt.detach().cpu().numpy().reshape(-1)
-    if not len(dt_values) or not np.isfinite(dt_values).all() or float(dt_values[0]) <= 0:
-        raise ValueError("trajectory dt must be positive and finite")
+    if (not len(dt_values) or not np.isfinite(dt_values).all() or np.any(dt_values <= 0) or
+            not np.allclose(dt_values, dt_values[0], rtol=1e-6, atol=0)):
+        raise ValueError("trajectory dt must be positive, finite and constant")
     dt = float(dt_values[0])
     return {
         "joint_names": list(joint_names),
         "dt_s": dt,
         "time_from_start_s": (np.arange(len(position), dtype=np.float64) * dt).tolist(),
         "positions": position.tolist(),
-        "velocities": rows("velocity").tolist(),
-        "accelerations": rows("acceleration").tolist(),
-        "jerks": rows("jerk").tolist(),
+        "velocities": derivatives[0].tolist(),
+        "accelerations": derivatives[1].tolist(),
+        "jerks": derivatives[2].tolist(),
     }
 
 
@@ -262,14 +279,31 @@ def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_lim
     jerk[:-1] = (60.0 * deltas / durations[:, None]**3).astype(np.float32)
     jerk[-1] = jerk[-2]
     validation = [values[0]]
-    for start, delta, duration in zip(values[:-1], deltas, durations):
+    sample_times = [0.0]
+    sample_velocity = [np.zeros(values.shape[1])]
+    sample_acceleration = [np.zeros(values.shape[1])]
+    sample_jerk = [60.0 * deltas[0] / durations[0]**3]
+    for index, (start, delta, duration) in enumerate(zip(values[:-1], deltas, durations)):
         count = max(1, int(np.ceil(duration / sample_dt)))
         u = np.linspace(1.0/count, 1.0, count)
         s = 10*u**3 - 15*u**4 + 6*u**5
         validation.extend(start + s[:, None] * delta)
+        sample_times.extend(times[index] + u * duration)
+        sample_velocity.extend((30*u**2 - 60*u**3 + 30*u**4)[:, None] * delta / duration)
+        sample_acceleration.extend((60*u - 180*u**2 + 120*u**3)[:, None] * delta / duration**2)
+        sample_jerk.extend((60 - 360*u + 360*u**2)[:, None] * delta / duration**3)
+    validation = np.asarray(validation, dtype=np.float32)
+    samples = {
+        "joint_names": list(joint_names), "dt_s": None,
+        "time_from_start_s": np.asarray(sample_times).tolist(), "positions": validation.tolist(),
+        "velocities": np.asarray(sample_velocity, dtype=np.float32).tolist(),
+        "accelerations": np.asarray(sample_acceleration, dtype=np.float32).tolist(),
+        "jerks": np.asarray(sample_jerk, dtype=np.float32).tolist(),
+    }
     return ({
         "joint_names": list(joint_names), "dt_s": None,
         "duration_s": float(times[-1]), "maximum_linear_deviation": 0.0,
         "time_from_start_s": times.tolist(), "positions": values.astype(np.float32).tolist(),
         "velocities": zeros.tolist(), "accelerations": zeros.tolist(), "jerks": jerk.tolist(),
-    }, np.asarray(validation, dtype=np.float32))
+        "sampled_trajectory": samples,
+    }, validation)
