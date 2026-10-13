@@ -21,6 +21,22 @@ def resample_path(path, horizon, weights=None):
     ]).astype(np.float32)
 
 
+
+def deduplicate_timed_trajectory(trajectory, atol=1e-10):
+    """Remove position samples the cycle assembler would drop, keeping derivatives aligned."""
+    result = dict(trajectory)
+    position = np.asarray(result["positions"])
+    keep = [0]
+    for index in range(1, len(position)):
+        if not np.allclose(position[keep[-1]], position[index], atol=atol, rtol=0):
+            keep.append(index)
+    for field in ("positions", "velocities", "accelerations", "jerks"):
+        result[field] = np.asarray(result[field])[keep].tolist()
+    dt = result.get("dt_s")
+    result["time_from_start_s"] = ((np.arange(len(keep)) * dt).tolist() if dt is not None else
+                                     np.asarray(result["time_from_start_s"])[keep].tolist())
+    return result
+
 def joint_state_trajectory(state, joint_names):
     """Serialize a single interpolated cuRobo JointState in the requested joint order."""
     source_names = list(state.joint_names)
@@ -47,9 +63,6 @@ def joint_state_trajectory(state, joint_names):
 
     position = rows("position")
     derivatives = [rows(field) for field in ("velocity", "acceleration", "jerk")]
-    keep = np.concatenate(([True], np.any(np.abs(np.diff(position, axis=0)) > 1e-10, axis=1)))
-    position = position[keep]
-    derivatives = [value[keep] for value in derivatives]
     if state.dt is None:
         raise ValueError("trajectory has no dt")
     dt_values = state.dt.detach().cpu().numpy().reshape(-1)
@@ -57,7 +70,7 @@ def joint_state_trajectory(state, joint_names):
             not np.allclose(dt_values, dt_values[0], rtol=1e-6, atol=0)):
         raise ValueError("trajectory dt must be positive, finite and constant")
     dt = float(dt_values[0])
-    return {
+    return deduplicate_timed_trajectory({
         "joint_names": list(joint_names),
         "dt_s": dt,
         "time_from_start_s": (np.arange(len(position), dtype=np.float64) * dt).tolist(),
@@ -65,7 +78,7 @@ def joint_state_trajectory(state, joint_names):
         "velocities": derivatives[0].tolist(),
         "accelerations": derivatives[1].tolist(),
         "jerks": derivatives[2].tolist(),
-    }
+    })
 
 
 def expand_timed_trajectory(trajectory, target_joint_names):
@@ -161,20 +174,37 @@ def time_parameterize_path(path, joint_names, velocity_limits, acceleration_limi
     validation_time = np.linspace(0.0, duration, max(2, int(np.ceil(duration / sample_dt)) + 1))
     u = validation_time / duration
     validation_s = 10*u**3 - 15*u**4 + 6*u**5
+    validation_ds = (30*u**2 - 60*u**3 + 30*u**4) / duration
+    validation_dds = (60*u - 180*u**2 + 120*u**3) / duration**2
+    validation_ddds = (60 - 360*u + 360*u**2) / duration**3
+    sampled_positions = spline(validation_s)
+    q1, q2, q3 = spline(validation_s, 1), spline(validation_s, 2), spline(validation_s, 3)
+    sampled_velocity = q1 * validation_ds[:, None]
+    sampled_acceleration = q2*validation_ds[:, None]**2 + q1*validation_dds[:, None]
+    sampled_jerk = (q3*validation_ds[:, None]**3 + 3*q2*validation_ds[:, None]*validation_dds[:, None]
+                      + q1*validation_ddds[:, None])
     linear_validation = np.column_stack([
         np.interp(validation_s, parameter, values[:, joint]) for joint in range(values.shape[1])
     ])
     trajectory = {
         "joint_names": list(joint_names), "dt_s": None,
         "duration_s": duration,
-        "maximum_linear_deviation": float(np.max(np.abs(spline(validation_s) - linear_validation))),
+        "maximum_linear_deviation": float(np.max(np.abs(sampled_positions - linear_validation))),
         "time_from_start_s": (knot_u * duration).tolist(),
         "positions": values.astype(np.float32).tolist(),
         "velocities": knot_velocity.astype(np.float32).tolist(),
         "accelerations": knot_acceleration.astype(np.float32).tolist(),
         "jerks": knot_jerk.astype(np.float32).tolist(),
+        "sampled_trajectory": {
+            "joint_names": list(joint_names), "dt_s": None,
+            "time_from_start_s": validation_time.tolist(),
+            "positions": sampled_positions.astype(np.float32).tolist(),
+            "velocities": sampled_velocity.astype(np.float32).tolist(),
+            "accelerations": sampled_acceleration.astype(np.float32).tolist(),
+            "jerks": sampled_jerk.astype(np.float32).tolist(),
+        },
     }
-    return trajectory, spline(validation_s).astype(np.float32)
+    return trajectory, sampled_positions.astype(np.float32)
 
 
 def assemble_timed_cycle(frame_count, timed_segments):

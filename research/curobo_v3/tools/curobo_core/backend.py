@@ -28,7 +28,7 @@ from v3_wall_ik_benchmark import (
 from .fixtures import WallLayout, tasks
 from .adapter import from_curobo_scene, task_attachments, to_curobo_scene, task_contact_positions, suction_quaternion, pose_matrix
 from .scene import RobotState, SceneSnapshot, digest
-from .trajectory import joint_state_trajectory, resample_path
+from .trajectory import deduplicate_timed_trajectory, joint_state_trajectory, resample_path
 from .distance_metric import joint_distance_weights
 from .cache import resource_key
 
@@ -316,6 +316,8 @@ class CuroboBackend:
         positions[0] = np.asarray(path[0], dtype=np.float32)
         positions[-1] = np.asarray(path[-1], dtype=np.float32)
         timed["positions"] = positions.tolist()
+        timed = deduplicate_timed_trajectory(timed)
+        positions = np.asarray(timed["positions"], dtype=np.float32)
         values = torch.tensor(positions, device="cuda", dtype=torch.float32)
         node_mask = validity.mask(values)
         edge_mask = (torch.ones(0, dtype=torch.bool, device="cuda") if len(values) < 2 else

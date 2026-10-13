@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from curobo_core.trajectory import (assemble_timed_cycle, expand_timed_trajectory,
+from curobo_core.trajectory import (assemble_timed_cycle, deduplicate_timed_trajectory, expand_timed_trajectory,
                                     joint_state_trajectory, resample_path, time_parameterize_path,
                                     time_parameterize_stops, trajectory_fallback_path,
                                     validate_timed_cycle)
@@ -131,6 +131,12 @@ class TrajectoryHelpersTest(unittest.TestCase):
         self.assertTrue(np.max(np.abs(trajectory["accelerations"])) <= 2.0)
         self.assertTrue(np.max(np.abs(trajectory["jerks"])) <= 10.0)
         np.testing.assert_allclose(validation[[0, -1]], path[[0, -1]], atol=1e-7)
+        samples = trajectory["sampled_trajectory"]
+        np.testing.assert_allclose(samples["positions"], validation)
+        self.assertLessEqual(np.max(np.diff(samples["time_from_start_s"])), .01 + 1e-12)
+        for field, limit in (("velocities", 1.), ("accelerations", 2.), ("jerks", 10.)):
+            self.assertEqual(np.asarray(samples[field]).shape, validation.shape)
+            self.assertLessEqual(np.max(np.abs(samples[field])), limit * (1 + 1e-6))
 
     def test_expand_timed_trajectory_zero_fills_fixed_joints(self):
         source = {
@@ -156,13 +162,24 @@ class TrajectoryHelpersTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     joint_state_trajectory(SimpleNamespace(**{**state, field: value}), ["a"])
 
+    def test_deduplicate_after_endpoint_clamping_keeps_derivatives_aligned(self):
+        trajectory = {
+            "dt_s": .025, "time_from_start_s": [0., .025, .05],
+            "positions": [[0.], [0.], [1.]], "velocities": [[0.], [.1], [.2]],
+            "accelerations": [[0.], [.01], [.02]], "jerks": [[0.], [.001], [.002]],
+        }
+        result = deduplicate_timed_trajectory(trajectory)
+        self.assertEqual(result["positions"], [[0.], [1.]])
+        self.assertEqual(result["velocities"], [[0.], [.2]])
+        self.assertEqual(result["time_from_start_s"], [0., .025])
+
     def test_joint_state_serialization_removes_repeated_optimizer_padding(self):
         from types import SimpleNamespace
         state = SimpleNamespace(
-            joint_names=["a"], position=_Tensor([[0.], [1.], [1.], [1.]]),
-            velocity=_Tensor([[0.], [.5], [0.], [0.]]),
-            acceleration=_Tensor([[0.], [.1], [0.], [0.]]),
-            jerk=_Tensor([[0.], [.01], [0.], [0.]]), dt=_Tensor([.025]))
+            joint_names=["a"], position=_Tensor([[0.], [.9e-10], [-.9e-10], [1.], [1.]]),
+            velocity=_Tensor([[0.], [0.], [0.], [.5], [0.]]),
+            acceleration=_Tensor([[0.], [0.], [0.], [.1], [0.]]),
+            jerk=_Tensor([[0.], [0.], [0.], [.01], [0.]]), dt=_Tensor([.025]))
         result = joint_state_trajectory(state, ["a"])
         self.assertEqual(result["time_from_start_s"], [0., .025])
         self.assertEqual(result["positions"], [[0.], [1.]])
