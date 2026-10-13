@@ -239,6 +239,16 @@ def validate_timed_cycle(phases, time_values, velocities, accelerations, jerks,
     }
 
 
+def trajectory_fallback_path(rows, stats):
+    """Use sparse planner waypoints only when they describe the same path endpoints."""
+    values = np.asarray(rows)
+    sparse = np.asarray(stats.get("trajectory_fallback_waypoints", ()))
+    if (sparse.ndim == 2 and len(sparse) >= 2 and sparse.shape[1:] == values.shape[1:] and
+            np.allclose(sparse[[0, -1]], values[[0, -1]], atol=1e-6, rtol=0)):
+        return sparse
+    return values
+
+
 def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
                             sample_dt=0.025, safety_factor=1.05):
     """Time a collision-checked polyline with a full stop at each existing waypoint."""

@@ -22,7 +22,7 @@ from .scene import Pose, SceneStore
 from .sequence import plan_sequence
 from .distance_metric import joint_distance_weights
 from .trajectory import (assemble_timed_cycle, expand_timed_trajectory, time_parameterize_path,
-                         time_parameterize_stops, validate_timed_cycle)
+                         time_parameterize_stops, trajectory_fallback_path, validate_timed_cycle)
 
 
 class CycleBlocked(RuntimeError):
@@ -361,6 +361,7 @@ class FullCyclePlanner(CuroboBackend):
             stats["trajectory_optimization"] = telemetry
             if optimized is not None:
                 return optimized, stats
+            stats["trajectory_fallback_waypoints"] = np.asarray(path).tolist()
         return dense, stats
 
     def _full_cycle(self, boxes, progress=lambda text: None):
@@ -617,17 +618,19 @@ class FullCyclePlanner(CuroboBackend):
                     extract_timed = None
         split = getattr(self, "contact_approach_split", len(approach))
         approach_optimization = attempt["approach"].get("trajectory_optimization", {})
+        approach_source = trajectory_fallback_path(approach[:split], attempt["approach"])
         approach_fallback_timed = None
         if getattr(self.args, "trajopt_rrt", False) and not approach_optimization.get("accepted"):
             approach_fallback_timed, _ = fixed_timing(
-                "approach", approach[:split], empty_validity, ACTIVE_JOINTS,
+                "approach", approach_source, empty_validity, ACTIVE_JOINTS,
                 preserve_edges=True)
         contact_approach_timed = None
         if getattr(self.args, "trajopt_rrt", False) and split < len(approach):
             contact_approach_timed, _ = fixed_timing(
                 "contact_approach", approach[split-1:], empty_validity, ACTIVE_JOINTS)
         approach_frame_start = len(report["frames"])
-        append(approach[:split], "approach", False)
+        append(approach_source if approach_fallback_timed is not None else approach[:split],
+               "approach", False)
         if approach_fallback_timed is not None:
             aligned = record_timed_trajectory("approach", approach_frame_start, approach_fallback_timed)
             if not aligned:
@@ -678,20 +681,25 @@ class FullCyclePlanner(CuroboBackend):
                 weights=[2., 2., 1.] + self.motion_weights(boxes).tolist())
             turn_loaded_timed, _ = fixed_timing(
                 "turn_loaded", turn_loaded_rows, loaded_mobile_validity, mobile_names)
-        transport_frame_start = len(report["frames"])
-        append(transport_rows, "transport", True)
         report["transport_timing_ms"] = transport["total_ms"]
         report["transport_search_stats"] = transport["rrt_stats"]
-        transport_fallback = report["transport_search_stats"].pop("trajectory_fallback_frames", None)
         transport_optimization = report["transport_search_stats"].get("trajectory_optimization", {})
+        active_indices = [mobile_names.index(name) for name in ACTIVE_JOINTS]
+        transport_source = trajectory_fallback_path(
+            np.asarray(transport_rows)[:, active_indices], report["transport_search_stats"])
+        transport_fallback_timed = None
+        if (getattr(self.args, "trajopt_rrt", False) and
+                not transport_optimization.get("accepted")):
+            transport_fallback_timed, _ = fixed_timing(
+                "transport", transport_source, loaded_validity,
+                ACTIVE_JOINTS, preserve_edges=True)
+        transport_frame_start = len(report["frames"])
+        append(transport_source if transport_fallback_timed is not None else transport_rows,
+               "transport", True)
         if transport_optimization.get("accepted"):
             record_timed_segment("transport", transport_frame_start, report["transport_search_stats"])
-        elif transport_fallback is not None:
-            transport_fallback_timed, _ = fixed_timing(
-                "transport", appended_active_rows(transport_frame_start), loaded_validity,
-                ACTIVE_JOINTS, preserve_edges=True)
-            if transport_fallback_timed is not None:
-                record_timed_trajectory("transport", transport_frame_start, transport_fallback_timed)
+        elif transport_fallback_timed is not None:
+            record_timed_trajectory("transport", transport_frame_start, transport_fallback_timed)
         turn_loaded_frame_start = len(report["frames"])
         append(transport["frames"][transport["transport_frames"]:], "turn_loaded", True)
         if turn_loaded_timed is not None:
@@ -750,20 +758,28 @@ class FullCyclePlanner(CuroboBackend):
             progress("空载回程搜索失败：显式复用去程反向路径，空载逐帧复核通过")
             home_path = reverse
         report["home_search_stats"] = stats
-        home_frame_start = len(report["frames"])
-        append(home_path, "return_home", False)
         home_optimization = stats.get("trajectory_optimization", {})
         home_trajectory = home_optimization.pop("trajectory", None)
+        home_source = trajectory_fallback_path(home_path, stats)
+        home_fallback_timed = None
+        if getattr(self.args, "trajopt_rrt", False) and not home_optimization.get("accepted"):
+            home_fallback_timed, _ = fixed_timing(
+                "return_home", home_source, empty_validity,
+                ACTIVE_JOINTS, preserve_edges=True)
+        home_frame_start = len(report["frames"])
+        append(home_source if home_fallback_timed is not None else home_path,
+               "return_home", False)
         if home_optimization.get("accepted") and home_trajectory is not None and not record_timed_trajectory(
                 "return_home", home_frame_start, home_trajectory):
             home_optimization["accepted"] = False
             home_optimization["fallback_reason"] = "optimized samples could not be aligned to cycle frames"
-        if getattr(self.args, "trajopt_rrt", False) and not home_optimization.get("accepted"):
+        if (getattr(self.args, "trajopt_rrt", False) and
+                not home_optimization.get("accepted") and home_fallback_timed is None):
             home_fallback_timed, _ = fixed_timing(
                 "return_home", appended_active_rows(home_frame_start), empty_validity,
                 ACTIVE_JOINTS, preserve_edges=True)
-            if home_fallback_timed is not None:
-                record_timed_trajectory("return_home", home_frame_start, home_fallback_timed)
+        if home_fallback_timed is not None:
+            record_timed_trajectory("return_home", home_frame_start, home_fallback_timed)
         rows = np.asarray(report["frames"])
         report["max_adjacent_joint_step_deg"] = float(np.degrees(
             np.abs(np.diff(rows[:, 4:], axis=0)).max()))

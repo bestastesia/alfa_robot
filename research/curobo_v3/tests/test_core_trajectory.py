@@ -7,7 +7,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from curobo_core.trajectory import (assemble_timed_cycle, expand_timed_trajectory,
                                     joint_state_trajectory, resample_path, time_parameterize_path,
-                                    time_parameterize_stops, validate_timed_cycle)
+                                    time_parameterize_stops, trajectory_fallback_path,
+                                    validate_timed_cycle)
 
 
 class _Tensor:
@@ -36,6 +37,25 @@ class TrajectoryHelpersTest(unittest.TestCase):
 
 
 
+
+    def test_sparse_fallback_does_not_stop_at_dense_collision_samples(self):
+        sparse = np.array([[0., 0.], [.5, .25], [1., 0.]], dtype=np.float32)
+        dense = np.vstack((np.linspace(sparse[0], sparse[1], 101),
+                           np.linspace(sparse[1], sparse[2], 101)[1:]))
+        path = trajectory_fallback_path(
+            dense, {"trajectory_fallback_waypoints": sparse.tolist()})
+        self.assertEqual(len(path), 3)
+        trajectory, validation = time_parameterize_stops(
+            path, ["a", "b"], [1., 1.], [2., 2.], [10., 10.], sample_dt=.01)
+        samples = trajectory["sampled_trajectory"]
+        speed = np.linalg.norm(samples["velocities"], axis=1)
+        self.assertEqual(np.count_nonzero(np.isclose(speed, 0., atol=1e-7)), 3)
+        self.assertEqual(len(samples["positions"]), len(validation))
+        self.assertEqual(len(samples["velocities"]), len(validation))
+        self.assertEqual(len(samples["accelerations"]), len(validation))
+        self.assertEqual(len(samples["jerks"]), len(validation))
+        for field, limit in (("velocities", 1.), ("accelerations", 2.), ("jerks", 10.)):
+            self.assertLessEqual(np.max(np.abs(samples[field])), limit * (1 + 1e-6))
 
     def test_stop_timing_preserves_polyline_and_limits(self):
         path = np.array([[0., 0.], [.5, -.25], [1., 0.]], dtype=np.float32)

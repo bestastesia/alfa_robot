@@ -530,7 +530,7 @@ class CuroboBackend:
         if transport is None:
             transport = densify(path, [5.0] + [1.0] * 14)
             if getattr(self.args, "trajopt_rrt", False):
-                stats["trajectory_fallback_frames"] = transport
+                stats["trajectory_fallback_waypoints"] = np.asarray(path).tolist()
         mobile_names = list(
             self.mobile_robot.get("robot_cfg", self.mobile_robot)["kinematics"]["cspace"]["joint_names"]
         )
