@@ -46,6 +46,10 @@ def joint_state_trajectory(state, joint_names):
         return array
 
     position = rows("position")
+    derivatives = [rows(field) for field in ("velocity", "acceleration", "jerk")]
+    keep = np.concatenate(([True], np.any(np.abs(np.diff(position, axis=0)) > 1e-10, axis=1)))
+    position = position[keep]
+    derivatives = [value[keep] for value in derivatives]
     if state.dt is None:
         raise ValueError("trajectory has no dt")
     dt_values = state.dt.detach().cpu().numpy().reshape(-1)
@@ -58,9 +62,9 @@ def joint_state_trajectory(state, joint_names):
         "dt_s": dt,
         "time_from_start_s": (np.arange(len(position), dtype=np.float64) * dt).tolist(),
         "positions": position.tolist(),
-        "velocities": rows("velocity").tolist(),
-        "accelerations": rows("acceleration").tolist(),
-        "jerks": rows("jerk").tolist(),
+        "velocities": derivatives[0].tolist(),
+        "accelerations": derivatives[1].tolist(),
+        "jerks": derivatives[2].tolist(),
     }
 
 

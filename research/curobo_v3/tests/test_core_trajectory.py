@@ -156,6 +156,18 @@ class TrajectoryHelpersTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     joint_state_trajectory(SimpleNamespace(**{**state, field: value}), ["a"])
 
+    def test_joint_state_serialization_removes_repeated_optimizer_padding(self):
+        from types import SimpleNamespace
+        state = SimpleNamespace(
+            joint_names=["a"], position=_Tensor([[0.], [1.], [1.], [1.]]),
+            velocity=_Tensor([[0.], [.5], [0.], [0.]]),
+            acceleration=_Tensor([[0.], [.1], [0.], [0.]]),
+            jerk=_Tensor([[0.], [.01], [0.], [0.]]), dt=_Tensor([.025]))
+        result = joint_state_trajectory(state, ["a"])
+        self.assertEqual(result["time_from_start_s"], [0., .025])
+        self.assertEqual(result["positions"], [[0.], [1.]])
+        self.assertEqual(result["velocities"], [[0.], [.5]])
+
     def test_joint_state_serialization_reorders_all_derivatives(self):
         class State:
             joint_names = ["b", "a"]
