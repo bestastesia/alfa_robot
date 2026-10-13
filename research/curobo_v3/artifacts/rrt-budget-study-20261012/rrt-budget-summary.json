@@ -1,0 +1,803 @@
+{
+  "method": "single 2-second tree per call; offline certified selection at earliest, <=1s minimum planner cost, and <=2s minimum planner cost",
+  "calls": 80,
+  "solved_calls": 75,
+  "failed_calls": 5,
+  "solution_by_1s": 69,
+  "solution_after_1s": 6,
+  "first_certified_ms": {
+    "min": 11.303577999569825,
+    "median": 133.45562999893446,
+    "p90": 617.2298232002515,
+    "mean": 285.93872156011156,
+    "max": 1989.0526660001342
+  },
+  "first_to_2s": {
+    "calls": 75,
+    "planner_cost": {
+      "improved": 45,
+      "same": 30,
+      "worse": 0,
+      "median_pct": 2.3646989817704096,
+      "mean_pct": 15.671953434381885,
+      "min_pct": 0.0,
+      "max_pct": 60.42771427720025
+    },
+    "weighted_path_length": {
+      "improved": 19,
+      "same": 30,
+      "worse": 26,
+      "median_pct": 0.0,
+      "mean_pct": -4.884701705303898,
+      "min_pct": -41.11885900537636,
+      "max_pct": 29.866458733909006
+    },
+    "joint_l1_travel": {
+      "improved": 21,
+      "same": 30,
+      "worse": 24,
+      "median_pct": 0.0,
+      "mean_pct": -6.919051343360754,
+      "min_pct": -54.02326358321742,
+      "max_pct": 32.361667466562054
+    },
+    "dense_frames": {
+      "improved": 13,
+      "same": 32,
+      "worse": 30,
+      "median_pct": 0.0,
+      "mean_pct": -2.84147642639807,
+      "min_pct": -46.864686468646866,
+      "max_pct": 24.778761061946902
+    }
+  },
+  "one_s_to_2s": {
+    "calls": 69,
+    "planner_cost": {
+      "improved": 3,
+      "same": 66,
+      "worse": 0,
+      "median_pct": 0.0,
+      "mean_pct": 0.625635302029518,
+      "min_pct": 0.0,
+      "max_pct": 26.52136645466811
+    },
+    "weighted_path_length": {
+      "improved": 1,
+      "same": 66,
+      "worse": 2,
+      "median_pct": 0.0,
+      "mean_pct": -0.037019279210900265,
+      "min_pct": -3.442548052630596,
+      "max_pct": 1.1823038836502116
+    },
+    "joint_l1_travel": {
+      "improved": 1,
+      "same": 66,
+      "worse": 2,
+      "median_pct": 0.0,
+      "mean_pct": -0.10937444632935753,
+      "min_pct": -4.75851205085162,
+      "max_pct": 0.08034733813370394
+    },
+    "dense_frames": {
+      "improved": 1,
+      "same": 66,
+      "worse": 2,
+      "median_pct": 0.0,
+      "mean_pct": -0.10972726559535527,
+      "min_pct": -5.42299349240781,
+      "max_pct": 1.8145161290322582
+    }
+  },
+  "final_same_path_as_first": 30,
+  "final_different_path_from_first": 45,
+  "selected_goal_changed": 12,
+  "by_seed": {
+    "11": {
+      "calls": 26,
+      "solved": 25,
+      "first_to_final": {
+        "calls": 25,
+        "planner_cost": {
+          "improved": 14,
+          "same": 11,
+          "worse": 0,
+          "median_pct": 3.233997523178428,
+          "mean_pct": 16.23548587751047,
+          "min_pct": 0.0,
+          "max_pct": 59.45714490248075
+        },
+        "weighted_path_length": {
+          "improved": 6,
+          "same": 11,
+          "worse": 8,
+          "median_pct": 0.0,
+          "mean_pct": -2.8304143235185912,
+          "min_pct": -27.213033894753856,
+          "max_pct": 29.866458733909006
+        },
+        "joint_l1_travel": {
+          "improved": 6,
+          "same": 11,
+          "worse": 8,
+          "median_pct": 0.0,
+          "mean_pct": -4.366763715680636,
+          "min_pct": -54.02326358321742,
+          "max_pct": 32.361667466562054
+        },
+        "dense_frames": {
+          "improved": 4,
+          "same": 13,
+          "worse": 8,
+          "median_pct": 0.0,
+          "mean_pct": -1.7483148225323581,
+          "min_pct": -15.676959619952493,
+          "max_pct": 24.778761061946902
+        }
+      },
+      "no_solution_by_1s": 2,
+      "changed_path": 14
+    },
+    "29": {
+      "calls": 27,
+      "solved": 25,
+      "first_to_final": {
+        "calls": 25,
+        "planner_cost": {
+          "improved": 14,
+          "same": 11,
+          "worse": 0,
+          "median_pct": 2.3646989817704096,
+          "mean_pct": 14.391628780214326,
+          "min_pct": 0.0,
+          "max_pct": 51.70693412206745
+        },
+        "weighted_path_length": {
+          "improved": 5,
+          "same": 11,
+          "worse": 9,
+          "median_pct": 0.0,
+          "mean_pct": -5.840047823314338,
+          "min_pct": -38.63126785086982,
+          "max_pct": 10.497033406486702
+        },
+        "joint_l1_travel": {
+          "improved": 5,
+          "same": 11,
+          "worse": 9,
+          "median_pct": 0.0,
+          "mean_pct": -8.450650307614413,
+          "min_pct": -52.480504578524624,
+          "max_pct": 10.00121613315672
+        },
+        "dense_frames": {
+          "improved": 3,
+          "same": 11,
+          "worse": 11,
+          "median_pct": 0.0,
+          "mean_pct": -2.3023989865838597,
+          "min_pct": -16.710875331564985,
+          "max_pct": 12.010796221322536
+        }
+      },
+      "no_solution_by_1s": 2,
+      "changed_path": 14
+    },
+    "41": {
+      "calls": 27,
+      "solved": 25,
+      "first_to_final": {
+        "calls": 25,
+        "planner_cost": {
+          "improved": 17,
+          "same": 8,
+          "worse": 0,
+          "median_pct": 0.7198890854497219,
+          "mean_pct": 16.38874564542086,
+          "min_pct": 0.0,
+          "max_pct": 60.42771427720025
+        },
+        "weighted_path_length": {
+          "improved": 8,
+          "same": 8,
+          "worse": 9,
+          "median_pct": 0.0,
+          "mean_pct": -5.9836429690787645,
+          "min_pct": -41.11885900537636,
+          "max_pct": 10.176027314036414
+        },
+        "joint_l1_travel": {
+          "improved": 10,
+          "same": 8,
+          "worse": 7,
+          "median_pct": 0.0,
+          "mean_pct": -7.939740006787211,
+          "min_pct": -50.64573007020523,
+          "max_pct": 7.729748026983109
+        },
+        "dense_frames": {
+          "improved": 6,
+          "same": 8,
+          "worse": 11,
+          "median_pct": 0.0,
+          "mean_pct": -4.473715470077992,
+          "min_pct": -46.864686468646866,
+          "max_pct": 9.265944645006016
+        }
+      },
+      "no_solution_by_1s": 2,
+      "changed_path": 17
+    }
+  },
+  "by_stage": {
+    "column0_lower_approach": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "weighted_path_length": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "joint_l1_travel": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "dense_frames": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        }
+      }
+    },
+    "column0_upper_approach": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 2.4882519706492063,
+          "mean_pct": 3.022232857943839,
+          "min_pct": 1.583427198415201,
+          "max_pct": 4.995019404767109
+        },
+        "weighted_path_length": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 2.4882637508402206,
+          "mean_pct": 3.0222329218764554,
+          "min_pct": 1.5834156100220365,
+          "max_pct": 4.995019404767109
+        },
+        "joint_l1_travel": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 1.985226607359588,
+          "mean_pct": 3.1054917359893195,
+          "min_pct": 0.8091607095287121,
+          "max_pct": 6.522087891079659
+        },
+        "dense_frames": {
+          "improved": 1,
+          "same": 0,
+          "worse": 2,
+          "median_pct": -0.967741935483871,
+          "mean_pct": -0.5342208568015019,
+          "min_pct": -1.5873015873015872,
+          "max_pct": 0.9523809523809524
+        }
+      }
+    },
+    "column3_到站后准备本列：右臂空载姿态规划": {
+      "calls": 1,
+      "solved": 0,
+      "no_solution": 1,
+      "no_solution_by_1s": 0,
+      "first_to_final": null
+    },
+    "column4_lower_approach": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 1,
+          "same": 2,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.1357442082163867,
+          "min_pct": 0.0,
+          "max_pct": 0.4072326246491601
+        },
+        "weighted_path_length": {
+          "improved": 1,
+          "same": 2,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.1357442082163867,
+          "min_pct": 0.0,
+          "max_pct": 0.4072326246491601
+        },
+        "joint_l1_travel": {
+          "improved": 1,
+          "same": 2,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.5377786475636367,
+          "min_pct": 0.0,
+          "max_pct": 1.6133359426909102
+        },
+        "dense_frames": {
+          "improved": 1,
+          "same": 2,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.11337868480725623,
+          "min_pct": 0.0,
+          "max_pct": 0.3401360544217687
+        }
+      }
+    },
+    "column4_upper_approach": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 8.698922948161796,
+          "mean_pct": 7.659653242693664,
+          "min_pct": 4.104018204255744,
+          "max_pct": 10.176018575663452
+        },
+        "weighted_path_length": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 8.698933004010977,
+          "mean_pct": 7.659656250016937,
+          "min_pct": 4.104008432003419,
+          "max_pct": 10.176027314036414
+        },
+        "joint_l1_travel": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 7.729748026983109,
+          "mean_pct": 7.014636581189707,
+          "min_pct": 2.7120822780317706,
+          "max_pct": 10.602079438554242
+        },
+        "dense_frames": {
+          "improved": 3,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 8.010335917312661,
+          "mean_pct": 7.802957927911091,
+          "min_pct": 6.8493150684931505,
+          "max_pct": 8.549222797927461
+        }
+      }
+    },
+    "column4_到站后准备本列：左臂空载姿态规划": {
+      "calls": 3,
+      "solved": 0,
+      "no_solution": 3,
+      "no_solution_by_1s": 0,
+      "first_to_final": null
+    },
+    "column4_移动前安全收拢：右臂空载姿态规划": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "weighted_path_length": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "joint_l1_travel": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "dense_frames": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        }
+      }
+    },
+    "column4_移动前安全收拢：左臂空载姿态规划": {
+      "calls": 3,
+      "solved": 3,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 3,
+        "planner_cost": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "weighted_path_length": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "joint_l1_travel": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        },
+        "dense_frames": {
+          "improved": 0,
+          "same": 3,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.0,
+          "min_pct": 0.0,
+          "max_pct": 0.0
+        }
+      }
+    },
+    "left_park": {
+      "calls": 9,
+      "solved": 9,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 9,
+        "planner_cost": {
+          "improved": 1,
+          "same": 8,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.26274433130782326,
+          "min_pct": 0.0,
+          "max_pct": 2.3646989817704096
+        },
+        "weighted_path_length": {
+          "improved": 1,
+          "same": 8,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.2627434620362067,
+          "min_pct": 0.0,
+          "max_pct": 2.36469115832586
+        },
+        "joint_l1_travel": {
+          "improved": 1,
+          "same": 8,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.22566006376658254,
+          "min_pct": 0.0,
+          "max_pct": 2.030940573899243
+        },
+        "dense_frames": {
+          "improved": 1,
+          "same": 8,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.16784155756965424,
+          "min_pct": 0.0,
+          "max_pct": 1.5105740181268883
+        }
+      }
+    },
+    "left_place": {
+      "calls": 16,
+      "solved": 15,
+      "no_solution": 1,
+      "no_solution_by_1s": 6,
+      "first_to_final": {
+        "calls": 15,
+        "planner_cost": {
+          "improved": 15,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 38.6158242115696,
+          "mean_pct": 34.390450755969766,
+          "min_pct": 0.46765265871427625,
+          "max_pct": 51.790136449465464
+        },
+        "weighted_path_length": {
+          "improved": 3,
+          "same": 0,
+          "worse": 12,
+          "median_pct": -4.413884093751365,
+          "mean_pct": -7.363815520604108,
+          "min_pct": -34.47666985875961,
+          "max_pct": 29.866458733909006
+        },
+        "joint_l1_travel": {
+          "improved": 6,
+          "same": 0,
+          "worse": 9,
+          "median_pct": -3.2756596201456696,
+          "mean_pct": -10.061108830993412,
+          "min_pct": -50.64573007020523,
+          "max_pct": 32.361667466562054
+        },
+        "dense_frames": {
+          "improved": 3,
+          "same": 0,
+          "worse": 12,
+          "median_pct": -7.211538461538461,
+          "mean_pct": -5.1719607107120975,
+          "min_pct": -23.49206349206349,
+          "max_pct": 24.778761061946902
+        }
+      }
+    },
+    "left_precontact": {
+      "calls": 9,
+      "solved": 9,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 9,
+        "planner_cost": {
+          "improved": 4,
+          "same": 5,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 1.1013059115057058,
+          "min_pct": 0.0,
+          "max_pct": 3.233997523178428
+        },
+        "weighted_path_length": {
+          "improved": 4,
+          "same": 5,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 1.1013065571439142,
+          "min_pct": 0.0,
+          "max_pct": 3.233997347219493
+        },
+        "joint_l1_travel": {
+          "improved": 4,
+          "same": 5,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 2.3212610930827617,
+          "min_pct": 0.0,
+          "max_pct": 7.318793116304942
+        },
+        "dense_frames": {
+          "improved": 0,
+          "same": 7,
+          "worse": 2,
+          "median_pct": 0.0,
+          "mean_pct": -1.2529485647765217,
+          "min_pct": -7.6923076923076925,
+          "max_pct": 0.0
+        }
+      }
+    },
+    "right_place": {
+      "calls": 15,
+      "solved": 15,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 15,
+        "planner_cost": {
+          "improved": 15,
+          "same": 0,
+          "worse": 0,
+          "median_pct": 38.59263196872516,
+          "mean_pct": 40.84338239139082,
+          "min_pct": 11.582265156238613,
+          "max_pct": 60.42771427720025
+        },
+        "weighted_path_length": {
+          "improved": 1,
+          "same": 0,
+          "worse": 14,
+          "median_pct": -16.933927534845996,
+          "mean_pct": -20.185629709475684,
+          "min_pct": -41.11885900537636,
+          "max_pct": 4.211685816568441
+        },
+        "joint_l1_travel": {
+          "improved": 0,
+          "same": 0,
+          "worse": 15,
+          "median_pct": -27.045613266838924,
+          "mean_pct": -28.37318748046518,
+          "min_pct": -54.02326358321742,
+          "max_pct": -2.2149242045281543
+        },
+        "dense_frames": {
+          "improved": 1,
+          "same": 0,
+          "worse": 14,
+          "median_pct": -7.446808510638298,
+          "mean_pct": -9.973139918699298,
+          "min_pct": -46.864686468646866,
+          "max_pct": 9.722222222222223
+        }
+      }
+    },
+    "right_precontact": {
+      "calls": 9,
+      "solved": 9,
+      "no_solution": 0,
+      "no_solution_by_1s": 0,
+      "first_to_final": {
+        "calls": 9,
+        "planner_cost": {
+          "improved": 3,
+          "same": 6,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.2399630284832406,
+          "min_pct": 0.0,
+          "max_pct": 0.7198890854497219
+        },
+        "weighted_path_length": {
+          "improved": 3,
+          "same": 6,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.2399666933837917,
+          "min_pct": 0.0,
+          "max_pct": 0.7199000801513751
+        },
+        "joint_l1_travel": {
+          "improved": 3,
+          "same": 6,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.2988425126611418,
+          "min_pct": 0.0,
+          "max_pct": 0.8965275379834254
+        },
+        "dense_frames": {
+          "improved": 3,
+          "same": 6,
+          "worse": 0,
+          "median_pct": 0.0,
+          "mean_pct": 0.18726591760299627,
+          "min_pct": 0.0,
+          "max_pct": 0.5617977528089888
+        }
+      }
+    }
+  },
+  "calls_without_solution": [
+    {
+      "seed": 11,
+      "stage": "column4_到站后准备本列：左臂空载姿态规划",
+      "context": "compose"
+    },
+    {
+      "seed": 29,
+      "stage": "column3_到站后准备本列：右臂空载姿态规划",
+      "context": "compose"
+    },
+    {
+      "seed": 29,
+      "stage": "column4_到站后准备本列：左臂空载姿态规划",
+      "context": "compose"
+    },
+    {
+      "seed": 41,
+      "stage": "left_place",
+      "context": "column1_inner"
+    },
+    {
+      "seed": 41,
+      "stage": "column4_到站后准备本列：左臂空载姿态规划",
+      "context": "compose"
+    }
+  ],
+  "calls_first_solution_after_1s": [
+    {
+      "seed": 11,
+      "stage": "left_place",
+      "found_ms": 1749.8802760001126
+    },
+    {
+      "seed": 11,
+      "stage": "left_place",
+      "found_ms": 1596.0823789991991
+    },
+    {
+      "seed": 29,
+      "stage": "left_place",
+      "found_ms": 1674.9578420003672
+    },
+    {
+      "seed": 29,
+      "stage": "left_place",
+      "found_ms": 1825.7176549996075
+    },
+    {
+      "seed": 41,
+      "stage": "left_place",
+      "found_ms": 1914.5644559994253
+    },
+    {
+      "seed": 41,
+      "stage": "left_place",
+      "found_ms": 1989.0526660001342
+    }
+  ]
+}

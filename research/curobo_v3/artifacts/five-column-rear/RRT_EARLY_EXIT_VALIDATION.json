@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-12",
+  "algorithm": "RRTConnect exits at first dense-certified path; otherwise searches until 2-second limit",
+  "passed": true,
+  "runs": [
+    {
+      "seed": 11,
+      "passed": true,
+      "frames": 13746,
+      "planning_total_s": 119.62143775900404,
+      "transition_s": 7.5768369659999735,
+      "component_s": 112.04460079300407,
+      "compressed_result": "artifacts/five-column-rear/five-column-rear-early-exit-s11.json.gz",
+      "sha256": "d142140a44809a3a86016b731b783813d42357f85b8096fd0474856d31e5ca53"
+    },
+    {
+      "seed": 29,
+      "passed": true,
+      "frames": 13680,
+      "planning_total_s": 119.93546550199972,
+      "transition_s": 7.597801715000969,
+      "component_s": 112.33766378699875,
+      "compressed_result": "artifacts/five-column-rear/five-column-rear-early-exit-s29.json.gz",
+      "sha256": "c1987a6b2cc894b3fb8f1423207c175322ad50dc5a057ee927638f6ada9afe6d"
+    },
+    {
+      "seed": 41,
+      "passed": true,
+      "frames": 13747,
+      "planning_total_s": 121.00716348800415,
+      "transition_s": 7.651407263001602,
+      "component_s": 113.35575622500255,
+      "compressed_result": "artifacts/five-column-rear/five-column-rear-early-exit-s41.json.gz",
+      "sha256": "2081336943b6f2c0fa550f8a18b50500df7c329b958ccdebafc5782823d21440"
+    }
+  ],
+  "comparison": {
+    "previous_seed11_total_s": 164.594,
+    "current_seed11_total_s": 119.62143775900404,
+    "reduction_pct": 27.323330279959144
+  },
+  "rrt_profile": {
+    "component_rrt_calls": 69,
+    "all_solved": true,
+    "median_certified_ms": 148.25200099949143,
+    "mean_certified_ms": 329.0395551156889,
+    "calls_after_1s": 6,
+    "maximum_certified_ms": 2059.198988001299
+  }
+}

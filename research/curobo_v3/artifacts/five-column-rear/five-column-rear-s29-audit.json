@@ -1,7 +1,7 @@
 {
   "passed": true,
   "errors": [],
-  "frames_checked": 14820,
+  "frames_checked": 13680,
   "lifecycle_events": 20,
   "bridge_projection_y_m": [
     -1.0121421217918396,
@@ -12,7 +12,7 @@
     0.5
   ],
   "max_base_step_m": 0.010000000000000009,
-  "max_joint_step_deg": 0.499824642482616,
+  "max_joint_step_deg": 0.49999999371014214,
   "order": [
     2,
     1,

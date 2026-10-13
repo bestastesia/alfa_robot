@@ -529,6 +529,48 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     accepted_total = 0
     started = time.perf_counter()
 
+    checked_connections = set()
+    fine_checked = 0
+
+    def certify(connections):
+        nonlocal fine_checked
+        for connection in sorted(connections, key=lambda item: item["cost"]):
+            key = (connection["start_node"], connection["goal_node"], connection["goal"])
+            if key in checked_connections:
+                continue
+            checked_connections.add(key)
+            left_indices, current = [], connection["start_node"]
+            while current >= 0:
+                left_indices.append(current)
+                current = start_parents[current]
+            left_indices.reverse()
+            right_indices, current = [], connection["goal_node"]
+            while current >= 0:
+                right_indices.append(current)
+                current = goal_parents[current]
+            path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
+            dense_path = densify(path.detach().cpu().numpy(), weights.detach().cpu().tolist())
+            fine_checked += 1
+            if bool(validity.mask(torch.tensor(
+                    dense_path, device="cuda", dtype=torch.float32)).all().item()):
+                return path, connection
+        return None, None
+
+    def success_stats(path, connection, certified_solution_ms):
+        elapsed_ms = (time.perf_counter()-started)*1000.0
+        return path.detach().cpu().numpy(), {
+            "informed_sampling": informed_sampling, "iterations": iterations,
+            "start_nodes": len(start_tree), "goal_nodes": len(goal_tree),
+            "tree_nodes": len(start_tree)+len(goal_tree),
+            "accepted_nodes": accepted_total, "goal_count": len(goals),
+            "selected_goal": connection["goal"], "first_solution_ms": first_solution_ms,
+            "certified_solution_ms": certified_solution_ms, "search_ms": elapsed_ms,
+            "solutions_found": solutions_found, "best_weighted_length": connection["cost"],
+            "raw_waypoints": len(path), "shortcut_applied": False,
+            "fine_candidates_checked": fine_checked,
+            "early_exit_on_first_certified": True,
+        }
+
     def nearest(tree, samples):
         best_values, best_indices = [], []
         for offset in range(0, len(tree), 4096):
@@ -638,50 +680,27 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             best_connections = sorted(best_connections, key=lambda item: item["cost"])[:64]
             solutions_found += len(valid_local)
             if first_solution_ms is None:
-                first_solution_ms = (time.perf_counter() - started) * 1000.0
+                first_solution_ms = (time.perf_counter()-started)*1000.0
+            selected_path, selected = certify(best_connections)
+            if selected_path is not None:
+                iterations += 1
+                return success_stats(selected_path, selected,
+                                     (time.perf_counter()-started)*1000.0)
         iterations += 1
-    selected_path = None
-    selected = None
-    checked = 0
-    for connection in best_connections:
-        left_indices = []
-        current = connection["start_node"]
-        while current >= 0:
-            left_indices.append(current)
-            current = start_parents[current]
-        left_indices.reverse()
-        right_indices = []
-        current = connection["goal_node"]
-        while current >= 0:
-            right_indices.append(current)
-            current = goal_parents[current]
-        path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
-        dense_path = densify(path.detach().cpu().numpy(), weights.detach().cpu().tolist())
-        checked += 1
-        if bool(validity.mask(torch.tensor(dense_path, device="cuda", dtype=torch.float32)).all().item()):
-            selected_path = path
-            selected = connection
-            break
-    elapsed_ms = (time.perf_counter() - started) * 1000.0
-    if selected_path is None:
-        return None, {
-            "informed_sampling": informed_sampling,
-            "iterations": iterations, "start_nodes": len(start_tree),
-            "goal_nodes": len(goal_tree), "accepted_nodes": accepted_total,
-            "goal_count": len(goals), "selected_goal": None,
-            "first_solution_ms": first_solution_ms, "search_ms": elapsed_ms,
-            "solutions_found": solutions_found, "fine_candidates_checked": checked,
-        }
-    return selected_path.detach().cpu().numpy(), {
+    selected_path, selected = certify(best_connections)
+    if selected_path is not None:
+        return success_stats(selected_path, selected,
+                             (time.perf_counter()-started)*1000.0)
+    elapsed_ms = (time.perf_counter()-started)*1000.0
+    return None, {
         "informed_sampling": informed_sampling,
         "iterations": iterations, "start_nodes": len(start_tree),
-        "goal_nodes": len(goal_tree), "tree_nodes": len(start_tree) + len(goal_tree),
-        "accepted_nodes": accepted_total, "goal_count": len(goals),
-        "selected_goal": selected["goal"], "first_solution_ms": first_solution_ms,
+        "goal_nodes": len(goal_tree), "accepted_nodes": accepted_total,
+        "goal_count": len(goals), "selected_goal": None,
+        "first_solution_ms": first_solution_ms, "certified_solution_ms": None,
         "search_ms": elapsed_ms, "solutions_found": solutions_found,
-        "best_weighted_length": selected["cost"],
-        "raw_waypoints": len(selected_path), "shortcut_applied": False,
-        "fine_candidates_checked": checked,
+        "fine_candidates_checked": fine_checked,
+        "early_exit_on_first_certified": True,
     }
 
 
