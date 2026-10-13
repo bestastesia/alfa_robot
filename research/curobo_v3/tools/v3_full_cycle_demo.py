@@ -369,14 +369,15 @@ def main():
         velocity_arrows.points = points
         velocity_arrows.visible = show_velocity.value
 
-    def show_frame(index):
+    def show_frame(index, playback_values=None):
         result = current["result"]
         if result is None or not result["frames"]:
             values = {**planner.home, "base_x": 0., "base_y": 0., "base_yaw": 0.}
             phase = "home"
             has_payload = False
         else:
-            values = dict(zip(result["joint_names"], result["frames"][index]))
+            row = result["frames"][index] if playback_values is None else playback_values
+            values = dict(zip(result["joint_names"], row))
             phase = result["phases"][index]
             has_payload = result["payload"][index]
         cfg = np.array([values.get(name, 0.) for name in urdf.actuated_joint_names])
@@ -644,8 +645,22 @@ def main():
                 if target_time >= times[-1]:
                     index = len(times)-1
                     play.value = False
+                playback_values = None
+                next_index = min(index + 1, len(times) - 1)
+                same_state = (next_index > index and times[next_index] > times[index] and
+                              result["phases"][next_index] == result["phases"][index] and
+                              result["payload"][next_index] == result["payload"][index] and
+                              (not result.get("frame_rounds") or
+                               result["frame_rounds"][next_index] == result["frame_rounds"][index]))
+                if same_state:
+                    alpha = (target_time - times[index]) / (times[next_index] - times[index])
+                    alpha = float(np.clip(alpha, 0., 1.))
+                    playback_values = ((1-alpha)*np.asarray(result["frames"][index]) +
+                                       alpha*np.asarray(result["frames"][next_index]))
                 current["driving_playback"] = True
                 frame.value = index+1
+                if playback_values is not None:
+                    show_frame(index, playback_values)
                 current["driving_playback"] = False
             elif int(frame.value) >= len(result["frames"]):
                 play.value = False
@@ -653,7 +668,7 @@ def main():
                 current["driving_playback"] = True
                 frame.value = min(frame.max, int(frame.value)+int(playback_step.value))
                 current["driving_playback"] = False
-        time.sleep(.03)
+        time.sleep(.016)
 
 
 if __name__ == "__main__":
