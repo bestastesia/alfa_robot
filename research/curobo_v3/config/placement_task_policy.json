@@ -1,17 +1,34 @@
 {
   "side": {
     "position": {
-      "x": 0.55,
+      "x": 0.4439339828220179,
       "y_left": 0.425,
       "y_right": -0.425,
-      "z": 1.4
+      "z": 1.0939339828220178
     },
     "quaternion_wxyz": [
-      0,
-      0,
-      0,
-      1
-    ]
+      0.0,
+      0.3826834323650898,
+      0.0,
+      0.9238795325112867
+    ],
+    "box_center_height_m": 1.2,
+    "box_world_y_rotation_deg": 45.0,
+    "placement_updown_grid_m": [
+      -0.2,
+      -0.18,
+      -0.16,
+      -0.14,
+      -0.12,
+      -0.1,
+      -0.08,
+      -0.06,
+      -0.04,
+      -0.02,
+      0.0
+    ],
+    "placement_radius_m": 1.05,
+    "atlas_path": "generated/selected_placement_20261013/all_solutions.npz"
   },
   "top": {
     "position": {

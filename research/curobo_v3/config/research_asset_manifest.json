@@ -3,7 +3,7 @@
   "assets": [
     {
       "path": "config/placement_task_policy.json",
-      "sha256": "455a92bc6128595f56a9776b6e1f552467dea7e45bf9ae56c2cca90d08172d99"
+      "sha256": "db825564b9f93b6138a32fffa455bb37600bad2c2ace2a0bdfdf00133bec9a8c"
     },
     {
       "path": "config/base_link_collision_frozen.json",
@@ -18,12 +18,47 @@
       "sha256": "16af23bf2167238dd185aebe6dd70ad193fb6e60c165fd834b2d663724b34042"
     },
     {
-      "path": "generated/side_upward_placement/atlas/side.npz",
-      "sha256": "beff1c2924f562b45f6a483424b2bb619a3dde2bd6fad8ecbe860c5a1bf73ed2"
+      "path": "generated/selected_placement_20261013/all_solutions.npz",
+      "sha256": "60625ada1ffb6e766dc946921185da536c650ee123db1d796ac4881d4d33fbc9"
     },
     {
       "path": "models/robot_description_analytic_071cb95/config/named_poses_analytic_proxy.yaml",
       "sha256": "7ec8116e7742d2847b86481a470fa6abb434d44863636f28ca4df1e1c5f5672c"
+    },
+    {
+      "path": "config/arm_carriage_collision_frozen.json",
+      "sha256": "61f9967bd7ab4397b07a2c3f19f1d1fbb49117e90b3da42d31ebddb39c2df803"
     }
-  ]
+  ],
+  "side_placement_contract": {
+    "position": {
+      "x": 0.4439339828220179,
+      "y_left": 0.425,
+      "y_right": -0.425,
+      "z": 1.0939339828220178
+    },
+    "quaternion_wxyz": [
+      0.0,
+      0.3826834323650898,
+      0.0,
+      0.9238795325112867
+    ],
+    "box_center_height_m": 1.2,
+    "box_world_y_rotation_deg": 45.0,
+    "placement_updown_grid_m": [
+      -0.2,
+      -0.18,
+      -0.16,
+      -0.14,
+      -0.12,
+      -0.1,
+      -0.08,
+      -0.06,
+      -0.04,
+      -0.02,
+      0.0
+    ],
+    "placement_radius_m": 1.05,
+    "atlas_path": "generated/selected_placement_20261013/all_solutions.npz"
+  }
 }

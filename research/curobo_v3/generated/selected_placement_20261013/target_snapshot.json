@@ -1,0 +1,41 @@
+{
+  "method": "cuRobo numerical dual-tool IK, Updown free",
+  "box_center_z_m": 1.2,
+  "box_pitch_y_deg": 45.0,
+  "ik_success": 18,
+  "collision_pass": 18,
+  "legal_unique": 16,
+  "radius_m": 1.05,
+  "setup_ms": 0.22915098816156387,
+  "ik_ms": 38.16608298802748,
+  "filter_ms": 4.332494980189949,
+  "total_ms": 42.727728956378996,
+  "targets": {
+    "left_tool0": {
+      "position": [
+        0.4439339828220179,
+        0.425,
+        1.0939339828220178
+      ],
+      "quaternion": [
+        0.0,
+        0.3826834323650898,
+        0.0,
+        0.9238795325112867
+      ]
+    },
+    "right_tool0": {
+      "position": [
+        0.4439339828220179,
+        -0.425,
+        1.0939339828220178
+      ],
+      "quaternion": [
+        0.0,
+        0.3826834323650898,
+        0.0,
+        0.9238795325112867
+      ]
+    }
+  }
+}

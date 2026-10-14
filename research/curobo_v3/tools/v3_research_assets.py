@@ -14,8 +14,9 @@ CUBOID_PATH = ROOT / 'generated/endpoint_optimizer_compare/base_cuboids_20261009
 
 
 def atlas_path(planner):
-    return ROOT / ('generated/placement_analytic_atlas/top.npz' if planner.top_grasp else
-                   'generated/side_upward_placement/atlas/side.npz')
+    policy = json.loads((ROOT / 'config/placement_task_policy.json').read_text())
+    mode = 'top' if planner.top_grasp else 'side'
+    return ROOT / policy[mode].get('atlas_path', 'generated/placement_analytic_atlas/top.npz')
 
 
 def file_hash(path):
@@ -37,9 +38,17 @@ def validate_atlas(planner):
     if getattr(planner, '_validated_atlas', None) == identity:
         return
     checker = planner.checker(planner.selected_task)
-    rows = np.load(path, allow_pickle=False)['joints']
+    atlas = np.load(path, allow_pickle=False)
+    rows = atlas['joints']
     if rows.ndim != 2 or rows.shape[1] != 15 or len(rows) == 0 or not np.isfinite(rows).all():
         raise ValueError('invalid placement atlas')
+    if not planner.top_grasp:
+        policy = json.loads((ROOT / 'config/placement_task_policy.json').read_text())['side']
+        grid = np.asarray(policy['placement_updown_grid_m'])
+        if np.max(np.min(np.abs(rows[:, :1] - grid[None]), axis=1)) > 1e-5:
+            raise ValueError('side placement atlas/updown grid mismatch')
+        if 'radius' not in atlas or not np.isfinite(atlas['radius']).all() or np.max(atlas['radius']) > policy['placement_radius_m'] + 1e-5:
+            raise ValueError('side placement atlas/envelope mismatch')
     maximum_position = 0.0
     maximum_angle = 0.0
     for offset in range(0, len(rows), 1024):

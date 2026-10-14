@@ -16,8 +16,10 @@ class ResearchContractTest(unittest.TestCase):
 
     def test_placement_and_base_geometry_contracts(self):
         policy = json.loads((ROOT / 'config/placement_task_policy.json').read_text())
-        self.assertEqual(policy['side']['position'], {'x': .55, 'y_left': .425, 'y_right': -.425, 'z': 1.4})
-        self.assertEqual(policy['side']['quaternion_wxyz'], [0, 0, 0, 1])
+        self.assertEqual(policy['side']['box_center_height_m'], 1.2)
+        self.assertEqual(policy['side']['box_world_y_rotation_deg'], 45)
+        self.assertAlmostEqual(policy['side']['position']['z'], 1.0939339828220178)
+        self.assertEqual(policy['side']['placement_radius_m'], 1.05)
         self.assertEqual(policy['top']['position']['z'], 1)
         self.assertFalse(policy['turn_collision_check'])
         balls = json.loads((ROOT / 'config/base_link_collision_frozen.json').read_text())
