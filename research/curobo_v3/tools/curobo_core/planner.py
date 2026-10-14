@@ -347,6 +347,14 @@ class FullCyclePlanner(CuroboBackend):
         append(transport["frames"][transport["transport_frames"]:], "turn_loaded", True)
         report["transport_timing_ms"] = transport["total_ms"]
         report["transport_search_stats"] = transport["rrt_stats"]
+        if hasattr(self, 'conveyor_suffix'):
+            self.conveyor_suffix(boxes, report, append, progress)
+            rows = np.asarray(report['frames'])
+            report['final_home_error'] = float(np.max(np.abs(rows[-1, [mobile_names.index(name) for name in ACTIVE_JOINTS]] - self.home_values)))
+            report['max_adjacent_joint_step_deg'] = float(np.degrees(np.abs(np.diff(rows[:, [mobile_names.index(name) for name in ACTIVE_JOINTS[1:]]], axis=0)).max()))
+            report['total_ms'] = (time.perf_counter() - started) * 1000
+            report['success'] = True
+            return report
         append([report["frames"][-1]], "release", False)
         progress("检查箱体释放后原地转回")
         segment_started = time.perf_counter()

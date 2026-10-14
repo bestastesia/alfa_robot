@@ -1,0 +1,140 @@
+[
+  {
+    "task": {
+      "left": 18,
+      "right": 16
+    },
+    "total_ms": 14363.455981947482,
+    "home_error": 6.379677630619085e-08,
+    "goal_ik": {
+      "returned": 64,
+      "solver_success": 54,
+      "collision_valid": 54,
+      "mode": "cuRobo numerical IK, updown plus 14 arm joints"
+    },
+    "place_rrt": {
+      "informed_sampling": true,
+      "stop_at_first_valid": true,
+      "iterations": 1,
+      "start_nodes": 558,
+      "goal_nodes": 54,
+      "tree_nodes": 612,
+      "accepted_nodes": 557,
+      "goal_count": 54,
+      "selected_goal": 0,
+      "first_solution_ms": 37.683209986425936,
+      "first_verified_solution_ms": 41.28198197577149,
+      "search_ms": 41.283169004600495,
+      "solutions_found": 253,
+      "best_weighted_length": 2.9272258281707764,
+      "raw_waypoints": 3,
+      "shortcut_applied": false,
+      "fine_candidates_checked": 1,
+      "fine_rejections": 0
+    },
+    "home_rrt": {
+      "informed_sampling": true,
+      "stop_at_first_valid": true,
+      "iterations": 1,
+      "start_nodes": 1022,
+      "goal_nodes": 1,
+      "tree_nodes": 1023,
+      "accepted_nodes": 1021,
+      "goal_count": 1,
+      "selected_goal": 0,
+      "first_solution_ms": 24.88507202360779,
+      "first_verified_solution_ms": 27.46274700621143,
+      "search_ms": 27.463934035040438,
+      "solutions_found": 256,
+      "best_weighted_length": 2.2171711921691895,
+      "raw_waypoints": 3,
+      "shortcut_applied": false,
+      "fine_candidates_checked": 1,
+      "fine_rejections": 0
+    },
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.00011860639159253295,
+          "orientation_deg": 9.000276595965082e-06
+        },
+        "right": {
+          "position_mm": 7.713302421408258e-05,
+          "orientation_deg": 5.526596306605432e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true
+    }
+  },
+  {
+    "task": {
+      "left": 4,
+      "right": 2
+    },
+    "total_ms": 8092.053283005953,
+    "home_error": 6.379677630619085e-08,
+    "goal_ik": {
+      "returned": 64,
+      "solver_success": 64,
+      "collision_valid": 64,
+      "mode": "cuRobo numerical IK, updown plus 14 arm joints"
+    },
+    "place_rrt": {
+      "informed_sampling": true,
+      "stop_at_first_valid": true,
+      "iterations": 11,
+      "start_nodes": 972,
+      "goal_nodes": 2288,
+      "tree_nodes": 3260,
+      "accepted_nodes": 3195,
+      "goal_count": 64,
+      "selected_goal": 0,
+      "first_solution_ms": 452.301821031142,
+      "first_verified_solution_ms": 455.27249900624156,
+      "search_ms": 455.2736870246008,
+      "solutions_found": 6,
+      "best_weighted_length": 7.153027534484863,
+      "raw_waypoints": 12,
+      "shortcut_applied": false,
+      "fine_candidates_checked": 1,
+      "fine_rejections": 0
+    },
+    "home_rrt": {
+      "informed_sampling": true,
+      "stop_at_first_valid": true,
+      "iterations": 6,
+      "start_nodes": 2882,
+      "goal_nodes": 1524,
+      "tree_nodes": 4406,
+      "accepted_nodes": 4404,
+      "goal_count": 1,
+      "selected_goal": 0,
+      "first_solution_ms": 165.27634300291538,
+      "first_verified_solution_ms": 167.90626000147313,
+      "search_ms": 167.90744697209448,
+      "solutions_found": 1,
+      "best_weighted_length": 6.045037269592285,
+      "raw_waypoints": 8,
+      "shortcut_applied": false,
+      "fine_candidates_checked": 1,
+      "fine_rejections": 0
+    },
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.0002097207921929346,
+          "orientation_deg": 2.7966644604351827e-06
+        },
+        "right": {
+          "position_mm": 0.0002374571718161984,
+          "orientation_deg": 3.0673309170547176e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true
+    }
+  }
+]

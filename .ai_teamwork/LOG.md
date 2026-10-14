@@ -2175,3 +2175,9 @@
 - 工程处理：取消源root硬编码/import时chdir及prepare_roots全局替换，改显式方法。缓存身份加入场景/模型/目标/atlas/cuboid/payload/grid；两atlas逐行FK匹配当前Pose。失败空数组/旧选择清理、任务切换与按钮busy恢复完成。71底盘球逐字段合并，ROS Home/本地URDF不覆盖，研究代理Home改左右J2=-90/+90。
 - 验证：31项CPU、1项多根GPU通过；L24/R20侧吸与L9/R1顶吸完整周期与移动URDF独立FK通过，Home误差6.38e-8。8140实时中列L22/R17成功7.659s/2204帧；页面切顶吸成功4.667s，重复热态1.404s；负向目标/atlas拒绝、缓存身份和失败空帧恢复通过。摘要generated/research_sync/validation.json，不把源60/60外推目标94/94。
 - 留给下个AI：RESEARCH_SYNC.md给出完整算法/命令/合同；实时入口8140用户级临时服务alfa-curobo-sync-8140，不预载结果且后台持续；源8137保留。4内部cuboid不是STL，40箱球内接、3cm排除目标/抽离负载延后、两段转身碰撞跳过均是现有研究边界。Home末端多转圈未解决，非生产并发接口/时间参数化/真机安全验收。Linear由专门工程师跟踪，本次不批量补评论。
+
+## 2026-10-14 运控 / 三PR交付当前龙头车场景
+- 模型合同PR #59已合并alfa_v3_curobo：20升降架球、新侧吸箱心1.2/Y45及2816解全集，顶吸保持。外观PR robot_motion_control #177已合并main@479ce2a：alfa-motion-viser只读包和55项冻结资源，fast38/38、4项资源合同、wheel内容验证通过。
+- 算法集成切片交付ConveyorCyclePlanner、固定龙头车碰撞与释放目标、目标IK+RRT放箱、释放后直接RRT回Home、导航到位瞬移、失败边诊断、30°/s播放器及固定前端内容身份。默认不再依赖本机其他研究或3DAssets目录。
+- 最终两例GPU回归：side L18/R16成功14.363s，top L4/R2成功8.092s；FK释放目标/箱体移除/冻结底盘/阶段顺序审计通过。34项CPU通过，全部研究工具语法通过。未宣称94任务全成功、物理落稳或真机验收。
+- 正式接手入口research/curobo_v3/CONVEYOR_DELIVERY.md，依赖锁config/visualization_dependency.json、验收摘要evidence/conveyor_delivery_validation.json。其他AI的动态任务/歪斜实验和本地模型路径迁移保持未提交，不混入本轮PR；运行轨迹和缓存本机保留。

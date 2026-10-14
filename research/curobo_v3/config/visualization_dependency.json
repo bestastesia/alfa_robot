@@ -1,0 +1,10 @@
+{
+  "repository": "http://192.168.100.141:3000/SevenovaHangzhou/robot_motion_control.git",
+  "commit": "479ce2a12db558816d8d7e88434f55dbb1904005",
+  "subdirectory": "observability/viser",
+  "package": "alfa-motion-viser",
+  "version": "0.1.0",
+  "assets_manifest_sha256": "d5e0379bac5b884b27d53f1afbf8082231230f81538b8b57129638e41d817300",
+  "renderer_sha256": "91e77090fa42be7763dfaf0d837898a7854b35cccb26d3f1fffc7ea035ca7267",
+  "wheel_sha256": "7e28ac0a73491c12b4c279042c60ee9db2b826b77c67e13b25af40e29bf4b243"
+}

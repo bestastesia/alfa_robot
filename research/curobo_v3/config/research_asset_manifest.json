@@ -28,6 +28,10 @@
     {
       "path": "config/arm_carriage_collision_frozen.json",
       "sha256": "61f9967bd7ab4397b07a2c3f19f1d1fbb49117e90b3da42d31ebddb39c2df803"
+    },
+    {
+      "path": "models/conveyor/roller_conveyor_collision_solid_v2.stl",
+      "sha256": "8f28285919bc951c974b16b6d70977299b3c30fbfa3809f9d77c6f38479ecfa0"
     }
   ],
   "side_placement_contract": {

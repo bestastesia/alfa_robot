@@ -132,7 +132,10 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
                 torch.cuda.synchronize();detail_times['empty_turn_setup_validate']+=(time.perf_counter()-sub_started)*1000
                 home_start=np.array([turn[-1,names.index(name)] for name in ACTIVE_JOINTS])
                 sub_started=time.perf_counter()
-                home_path,home_stats=self.joint_plan(home_start,self.home_values,empty,empty_validity,20261004)
+                if hasattr(self, 'conveyor_suffix'):
+                    home_path,home_stats=np.asarray([home_start]),{'deferred_to_conveyor_suffix':True}
+                else:
+                    home_path,home_stats=self.joint_plan(home_start,self.home_values,empty,empty_validity,20261004)
                 torch.cuda.synchronize();detail_times['home_plan_validate']+=(time.perf_counter()-sub_started)*1000
                 if home_path is None:
                     active_goals.remove(goal_index);attempt['rejected']='回Home';attempts.append(attempt);validation_total+=(time.perf_counter()-segment)*1000;continue
