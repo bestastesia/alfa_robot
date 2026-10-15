@@ -17,6 +17,87 @@ PHASE_NAMES = {
 
 
 
+MOVEMENT_PHASES = ("approach", "extract", "transport", "turn_loaded", "turn_empty", "return_home")
+
+
+def stage_timing_statistics(result, phase, minimum_ms=10.0):
+    """Show one motion phase with non-overlapping totals and nested planning details."""
+    if phase not in MOVEMENT_PHASES:
+        return "请选择一个运动阶段。"
+    timing = result.get("timing_ms", {})
+    fixed = result.get("fixed_timing", {}).get(phase, {})
+    selected = next((attempt.get("approach", {}) for attempt in result.get("attempts", ())
+                     if attempt.get("candidate") == result.get("selected_candidate")), {})
+    search = {"approach": selected, "transport": result.get("transport_search_stats", {}),
+              "return_home": result.get("home_search_stats", {})}.get(phase, {})
+    if search.get("fallback"):
+        search = search.get("failed_search", {})
+    transport = result.get("transport_timing_breakdown_ms", {})
+    top_level = {
+        "approach": (("初始碰撞检查器初始化与初态检查", timing.get("initial_checker_setup_and_validation")),
+                     ("接触 IK 求解器初始化", timing.get("contact_solver_setup")),
+                     ("接触 IK 求解、合法性筛选与排序", timing.get("contact_ik_and_ranking")),
+                     ("全部候选的接近路径搜索与验收", timing.get("approach_rrt_and_validation"))),
+        "extract": (("载荷碰撞检查器初始化", timing.get("loaded_checker_setup")),
+                    ("全部候选的解析抽离生成与验收", timing.get("analytic_extract_and_validation"))),
+        "transport": (("搬运规划管线总耗时", timing.get("transport_pipeline_total")),),
+        "turn_loaded": (("搬运与携箱转身共享规划管线", timing.get("transport_pipeline_total")),),
+        "turn_empty": (("空载转回碰撞检查器初始化", timing.get("empty_turn_checker_setup")),
+                       ("空载转回逐帧验收", timing.get("empty_turn_validation"))),
+        "return_home": (("回 Home 搜索、优化与验收", timing.get("home_rrt_and_validation")),),
+    }[phase]
+    total = sum(value for _, value in top_level if value is not None)
+    if fixed.get("wall_ms") is not None:
+        total += fixed["wall_ms"]
+    nested = []
+    if phase == "approach":
+        nested.extend((f"候选 {attempt.get('candidate', '?')}：抽离与接近联合尝试",
+                       attempt.get("wall_ms")) for attempt in result.get("attempts", ()))
+    if phase in ("transport", "turn_loaded"):
+        labels = {"setup": "目标与碰撞求解准备", "target_ik": "放置目标 IK",
+                  "target_filter": "放置候选筛选", "rrt": "携箱 RRT 搜索",
+                  "frame_assembly": "TrajOpt、轨迹与转身帧组装",
+                  "mobile_checker_setup": "移动底盘/载荷检查器初始化",
+                  "transport_and_turn_validation": "搬运与携箱转身联合验收", "cleanup": "资源清理"}
+        nested.extend((labels[key], value) for key, value in transport.items())
+    if phase in ("approach", "transport", "return_home"):
+        nested.extend((("RRT 搜索（含首解后继续优化）", search.get("search_ms")),
+                       ("RRT shortcut", search.get("shortcut_ms"))))
+        optimization = search.get("trajectory_optimization", {})
+        nested.append(("cuRobo TrajOpt", optimization.get("wall_ms")))
+    rows = [(name, value, "计入阶段总计") for name, value in top_level]
+    if fixed.get("wall_ms") is not None:
+        rows.append(("时间参数化与节点/边门禁", fixed["wall_ms"], "计入阶段总计"))
+    rows.extend((name, value,
+                 "跨接近/抽离联合尝试，不重复相加" if name.startswith("候选 ")
+                 else "上项内部明细，不重复相加") for name, value in nested)
+    rows = [(name, value, scope) for name, value, scope in rows
+            if value is not None and value >= minimum_ms]
+    segment = next((item for item in result.get("timed_segments", ()) if item["name"] == phase), None)
+    motion = segment["time_from_start_s"][-1] if segment else None
+    frames = len(segment["positions"]) if segment else 0
+    trajectory_optimization = search.get("trajectory_optimization", {})
+    verdict = ("采纳" if trajectory_optimization.get("accepted") else
+               "回退 RRT" if trajectory_optimization else "固定路径时间化")
+    lines = [f"## {PHASE_NAMES[phase]}",
+             f"**运动时间：{'未记录' if motion is None else f'{motion:.3f} s'}** · "
+             f"**{'共享规划时间' if phase == 'turn_loaded' else '规划时间'}：{total/1000:.3f} s** · "
+             f"时间化帧：**{frames}**",
+             f"轨迹来源：**{verdict}**。规划总计只累加标记为“计入阶段总计”的行。",
+             "", "| 规划子阶段（仅显示 ≥10 ms） | 耗时 | 口径 |", "|---|---:|---|"]
+    lines.extend(f"| {name} | {value:.2f} ms | {scope} |" for name, value, scope in rows)
+    all_rows = ([(name, value) for name, value in top_level] +
+                ([('时间参数化与节点/边门禁', fixed.get('wall_ms'))]
+                 if fixed.get('wall_ms') is not None else []) + nested)
+    omitted = sum(value is not None and value < minimum_ms for _, value in all_rows)
+    if omitted:
+        lines.append(f"\n已按要求隐藏 **{omitted}** 项小于 {minimum_ms:.0f} ms 的记录。")
+    if trajectory_optimization.get("fallback_reason"):
+        lines.append(f"\nTrajOpt 回退原因：`{trajectory_optimization['fallback_reason']}`")
+    return "\n".join(lines)
+
+
+
 def planning_statistics(result):
     """Display recorded planning telemetry, never infer execution time from frames."""
     timing_labels = {
@@ -287,11 +368,37 @@ def main():
                 title="选中关节的时间轨迹（秒）", height=320, visible=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         comparison_status = server.gui.add_markdown("")
-        with server.gui.add_folder("中文阶段耗时与统计", expand_by_default=False):
+        with server.gui.add_folder("所选轮次 / 阶段耗时", expand_by_default=True):
+            timing_stage = server.gui.add_dropdown(
+                "耗时阶段", options=tuple(PHASE_NAMES[key] for key in MOVEMENT_PHASES),
+                initial_value=PHASE_NAMES["approach"])
+            stage_timing = server.gui.add_markdown("尚无规划记录。")
+        with server.gui.add_folder("整轮原始统计", expand_by_default=False):
             statistics = server.gui.add_markdown("尚无规划记录。")
     current = {"result": None, "busy": False, "statistics_result": None,
                "curve_binding": None, "driving_playback": False,
                "playback_result": None, "playback_start_wall": 0., "playback_start_time": 0.}
+
+    def refresh_stage_timing():
+        result = current["result"]
+        if not result:
+            stage_timing.content = "尚无规划记录。"
+            return
+        number = 0
+        cycle_result = result
+        if result.get("sequence"):
+            number = round_labels.index(round_selector.value)
+            cycle_result = result["rounds"][number].get("result")
+        if not cycle_result:
+            stage_timing.content = f"第 {number+1} 轮尚无结果。"
+            return
+        phase = next(key for key in MOVEMENT_PHASES if PHASE_NAMES[key] == timing_stage.value)
+        task_text = " / ".join(f"{side}:{box}" for side, box in
+                               (result["rounds"][number]["task"].items()
+                                if result.get("sequence") else planner.selected_task.items()))
+        stage_timing.content = (f"# 第 {number+1} 轮 · {task_text}\n\n" +
+                                stage_timing_statistics(cycle_result, phase))
+
 
     def refresh_sequence():
         whole_wall = mode.value == "整墙序列"
@@ -474,6 +581,10 @@ def main():
             if not current["driving_playback"]:
                 reset_playback_clock()
 
+    @timing_stage.on_update
+    def on_timing_stage(_event):
+        refresh_stage_timing()
+
     @stage.on_update
     def on_stage(_event):
         if not current["result"]:
@@ -500,6 +611,7 @@ def main():
         if number in result["frame_rounds"]:
             frame.value = result["frame_rounds"].index(number)+1
             stage.value = PHASE_NAMES["home"]
+            refresh_stage_timing()
         else:
             status.content = f"第{number+1}轮没有通过的轨迹；未跳过失败继续播放。"
 
@@ -514,6 +626,7 @@ def main():
         frame.value = 1
         provenance.content = "已保存结果回放。" if result else "尚未计算。"
         refresh_sequence()
+        refresh_stage_timing()
         show_frame(0)
 
     @spheres.on_update
@@ -630,6 +743,7 @@ def main():
         frame.max = max(1, len(preloaded_sequence["frames"]))
     refresh_comparison()
     refresh_sequence()
+    refresh_stage_timing()
     show_frame(0)
     print(f"Ready: http://localhost:{args.port}", flush=True)
     while True:
