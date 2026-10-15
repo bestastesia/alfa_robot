@@ -11,7 +11,7 @@ import viser
 from viser.extras import ViserUrdf
 import yourdfpy
 
-from v3_priority_contact_planner import PriorityContactPlanner as FullCyclePlanner
+from v3_persistent_collision_planner import PersistentCollisionPlanner as FullCyclePlanner
 from curobo_core.planner import CycleBlocked
 from v3_task_scene import row_obstacles, grasp_transform
 from v3_interactive_60_tasks import (
@@ -62,6 +62,7 @@ def main():
         comparisons.update(json.loads(path.read_text()))
     planner_labels = {"多抽离根＋多目标Connect": "informed_connect"}
     planner = FullCyclePlanner(args)
+    planner.warmup_resources()
     planner.selected_task={'left':22,'right':17}
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
     preload = saved_results[0] if saved_results else None

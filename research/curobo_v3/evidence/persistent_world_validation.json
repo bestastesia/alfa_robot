@@ -1,0 +1,264 @@
+{
+  "cases": [
+    {
+      "case": 0,
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 4.6485200291499496
+    },
+    {
+      "case": 1,
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 6.980496982578188
+    },
+    {
+      "case": 2,
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "payload": true,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 7.10042001446709
+    },
+    {
+      "case": 3,
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "payload": true,
+      "mobile": false,
+      "parked": true,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 5.7242680341005325
+    },
+    {
+      "case": 4,
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": true,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 6.089975009672344
+    },
+    {
+      "case": 5,
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "payload": false,
+      "mobile": true,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 1.1944849975407124
+    },
+    {
+      "case": 6,
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "payload": true,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 1.8475340330041945
+    },
+    {
+      "case": 7,
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "payload": true,
+      "mobile": false,
+      "parked": true,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 4.795751010533422
+    },
+    {
+      "case": 8,
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": true,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 5.959362955763936
+    },
+    {
+      "case": 9,
+      "task": {
+        "left": 13,
+        "right": 15
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 4.370674956589937
+    },
+    {
+      "case": 10,
+      "task": {
+        "left": 13,
+        "right": 15
+      },
+      "payload": false,
+      "mobile": false,
+      "parked": false,
+      "states": 1024,
+      "matches_fresh": true,
+      "call_ms": 6.265702017117292
+    }
+  ],
+  "warmup_restored_state": true,
+  "scope": "actual cuboid scene updates; no synthetic unsupported mesh test",
+  "total_states": 11264,
+  "cycles": [
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "total_ms": 6362.29853797704,
+      "audit": {
+        "passed": true,
+        "placement_fk": {
+          "left": {
+            "position_mm": 0.00021320477715269635,
+            "orientation_deg": 9.690393214064818e-06
+          },
+          "right": {
+            "position_mm": 0.00015427324842328573,
+            "orientation_deg": 4.721223932046792e-06
+          }
+        },
+        "base_frozen": true,
+        "release_home_navigation_order": true,
+        "conveyor_geometry": {
+          "parts": 2,
+          "exact_frozen_stl_equivalent": true
+        }
+      },
+      "resource_created": 0,
+      "resource_updated": 4
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "total_ms": 5838.939024950378,
+      "audit": {
+        "passed": true,
+        "placement_fk": {
+          "left": {
+            "position_mm": 0.00011860639159253295,
+            "orientation_deg": 9.000276595965082e-06
+          },
+          "right": {
+            "position_mm": 7.713302421408258e-05,
+            "orientation_deg": 5.526596306605432e-06
+          }
+        },
+        "base_frozen": true,
+        "release_home_navigation_order": true,
+        "conveyor_geometry": {
+          "parts": 2,
+          "exact_frozen_stl_equivalent": true
+        }
+      },
+      "resource_created": 0,
+      "resource_updated": 4
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "total_ms": 2696.140135987662,
+      "audit": {
+        "passed": true,
+        "placement_fk": {
+          "left": {
+            "position_mm": 0.00015028791120462654,
+            "orientation_deg": 3.754191339425416e-06
+          },
+          "right": {
+            "position_mm": 5.0381460134200006e-05,
+            "orientation_deg": 3.6205459076024476e-06
+          }
+        },
+        "base_frozen": true,
+        "release_home_navigation_order": true,
+        "conveyor_geometry": {
+          "parts": 2,
+          "exact_frozen_stl_equivalent": true
+        }
+      },
+      "resource_created": 0,
+      "resource_updated": 4
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "total_ms": 4139.315776992589,
+      "audit": {
+        "passed": true,
+        "placement_fk": {
+          "left": {
+            "position_mm": 0.0002097207921929346,
+            "orientation_deg": 2.7966644604351827e-06
+          },
+          "right": {
+            "position_mm": 0.0002374571718161984,
+            "orientation_deg": 3.0673309170547176e-06
+          }
+        },
+        "base_frozen": true,
+        "release_home_navigation_order": true,
+        "conveyor_geometry": {
+          "parts": 2,
+          "exact_frozen_stl_equivalent": true
+        }
+      },
+      "resource_created": 0,
+      "resource_updated": 5
+    }
+  ]
+}

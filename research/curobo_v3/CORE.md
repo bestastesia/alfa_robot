@@ -30,8 +30,10 @@ RRTConnect及GPU PRM选择、固定接触构型对比及搜索统计保留在独
 恢复世界对象，不提供时让箱体消失。规划只返回预测吸附/释放事件，不修改调用方实际场景。
 结果携带request/model/scene/state身份、scene_revision和显式policy。
 
-GPU缓存按几何身份及负载内容失效；仅反馈时间或关节值变更不重建静态世界检查器。
-同任务更新障碍位置、基座位姿、附着物或碰撞策略、箱球配置时会重建。
+原FullCyclePlanner缓存按几何身份及负载内容失效；仅反馈时间或关节值变更不重建静态世界检查器。
+原基类同任务更新障碍位置、基座位姿、附着物或碰撞策略、箱球配置时会重建。
+当前优化入口通过PersistentCollisionPlanner按拓扑常驻资源，几何变化使用update_world更新而非重建；
+负载/机器人拓扑改变仍创建新资源。容量40 cuboid、无mesh、单实例串行，详见OPTIMIZED_CYCLE.md。
 一个FullCyclePlanner实例一次只允许一个plan_request，忙时拒绝。需要接受结果时使用
 `plan_from_store()`；如果调用方SceneStore在规划期间更新，结果success=false且
 error.code=SCENE_CHANGED。异步执行期的场景监控不在本阶段。
