@@ -25,6 +25,8 @@ from v3_wall_ik_benchmark import (  # noqa: E402
 
 
 def loaded_robot(robot, box_fit, active_sides=("left", "right"), attachments=None):
+    if attachments is not None:
+        active_sides = tuple(side for side in active_sides if any(item.parent_link == side + '_tool0' for item in attachments))
     loaded = copy.deepcopy(robot)
     kin = loaded.get("robot_cfg", loaded)["kinematics"]
     urdf_root = ET.parse(kin["urdf_path"]).getroot()

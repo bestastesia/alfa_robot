@@ -63,6 +63,9 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             corridor + noise, uniform,
         )
         samples = torch.clamp(samples, lower, upper)
+        sample_transform = getattr(validity, 'sample_transform', None)
+        if sample_transform is not None:
+            samples = sample_transform(samples, generator, lower, upper)
         if informed_sampling and best_connections and len(roots)==1:
             from v3_gpu_bitstar import informed_samples
 

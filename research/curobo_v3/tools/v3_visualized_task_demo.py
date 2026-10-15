@@ -11,7 +11,7 @@ import viser
 from viser.extras import ViserUrdf
 import yourdfpy
 
-from v3_lazy_extraction_planner import LazyExtractionPlanner as FullCyclePlanner
+from v3_single_arm_planner import SingleArmPlanner as FullCyclePlanner
 from curobo_core.planner import CycleBlocked
 from v3_task_scene import row_obstacles, grasp_transform
 from v3_interactive_60_tasks import (
@@ -37,14 +37,14 @@ PHASE_NAMES = {
 }
 
 
-def main():
+def main(default_port=8150):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
     parser.add_argument("--urdf", type=Path, default=DEFAULT_URDF)
     parser.add_argument("--named-poses", type=Path, default=DEFAULT_NAMED_POSES)
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
-    parser.add_argument("--port", type=int, default=8150)
+    parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument('--result', type=Path, nargs='+')
     parser.add_argument('--frontend-root', type=Path)
@@ -63,6 +63,7 @@ def main():
     planner_labels = {"多抽离根＋多目标Connect": "informed_connect"}
     planner = FullCyclePlanner(args)
     planner.warmup_resources()
+    server_policy = '预测64个抽离终点→距离/旋转排序→8个起分批完整抽离验收；失败扩批，运输搜索共享2s预算。每次点击重新生成候选，不复用规划结果。'
     planner.selected_task={'left':22,'right':17}
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
     preload = saved_results[0] if saved_results else None
@@ -86,9 +87,11 @@ def main():
         assets = replace(assets, floor=args.floor_asset or assets.floor, marker=args.marker_asset or assets.marker)
     renderer = ReadOnlyScene(server, planner.args.urdf, assets)
     server.gui.add_markdown(f'前端冻结版本：{frontend_identity["commit"][:12]}；碰撞与轨迹由当前核心提供。')
+    server.gui.add_markdown(server_policy)
+    server.gui.add_markdown('任务列表新增25个“单臂”任务：第1/2列左手，第3/4/5列右手。单臂仍15轴联合规划；空闲臂用收拢偏离/累计运动软代价，允许随升降避碰。')
     references = renderer.reference_conveyors()
     references.visible = True
-    reference_control = server.gui.add_checkbox('显示双龙头车与光圈（等价cuboid碰撞已启用）', initial_value=True)
+    reference_control = server.gui.add_checkbox('显示双龙头车与光圈（等价长方体碰撞已启用）', initial_value=True)
     @reference_control.on_update
     def show_references(_event):
         renderer.submit(lambda: setattr(references, 'visible', reference_control.value and not renderer.collision_view))
@@ -153,7 +156,7 @@ def main():
     current = {"result": None, "busy": False}
     collision_overlay = server.scene.add_frame('/collision_diagnostic', show_axes=False, visible=False)
     collision_nodes = []
-    server.gui.add_markdown('旋转仅作软代价，不设90°/15°/45°硬门槛；碰撞、限位和末端Pose仍硬验收。64候选按8/16/32/64分批抽离，运输搜索共享2秒预算。')
+    server.gui.add_markdown('箱体旋转仅作软代价：累计额外旋转、回退和偏离弧继续影响连接代价，不再因超过90°/15°/45°直接拒绝。接触候选按8/16/32/64逐批完整抽离验收；碰撞、限位和末端Pose验收仍保留。')
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -165,7 +168,7 @@ def main():
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
             seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "94组可选。各任务首次生成当前场景无碰撞终点缓存，后续复用；多根Connect搬运搜索累计2秒上限。含双龙头车等价cuboid碰撞，无Shortcut/TrajOpt。释放后直接RRT回Home。"]
+        lines += ["", "94组双臂＋25组单臂可选。首次生成当前场景终点缓存，后续复用；每次重新计算接触候选和路径。含双龙头车长方体碰撞，无Shortcut/TrajOpt，释放后RRT回Home。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
@@ -186,7 +189,7 @@ def main():
                 matrix = renderer.tool_poses[side] @ grasp_transform(side, top_grasp)
                 node.position = matrix[:3, 3]
                 node.wxyz = quaternion(matrix)
-                node.visible = has_payload
+                node.visible = has_payload and side in boxes
             targets = result.get('conveyor_box_targets', {}) if result else {}
             renderer.update_conveyor_targets(targets or planner.conveyor_reference_targets())
             for box_id, box in source_boxes.items():
@@ -216,14 +219,32 @@ def main():
                 f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
-                f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
+                f"{'诊断搜索' if result.get('rotation_diagnostic') else '全部规划'}：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
                 f"最终Home误差：**{format(result['final_home_error'], '.8f') if 'final_home_error' in result else '尚未回Home'}**"
             )
-            if result.get('lazy_extraction'):
-                lazy = result['lazy_extraction']
-                status.content += f"\n\n完整抽离验收 {lazy['checked_candidates']}/{lazy['candidate_pool']}；扩批{len(lazy['batches'])}轮；累计运输搜索{lazy['total_transport_search_ms']:.1f}ms。旋转只作软代价。"
+            lazy = result.get('lazy_extraction')
+            if lazy:
+                costs = lazy['timings_ms']
+                status.content += (
+                    f"  \n完整抽离实际验收：**{lazy['checked_candidates']}/{lazy['candidate_pool']}**；扩批轮数：**{len(lazy['batches'])}**"
+                    f"  \n候选生成 {costs['contact_generation_ms']:.1f}ms；终点预测 {costs['endpoint_prediction_ms']:.1f}ms；排序 {costs['prediction_ranking_ms']:.1f}ms"
+                    f"  \n实际抽离验收 {costs['extraction_work_ms']:.1f}ms；累计运输搜索 {lazy['total_transport_search_ms']:.1f}ms"
+                )
             if not result["success"]:
                 status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
+            if result.get('rotation_diagnostic'):
+                status.content += '\n\n**旋转拒绝候选回放：仅显示搬运段，未通过执行验收。**'
+            if result.get('rotation_quality_hard_gate') is False:
+                status.content += '\n\n**旋转采用软代价，不设硬拒绝门槛；下方指标仅供观察。**'
+            if result.get('single_arm'):
+                side_label = '左' if result['active_side'] == 'left' else '右'
+                status.content += f'\n\n**单臂任务：{side_label}手工作；15轴联合规划，空闲臂可避让。**'
+                idle_motion = result.get('idle_arm_motion')
+                if idle_motion:
+                    status.content += f"\n\n空闲臂最大偏离Home：{idle_motion['max_home_deviation_deg']:.2f}°；7关节累计运动：{idle_motion['cumulative_joint_motion_deg']:.1f}°。"
+                envelope = result.get('transport_endpoint_envelope')
+                if envelope:
+                    status.content += f"\n\n运输终点整机包络（含空闲臂＋携箱）：**{envelope['radius_m']:.4f}m / {envelope['limit_m']:.3f}m**；{'通过' if envelope['passed'] else '未通过'}。"
             if collision_edge.value and result.get('conveyor_edge_diagnostic'):
                 edge = result['conveyor_edge_diagnostic']
                 status.content += f"\n\n**被拒绝的连接，仅诊断，不能执行**。当前帧{'通过' if edge['valid'][index] else '未通过'}检查；首个碰撞在本连接第{edge['first_bad_index']+1}帧。红球和红色障碍标记首个碰撞帧。"
@@ -234,7 +255,7 @@ def main():
                     status.content += '\n\n' + ' ↔ '.join(item['links']) + f"：穿入{item['penetration_mm']:.2f}mm。"
             if result.get('transport_rotation_metrics'):
                 for side,metrics in result['transport_rotation_metrics'].items():
-                    status.content+=f"  \n{side}箱累计旋转{metrics['total_rotation_deg']:.1f}°，回退{metrics['backtracking_deg']:.1f}°，偏离弧最大{metrics['max_deviation_deg']:.1f}°"
+                    status.content+=f"  \n{side}箱累计旋转{metrics['total_rotation_deg']:.1f}°，额外{max(0.,metrics['total_rotation_deg']-metrics['required_rotation_deg']):.2f}°，回退{metrics['backtracking_deg']:.1f}°，偏离弧最大{metrics['max_deviation_deg']:.2f}°"
                 failures = [attempt.get('approach',{}) for attempt in result.get('attempts',[]) if attempt.get('approach',{}).get('failure')]
                 if failures:
                     counts = {}
@@ -336,7 +357,7 @@ def main():
                 server.scene.add_mesh_simple(f'/attached/{side}/spheres/{sphere_index}',
                     vertices=sphere_mesh.vertices*radius, faces=sphere_mesh.faces, position=center,
                     color=(61,170,210), opacity=0.5)
-        status.content = ('顶吸：搬运目标TCP朝下z=1m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.182)m，含龙头车等价cuboid碰撞。'
+        status.content = ('顶吸：搬运目标TCP朝下z=1m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.182)m，含龙头车长方体碰撞。'
 
     @planner_selector.on_update
     def on_planner(_event):
@@ -382,7 +403,7 @@ def main():
             result.setdefault('phases', [])
             result.setdefault('payload', [])
             result.setdefault('joint_names', joint_names)
-            path = Path(__file__).resolve().parents[1] / 'generated/visualized_task_live/latest.json'
+            path = Path(__file__).resolve().parents[1] / 'generated/priority_visualized_task_live/latest.json'
             path.parent.mkdir(parents=True,exist_ok=True)
             archive=path.parent/'runs'
             archive.mkdir(exist_ok=True)

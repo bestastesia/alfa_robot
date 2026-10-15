@@ -21,6 +21,14 @@ from curobo_core.scene import (
 
 
 class SceneTest(unittest.TestCase):
+    def test_single_arm_request_requires_only_its_active_target(self):
+        request = PlanRequest(self.scene, (("left", 24),), (("left_tool0", Pose()),))
+        self.assertEqual(PlanRequest.from_dict(request.to_dict()).identity, request.identity)
+        with self.assertRaises(ValueError):
+            PlanRequest(self.scene, (("left", 24),), (("right_tool0", Pose()),))
+        with self.assertRaises(ValueError):
+            PlanRequest(self.scene, (("left", 24), ("left", 20)), (("left_tool0", Pose()),))
+
     def setUp(self):
         positions = {name: 0.0 for name in reversed(ACTIVE_JOINTS)}
         self.state = RobotState.from_mapping(positions, 123)

@@ -1,0 +1,525 @@
+{
+  "single_tasks": [
+    {
+      "task": {
+        "right": 0
+      },
+      "success": true,
+      "total_ms": 2779.963166976813,
+      "audit": {
+        "validated_frames": {
+          "approach": 322,
+          "contact_approach": 22,
+          "extract": 170,
+          "transport": 318,
+          "conveyor_place": 251,
+          "return_home": 323
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.28835581510283986,
+        "independent_envelope_m": 0.9328564090883797,
+        "gpu_envelope_m": 0.9328563809394836
+      }
+    },
+    {
+      "task": {
+        "right": 1
+      },
+      "success": true,
+      "total_ms": 1846.9803990446962,
+      "audit": {
+        "validated_frames": {
+          "approach": 296,
+          "contact_approach": 22,
+          "extract": 160,
+          "transport": 231,
+          "conveyor_place": 251,
+          "return_home": 323
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.13851933216147921,
+        "independent_envelope_m": 0.9328564090883797,
+        "gpu_envelope_m": 0.9328563809394836
+      }
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "success": false,
+      "known_boundary": true,
+      "stage": "接触IK",
+      "enumeration": {
+        "raw_candidates": 264,
+        "checked_candidates": 264,
+        "accepted_candidates": 0
+      }
+    },
+    {
+      "task": {
+        "left": 3
+      },
+      "success": true,
+      "total_ms": 2544.57473999355,
+      "audit": {
+        "validated_frames": {
+          "approach": 307,
+          "contact_approach": 22,
+          "extract": 160,
+          "transport": 231,
+          "conveyor_place": 298,
+          "return_home": 360
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.1385204143320288,
+        "independent_envelope_m": 0.9328556145480548,
+        "gpu_envelope_m": 0.9328556060791016
+      }
+    },
+    {
+      "task": {
+        "left": 4
+      },
+      "success": true,
+      "total_ms": 1983.2109170383774,
+      "audit": {
+        "validated_frames": {
+          "approach": 354,
+          "contact_approach": 22,
+          "extract": 170,
+          "transport": 317,
+          "conveyor_place": 295,
+          "return_home": 311
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.2883551528290252,
+        "independent_envelope_m": 0.9328551722173288,
+        "gpu_envelope_m": 0.9328551292419434
+      }
+    },
+    {
+      "task": {
+        "right": 5
+      },
+      "success": true,
+      "total_ms": 1972.8558479691856,
+      "audit": {
+        "validated_frames": {
+          "approach": 373,
+          "contact_approach": 13,
+          "extract": 150,
+          "transport": 131,
+          "conveyor_place": 251,
+          "return_home": 323
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.09824527048375575,
+        "independent_envelope_m": 0.9328564090883797,
+        "gpu_envelope_m": 0.9328563809394836
+      }
+    },
+    {
+      "task": {
+        "right": 6
+      },
+      "success": true,
+      "total_ms": 1933.6338779539801,
+      "audit": {
+        "validated_frames": {
+          "approach": 275,
+          "contact_approach": 13,
+          "extract": 143,
+          "transport": 93,
+          "conveyor_place": 266,
+          "return_home": 286
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.05295548882860552,
+        "independent_envelope_m": 0.932855344149581,
+        "gpu_envelope_m": 0.9328553676605225
+      }
+    },
+    {
+      "task": {
+        "right": 7
+      },
+      "success": true,
+      "total_ms": 2119.51367900474,
+      "audit": {
+        "validated_frames": {
+          "approach": 400,
+          "contact_approach": 13,
+          "extract": 144,
+          "transport": 202,
+          "conveyor_place": 269,
+          "return_home": 325
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.06460930990686314,
+        "independent_envelope_m": 0.9900716570537716,
+        "gpu_envelope_m": 0.990071713924408
+      }
+    },
+    {
+      "task": {
+        "left": 8
+      },
+      "success": true,
+      "total_ms": 1858.5133499582298,
+      "audit": {
+        "validated_frames": {
+          "approach": 283,
+          "contact_approach": 13,
+          "extract": 143,
+          "transport": 106,
+          "conveyor_place": 257,
+          "return_home": 361
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.05295657621560702,
+        "independent_envelope_m": 0.9328560824655081,
+        "gpu_envelope_m": 0.932856023311615
+      }
+    },
+    {
+      "task": {
+        "left": 9
+      },
+      "success": true,
+      "total_ms": 1954.0475319954567,
+      "audit": {
+        "validated_frames": {
+          "approach": 354,
+          "contact_approach": 13,
+          "extract": 150,
+          "transport": 121,
+          "conveyor_place": 298,
+          "return_home": 360
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.09824572753509252,
+        "independent_envelope_m": 0.9328556145480548,
+        "gpu_envelope_m": 0.9328556060791016
+      }
+    },
+    {
+      "task": {
+        "right": 10
+      },
+      "success": true,
+      "total_ms": 1864.6920309984125,
+      "audit": {
+        "validated_frames": {
+          "approach": 195,
+          "contact_approach": 19,
+          "extract": 128,
+          "transport": 188,
+          "conveyor_place": 206,
+          "return_home": 176
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.0740648071871672,
+        "independent_envelope_m": 1.0033646790199344,
+        "gpu_envelope_m": 1.0033648014068604
+      }
+    },
+    {
+      "task": {
+        "right": 11
+      },
+      "success": true,
+      "total_ms": 1216.6400980204344,
+      "audit": {
+        "validated_frames": {
+          "approach": 186,
+          "contact_approach": 19,
+          "extract": 125,
+          "transport": 198,
+          "conveyor_place": 194,
+          "return_home": 176
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.05301600636971131,
+        "independent_envelope_m": 1.0033644044310082,
+        "gpu_envelope_m": 1.0033645629882812
+      }
+    },
+    {
+      "task": {
+        "right": 12
+      },
+      "success": true,
+      "total_ms": 1079.0663550142199,
+      "audit": {
+        "validated_frames": {
+          "approach": 281,
+          "contact_approach": 13,
+          "extract": 113,
+          "transport": 283,
+          "conveyor_place": 173,
+          "return_home": 248
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.02429677319323632,
+        "independent_envelope_m": 1.0033647475101701,
+        "gpu_envelope_m": 1.0033648014068604
+      }
+    },
+    {
+      "task": {
+        "left": 13
+      },
+      "success": true,
+      "total_ms": 1874.2261310108006,
+      "audit": {
+        "validated_frames": {
+          "approach": 187,
+          "contact_approach": 19,
+          "extract": 125,
+          "transport": 195,
+          "conveyor_place": 191,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.053016209479339216,
+        "independent_envelope_m": 1.0033646247208527,
+        "gpu_envelope_m": 1.0033646821975708
+      }
+    },
+    {
+      "task": {
+        "left": 14
+      },
+      "success": true,
+      "total_ms": 1169.5305299945176,
+      "audit": {
+        "validated_frames": {
+          "approach": 195,
+          "contact_approach": 19,
+          "extract": 128,
+          "transport": 186,
+          "conveyor_place": 189,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.07406586131549582,
+        "independent_envelope_m": 1.0033646993257708,
+        "gpu_envelope_m": 1.0033646821975708
+      }
+    },
+    {
+      "task": {
+        "right": 15
+      },
+      "success": true,
+      "total_ms": 1222.19781804597,
+      "audit": {
+        "validated_frames": {
+          "approach": 196,
+          "contact_approach": 23,
+          "extract": 163,
+          "transport": 215,
+          "conveyor_place": 194,
+          "return_home": 176
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.057279193886185624,
+        "independent_envelope_m": 1.0033644044310082,
+        "gpu_envelope_m": 1.0033645629882812
+      }
+    },
+    {
+      "task": {
+        "right": 16
+      },
+      "success": true,
+      "total_ms": 1193.8782340148464,
+      "audit": {
+        "validated_frames": {
+          "approach": 191,
+          "contact_approach": 13,
+          "extract": 115,
+          "transport": 269,
+          "conveyor_place": 205,
+          "return_home": 176
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.02378334164597674,
+        "independent_envelope_m": 1.0033642084790289,
+        "gpu_envelope_m": 1.0033643245697021
+      }
+    },
+    {
+      "task": {
+        "right": 17
+      },
+      "success": true,
+      "total_ms": 1063.1211159634404,
+      "audit": {
+        "validated_frames": {
+          "approach": 268,
+          "contact_approach": 13,
+          "extract": 113,
+          "transport": 257,
+          "conveyor_place": 188,
+          "return_home": 264
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.02533536196361754,
+        "independent_envelope_m": 1.0033647475101701,
+        "gpu_envelope_m": 1.0033648014068604
+      }
+    },
+    {
+      "task": {
+        "left": 18
+      },
+      "success": true,
+      "total_ms": 1171.0251739714295,
+      "audit": {
+        "validated_frames": {
+          "approach": 197,
+          "contact_approach": 13,
+          "extract": 115,
+          "transport": 269,
+          "conveyor_place": 189,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.023785527796847727,
+        "independent_envelope_m": 1.0033642770012325,
+        "gpu_envelope_m": 1.0033643245697021
+      }
+    },
+    {
+      "task": {
+        "left": 19
+      },
+      "success": true,
+      "total_ms": 1235.751185042318,
+      "audit": {
+        "validated_frames": {
+          "approach": 196,
+          "contact_approach": 23,
+          "extract": 163,
+          "transport": 212,
+          "conveyor_place": 191,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.05727980562299131,
+        "independent_envelope_m": 1.0033646247208527,
+        "gpu_envelope_m": 1.0033646821975708
+      }
+    },
+    {
+      "task": {
+        "right": 20
+      },
+      "success": true,
+      "total_ms": 1073.7109420006163,
+      "audit": {
+        "validated_frames": {
+          "approach": 226,
+          "contact_approach": 13,
+          "extract": 115,
+          "transport": 311,
+          "conveyor_place": 189,
+          "return_home": 176
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.02238428667557643,
+        "independent_envelope_m": 1.003364670247397,
+        "gpu_envelope_m": 1.0033645629882812
+      }
+    },
+    {
+      "task": {
+        "right": 21
+      },
+      "success": true,
+      "total_ms": 1124.1175080067478,
+      "audit": {
+        "validated_frames": {
+          "approach": 239,
+          "contact_approach": 13,
+          "extract": 116,
+          "transport": 337,
+          "conveyor_place": 188,
+          "return_home": 264
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.017777123322771697,
+        "independent_envelope_m": 1.0033647475101701,
+        "gpu_envelope_m": 1.0033648014068604
+      }
+    },
+    {
+      "task": {
+        "right": 22
+      },
+      "success": true,
+      "total_ms": 1188.9990639756434,
+      "audit": {
+        "validated_frames": {
+          "approach": 294,
+          "contact_approach": 13,
+          "extract": 116,
+          "transport": 285,
+          "conveyor_place": 188,
+          "return_home": 264
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.02881766601636678,
+        "independent_envelope_m": 1.0033647475101701,
+        "gpu_envelope_m": 1.0033648014068604
+      }
+    },
+    {
+      "task": {
+        "left": 23
+      },
+      "success": true,
+      "total_ms": 1117.9004259756766,
+      "audit": {
+        "validated_frames": {
+          "approach": 244,
+          "contact_approach": 13,
+          "extract": 116,
+          "transport": 427,
+          "conveyor_place": 189,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.017775085684229495,
+        "independent_envelope_m": 1.0033642770012325,
+        "gpu_envelope_m": 1.0033643245697021
+      }
+    },
+    {
+      "task": {
+        "left": 24
+      },
+      "success": true,
+      "total_ms": 1060.7282429700717,
+      "audit": {
+        "validated_frames": {
+          "approach": 231,
+          "contact_approach": 13,
+          "extract": 115,
+          "transport": 311,
+          "conveyor_place": 189,
+          "return_home": 203
+        },
+        "payload_added_spheres": 40,
+        "line_error_mm": 0.022385019032466653,
+        "independent_envelope_m": 1.0033646993257708,
+        "gpu_envelope_m": 1.0033646821975708
+      }
+    }
+  ],
+  "dual_regression": {
+    "success": true,
+    "total_ms": 2244.113247958012
+  }
+}

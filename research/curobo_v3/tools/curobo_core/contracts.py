@@ -27,13 +27,14 @@ class PlanRequest:
     def __post_init__(self):
         object.__setattr__(self, "tasks", tuple(tuple(item) for item in self.tasks))
         object.__setattr__(self, "targets", tuple(tuple(item) for item in self.targets))
-        if {side for side, _ in self.tasks} != {"left", "right"} or len(self.tasks) != 2:
-            raise ValueError("current full-cycle planner requires one task per arm")
+        sides = {side for side, _ in self.tasks}
+        if not sides or not sides <= {"left", "right"} or len(sides) != len(self.tasks):
+            raise ValueError("full-cycle planner requires one task per active arm")
         box_ids = [box_id for _, box_id in self.tasks]
-        if any(not isinstance(box_id, int) or box_id < 0 for box_id in box_ids) or len(set(box_ids)) != 2:
+        if any(not isinstance(box_id, int) or box_id < 0 for box_id in box_ids) or len(set(box_ids)) != len(self.tasks):
             raise ValueError("invalid task box IDs")
-        if len(self.targets) != 2 or {name for name, _ in self.targets} != {"left_tool0", "right_tool0"}:
-            raise ValueError("both complete Tool0 targets are required")
+        if len(self.targets) != len(sides) or {name for name, _ in self.targets} != {side + '_tool0' for side in sides}:
+            raise ValueError("complete Tool0 targets are required for active arms")
         if not all(isinstance(pose, Pose) for _, pose in self.targets):
             raise ValueError("target must be a Pose")
         self.snapshot.state.ordered(ACTIVE_JOINTS)
