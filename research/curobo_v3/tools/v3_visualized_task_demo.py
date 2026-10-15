@@ -11,7 +11,7 @@ import viser
 from viser.extras import ViserUrdf
 import yourdfpy
 
-from v3_persistent_collision_planner import PersistentCollisionPlanner as FullCyclePlanner
+from v3_lazy_extraction_planner import LazyExtractionPlanner as FullCyclePlanner
 from curobo_core.planner import CycleBlocked
 from v3_task_scene import row_obstacles, grasp_transform
 from v3_interactive_60_tasks import (
@@ -153,7 +153,7 @@ def main():
     current = {"result": None, "busy": False}
     collision_overlay = server.scene.add_frame('/collision_diagnostic', show_axes=False, visible=False)
     collision_nodes = []
-    server.gui.add_markdown('实验旋转验收：每箱额外旋转≤90°、回退指标≤15°、弧偏离≤45°。接触IK候选全部保留抽离验证，再验证被选候选的前后流程。')
+    server.gui.add_markdown('旋转仅作软代价，不设90°/15°/45°硬门槛；碰撞、限位和末端Pose仍硬验收。64候选按8/16/32/64分批抽离，运输搜索共享2秒预算。')
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -219,6 +219,9 @@ def main():
                 f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
                 f"最终Home误差：**{format(result['final_home_error'], '.8f') if 'final_home_error' in result else '尚未回Home'}**"
             )
+            if result.get('lazy_extraction'):
+                lazy = result['lazy_extraction']
+                status.content += f"\n\n完整抽离验收 {lazy['checked_candidates']}/{lazy['candidate_pool']}；扩批{len(lazy['batches'])}轮；累计运输搜索{lazy['total_transport_search_ms']:.1f}ms。旋转只作软代价。"
             if not result["success"]:
                 status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
             if collision_edge.value and result.get('conveyor_edge_diagnostic'):

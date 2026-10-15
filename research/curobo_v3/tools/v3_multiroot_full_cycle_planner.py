@@ -90,6 +90,8 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
             validity.box_rotation_cost=common
             quality_rejections=[]
             def quality(values):
+                if not getattr(self,'rotation_quality_hard_gate',True):
+                    return True
                 metric=BoxRotationCost(loaded,ACTIVE_JOINTS,values[0],values[-1],self.top_grasp)
                 metrics=metric.metrics(values)
                 accepted=all(item['total_rotation_deg']-item['required_rotation_deg']<=90 and item['backtracking_deg']<=15 and item['max_deviation_deg']<=45 for item in metrics.values())
@@ -99,11 +101,13 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
             lower,upper=loaded.kinematics.get_joint_limits().position
             attempts=[];active_roots=list(range(len(roots)));active_goals=list(range(len(goals)))
             search_total=0.;validation_total=0.;selection=None
-            while active_roots and active_goals and search_total<2000:
+            search_budget_ms=getattr(self,'transport_search_budget_ms',2000.)
+            while active_roots and active_goals and search_total<search_budget_ms:
                 progress(f'联合搜索：{len(active_roots)}抽离根／{len(active_goals)}放置目标')
                 segment=time.perf_counter()
-                path,stats=batched_rrt_connect_multi_goal(roots[active_roots].contiguous(),goals[active_goals].contiguous(),lower+1e-5,upper-1e-5,validity,(2000-search_total)/1000,621648851+len(attempts),stop_at_first_valid=True)
+                path,stats=batched_rrt_connect_multi_goal(roots[active_roots].contiguous(),goals[active_goals].contiguous(),lower+1e-5,upper-1e-5,validity,(search_budget_ms-search_total)/1000,621648851+len(attempts),stop_at_first_valid=True)
                 torch.cuda.synchronize();search_total+=(time.perf_counter()-segment)*1000
+                self.last_multiroot_search_ms=search_total
                 if path is None:break
                 dense=np.asarray(densify(path))
                 root_index=active_roots[int(torch.linalg.vector_norm(roots[active_roots]-torch.tensor(dense[0],device='cuda'),dim=-1).argmin())]
@@ -146,7 +150,7 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
                 selection={'root':root,'approach':approach,'approach_stats':approach_stats,'approach_split':split,'extraction_detail':detail,'transport_result':transport_result,'rotation':rotation,'home_path':home_path,'home_stats':home_stats}
                 attempts.append(attempt);validation_total+=(time.perf_counter()-segment)*1000;break
             if selection is None:
-                self.last_partial={'success':False,'task':boxes,'frames':[],'multiroot_preparation':preparation,'selection_attempts':attempts,'quality_rejections':len(quality_rejections)}
+                self.last_partial={'success':False,'task':boxes,'frames':[],'multiroot_preparation':preparation,'selection_attempts':attempts,'quality_rejections':len(quality_rejections),'multiroot_search_ms':search_total}
                 raise CycleBlocked('全链路候选验证','搜索上限内未找到可到位、转身和回Home的低旋转组合',self.last_partial)
             self.cached_selection=selection;self.comparison_contact=selection['root']['contact'];self.reusing_contact_result=True
             detail_times['rotation_and_bookkeeping']=validation_total-sum(detail_times[key] for key in ['approach_plan_validate','loaded_turn_setup_validate','empty_turn_setup_validate','home_plan_validate'])

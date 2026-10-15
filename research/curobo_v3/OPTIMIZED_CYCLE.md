@@ -19,3 +19,13 @@
 启动预热后还原原任务、snapshot、目标及策略。侧吸/顶吸、空载、mobile或单臂负载拓扑不同仍需分别创建。当前只支持≤40 cuboid且无mesh，串行使用、无长期淘汰策略；不宣称生产并发或无限动态世界支持。
 
 复现：`python tools/v3_persistent_regression.py --cycles --output /tmp/persistent/summary.json`。11个实际参数场景×1024状态与fresh检查器逐项比较，再做四任务完整周期。按用户要求，不加入额外人工mesh负例；实际场景没有mesh。
+
+## 第三阶段：按需抽离与旋转软代价
+
+`LazyExtractionPlanner`每个请求重新生成64候选，固定Updown/ψ一次预测35cm终点；GPU目标距离与旋转探针交替排序后，按8/16/32/64逐批执行原完整解析抽离、密化、碰撞和独立FK直线验收。预测不是可行性证明；同请求已经验收的抽离复用，下个请求清空。
+
+运输扩批预算350/450/600/600ms共享约2秒，不是每批2秒，GPU批次可能略超预算；放箱与回Home各有独立预算。扩批重建树，没有跨批树复用。`lazy_extraction.timings_ms/batches`覆盖预测及全部批次，`pipeline_timing_ms`只描述最终批，不能相加冒充互不重叠计时。
+
+旋转额外角、回退和弧偏离仅作软代价与显示，不再因为旧90°/15°/45°阈值硬拒绝；碰撞、限位、末端完整Pose和抽离验收仍硬检查。旧基类缺省策略保持，正式入口必须导入新类。
+
+复现：`python tools/v3_lazy_regression.py --output-dir /tmp/lazy_regression`。验证L18/R22旧旋转阈值案例以及L18/R16、L9/R1完整周期，记录实际抽离数量、各批预算和成本，并独立FK验收。
