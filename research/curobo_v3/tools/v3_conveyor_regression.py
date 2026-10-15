@@ -11,6 +11,31 @@ from v3_conveyor_cycle_planner import ConveyorCyclePlanner
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
 
 
+def audit_conveyor_geometry(snapshot, base_advance):
+    from curobo_core.adapter import pose_matrix
+    from curobo_core.conveyor import conveyor_pair
+    from curobo_core.scene import Pose, SceneSnapshot
+    expected = conveyor_pair(pose=Pose((-2.3 - base_advance, 0., 0.))).world_parts()
+    snapshot = SceneSnapshot.from_dict(snapshot)
+    parts = [item for item in (*snapshot.objects, *snapshot.meshes) if item.object_id.startswith('conveyor_pair/')]
+    assert {item.object_id for item in parts} == {item.object_id for item in expected}
+    for original in expected:
+        actual = next(item for item in parts if item.object_id == original.object_id)
+        vertices = np.asarray(original.vertices_m)
+        lower, upper = vertices.min(0), vertices.max(0)
+        if hasattr(actual, 'vertices_m'):
+            assert np.allclose(actual.vertices_m, vertices) and actual.faces == original.faces
+            assert np.allclose(pose_matrix(actual.pose), pose_matrix(original.pose))
+        else:
+            assert len(np.unique(vertices, axis=0)) == 8 and len(original.faces) == 12
+            assert np.all(np.isclose(vertices, lower) | np.isclose(vertices, upper))
+            assert np.allclose(actual.dimensions_m, upper - lower)
+            transform = pose_matrix(original.pose)
+            transform[:3, 3] += transform[:3, :3] @ ((lower + upper) / 2)
+            assert np.allclose(pose_matrix(actual.pose), transform)
+    return {'parts': len(parts), 'exact_frozen_stl_equivalent': True}
+
+
 def audit(result, assets):
     if not result['success']:
         raise AssertionError(result.get('blocked_details'))
@@ -34,7 +59,7 @@ def audit(result, assets):
     assert release_event['frame_index'] == release
     assert not release_event['snapshot']['attachments']
     assert not {f'wall_box_{box:02d}' for box in result['task'].values()} & {item['object_id'] for item in release_event['snapshot']['objects']}
-    assert len([item for item in release_event['snapshot']['meshes'] if item['object_id'].startswith('conveyor_pair/')]) == 2
+    geometry = audit_conveyor_geometry(release_event['snapshot'], result.get('base_advance_m', 0.))
     model = yourdfpy.URDF.load(assets.mobile_robot_config.parent / 'model/robot_meter_meshes_mobile18.urdf', load_meshes=False)
     cfg = dict(zip(names, rows[release]))
     model.update_cfg(np.asarray([cfg.get(name, 0.) for name in model.actuated_joint_names]))
@@ -47,7 +72,8 @@ def audit(result, assets):
         assert position <= .002 and orientation <= np.deg2rad(1)
         assert np.allclose(target['position'], [-1.45, -.425 if side == 'left' else .425, 1.182], atol=.002)
         errors[side] = {'position_mm': float(position * 1000), 'orientation_deg': float(np.rad2deg(orientation))}
-    return {'passed': True, 'placement_fk': errors, 'base_frozen': True, 'release_home_navigation_order': True}
+    return {'passed': True, 'placement_fk': errors, 'base_frozen': True, 'release_home_navigation_order': True,
+            'conveyor_geometry': geometry}
 
 
 def main():

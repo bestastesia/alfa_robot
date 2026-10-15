@@ -11,7 +11,7 @@ import viser
 from viser.extras import ViserUrdf
 import yourdfpy
 
-from v3_conveyor_cycle_planner import ConveyorCyclePlanner as FullCyclePlanner
+from v3_priority_contact_planner import PriorityContactPlanner as FullCyclePlanner
 from curobo_core.planner import CycleBlocked
 from v3_task_scene import row_obstacles, grasp_transform
 from v3_interactive_60_tasks import (
@@ -87,7 +87,7 @@ def main():
     server.gui.add_markdown(f'前端冻结版本：{frontend_identity["commit"][:12]}；碰撞与轨迹由当前核心提供。')
     references = renderer.reference_conveyors()
     references.visible = True
-    reference_control = server.gui.add_checkbox('显示双龙头车与光圈（STL碰撞已启用）', initial_value=True)
+    reference_control = server.gui.add_checkbox('显示双龙头车与光圈（等价cuboid碰撞已启用）', initial_value=True)
     @reference_control.on_update
     def show_references(_event):
         renderer.submit(lambda: setattr(references, 'visible', reference_control.value and not renderer.collision_view))
@@ -164,7 +164,7 @@ def main():
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
             seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "94组可选。各任务首次生成当前场景无碰撞终点缓存，后续复用；多根Connect搬运搜索累计2秒上限。含双龙头车STL碰撞，无Shortcut/TrajOpt。释放后直接RRT回Home。"]
+        lines += ["", "94组可选。各任务首次生成当前场景无碰撞终点缓存，后续复用；多根Connect搬运搜索累计2秒上限。含双龙头车等价cuboid碰撞，无Shortcut/TrajOpt。释放后直接RRT回Home。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
@@ -332,7 +332,7 @@ def main():
                 server.scene.add_mesh_simple(f'/attached/{side}/spheres/{sphere_index}',
                     vertices=sphere_mesh.vertices*radius, faces=sphere_mesh.faces, position=center,
                     color=(61,170,210), opacity=0.5)
-        status.content = ('顶吸：搬运目标TCP朝下z=1m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.182)m，含龙头车STL碰撞。'
+        status.content = ('顶吸：搬运目标TCP朝下z=1m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.182)m，含龙头车等价cuboid碰撞。'
 
     @planner_selector.on_update
     def on_planner(_event):

@@ -1,0 +1,142 @@
+[
+  {
+    "task": {
+      "left": 22,
+      "right": 17
+    },
+    "priority": {
+      "raw_pair_count": 95872,
+      "checked_pairs": 256,
+      "legal_unique_checked": 256,
+      "selected_count": 64,
+      "batch_size": 256,
+      "total_ms": 1508.7850880227052
+    },
+    "same_64_as_exhaustive": true,
+    "wall_ms": 8972.356166981626,
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.00021320477715269635,
+          "orientation_deg": 9.690393214064818e-06
+        },
+        "right": {
+          "position_mm": 0.00015427324842328573,
+          "orientation_deg": 4.721223932046792e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true,
+      "conveyor_geometry": {
+        "parts": 2,
+        "exact_frozen_stl_equivalent": true
+      }
+    }
+  },
+  {
+    "task": {
+      "left": 18,
+      "right": 16
+    },
+    "priority": {
+      "raw_pair_count": 892864,
+      "checked_pairs": 256,
+      "legal_unique_checked": 256,
+      "selected_count": 64,
+      "batch_size": 256,
+      "total_ms": 852.6748499716632
+    },
+    "same_64_as_exhaustive": true,
+    "wall_ms": 8248.160152987111,
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.00011860639159253295,
+          "orientation_deg": 9.000276595965082e-06
+        },
+        "right": {
+          "position_mm": 7.713302421408258e-05,
+          "orientation_deg": 5.526596306605432e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true,
+      "conveyor_geometry": {
+        "parts": 2,
+        "exact_frozen_stl_equivalent": true
+      }
+    }
+  },
+  {
+    "task": {
+      "left": 9,
+      "right": 1
+    },
+    "priority": {
+      "raw_pair_count": 353024,
+      "checked_pairs": 256,
+      "legal_unique_checked": 256,
+      "selected_count": 64,
+      "batch_size": 256,
+      "total_ms": 829.7916040173732
+    },
+    "same_64_as_exhaustive": true,
+    "wall_ms": 5952.872007037513,
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.00015028791120462654,
+          "orientation_deg": 3.754191339425416e-06
+        },
+        "right": {
+          "position_mm": 5.0381460134200006e-05,
+          "orientation_deg": 3.6205459076024476e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true,
+      "conveyor_geometry": {
+        "parts": 2,
+        "exact_frozen_stl_equivalent": true
+      }
+    }
+  },
+  {
+    "task": {
+      "left": 4,
+      "right": 2
+    },
+    "priority": {
+      "raw_pair_count": 25344,
+      "checked_pairs": 256,
+      "legal_unique_checked": 256,
+      "selected_count": 64,
+      "batch_size": 256,
+      "total_ms": 781.1197370174341
+    },
+    "same_64_as_exhaustive": true,
+    "wall_ms": 7138.072818983346,
+    "audit": {
+      "passed": true,
+      "placement_fk": {
+        "left": {
+          "position_mm": 0.0002097207921929346,
+          "orientation_deg": 2.7966644604351827e-06
+        },
+        "right": {
+          "position_mm": 0.0002374571718161984,
+          "orientation_deg": 3.0673309170547176e-06
+        }
+      },
+      "base_frozen": true,
+      "release_home_navigation_order": true,
+      "conveyor_geometry": {
+        "parts": 2,
+        "exact_frozen_stl_equivalent": true
+      }
+    }
+  }
+]
