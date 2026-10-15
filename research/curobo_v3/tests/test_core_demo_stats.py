@@ -25,17 +25,20 @@ assert not {'torch', 'curobo', 'viser', 'trimesh', 'yourdfpy', 'fcl'} & sys.modu
 
     def test_selected_phase_shows_motion_total_and_only_significant_planning_rows(self):
         result = {
-            "selected_candidate": 1,
+            "selected_candidate": 2,
             "timing_ms": {
                 "initial_checker_setup_and_validation": 120.,
                 "contact_solver_setup": 9.,
                 "contact_ik_and_ranking": 30.,
                 "approach_rrt_and_validation": 400.,
             },
-            "attempts": [{"candidate": 1, "wall_ms": 250., "approach": {
-                "search_ms": 200., "shortcut_ms": 5.,
-                "trajectory_optimization": {"accepted": False, "wall_ms": 150.,
-                                             "fallback_reason": "test fallback"}}}],
+            "attempts": [
+                {"candidate": 1, "approach_ms": 150., "approach": {}},
+                {"candidate": 2, "approach_ms": 250., "approach": {
+                    "search_ms": 200., "shortcut_ms": 5.,
+                    "trajectory_optimization": {"accepted": False, "wall_ms": 150.,
+                                                 "fallback_reason": "test fallback"}}},
+            ],
             "fixed_timing": {"approach": {"wall_ms": 20.}},
             "timed_segments": [{"name": "approach", "time_from_start_s": [0., 3.5],
                                 "positions": [[0.], [1.]]}],
@@ -43,7 +46,7 @@ assert not {'torch', 'curobo', 'viser', 'trimesh', 'yourdfpy', 'fcl'} & sys.modu
         text = stage_timing_statistics(result, "approach")
         for expected in ("运动时间：3.500 s", "规划时间：0.579 s", "120.00 ms",
                          "400.00 ms", "250.00 ms", "200.00 ms", "150.00 ms",
-                         "20.00 ms", "计入阶段总计", "内部明细", "test fallback"):
+                         "20.00 ms", "下表各行直接求和", "算法内部诊断", "test fallback"):
             self.assertIn(expected, text)
         self.assertNotIn("9.00 ms", text)
         self.assertNotIn("5.00 ms", text)

@@ -21,79 +21,86 @@ MOVEMENT_PHASES = ("approach", "extract", "transport", "turn_loaded", "turn_empt
 
 
 def stage_timing_statistics(result, phase, minimum_ms=10.0):
-    """Show one motion phase with non-overlapping totals and nested planning details."""
+    """Show one phase with an additive planning ledger and separate diagnostics."""
     if phase not in MOVEMENT_PHASES:
         return "请选择一个运动阶段。"
     timing = result.get("timing_ms", {})
     fixed = result.get("fixed_timing", {}).get(phase, {})
-    selected = next((attempt.get("approach", {}) for attempt in result.get("attempts", ())
+    attempts = result.get("attempts", ())
+    selected = next((attempt.get("approach", {}) for attempt in attempts
                      if attempt.get("candidate") == result.get("selected_candidate")), {})
     search = {"approach": selected, "transport": result.get("transport_search_stats", {}),
               "return_home": result.get("home_search_stats", {})}.get(phase, {})
     if search.get("fallback"):
         search = search.get("failed_search", {})
     transport = result.get("transport_timing_breakdown_ms", {})
-    top_level = {
-        "approach": (("初始碰撞检查器初始化与初态检查", timing.get("initial_checker_setup_and_validation")),
+    transport_labels = {
+        "setup": "目标与碰撞求解准备", "target_ik": "放置目标 IK",
+        "target_filter": "放置候选筛选", "rrt": "携箱 RRT 搜索与 shortcut",
+        "frame_assembly": "TrajOpt、轨迹与转身帧组装",
+        "mobile_checker_setup": "移动底盘/载荷检查器初始化",
+        "transport_and_turn_validation": "搬运与携箱转身联合验收", "cleanup": "资源清理",
+    }
+    additive = {
+        "approach": [("初始碰撞检查器初始化与初态检查", timing.get("initial_checker_setup_and_validation")),
                      ("接触 IK 求解器初始化", timing.get("contact_solver_setup")),
                      ("接触 IK 求解、合法性筛选与排序", timing.get("contact_ik_and_ranking")),
-                     ("全部候选的接近路径搜索与验收", timing.get("approach_rrt_and_validation"))),
-        "extract": (("载荷碰撞检查器初始化", timing.get("loaded_checker_setup")),
-                    ("全部候选的解析抽离生成与验收", timing.get("analytic_extract_and_validation"))),
-        "transport": (("搬运规划管线总耗时", timing.get("transport_pipeline_total")),),
-        "turn_loaded": (("搬运与携箱转身共享规划管线", timing.get("transport_pipeline_total")),),
-        "turn_empty": (("空载转回碰撞检查器初始化", timing.get("empty_turn_checker_setup")),
-                       ("空载转回逐帧验收", timing.get("empty_turn_validation"))),
-        "return_home": (("回 Home 搜索、优化与验收", timing.get("home_rrt_and_validation")),),
+                     ("全部候选的接近路径搜索、优化与验收", timing.get("approach_rrt_and_validation"))],
+        "extract": [("载荷碰撞检查器初始化", timing.get("loaded_checker_setup")),
+                    ("全部候选的解析抽离生成与验收", timing.get("analytic_extract_and_validation"))],
+        "transport": [(transport_labels[key], value) for key, value in transport.items()],
+        "turn_loaded": [(transport_labels[key], transport.get(key)) for key in
+                        ("frame_assembly", "mobile_checker_setup", "transport_and_turn_validation")],
+        "turn_empty": [("空载转回碰撞检查器初始化", timing.get("empty_turn_checker_setup")),
+                       ("空载转回逐帧验收", timing.get("empty_turn_validation"))],
+        "return_home": [("回 Home 搜索、优化与验收", timing.get("home_rrt_and_validation"))],
     }[phase]
-    total = sum(value for _, value in top_level if value is not None)
     if fixed.get("wall_ms") is not None:
-        total += fixed["wall_ms"]
-    nested = []
-    if phase == "approach":
-        nested.extend((f"候选 {attempt.get('candidate', '?')}：抽离与接近联合尝试",
-                       attempt.get("wall_ms")) for attempt in result.get("attempts", ()))
-    if phase in ("transport", "turn_loaded"):
-        labels = {"setup": "目标与碰撞求解准备", "target_ik": "放置目标 IK",
-                  "target_filter": "放置候选筛选", "rrt": "携箱 RRT 搜索",
-                  "frame_assembly": "TrajOpt、轨迹与转身帧组装",
-                  "mobile_checker_setup": "移动底盘/载荷检查器初始化",
-                  "transport_and_turn_validation": "搬运与携箱转身联合验收", "cleanup": "资源清理"}
-        nested.extend((labels[key], value) for key, value in transport.items())
+        additive.append(("时间参数化与节点/边门禁", fixed["wall_ms"]))
+    diagnostics = []
+    if phase == "approach" and len(attempts) > 1:
+        diagnostics.extend((f"候选 {attempt.get('candidate', '?')} 的接近规划",
+                            attempt.get("approach_ms")) for attempt in attempts)
+    elif phase == "extract" and len(attempts) > 1:
+        diagnostics.extend((f"候选 {attempt.get('candidate', '?')} 的解析抽离",
+                            attempt.get("extraction_ms")) for attempt in attempts)
     if phase in ("approach", "transport", "return_home"):
-        nested.extend((("RRT 搜索（含首解后继续优化）", search.get("search_ms")),
-                       ("RRT shortcut", search.get("shortcut_ms"))))
+        diagnostics.extend((("RRT 纯搜索", search.get("search_ms")),
+                            ("RRT shortcut 与精检", search.get("shortcut_ms"))))
         optimization = search.get("trajectory_optimization", {})
-        nested.append(("cuRobo TrajOpt", optimization.get("wall_ms")))
-    rows = [(name, value, "计入阶段总计") for name, value in top_level]
-    if fixed.get("wall_ms") is not None:
-        rows.append(("时间参数化与节点/边门禁", fixed["wall_ms"], "计入阶段总计"))
-    rows.extend((name, value,
-                 "跨接近/抽离联合尝试，不重复相加" if name.startswith("候选 ")
-                 else "上项内部明细，不重复相加") for name, value in nested)
-    rows = [(name, value, scope) for name, value, scope in rows
-            if value is not None and value >= minimum_ms]
+        diagnostics.append(("cuRobo TrajOpt", optimization.get("wall_ms")))
+    else:
+        optimization = {}
+    total = sum(value for _, value in additive if value is not None)
+    additive_visible = [(name, value) for name, value in additive
+                        if value is not None and value >= minimum_ms]
+    diagnostic_visible = [(name, value) for name, value in diagnostics
+                          if value is not None and value >= minimum_ms]
     segment = next((item for item in result.get("timed_segments", ()) if item["name"] == phase), None)
     motion = segment["time_from_start_s"][-1] if segment else None
     frames = len(segment["positions"]) if segment else 0
-    trajectory_optimization = search.get("trajectory_optimization", {})
-    verdict = ("采纳" if trajectory_optimization.get("accepted") else
-               "回退 RRT" if trajectory_optimization else "固定路径时间化")
+    verdict = ("采纳" if optimization.get("accepted") else
+               "回退 RRT" if optimization else "固定路径时间化")
+    planning_label = "共享规划时间" if phase == "turn_loaded" else "规划时间"
     lines = [f"## {PHASE_NAMES[phase]}",
              f"**运动时间：{'未记录' if motion is None else f'{motion:.3f} s'}** · "
-             f"**{'共享规划时间' if phase == 'turn_loaded' else '规划时间'}：{total/1000:.3f} s** · "
-             f"时间化帧：**{frames}**",
-             f"轨迹来源：**{verdict}**。规划总计只累加标记为“计入阶段总计”的行。",
-             "", "| 规划子阶段（仅显示 ≥10 ms） | 耗时 | 口径 |", "|---|---:|---|"]
-    lines.extend(f"| {name} | {value:.2f} ms | {scope} |" for name, value, scope in rows)
-    all_rows = ([(name, value) for name, value in top_level] +
-                ([('时间参数化与节点/边门禁', fixed.get('wall_ms'))]
-                 if fixed.get('wall_ms') is not None else []) + nested)
-    omitted = sum(value is not None and value < minimum_ms for _, value in all_rows)
-    if omitted:
-        lines.append(f"\n已按要求隐藏 **{omitted}** 项小于 {minimum_ms:.0f} ms 的记录。")
-    if trajectory_optimization.get("fallback_reason"):
-        lines.append(f"\nTrajOpt 回退原因：`{trajectory_optimization['fallback_reason']}`")
+             f"**{planning_label}：{total/1000:.3f} s** · 时间化帧：**{frames}**",
+             f"轨迹来源：**{verdict}**。",
+             "", "### 规划时间明细", "下表各行直接求和，即为上方规划时间。",
+             "", "| 规划子阶段（仅显示 ≥10 ms） | 耗时 |", "|---|---:|"]
+    lines.extend(f"| {name} | {value:.2f} ms |" for name, value in additive_visible)
+    hidden_additive = sum(value is not None and value < minimum_ms for _, value in additive)
+    if hidden_additive:
+        lines.append(f"\n规划总计中另含 **{hidden_additive}** 项小于 {minimum_ms:.0f} ms 的记录。")
+    if diagnostic_visible:
+        lines += ["", "### 算法内部诊断", "这些是上表某一行的内部组成或里程碑，不参与上表求和。",
+                  "", "| 内部记录（仅显示 ≥10 ms） | 耗时 |", "|---|---:|"]
+        lines.extend(f"| {name} | {value:.2f} ms |" for name, value in diagnostic_visible)
+    hidden_diagnostics = sum(value is not None and value < minimum_ms for _, value in diagnostics)
+    if hidden_diagnostics:
+        lines.append(f"\n内部诊断另隐藏 **{hidden_diagnostics}** 项小于 {minimum_ms:.0f} ms 的记录。")
+    if optimization.get("fallback_reason"):
+        lines.append(f"\nTrajOpt 回退原因：`{optimization['fallback_reason']}`")
     return "\n".join(lines)
 
 
