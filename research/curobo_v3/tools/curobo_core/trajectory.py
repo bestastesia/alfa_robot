@@ -448,8 +448,19 @@ class TimedTrajectory:
         times = np.asarray(time_s, dtype=np.float64)
         if not np.isfinite(times).all() or np.any(times < 0) or np.any(times > self.duration):
             raise ValueError("cannot extrapolate an executable trajectory")
-        return {key: self.spline(times, nu=order) for order, key in enumerate(
-            ("positions", "velocities", "accelerations", "jerks"))}
+        scalar = times.ndim == 0
+        flat = times.reshape(-1)
+        output = {}
+        for order, key in enumerate(("positions", "velocities", "accelerations", "jerks")):
+            values = np.asarray(self.spline(times, nu=order))
+            rows = values.reshape(-1, len(self.joint_names))
+            # The serialized contract owns exact endpoints. B-spline evaluation
+            # can turn a limit value 0 into +5e-23, which PR65 correctly treats
+            # as outside a hard upper bound. Interior values remain polynomial.
+            rows[np.isclose(flat, 0., atol=1e-12, rtol=0)] = self.values[order, 0]
+            rows[np.isclose(flat, self.duration, atol=1e-12, rtol=0)] = self.values[order, -1]
+            output[key] = rows[0] if scalar else rows.reshape(values.shape)
+        return output
 
     def window(self, start_s, end_s):
         if not 0 <= start_s < end_s <= self.duration:
@@ -472,6 +483,10 @@ class TimedTrajectory:
         exact = BPoly.from_power_basis(PPoly.construct_fast(power, relative, extrapolate=False, axis=0))
         values = {key: exact(relative, nu=order) for order, key in enumerate(
             ("positions", "velocities", "accelerations", "jerks"))}
+        source_start, source_end = self.sample(start_s), self.sample(end_s)
+        for key in values:
+            values[key][0] = source_start[key]
+            values[key][-1] = source_end[key]
         return {"joint_names": list(self.joint_names), "dt_s": None,
                 "time_from_start_s": relative.tolist(), "bpoly_coefficients": exact.c.tolist(),
                 **{key: value.tolist() for key, value in values.items()}}

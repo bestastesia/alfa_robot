@@ -917,6 +917,36 @@ class RollingTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "clock domain"):
             record_reply_timing(dict(started_at=9., ready_at=10.7), 10., 10.8)
 
+    def test_repeated_suffixes_preserve_exact_hard_limit_endpoint(self):
+        document = trajectory(4.)
+        document["positions"][-1] = [0.]
+        document["velocities"][-1] = [0.]
+        document["accelerations"][-1] = [0.]
+        current = document
+        for _ in range(4):
+            curve = TimedTrajectory(current)
+            current = curve.suffix(min(.8, curve.duration/2))
+            self.assertEqual(current["positions"][-1], [0.])
+            tail = TimedTrajectory(current)
+            self.assertEqual(tail.sample(tail.duration)["positions"].tolist(), [0.])
+
+    def test_sampling_uses_exact_serialized_hard_limit_endpoints(self):
+        from scipy.interpolate import BPoly
+        polynomial = BPoly.from_derivatives([0., 1.], [[[.1], [0.], [0.]], [[0.], [0.], [0.]]])
+        # Deliberately perturb coefficients by representation scale while the
+        # serialized endpoint remains the authoritative hard-limit value.
+        coefficients = polynomial.c.copy(); coefficients[-1, -1, 0] = 5e-23
+        document = {"joint_names": ["q"], "time_from_start_s": [0., 1.],
+                    "positions": [[.1], [0.]], "velocities": [[0.], [0.]],
+                    "accelerations": [[0.], [0.]], "jerks": polynomial([0., 1.], nu=3).tolist(),
+                    "bpoly_coefficients": coefficients.tolist()}
+        curve = TimedTrajectory(document)
+        self.assertEqual(curve.sample(curve.duration)["positions"].tolist(), [0.])
+        samples = curve.sample(np.array([0., .5, 1.]))["positions"]
+        self.assertEqual(samples[0].tolist(), [.1])
+        self.assertEqual(samples[-1].tolist(), [0.])
+        self.assertNotEqual(samples[1].tolist(), [.1])
+
     def test_exact_polynomial_window_does_not_invent_jerk_at_arbitrary_cut(self):
         from scipy.interpolate import BPoly
         knots = np.array([0., .025, .05])

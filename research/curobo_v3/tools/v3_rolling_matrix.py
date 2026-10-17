@@ -112,6 +112,7 @@ def main():
     parser.add_argument("--disable-braking-fallback", action="store_true")
     parser.add_argument("--braking-duration-s", type=float, default=.5)
     parser.add_argument("--faults", nargs="*", choices=tuple(FAULTS), default=[])
+    parser.add_argument("--faults-only", action="store_true", help="run injected failures without a duplicate normal control")
     parser.add_argument("--gpu-audit", action="store_true")
     parser.add_argument("--require-obstacle-response", action="store_true",
                         help="require old suffix invalid + an installed optimized replacement")
@@ -125,7 +126,10 @@ def main():
     tools = Path(__file__).parent
     matrix = {"runs": [], "complete": False, "configuration": {**vars(args),
                "initial_cycle": str(args.initial_cycle), "output_dir": str(args.output_dir)}}
-    cases = [(*case, "none") for case in itertools.product(args.rounds, args.stages, args.scenarios, args.seeds)]
+    if args.faults_only and not args.faults:
+        parser.error("--faults-only requires --faults")
+    cases = [] if args.faults_only else [(*case, "none") for case in itertools.product(
+        args.rounds, args.stages, args.scenarios, args.seeds)]
     cases += [(args.rounds[0], args.stages[0], "clear", args.seeds[0], fault) for fault in args.faults]
     for number, (round_index, stage, scenario, seed, fault) in enumerate(cases, 1):
         name = f"r{round_index}-{stage}-{scenario}-{seed}-{fault}"

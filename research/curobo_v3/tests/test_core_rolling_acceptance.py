@@ -56,6 +56,12 @@ class AcceptanceReportTest(unittest.TestCase):
             self.assertTrue(result["simulation_contract_complete"])
             self.assertFalse(result["overall_issue_done"])
             self.assertGreater(result["normal_cases"]["rejected_fail_closed"],0)
+            duplicate = json.loads(matrix.read_text()); duplicate["runs"].append(duplicate["runs"][0]);
+            duplicate["passed"] += 1; matrix.write_text(json.dumps(duplicate))
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                build_report({"success":True,"rounds":15,"boxes":25},[matrix],
+                             {"head":"541fdbc7250b50ffd5daadae6c8385c54f7b3a92","unchanged_files":{str(i):"h" for i in range(9)}},3)
+            duplicate["runs"].pop(); duplicate["passed"] -= 1; matrix.write_text(json.dumps(duplicate))
             (root/"approach-clear-1.audit.log").unlink()
             with self.assertRaisesRegex(ValueError,"audit"):
                 build_report({"success":True,"rounds":15,"boxes":25},[matrix],

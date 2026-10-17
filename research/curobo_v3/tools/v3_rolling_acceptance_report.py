@@ -41,6 +41,12 @@ def build_report(baseline, matrices, preservation, required_seeds=3):
                          "failure_code": report.get("failure_code"), "seed": report["seed"],
                          "stage": report["stage"], "scenario": report["scenario"], "fault": report["fault"]})
     normal = [report for report in reports if report.get("fault") == "none"]
+    identities = [(report["stage"], report["scenario"], report["seed"]) for report in normal]
+    duplicates = sorted({identity for identity in identities if identities.count(identity) > 1})
+    if duplicates:
+        raise ValueError(f"duplicate normal acceptance cases: {duplicates}")
+    if len(normal) != len(STAGES)*len(SCENARIOS)*required_seeds:
+        raise ValueError("normal matrix does not contain exactly stages*scenarios*seeds cases")
     coverage = {(stage, scenario): set() for stage in STAGES for scenario in SCENARIOS}
     for report in normal:
         coverage.setdefault((report["stage"], report["scenario"]), set()).add(report["seed"])
