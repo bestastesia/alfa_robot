@@ -442,8 +442,12 @@ class TimedTrajectory:
     def window(self, start_s, end_s):
         if not 0 <= start_s < end_s <= self.duration:
             raise ValueError("window must be contained in the executable trajectory")
-        times = np.concatenate(([start_s], self.times[(self.times > start_s) & (self.times < end_s)],
-                                [end_s]))
+        # A monotonic-clock subtraction can put a boundary ~1e-12s from
+        # an existing knot. Keeping both creates an ill-conditioned quintic
+        # interval and fictitious acceleration. Keep the exact requested
+        # boundary, dropping only interior knots within one nanosecond of it.
+        interior = self.times[(self.times > start_s + 1e-9) & (self.times < end_s - 1e-9)]
+        times = np.concatenate(([start_s], interior, [end_s]))
         return {"joint_names": list(self.joint_names), "dt_s": None,
                 "time_from_start_s": (times - start_s).tolist(),
                 **{key: values.tolist() for key, values in self.sample(times).items()}}

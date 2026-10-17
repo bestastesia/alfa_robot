@@ -1,5 +1,4 @@
 """Stage-local adapter; reuse the baseline search, TrajOpt and collision policies."""
-from dataclasses import asdict
 import math
 import time
 
@@ -8,49 +7,30 @@ import torch
 
 from .backend import CuroboBackend
 from .contracts import ACTIVE_JOINTS
-from .scene import Pose, digest
 from .trajectory import TimedTrajectory
 from v3_batched_loaded_search import GpuValidity
 
 
 class SegmentReplanner:
-    def __init__(self, backend, boxes, *, payload=False, sample_dt=.025):
+    def __init__(self, backend, boxes, *, payload=False, sample_dt=.025, phase="approach"):
         if not isinstance(backend, CuroboBackend):
             raise TypeError("reuse an initialized CuroboBackend")
         if not math.isfinite(sample_dt) or sample_dt <= 0:
             raise ValueError("positive validation sample interval required")
         self.backend, self.boxes, self.payload = backend, dict(boxes), payload
         self.sample_dt = sample_dt
-        self._checker = None
-        self._robot_key = None
+        self.phase = phase
         # Existing connect mode returns the first finely verified feasible path;
         # the baseline anytime RRT intentionally consumes its full search budget.
         self.backend.planner_kind = "informed_connect"
 
     def scene(self, snapshot):
-        if snapshot.state.base_pose != Pose():
-            raise ValueError("this segment uses the fixed-base 15-joint model")
         if bool(snapshot.attachments) != self.payload:
             raise ValueError("payload mode must match execution-confirmed attachments")
         self.backend.set_snapshot(snapshot, allow_attached=True, require_locked_state=True)
-        robot_key = digest((snapshot.model_id, snapshot.frame_id, asdict(snapshot.state.base_pose),
-                            tuple(sorted(self.boxes.items())), self.payload,
-                            [asdict(item) for item in snapshot.attachments], self.backend.box_fit,
-                            self.backend.suction_mode, self.backend.contact_offsets))
-        if self._checker is None or self._robot_key != robot_key:
-            self._checker = self.backend.collision_checker(self.boxes, payload=self.payload)
-            self._robot_key = robot_key
-        else:
-            # Native world update preserves the warmed robot model. Rebuilding
-            # that model for every moving obstacle cost ~0.6s in measured t2.
-            self._checker.update_world(self.backend.scene(self.boxes))
-        checker = self._checker
-        return GpuValidity(
-            checker, active_sides=tuple(self.boxes) if self.payload else (),
-            attachments=self.backend.attachments(self.boxes) if self.payload else None,
-            max_box_tilt_deg=snapshot.policy.max_box_tilt_deg, check_ground=True,
-            ground_z=snapshot.policy.ground_z_m,
-            weights=self.backend.motion_weights(self.boxes).tolist())
+        # PR65 already caches by robot/payload topology, updates world geometry,
+        # and invalidates its base-cuboid query cache. Reuse that whole contract.
+        return self.backend.online_validity(self.boxes, self.payload, self.phase)
 
     def validate(self, document, validity):
         curve = TimedTrajectory(document)
@@ -137,11 +117,10 @@ class SegmentReplanner:
                     search_started = time.perf_counter()
                     limits = validity.checker.kinematics.get_joint_limits().position
                     lower, upper = self.backend.motion_bounds(limits[0] + 1e-5, limits[1] - 1e-5, self.boxes)
-                    path, search = self.backend.search_path(
+                    path, search = self.backend.online_search_path(
                         torch.tensor(seed_path[0], device="cuda"),
                         torch.tensor(seed_path[-1:], device="cuda"), lower, upper, validity,
-                        max(0., (ticket.compute_deadline - search_started) / 2), search_seed,
-                        apply_shortcut=True)
+                        max(0., (ticket.compute_deadline - search_started) / 2), search_seed)
                     report["search"] = search
                     spans["search"] = [search_started, time.perf_counter()]
                     if path is None:

@@ -60,8 +60,11 @@ def summarize_reports(reports):
                 raise ValueError(f"invalid recorded duration: {name}")
             group["raw"].setdefault(name, []).append(value)
         for solve in report.get("solves", []):
-            if "compute_wall_s" in solve:
-                record("compute_wall_s", solve["compute_wall_s"])
+            for name in ("compute_wall_s", "queue_ipc_s", "request_to_ready_s", "result_ipc_s"):
+                if name in solve:
+                    record(name, solve[name])
+            for value in solve.get("sdk_solve_times_s", []):
+                record("sdk_solve_s", value)
             for name, (start, end) in solve.get("spans", {}).items():
                 record(f"stage_{name}_s", end-start)
         for event in report.get("events", []):
@@ -80,7 +83,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--initial-cycle", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--stages", nargs="+", choices=("approach", "transport", "return_home"),
+    parser.add_argument("--stages", nargs="+", choices=("approach", "transport", "conveyor_place", "return_home"),
                         default=["approach", "transport", "return_home"])
     parser.add_argument("--scenarios", nargs="+", choices=("clear", "static", "moving", "appear", "depart"),
                         default=["clear", "static", "moving", "appear", "depart"])

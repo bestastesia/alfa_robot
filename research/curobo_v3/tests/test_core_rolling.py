@@ -274,38 +274,25 @@ class RollingTest(unittest.TestCase):
         self.assertAlmostEqual(summary["latencies"]["compute_wall_s"]["median"], .3)
         self.assertAlmostEqual(summary["latencies"]["compute_wall_s"]["p95"], .84)
 
-    def test_scene_updates_reuse_robot_but_payload_parameters_invalidate_it(self):
+    def test_online_scene_delegates_to_mentor_phase_gate(self):
         import ast
         import types
-        from dataclasses import asdict, replace
-        from curobo_core.scene import digest
         source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
         method = next(n for n in ast.walk(ast.parse(source.read_text()))
                       if isinstance(n, ast.FunctionDef) and n.name == "scene")
-        context = dict(Pose=Pose, digest=digest, asdict=asdict,
-                       GpuValidity=lambda checker, **kwargs: checker)
-        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), context)
-        built, updates = [], []
-        def checker(*args, **kwargs):
-            value = types.SimpleNamespace(update_world=lambda world: updates.append(world))
-            built.append(value)
-            return value
-        backend = types.SimpleNamespace(box_fit={}, suction_mode="side", contact_offsets={},
-                                        collision_checker=checker, motion_weights=lambda boxes: np.ones(1))
-        backend.set_snapshot = lambda snapshot, **kw: setattr(backend, "snapshot", snapshot)
-        backend.scene = lambda boxes: backend.snapshot
-        adapter = types.SimpleNamespace(backend=backend, boxes={}, payload=False, _checker=None, _robot_key=None)
-        scene = observation().snapshot
-        first = context["scene"](adapter, scene)
-        moved = replace(scene, objects=(replace(scene.objects[0], pose=Pose((7., 0., 0.))),), revision=1)
-        self.assertIs(context["scene"](adapter, moved), first)
-        removed = replace(moved, objects=(), revision=2)
-        self.assertIs(context["scene"](adapter, removed), first)
-        self.assertEqual(updates, [moved, removed])
-        self.assertEqual(len(built), 1)
-        backend.box_fit = {"changed": True}
-        self.assertIsNot(context["scene"](adapter, removed), first)
-        self.assertEqual(len(built), 2)
+        namespace = {}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        calls = []
+        gate = object()
+        backend = types.SimpleNamespace(
+            set_snapshot=lambda snapshot, **kw: calls.append((snapshot, kw)),
+            online_validity=lambda boxes, payload, phase: (calls.append((boxes, payload, phase)) or gate))
+        adapter = types.SimpleNamespace(backend=backend, boxes={"left": 24}, payload=False, phase="approach")
+        snapshot = observation().snapshot
+        self.assertIs(namespace["scene"](adapter, snapshot), gate)
+        self.assertEqual(calls[0][1], dict(allow_attached=True, require_locked_state=True))
+        self.assertEqual(calls[1], ({"left": 24}, False, "approach"))
+
 
     def test_worker_rebuilds_envelope_for_actual_candidate_duration(self):
         import ast
@@ -416,7 +403,7 @@ class RollingTest(unittest.TestCase):
     def test_online_input_cannot_ignore_motion_of_model_locked_joints(self):
         import ast
         from dataclasses import replace
-        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/backend.py"
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_backend.py"
         method = next(n for n in ast.walk(ast.parse(source.read_text()))
                       if isinstance(n, ast.FunctionDef) and n.name == "set_snapshot")
         namespace = {}
@@ -441,7 +428,7 @@ class RollingTest(unittest.TestCase):
         import ast
         from dataclasses import asdict
         from curobo_core.scene import AttachedObject, digest
-        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/backend.py"
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_backend.py"
         tree = ast.parse(source.read_text())
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
                       and n.name == "trajectory_optimizer")
@@ -527,9 +514,46 @@ class RollingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "deadline"):
                 audit(bad, config)
 
+    def test_queue_ipc_sdk_and_wall_latency_have_separate_measured_scopes(self):
+        from v3_rolling_replan import record_reply_timing
+        from v3_rolling_matrix import summarize_reports
+        result = dict(started_at=10.2, ready_at=10.7,
+                      attempts=[dict(solve_time_ms=120.), dict(solve_time_ms=80.)])
+        record_reply_timing(result, 10., 10.8)
+        for key, value in dict(queue_ipc_s=.2, compute_wall_s=.5, request_to_ready_s=.7, result_ipc_s=.1).items():
+            self.assertAlmostEqual(result[key], value)
+        self.assertEqual(result["sdk_solve_times_s"], [.12, .08])
+        report = dict(stage="approach", scenario="clear", success=True, solves=[result], events=[])
+        summary = summarize_reports([report])["approach/clear/none"]["latencies"]
+        self.assertAlmostEqual(summary["request_to_ready_s"]["max"], .7)
+        self.assertEqual(summary["sdk_solve_s"]["count"], 2)
+        self.assertAlmostEqual(summary["queue_ipc_s"]["median"], .2)
+        with self.assertRaisesRegex(ValueError, "clock domain"):
+            record_reply_timing(dict(started_at=9., ready_at=10.7), 10., 10.8)
+
+    def test_slice_near_existing_knot_does_not_create_picosecond_quintic(self):
+        times = np.linspace(0., 2., 81)
+        document = dict(joint_names=["q"], time_from_start_s=times.tolist(),
+                        positions=(times**2)[:, None].tolist(), velocities=(2*times)[:, None].tolist(),
+                        accelerations=np.full((81, 1), 2.).tolist(), jerks=np.zeros((81, 1)).tolist())
+        original = TimedTrajectory(document)
+        for offset in (-2e-12, 0., 2e-12):
+            start, end = .5+offset, 1.5-offset
+            sliced = TimedTrajectory(original.window(start, end))
+            self.assertGreater(np.diff(sliced.times).min(), .024)
+            sliced.validate_limits([-1.], [5.], [5.], [3.], [1.])
+            np.testing.assert_allclose(sliced.sample(.3)["positions"], original.sample(start+.3)["positions"], atol=1e-12)
+            np.testing.assert_allclose(sliced.sample(0)["velocities"], original.sample(start)["velocities"], atol=1e-12)
+
+    def test_old_matching_feedback_inside_trajectory_is_rejected_for_age(self):
+        segment = self.segment()
+        actual = feedback(segment, 10.)
+        with self.assertRaisesRegex(ValueError, "execution feedback is stale"):
+            segment.begin(observation(10.2), actual, 10.2)
+
     def test_feedback_identity_and_freshness_are_required(self):
         from dataclasses import replace
-        for key, value in (("trajectory_id", "wrong"), ("sampled_at", 7.),
+        for key, value in (("trajectory_id", "wrong"),
                            ("joint_names", ("different",))):
             segment = self.segment()
             actual = replace(feedback(segment, 10.), **{key: value})

@@ -192,11 +192,13 @@ def main():
     report = json.loads(args.result.read_text())
     summary = audit(report, args.robot_config, args.expect == "complete", args.require_obstacle_response)
     if args.gpu:
-        from curobo_core.backend import CuroboBackend
+        from curobo_core.rolling_backend import RollingBackend
         from curobo_core.rolling_curobo import SegmentReplanner
         from curobo_core.scene import SceneSnapshot, digest
         from curobo_core.rolling import SceneObservation
-        adapter = SegmentReplanner(CuroboBackend(PlannerAssets()), report["task_boxes"], payload=report["payload"])
+        backend = RollingBackend(PlannerAssets())
+        backend.configure_task(report["task_boxes"])
+        adapter = SegmentReplanner(backend, report["task_boxes"], payload=report["payload"], phase=report["stage"])
         adapter.validate(report["initial_trajectory"], adapter.scene(SceneSnapshot.from_dict(report["initial_snapshot"])))
         solves = {s["sequence"]: s for s in report["solves"] if "sequence" in s}
         events = [e for e in report["events"] if e["event"] == "activated"]

@@ -2233,3 +2233,16 @@
 - 修正缓存后的静态序列与3b50c9e逐元素相同（q/v/a/jerk/time最大差0），同样24箱后箱2 IK失败；acceptance-v3/static-regression.json。不能把继承的24箱结果写成25箱过关。
 - 负责人路径纠正已读取：Linear4f5a357f明确先由文子轩本人决定任务/接口修改，之前向李昊洋提出的授权请求撤回；不代表已授权。不能绕过负责人或Frozen Interface规则继续改15轴孪生合同。
 - 尚未完成：保护停止/条件定时换轨及模型对接确认，MOTION-296验收，完整阶段与真实端到端接口接入、PR/review。原baseline工作树并发改动保留；公开fork未推送，remote基线已是2edee780而非冻结3b50c9e，发布基线待确认。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 rebase PR65进行中
+- 用户明确要求接入刚提交的快基线。通过GitHub API确认kkozia188/alfa_robot#65 HEAD=541fdbc7250b50ffd5daadae6c8385c54f7b3a92，cpu-contracts通过。fetch TLS失败但本地完整对象SHA相同；实际rebase完成，备份backup/motion-292-before-pr65=d70c183，未推送。
+- 解决冲突时保留PR65的backend/planner/contracts等核心文件。在线扩展迁到rolling_backend.py(TimedSingleArmPlanner子类)，不覆盖full_cycle/search_path/collision_checker/time_parameterize_result，使用持久cuboid gate和multiroot Connect，优化器继续用原cuRobo包装。新快照由Mentor阶段frame/attachment生成，拒绝混用旧结果。
+- 新鲜round-01-v2：规划2754.568ms、时间化2893.957ms、完整准备5.677s；不是在线t2上界。approach clear完成5次移动接续，独立GPU审核初始/候选/尾段通过。
+- CPU84/84。修复实际过期反馈负例(sample10/now10.2)，补enqueue→worker、worker墙钟、reply IPC和SDK求解独立统计；新基线固定非零base pose不归零，真的moving base仍拒绝。
+- 初20项pilot结束且有失败，不混入通过率。PR65接近gate包含任务箱，而旧TrajOpt world排除任务箱，已在在线适配器补齐优化世界；放箱slice发现~1e-12s相邻切点产生伪加速度，保留精确边界、只去一纳秒内内部节点。
+- 当前pr65-gates-v2 pilot工具session24895（approach/conveyor_place×clear/static/moving，单种子6项）串行运行中；必须查句柄/OS，不能修改其冻结runtime。证据pr65-integration和pr65-gates-v2；下一步查看失败根因、扩大新基线验收，不宣称产品完成。原PR65工作树保持不动。
+
+- 接入补充：旧search_path覆写会影响Mentor自身full_cycle，已改为独立online_search_path，PR65九个核心文件逐字节一致（baseline-preservation.json）。joint_names按SDK list合同传入，避免tuple/list身份误拒绝。原始2.75s round验证成功后approach clear与独立审核通过。
+- pr65-gates-v2 pilot已终态4/6：approach clear/static/moving、conveyor_place clear通过；放箱static/moving无可行替换路线，未改为通过。旧20项pilot也保留。GPU world-update回归通过。
+- 当前完整新基线序列工具session66142（v3_rolling_prepare.py --sequence），输出pr65-gates-v2/full-sequence.json，日志同名.log。全序列结束后核对15/25、每段时序限制与可消费场景；不能根据日志尾行假设成功。仍有动态矩阵、受约束阶段/执行接口验收工作，目标保持active。

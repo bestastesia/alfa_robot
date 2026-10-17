@@ -37,19 +37,16 @@ def stage_input(record, name, round_index=0):
     stage = next(item for item in result["timed_segments"] if item["name"] == name)
     indices = [stage["joint_names"].index(joint) for joint in ACTIVE_JOINTS]
     locked = [i for i, joint in enumerate(stage["joint_names"]) if joint not in ACTIVE_JOINTS]
-    if locked and np.max(np.abs(np.asarray(stage["positions"])[:, locked])) > 1e-7:
+    positions = np.asarray(stage["positions"])
+    if locked and np.any(np.ptp(positions[:, locked], axis=0) > 1e-7):
         raise ValueError("moving-base segments need their own model; cannot discard those joints")
+    if name not in result.get("rolling_stage_inputs", {}):
+        raise ValueError("regenerate input with v3_rolling_prepare.py on PR65; legacy snapshots are not interchangeable")
     trajectory = {"joint_names": list(ACTIVE_JOINTS), "time_from_start_s": stage["time_from_start_s"],
                   **{key: np.asarray(stage[key])[:, indices].tolist() for key in
                      ("positions", "velocities", "accelerations", "jerks")}}
-    snapshot = SceneSnapshot.from_dict(record["request"]["snapshot"])
-    if name in ("transport", "return_home"):
-        event = "attach" if name == "transport" else "release"
-        snapshot = SceneSnapshot.from_dict(next(e["snapshot"] for e in result["predicted_scene_events"]
-                                                if e["phase"] == event))
-    snapshot = replace(snapshot, state=snapshot.state.with_positions(
-        dict(zip(ACTIVE_JOINTS, trajectory["positions"][0])), Pose()))
-    return trajectory, snapshot, ({} if name == "return_home" else result["task"]), name == "transport"
+    snapshot = SceneSnapshot.from_dict(result["rolling_stage_inputs"][name]["snapshot"])
+    return trajectory, snapshot, result["task"], name in ("transport", "conveyor_place")
 
 
 
@@ -86,10 +83,30 @@ def exchange_worker(connection, commands, replies, stop):
         connection.close()
 
 
-def worker(connection, snapshot, boxes, payload, initial, random_seed):
+
+def record_reply_timing(result, requested_at, received_at):
+    """Monotonic same-host intervals; SDK diagnostics are nested, never summed."""
+    result["requested_at"] = requested_at
+    result["reply_received_at"] = received_at
+    if "started_at" in result and "ready_at" in result:
+        began, ready = result["started_at"], result["ready_at"]
+        if not requested_at <= began <= ready <= received_at:
+            raise ValueError("worker timestamps are not in the supervisor monotonic clock domain")
+        result["queue_ipc_s"] = began-requested_at
+        result["compute_wall_s"] = ready-began
+        result["request_to_ready_s"] = ready-requested_at
+        result["result_ipc_s"] = received_at-ready
+    result["sdk_solve_times_s"] = [attempt["solve_time_ms"]/1000. for attempt in result.get("attempts", [])
+                                   if "solve_time_ms" in attempt]
+    result["timing_scope"] = {"queue_ipc": "enqueue through serialization, pipe and scheduling to worker start",
+                              "sdk_solve": "SDK diagnostic nested inside TrajOpt wall span; not additive",
+                              "real_perception": "unmeasured", "real_network": "unmeasured"}
+
+
+def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
     # Own the CUDA context in a separate process so the deadline supervisor does
     # not wait on a blocked solve/GIL. Process startup and warmup precede t1.
-    from curobo_core.backend import CuroboBackend
+    from curobo_core.rolling_backend import RollingBackend
     from curobo_core.rolling_curobo import SegmentReplanner
     from curobo.types import JointState
     import torch
@@ -99,8 +116,9 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed):
         started = time.perf_counter()
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
-        backend = CuroboBackend(PlannerAssets())
-        adapter = SegmentReplanner(backend, boxes, payload=payload)
+        backend = RollingBackend(PlannerAssets())
+        backend.configure_task(boxes)
+        adapter = SegmentReplanner(backend, boxes, payload=payload, phase=phase)
         validity = adapter.scene(snapshot)
         initial_validation = adapter.validate(initial, validity)
         curve = TimedTrajectory(initial)
@@ -113,7 +131,9 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed):
         state = validity.checker.kinematics.compute_kinematics(
             JointState.from_position(q, joint_names=list(ACTIVE_JOINTS)))
         tool = state.tool_poses.to_dict()[next(iter(boxes), "left") + "_tool0"]
-        center = tool.position.reshape(-1, 3)[0].cpu().tolist()
+        from curobo_core.adapter import pose_matrix
+        local_center = tool.position.reshape(-1, 3)[0].cpu().numpy()
+        center = (pose_matrix(snapshot.state.base_pose) @ np.r_[local_center, 1.])[:3].tolist()
         connection.send({"ready": True, "initialization_s": time.perf_counter()-started,
                          "validation": initial_validation, "warmup": warm,
                          "obstacle_center": center, "model_id": backend.model_id,
@@ -187,7 +207,7 @@ def run(args):
     if not 0 <= args.link_delay_s <= args.link_bound_s:
         raise ValueError("simulated link delay must fit its declared bound")
     parent, child = mp.get_context("spawn").Pipe()
-    process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed))
+    process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage))
     report = {"schema_version": 3, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
@@ -267,6 +287,7 @@ def run(args):
                                        "available_latency_s": checked_at-observation.observed_at,
                                        "communication_required": False})
             else:
+                requested_at = time.perf_counter()
                 commands.put_nowait((ticket, observation, prefix, forecast_duration,
                                      (args.seed + segment.sequence) % 2**32, fault))
             deadline = min(now + args.compute_bound_s, boundary-args.link_bound_s) if terminal else ticket.compute_deadline
@@ -289,7 +310,10 @@ def run(args):
                     if "progress" in message:
                         report["worker_events"].append(message["progress"])
                         continue
-                    result = message; arrived = time.perf_counter() + args.link_delay_s
+                    result = message
+                    received_at = time.perf_counter()
+                    record_reply_timing(result, requested_at, received_at)
+                    arrived = received_at + args.link_delay_s
                     if fault == "link_delay":
                         arrived += schedule.period_s + args.link_bound_s
                     report["solves"].append(result)
@@ -369,6 +393,10 @@ def run(args):
             "feedback_latency_s": [x["feedback_latency_s"] for x in report["events"] if "feedback_latency_s" in x],
         }
         for result in report["solves"]:
+            for name in ("queue_ipc_s", "request_to_ready_s", "result_ipc_s"):
+                if name in result:
+                    fields.setdefault(name, []).append(result[name])
+            fields.setdefault("sdk_solve_s", []).extend(result.get("sdk_solve_times_s", []))
             for name, (start, end) in result.get("spans", {}).items():
                 fields.setdefault(f"stage_{name}_s", []).append(end-start)
         report["statistics"] = {key: {"count": len(values), "median": float(np.median(values)),
@@ -399,7 +427,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--initial-cycle", type=Path, required=True)
     parser.add_argument("--round", type=int, default=0, help="zero-based round for a full-sequence input")
-    parser.add_argument("--stage", choices=("approach", "transport", "return_home"), default="approach")
+    parser.add_argument("--stage", choices=("approach", "transport", "conveyor_place", "return_home"), default="approach")
     parser.add_argument("--scenario", choices=("clear", "static", "moving", "appear", "depart"), default="clear")
     parser.add_argument("--fault", choices=("none", "compute_delay", "link_delay", "stale_scene",
                                            "feedback_error", "scene_changed", "worker_failure", "solver_failure", "admission_delay"),

@@ -12,12 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 @unittest.skipUnless(torch.cuda.is_available(), "requires CUDA")
 class OnlineWorldUpdateTest(unittest.TestCase):
     def test_add_move_remove_obstacle_updates_warm_checker_without_stale_world(self):
-        from curobo_core.backend import CuroboBackend
+        from curobo_core.rolling_backend import RollingBackend
         from curobo_core.contracts import PlannerAssets
         from curobo_core.rolling_curobo import SegmentReplanner
         from curobo_core.scene import Pose, SceneObject
 
-        backend = CuroboBackend(PlannerAssets())
+        backend = RollingBackend(PlannerAssets())
         adapter = SegmentReplanner(backend, {})
         snapshot = backend.snapshot
         q = torch.tensor(backend.home_values, dtype=torch.float32, device="cuda").reshape(1, -1)

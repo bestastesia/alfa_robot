@@ -38,6 +38,9 @@ def main():
     urdf = yourdfpy.URDF.load(args.urdf, load_meshes=True, build_scene_graph=True)
     server = viser.ViserServer(host="127.0.0.1", port=args.port)
     robot = ViserUrdf(server, urdf, root_node_name="/robot")
+    base_transform = pose_matrix(snapshot.state.base_pose)
+    server.scene.add_frame("/robot", position=snapshot.state.base_pose.position,
+                           wxyz=snapshot.state.base_pose.quaternion_wxyz, show_axes=False)
     nodes = {}
     for obj in snapshot.objects:
         if obj.object_id == "ground":
@@ -61,7 +64,7 @@ def main():
         points = []
         for row in positions:
             urdf.update_cfg(dict(zip(curve.joint_names, row)))
-            points.append(urdf.get_transform("left_tool0", urdf.base_link)[:3, 3].copy())
+            points.append((base_transform @ urdf.get_transform("left_tool0", urdf.base_link))[:3, 3].copy())
         points = np.asarray(points)
         paths.append(np.stack((points[:-1], points[1:]), axis=1))
     server.scene.add_line_segments("/path/original", points=paths[0], colors=(160, 160, 160), line_width=2.)
@@ -105,7 +108,7 @@ def main():
         urdf.update_cfg(cfg); robot.update_cfg(cfg)
         current_path.points = paths[index]
         for attachment, node in payloads:
-            pose = matrix_pose(urdf.get_transform(attachment.parent_link, urdf.base_link) @
+            pose = matrix_pose(base_transform @ urdf.get_transform(attachment.parent_link, urdf.base_link) @
                                pose_matrix(attachment.tool_to_object))
             node.position, node.wxyz = pose.position, pose.quaternion_wxyz
         obs_index = bisect.bisect_right(observation_times, absolute)-1
