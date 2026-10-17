@@ -26,6 +26,22 @@ class MentorRollingContractTest(unittest.TestCase):
         return dict(result=dict(success=True, task={'left': 24, 'right': 20}, timed_segments=[stage],
                                 rolling_stage_inputs={'return_home': {'snapshot': snapshot.to_dict()}}))
 
+    def test_runtime_fingerprint_includes_inherited_mentor_files(self):
+        import tempfile
+        from v3_rolling_replan import runtime_source_hashes
+        with tempfile.TemporaryDirectory() as folder:
+            tools = Path(folder)
+            (tools / 'curobo_core').mkdir()
+            (tools / 'curobo_core/rolling_backend.py').write_text('adapter = 1\n')
+            planner = tools / 'v3_single_arm_planner.py'
+            planner.write_text('planner = 1\n')
+            before = runtime_source_hashes(tools)
+            self.assertEqual(set(before), {'v3_single_arm_planner.py', 'curobo_core/rolling_backend.py'})
+            planner.write_text('planner = 2\n')
+            after = runtime_source_hashes(tools)
+            self.assertNotEqual(before['v3_single_arm_planner.py'], after['v3_single_arm_planner.py'])
+            self.assertEqual(before['curobo_core/rolling_backend.py'], after['curobo_core/rolling_backend.py'])
+
     def test_fixed_nonzero_base_pose_is_preserved_not_zeroed(self):
         record = self.record()
         trajectory, snapshot, boxes, payload = stage_input(record, 'return_home')

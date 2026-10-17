@@ -26,6 +26,13 @@ from curobo_core.scene import Pose, SceneObject, SceneSnapshot
 from curobo_core.trajectory import TimedTrajectory
 
 
+
+def runtime_source_hashes(tools):
+    """Include inherited Mentor planners, not just the online adapter directory."""
+    return {str(path.relative_to(tools)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(tools.rglob("*.py"))}
+
+
 def stage_input(record, name, round_index=0):
     if record.get("sequence"):
         record = record["rounds"][round_index]
@@ -116,7 +123,8 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
         started = time.perf_counter()
         torch.manual_seed(random_seed)
         np.random.seed(random_seed)
-        backend = RollingBackend(PlannerAssets())
+        assets = PlannerAssets()
+        backend = RollingBackend(assets)
         backend.configure_task(boxes)
         adapter = SegmentReplanner(backend, boxes, payload=payload, phase=phase)
         validity = adapter.scene(snapshot)
@@ -140,7 +148,11 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
                          "hardware": {"gpu": torch.cuda.get_device_name(), "platform": platform.platform()},
                          "packages": {**{name: importlib.metadata.version(name) for name in ("torch", "numpy", "scipy")},
                                       "curobo": getattr(curobo, "__version__", "unpackaged source")},
-                         "curobo_module": str(curobo.__file__)})
+                         "curobo_module": str(curobo.__file__),
+                         "model_assets_sha256": {name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                                 for name, path in vars(assets).items() if isinstance(path, Path)},
+                         "base_cuboids_sha256": hashlib.sha256((Path(__file__).resolve().parents[1] /
+                             "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json").read_bytes()).hexdigest()})
         while True:
             command = connection.recv()
             if command is None:
@@ -183,13 +195,13 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
         connection.close()
 
 
-def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedback):
+def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedback, velocity_map=None):
     active = scenario in ("static", "moving") or (scenario == "appear" and sequence >= 1) or (
         scenario == "depart" and sequence < 2)
     objects = snapshot.objects
     velocities = ()
     if active:
-        velocity = np.array([0., .025, 0.]) if scenario == "moving" else np.zeros(3)
+        velocity = np.asarray([0., .025, 0.] if velocity_map is None else velocity_map) if scenario == "moving" else np.zeros(3)
         position = np.asarray(center) + velocity * (elapsed - duration * .6)
         objects += (SceneObject("rolling_obstacle", (.08, .08, .08), Pose(tuple(position))),)
         velocities = (("rolling_obstacle", tuple(velocity)),)
@@ -210,12 +222,13 @@ def run(args):
     process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage))
     report = {"schema_version": 3, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
+              "obstacle_center_override_map_m": args.obstacle_center,
+              "obstacle_velocity_override_map_m_s": args.obstacle_velocity,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
               "initial_trajectory": initial, "task_boxes": boxes, "payload": payload,
               "initial_cycle_path": str(args.initial_cycle.resolve()), "solves": [], "observations": [], "feedbacks": [], "samples": [],
               "trajectories": [], "worker_events": [], "dynamics_enabled": False, "torque_constraints_enabled": False,
-              "runtime_source_sha256": {str(p.relative_to(Path(__file__).parent)): hashlib.sha256(p.read_bytes()).hexdigest()
-                                        for p in [Path(__file__), *sorted((Path(__file__).parent / "curobo_core").glob("*.py"))]},
+              "runtime_source_sha256": runtime_source_hashes(Path(__file__).parent),
               "initial_cycle_sha256": hashlib.sha256(args.initial_cycle.read_bytes()).hexdigest()}
     process.start(); child.close()
     commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
@@ -258,8 +271,9 @@ def run(args):
                 complete(now)
                 break
             expected = segment.state(now)
-            observation = observe(snapshot, startup["obstacle_center"], args.scenario, segment.sequence,
-                                  now, now-started, curve.duration, expected)
+            obstacle_center = args.obstacle_center if args.obstacle_center is not None else startup["obstacle_center"]
+            observation = observe(snapshot, obstacle_center, args.scenario, segment.sequence,
+                                  now, now-started, curve.duration, expected, args.obstacle_velocity)
             feedback = ExecutionFeedback(segment.trajectory_id, segment.active.joint_names, now, expected)
             fault = args.fault if segment.sequence == 0 else "none"
             if fault == "stale_scene":
@@ -429,6 +443,10 @@ def main():
     parser.add_argument("--round", type=int, default=0, help="zero-based round for a full-sequence input")
     parser.add_argument("--stage", choices=("approach", "transport", "conveyor_place", "return_home"), default="approach")
     parser.add_argument("--scenario", choices=("clear", "static", "moving", "appear", "depart"), default="clear")
+    parser.add_argument("--obstacle-center", type=float, nargs=3,
+                        help="explicit map-frame obstacle center at 0.6*t1; overrides the default TCP fixture")
+    parser.add_argument("--obstacle-velocity", type=float, nargs=3,
+                        help="map-frame m/s for moving scenario; default is 0 0.025 0")
     parser.add_argument("--fault", choices=("none", "compute_delay", "link_delay", "stale_scene",
                                            "feedback_error", "scene_changed", "worker_failure", "solver_failure", "admission_delay"),
                         default="none", help="simulation-only failure injection, at first tick")
@@ -445,6 +463,10 @@ def main():
             not math.isfinite(args.max_feedback_age_s) or args.max_feedback_age_s <= 0 or
             not 0 <= args.seed < 2**32 or args.round < 0):
         parser.error("positive finite execution/freshness limits and unsigned 32-bit seed required")
+    if args.obstacle_center is not None and not np.isfinite(args.obstacle_center).all():
+        parser.error("obstacle center must contain three finite map coordinates")
+    if args.obstacle_velocity is not None and not np.isfinite(args.obstacle_velocity).all():
+        parser.error("obstacle velocity must contain three finite map components")
     run(args)
 
 

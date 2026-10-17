@@ -2249,3 +2249,13 @@
 
 - session66142完整序列已终态success：15/15轮、25/25箱；tools/verify_motion233_timed_trajectory.py逐轮15/15独立通过。规划ms median/p95/max2164.003/2990.275/3014.932；时间化4261.147/8858.368/10526.793；总准备105.454s。证据full-sequence-summary.json、round-audits/summary.json。旧“24箱”阻塞不能延用为新PR65结论。
 - 当前新增提交a348064；84项CPU通过，新原生GPU世界更新回归通过；PR65核心9文件哈希一致。所有本轮进程均已结束，没有待轮询GPU任务。下一轮必须在新PR65输入上处理剩余动态放箱/带载失败及扩大同版本场景矩阵，勿复用3b50c9e旧矩阵当新验收。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 放箱失败分类与固定端点门禁
+- 实测pr65-gates-v2默认conveyor_place static/moving的起终点GPU mask=[true,false]，无新增障碍时[true,true]。新增check_endpoints在求解前拒绝，保留目标不改、附时域和required_action。独立GPU审核original-goal-blocked确认负例，没有把拒绝标成运动成功。
+- 新增可配置obstacle-center/velocity，默认fixture保持。几何检查（不调用搜索/求解）选中中途阻挡center[-1.0486119239962108,.635462145723246,1.277392864227295]，前缀/终点合法、中段碰撞。static三种子3/3完成，每次5接续/1实际绕障，独立GPU审核通过；证据pr65-scene-contract-v4/conveyor-interior的static项。
+- 新center -Y/.025移动3种子仍goal碰撞，+X/.025移动3种子终检失败；这些不同位置/速度分组未替换默认失败，文档明确分列。把搜索提前的v5试验未改善成功率已撤回，保留失败实验，不把复杂化留在生产。
+- 阶段内禁止base/payload/policy变化（只允许环境更新），CPU88/88；运行源码hash扩为全部tools.py、startup模型/cuboid资产hash。没有改PR65九个核心规划文件。
+- 最新源冻结pr65-contract-v6，工具session31970串行复核conveyor-static-interior三种子后原终点负例；下轮先查询进程/工具。新拒绝审计CLI --require-rejection-code，仍非实机停机证明。完整动态目标未完成。
+
+- session31970已结束：pr65-contract-v6正例static三种子3/3，各5次移动接续、1次旧路碰撞→安全优化、6条含初始轨迹和尾段独立GPU过；original-goal-blocked负例0接续，独立GPU endpoint mask[true,false]。原默认正向/新负向及X向moving失败全部保留，不互相覆盖。CPU88/88、compileall、diff-check通过。此轮GPU任务全结束。

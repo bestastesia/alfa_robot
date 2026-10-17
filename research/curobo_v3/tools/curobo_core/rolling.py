@@ -220,6 +220,10 @@ class RollingSegment:
         observation.require_fresh(now, self.max_scene_age_s)
         previous = self.last_observation
         if previous is not None:
+            if (observation.snapshot.state.base_pose != previous.snapshot.state.base_pose or
+                    observation.snapshot.attachments != previous.snapshot.attachments or
+                    observation.snapshot.policy != previous.snapshot.policy):
+                raise ValueError("base pose, payload or collision policy changed during the segment")
             if (observation.snapshot.model_id != previous.snapshot.model_id or
                     observation.snapshot.revision < previous.snapshot.revision or
                     observation.observed_at < previous.observed_at or observation.received_at < previous.received_at):

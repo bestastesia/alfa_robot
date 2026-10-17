@@ -94,6 +94,8 @@ def main():
     parser.add_argument("--link-bound-s", type=float, required=True)
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
+    parser.add_argument("--obstacle-center", type=float, nargs=3)
+    parser.add_argument("--obstacle-velocity", type=float, nargs=3)
     parser.add_argument("--faults", nargs="*", choices=tuple(FAULTS), default=[])
     parser.add_argument("--gpu-audit", action="store_true")
     args = parser.parse_args()
@@ -114,6 +116,10 @@ def main():
                    "--compute-bound-s", str(args.compute_bound_s), "--link-bound-s", str(args.link_bound_s),
                    "--link-delay-s", str(args.link_delay_s), "--execution-timeout-s", str(args.execution_timeout_s),
                    "--output", str(result)]
+        if args.obstacle_velocity is not None:
+            command.extend(["--obstacle-velocity", *map(str, args.obstacle_velocity)])
+        if args.obstacle_center is not None:
+            command.extend(["--obstacle-center", *map(str, args.obstacle_center)])
         if args.slices is not None:
             command.extend(("--slices", str(args.slices)))
         row = {"name": name, "command": command, "verified": False}

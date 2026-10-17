@@ -54,6 +54,10 @@ class SegmentReplanner:
                 "edge_resolution_rad": math.radians(.5), "sample_dt_s": self.sample_dt,
                 "dynamics_enabled": False, "torque_constraints_enabled": False}
 
+    def check_endpoints(self, path, validity):
+        values = torch.tensor(np.asarray(path)[[0, -1]], device="cuda", dtype=torch.float32)
+        return [bool(item) for item in validity.mask(values).cpu().tolist()]
+
     def solve(self, ticket, observation, prefix, *, max_duration_s, search_seed=20261003, progress=lambda event: None):
         """Called in the worker while the executor advances through prefix.
 
@@ -102,6 +106,15 @@ class SegmentReplanner:
                 report["previous_suffix_rejection"] = str(error)
             spans["previous_suffix_validation"] = [audit_started, time.perf_counter()]
             seed_path = np.asarray(ticket.remaining["positions"], dtype=np.float32)
+            report["endpoint_validity"] = self.check_endpoints(seed_path, validity)
+            if not all(report["endpoint_validity"]):
+                # Fixed endpoints are part of the user contract. No optimizer can
+                # repair a goal inside this conservative occupancy envelope.
+                report["failure_code"] = ("SPLICE_ENDPOINT_COLLISION" if not report["endpoint_validity"][0]
+                                          else "GOAL_ENDPOINT_COLLISION")
+                report["required_action"] = "independent_safety_intervention"
+                report["endpoint_check_interval"] = [ticket.splice_at, scene_end]
+                raise ValueError(f"{report['failure_code']}: fixed endpoint violates the planning envelope")
             candidates = []
             # Loaded-boundary probe: weighted arc-length seeding + max dt failed,
             # while the same geometry resampled uniformly at .75*max dt passed.

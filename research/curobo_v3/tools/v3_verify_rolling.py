@@ -187,10 +187,15 @@ def main():
     parser.add_argument("--robot-config", type=Path, default=PlannerAssets().robot_config)
     parser.add_argument("--expect", choices=("complete", "rejected"), default="complete")
     parser.add_argument("--require-obstacle-response", action="store_true")
+    parser.add_argument("--require-rejection-code", choices=("GOAL_ENDPOINT_COLLISION", "SPLICE_ENDPOINT_COLLISION"),
+                        help="verify a specific fail-closed condition, separately from successful avoidance")
     parser.add_argument("--gpu", action="store_true", help="independently recheck installed trajectories in recorded collision envelopes")
     args = parser.parse_args()
     report = json.loads(args.result.read_text())
     summary = audit(report, args.robot_config, args.expect == "complete", args.require_obstacle_response)
+    if args.require_rejection_code:
+        if args.expect != "rejected" or report.get("failure_code") != args.require_rejection_code:
+            raise ValueError("report did not reject for the requested collision reason")
     if args.gpu:
         from curobo_core.rolling_backend import RollingBackend
         from curobo_core.rolling_curobo import SegmentReplanner
@@ -228,6 +233,26 @@ def main():
                 raise ValueError("suffix exceeds collision certificate time horizon")
             adapter.validate(entry["trajectory"], adapter.scene(snapshot))
             previous, previous_at = TimedTrajectory(entry["trajectory"]), event["at"]
+        if args.require_rejection_code:
+            rejected = next((s for s in reversed(report["solves"])
+                             if s.get("failure_code") == args.require_rejection_code), None)
+            if not rejected or rejected.get("success") or "trajectory" in rejected:
+                raise ValueError("missing fail-closed endpoint-check result")
+            request = next(e for e in report["events"] if e["event"] == "requested"
+                           and e["sequence"] == rejected["sequence"])
+            interval = [request["splice_at"], previous_at + previous.duration]
+            if not np.allclose(rejected["endpoint_check_interval"], interval, atol=1e-8, rtol=0):
+                raise ValueError("endpoint rejection used the wrong execution interval")
+            observation = observations[rejected["observation_id"]]
+            world = observation.swept_snapshot(*interval)
+            q = np.stack([previous.sample(interval[0]-previous_at)["positions"],
+                          previous.sample(previous.duration)["positions"]])
+            measured = adapter.check_endpoints(q, adapter.scene(world))
+            expected = rejected["endpoint_validity"]
+            index = 0 if args.require_rejection_code == "SPLICE_ENDPOINT_COLLISION" else 1
+            if measured != expected or measured[index]:
+                raise ValueError("independent GPU check contradicts endpoint rejection")
+            summary["gpu_endpoint_rejection_confirmed"] = measured
         if report["success"] and report.get("schema_version", 1) >= 3:
             document, world = terminal_evidence(report)
             adapter.validate(document, adapter.scene(world))

@@ -319,13 +319,39 @@ class RollingTest(unittest.TestCase):
                 return {"test": True}
             backend = types.SimpleNamespace(optimize_rrt_path=lambda *a, **kw: (
                 None, {"accepted": True, "trajectory": trajectory(candidate_duration)}))
-            adapter = types.SimpleNamespace(scene=scene, validate=validate, backend=backend, boxes={}, payload=False)
+            adapter = types.SimpleNamespace(scene=scene, validate=validate, backend=backend, boxes={}, payload=False,
+                                            check_endpoints=lambda *a: [True, True])
             result = namespace["solve"](adapter, ticket, obs, trajectory(1.), max_duration_s=19.)
             self.assertTrue(result["success"], result.get("error"))
             self.assertEqual(result["certificate"]["valid_until"], 11.+candidate_duration)
             self.assertEqual(envelopes[1].objects[0].dimensions_m[0], 5.)
             self.assertEqual(envelopes[-1].objects[0].dimensions_m[0], 1.+candidate_duration)
             self.assertLess(result["certificate"]["valid_until"], obs.valid_until)
+
+    def test_colliding_fixed_endpoint_is_rejected_before_any_solver_call(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        for mask, code in (([False, True], "SPLICE_ENDPOINT_COLLISION"),
+                           ([True, False], "GOAL_ENDPOINT_COLLISION")):
+            # backend has no solve method: an accidental solve would fail this test.
+            adapter = types.SimpleNamespace(scene=lambda s: object(), validate=lambda *a: {},
+                                            backend=object(), boxes={}, payload=False,
+                                            check_endpoints=lambda *a: mask)
+            ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=trajectory(4.),
+                                           initial_state={}, compute_deadline=12.)
+            result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+            self.assertFalse(result["success"])
+            self.assertEqual(result["failure_code"], code)
+            self.assertEqual(result["endpoint_validity"], mask)
+            self.assertEqual(result["endpoint_check_interval"], [11., 15.])
+            self.assertNotIn("attempts", result)
+            self.assertNotIn("trajectory", result)
 
     def test_unsafe_committed_prefix_never_attempts_to_repair_the_later_suffix(self):
         import ast
@@ -364,7 +390,7 @@ class RollingTest(unittest.TestCase):
             return None, {"accepted": False}
         backend = types.SimpleNamespace(optimize_rrt_path=optimize)
         adapter = types.SimpleNamespace(scene=lambda s: object(), validate=lambda *args: {"valid": True},
-                                        backend=backend, boxes={}, payload=False)
+                                        backend=backend, boxes={}, payload=False, check_endpoints=lambda *a: [True, True])
         ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=trajectory(4.),
                                        initial_state={}, compute_deadline=12.)
         result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
@@ -382,6 +408,27 @@ class RollingTest(unittest.TestCase):
         self.assertGreater(entire_ttl.objects[0].dimensions_m[0], 10.)
         # A shorter certificate cannot validate a longer replacement.
         self.assertFalse(obs.covered_by(actual, 11., 14.))
+
+    def test_live_world_update_cannot_change_phase_base_payload_or_safety_policy(self):
+        from dataclasses import replace
+        from curobo_core.scene import AttachedObject
+        for change in ("base", "payload", "policy"):
+            segment = self.segment(); first = observation()
+            ticket = segment.begin(first, feedback(segment, 10.), 10.)
+            segment.stage(ticket, ticket.remaining, first, 10.4, 10.5)
+            segment.activate(feedback(segment, 10.8), first, 10.8)
+            next_obs = observation(10.8, 1)
+            snapshot = next_obs.snapshot
+            if change == "base":
+                snapshot = replace(snapshot, state=replace(snapshot.state, base_pose=Pose((.1, 0., 0.))))
+            if change == "payload":
+                snapshot = replace(snapshot, attachments=(AttachedObject('payload', (1., 1., 1.), 'left_tool0', Pose()),))
+            if change == "policy":
+                snapshot = replace(snapshot, policy=replace(snapshot.policy, max_box_tilt_deg=180.))
+            next_obs = replace(next_obs, snapshot=snapshot)
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "changed during the segment"):
+                segment.begin(next_obs, feedback(segment, 10.8), 10.8)
+            self.assertIsNone(segment.pending)
 
     def test_out_of_order_or_silently_mutated_scene_is_rejected(self):
         from dataclasses import replace
@@ -513,6 +560,20 @@ class RollingTest(unittest.TestCase):
             next(e for e in bad["events"] if e["event"] == "staged")["safe_ready_at"] = 10.7
             with self.assertRaisesRegex(ValueError, "deadline"):
                 audit(bad, config)
+
+    def test_explicit_moving_obstacle_parameters_are_recorded_without_changing_defaults(self):
+        from v3_rolling_replan import observe
+        snapshot = observation().snapshot
+        state = {"positions": [0.] * 15}
+        default = observe(snapshot, [1., 2., 3.], "moving", 0, 10., 0., 5., state)
+        explicit = observe(snapshot, [1., 2., 3.], "moving", 0, 10., 0., 5., state, [0., -.025, 0.])
+        self.assertEqual(default.velocities[-1], ("rolling_obstacle", (0., .025, 0.)))
+        self.assertEqual(explicit.velocities[-1], ("rolling_obstacle", (0., -.025, 0.)))
+        self.assertAlmostEqual(default.snapshot.objects[-1].pose.position[1], 1.925)
+        self.assertAlmostEqual(explicit.snapshot.objects[-1].pose.position[1], 2.075)
+        self.assertNotEqual(default.identity, explicit.identity)
+        with self.assertRaises(ValueError):
+            observe(snapshot, [float("nan"), 0., 0.], "moving", 0, 10., 0., 5., state)
 
     def test_queue_ipc_sdk_and_wall_latency_have_separate_measured_scopes(self):
         from v3_rolling_replan import record_reply_timing
