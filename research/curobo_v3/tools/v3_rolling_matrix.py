@@ -45,7 +45,7 @@ def summarize_reports(reports):
         key = f"{report['stage']}/{report['scenario']}/{report.get('fault', 'none')}"
         group = groups.setdefault(key, {"runs": 0, "completed": 0, "rejected": 0,
                                        "triggers": 0, "splices": 0, "deadline_misses": 0,
-                                       "optimized": 0, "direct_optimized": 0, "revalidated": 0, "braking_candidates": 0,
+                                       "optimized": 0, "direct_optimized": 0, "revalidated": 0, "constrained_revalidations": 0, "braking_candidates": 0,
                                        "direct_splices": 0, "revalidated_splices": 0, "braking_replans": 0, "censored_computes": 0,
                                        "raw": {}})
         group["runs"] += 1
@@ -55,6 +55,7 @@ def summarize_reports(reports):
                                ("optimized", "optimization_success_count"),
                                ("direct_optimized", "direct_optimization_success_count"),
                                ("revalidated", "revalidated_fallback_count"),
+                               ("constrained_revalidations", "constrained_revalidation_count"),
                                ("braking_replans", "braking_replan_count"),
                                ("braking_candidates", "braking_candidate_count"),
                                ("direct_splices", "direct_splice_count"),
@@ -89,7 +90,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--initial-cycle", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--stages", nargs="+", choices=("approach", "transport", "conveyor_place", "return_home"),
+    parser.add_argument("--stages", nargs="+", choices=("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"),
                         default=["approach", "transport", "return_home"])
     parser.add_argument("--scenarios", nargs="+", choices=("clear", "static", "moving", "appear", "depart"),
                         default=["clear", "static", "moving", "appear", "depart"])
@@ -106,6 +107,10 @@ def main():
     parser.add_argument("--braking-duration-s", type=float, default=.5)
     parser.add_argument("--faults", nargs="*", choices=tuple(FAULTS), default=[])
     parser.add_argument("--gpu-audit", action="store_true")
+    parser.add_argument("--require-obstacle-response", action="store_true",
+                        help="require old suffix invalid + an installed optimized replacement")
+    parser.add_argument("--expect-rejection-code", choices=("GOAL_ENDPOINT_COLLISION", "SPLICE_ENDPOINT_COLLISION",
+                        "CONSTRAINED_PHASE_BLOCKED", "UNSAFE_COMMITTED_PREFIX", "NO_VALID_REPLACEMENT", "DEADLINE_MISS"))
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     tools = Path(__file__).parent
@@ -136,12 +141,19 @@ def main():
         row["exit_code"] = invoke(command, result.with_suffix(".log"), 210 + args.execution_timeout_s)
         try:
             report = json.loads(result.read_text())
-            row["audit"] = audit(report, PlannerAssets().robot_config, fault == "none", scenario != "clear")
+            expect_complete = fault == "none" and args.expect_rejection_code is None
+            row["audit"] = audit(report, PlannerAssets().robot_config, expect_complete,
+                                 args.require_obstacle_response and expect_complete)
+            if args.expect_rejection_code and report.get("failure_code") != args.expect_rejection_code:
+                raise ValueError("run did not reject for the expected phase safety reason")
             if fault != "none" and not any(token in report.get("error", "") for token in FAULTS[fault]):
                 raise ValueError("rejected for a different reason than the injected fault")
             if args.gpu_audit and fault == "none":
-                verify = [sys.executable, str(tools / "v3_verify_rolling.py"), "--result", str(result), "--gpu"]
-                if scenario != "clear":
+                verify = [sys.executable, str(tools / "v3_verify_rolling.py"), "--result", str(result),
+                          "--initial-cycle", str(args.initial_cycle), "--gpu"]
+                if args.expect_rejection_code:
+                    verify.extend(("--expect", "rejected", "--require-rejection-code", args.expect_rejection_code))
+                if args.require_obstacle_response and not args.expect_rejection_code:
                     verify.append("--require-obstacle-response")
                 if invoke(verify, result.with_suffix(".audit.log"), 180) != 0:
                     raise ValueError("independent GPU audit failed; see .audit.log")

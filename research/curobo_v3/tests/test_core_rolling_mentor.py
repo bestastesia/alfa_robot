@@ -51,15 +51,15 @@ class MentorRollingContractTest(unittest.TestCase):
             pass
         namespace = dict(CuroboBackend=Backend, math=math)
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), namespace)
-        for phase in ('approach', 'transport', 'conveyor_place', 'return_home'):
-            payload = phase in ('transport', 'conveyor_place')
+        for phase in ('approach', 'contact_approach', 'extract', 'transport', 'conveyor_place', 'return_home'):
+            payload = phase in ('extract', 'transport', 'conveyor_place')
             namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase=phase, payload=payload)
             with self.subTest(phase=phase), self.assertRaisesRegex(ValueError, 'phase contract'):
                 namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase=phase, payload=not payload)
         with self.assertRaisesRegex(ValueError, 'explicit online motion contract'):
-            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase='extract')
+            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase='extract_unknown', payload=False)
         with self.assertRaisesRegex(ValueError, 'explicit boolean'):
-            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, allow_braking_fallback='false')
+            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, allow_braking_fallback='false', payload=False)
 
     def test_fixed_nonzero_base_pose_is_preserved_not_zeroed(self):
         record = self.record()
@@ -121,9 +121,12 @@ class MentorRollingContractTest(unittest.TestCase):
         context = {'GpuValidity': lambda supplied, **kw: (supplied, kw)}
         exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), context)
         self.assertIs(context['online_validity'](backend, {}, False, 'approach'), target)
-        value = context['online_validity'](backend, {}, True, 'transport')
-        self.assertEqual(value, (checker, {'check_ground': True}))
-        self.assertEqual(calls, [False, True])
+        for phase, payload in (("contact_approach", False), ("extract", False),
+                               ("transport", True), ("conveyor_place", True), ("return_home", False)):
+            value = context['online_validity'](backend, {}, phase == "extract" or payload, phase)
+            self.assertEqual(value, (checker, {'check_ground': True}))
+        # The validation robot is empty during extract; loaded endpoint is a separate gate.
+        self.assertEqual(calls, [False, False, False, True, True, False])
 
 
 if __name__ == '__main__':

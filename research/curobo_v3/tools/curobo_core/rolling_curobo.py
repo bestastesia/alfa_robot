@@ -15,9 +15,9 @@ class SegmentReplanner:
     def __init__(self, backend, boxes, *, payload=False, sample_dt=.025, phase="approach", braking_duration_s=.5, allow_braking_fallback=True):
         if not isinstance(backend, CuroboBackend):
             raise TypeError("reuse an initialized CuroboBackend")
-        if phase not in ("approach", "transport", "conveyor_place", "return_home"):
+        if phase not in ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"):
             raise ValueError("phase requires an explicit online motion contract")
-        if type(payload) is not bool or payload != (phase in ("transport", "conveyor_place")):
+        if type(payload) is not bool or payload != (phase in ("extract", "transport", "conveyor_place")):
             raise ValueError("payload mode must match the phase contract")
         if type(allow_braking_fallback) is not bool:
             raise ValueError("allow_braking_fallback must be an explicit boolean")
@@ -28,6 +28,7 @@ class SegmentReplanner:
         if not math.isfinite(braking_duration_s) or braking_duration_s <= 0:
             raise ValueError("positive finite braking duration required")
         self.phase = phase
+        self.constrained_phase = phase in ("contact_approach", "extract")
         self.braking_duration_s = braking_duration_s
         self.allow_braking_fallback = allow_braking_fallback
         # Existing connect mode returns the first finely verified feasible path;
@@ -40,9 +41,11 @@ class SegmentReplanner:
         self.backend.set_snapshot(snapshot, allow_attached=True, require_locked_state=True)
         # PR65 already caches by robot/payload topology, updates world geometry,
         # and invalidates its base-cuboid query cache. Reuse that whole contract.
-        return self.backend.online_validity(self.boxes, self.payload, self.phase)
+        validity = self.backend.online_validity(self.boxes, self.payload, self.phase)
+        self.terminal_validity = self.backend.online_terminal_validity(self.boxes, self.phase)
+        return validity
 
-    def validate(self, document, validity):
+    def validate(self, document, validity, *, require_phase_terminal=True):
         curve = TimedTrajectory(document)
         if curve.joint_names != tuple(ACTIVE_JOINTS):
             raise ValueError("online segment joint order must match ACTIVE_JOINTS")
@@ -60,6 +63,8 @@ class SegmentReplanner:
             raise ValueError(f"interpolated trajectory failed collision/stability/position gate at {samples[first]:.6f}s")
         if not bool(validity.edges(q[:-1], q[1:], resolution=math.radians(.5)).all().item()):
             raise ValueError("interpolated trajectory edge collision rejected")
+        if require_phase_terminal and self.terminal_validity is not None and not bool(self.terminal_validity.mask(q[-1:]).item()):
+            raise ValueError("extract terminal state failed loaded-payload gate")
         return {"limit_ratios": ratios, "collision_samples": len(samples),
                 "edge_resolution_rad": math.radians(.5), "sample_dt_s": self.sample_dt,
                 "dynamics_enabled": False, "torque_constraints_enabled": False}
@@ -149,7 +154,7 @@ class SegmentReplanner:
                                             "valid_from": observation.observed_at,
                                             "valid_until": ticket.splice_at, "trajectory": prefix}
             try:
-                report["prefix_validation"] = self.validate(prefix, validity)
+                report["prefix_validation"] = self.validate(prefix, validity, require_phase_terminal=False)
             except ValueError as error:
                 report["failure_code"] = "UNSAFE_COMMITTED_PREFIX"
                 report["required_action"] = "independent_protective_stop"
@@ -158,6 +163,8 @@ class SegmentReplanner:
             scene_started = time.perf_counter()
             snapshot = observation.swept_snapshot(ticket.splice_at, scene_end)
             validity = self.scene(snapshot)
+            report["planning_certificate"] = {"snapshot": snapshot.to_dict(),
+                                              "valid_from": ticket.splice_at, "valid_until": scene_end}
             spans["scene_update"] = [scene_started, time.perf_counter()]
             audit_started = time.perf_counter()
             try:
@@ -177,6 +184,21 @@ class SegmentReplanner:
                 report["required_action"] = "independent_safety_intervention"
                 report["endpoint_check_interval"] = [ticket.splice_at, scene_end]
                 raise ValueError(f"{report['failure_code']}: fixed endpoint violates the planning envelope")
+            if getattr(self, "constrained_phase", False):
+                if not report["previous_suffix_valid"]:
+                    report["failure_code"] = "CONSTRAINED_PHASE_BLOCKED"
+                    report["required_action"] = "independent_protective_stop"
+                    report["certificate"] = report["planning_certificate"]
+                    raise ValueError(f"{self.phase} corridor blocked; free-space detour is forbidden")
+                report.update(success=True, optimization_success=False,
+                              strategy="revalidated_constrained_suffix", trajectory=ticket.remaining,
+                              certificate={"snapshot": snapshot.to_dict(), "valid_from": ticket.splice_at,
+                                           "valid_until": scene_end},
+                              internal_stops=0, constrained_phase=True)
+                ready_at = time.perf_counter()
+                report.update(started_at=started, ready_at=ready_at,
+                              compute_wall_s=ready_at-started, deadline_miss=ready_at>ticket.compute_deadline)
+                return report
             candidates = []
             # Loaded-boundary probe: weighted arc-length seeding + max dt failed,
             # while the same geometry resampled uniformly at .75*max dt passed.
@@ -265,7 +287,13 @@ class SegmentReplanner:
                 if TimedTrajectory(ticket.remaining).duration > max_duration_s:
                     raise ValueError("remaining trajectory outlives prediction")
                 validity = self.scene(snapshot)
-                report["validation"] = self.validate(ticket.remaining, validity)
+                try:
+                    report["validation"] = self.validate(ticket.remaining, validity)
+                except ValueError as error:
+                    report["failure_code"] = "NO_VALID_REPLACEMENT"
+                    report["required_action"] = "independent_safety_intervention"
+                    report["certificate"] = report["planning_certificate"]
+                    raise ValueError(f"no valid replacement before deadline: {error}") from error
                 report["certificate"] = {"snapshot": snapshot.to_dict(),
                                          "valid_from": ticket.splice_at, "valid_until": scene_end}
                 spans["fallback_revalidation"] = [fallback_started, time.perf_counter()]

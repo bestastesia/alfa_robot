@@ -43,7 +43,7 @@
 
 ## 当前证据与未通过项
 
-- CPU 95/95（新PR自身测试与在线合同组合；与旧89项不直接比较，旧基线测试集合已由PR65更新）。
+- CPU 101/101（新PR自身测试与在线合同组合；与旧89项不直接比较，旧基线测试集合已由PR65更新）。
 - 无障碍approach完成5次非零速度接续，独立GPU复核初始/5候选/尾段通过。
 - 新基线初次20场景pilot已经结束；存在动态障碍失败、当前前缀碰撞及放箱浮点切片问题，保留所有负例，不能称完整验收通过。
 - 根因之一：单调时钟相减使切点距原节点约1e-12s，生成极短五次插值区间导致伪加速度。修复仅丢弃距精确切点一纳秒内的内部节点，保留实际边界q/v/a；二次曲线回归验证不改变运动与速度。
@@ -127,6 +127,23 @@ python /home/astesia/Sevenova/motion292-acceptance/pr65-braking-release-v13/runt
   --execution-timeout-s 60 \
   --gpu-audit
 ```
+
+## 受约束接触与抽离阶段
+
+PR65时间化结果还包含`contact_approach`与`extract`。这两段现在进入同一个节拍/版本/延迟/尾段审计框架，但**禁止自由空间绕路**：
+
+- `contact_approach`继续使用PR65的空载阶段碰撞合同；`extract`沿路径使用PR65空载门禁，并在原大段终点额外执行带载门禁。中间小段末端不能误当“抽离完成”。
+- 环境更新后，旧受约束后缀完整安全则发布同几何后缀的新证书；若当前已承诺前缀不安全，报告`UNSAFE_COMMITTED_PREFIX`；若前缀安全但后缀通道受阻，报告`CONSTRAINED_PHASE_BLOCKED`。两者都要求独立保护处置，不调用普通搜索或减速绕行。
+- 阶段快照来自PR65同次结果：extract包含已确认附件，contact_approach不含附件。阶段、载荷不匹配直接拒绝。
+- `pr65-constrained-v17`：清场景contact/extract三种子各3/3；默认static/moving共12项全部按预期`UNSAFE_COMMITTED_PREFIX`拒绝，独立GPU重建碰撞，0次越权接续。该证据说明fail-closed，不等于保护停机已经执行。
+
+`approach/transport/conveyor_place/return_home`允许自由空间重搜索；所有阶段均保持原大段终点，端点被占用时先返回`SPLICE_ENDPOINT_COLLISION`或`GOAL_ENDPOINT_COLLISION`。候选耗尽且旧路仍碰撞时返回`NO_VALID_REPLACEMENT`。监督线程/通信超时返回`DEADLINE_MISS`。每个正常拒绝必须携带failure_code和required_action，独立审计按代码复现原因。
+
+## 验收汇总工具
+
+`v3_rolling_acceptance_report.py`只接受：完整matrix、每项verified、正常场景独立audit、6阶段×5场景×指定种子覆盖、8类故障覆盖、PR65核心保留及15轮/25箱基线。它汇总原始阶段时长，不平均p95；拒绝样本和截尾计算保留。
+
+输出中的`simulation_contract_complete=true`只表示仿真合同证据闭环；`overall_issue_done=false`和external_gates持续列出MOTION-296、真实15轴条件换轨/停止、真实障碍与反馈源、时钟同步及安全评审。该工具不能把外部前置改写成通过。
 
 ## 复现（隔离资产，不修改原基线工作树）
 

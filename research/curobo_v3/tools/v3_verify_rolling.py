@@ -2,6 +2,7 @@
 """Audit saved rolling execution evidence, not just the producer's success flag."""
 import argparse
 import bisect
+import hashlib
 import json
 from pathlib import Path
 import xml.etree.ElementTree as ET
@@ -14,6 +15,26 @@ from curobo_core.trajectory import TimedTrajectory
 from curobo_core.rolling import SceneObservation
 from curobo_core.scene import SceneSnapshot, digest
 
+
+
+
+def verify_artifact_identity(report, tools, initial_cycle=None):
+    current = {str(path.relative_to(tools)): hashlib.sha256(path.read_bytes()).hexdigest()
+               for path in sorted(tools.rglob("*.py"))}
+    if report["runtime_source_sha256"] != current:
+        raise ValueError("runtime source tree differs from recorded evidence")
+    if initial_cycle is not None and hashlib.sha256(initial_cycle.read_bytes()).hexdigest() != report["initial_cycle_sha256"]:
+        raise ValueError("initial cycle contents differ from recorded evidence")
+    assets = PlannerAssets()
+    measured = {name: hashlib.sha256(path.read_bytes()).hexdigest()
+                for name, path in vars(assets).items() if isinstance(path, Path)}
+    if report.get("startup", {}).get("model_assets_sha256") != measured:
+        raise ValueError("planner model assets differ from recorded evidence")
+    cuboids = tools.parent / "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json"
+    if hashlib.sha256(cuboids.read_bytes()).hexdigest() != report.get("startup", {}).get("base_cuboids_sha256"):
+        raise ValueError("base cuboid collision asset differs from recorded evidence")
+    return {"source_files": len(current), "model_assets": len(measured),
+            "initial_cycle_verified": initial_cycle is not None}
 
 
 def terminal_evidence(report):
@@ -206,15 +227,17 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", type=Path, required=True)
+    parser.add_argument("--initial-cycle", type=Path, help="required for final evidence identity verification")
     parser.add_argument("--robot-config", type=Path, default=PlannerAssets().robot_config)
     parser.add_argument("--expect", choices=("complete", "rejected"), default="complete")
     parser.add_argument("--require-obstacle-response", action="store_true")
-    parser.add_argument("--require-rejection-code", choices=("GOAL_ENDPOINT_COLLISION", "SPLICE_ENDPOINT_COLLISION"),
+    parser.add_argument("--require-rejection-code", choices=("GOAL_ENDPOINT_COLLISION", "SPLICE_ENDPOINT_COLLISION", "CONSTRAINED_PHASE_BLOCKED", "UNSAFE_COMMITTED_PREFIX", "NO_VALID_REPLACEMENT", "DEADLINE_MISS"),
                         help="verify a specific fail-closed condition, separately from successful avoidance")
     parser.add_argument("--gpu", action="store_true", help="independently recheck installed trajectories in recorded collision envelopes")
     args = parser.parse_args()
     report = json.loads(args.result.read_text())
     summary = audit(report, args.robot_config, args.expect == "complete", args.require_obstacle_response)
+    summary["artifact_identity"] = verify_artifact_identity(report, Path(__file__).parent, args.initial_cycle)
     if args.require_rejection_code:
         if args.expect != "rejected" or report.get("failure_code") != args.require_rejection_code:
             raise ValueError("report did not reject for the requested collision reason")
@@ -246,7 +269,7 @@ def main():
             expected_prefix = previous.window(observation.observed_at-previous_at, event["at"]-previous_at)
             if digest(expected_prefix) != digest(prefix["trajectory"]):
                 raise ValueError("prefix certificate is not for the actually executed prefix")
-            adapter.validate(expected_prefix, adapter.scene(prefix_scene))
+            adapter.validate(expected_prefix, adapter.scene(prefix_scene), require_phase_terminal=False)
             certificate = solve["certificate"]
             snapshot = observation.swept_snapshot(event["at"], certificate["valid_until"])
             if snapshot.geometry_key != SceneSnapshot.from_dict(certificate["snapshot"]).geometry_key:
@@ -255,26 +278,89 @@ def main():
                 raise ValueError("suffix exceeds collision certificate time horizon")
             adapter.validate(entry["trajectory"], adapter.scene(snapshot))
             previous, previous_at = TimedTrajectory(entry["trajectory"]), event["at"]
-        if args.require_rejection_code:
+        if args.require_rejection_code == "DEADLINE_MISS":
+            if "deadline" not in report.get("error", "").lower() or report.get("deadline_miss_count", 0) < 1:
+                raise ValueError("deadline rejection lacks measured miss evidence")
+            safety = [event for event in report["events"] if event["event"] == "safety_required"]
+            if len(safety) != 1 or safety[0].get("cancelled_sequence") is None:
+                raise ValueError("deadline rejection lacks a traceable cancelled request")
+            if any(event["event"] == "activated" and event["sequence"] >= safety[0]["cancelled_sequence"]
+                   for event in report["events"]):
+                raise ValueError("trajectory was activated after its deadline rejection")
+            summary["deadline_rejection_confirmed"] = True
+        elif args.require_rejection_code:
             rejected = next((s for s in reversed(report["solves"])
                              if s.get("failure_code") == args.require_rejection_code), None)
-            if not rejected or rejected.get("success") or "trajectory" in rejected:
-                raise ValueError("missing fail-closed endpoint-check result")
-            request = next(e for e in report["events"] if e["event"] == "requested"
-                           and e["sequence"] == rejected["sequence"])
-            interval = [request["splice_at"], previous_at + previous.duration]
-            if not np.allclose(rejected["endpoint_check_interval"], interval, atol=1e-8, rtol=0):
-                raise ValueError("endpoint rejection used the wrong execution interval")
+            if not rejected or rejected.get("success"):
+                raise ValueError("missing fail-closed result")
             observation = observations[rejected["observation_id"]]
-            world = observation.swept_snapshot(*interval)
-            q = np.stack([previous.sample(interval[0]-previous_at)["positions"],
-                          previous.sample(previous.duration)["positions"]])
-            measured = adapter.check_endpoints(q, adapter.scene(world))
-            expected = rejected["endpoint_validity"]
-            index = 0 if args.require_rejection_code == "SPLICE_ENDPOINT_COLLISION" else 1
-            if measured != expected or measured[index]:
-                raise ValueError("independent GPU check contradicts endpoint rejection")
-            summary["gpu_endpoint_rejection_confirmed"] = measured
+            if args.require_rejection_code in ("SPLICE_ENDPOINT_COLLISION", "GOAL_ENDPOINT_COLLISION"):
+                if "trajectory" in rejected:
+                    raise ValueError("endpoint rejection published a trajectory")
+                request = next(e for e in report["events"] if e["event"] == "requested"
+                               and e["sequence"] == rejected["sequence"])
+                interval = [request["splice_at"], previous_at + previous.duration]
+                if not np.allclose(rejected["endpoint_check_interval"], interval, atol=1e-8, rtol=0):
+                    raise ValueError("endpoint rejection used the wrong execution interval")
+                world = observation.swept_snapshot(*interval)
+                q = np.stack([previous.sample(interval[0]-previous_at)["positions"],
+                              previous.sample(previous.duration)["positions"]])
+                measured = adapter.check_endpoints(q, adapter.scene(world))
+                expected = rejected["endpoint_validity"]
+                index = 0 if args.require_rejection_code == "SPLICE_ENDPOINT_COLLISION" else 1
+                if measured != expected or measured[index]:
+                    raise ValueError("independent GPU check contradicts endpoint rejection")
+                summary["gpu_endpoint_rejection_confirmed"] = measured
+            elif args.require_rejection_code == "CONSTRAINED_PHASE_BLOCKED":
+                if "trajectory" in rejected or rejected.get("attempts"):
+                    raise ValueError("constrained rejection attempted an unauthorized detour")
+                request = next(e for e in report["events"] if e["event"] == "requested"
+                               and e["sequence"] == rejected["sequence"])
+                certificate = rejected["certificate"]
+                world = observation.swept_snapshot(request["splice_at"], certificate["valid_until"])
+                old_suffix = previous.suffix(request["splice_at"]-previous_at)
+                try:
+                    adapter.validate(old_suffix, adapter.scene(world))
+                except ValueError as error:
+                    summary["gpu_constrained_rejection_confirmed"] = str(error)
+                else:
+                    raise ValueError("constrained rejection contradicts independent GPU validation")
+            elif args.require_rejection_code == "NO_VALID_REPLACEMENT":
+                if "trajectory" in rejected or not rejected.get("attempts"):
+                    raise ValueError("replacement failure lacks bounded attempts or published an unsafe trajectory")
+                if any(attempt.get("accepted") and not attempt.get("online_rejection")
+                       for attempt in rejected["attempts"]):
+                    raise ValueError("replacement failure discarded an accepted checked candidate")
+                request = next(e for e in report["events"] if e["event"] == "requested"
+                               and e["sequence"] == rejected["sequence"])
+                certificate = rejected["certificate"]
+                world = observation.swept_snapshot(request["splice_at"], certificate["valid_until"])
+                old_suffix = previous.suffix(request["splice_at"]-previous_at)
+                try:
+                    adapter.validate(old_suffix, adapter.scene(world))
+                except ValueError as error:
+                    summary["gpu_no_replacement_rejection_confirmed"] = str(error)
+                else:
+                    raise ValueError("NO_VALID_REPLACEMENT contradicts a safe old suffix")
+            else:
+                if rejected.get("terminal"):
+                    certificate = rejected["certificate"]
+                    world = observation.swept_snapshot(certificate["valid_from"], certificate["valid_until"])
+                    try:
+                        adapter.validate(rejected["trajectory"], adapter.scene(world))
+                    except ValueError as error:
+                        summary["gpu_unsafe_prefix_confirmed"] = str(error)
+                    else:
+                        raise ValueError("terminal unsafe-prefix rejection contradicts GPU validation")
+                else:
+                    prefix = rejected["prefix_certificate"]
+                    world = observation.swept_snapshot(observation.observed_at, prefix["valid_until"])
+                    try:
+                        adapter.validate(prefix["trajectory"], adapter.scene(world), require_phase_terminal=False)
+                    except ValueError as error:
+                        summary["gpu_unsafe_prefix_confirmed"] = str(error)
+                    else:
+                        raise ValueError("unsafe-prefix rejection contradicts independent GPU validation")
         if report["success"] and report.get("schema_version", 1) >= 3:
             document, world = terminal_evidence(report)
             adapter.validate(document, adapter.scene(world))

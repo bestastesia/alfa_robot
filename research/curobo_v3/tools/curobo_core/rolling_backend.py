@@ -66,7 +66,7 @@ class RollingBackend(TimedSingleArmPlanner):
         snapshot = self.snapshot
         mapping = dict(zip(segment["joint_names"], segment["positions"][0]))
         snapshot = replace(snapshot, state=snapshot.state.with_positions(mapping))
-        if phase in ("transport", "conveyor_place"):
+        if phase in ("extract", "transport", "conveyor_place"):
             attachments = self.task_attachments(boxes)
             ids = {item.object_id for item in attachments}
             snapshot = replace(snapshot, attachments=attachments,
@@ -83,7 +83,7 @@ class RollingBackend(TimedSingleArmPlanner):
                 segment["name"]: {"snapshot": self.snapshot_for_stage(result, segment).to_dict(),
                                   "top_grasp": self.top_grasp, "base_advance_m": self.base_advance}
                 for segment in result["timed_segments"]
-                if segment["name"] in ("approach", "transport", "conveyor_place", "return_home")}
+                if segment["name"] in ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")}
         return {"request": request, "result": result, "baseline": "PR65@541fdbc"}
 
     def optimization_scene(self, boxes):
@@ -98,12 +98,18 @@ class RollingBackend(TimedSingleArmPlanner):
     def online_validity(self, boxes, payload, phase):
         from v3_batched_loaded_search import GpuValidity
         self.online_phase = phase
-        checker = self.collision_checker(boxes, payload=payload)
+        checker = self.collision_checker(boxes, payload=phase in ("transport", "conveyor_place"))
         if phase == "approach":
             return self.target_validity(checker)
-        # Preserve the PR65 phase gate including its base_cuboid_layer;
-        # the retired backend's payload-frame assumptions are NOT transplanted.
+        # contact_approach/extract deliberately match TimedSingleArmPlanner's
+        # empty-robot phase gate. Extract adds an independent loaded endpoint gate.
         return GpuValidity(checker, check_ground=True)
+
+    def online_terminal_validity(self, boxes, phase):
+        if phase != "extract":
+            return None
+        from v3_batched_loaded_search import GpuValidity
+        return GpuValidity(self.collision_checker(boxes, payload=True), check_ground=True)
 
     def motion_weights(self, boxes):
         from .distance_metric import joint_distance_weights

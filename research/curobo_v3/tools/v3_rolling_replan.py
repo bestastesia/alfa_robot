@@ -53,7 +53,7 @@ def stage_input(record, name, round_index=0):
                   **{key: np.asarray(stage[key])[:, indices].tolist() for key in
                      ("positions", "velocities", "accelerations", "jerks")}}
     snapshot = SceneSnapshot.from_dict(result["rolling_stage_inputs"][name]["snapshot"])
-    return trajectory, snapshot, result["task"], name in ("transport", "conveyor_place")
+    return trajectory, snapshot, result["task"], name in ("extract", "transport", "conveyor_place")
 
 
 
@@ -169,16 +169,16 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, br
                 continue
             if ticket is None:
                 began = time.perf_counter()
+                snapshot = observation.swept_snapshot(observation.observed_at, observation.observed_at + duration)
+                certificate = {"snapshot": snapshot.to_dict(), "valid_from": observation.observed_at,
+                               "valid_until": observation.observed_at + duration}
+                response = {"success": False, "trajectory": prefix, "certificate": certificate}
                 try:
-                    snapshot = observation.swept_snapshot(observation.observed_at, observation.observed_at + duration)
                     check = adapter.scene(snapshot)
-                    validation = adapter.validate(prefix, check)
-                    response = {"success": True, "validation": validation, "trajectory": prefix,
-                                "certificate": {"snapshot": snapshot.to_dict(),
-                                                "valid_from": observation.observed_at,
-                                                "valid_until": observation.observed_at + duration}}
+                    response.update(success=True, validation=adapter.validate(prefix, check))
                 except (ValueError, RuntimeError) as error:
-                    response = {"success": False, "error": str(error)}
+                    response.update(error=str(error), failure_code="UNSAFE_COMMITTED_PREFIX",
+                                    required_action="independent_protective_stop")
                 ready = time.perf_counter()
                 response.update(started_at=began, ready_at=ready, compute_wall_s=ready-began,
                                 observation_id=observation.identity, terminal=True)
@@ -396,6 +396,9 @@ def run(args):
         report["completed_at"] = time.perf_counter()
     except (Exception, KeyboardInterrupt) as error:
         report["error"] = f"{type(error).__name__}: {error}"
+        if isinstance(error, TimeoutError) and "failure_code" not in report:
+            report["failure_code"] = "DEADLINE_MISS"
+            report["required_action"] = "independent_safety_intervention"
         if segment is not None:
             segment.fail(report["error"], time.perf_counter())
         report["safety_action"] = "simulation_aborted; physical stopping NOT validated"
@@ -428,7 +431,10 @@ def run(args):
         report["optimization_success_count"] = sum(x.get("optimization_success", False) for x in report["solves"])
         report["direct_optimization_success_count"] = sum(x.get("strategy") == "optimized_suffix" and x.get("success", False)
                                                          for x in report["solves"])
-        report["revalidated_fallback_count"] = sum(x.get("strategy") == "revalidated_suffix" for x in report["solves"])
+        report["revalidated_fallback_count"] = sum(x.get("strategy") in ("revalidated_suffix", "revalidated_constrained_suffix")
+                                                  for x in report["solves"])
+        report["constrained_revalidation_count"] = sum(x.get("strategy") == "revalidated_constrained_suffix"
+                                                         for x in report["solves"])
         installed_sequences = {event["sequence"] for event in report["events"] if event["event"] == "activated"}
         report["braking_candidate_count"] = sum(x.get("strategy") == "brake_then_optimize" and x.get("success", False)
                                                  for x in report["solves"])
@@ -460,7 +466,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--initial-cycle", type=Path, required=True)
     parser.add_argument("--round", type=int, default=0, help="zero-based round for a full-sequence input")
-    parser.add_argument("--stage", choices=("approach", "transport", "conveyor_place", "return_home"), default="approach")
+    parser.add_argument("--stage", choices=("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"), default="approach")
     parser.add_argument("--scenario", choices=("clear", "static", "moving", "appear", "depart"), default="clear")
     parser.add_argument("--obstacle-center", type=float, nargs=3,
                         help="explicit map-frame obstacle center at 0.6*t1; overrides the default TCP fixture")

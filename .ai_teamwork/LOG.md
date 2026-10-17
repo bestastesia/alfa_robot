@@ -2269,3 +2269,11 @@
 - 保留失败对照：.5s回退v8为2/3，扩大时域v9为1/3（该扩大策略已撤出）；.4s曾遇末尾窗口大epoch相减越界，修复用精确relative duration而非容差放宽。验证失败候选后恢复规划world，避免时域缓存污染下一attempt。phase/payload/回退布尔参数必须明确，未支持约束阶段拒绝，不冒充完成。
 - GUI截图证据pr65-braking-release-v13/replay-playing.png/DOM；为同条件时延对照已停止本轮自己的8102服务器和headless Firefox，无残留GPU任务。所有此轮probe/matrix已结束（v13 enabled/disabled各3种子）；勿对结束句柄盲目重启。
 - 仍未完成：完整新基线多阶段动态矩阵、受约束接触/抽离阶段与任务事件闭环、实际执行/安全接口确认及PR交付。该回退是新增可验证能力，不替代上述目标。负责人文子轩决定任何范围/接口修改，未改新仓库Frozen Interface，未发硬件命令。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 受约束阶段与完整验收汇总
+- contact_approach/extract已接节拍框架但禁止自由空间绕行；extract路径沿用PR65空载gate，只有原段终点查带载gate，避免把每个小段误当抽离完成。阶段/载荷不匹配拒绝。
+- pr65-constrained-v17：clear contact/extract各3种子共6/6；默认static/moving 12/12均按UNSAFE_COMMITTED_PREFIX预期拒绝并由GPU重建，0次越权绕行。当前进程已结束。
+- 新增正常拒绝NO_VALID_REPLACEMENT与DEADLINE_MISS分类/审核，matrix的obstacle-response要求改为显式参数，避免仅按非clear标签声称发生避障。端点/受约束/前缀/无替换/截止五类分开。
+- v3_rolling_acceptance_report.py要求6阶段×5场景×3种子、8故障、独立audit、同一源码/模型/输入、PR65核心与15轮25箱证据；仅输出simulation_contract_complete，不冒充overall issue done。
+- CPU101/101；新增全部tools源码、模型、cuboid与输入哈希复核，证据目录/source被修改会拒绝。下一步冻结最终源码跑完整分组矩阵及所有15轮clear rolling；代码完成前不得用旧source hash矩阵冒充最终验收。
