@@ -43,6 +43,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument('--result', type=Path, nargs='+')
+    parser.add_argument('--sequence-json', type=Path)
     args = parser.parse_args()
     comparisons = {}
     for path in args.comparison_json or []:
@@ -50,6 +51,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     planner_labels = {"Connect + Informed": "informed_connect"}
     planner = planner_class(args)
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
+    sequence_result = json.loads(args.sequence_json.read_text()) if args.sequence_json else None
     preload = saved_results[0] if saved_results else None
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
@@ -96,6 +98,12 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
             f"/wall/box_{box_id}", position=item.pose.position,
             wxyz=item.pose.quaternion_wxyz, dimensions=item.dimensions_m,
             color=(87, 145, 165), opacity=.25)
+    for box_id in range(25):
+        if box_id not in source_boxes:
+            source_boxes[box_id] = server.scene.add_box(
+                f"/wall/box_{box_id}", position=(0., 0., 0.),
+                dimensions=planner.box_fit["dimensions_m"], color=(87, 145, 165),
+                opacity=.35, visible=False)
     for item in planner.snapshot.objects:
         if not item.object_id.startswith("wall_box_") and item.object_id != "ground":
             server.scene.add_box(f"/container/{item.object_id}", dimensions=item.dimensions_m,
@@ -110,6 +118,8 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Connect + Informed")
         run = server.gui.add_button("计算完整流程并播放")
+        whole_sequence = server.gui.add_checkbox(
+            "连续播放完整25箱", initial_value=bool(round_mode and sequence_result))
         play = server.gui.add_checkbox("播放", initial_value=False)
         playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=3., step=.1,
                                                initial_value=1.)
@@ -136,10 +146,18 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 mode=1, scales={"x": {"time": False}}, title="所选阶段 q / qdot", height=300,
                 visible=False)
         comparison_status = server.gui.add_markdown("")
-    current = {"result": None, "busy": False, "curve_binding": None}
+    current = {"result": None, "busy": False, "curve_binding": None, "render_round": None}
+
+    def selected_cycle_result():
+        result = current.get("result")
+        if result and result.get("sequence"):
+            task_value = planner.task_map[task.value]
+            record = next((item for item in result["rounds"] if item["task"] == task_value), None)
+            return record.get("result") if record else None
+        return result
 
     def refresh_stage_timing():
-        result = current.get("result")
+        result = selected_cycle_result()
         if not result:
             timing_detail.content = "请选择轮次和阶段。"
             return
@@ -184,8 +202,32 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
 
     def show_frame(index):
         result = current["result"]
-        if result and diagnostic.value and result.get('extraction_diagnostic'):
+        if result and diagnostic.value and result.get('extraction_diagnostic') and not result.get("sequence"):
             result = dict(result, **result['extraction_diagnostic'])
+        cycle_result = result
+        cycle_index = index
+        active_task = planner.selected_task
+        top_grasp = planner.top_grasp
+        round_number = None
+        if result and result.get("sequence"):
+            index = min(max(0, index), len(result["frames"]) - 1)
+            round_number = result["frame_rounds"][index]
+            record = result["rounds"][round_number]
+            cycle_result = record["result"]
+            active_task = record["task"]
+            top_grasp = cycle_result.get("top_grasp", False)
+            cycle_index = index - result["frame_rounds"].index(round_number)
+            if current["render_round"] != round_number:
+                planner.selected_task = active_task
+                centers, obstacles = planner.configure_task(active_task)
+                for side, box_id in active_task.items():
+                    source_boxes[box_id].position = centers[side]
+                for fill_index, node in enumerate(fill_nodes):
+                    node.visible = fill_index < len(obstacles)
+                    if fill_index < len(obstacles):
+                        node.position = obstacles[fill_index]["center"]
+                        node.dimensions = obstacles[fill_index]["dimensions"]
+                current["render_round"] = round_number
         if result is None:
             values = {**planner.home, "base_x": 0., "base_y": 0., "base_yaw": 0.}
             phase = "home"
@@ -198,34 +240,36 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         urdf.update_cfg(cfg)
         robot.update_cfg(cfg)
         for side, node in attached.items():
-            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ grasp_transform(side, planner.top_grasp)
+            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ grasp_transform(side, top_grasp)
             node.position = matrix[:3, 3]
             node.wxyz = quaternion(matrix)
             node.visible = has_payload
         for box_id, box in source_boxes.items():
-            box.visible = box_id in planner.selected_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
+            box.visible = box_id in active_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
         if result:
             status.content = (
                 f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
-                f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
-                f"最终Home误差：**{result.get('final_home_error', 0):.8f}**"
+                f"全部规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s**  \n"
+                f"最终Home误差：**{cycle_result.get('final_home_error', 0):.8f}**"
             )
-            segment = next((item for item in result.get("timed_segments", ())
-                            if item["frame_start"] <= index <= item["frame_end"]), None)
+            if round_number is not None:
+                status.content += f"  \n当前第 **{round_number+1}/15** 轮 · {active_task}"
+            segment = next((item for item in cycle_result.get("timed_segments", ())
+                            if item["frame_start"] <= cycle_index <= item["frame_end"]), None)
             if segment:
-                local = index - segment["frame_start"]
-                related = phase_planning_detail(result, segment["name"])["additive"]
+                local = cycle_index - segment["frame_start"]
+                related = phase_planning_detail(cycle_result, segment["name"])["additive"]
                 detail = "".join(f"  \n- {name}：{value:.2f}ms" for name, value in related)
                 timed_status.content = (
                     f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
-                    f"时间化：`{segment.get('parameterizer', 'recorded')}` / {result.get('trajectory_timing_ms', 0):.1f}ms  \n"
-                    f"本轮规划：**{result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{result.get('motion_duration_s', 0):.3f}s**"
+                    f"时间化：`{segment.get('parameterizer', 'recorded')}` / {cycle_result.get('trajectory_timing_ms', 0):.1f}ms  \n"
+                    f"本轮规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{cycle_result.get('motion_duration_s', 0):.3f}s**"
                     + ("  \n**相关规划记录（共享项不重复求和）**" + detail if detail else ""))
                 names = segment["joint_names"]
                 joint_index = names.index(curve_joint.value)
-                binding = (id(result), segment["name"], curve_joint.value)
+                binding = (id(cycle_result), segment["name"], curve_joint.value)
                 if current["curve_binding"] != binding:
                     trajectory_curve.data = (np.asarray(segment["time_from_start_s"]),
                                              np.asarray(segment["positions"])[:, joint_index],
@@ -309,6 +353,8 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
 
     def displayed_result():
         result = current['result']
+        if result and result.get("sequence"):
+            return result
         return dict(result, **result['extraction_diagnostic']) if diagnostic.value and result and result.get('extraction_diagnostic') else result
 
     @diagnostic.on_update
@@ -318,6 +364,21 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         frame.max = max(1, len(result['frames'])) if result else 1
         frame.value = 1
         show_frame(0)
+
+    @whole_sequence.on_update
+    def on_whole_sequence(_event):
+        play.value = False
+        if whole_sequence.value and sequence_result:
+            current["result"] = sequence_result
+            frame.max = len(sequence_result["frames"])
+            frame.value = 1
+        else:
+            current["result"] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
+            frame.max = max(1, len(current["result"]["frames"])) if current["result"] else 1
+            frame.value = 1
+        current["render_round"] = None
+        show_frame(0)
+        refresh_stage_timing()
 
     @task.on_update
     def on_task(_event):
@@ -331,10 +392,18 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         comparisons.clear()
         planner.comparison_contact = None
         refresh_comparison()
-        current['result'] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
-        frame.max = max(1,len(current['result']['frames'])) if current['result'] else 1
-        frame.value = 1
-        show_frame(0)
+        selected_result = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
+        if whole_sequence.value and sequence_result:
+            current["result"] = sequence_result
+            number = next(index for index, record in enumerate(sequence_result["rounds"])
+                          if record["task"] == planner.selected_task)
+            frame.max = len(sequence_result["frames"])
+            frame.value = sequence_result["frame_rounds"].index(number) + 1
+        else:
+            current["result"] = selected_result
+            frame.max = max(1, len(selected_result["frames"])) if selected_result else 1
+            frame.value = 1
+        show_frame(int(frame.value)-1)
         refresh_stage_timing()
 
     def refresh_task_geometry():
@@ -417,7 +486,11 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         client.camera.up_direction = (0, 0, 1)
 
     refresh_task_geometry()
-    if preload:
+    if sequence_result and round_mode:
+        current["result"] = sequence_result
+        frame.max = max(1, len(sequence_result["frames"]))
+        play.value = False
+    elif preload:
         current['result'] = preload
         frame.max = max(1, len(preload['frames']))
         play.value = False
