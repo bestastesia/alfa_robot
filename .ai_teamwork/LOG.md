@@ -2286,3 +2286,7 @@
 
 - 证据纠偏续：pr65-release-v22单进程已完成approach/contact/extract/transport多数分组，但运行期间修复exact BPoly切片，runtime source hash已不是最终源码；主动停止在transport-prefix组并整目录排除最终汇总，保留回归参考。invalidated-evidence清单已追加。
 - 原因：extract任意wall-clock切点的4.5ms首段从q/v/a重新拟合，个别种子产生伪jerk；不是场景碰撞。TimedTrajectory现在序列化Bernstein系数并精确分割原五次多项式，系数与q/v/a不一致拒绝。CPU102/102、compileall/diff-check通过后才可冻结v23终验。
+
+- 最终矩阵纠偏：v20/v21并发OOM进程组已清零并作废；v22在exact BPoly修复后主动终止、source hash不再最终；v23主矩阵虽大部完成，但随后发现all-rounds混用t2且matrix遇缺失JSON继续，故整个v23不作为最终冻结汇总。
+- matrix现fail-fast：首个unverified立即退出；SIGTERM/timeout通过finally终止当前完整process group，CPU测试实测无孤儿。外层最终runner将`set -euo pipefail`。contact_approach/appear归入UNSAFE拒绝，不再放complete。
+- CPU103/103。invalidated-evidence-20261017.json追加v22/v23原因。后续必须以含fail-fast的新提交重新冻结一次；all-round按free/contact/extract不同t2拆分。任何旧矩阵通过项不得拼成最终报告。

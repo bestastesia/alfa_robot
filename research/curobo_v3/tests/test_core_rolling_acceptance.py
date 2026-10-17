@@ -1,10 +1,27 @@
 import json
+import os
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from v3_rolling_acceptance_report import build_report, STAGES, SCENARIOS, FAULTS
+from v3_rolling_matrix import invoke
+
+
+class MatrixProcessSafetyTest(unittest.TestCase):
+    def test_timeout_kills_the_whole_subprocess_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); pid_file = root / "pid"
+            code = ("import os,pathlib,time,subprocess,sys; "
+                    f"pathlib.Path({str(pid_file)!r}).write_text(str(os.getpid())); "
+                    "subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); time.sleep(60)")
+            self.assertEqual(invoke([sys.executable, "-c", code], root/"run.log", .1), -1)
+            pid = int(pid_file.read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid, 0)
+            self.assertIn("terminated timed-out process group", (root/"run.log").read_text())
 
 
 class AcceptanceReportTest(unittest.TestCase):

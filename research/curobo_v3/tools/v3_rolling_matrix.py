@@ -25,16 +25,22 @@ FAULTS = {
 def invoke(command, log, timeout):
     with log.open("w") as stream:
         process = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
+        timed_out = False
         try:
             return process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGTERM)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+            timed_out = True
             return -1
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+            if timed_out:
+                stream.write("matrix supervisor terminated timed-out process group\n")
 
 
 
@@ -112,6 +118,9 @@ def main():
     parser.add_argument("--expect-rejection-code", choices=("GOAL_ENDPOINT_COLLISION", "SPLICE_ENDPOINT_COLLISION",
                         "CONSTRAINED_PHASE_BLOCKED", "UNSAFE_COMMITTED_PREFIX", "NO_VALID_REPLACEMENT", "DEADLINE_MISS"))
     args = parser.parse_args()
+    # Convert parent termination into Python unwinding so invoke() always tears
+    # down its current process group; prevents orphan CUDA workers.
+    signal.signal(signal.SIGTERM, lambda signum, frame: (_ for _ in ()).throw(KeyboardInterrupt()))
     args.output_dir.mkdir(parents=True, exist_ok=True)
     tools = Path(__file__).parent
     matrix = {"runs": [], "complete": False, "configuration": {**vars(args),
@@ -168,6 +177,8 @@ def main():
         temporary.write_text(json.dumps(matrix, ensure_ascii=False, indent=2) + "\n")
         temporary.replace(args.output_dir / "matrix.json")
         print(f"{number}/{len(cases)} {name}: {'PASS' if row['verified'] else row.get('error')}", flush=True)
+        if not row["verified"]:
+            raise SystemExit(f"matrix stopped at first unverified case: {name}")
     matrix["summary"] = summarize_reports(
         json.loads((args.output_dir / f"{row['name']}.json").read_text())
         for row in matrix["runs"] if (args.output_dir / f"{row['name']}.json").exists())
