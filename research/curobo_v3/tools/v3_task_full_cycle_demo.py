@@ -243,7 +243,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
             matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ grasp_transform(side, top_grasp)
             node.position = matrix[:3, 3]
             node.wxyz = quaternion(matrix)
-            node.visible = has_payload
+            node.visible = has_payload and side in active_task
         for box_id, box in source_boxes.items():
             box.visible = box_id in active_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
         if result:
