@@ -62,7 +62,7 @@ class RollingTest(unittest.TestCase):
         next_ticket = segment.begin(obs2, feedback(segment, 10.8), 10.8)
         self.assertAlmostEqual(next_ticket.splice_at, 11.6)
         self.assertAlmostEqual(next_ticket.initial_state["positions"][0], 1.6)
-        self.assertEqual(next_ticket.remaining["positions"][-1], [4.])
+        np.testing.assert_allclose(next_ticket.remaining["positions"][-1], [4.], atol=1e-12)
 
     def test_late_changed_cancelled_and_discontinuous_results_cannot_install(self):
         for kind in ("compute", "link", "scene", "velocity", "goal", "cancel"):
@@ -86,6 +86,7 @@ class RollingTest(unittest.TestCase):
         ticket = segment.begin(obs, feedback(segment, 10), 10.)
         # Same endpoint and derivatives, but another second added to arrival.
         longer = dict(ticket.remaining)
+        longer.pop("bpoly_coefficients", None)
         longer["time_from_start_s"] = [t * 1.5 for t in longer["time_from_start_s"]]
         with self.assertRaisesRegex(ValueError, "postpones"):
             segment.stage(ticket, longer, obs, 10.4, 10.5, previous_suffix_valid=True)
@@ -915,6 +916,28 @@ class RollingTest(unittest.TestCase):
         self.assertAlmostEqual(summary["queue_ipc_s"]["median"], .2)
         with self.assertRaisesRegex(ValueError, "clock domain"):
             record_reply_timing(dict(started_at=9., ready_at=10.7), 10., 10.8)
+
+    def test_exact_polynomial_window_does_not_invent_jerk_at_arbitrary_cut(self):
+        from scipy.interpolate import BPoly
+        knots = np.array([0., .025, .05])
+        source = BPoly.from_derivatives(knots, [
+            [[0.], [.2], [.1]], [[.006], [.25], [-.05]], [[.013], [.15], [0.]]])
+        document = {"joint_names": ["q"], "time_from_start_s": knots.tolist(),
+                    **{key: source(knots, nu=order).tolist() for order, key in enumerate(
+                        ("positions", "velocities", "accelerations", "jerks"))},
+                    "bpoly_coefficients": source.c.tolist()}
+        curve = TimedTrajectory(document)
+        cut = .020478478294
+        window = TimedTrajectory(curve.window(cut, .05))
+        self.assertAlmostEqual(window.times[1], .025-cut)
+        samples = np.linspace(0., window.duration, 101)
+        for order, key in enumerate(("positions", "velocities", "accelerations", "jerks")):
+            np.testing.assert_allclose(window.sample(samples)[key], source(samples+cut, nu=order),
+                                       atol=2e-9, rtol=1e-9)
+        tampered = curve.window(cut, .05)
+        tampered["bpoly_coefficients"][0][0][0] += .1
+        with self.assertRaisesRegex(ValueError, "disagree"):
+            TimedTrajectory(tampered)
 
     def test_slice_near_existing_knot_does_not_create_picosecond_quintic(self):
         times = np.linspace(0., 2., 81)

@@ -424,7 +424,19 @@ class TimedTrajectory:
         if (self.values.shape != (4, len(self.times), len(self.joint_names)) or
                 not np.isfinite(self.values).all()):
             raise ValueError("finite q/v/a/jerk must match segment times and joint names")
-        self.spline = BPoly.from_derivatives(self.times, self.values[:3].transpose(1, 0, 2))
+        coefficients = document.get("bpoly_coefficients")
+        if coefficients is None:
+            self.spline = BPoly.from_derivatives(self.times, self.values[:3].transpose(1, 0, 2))
+        else:
+            coefficients = np.asarray(coefficients, dtype=np.float64)
+            if (coefficients.ndim != 3 or coefficients.shape[1:] !=
+                    (len(self.times)-1, len(self.joint_names)) or coefficients.shape[0] < 2 or
+                    not np.isfinite(coefficients).all()):
+                raise ValueError("invalid exact polynomial coefficients")
+            self.spline = BPoly.construct_fast(coefficients, self.times, extrapolate=False, axis=0)
+            for order in range(3):
+                if not np.allclose(self.spline(self.times, nu=order), self.values[order], atol=2e-6, rtol=0):
+                    raise ValueError("exact polynomial coefficients disagree with q/v/a samples")
         self.times.setflags(write=False)
         self.values.setflags(write=False)
 
@@ -446,11 +458,23 @@ class TimedTrajectory:
         # an existing knot. Keeping both creates an ill-conditioned quintic
         # interval and fictitious acceleration. Keep the exact requested
         # boundary, dropping only interior knots within one nanosecond of it.
+        from math import factorial
+        from scipy.interpolate import BPoly, PPoly
+
         interior = self.times[(self.times > start_s + 1e-9) & (self.times < end_s - 1e-9)]
         times = np.concatenate(([start_s], interior, [end_s]))
+        degree = self.spline.c.shape[0] - 1
+        power = np.empty((degree+1, len(times)-1, len(self.joint_names)), dtype=np.float64)
+        for interval, start in enumerate(times[:-1]):
+            for order in range(degree+1):
+                power[degree-order, interval] = self.spline(start, nu=order) / factorial(order)
+        relative = times - start_s
+        exact = BPoly.from_power_basis(PPoly.construct_fast(power, relative, extrapolate=False, axis=0))
+        values = {key: exact(relative, nu=order) for order, key in enumerate(
+            ("positions", "velocities", "accelerations", "jerks"))}
         return {"joint_names": list(self.joint_names), "dt_s": None,
-                "time_from_start_s": (times - start_s).tolist(),
-                **{key: values.tolist() for key, values in self.sample(times).items()}}
+                "time_from_start_s": relative.tolist(), "bpoly_coefficients": exact.c.tolist(),
+                **{key: value.tolist() for key, value in values.items()}}
 
     def suffix(self, time_s):
         return self.window(time_s, self.duration)

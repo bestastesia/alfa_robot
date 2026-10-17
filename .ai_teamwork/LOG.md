@@ -2283,3 +2283,6 @@
 - 发现本任务pr65-final-v20与pr65-release-v21矩阵重叠运行，造成extract worker和contact audit CUDA OOM；已停止所有本任务矩阵/子进程并确认清零。未触碰其他用户长时Viser或随后启动的IK容量实验。
 - 作废清单固定在`motion292-acceptance/invalidated-evidence-20261017.json`；contact_approach/appear也从错误complete分组移到UNSAFE_COMMITTED_PREFIX拒绝组。最终汇总仅接收显式matrix路径，不扫描历史目录。
 - 当前GPU由robot_motion_control/curobo并行IK容量实验使用；等待其结束后只开一个冻结runtime串行重跑受影响/最终矩阵。不得把OOM写成功能失败或通过，也不得用旧audit补洞。
+
+- 证据纠偏续：pr65-release-v22单进程已完成approach/contact/extract/transport多数分组，但运行期间修复exact BPoly切片，runtime source hash已不是最终源码；主动停止在transport-prefix组并整目录排除最终汇总，保留回归参考。invalidated-evidence清单已追加。
+- 原因：extract任意wall-clock切点的4.5ms首段从q/v/a重新拟合，个别种子产生伪jerk；不是场景碰撞。TimedTrajectory现在序列化Bernstein系数并精确分割原五次多项式，系数与q/v/a不一致拒绝。CPU102/102、compileall/diff-check通过后才可冻结v23终验。
