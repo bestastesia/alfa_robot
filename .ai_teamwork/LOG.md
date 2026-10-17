@@ -2259,3 +2259,13 @@
 - 最新源冻结pr65-contract-v6，工具session31970串行复核conveyor-static-interior三种子后原终点负例；下轮先查询进程/工具。新拒绝审计CLI --require-rejection-code，仍非实机停机证明。完整动态目标未完成。
 
 - session31970已结束：pr65-contract-v6正例static三种子3/3，各5次移动接续、1次旧路碰撞→安全优化、6条含初始轨迹和尾段独立GPU过；original-goal-blocked负例0接续，独立GPU endpoint mask[true,false]。原默认正向/新负向及X向moving失败全部保留，不互相覆盖。CPU88/88、compileall、diff-check通过。此轮GPU任务全结束。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 移动放箱的连续减速回退
+- 诊断同一原失败用例：SDK控制点16/24/32及dt变化仍限位/碰撞拒绝；清零初速可求解但显式标记NOT_AN_ONLINE_RESULT，从未作为在线结果。没有修改SDK或PR65核心规划文件。
+- 有依据的最小扩展：已有SciPy BPoly生成匹配真实q/v/a的C2减速候选，完整门禁通过后在其停稳终点复用Mentor搜索+原TrajOpt，拼接后按新实际时长再验。原大段目标不变；它含内部停稳，明确不是不停顿规划或保护停机接口。
+- pr65-braking-release-v13同源码/同初始轨迹/同场景/n8/t2=.85/t3=.1/link=.02/减速.4的A/B：禁用0/3（deadline拒绝），启用3/3；actual接续7/8/7=直接0+减速1+旧路复核6/7/6。起点最大速度0.0760454非零，独立GPU检查内部.4s停稳及所有候选/原前缀/尾段。compute max .6421/.6491/.6325s，小样本非普遍上界。controlled-comparison.json逐字段确认无换场景/放宽预算。
+- v12 approach clear/static/moving开启/关闭各3/3，原终点阻挡仍拒绝；v13 native世界更新GPU过。CPU95/95、compileall/diff-check过。v13真实Firefox回放播放/暂停与截图通过，UI显式分三类实际接续，非仅报optimization_success_count。
+- 保留失败对照：.5s回退v8为2/3，扩大时域v9为1/3（该扩大策略已撤出）；.4s曾遇末尾窗口大epoch相减越界，修复用精确relative duration而非容差放宽。验证失败候选后恢复规划world，避免时域缓存污染下一attempt。phase/payload/回退布尔参数必须明确，未支持约束阶段拒绝，不冒充完成。
+- GUI截图证据pr65-braking-release-v13/replay-playing.png/DOM；为同条件时延对照已停止本轮自己的8102服务器和headless Firefox，无残留GPU任务。所有此轮probe/matrix已结束（v13 enabled/disabled各3种子）；勿对结束句柄盲目重启。
+- 仍未完成：完整新基线多阶段动态矩阵、受约束接触/抽离阶段与任务事件闭环、实际执行/安全接口确认及PR交付。该回退是新增可验证能力，不替代上述目标。负责人文子轩决定任何范围/接口修改，未改新仓库Frozen Interface，未发硬件命令。

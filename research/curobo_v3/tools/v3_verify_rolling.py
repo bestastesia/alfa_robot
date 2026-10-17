@@ -69,6 +69,19 @@ def terminal_evidence(report):
     return document, world
 
 
+
+def verify_internal_braking_stop(document, duration_s):
+    curve = TimedTrajectory(document)
+    if not np.isfinite(duration_s) or not 0 < duration_s < curve.duration:
+        raise ValueError("braking stop must be strictly inside the replacement trajectory")
+    if not np.any(np.isclose(curve.times, duration_s, atol=1e-9, rtol=0)):
+        raise ValueError("braking stop is missing from the trajectory time axis")
+    stopped = curve.sample(duration_s)
+    if np.max(np.abs(stopped["velocities"])) > 1e-4 or np.max(np.abs(stopped["accelerations"])) > 1e-3:
+        raise ValueError("claimed internal braking stop is not stationary")
+    return {"duration_s": duration_s, "start_speed_max": float(np.max(np.abs(curve.sample(0.)["velocities"]))) }
+
+
 def audit(report, config_path, expect_complete=True, require_obstacle_response=False):
     schedule = report["schedule"]
     t1, t2, t3, n = (schedule[key] for key in ("duration_s", "compute_bound_s", "link_bound_s", "slices"))
@@ -142,6 +155,14 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
             raise ValueError("deadline/communication/boundary violation")
         if abs((stage["safe_ready_at"]-observation["observed_at"])-stage["available_latency_s"]) > 1e-8:
             raise ValueError("incorrect observation-to-safe-trajectory latency")
+    braking_stops = []
+    solves_by_sequence = {s["sequence"]: s for s in report.get("solves", []) if "sequence" in s}
+    for event, entry in zip(activated, entries[1:]):
+        solve = solves_by_sequence.get(event["sequence"], {})
+        if solve.get("strategy") == "brake_then_optimize":
+            braking_stops.append(verify_internal_braking_stop(entry["trajectory"], report["braking_duration_s"]))
+    if "braking_candidate_count" in report and len(braking_stops) != report.get("braking_replan_count"):
+        raise ValueError("reported braking replans do not match installed trajectories")
     sample_times = [s["at"] for s in report["samples"]]
     if (expect_complete and not sample_times) or np.any(np.diff(sample_times) <= 0):
         raise ValueError("missing or non-monotonic execution samples")
@@ -178,6 +199,7 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
         raise ValueError("no demonstrated moving-boundary splice")
     return {"verified": True, "complete": report["success"], "splices": len(activated),
             "moving_splices": nonzero_splices, "obstacle_responses": len(obstacle_responses),
+            "verified_internal_braking_stops": braking_stops,
             "maximum_limit_ratios": maximum_ratios}
 
 

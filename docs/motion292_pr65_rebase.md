@@ -43,7 +43,7 @@
 
 ## 当前证据与未通过项
 
-- CPU 88/88（新PR自身测试与在线合同组合；与旧89项不直接比较，旧基线测试集合已由PR65更新）。
+- CPU 95/95（新PR自身测试与在线合同组合；与旧89项不直接比较，旧基线测试集合已由PR65更新）。
 - 无障碍approach完成5次非零速度接续，独立GPU复核初始/5候选/尾段通过。
 - 新基线初次20场景pilot已经结束；存在动态障碍失败、当前前缀碰撞及放箱浮点切片问题，保留所有负例，不能称完整验收通过。
 - 根因之一：单调时钟相减使切点距原节点约1e-12s，生成极短五次插值区间导致伪加速度。修复仅丢弃距精确切点一纳秒内的内部节点，保留实际边界q/v/a；二次曲线回归验证不改变运动与速度。
@@ -72,6 +72,61 @@
 阶段内环境更新不得悄悄改变基座位姿、载荷拓扑或碰撞策略；这些变化应由明确阶段转换处理。运行指纹覆盖所有tools Python文件（包含继承的Mentor类），startup同时记录模型资产及底盘cuboid文件哈希。
 
 最新冻结`pr65-contract-v6`复核已结束：三个静止正例3/3，分别有5次非零接续、6条轨迹（含初始）及尾段独立GPU复核；原终点阻挡负例0次接续、独立GPU确认[true,false]。CPU88/88。此证据不能替代尚未完成的多阶段动态矩阵和保护停机接口验收。
+
+## 非零接续的减速回退（明确含内部停稳）
+
+**行为说明：这不是不停顿优化，也不是硬件保护停机接口。** 正常优先调用原cuRobo优化器；仅当其未给出可接受结果、旧剩余轨迹又已在最新场景中碰撞时，尝试：
+
+1. 保留下一接续点的真实q/qdot/qddot，用已有SciPy `BPoly`轨迹表达生成C2减速候选；不把起始速度清零，不钳制位置来掩盖约束失败。
+2. 减速段的完整插值、多阶导数限值及碰撞先通过原门禁，才能以其**已验证的停稳终点**调用Mentor搜索和原TrajOpt，目标仍是原大段终点。
+3. 拼接后复核全轨迹，再按实际新时长重建动态包络复核；全过程仍在原t2截止前完成。零时长位置跳变、位速不连续、制动不可行、场景过期或超时都不发布。
+4. 统计分别记录直接优化候选/实际直接接续、减速候选/实际减速接续、旧路复核/实际旧路接续；被取消或未安装的候选不冒充已执行的停稳。
+
+保留`--braking-duration-s`校准参数（默认0.5s；下列验证使用显式0.4s）及`--disable-braking-fallback`用于同条件对照。减速候选不是强制最短制动，也不能替代独立安全控制器。
+
+### 同源码、同输入、同预算 A/B 证据
+
+`pr65-braking-release-v13/controlled-comparison.json`逐项核对：初始轨迹、输入文件SHA、阶段、种子、n/t2/t3、障碍位置/速度、减速时长和全部运行源码hash相同，唯一运行开关是是否启用回退。
+
+- 场景仍是已记录的放箱中途移动障碍，center为上一节位置，速度`[0.025,0,0] m/s`；没有更换障碍来覆盖此前失败。
+- n=8，t2=0.85s，t3=0.1s，模拟链路0.02s，减速时长0.4s。这里是验证配置，不是硬实时最坏保证。
+- **关闭：0/3完成，3项按deadline拒绝，0次接续。开启：3/3完成。** 三个种子实际接续分别7/8/7次，分类为：直接优化接续均0；含内部停稳的减速重规划均1；复核旧路接续6/7/6。
+- 每条减速候选接续点仍有非零速度，最大绝对关节速度0.0760454（旋转轴rad/s、updown为m/s）；0.4s后轨迹内部v/a为零。原任务终点保持。独立GPU审核包含原前缀、所有新轨迹、动态时域、最后尾段及内部停稳检查。
+- 三种子的compute wall max分别0.6421/0.6491/0.6325s；不能将此小样本的最大值声明为普遍t2上界。
+- `pr65-braking-regression-v12`同输入接近段clear/static/moving开启/关闭各3/3；原目标阻挡负例仍拒绝。PR65九个核心文件未修改。
+- `pr65-braking-release-v13/replay-playing.png`和DOM证据通过真实Firefox播放/暂停核验，界面明确显示“直接0、减速1、复核6；含内部停稳，非保护停机”。截图不是硬件执行证据。
+
+### 未被掩盖的试验及修复
+
+- 增加SDK控制点16→24/32并未解决同场景非零位速约束失败，未新增/保留此配置扩展。
+- 清零初速的诊断可求解，但记录明确`NOT_AN_ONLINE_RESULT`，从未用于在线接续。
+- 0.5s减速A/B曾为2/3；扩大规划预测包络的试验仅1/3，因过于保守未保留。全部记录仍在`pr65-solver-diagnostic`、`pr65-braking-ab-v8`和`pr65-braking-time-v9`。
+- 0.4s初期在最后短段遇到浮点墙钟加减使窗口末端略大于duration；现直接使用已知相对末端，不放宽超时或碰撞阈值。
+- 被拒绝候选的实际时域验证会临时更新世界；后续尝试现在显式恢复其规划世界，避免前一失败候选污染下一次求解。
+- API拒绝未支持的阶段、阶段与载荷不匹配和非布尔回退开关，不将接触/抽离等受约束阶段误当自由空间已支持。
+
+复现这个已验证配置（使用冻结验证副本，直接复制；新输出目录必须尚不存在）：
+
+```bash
+cd /home/astesia/Sevenova/.motion-292-dynamic-replan
+source /home/astesia/Sevenova/curobo_v2/activate.sh
+python /home/astesia/Sevenova/motion292-acceptance/pr65-braking-release-v13/runtime/research/curobo_v3/tools/v3_rolling_matrix.py \
+  --initial-cycle /home/astesia/Sevenova/motion292-acceptance/pr65-integration/round-01-v2.json \
+  --output-dir /home/astesia/Sevenova/motion292-acceptance/pr65-braking-user-repro \
+  --stages conveyor_place \
+  --scenarios moving \
+  --seeds 20261003 20261004 20261005 \
+  --rounds 0 \
+  --slices 8 \
+  --obstacle-center -1.0486119239962108 0.635462145723246 1.277392864227295 \
+  --obstacle-velocity 0.025 0 0 \
+  --braking-duration-s 0.4 \
+  --compute-bound-s 0.85 \
+  --link-bound-s 0.1 \
+  --link-delay-s 0.02 \
+  --execution-timeout-s 60 \
+  --gpu-audit
+```
 
 ## 复现（隔离资产，不修改原基线工作树）
 

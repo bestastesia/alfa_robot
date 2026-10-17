@@ -45,14 +45,20 @@ def summarize_reports(reports):
         key = f"{report['stage']}/{report['scenario']}/{report.get('fault', 'none')}"
         group = groups.setdefault(key, {"runs": 0, "completed": 0, "rejected": 0,
                                        "triggers": 0, "splices": 0, "deadline_misses": 0,
-                                       "optimized": 0, "revalidated": 0, "censored_computes": 0,
+                                       "optimized": 0, "direct_optimized": 0, "revalidated": 0, "braking_candidates": 0,
+                                       "direct_splices": 0, "revalidated_splices": 0, "braking_replans": 0, "censored_computes": 0,
                                        "raw": {}})
         group["runs"] += 1
         group["completed" if report["success"] else "rejected"] += 1
         for target, source in (("triggers", "trigger_count"), ("splices", "splice_count"),
                                ("deadline_misses", "deadline_miss_count"),
                                ("optimized", "optimization_success_count"),
+                               ("direct_optimized", "direct_optimization_success_count"),
                                ("revalidated", "revalidated_fallback_count"),
+                               ("braking_replans", "braking_replan_count"),
+                               ("braking_candidates", "braking_candidate_count"),
+                               ("direct_splices", "direct_splice_count"),
+                               ("revalidated_splices", "revalidated_splice_count"),
                                ("censored_computes", "censored_compute_count")):
             group[target] += report.get(source, 0)
         def record(name, value):
@@ -96,6 +102,8 @@ def main():
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
     parser.add_argument("--obstacle-center", type=float, nargs=3)
     parser.add_argument("--obstacle-velocity", type=float, nargs=3)
+    parser.add_argument("--disable-braking-fallback", action="store_true")
+    parser.add_argument("--braking-duration-s", type=float, default=.5)
     parser.add_argument("--faults", nargs="*", choices=tuple(FAULTS), default=[])
     parser.add_argument("--gpu-audit", action="store_true")
     args = parser.parse_args()
@@ -115,7 +123,9 @@ def main():
                    "--scenario", scenario, "--seed", str(seed), "--round", str(round_index), "--fault", fault,
                    "--compute-bound-s", str(args.compute_bound_s), "--link-bound-s", str(args.link_bound_s),
                    "--link-delay-s", str(args.link_delay_s), "--execution-timeout-s", str(args.execution_timeout_s),
-                   "--output", str(result)]
+                   "--output", str(result), "--braking-duration-s", str(args.braking_duration_s)]
+        if args.disable_braking_fallback:
+            command.append("--disable-braking-fallback")
         if args.obstacle_velocity is not None:
             command.extend(["--obstacle-velocity", *map(str, args.obstacle_velocity)])
         if args.obstacle_center is not None:

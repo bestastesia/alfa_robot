@@ -71,8 +71,9 @@ def main():
     current_path = server.scene.add_line_segments("/path/active", points=paths[0], colors=(35, 200, 180), line_width=4.)
     server.gui.add_markdown("## MOTION-292 · 只读回放\n灰线：原路线；绿线：当前路线；红箱：动态障碍。\n\n**模拟，不代表实机安全。**")
     server.gui.add_markdown(f"结果：{'完成' if report['success'] else '拒绝/中止'} · "
-                            f"接续 {report['splice_count']} 次 · 优化成功 {report.get('optimization_success_count', 0)} 次 · "
-                            f"复核旧路 {report.get('revalidated_fallback_count', 0)} 次\n\n{report.get('error', '')}")
+                            f"接续 {report['splice_count']} 次 · 直接优化接续 {report.get('direct_splice_count', '旧记录未区分')} 次 · "
+                            f"减速后规划 {report.get('braking_replan_count', 0)} 次（含内部停稳，非保护停机） · "
+                            f"复核旧路接续 {report.get('revalidated_splice_count', '旧记录未区分')} 次\n\n{report.get('error', '')}")
     play = server.gui.add_checkbox("播放", initial_value=False)
     speed = server.gui.add_slider("倍率", min=.1, max=3., step=.1, initial_value=1.)
     slider = server.gui.add_slider("时间 / s", min=0., max=duration, step=.01, initial_value=0.)

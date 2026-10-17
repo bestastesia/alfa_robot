@@ -7,19 +7,29 @@ import torch
 
 from .backend import CuroboBackend
 from .contracts import ACTIVE_JOINTS
-from .trajectory import TimedTrajectory
+from .trajectory import TimedTrajectory, braking_trajectory, join_timed_trajectories
 from v3_batched_loaded_search import GpuValidity
 
 
 class SegmentReplanner:
-    def __init__(self, backend, boxes, *, payload=False, sample_dt=.025, phase="approach"):
+    def __init__(self, backend, boxes, *, payload=False, sample_dt=.025, phase="approach", braking_duration_s=.5, allow_braking_fallback=True):
         if not isinstance(backend, CuroboBackend):
             raise TypeError("reuse an initialized CuroboBackend")
+        if phase not in ("approach", "transport", "conveyor_place", "return_home"):
+            raise ValueError("phase requires an explicit online motion contract")
+        if type(payload) is not bool or payload != (phase in ("transport", "conveyor_place")):
+            raise ValueError("payload mode must match the phase contract")
+        if type(allow_braking_fallback) is not bool:
+            raise ValueError("allow_braking_fallback must be an explicit boolean")
         if not math.isfinite(sample_dt) or sample_dt <= 0:
             raise ValueError("positive validation sample interval required")
         self.backend, self.boxes, self.payload = backend, dict(boxes), payload
         self.sample_dt = sample_dt
+        if not math.isfinite(braking_duration_s) or braking_duration_s <= 0:
+            raise ValueError("positive finite braking duration required")
         self.phase = phase
+        self.braking_duration_s = braking_duration_s
+        self.allow_braking_fallback = allow_braking_fallback
         # Existing connect mode returns the first finely verified feasible path;
         # the baseline anytime RRT intentionally consumes its full search budget.
         self.backend.planner_kind = "informed_connect"
@@ -53,6 +63,58 @@ class SegmentReplanner:
         return {"limit_ratios": ratios, "collision_samples": len(samples),
                 "edge_resolution_rad": math.radians(.5), "sample_dt_s": self.sample_dt,
                 "dynamics_enabled": False, "torque_constraints_enabled": False}
+
+    def brake_then_plan(self, ticket, validity, search_seed):
+        """Conservative fallback: preserve moving boundary, stop inside the new suffix,
+        then reuse Mentor search + the existing TrajOpt to the ORIGINAL goal.
+        All work shares the original deadline. This is not an emergency stop API.
+        """
+        began = time.perf_counter()
+        telemetry = {"attempted": True, "accepted": False, "strategy": "brake_then_optimize",
+                     "braking_duration_s": self.braking_duration_s}
+        try:
+            brake = braking_trajectory(ticket.initial_state, ACTIVE_JOINTS, self.braking_duration_s)
+            generated = time.perf_counter()
+            telemetry["braking_generation_s"] = generated-began
+            telemetry["braking_validation"] = self.validate(brake, validity)
+            telemetry["braking_validation_s"] = time.perf_counter()-generated
+            if time.perf_counter() >= ticket.compute_deadline:
+                raise TimeoutError("deadline expired during braking validation")
+            rest_start = TimedTrajectory(brake).sample(self.braking_duration_s)
+            goal = np.asarray(ticket.remaining["positions"][-1], dtype=np.float32)
+            limits = validity.checker.kinematics.get_joint_limits().position
+            lower, upper = self.backend.motion_bounds(limits[0]+1e-5, limits[1]-1e-5, self.boxes)
+            search_started = time.perf_counter()
+            path, stats = self.backend.online_search_path(
+                torch.tensor(rest_start["positions"], device="cuda", dtype=torch.float32),
+                torch.tensor(goal[None], device="cuda", dtype=torch.float32),
+                lower, upper, validity, max(0., (ticket.compute_deadline-search_started)/2), search_seed)
+            telemetry["search"] = stats
+            telemetry["search_wall_s"] = time.perf_counter()-search_started
+            if path is None or time.perf_counter() >= ticket.compute_deadline:
+                raise ValueError("no timely path from the validated stopping point")
+            _, optimization = self.backend.optimize_rrt_path(
+                path, validity, self.boxes, payload=self.payload, start_state=rest_start,
+                timing_scale=1., uniform_seed=True)
+            rest = optimization.pop("trajectory", None)
+            telemetry["rest_optimization"] = optimization
+            if "solve_time_ms" in optimization:
+                telemetry["solve_time_ms"] = optimization["solve_time_ms"]
+            if rest is None or not optimization["accepted"]:
+                raise ValueError("rest-to-goal optimizer rejected the braking fallback")
+            join_started = time.perf_counter()
+            joined = join_timed_trajectories(brake, rest)
+            telemetry["joined_validation"] = self.validate(joined, validity)
+            telemetry["join_and_validation_s"] = time.perf_counter()-join_started
+            if time.perf_counter() > ticket.compute_deadline:
+                raise TimeoutError("braking fallback missed compute deadline")
+            telemetry.update(accepted=True, internal_stops=1)
+            return joined, telemetry
+        except (ValueError, RuntimeError, TimeoutError) as error:
+            telemetry["fallback_reason"] = str(error)
+            return None, telemetry
+        finally:
+            telemetry["wall_s"] = time.perf_counter()-began
 
     def check_endpoints(self, path, validity):
         values = torch.tensor(np.asarray(path)[[0, -1]], device="cuda", dtype=torch.float32)
@@ -126,6 +188,12 @@ class SegmentReplanner:
                           "at": time.perf_counter()})
                 if time.perf_counter() >= ticket.compute_deadline:
                     raise TimeoutError("t2 expired before solve")
+                # Final validation temporarily loads the previous candidate's
+                # actual-time world. Do not let a rejected candidate silently
+                # change the planning world for unrelated subsequent attempts.
+                refresh_started = time.perf_counter()
+                validity = self.scene(snapshot)
+                spans[f"attempt_scene_update_{attempt}"] = [refresh_started, time.perf_counter()]
                 if search_attempt:
                     search_started = time.perf_counter()
                     limits = validity.checker.kinematics.get_joint_limits().position
@@ -152,7 +220,16 @@ class SegmentReplanner:
                 if document is None or not telemetry["accepted"]:
                     if report["previous_suffix_valid"]:
                         break  # one optimization attempt; don't search for an already safe route
-                    continue
+                    if attempt == 0 and self.allow_braking_fallback:
+                        brake_started = time.perf_counter()
+                        document, braking = self.brake_then_plan(ticket, validity, search_seed)
+                        spans["brake_then_plan"] = [brake_started, time.perf_counter()]
+                        candidates.append(braking)
+                        progress({"phase": "braking_fallback", "at": time.perf_counter(), "telemetry": braking})
+                        if document is not None:
+                            telemetry = braking
+                    if document is None or not telemetry["accepted"]:
+                        continue
                 validation_started = time.perf_counter()
                 try:
                     curve = TimedTrajectory(document)
@@ -176,7 +253,8 @@ class SegmentReplanner:
                 finally:
                     spans[f"final_validation_{attempt}"] = [validation_started, time.perf_counter()]
                 report.update(success=True, optimization_success=True,
-                              strategy="optimized_suffix", trajectory=curve.suffix(0),
+                              strategy=telemetry.get("strategy", "optimized_suffix"), trajectory=curve.suffix(0),
+                              internal_stops=telemetry.get("internal_stops", 0),
                               certificate=candidate_certificate)
                 break
             if not report["success"]:

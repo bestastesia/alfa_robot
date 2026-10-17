@@ -473,3 +473,47 @@ class TimedTrajectory:
             if ratios[key] > 1.0001:
                 raise ValueError(f"interpolated {key} exceeds limits: {ratios[key]:.6f}")
         return ratios
+
+
+def braking_trajectory(state, joint_names, duration_s):
+    """C2 deceleration candidate, NOT a safety certificate or changed task goal.
+
+    Match the actual initial q/v/a; end at rest at the minimum-jerk free-position
+    endpoint. The caller must validate position/derivative limits AND collision
+    over the entire polynomial. No clamping or instantaneous velocity reset.
+    """
+    from scipy.interpolate import BPoly
+
+    names = list(joint_names)
+    initial = np.asarray([state[key] for key in ("positions", "velocities", "accelerations")], dtype=float)
+    if (not names or len(set(names)) != len(names) or initial.shape != (3, len(names)) or
+            not np.isfinite(initial).all() or not np.isfinite(duration_s) or duration_s <= 0):
+        raise ValueError("braking needs finite matching q/v/a and positive duration")
+    q, v, a = initial
+    # Use the same representable endpoint as the float32 SDK before constructing
+    # the polynomial. Never patch a checked trajectory's endpoint afterwards.
+    stop = np.asarray(q + v * duration_s/2 + a * duration_s**2/12, dtype=np.float32).astype(float)
+    zeros = np.zeros_like(q)
+    times = np.array([0., duration_s])
+    polynomial = BPoly.from_derivatives(times, [initial, [stop, zeros, zeros]])
+    return {"joint_names": names, "dt_s": None, "time_from_start_s": times.tolist(),
+            **{key: polynomial(times, nu=order).tolist() for order, key in enumerate(
+                ("positions", "velocities", "accelerations", "jerks"))}}
+
+
+def join_timed_trajectories(first, second, tolerance=1e-5):
+    """Join checked q/v/a trajectories without a zero-time duplicate or retiming."""
+    left, right = TimedTrajectory(first), TimedTrajectory(second)
+    if left.joint_names != right.joint_names or not np.isfinite(tolerance) or tolerance <= 0:
+        raise ValueError("trajectory join needs identical joints and a positive tolerance")
+    end, start = left.sample(left.duration), right.sample(0.)
+    if any(not np.allclose(end[key], start[key], atol=tolerance, rtol=0)
+           for key in ("positions", "velocities", "accelerations")):
+        raise ValueError("trajectory join must preserve position, velocity and acceleration")
+    document = {"joint_names": list(left.joint_names), "dt_s": None,
+                "time_from_start_s": [*left.times[:-1], *(left.duration+right.times)],
+                **{key: [*first[key][:-1], *second[key]] for key in
+                   ("positions", "velocities", "accelerations", "jerks")}}
+    # A sub-tolerance floating-point difference at the join changes the final
+    # interval slightly; recompute derivatives and require the caller to recheck.
+    return TimedTrajectory(document).suffix(0.)

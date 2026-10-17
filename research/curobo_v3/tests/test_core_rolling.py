@@ -561,6 +561,184 @@ class RollingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "deadline"):
                 audit(bad, config)
 
+    def test_rejected_candidate_does_not_leak_its_future_world_into_next_attempt(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        remaining = trajectory(4.)
+        too_long = trajectory(4.); too_long["time_from_start_s"] = [0., 2.5, 5.]
+        good = trajectory(4.)
+        world_widths, planning_world_widths = [], []
+        def scene(snapshot):
+            world_widths.append(snapshot.objects[0].dimensions_m[0])
+            return object()
+        def validate(document, validity):
+            if document is remaining: raise ValueError("old path blocked")
+            if document is too_long: raise ValueError("candidate collides in extended future world")
+            return {"checked": True}
+        def optimize(*args, **kwargs):
+            planning_world_widths.append(world_widths[-1])
+            return None, {"accepted": True, "trajectory": too_long if len(planning_world_widths)==1 else good}
+        adapter = types.SimpleNamespace(scene=scene, validate=validate, boxes={}, payload=False,
+            check_endpoints=lambda *a: [True, True], allow_braking_fallback=False,
+            backend=types.SimpleNamespace(optimize_rrt_path=optimize))
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=remaining, initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+        self.assertTrue(result["success"], result.get("error"))
+        self.assertIn(6., world_widths)  # actual 5s rejected candidate was really checked
+        self.assertEqual(planning_world_widths, [5., 5.])
+        self.assertEqual(result["certificate"]["valid_until"], 15.)
+
+    def test_terminal_window_uses_exact_relative_endpoint_not_epoch_roundtrip(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/v3_rolling_replan.py"
+        tree = ast.parse(source.read_text())
+        assignments = [node for node in ast.walk(tree) if isinstance(node, ast.Assign)
+                       and any(isinstance(target, ast.Name) and target.id in ("prefix_end", "prefix")
+                               for target in node.targets)]
+        assignments.sort(key=lambda node: node.lineno)
+        code = compile(ast.Module(body=assignments, type_ignores=[]), str(source), "exec")
+        for epoch, duration in ((18347.25, .5247908907607783), (1e6, 6.4), (10., 1.)):
+            curve = TimedTrajectory(trajectory(duration))
+            namespace = dict(terminal=True, segment=types.SimpleNamespace(active=curve, active_at=epoch),
+                             now=epoch+duration/4, boundary=epoch+duration)
+            exec(code, namespace)
+            self.assertEqual(namespace["prefix_end"], curve.duration)
+            tail = TimedTrajectory(namespace["prefix"])
+            np.testing.assert_allclose(tail.sample(tail.duration)["positions"], curve.sample(curve.duration)["positions"])
+
+    def test_braking_fallback_actual_duration_is_rechecked(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        remaining = trajectory(4.)
+        candidate = trajectory(4.); candidate["time_from_start_s"] = [0., 2.5, 5.]
+        worlds = []
+        def scene(snapshot):
+            worlds.append(snapshot)
+            return object()
+        def validate(document, validity):
+            if document is remaining: raise ValueError("old suffix blocked")
+            return {"valid": True}
+        adapter = types.SimpleNamespace(scene=scene, validate=validate, boxes={}, payload=False,
+            check_endpoints=lambda *a: [True, True], allow_braking_fallback=True, braking_duration_s=.5,
+            backend=types.SimpleNamespace(optimize_rrt_path=lambda *a, **kw: (None, {"accepted": False})),
+            brake_then_plan=lambda *a: (candidate, {"accepted": True, "strategy": "brake_then_optimize", "internal_stops": 1}))
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=remaining, initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+        self.assertTrue(result["success"], result.get("error"))
+        self.assertEqual(result["strategy"], "brake_then_optimize")
+        self.assertEqual(worlds[1].objects[0].dimensions_m[0], 5.)  # original 4s planning horizon
+        self.assertEqual(worlds[-1].objects[0].dimensions_m[0], 6.)  # final 5s candidate, not the seed time
+        self.assertEqual(result["certificate"]["valid_until"], 16.)
+        self.assertEqual(result["internal_stops"], 1)
+
+    def test_braking_fallback_uses_actual_boundary_and_original_goal_or_returns_no_path(self):
+        import ast
+        import types
+        from curobo_core.contracts import ACTIVE_JOINTS
+        from curobo_core.trajectory import braking_trajectory, join_timed_trajectories
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "brake_then_plan")
+        namespace = dict(np=np, TimedTrajectory=TimedTrajectory, ACTIVE_JOINTS=ACTIVE_JOINTS,
+                         braking_trajectory=braking_trajectory, join_timed_trajectories=join_timed_trajectories,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1),
+                         torch=types.SimpleNamespace(float32=np.float32, tensor=lambda v, **kw: np.asarray(v)))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        dof = len(ACTIVE_JOINTS)
+        initial = dict(positions=np.zeros(dof), velocities=np.full(dof, .12), accelerations=np.zeros(dof))
+        goal = np.full(dof, .5)
+        ticket = types.SimpleNamespace(initial_state=initial, remaining={"positions": [initial["positions"], goal]},
+                                       compute_deadline=12.)
+        validity = types.SimpleNamespace(checker=types.SimpleNamespace(kinematics=types.SimpleNamespace(
+            get_joint_limits=lambda: types.SimpleNamespace(position=np.array([[-1.]*dof, [1.]*dof])))))
+        for mode in ("success", "brake_collision", "rest_failure"):
+            events = []
+            def validate(document, validity):
+                events.append("validate")
+                if mode == "brake_collision": raise ValueError("braking segment collision")
+                return {"checked": True}
+            def search(start, targets, *args):
+                events.append("search")
+                np.testing.assert_allclose(targets[0], goal)
+                return np.stack([start, targets[0]]), {}
+            def optimize(path, *args, **kwargs):
+                events.append("optimize")
+                np.testing.assert_allclose(kwargs["start_state"]["velocities"], 0., atol=1e-10)
+                if mode == "rest_failure": return None, {"accepted": False}
+                return path, {"accepted": True, "trajectory": dict(joint_names=list(ACTIVE_JOINTS),
+                    time_from_start_s=[0., 2.], positions=path.tolist(), velocities=[[0.]*dof]*2,
+                    accelerations=[[0.]*dof]*2, jerks=[[0.]*dof]*2)}
+            backend = types.SimpleNamespace(motion_bounds=lambda lo, hi, boxes: (lo, hi),
+                                            online_search_path=search, optimize_rrt_path=optimize)
+            adapter = types.SimpleNamespace(braking_duration_s=.5, validate=validate, backend=backend,
+                                            boxes={}, payload=False)
+            document, stats = namespace["brake_then_plan"](adapter, ticket, validity, 1)
+            if mode == "success":
+                curve = TimedTrajectory(document)
+                np.testing.assert_allclose(curve.sample(0)["velocities"], initial["velocities"])
+                np.testing.assert_allclose(curve.sample(curve.duration)["positions"], goal)
+                self.assertTrue(stats["accepted"])
+                self.assertEqual(events, ["validate", "search", "optimize", "validate"])
+            else:
+                self.assertIsNone(document)
+                self.assertFalse(stats["accepted"])
+                if mode == "brake_collision": self.assertEqual(events, ["validate"])
+
+    def test_braking_candidate_matches_nonzero_boundary_without_changing_it(self):
+        from curobo_core.trajectory import braking_trajectory
+        state = dict(positions=[.2, -.1], velocities=[.12, -.08], accelerations=[.03, -.02])
+        document = braking_trajectory(state, ["a", "b"], .5)
+        curve = TimedTrajectory(document)
+        for key in state:
+            np.testing.assert_allclose(curve.sample(0)[key], state[key], atol=1e-12)
+        np.testing.assert_allclose(curve.sample(.5)["velocities"], 0., atol=1e-12)
+        np.testing.assert_allclose(curve.sample(.5)["accelerations"], 0., atol=1e-12)
+        self.assertGreater(curve.sample(.5)["positions"][0], state["positions"][0])
+        curve.validate_limits([-1., -1.], [1., 1.], [.5, .5], [1., 1.], [50., 50.])
+        # Generating a polynomial is not declaring it safe. Too short must fail limits.
+        with self.assertRaisesRegex(ValueError, "exceeds limits"):
+            TimedTrajectory(braking_trajectory(state, ["a", "b"], .001)).validate_limits(
+                [-1., -1.], [1., 1.], [.5, .5], [1., 1.], [50., 50.])
+        for duration in (0., -1., float("nan")):
+            with self.assertRaises(ValueError): braking_trajectory(state, ["a", "b"], duration)
+        with self.assertRaises(ValueError): braking_trajectory(state, ["a"], .5)
+
+    def test_joined_brake_and_replanned_tail_is_c2_without_zero_time_jump(self):
+        from curobo_core.trajectory import braking_trajectory, join_timed_trajectories, time_parameterize_stops
+        state = dict(positions=[.2], velocities=[.12], accelerations=[.03])
+        brake = braking_trajectory(state, ["q"], .5)
+        tail, _ = time_parameterize_stops([brake["positions"][-1], [.6]], ["q"], [.5], [1.], [50.])
+        tail = tail["sampled_trajectory"]  # same dense representation consumed by the baseline
+        joined = TimedTrajectory(join_timed_trajectories(brake, tail))
+        self.assertTrue(np.all(np.diff(joined.times) > 0))
+        for key in state: np.testing.assert_allclose(joined.sample(0)[key], state[key], atol=1e-12)
+        np.testing.assert_allclose(joined.sample(.5)["velocities"], 0., atol=1e-12)
+        np.testing.assert_allclose(joined.sample(joined.duration)["positions"], [.6], atol=1e-6)
+        joined.validate_limits([-1.], [1.], [.5], [1.], [50.])
+        from v3_verify_rolling import verify_internal_braking_stop
+        check = verify_internal_braking_stop(joined.suffix(0.), .5)
+        self.assertAlmostEqual(check["start_speed_max"], .12)
+        with self.assertRaisesRegex(ValueError, "missing|not stationary"):
+            verify_internal_braking_stop(joined.suffix(0.), .2)
+        with self.assertRaisesRegex(ValueError, "inside"):
+            verify_internal_braking_stop(joined.suffix(0.), joined.duration)
+        tail["positions"][0][0] += .1
+        with self.assertRaisesRegex(ValueError, "preserve position"):
+            join_timed_trajectories(brake, tail)
+
     def test_explicit_moving_obstacle_parameters_are_recorded_without_changing_defaults(self):
         from v3_rolling_replan import observe
         snapshot = observation().snapshot

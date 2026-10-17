@@ -110,7 +110,7 @@ def record_reply_timing(result, requested_at, received_at):
                               "real_perception": "unmeasured", "real_network": "unmeasured"}
 
 
-def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
+def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, braking_duration_s, allow_braking_fallback):
     # Own the CUDA context in a separate process so the deadline supervisor does
     # not wait on a blocked solve/GIL. Process startup and warmup precede t1.
     from curobo_core.rolling_backend import RollingBackend
@@ -126,7 +126,8 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase):
         assets = PlannerAssets()
         backend = RollingBackend(assets)
         backend.configure_task(boxes)
-        adapter = SegmentReplanner(backend, boxes, payload=payload, phase=phase)
+        adapter = SegmentReplanner(backend, boxes, payload=payload, phase=phase, braking_duration_s=braking_duration_s,
+                                   allow_braking_fallback=allow_braking_fallback)
         validity = adapter.scene(snapshot)
         initial_validation = adapter.validate(initial, validity)
         curve = TimedTrajectory(initial)
@@ -219,11 +220,13 @@ def run(args):
     if not 0 <= args.link_delay_s <= args.link_bound_s:
         raise ValueError("simulated link delay must fit its declared bound")
     parent, child = mp.get_context("spawn").Pipe()
-    process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage))
+    process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage, args.braking_duration_s, not args.disable_braking_fallback))
     report = {"schema_version": 3, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "obstacle_center_override_map_m": args.obstacle_center,
               "obstacle_velocity_override_map_m_s": args.obstacle_velocity,
+              "braking_duration_s": args.braking_duration_s,
+              "braking_fallback_enabled": not args.disable_braking_fallback,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
               "initial_trajectory": initial, "task_boxes": boxes, "payload": payload,
               "initial_cycle_path": str(args.initial_cycle.resolve()), "solves": [], "observations": [], "feedbacks": [], "samples": [],
@@ -287,7 +290,11 @@ def run(args):
             ticket = segment.begin(observation, feedback, now)
             terminal = ticket is None
             boundary = segment.active_at + segment.active.duration if terminal else ticket.splice_at
-            prefix = segment.active.window(now-segment.active_at, boundary-segment.active_at)
+            # The terminal endpoint is already known in relative trajectory time.
+            # Adding/subtracting a large wall-clock epoch can round it just past
+            # duration; do not manufacture an out-of-range final interval.
+            prefix_end = segment.active.duration if terminal else boundary-segment.active_at
+            prefix = segment.active.window(now-segment.active_at, prefix_end)
             forecast_duration = boundary-now if terminal else observation.valid_until-boundary
             reuse = (terminal and certificate is not None and
                      certificate["valid_from"] <= now <= boundary <= certificate["valid_until"] and
@@ -419,7 +426,18 @@ def run(args):
         report["trigger_count"] = sum(e["event"] == "requested" for e in report["events"])
         report["splice_count"] = sum(e["event"] == "activated" for e in report["events"])
         report["optimization_success_count"] = sum(x.get("optimization_success", False) for x in report["solves"])
+        report["direct_optimization_success_count"] = sum(x.get("strategy") == "optimized_suffix" and x.get("success", False)
+                                                         for x in report["solves"])
         report["revalidated_fallback_count"] = sum(x.get("strategy") == "revalidated_suffix" for x in report["solves"])
+        installed_sequences = {event["sequence"] for event in report["events"] if event["event"] == "activated"}
+        report["braking_candidate_count"] = sum(x.get("strategy") == "brake_then_optimize" and x.get("success", False)
+                                                 for x in report["solves"])
+        report["braking_replan_count"] = sum(x.get("strategy") == "brake_then_optimize" and x.get("success", False)
+                                              and x.get("sequence") in installed_sequences for x in report["solves"])
+        report["direct_splice_count"] = sum(x.get("strategy") == "optimized_suffix" and x.get("sequence") in installed_sequences
+                                             for x in report["solves"])
+        report["revalidated_splice_count"] = sum(x.get("strategy") == "revalidated_suffix" and x.get("sequence") in installed_sequences
+                                                  for x in report["solves"])
         report["deadline_miss_count"] = sum(x.get("deadline_miss", False) for x in report["solves"])
         if "deadline" in report.get("error", "") and not report["deadline_miss_count"]:
             report["deadline_miss_count"] = 1
@@ -431,7 +449,8 @@ def run(args):
                                                    for x in report["solves"])
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
-    print(json.dumps({k: report[k] for k in ("success", "trigger_count", "splice_count", "statistics")},
+    print(json.dumps({k: report[k] for k in ("success", "trigger_count", "splice_count", "direct_optimization_success_count",
+                                            "braking_replan_count", "revalidated_fallback_count", "statistics")},
                      ensure_ascii=False), flush=True)
     if not report["success"]:
         raise SystemExit(report["error"])
@@ -455,12 +474,16 @@ def main():
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--slices", type=int)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
+    parser.add_argument("--disable-braking-fallback", action="store_true", help="controlled comparison: require direct moving-boundary optimization")
+    parser.add_argument("--braking-duration-s", type=float, default=.5,
+                        help="validated internal deceleration fallback duration, not a hardware stop command")
     parser.add_argument("--max-feedback-age-s", type=float, default=.1)
     parser.add_argument("--seed", type=int, default=20261003)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (not math.isfinite(args.execution_timeout_s) or args.execution_timeout_s <= 0 or
             not math.isfinite(args.max_feedback_age_s) or args.max_feedback_age_s <= 0 or
+            not math.isfinite(args.braking_duration_s) or args.braking_duration_s <= 0 or
             not 0 <= args.seed < 2**32 or args.round < 0):
         parser.error("positive finite execution/freshness limits and unsigned 32-bit seed required")
     if args.obstacle_center is not None and not np.isfinite(args.obstacle_center).all():

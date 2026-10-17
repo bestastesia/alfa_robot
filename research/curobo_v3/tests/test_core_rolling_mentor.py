@@ -42,6 +42,25 @@ class MentorRollingContractTest(unittest.TestCase):
             self.assertNotEqual(before['v3_single_arm_planner.py'], after['v3_single_arm_planner.py'])
             self.assertEqual(before['curobo_core/rolling_backend.py'], after['curobo_core/rolling_backend.py'])
 
+    def test_phase_contract_cannot_silently_drop_payload_or_unknown_constraints(self):
+        import math
+        path = Path(__file__).resolve().parents[1] / 'tools/curobo_core/rolling_curobo.py'
+        cls = next(n for n in ast.parse(path.read_text()).body if isinstance(n, ast.ClassDef))
+        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '__init__')
+        class Backend:
+            pass
+        namespace = dict(CuroboBackend=Backend, math=math)
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(path), 'exec'), namespace)
+        for phase in ('approach', 'transport', 'conveyor_place', 'return_home'):
+            payload = phase in ('transport', 'conveyor_place')
+            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase=phase, payload=payload)
+            with self.subTest(phase=phase), self.assertRaisesRegex(ValueError, 'phase contract'):
+                namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase=phase, payload=not payload)
+        with self.assertRaisesRegex(ValueError, 'explicit online motion contract'):
+            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, phase='extract')
+        with self.assertRaisesRegex(ValueError, 'explicit boolean'):
+            namespace['__init__'](types.SimpleNamespace(), Backend(), {}, allow_braking_fallback='false')
+
     def test_fixed_nonzero_base_pose_is_preserved_not_zeroed(self):
         record = self.record()
         trajectory, snapshot, boxes, payload = stage_input(record, 'return_home')
