@@ -87,6 +87,7 @@ class RollingTest(unittest.TestCase):
         # Same endpoint and derivatives, but another second added to arrival.
         longer = dict(ticket.remaining)
         longer.pop("bpoly_coefficients", None)
+        longer.pop("ppoly_coefficients", None)
         longer["time_from_start_s"] = [t * 1.5 for t in longer["time_from_start_s"]]
         with self.assertRaisesRegex(ValueError, "postpones"):
             segment.stage(ticket, longer, obs, 10.4, 10.5, previous_suffix_valid=True)
@@ -983,7 +984,7 @@ class RollingTest(unittest.TestCase):
             np.testing.assert_allclose(window.sample(samples)[key], source(samples+cut, nu=order),
                                        atol=2e-9, rtol=1e-9)
         tampered = curve.window(cut, .05)
-        tampered["bpoly_coefficients"][0][0][0] += .1
+        tampered["ppoly_coefficients"][-1][0][0] += .1
         with self.assertRaisesRegex(ValueError, "disagree"):
             TimedTrajectory(tampered)
 

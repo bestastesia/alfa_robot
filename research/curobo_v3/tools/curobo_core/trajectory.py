@@ -424,7 +424,13 @@ class TimedTrajectory:
         if (self.values.shape != (4, len(self.times), len(self.joint_names)) or
                 not np.isfinite(self.values).all()):
             raise ValueError("finite q/v/a/jerk must match segment times and joint names")
-        coefficients = document.get("bpoly_coefficients")
+        from scipy.interpolate import PPoly
+
+        bernstein = document.get("bpoly_coefficients")
+        power = document.get("ppoly_coefficients")
+        if bernstein is not None and power is not None:
+            raise ValueError("trajectory cannot carry two exact polynomial representations")
+        coefficients = bernstein if bernstein is not None else power
         if coefficients is None:
             self.spline = BPoly.from_derivatives(self.times, self.values[:3].transpose(1, 0, 2))
         else:
@@ -433,7 +439,8 @@ class TimedTrajectory:
                     (len(self.times)-1, len(self.joint_names)) or coefficients.shape[0] < 2 or
                     not np.isfinite(coefficients).all()):
                 raise ValueError("invalid exact polynomial coefficients")
-            self.spline = BPoly.construct_fast(coefficients, self.times, extrapolate=False, axis=0)
+            constructor = BPoly if bernstein is not None else PPoly
+            self.spline = constructor.construct_fast(coefficients, self.times, extrapolate=False, axis=0)
             for order in range(3):
                 if not np.allclose(self.spline(self.times, nu=order), self.values[order], atol=2e-6, rtol=0):
                     raise ValueError("exact polynomial coefficients disagree with q/v/a samples")
@@ -465,45 +472,26 @@ class TimedTrajectory:
     def window(self, start_s, end_s):
         if not 0 <= start_s < end_s <= self.duration:
             raise ValueError("window must be contained in the executable trajectory")
-        # Wall-clock arithmetic can land picoseconds beside an existing knot.
-        # Snap only at representation scale; real sub-sample cuts (e.g. 14.7us)
-        # are preserved by de Casteljau below.
         for name, value in (("start", start_s), ("end", end_s)):
             nearest = self.times[np.argmin(np.abs(self.times-value))]
             if abs(nearest-value) <= 1e-9:
                 if name == "start": start_s = float(nearest)
                 else: end_s = float(nearest)
 
-        from scipy.interpolate import BPoly
-
-        def split(coefficients, fraction):
-            """de Casteljau split of one Bernstein interval, stable near knots."""
-            fraction = float(np.clip(fraction, 0., 1.))
-            table = [np.asarray(coefficients, dtype=np.float64)]
-            while len(table[-1]) > 1:
-                previous = table[-1]
-                table.append((1-fraction)*previous[:-1] + fraction*previous[1:])
-            left = np.stack([row[0] for row in table])
-            right = np.stack([row[-1] for row in table[::-1]])
-            return left, right
+        from math import factorial
+        from scipy.interpolate import PPoly
 
         interior = self.times[(self.times > start_s + 1e-12) & (self.times < end_s - 1e-12)]
         absolute = np.concatenate(([start_s], interior, [end_s]))
-        pieces = []
-        for left_x, right_x in zip(absolute[:-1], absolute[1:]):
-            index = min(len(self.times)-2, max(0, int(np.searchsorted(self.times, left_x, side="right")-1)))
-            interval_left, interval_right = self.times[index:index+2]
-            if right_x > interval_right + 1e-12:
-                raise ValueError("window partition crossed an original polynomial knot")
-            start_fraction = (left_x-interval_left)/(interval_right-interval_left)
-            end_fraction = (right_x-interval_left)/(interval_right-interval_left)
-            _, right_piece = split(self.spline.c[:, index], start_fraction)
-            relative_end = (end_fraction-start_fraction)/max(1e-300, 1-start_fraction)
-            selected, _ = split(right_piece, relative_end)
-            pieces.append(selected)
+        degree = self.spline.c.shape[0]-1
+        coefficients = np.empty((degree+1, len(absolute)-1, len(self.joint_names)), dtype=np.float64)
+        for interval, start in enumerate(absolute[:-1]):
+            # Local power coefficients avoid cancellation when an arbitrary cut
+            # leaves a microsecond interval next to an original knot.
+            for order in range(degree+1):
+                coefficients[degree-order, interval] = self.spline(start, nu=order)/factorial(order)
         relative = absolute-start_s
-        coefficients = np.stack(pieces, axis=1)
-        exact = BPoly.construct_fast(coefficients, relative, extrapolate=False, axis=0)
+        exact = PPoly.construct_fast(coefficients, relative, extrapolate=False, axis=0)
         values = {key: exact(relative, nu=order) for order, key in enumerate(
             ("positions", "velocities", "accelerations", "jerks"))}
         source_start, source_end = self.sample(start_s), self.sample(end_s)
@@ -511,7 +499,7 @@ class TimedTrajectory:
             values[key][0] = source_start[key]
             values[key][-1] = source_end[key]
         return {"joint_names": list(self.joint_names), "dt_s": None,
-                "time_from_start_s": relative.tolist(), "bpoly_coefficients": coefficients.tolist(),
+                "time_from_start_s": relative.tolist(), "ppoly_coefficients": coefficients.tolist(),
                 **{key: value.tolist() for key, value in values.items()}}
 
     def suffix(self, time_s):
@@ -522,7 +510,12 @@ class TimedTrajectory:
         if (limits.shape != (5, len(self.joint_names)) or not np.isfinite(limits).all() or
                 np.any(limits[0] >= limits[1]) or np.any(limits[2:] <= 0)):
             raise ValueError("finite ordered position bounds and positive derivative limits required")
-        coefficients = self.spline.c
+        from scipy.interpolate import BPoly
+
+        def bernstein_coefficients(polynomial):
+            return polynomial.c if isinstance(polynomial, BPoly) else BPoly.from_power_basis(polynomial).c
+
+        coefficients = bernstein_coefficients(self.spline)
         # The GPU positions/limits are float32. Allow only representation-scale
         # roundoff (two relative ULPs), not a physical joint-limit relaxation.
         tolerance = 2 * np.finfo(np.float32).eps * np.maximum(1., np.abs(limits[:2]))
@@ -530,7 +523,7 @@ class TimedTrajectory:
             raise ValueError("interpolated position exceeds limits")
         ratios = {}
         for order, key in enumerate(("velocity", "acceleration", "jerk"), 1):
-            peak = np.max(np.abs(self.spline.derivative(order).c), axis=(0, 1))
+            peak = np.max(np.abs(bernstein_coefficients(self.spline.derivative(order))), axis=(0, 1))
             ratios[key] = float(np.max(peak / limits[order + 1]))
             if ratios[key] > 1.0001:
                 raise ValueError(f"interpolated {key} exceeds limits: {ratios[key]:.6f}")
