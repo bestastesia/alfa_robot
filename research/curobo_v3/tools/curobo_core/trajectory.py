@@ -37,7 +37,7 @@ def deduplicate_timed_trajectory(trajectory, atol=1e-10):
                                      np.asarray(result["time_from_start_s"])[keep].tolist())
     return result
 
-def joint_state_trajectory(state, joint_names):
+def joint_state_trajectory(state, joint_names, *, preserve_timing=False):
     """Serialize a single interpolated cuRobo JointState in the requested joint order."""
     source_names = list(state.joint_names)
     joint_names = list(joint_names)
@@ -70,7 +70,7 @@ def joint_state_trajectory(state, joint_names):
             not np.allclose(dt_values, dt_values[0], rtol=1e-6, atol=0)):
         raise ValueError("trajectory dt must be positive, finite and constant")
     dt = float(dt_values[0])
-    return deduplicate_timed_trajectory({
+    document = {
         "joint_names": list(joint_names),
         "dt_s": dt,
         "time_from_start_s": (np.arange(len(position), dtype=np.float64) * dt).tolist(),
@@ -78,7 +78,8 @@ def joint_state_trajectory(state, joint_names):
         "velocities": derivatives[0].tolist(),
         "accelerations": derivatives[1].tolist(),
         "jerks": derivatives[2].tolist(),
-    })
+    }
+    return document if preserve_timing else deduplicate_timed_trajectory(document)
 
 
 def expand_timed_trajectory(trajectory, target_joint_names):
@@ -397,3 +398,74 @@ def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_lim
         "velocities": zeros.tolist(), "accelerations": zeros.tolist(), "jerks": jerk.tolist(),
         "sampled_trajectory": samples,
     }, validation)
+
+
+class TimedTrajectory:
+    """Executable quintic Hermite interpolation of the baseline q/v/a/time contract.
+
+    Unlike playback's position lerp, this preserves velocity at an arbitrary splice.
+    Bernstein coefficient bounds conservatively check the entire interpolant, not
+    just its knots. No retiming or zeroing derivatives is performed here.
+    """
+
+    def __init__(self, document):
+        from scipy.interpolate import BPoly
+
+        self.joint_names = tuple(document["joint_names"])
+        self.times = np.array(document["time_from_start_s"], dtype=np.float64)
+        self.values = np.array([document[key] for key in
+                                ("positions", "velocities", "accelerations", "jerks")], dtype=np.float64)
+        if (not self.joint_names or len(set(self.joint_names)) != len(self.joint_names) or
+                not all(isinstance(name, str) and name for name in self.joint_names)):
+            raise ValueError("trajectory joint names must be nonempty and unique")
+        if (self.times.ndim != 1 or len(self.times) < 2 or self.times[0] != 0 or
+                not np.isfinite(self.times).all() or np.any(np.diff(self.times) <= 0)):
+            raise ValueError("segment times must start at zero and strictly increase")
+        if (self.values.shape != (4, len(self.times), len(self.joint_names)) or
+                not np.isfinite(self.values).all()):
+            raise ValueError("finite q/v/a/jerk must match segment times and joint names")
+        self.spline = BPoly.from_derivatives(self.times, self.values[:3].transpose(1, 0, 2))
+        self.times.setflags(write=False)
+        self.values.setflags(write=False)
+
+    @property
+    def duration(self):
+        return float(self.times[-1])
+
+    def sample(self, time_s):
+        times = np.asarray(time_s, dtype=np.float64)
+        if not np.isfinite(times).all() or np.any(times < 0) or np.any(times > self.duration):
+            raise ValueError("cannot extrapolate an executable trajectory")
+        return {key: self.spline(times, nu=order) for order, key in enumerate(
+            ("positions", "velocities", "accelerations", "jerks"))}
+
+    def window(self, start_s, end_s):
+        if not 0 <= start_s < end_s <= self.duration:
+            raise ValueError("window must be contained in the executable trajectory")
+        times = np.concatenate(([start_s], self.times[(self.times > start_s) & (self.times < end_s)],
+                                [end_s]))
+        return {"joint_names": list(self.joint_names), "dt_s": None,
+                "time_from_start_s": (times - start_s).tolist(),
+                **{key: values.tolist() for key, values in self.sample(times).items()}}
+
+    def suffix(self, time_s):
+        return self.window(time_s, self.duration)
+
+    def validate_limits(self, lower, upper, velocity, acceleration, jerk):
+        limits = np.asarray((lower, upper, velocity, acceleration, jerk), dtype=np.float64)
+        if (limits.shape != (5, len(self.joint_names)) or not np.isfinite(limits).all() or
+                np.any(limits[0] >= limits[1]) or np.any(limits[2:] <= 0)):
+            raise ValueError("finite ordered position bounds and positive derivative limits required")
+        coefficients = self.spline.c
+        # The GPU positions/limits are float32. Allow only representation-scale
+        # roundoff (two relative ULPs), not a physical joint-limit relaxation.
+        tolerance = 2 * np.finfo(np.float32).eps * np.maximum(1., np.abs(limits[:2]))
+        if np.any(coefficients < limits[0] - tolerance[0]) or np.any(coefficients > limits[1] + tolerance[1]):
+            raise ValueError("interpolated position exceeds limits")
+        ratios = {}
+        for order, key in enumerate(("velocity", "acceleration", "jerk"), 1):
+            peak = np.max(np.abs(self.spline.derivative(order).c), axis=(0, 1))
+            ratios[key] = float(np.max(peak / limits[order + 1]))
+            if ratios[key] > 1.0001:
+                raise ValueError(f"interpolated {key} exceeds limits: {ratios[key]:.6f}")
+        return ratios

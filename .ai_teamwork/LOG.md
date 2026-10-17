@@ -2187,3 +2187,49 @@
 - 四切片：优先64与等价cuboid（PR61）、常驻world更新（PR62）、8起按需抽离及旋转软代价（PR63）、25单臂与整机终点1.05m硬圆柱（当前切片）。9份算法/合同/测试源码与交接快照一致；UI归一到正式v3_visualized_task_demo.py，8151入口只作兼容包装。
 - 验证：四任务64集合与全枚举相同/完整FK通过；11场景11264状态与fresh一致且四完整周期不再创建拓扑；lazy三组成功包括L18/R22；25单臂24成功、右02接触264候选0合法保留失败。24成功27040帧碰撞重验、40附着球、独立FK包络最大1.003365m，原4违规终点现0.932856m；双臂回归成功。35core与语法检查通过。
 - 正式说明OPTIMIZED_CYCLE.md、CONVEYOR_DELIVERY.md；evidence为当前小型摘要，原实验轨迹/cache不入库。验证服务8152复用冻结前端包；原8150 PID161088、8151 PID1877730未停止，仍是各自启动时版本。119任务不等于119成功，不作导航路径、动力学、物理落稳/实机或生产并发验收。Linear由专门工程师维护，本轮不主动变更。
+
+
+## 2026-10-15 运控 / Codex / MOTION-292 滚动接续开发中
+- 用户确认：按 t1 分 n 段、n<=t1/(t2+t3)，执行当前段时从下一接续点的非零位速重算到大段终点；不是事件触发后再整段重跑。
+- 分支/目录：`feature/motion-292-dynamic-replan` / `.motion-292-dynamic-replan`，基于 `3b50c9e`；原基线工作树未修改。
+- 实现中：基线 TrajOpt 可选非零起始导数、保留在线时间轴、SciPy 插值取接续点、CPU 双缓冲合同、阶段薄适配、独立 GPU worker 墙钟模拟。
+- 证据：CPU core 69/69（含8项滚动测试）；隔离 runtime 新单轮周期成功，approach 非零速度/加速度接续 GPU 探针通过现有碰撞及新增插值限制检查。证据在 `/home/astesia/Sevenova/motion292-acceptance`。
+- 风险/下一步：连续多轮求解仍在调通；默认时间收缩和 anytime 搜索耗尽预算已定位，复用 SDK 时间设置与已有首解 Connect。尚未交付场景矩阵/回放/ROS/实机；不要宣称 Done。详见 `docs/motion292_rolling_replan.md`。
+
+- 后续证据更新：approach 静止/突现/撤离分别11/7/9次接续完成，moving-v3完成9次；均有原剩余路线碰撞被检出。clear-v7是3优化+3最新场景复核回用，不能混计优化成功。带载transport clear完成3次。
+- 最新CPU 71项通过后新增第72项float32边界回归；return_home先修正已释放物体仍被查询，再定位约1.13e-7rad float32舍入误拒绝并加两相对ULP数值容差。新run：return_home-clear-v3.json；需查看结果，不假设通过。
+- 已在MOTION-292评论6e31357f记录开发进度。只读Viser运行在127.0.0.1:8099（工具session11748）；HTTP200，Firefox截图白页，未视觉验收。正式多种子/故障矩阵、特殊阶段、ROS接口和实机前置仍未完成。所有GPU实验串行；运行副本需从源码显式同步tools，不覆盖模型配置。
+- checkpoint：完整CPU 72/72、compileall、git diff --check通过。return_home-clear-v3在诊断元数据读取时失败（SDK为源码安装、无curobo distribution metadata），已改为读取模块版本；return_home-clear-v4正在同一runtime串行验证，工具session74552，勿因暂未产出JSON而重启。最新运行文件带源文件SHA256、硬件/包信息与逐阶段统计。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 故障矩阵与带载避障收敛
+- 上轮pilot工具句柄73268已不存在，OS无对应进程；保存8项（6过、2带载拒绝），没有重启覆盖旧产物。回程v4终态为120s超时/55次推迟到达；加“已复核安全的旧路不允许被更晚到达替换”后v5完成4次移动接续。
+- 当前前缀与未来后缀分开预测时域，独立GPU验证器同时从观测重建包络和实际旧轨迹前缀；拒绝用伪造certificate掩盖碰撞。新增乱序版本/同版改几何或速度拒绝。
+- `checkpoint-v2/faults` 8/8完成；带载static小段3s确于2.961s碰撞，保留负例。t2假定1.8s得到2s小段，复用SDK .75*max_dt和等权重种子重采样后`transport-static-seed`完成5次移动接续/1次实际避障，独立GPU复核通过。
+- 修正扩展附件缓存key误作用到静态流程的问题，只有snapshot.attachments非空时扩展。CPU77/77；源码未动外部SDK，未修改原基线工作树，未发硬件命令。
+- 真实执行硬阻塞已读代码确认：现有rt-control桥14轴/双臂各6轴，与15轴cuRobo基线不匹配，且缺少条件定时替换合同。不得通过丢第7轴来接入；需要用户/控制部门提供对应接口。
+- 当前同版本52项矩阵：`candidate-20261017/matrix.log`、`matrix/matrix.json`，工具session64221。继续时先查句柄/OS，不因未结束重开GPU。该runtime代码冻结，不同步开发修改进去。修正缓存后25箱对照、特殊约束阶段、真实接口和最终验收仍未完成。
+- 回放已在真实浏览器加载并播放/暂停，证据`replay-playing.png`/`replay-playing-dom.json`；新的截图不是原白页。参考docs/motion292_rolling_replan.md。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 52项矩阵结束与热更新修复
+- `candidate-20261017/matrix`已完成52项，43过/9失败；正常场景36/45完成，7故障均正确拒绝。失败分组：approach moving不收敛3、transport moving deadline3、transport appear当前前缀碰撞3。不能标记全验收通过。原始延迟分组见`raw-latency-summary.json`，保留截尾/拒绝样本。
+- 后续代码：碰撞包络按实际剩余/候选时长而非预测TTL，终点反馈schema2，原生update_world复用预热机器人并按载荷/model参数失效；新增GPU add/move/remove回归通过。CPU81/81。
+- `warm-world-v1/approach-moving-n7`独立GPU审核通过，7移动接续/1避障，max计算0.988s；配置n7/t2=1.8/t3=.1，与失败矩阵n8不同，不混淆。`duration-window-v1`只改时域仍失败，未删负例。
+- 真实接口认知补充：只读检查robot_motion_control@a2c7cf4，已有3.1.1十五轴TwinFjtServer（不是只有旧14轴桥）。其future stamp支持等待，但replacement在apply_replacement立即取消旧goal，不能当作未来边界原子换路。模型版本亦不同。后续应复用此仿真接口，并按其AGENTS/冻结合同要求申请必要变更，未修改该仓库。
+- 串行probe工具session23972：transport-moving-n3(t2=1.8)后transport-appear-n5-1p1(t2=1.1)，路径warm-world-v1；下轮先查询句柄，不盲目重启。没有其他GPU矩阵仍在运行。MOTION-296重新读仍In Progress。
+
+- 本轮末补充：native update_world GPU回归通过；最新CPU82/82。`phase-progress-v1`移动approach n7与transport n3独立审核均过（8/6条含初始），终点反馈schema2实际产出；max计算0.701/0.642s，仅单次证据。优化失败且旧路已复核安全时立即走复核回用，不额外搜索；危险旧路仍保留全部尝试，未缩小避障目标。
+- session23972已结束：transport-moving-n3成功；transport-appear-n5-1p1仍因deadline拒绝。未把不可修改前缀内的突现碰撞或超时改计为成功。所有本轮GPU进程均已结束后再启动下一轮。
+- 待办：以本轮最新源冻结重跑必要多种子/故障矩阵（matrix支持--slices及原始时长分组summary）；缓存兼容性修正后的静态基线对照；特殊约束段与真实/孪生接续接口确认。不要复活已结束的64221/33198旧队列。
+- 并发提醒：本轮末只读检查发现原`.motion-233-curobo-trajopt`已有别的工作产生的staged/unstaged改动及分支分叉（ahead16/behind11），涉及trajectory/adapter/cache和timed单臂/整墙入口。292分支当前clean，仍以3b50c9e冻结证据为准；不要reset、覆盖或擅自吸收这些未完成改动。外部GPU PID73423为curobo_v2_ros试验，之后已退出；重开GPU测试前重新确认空闲。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 尾段、I/O与接收截止门禁
+- `acceptance-v3`已全部结束：49/52（approach22/22、transport12/15、return_home15/15），3个transport/appear是已冻结当前前缀内碰撞，不能靠下一接续点之后的换路修复。后续响应加UNSAFE_COMMITTED_PREFIX/independent_protective_stop，不伪称实际停机已完成。
+- 当前前缀/候选之外，schema3补最后尾段证据及终点反馈；GPU审核不再漏掉最后短段。共享模型锁定轴检查堵住在线入口忽略head轴/缺状态的旁路，静态旧调用保持兼容。
+- 管道I/O移出监督线程，1个命令槽/8个回复槽；半包读和阻塞写CPU回归通过。完整消息截止是t2+t3，ready_at仍按t2复核；stage在CPU门禁结束后采样实际接受时间，不允许晚到门禁倒填接续时间。新增admission_delay故障。
+- CPU89/89；watchdog-v1 GPU/故障9/9，admission-v1 3/3（慢门禁0次接续）；input-gate-v1原生世界更新GPU回归见world-update.log。没有改变碰撞/运动限值。
+- 修正缓存后的静态序列与3b50c9e逐元素相同（q/v/a/jerk/time最大差0），同样24箱后箱2 IK失败；acceptance-v3/static-regression.json。不能把继承的24箱结果写成25箱过关。
+- 负责人路径纠正已读取：Linear4f5a357f明确先由文子轩本人决定任务/接口修改，之前向李昊洋提出的授权请求撤回；不代表已授权。不能绕过负责人或Frozen Interface规则继续改15轴孪生合同。
+- 尚未完成：保护停止/条件定时换轨及模型对接确认，MOTION-296验收，完整阶段与真实端到端接口接入、PR/review。原baseline工作树并发改动保留；公开fork未推送，remote基线已是2edee780而非冻结3b50c9e，发布基线待确认。
