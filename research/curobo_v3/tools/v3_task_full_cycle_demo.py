@@ -17,7 +17,7 @@ from v3_interactive_60_tasks import (
     DEFAULT_MOBILE_ROBOT_CONFIG, quaternion,
 )
 from v3_wall_ik_benchmark import canonical_side_tool_to_box, wall_center
-from v3_timed_wall_report import phase_planning, planning_ledger
+from v3_timed_wall_report import PHASE_LABELS, phase_planning_detail, planning_ledger
 
 
 PHASE_NAMES = {
@@ -111,6 +111,8 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                                                    initial_value="Connect + Informed")
         run = server.gui.add_button("计算完整流程并播放")
         play = server.gui.add_checkbox("播放", initial_value=False)
+        playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=3., step=.1,
+                                               initial_value=1.)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
@@ -118,6 +120,11 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
+        with server.gui.add_folder("各阶段规划 / 运动耗时", expand_by_default=True):
+            timing_stage = server.gui.add_dropdown(
+                "耗时阶段", options=tuple(PHASE_LABELS.values()),
+                initial_value=PHASE_LABELS["approach"])
+            timing_detail = server.gui.add_markdown("请选择轮次和阶段。")
         with server.gui.add_folder("q / qdot 轨迹", expand_by_default=False):
             show_velocity = server.gui.add_checkbox("显示关节速度轴矢量", initial_value=True)
             curve_joint = server.gui.add_dropdown("曲线关节", options=tuple(joint_names),
@@ -130,6 +137,37 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 visible=False)
         comparison_status = server.gui.add_markdown("")
     current = {"result": None, "busy": False, "curve_binding": None}
+
+    def refresh_stage_timing():
+        result = current.get("result")
+        if not result:
+            timing_detail.content = "请选择轮次和阶段。"
+            return
+        phase = next(key for key, label in PHASE_LABELS.items() if label == timing_stage.value)
+        segment = next((item for item in result.get("timed_segments", ()) if item["name"] == phase), None)
+        if segment is None:
+            timing_detail.content = "当前轮次没有该运动阶段。"
+            return
+        detail = phase_planning_detail(result, phase)
+        additive = [(name, value) for name, value in detail["additive"] if value >= 10.]
+        hidden = sum(value < 10. for _, value in detail["additive"])
+        total = sum(value for _, value in detail["additive"])
+        rows = ["| 可相加规划子阶段（≥10ms） | 耗时 |", "|---|---:|"]
+        rows += [f"| {name} | {value:.2f} ms |" for name, value in additive]
+        if hidden:
+            rows.append(f"\n总计另含 **{hidden}** 项小于10ms的记录。")
+        if detail["diagnostics"]:
+            rows += ["", "**内部诊断（已包含在上表，不重复相加）**", "",
+                     "| 内部记录 | 耗时 |", "|---|---:|"]
+            rows += [f"| {name} | {value:.2f} ms |" for name, value in detail["diagnostics"]
+                     if value >= 10.]
+        timing_detail.content = (
+            f"## {PHASE_LABELS[phase]}  \n"
+            f"**运动时间：{segment['duration_s']:.3f}s** · "
+            f"**阶段规划归属时间：{total/1000:.3f}s** · "
+            f"本轮规划：{result.get('total_ms', 0)/1000:.3f}s  \n"
+            + "\n".join(rows))
+
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -178,7 +216,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                             if item["frame_start"] <= index <= item["frame_end"]), None)
             if segment:
                 local = index - segment["frame_start"]
-                related = phase_planning(result, segment["name"])
+                related = phase_planning_detail(result, segment["name"])["additive"]
                 detail = "".join(f"  \n- {name}：{value:.2f}ms" for name, value in related)
                 timed_status.content = (
                     f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
@@ -230,6 +268,10 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 for pair in pairs:
                     status.content += '\n\n' + ' ↔ '.join(pair['links']) + f"：{pair['penetration_mm']:.2f}mm"
 
+    @timing_stage.on_update
+    def on_timing_stage(_event):
+        refresh_stage_timing()
+
     @curve_joint.on_update
     def on_curve_joint(_event):
         current["curve_binding"] = None
@@ -255,6 +297,9 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         if selected in phases:
             play.value = False
             frame.value = phases.index(selected)+1
+            if selected in PHASE_LABELS:
+                timing_stage.value = PHASE_LABELS[selected]
+                refresh_stage_timing()
 
     @spheres.on_update
     def on_spheres(_event):
@@ -290,6 +335,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         frame.max = max(1,len(current['result']['frames'])) if current['result'] else 1
         frame.value = 1
         show_frame(0)
+        refresh_stage_timing()
 
     def refresh_task_geometry():
         centers, obstacles = planner.configure_task(planner.selected_task)
@@ -383,6 +429,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         frame.max = len(baseline["frames"]) if baseline else 1
     refresh_comparison()
     show_frame(0)
+    refresh_stage_timing()
     print(f"Ready: http://localhost:{server.get_port()}", flush=True)
     while True:
         if play.value and current["result"]:
@@ -390,7 +437,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 play.value = False
             else:
                 frame.value = int(frame.value)+1
-        time.sleep(.025)
+        time.sleep(.025 / playback_speed.value if play.value else .025)
 
 
 if __name__ == "__main__":

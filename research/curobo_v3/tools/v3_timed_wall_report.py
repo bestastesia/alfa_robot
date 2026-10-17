@@ -43,37 +43,52 @@ def planning_ledger(result):
     return rows
 
 
-def phase_planning(result, phase):
+def phase_planning_detail(result, phase):
+    """Return an additive phase ledger plus nested diagnostics."""
     pipeline = result.get("pipeline_timing_ms", {})
     lazy = result.get("lazy_extraction", {}).get("timings_ms", {})
     timing = result.get("timing_ms", {})
+    place_search = result.get("conveyor_search_stats", {}).get("search_ms")
+    home_search = result.get("conveyor_home_search_stats", {}).get("search_ms")
     if "prepare_checkers" in pipeline:
-        mapping = {
+        additive = {
             "approach": [("接触候选生成", lazy.get("contact_generation_ms")),
-                         ("选中前后缀联合验收（共享）", pipeline.get("selected_prefix_suffix_validation"))],
-            "contact_approach": [("选中前后缀联合验收（共享）", pipeline.get("selected_prefix_suffix_validation"))],
-            "extract": [("终点预测", lazy.get("endpoint_prediction_ms")),
+                         ("检查器准备", pipeline.get("prepare_checkers"))],
+            "contact_approach": [("选中前后缀联合验收", pipeline.get("selected_prefix_suffix_validation"))],
+            "extract": [("抽离终点预测", lazy.get("endpoint_prediction_ms")),
                         ("预测排序", lazy.get("prediction_ranking_ms")),
-                        ("完整抽离验收", pipeline.get("all_extract_and_validation"))],
-            "transport": [("目标匹配", pipeline.get("goal_matching")),
+                        ("抽离候选完整验收", pipeline.get("all_extract_and_validation"))],
+            "transport": [("放置目标匹配", pipeline.get("goal_matching")),
                           ("多根/多目标搜索", pipeline.get("multiroot_search"))],
-            "conveyor_place": [("放箱RRT（组装阶段内部）", result.get("conveyor_search_stats", {}).get("search_ms")),
-                               ("组装与重复验收（与回Home共享）", pipeline.get("assembly_and_repeat_validation"))],
-            "return_home": [("回Home RRT（组装阶段内部）", result.get("conveyor_home_search_stats", {}).get("search_ms")),
-                            ("组装与重复验收（与放箱共享）", pipeline.get("assembly_and_repeat_validation"))],
-        }
+            "conveyor_place": [("放箱与回Home组装/重复验收（共享）",
+                                pipeline.get("assembly_and_repeat_validation"))],
+            "return_home": [("放箱与回Home组装/重复验收（共享）",
+                             pipeline.get("assembly_and_repeat_validation"))],
+        }.get(phase, [])
     else:
-        mapping = {
-            "approach": [("抽离与到位联合规划（共享）", timing.get("extraction_and_approach_ms"))],
-            "contact_approach": [("抽离与到位联合规划（共享）", timing.get("extraction_and_approach_ms"))],
-            "extract": [("抽离与到位联合规划（共享）", timing.get("extraction_and_approach_ms"))],
-            "transport": [("单臂携箱搜索", timing.get("transport_ms"))],
-            "conveyor_place": [("放箱RRT", result.get("conveyor_search_stats", {}).get("search_ms")),
-                               ("放箱与回Home后缀（共享）", result.get("conveyor_suffix_ms"))],
-            "return_home": [("回Home RRT", result.get("conveyor_home_search_stats", {}).get("search_ms")),
-                            ("放箱与回Home后缀（共享）", result.get("conveyor_suffix_ms"))],
-        }
-    return [(name, value) for name, value in mapping.get(phase, ()) if value is not None and value >= 10.]
+        shared = timing.get("extraction_and_approach_ms")
+        additive = {
+            "approach": [("单臂接触候选", timing.get("contact_candidates_ms")),
+                         ("接触/抽离/到位联合规划（共享）", shared)],
+            "contact_approach": [("接触/抽离/到位联合规划（共享）", shared)],
+            "extract": [("接触/抽离/到位联合规划（共享）", shared)],
+            "transport": [("单臂携箱运输搜索", timing.get("transport_ms"))],
+            "conveyor_place": [("放箱与回Home后缀（共享）", result.get("conveyor_suffix_ms"))],
+            "return_home": [("放箱与回Home后缀（共享）", result.get("conveyor_suffix_ms"))],
+        }.get(phase, [])
+    diagnostics = {
+        "conveyor_place": [("其中：放箱RRT", place_search)],
+        "return_home": [("其中：回Home RRT", home_search)],
+    }.get(phase, [])
+    return {
+        "additive": [(name, value) for name, value in additive if value is not None],
+        "diagnostics": [(name, value) for name, value in diagnostics if value is not None],
+    }
+
+
+def phase_planning(result, phase):
+    return [(name, value) for name, value in phase_planning_detail(result, phase)["additive"]
+            if value >= 10.]
 
 
 def main():
