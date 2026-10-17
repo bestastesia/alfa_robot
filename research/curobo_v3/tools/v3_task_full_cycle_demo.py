@@ -17,6 +17,7 @@ from v3_interactive_60_tasks import (
     DEFAULT_MOBILE_ROBOT_CONFIG, quaternion,
 )
 from v3_wall_ik_benchmark import canonical_side_tool_to_box, wall_center
+from v3_timed_wall_report import phase_planning, planning_ledger
 
 
 PHASE_NAMES = {
@@ -32,7 +33,7 @@ PHASE_NAMES = {
 }
 
 
-def main(planner_class=FullCyclePlanner, default_port=8120):
+def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
@@ -53,6 +54,12 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
         planner.selected_task = preload['task']
+    if round_mode and saved_results:
+        planner.task_options = [
+            (f"第 {index+1:02d} 轮 · " + " / ".join(f"{side}:{box}" for side, box in result["task"].items()),
+             result["task"])
+            for index, result in enumerate(saved_results)]
+        planner.task_map = dict(planner.task_options)
     config = planner.mobile_robot["kinematics"]
     joint_names = config["cspace"]["joint_names"]
     urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=True, build_scene_graph=True)
@@ -62,6 +69,12 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
     server.scene.add_grid("/ground", width=5, height=3)
     robot = ViserUrdf(server, urdf, root_node_name="/robot",
                       mesh_color_override=(0.68, 0.73, 0.80, 0.8))
+    joint_models = {joint.name: joint for joint in urdf.robot.joints if joint.type != "fixed"}
+    velocity_arrows = server.scene.add_arrows(
+        "/trajectory/joint_velocity", points=np.zeros((len(joint_names), 2, 3), dtype=np.float32),
+        colors=np.array([(61, 170, 210) if joint_models[name].type == "prismatic" else (239, 146, 62)
+                         for name in joint_names], dtype=np.uint8),
+        shaft_radius=.006, head_radius=.014, head_length=.025, visible=False)
     attached = {}
     sphere_mesh = trimesh.creation.icosphere(subdivisions=2)
     for side in ("left", "right"):
@@ -91,9 +104,9 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
     labels = [entry[0] for entry in planner.task_options]
     fill_nodes = [server.scene.add_box('/task_fill/' + str(index), dimensions=(0.3,0.1,0.1),
                   color=(235,65,85), opacity=0.35, visible=False) for index in range(4)]
-    with server.gui.add_folder("完整任务实时规划"):
+    with server.gui.add_folder("完整25箱序列回放" if round_mode else "完整任务实时规划"):
         initial_label = next(label for label, boxes in planner.task_options if boxes == planner.selected_task)
-        task = server.gui.add_dropdown("组合任务", options=labels, initial_value=initial_label)
+        task = server.gui.add_dropdown("查看轮次" if round_mode else "组合任务", options=labels, initial_value=initial_label)
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Connect + Informed")
         run = server.gui.add_button("计算完整流程并播放")
@@ -105,8 +118,18 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
+        with server.gui.add_folder("q / qdot 轨迹", expand_by_default=False):
+            show_velocity = server.gui.add_checkbox("显示关节速度轴矢量", initial_value=True)
+            curve_joint = server.gui.add_dropdown("曲线关节", options=tuple(joint_names),
+                                                  initial_value="left_joint1")
+            trajectory_curve = server.gui.add_uplot(
+                data=(np.array([0., 1.]), np.zeros(2), np.zeros(2)),
+                series=(viser.uplot.Series(label="time"), viser.uplot.Series(label="q", stroke="#3daad2"),
+                        viser.uplot.Series(label="qdot", stroke="#ef923e")),
+                mode=1, scales={"x": {"time": False}}, title="所选阶段 q / qdot", height=300,
+                visible=False)
         comparison_status = server.gui.add_markdown("")
-    current = {"result": None, "busy": False}
+    current = {"result": None, "busy": False, "curve_binding": None}
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -155,13 +178,38 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
                             if item["frame_start"] <= index <= item["frame_end"]), None)
             if segment:
                 local = index - segment["frame_start"]
+                related = phase_planning(result, segment["name"])
+                detail = "".join(f"  \n- {name}：{value:.2f}ms" for name, value in related)
                 timed_status.content = (
                     f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
                     f"时间化：`{segment.get('parameterizer', 'recorded')}` / {result.get('trajectory_timing_ms', 0):.1f}ms  \n"
-                    f"本轮规划：**{result.get('total_ms', 0)/1000:.3f}s** · "
-                    f"本轮运动：**{result.get('motion_duration_s', 0):.3f}s**")
+                    f"本轮规划：**{result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{result.get('motion_duration_s', 0):.3f}s**"
+                    + ("  \n**相关规划记录（共享项不重复求和）**" + detail if detail else ""))
+                names = segment["joint_names"]
+                joint_index = names.index(curve_joint.value)
+                binding = (id(result), segment["name"], curve_joint.value)
+                if current["curve_binding"] != binding:
+                    trajectory_curve.data = (np.asarray(segment["time_from_start_s"]),
+                                             np.asarray(segment["positions"])[:, joint_index],
+                                             np.asarray(segment["velocities"])[:, joint_index])
+                    trajectory_curve.visible = True
+                    current["curve_binding"] = binding
+                velocity = dict(zip(names, segment["velocities"][local]))
+                points = np.zeros((len(joint_names), 2, 3), dtype=np.float32)
+                for joint_index, name in enumerate(joint_names):
+                    joint = joint_models[name]
+                    transform = urdf.get_transform(joint.child, urdf.base_link)
+                    axis = transform[:3, :3] @ np.asarray(joint.axis)
+                    limit = joint.limit.velocity if joint.limit and joint.limit.velocity else 1.0
+                    points[joint_index, 0] = transform[:3, 3]
+                    points[joint_index, 1] = transform[:3, 3] + axis * np.clip(velocity[name] / limit, -1., 1.) * .15
+                velocity_arrows.points = points
+                velocity_arrows.visible = show_velocity.value
             else:
                 timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"
+                trajectory_curve.visible = False
+                velocity_arrows.visible = False
+                current["curve_binding"] = None
             if not result["success"]:
                 status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
                 failures = [attempt.get('approach',{}) for attempt in result.get('attempts',[]) if attempt.get('approach',{}).get('failure')]
@@ -181,6 +229,17 @@ def main(planner_class=FullCyclePlanner, default_port=8120):
                     status.content += '\n\n满足吸盘接触几何条件的球：' + json.dumps(audit['contact_sphere_indices'])
                 for pair in pairs:
                     status.content += '\n\n' + ' ↔ '.join(pair['links']) + f"：{pair['penetration_mm']:.2f}mm"
+
+    @curve_joint.on_update
+    def on_curve_joint(_event):
+        current["curve_binding"] = None
+        if current["result"]:
+            show_frame(int(frame.value)-1)
+
+    @show_velocity.on_update
+    def on_show_velocity(_event):
+        if current["result"]:
+            show_frame(int(frame.value)-1)
 
     @frame.on_update
     def on_frame(_event):
