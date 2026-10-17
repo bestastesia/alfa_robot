@@ -11,6 +11,62 @@ import yaml
 
 from curobo_core.contracts import PlannerAssets
 from curobo_core.trajectory import TimedTrajectory
+from curobo_core.rolling import SceneObservation
+from curobo_core.scene import SceneSnapshot, digest
+
+
+
+def terminal_evidence(report):
+    """Prove the final committed interval was checked against its fresh observation."""
+    entries = report["trajectories"]
+    entry = entries[-1] if entries else dict(active_at=report["started_at"], trajectory=report["initial_trajectory"])
+    curve = TimedTrajectory(entry["trajectory"])
+    end = entry["active_at"] + curve.duration
+    period = report["schedule"]["duration_s"] / report["schedule"]["slices"]
+    if curve.duration > period + 1e-8:
+        raise ValueError("terminal interval skipped required periodic replanning")
+    events = [e for e in report["events"] if e["event"] in ("terminal_validated", "terminal_certificate_reused")]
+    if len(events) != 1:
+        raise ValueError("missing or duplicate terminal safety evidence")
+    event = events[0]
+    source = next((o for o in report["observations"] if o["identity"] == event["scene_id"]), None)
+    if source is None:
+        raise ValueError("terminal observation is missing")
+    observation = SceneObservation.from_dict(source)
+    observation.require_fresh(event["at"], period + report["schedule"]["compute_bound_s"] + report["schedule"]["link_bound_s"])
+    if not entry["active_at"] <= observation.observed_at <= event["at"] <= end:
+        raise ValueError("terminal observation is outside the active interval")
+    document = curve.window(observation.observed_at-entry["active_at"], curve.duration)
+    world = observation.swept_snapshot(observation.observed_at, end)
+    if event["event"] == "terminal_certificate_reused":
+        activated = [e for e in report["events"] if e["event"] == "activated"]
+        if not activated:
+            raise ValueError("no installed trajectory certificate to reuse")
+        result = next((s for s in report["solves"] if s.get("sequence") == activated[-1]["sequence"]), None)
+        if not result or not result.get("success") or "certificate" not in result:
+            raise ValueError("missing successful solve behind reused terminal certificate")
+        certificate = result["certificate"]
+        if digest(entry["trajectory"]) != digest(result["trajectory"]):
+            raise ValueError("reused certificate refers to a different trajectory")
+        if (not certificate["valid_from"] <= observation.observed_at <= end <= certificate["valid_until"] or
+                not observation.covered_by(SceneSnapshot.from_dict(certificate["snapshot"]), observation.observed_at, end)):
+            raise ValueError("new terminal scene is not covered by the old certificate")
+    else:
+        result = next((s for s in report["solves"] if s.get("terminal") and
+                       s.get("observation_id") == observation.identity), None)
+        if not result or not result.get("success") or "certificate" not in result:
+            raise ValueError("missing terminal verification result")
+        t2, t3 = report["schedule"]["compute_bound_s"], report["schedule"]["link_bound_s"]
+        if (result["ready_at"] != event["safe_ready_at"] or
+                not observation.observed_at <= result["ready_at"] <= min(observation.observed_at+t2, end-t3) or
+                not result["ready_at"] <= event["at"] <= result["ready_at"]+t3):
+            raise ValueError("terminal computation/communication deadline violation")
+        certificate = result["certificate"]
+        if (digest(result["trajectory"]) != digest(document) or
+                certificate["valid_from"] != observation.observed_at or abs(certificate["valid_until"]-end) > 1e-8 or
+                SceneSnapshot.from_dict(certificate["snapshot"]).geometry_key != world.geometry_key):
+            raise ValueError("terminal verification does not describe the executed interval")
+    return document, world
 
 
 def audit(report, config_path, expect_complete=True, require_obstacle_response=False):
@@ -60,7 +116,15 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
             if i and not np.allclose(curve.sample(0)[key], curves[i-1].sample(epochs[i]-epochs[i-1])[key],
                                      atol=tolerance, rtol=0):
                 raise ValueError(f"splice {i} discontinuous {key}")
-    requests = {e["sequence"]: e for e in report["events"] if e["event"] == "requested"}
+    request_events = [e for e in report["events"] if e["event"] == "requested"]
+    sequences = [e["sequence"] for e in request_events]
+    if sequences != list(range(len(sequences))) or any(type(sequence) is not int for sequence in sequences):
+        raise ValueError("duplicate, missing or out-of-order replanning request")
+    for request in request_events:
+        tick = report["started_at"] + request["sequence"] * (t1/n)
+        if not tick <= request["at"] < tick+t1/n or abs(request["splice_at"]-(tick+t1/n)) > 1e-8:
+            raise ValueError("replanning request does not follow the declared time-slice schedule")
+    requests = {e["sequence"]: e for e in request_events}
     staged = {e["sequence"]: e for e in report["events"] if e["event"] == "staged"}
     activated = [e for e in report["events"] if e["event"] == "activated"]
     observations = {o["identity"]: o for o in report["observations"]}
@@ -88,6 +152,8 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
             if not np.allclose(sample[key], expected[key], atol=1e-7, rtol=0):
                 raise ValueError(f"sample does not follow the installed trajectory: {key}")
     if expect_complete:
+        if report.get("schema_version", 1) >= 3:
+            terminal_evidence(report)
         endpoint_at = epochs[-1] + curves[-1].duration
         if report["completed_at"] < endpoint_at:
             raise ValueError("completion recorded before reaching the endpoint")
@@ -134,10 +200,7 @@ def main():
         adapter.validate(report["initial_trajectory"], adapter.scene(SceneSnapshot.from_dict(report["initial_snapshot"])))
         solves = {s["sequence"]: s for s in report["solves"] if "sequence" in s}
         events = [e for e in report["events"] if e["event"] == "activated"]
-        observations = {o["identity"]: SceneObservation(
-            SceneSnapshot.from_dict(o["snapshot"]), o["observed_at"], o["received_at"], o["valid_until"],
-            tuple(o["velocities"]), o["position_error_m"], o["velocity_error_m_s"], o["source"])
-            for o in report["observations"]}
+        observations = {o["identity"]: SceneObservation.from_dict(o) for o in report["observations"]}
         previous = TimedTrajectory(report["initial_trajectory"])
         previous_at = report["started_at"]
         for event, entry in zip(events, report["trajectories"]):
@@ -163,6 +226,10 @@ def main():
                 raise ValueError("suffix exceeds collision certificate time horizon")
             adapter.validate(entry["trajectory"], adapter.scene(snapshot))
             previous, previous_at = TimedTrajectory(entry["trajectory"]), event["at"]
+        if report["success"] and report.get("schema_version", 1) >= 3:
+            document, world = terminal_evidence(report)
+            adapter.validate(document, adapter.scene(world))
+            summary["gpu_terminal_revalidated"] = True
         summary["gpu_revalidated_trajectories"] = len(events) + 1
     print(json.dumps(summary, ensure_ascii=False))
 

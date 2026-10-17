@@ -141,6 +141,122 @@ class RollingTest(unittest.TestCase):
                                  10., max_scene_age_s=2.)
         self.assertIsNone(segment.begin(observation(), feedback(segment, 10.), 10.))
 
+    def test_partial_worker_reads_and_blocked_writes_do_not_block_deadline_thread(self):
+        import multiprocessing
+        import os
+        import queue
+        import struct
+        import threading
+        import time
+        from v3_rolling_replan import exchange_worker
+        for mode in ("partial_read", "blocked_write", "complete"):
+            with self.subTest(mode=mode):
+                connection, peer = multiprocessing.Pipe()
+                commands, replies = queue.Queue(1), queue.Queue(8)
+                stop = threading.Event()
+                thread = threading.Thread(target=exchange_worker, args=(connection, commands, replies, stop), daemon=True)
+                thread.start()
+                try:
+                    peer.send({"ready": True})
+                    self.assertEqual(replies.get(timeout=1), {"ready": True})
+                    if mode == "blocked_write":
+                        commands.put_nowait("x" * 5_000_000)  # peer never drains the socket
+                    else:
+                        commands.put_nowait("request")
+                        self.assertEqual(peer.recv(), "request")
+                        if mode == "partial_read":
+                            # Multiprocessing's message length arrives, body never does.
+                            os.write(peer.fileno(), struct.pack("!i", 1024))
+                        else:
+                            peer.send({"progress": {"phase": "validation"}})
+                            peer.send({"success": True, "ready_at": 10.59})
+                            self.assertIn("progress", replies.get(timeout=1))
+                            self.assertTrue(replies.get(timeout=1)["success"])
+                    before = time.perf_counter()
+                    with self.assertRaises(queue.Empty):
+                        replies.get(timeout=.03)
+                    self.assertLess(time.perf_counter()-before, .5)
+                finally:
+                    stop.set()
+                    peer.close()
+                    thread.join(1)
+                    self.assertFalse(thread.is_alive())
+                    connection.close()
+
+    def test_slow_admission_cannot_backdate_a_replacement_at_the_splice(self):
+        for accepted_at in (10.81, 11., float("nan")):
+            segment = self.segment(); obs = observation()
+            ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+            with self.subTest(accepted_at=accepted_at), self.assertRaises(ValueError):
+                segment.stage(ticket, ticket.remaining, obs, 10.59, 10.70,
+                              admission_clock=lambda: accepted_at)
+            self.assertIsNone(segment.staged)
+            self.assertFalse(any(event["event"] == "staged" for event in segment.events))
+        segment = self.segment(); obs = observation()
+        ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+        segment.stage(ticket, ticket.remaining, obs, 10.59, 10.70, admission_clock=lambda: 10.75)
+        self.assertEqual(segment.events[-1]["at"], 10.75)
+        self.assertEqual(segment.events[-1]["accepted_latency_s"], .75)
+
+    def test_reply_can_arrive_in_t3_after_a_valid_t2_computation(self):
+        segment = self.segment(); obs = observation()
+        ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+        self.assertAlmostEqual(ticket.compute_deadline, 10.6)
+        segment.stage(ticket, ticket.remaining, obs, 10.59, 10.78)
+        segment.activate(feedback(segment, 10.8), obs, 10.8)
+        self.assertEqual(segment.sequence, 1)
+
+    def test_terminal_safety_evidence_requires_exact_tail_and_fresh_scene(self):
+        import copy
+        from dataclasses import asdict, replace
+        from v3_verify_rolling import terminal_evidence
+        old = observation()
+        curve = TimedTrajectory(trajectory(1.6))
+        tail = curve.suffix(.8)
+        end = 10.8 + TimedTrajectory(tail).duration
+        scene = replace(old.snapshot, revision=1, objects=(replace(
+            old.snapshot.objects[0], pose=Pose((5.8, 0., 0.))),))
+        current = replace(old, snapshot=scene, observed_at=10.8, received_at=10.8)
+        observed = {**asdict(current), "identity": current.identity}
+        certificate = dict(snapshot=old.swept_snapshot(10.8, end).to_dict(), valid_from=10.8, valid_until=end)
+        report = dict(started_at=10., initial_trajectory=trajectory(1.6),
+                      schedule=dict(duration_s=1.6, slices=2, compute_bound_s=.6, link_bound_s=.2),
+                      trajectories=[dict(active_at=10.8, trajectory=tail)], observations=[observed],
+                      events=[dict(event="activated", sequence=0),
+                              dict(event="terminal_certificate_reused", at=10.8, scene_id=current.identity)],
+                      solves=[dict(success=True, sequence=0, trajectory=tail, certificate=certificate)])
+        checked, world = terminal_evidence(report)
+        self.assertEqual(checked, TimedTrajectory(tail).suffix(0))
+        self.assertEqual(world.objects[0].object_id, "obstacle")
+        for change in ("missing_event", "missing_certificate", "changed_obstacle", "skipped_tick"):
+            bad = copy.deepcopy(report)
+            if change == "missing_event": bad["events"].pop()
+            if change == "missing_certificate": bad["solves"][0].pop("certificate")
+            if change == "changed_obstacle":
+                changed = replace(current, velocities=(("obstacle", (3., 0., 0.)),))
+                bad["observations"] = [{**asdict(changed), "identity": changed.identity}]
+                bad["events"][-1]["scene_id"] = changed.identity
+            if change == "skipped_tick": bad["trajectories"][0]["trajectory"] = trajectory(1.)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                terminal_evidence(bad)
+        report["events"][-1] = dict(event="terminal_validated", at=10.95, safe_ready_at=10.9, scene_id=current.identity)
+        report["solves"].append(dict(success=True, terminal=True, observation_id=current.identity, ready_at=10.9,
+                                      trajectory=checked, certificate=dict(snapshot=world.to_dict(),
+                                                                          valid_from=10.8, valid_until=end)))
+        terminal_evidence(report)
+        report["solves"][-1]["trajectory"]["positions"][-1][0] += .1
+        with self.assertRaisesRegex(ValueError, "executed interval"):
+            terminal_evidence(report)
+
+    def test_observation_wire_identity_is_checked(self):
+        from dataclasses import asdict
+        obs = observation()
+        document = {**asdict(obs), "identity": obs.identity}
+        self.assertEqual(SceneObservation.from_dict(document), obs)
+        document["valid_until"] += 1.
+        with self.assertRaisesRegex(ValueError, "identity"):
+            SceneObservation.from_dict(document)
+
     def test_matrix_statistics_keep_failures_and_pool_raw_latency(self):
         from v3_rolling_matrix import summarize_reports
         first = dict(stage="approach", scenario="moving", success=True, trigger_count=2, splice_count=2,
@@ -224,6 +340,28 @@ class RollingTest(unittest.TestCase):
             self.assertEqual(envelopes[-1].objects[0].dimensions_m[0], 1.+candidate_duration)
             self.assertLess(result["certificate"]["valid_until"], obs.valid_until)
 
+    def test_unsafe_committed_prefix_never_attempts_to_repair_the_later_suffix(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        def reject_prefix(*args):
+            raise ValueError("collision before the splice")
+        adapter = types.SimpleNamespace(scene=lambda s: object(), validate=reject_prefix,
+                                        backend=object(), boxes={}, payload=False)
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=trajectory(4.),
+                                       initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+        self.assertFalse(result["success"])
+        self.assertEqual(result["failure_code"], "UNSAFE_COMMITTED_PREFIX")
+        self.assertEqual(result["required_action"], "independent_protective_stop")
+        self.assertNotIn("trajectory", result)
+        self.assertNotIn("attempts", result)
+
     def test_failed_optional_optimization_reuses_rechecked_safe_suffix_without_search(self):
         import ast
         import types
@@ -274,6 +412,29 @@ class RollingTest(unittest.TestCase):
             if kind == "prediction": next_obs = replace(next_obs, velocities=(("obstacle", (2., 0., 0.)),))
             with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "out-of-order|without a new revision"):
                 segment.begin(next_obs, feedback(segment, 10.8), 10.8)
+
+    def test_online_input_cannot_ignore_motion_of_model_locked_joints(self):
+        import ast
+        from dataclasses import replace
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/backend.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "set_snapshot")
+        namespace = {}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        backend = SimpleNamespace(model_id="model", robot={"kinematics": {
+            "lock_joints": {"head_joint": 0., "head_pitch_joint": 0.}}})
+        snapshot = observation().snapshot
+        namespace["set_snapshot"](backend, snapshot)  # legacy static omission remains compatible
+        with self.assertRaisesRegex(ValueError, "locked joints"):
+            namespace["set_snapshot"](backend, snapshot, require_locked_state=True)
+        complete = replace(snapshot, state=RobotState(("q", "head_joint", "head_pitch_joint"), (0., 0., 0.), 1))
+        namespace["set_snapshot"](backend, complete, require_locked_state=True)
+        self.assertIs(backend.snapshot, complete)
+        moved = replace(complete, state=complete.state.with_positions({"head_joint": .1}))
+        for strict in (False, True):
+            with self.subTest(strict=strict), self.assertRaisesRegex(ValueError, "locked joints"):
+                namespace["set_snapshot"](backend, moved, require_locked_state=strict)
+        self.assertIs(backend.snapshot, complete)
 
     def test_static_optimizer_cache_key_stays_compatible(self):
         # Exercise the production cache-key block without requiring CUDA.
@@ -353,6 +514,10 @@ class RollingTest(unittest.TestCase):
             bad = copy.deepcopy(report)
             bad["final_feedback"]["state"]["positions"] = [3.9]
             with self.assertRaisesRegex(ValueError, "did not reach"):
+                audit(bad, config)
+            bad = copy.deepcopy(report)
+            next(e for e in bad["events"] if e["event"] == "requested")["sequence"] = 2
+            with self.assertRaisesRegex(ValueError, "replanning request"):
                 audit(bad, config)
             bad = copy.deepcopy(report); bad["samples"][0]["positions"][0] += .1
             with self.assertRaisesRegex(ValueError, "sample"):

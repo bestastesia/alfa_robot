@@ -1,6 +1,6 @@
 # MOTION-292：提前一小段计算的动态重规划
 
-状态：开发/验证中，不是已完成验收。基线 `feature/motion-233-curobo-trajopt@3b50c9e`。
+状态：仿真实现已形成可复核版本；完整验收仍等待负责人确认对接路线、保护停机接口与MOTION-296前置，不是Done。基线 `feature/motion-233-curobo-trajopt@3b50c9e`。
 
 ## 已确认的合同
 
@@ -86,17 +86,21 @@ python -m unittest discover -s research/curobo_v3/tests -p 'test_core_*.py' -v
 
 ## 当前证据（2026-10-17；不同版本不混算）
 
-- CPU core **82/82**，包含21项滚动接续合同、证据篡改和缓存兼容性回归。
+- CPU core **89/89**，包含28项滚动接续合同、证据篡改和缓存兼容性回归。
 - `checkpoint-v2/faults/matrix.json`：**8/8**（1个正常闭环 + 计算超时、通信迟到、场景过期、反馈偏差、场景变化、worker退出、solver失败7个负例）。拒绝不等于物理刹停验证。
 - `checkpoint-v2/transport-static-seed.json`：带载静止障碍闭环完成，5次非零速度接续、1次旧剩余路线被阻挡后成功换路；独立GPU复核6条初始/接续轨迹及当前前缀通过。计算墙钟最大1.332s，是单次结果而非已证明上界。
 - `return_home-clear-v5.json`：4次非零速度接续完成，修正了连续重算不断推迟终点导致的120s超时。安全旧路已复核时，不接收更晚到达的新路；障碍确实阻挡时允许绕行增加时间。
 - `frozen-v1/pilot/matrix.json`：只跑到8项，进程已结束；前6项通过，带载static/moving的2项失败，不能视为整矩阵完成。新增当前前缀/未来后缀分时域检查后，static在t2=2s的3s小段中仍于2.961s真实撞障，保留该拒绝记录。改用假定t2=1.8s得到2s小段后前缀安全，但原单种子优化仍不收敛；已有SDK时间步和等权重采样重试才得到上述通过结果。**未修改碰撞或运动限值来使其通过。**
+- **最新分阶段矩阵 `acceptance-v3`：49/52。** approach 22/22（含7故障），transport 12/15，return_home 15/15；正常场景42/45完成，3个transport/appear在当前不可修改前缀中碰撞，拒绝下发。不能把“需要独立保护停机”改计为绕障成功。该组固定同模型/硬件/三种子，n分别7/3/5，t2=1.8s、t3=0.1s；全部成功项有独立GPU复核及最后尾段证据。
+- `watchdog-v1/checks` 9/9：正常/移动闭环及7故障通过；`admission-v1/checks` 3/3：正常/移动闭环及故意延迟接收门禁通过。后者的晚接收候选0次接续，不允许回填一个过去的接续时刻。
+- **schema3与端到端门禁：** 最后不足一个周期的尾段必须记录新场景复核或有效证书复用，审核器重建实际尾段并检查终点反馈。管道send/recv移到单个独立I/O线程，主监督线程只访问有界本地队列；半包/阻塞发送测试证明不会阻塞截止检查。完整回复允许使用t2之后的t3，但实际ready_at、接收门禁完成时刻及接续时刻分别受限，不将通信时间算成计算超时，也不倒填接受时间。
+- **模型锁定关节：** 复用原全周期的锁定关节检查并下沉到共享set_snapshot；在线模式要求明确提供头部锁定轴状态，不再悄悄忽略这些轴的真实运动。静态旧入口保留缺省兼容。
 - `candidate-20261017/matrix/`（0d790cd代码）：**52项已经结束，43过/9失败**。45个正常场景36完成、9拒绝；7故障项正确拒绝。失败是approach/moving三种子优化不收敛、transport/moving三种子deadline miss、transport/appear三种子当前前缀碰撞。该矩阵不是通过，不能隐藏失败。`raw-latency-summary.json`按阶段/场景汇总原始时长及超时截尾数，未对p95求平均。
 - 后续修复：预测TTL不再被当成机器人占用时长；规划先用原剩余时长，最终复核按候选实际时长重建包络。用SDK原生`update_world()`保留预热机器人，移动障碍不再每次重建模型；GPU新增/搬走/删除障碍回归通过，确认不会沿用旧世界。schema v2记录终点反馈，审核不只看success布尔值。
 - `warm-world-v1/approach-moving-n7.json`：显式n=7、t2=1.8s、t3=0.1s，7次移动接续、1次真实避障，独立GPU审核8条轨迹及前缀通过；计算墙钟max 0.988s。这里只是该配置单次证据，不能替代失败的n=8矩阵。`warm-world-v1/transport-moving-n3.json`也通过，5次移动接续、1次避障、max计算1.061s。突现更短节拍的试验仍有超时，未当成通过。
 - `phase-progress-v1`再次跑同样的approach n7、transport n3移动场景：独立GPU审核分别通过8/6条轨迹，终点反馈通过；优化失败且旧后缀已完整复核安全时，不再白跑其余搜索/优化重试，明确计为revalidated而非optimized。这两个场景compute max分别0.701s/0.642s，不能宣称普遍上界。通信迟到计入deadline miss，缺少计算测量的失败计入censored而非从统计中消失。
 - n是用户可选的正整数，不要求永远取最大值。`v3_rolling_matrix.py --slices`可固定n；预算符合公式只是计算能赶上的必要条件，不保证任意突然进入当前不可修改前缀的障碍都可避开。
-- 静态对照：原`3b50c9e`和首次开发树均完成24箱并在最后箱子的接触IK失败；时间/阶段/完成箱序列一致，但q存在最大0.0194rad差异，因此不称为逐帧等价。已发现并修正静态loaded solver缓存key被无意改变的问题：只有真实在线附件扩展key，静态完整周期保留原复用规则。修正后仍需重跑25箱对照，不能归因未证实。
+- 静态对照：原`3b50c9e`和首次开发树均完成24箱并在最后箱子的接触IK失败；时间/阶段/完成箱序列一致，但q存在最大0.0194rad差异，因此不称为逐帧等价。已发现并修正静态loaded solver缓存key被无意改变的问题：只有真实在线附件扩展key，静态完整周期保留原复用规则。修正后的`acceptance-v3/static-sequence.json`已重跑；与原3b50c9e的frames/qdot/qddot/jerk/time逐元素完全相同（最大差0）、阶段与载荷相同，同样24箱后在箱2接触IK失败。证据`acceptance-v3/static-regression.json`，证明该冻结基线无静态轨迹回归，不证明25箱验收通过。
 - Viser只读界面已通过Firefox WebDriver BiDi实际加载、播放/暂停与截图检查；`replay-playing.png`显示4.991s、2次接续、场景版本3及真实事件延迟。不是此前的空白截图。服务器是否存活以当前进程为准。
 
 证据根目录：`/home/astesia/Sevenova/motion292-acceptance`。历史单次试验仅用于定位；正式统计必须同版本、同模型、同配置分组，成功、回用、拒绝、超时分别计数。
@@ -109,7 +113,7 @@ python -m unittest discover -s research/curobo_v3/tests -p 'test_core_*.py' -v
 
 补充查证：旁边的`robot_motion_control@a2c7cf4`已有可复用的**15轴仿真**FJT，配置是`alfa_motion_ros2/config/twin_fjt_3_1_1_suction_chassis.yaml`，接口为`/simulation/dual_arm_with_updown_jtc/follow_joint_trajectory`。它支持future header stamp和replacement，但`TwinFjtServer::apply_replacement()`在下一tick立即取消旧goal，再等待新goal开始；这不满足“旧前缀继续走，到接续点才换”的原子语义。其3.1.1权威模型也不等于当前冻结cuRobo代理，不能仅按关节名一致就放行。`V3_EXPERIMENT_BASELINE.md`明确真实Runtime/安全合同未冻结；未修改该仓库。
 
-下一步应优先复用该15轴孪生接口，而不是另造控制器；需对模型与定时替换合同达成确认，涉及Frozen Interface变更必须经架构负责人确认。真实执行仍需**对应控制器/反馈来源、障碍源、时钟同步及保护停止接口**。当前交付为模拟执行与核心合同，不假装完成ROS或实机闭环。
+下一步应优先复用该15轴孪生接口，而不是另造控制器；需先由本任务负责人文子轩决定对接/变更路线，再由其协调必要的架构与控制接口确认。先前直接向李昊洋提出的任务接口授权请求已撤回，遵循Linear更正4f5a357f；该更正不等于变更授权，MOTION-296原有验收前置不取消。涉及Frozen Interface仍不得擅自修改。真实执行仍需**对应控制器/反馈来源、障碍源、时钟同步及保护停止接口**。当前交付为模拟执行与核心合同，不假装完成ROS或实机闭环。
 
 ## 验收清单（不能用窄测试代替）
 
@@ -134,3 +138,11 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --result /home/astesia/Sevenova/motion292-acceptance/static-v2.json \
   --port 8099
 ```
+
+## 继续完整交付所需的决定
+
+1. 由文子轩确认是否扩展现有15轴孪生接口：提前缓存候选、旧前缀继续运行、在未来边界按执行ID和位速原子接续；拒绝/过期时具备可确认的保护停止。
+2. 确认继续使用冻结3b50c9e代理模型，还是迁移到获准的模型/控制合同；不能仅凭15个关节名相同替换3.1.1模型，也不能覆盖正在改动的原基线工作树。
+3. MOTION-296的25箱与动力学适用边界验收，以及真实状态、障碍源、时钟域和制动/执行接口来源。
+
+当前成果没有发送硬件命令，没有更改robot_motion_control的冻结接口，也未发布到公开fork。基线分支已发生并发变更，PR目标基线与公开发布也须先确认。完整目标保留，不将仿真子集当作整项完成。

@@ -11,6 +11,8 @@ import hashlib
 import importlib.metadata
 import math
 import platform
+import queue
+import threading
 import multiprocessing as mp
 import os
 from pathlib import Path
@@ -48,6 +50,40 @@ def stage_input(record, name, round_index=0):
     snapshot = replace(snapshot, state=snapshot.state.with_positions(
         dict(zip(ACTIVE_JOINTS, trajectory["positions"][0])), Pose()))
     return trajectory, snapshot, ({} if name == "return_home" else result["task"]), name == "transport"
+
+
+
+def exchange_worker(connection, commands, replies, stop):
+    """Own blocking pipe I/O outside the execution/deadline supervisor thread."""
+    def publish(reply):
+        while not stop.is_set():
+            try:
+                replies.put(reply, timeout=.05)
+                return True
+            except queue.Full:
+                pass
+        return False
+    try:
+        if not publish(connection.recv()):  # complete startup message, not just its header
+            return
+        while not stop.is_set():
+            try:
+                command = commands.get(timeout=.05)
+            except queue.Empty:
+                continue
+            connection.send(command)
+            if command is None:
+                return
+            while not stop.is_set():
+                reply = connection.recv()
+                if not publish(reply):
+                    return
+                if "progress" not in reply:
+                    break
+    except Exception as error:
+        publish({"success": False, "error": f"worker transport: {type(error).__name__}: {error}"})
+    finally:
+        connection.close()
 
 
 def worker(connection, snapshot, boxes, payload, initial, random_seed):
@@ -101,13 +137,18 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed):
             if ticket is None:
                 began = time.perf_counter()
                 try:
-                    check = adapter.scene(observation.swept_snapshot(
-                        observation.observed_at, observation.observed_at + duration))
+                    snapshot = observation.swept_snapshot(observation.observed_at, observation.observed_at + duration)
+                    check = adapter.scene(snapshot)
                     validation = adapter.validate(prefix, check)
-                    response = {"success": True, "validation": validation}
+                    response = {"success": True, "validation": validation, "trajectory": prefix,
+                                "certificate": {"snapshot": snapshot.to_dict(),
+                                                "valid_from": observation.observed_at,
+                                                "valid_until": observation.observed_at + duration}}
                 except (ValueError, RuntimeError) as error:
                     response = {"success": False, "error": str(error)}
-                response.update(started_at=began, ready_at=time.perf_counter(), terminal=True)
+                ready = time.perf_counter()
+                response.update(started_at=began, ready_at=ready, compute_wall_s=ready-began,
+                                observation_id=observation.identity, terminal=True)
             else:
                 response = adapter.solve(ticket, observation, prefix,
                                          max_duration_s=duration, search_seed=seed,
@@ -147,7 +188,7 @@ def run(args):
         raise ValueError("simulated link delay must fit its declared bound")
     parent, child = mp.get_context("spawn").Pipe()
     process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed))
-    report = {"schema_version": 2, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
+    report = {"schema_version": 3, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
               "initial_trajectory": initial, "task_boxes": boxes, "payload": payload,
@@ -157,11 +198,16 @@ def run(args):
                                         for p in [Path(__file__), *sorted((Path(__file__).parent / "curobo_core").glob("*.py"))]},
               "initial_cycle_sha256": hashlib.sha256(args.initial_cycle.read_bytes()).hexdigest()}
     process.start(); child.close()
+    commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
+    io_thread = threading.Thread(target=exchange_worker, args=(parent, commands, replies, stop_io),
+                                 name="motion292-worker-transport", daemon=True)
+    io_thread.start()
     segment = None
     try:
-        if not parent.poll(180):
-            raise TimeoutError("worker initialization timed out")
-        startup = parent.recv()
+        try:
+            startup = replies.get(timeout=180)
+        except queue.Empty as error:
+            raise TimeoutError("worker initialization timed out") from error
         report["startup"] = startup
         if not startup.get("ready"):
             raise RuntimeError(startup.get("error", "worker failed to initialize"))
@@ -171,6 +217,9 @@ def run(args):
                                  max_feedback_age_s=args.max_feedback_age_s)
         report["started_at"] = started
         def complete(received_at):
+            if not any(event["event"] in ("terminal_validated", "terminal_certificate_reused")
+                       for event in segment.events):
+                raise RuntimeError("segment ended without terminal safety verification")
             endpoint_at = segment.active_at + segment.active.duration
             report["final_feedback"] = {
                 "source": "analytic_simulator", "sampled_at": endpoint_at, "received_at": received_at,
@@ -210,19 +259,33 @@ def run(args):
                      certificate["valid_from"] <= now <= boundary <= certificate["valid_until"] and
                      observation.covered_by(SceneSnapshot.from_dict(certificate["snapshot"]), now, boundary))
             if reuse:
-                segment.events.append({"event": "terminal_certificate_reused", "at": now,
-                                       "scene_id": observation.identity})
+                checked_at = time.perf_counter()
+                if checked_at > min(now + args.compute_bound_s, boundary):
+                    raise TimeoutError("terminal cached validation missed deadline")
+                segment.events.append({"event": "terminal_certificate_reused", "at": checked_at,
+                                       "scene_id": observation.identity,
+                                       "available_latency_s": checked_at-observation.observed_at,
+                                       "communication_required": False})
             else:
-                parent.send((ticket, observation, prefix, forecast_duration, (args.seed + segment.sequence) % 2**32, fault))
+                commands.put_nowait((ticket, observation, prefix, forecast_duration,
+                                     (args.seed + segment.sequence) % 2**32, fault))
             deadline = min(now + args.compute_bound_s, boundary-args.link_bound_s) if terminal else ticket.compute_deadline
             result = {"success": True, "ready_at": now, "terminal": True} if reuse else None
             arrived, installed = (now if reuse else None), reuse
             while True:
                 now = time.perf_counter()
-                if not process.is_alive() and not parent.poll():
-                    raise RuntimeError("planning worker exited")
-                if result is None and parent.poll():
-                    message = parent.recv()
+                # A reply may legitimately spend t3 in transit AFTER computation
+                # finishes at its t2 deadline. The complete-message deadline is
+                # t2+t3; the reported ready_at is checked separately when received.
+                if result is None and now > deadline + args.link_bound_s:
+                    raise TimeoutError("worker reply deadline miss (supervisor)")
+                message = None
+                if result is None:
+                    try:
+                        message = replies.get_nowait()
+                    except queue.Empty:
+                        pass
+                if message is not None:
                     if "progress" in message:
                         report["worker_events"].append(message["progress"])
                         continue
@@ -231,19 +294,32 @@ def run(args):
                         arrived += schedule.period_s + args.link_bound_s
                     report["solves"].append(result)
                     if not result.get("success"):
+                        report["failure_code"] = result.get("failure_code", "PLAN_REJECTED")
+                        report["required_action"] = result.get("required_action", "independent_safety_intervention")
                         raise RuntimeError(result.get("error", "planning failed"))
                     if not terminal and (result.get("sequence") != ticket.sequence or
                                          result.get("observation_id") != observation.identity):
                         raise ValueError("worker returned an obsolete task or scene")
-                if result is None and now > deadline:
-                    raise TimeoutError("compute deadline miss (supervisor)")
+                if result is not None and not installed and now > result["ready_at"] + args.link_bound_s:
+                    raise TimeoutError("communication deadline miss before splice")
                 if result is not None and not installed and now >= arrived:
                     if terminal:
-                        if result["ready_at"] > deadline or now > boundary:
+                        if (result["ready_at"] > deadline or now > boundary or
+                                now-result["ready_at"] > args.link_bound_s):
                             raise TimeoutError("terminal revalidation missed deadline")
+                        segment.events.append({"event": "terminal_validated", "at": now,
+                                               "scene_id": observation.identity,
+                                               "safe_ready_at": result["ready_at"],
+                                               "available_latency_s": result["ready_at"]-observation.observed_at,
+                                               "accepted_latency_s": now-observation.observed_at,
+                                               "trajectory_id": segment.trajectory_id})
                     else:
+                        if fault == "admission_delay":
+                            time.sleep(schedule.period_s)  # simulate a blocked contract validator
                         segment.stage(ticket, result["trajectory"], observation, result["ready_at"], now,
-                                      previous_suffix_valid=result["previous_suffix_valid"])
+                                      previous_suffix_valid=result["previous_suffix_valid"],
+                                      admission_clock=time.perf_counter)
+                        now = time.perf_counter()
                     installed = True
                 if now >= boundary:
                     if not installed:
@@ -279,9 +355,11 @@ def run(args):
             segment.fail(report["error"], time.perf_counter())
         report["safety_action"] = "simulation_aborted; physical stopping NOT validated"
     finally:
+        stop_io.set()
         if process.is_alive():
             process.terminate()  # only this run's worker, including obsolete in-flight CUDA work
         process.join(10)
+        io_thread.join(1)
         parent.close()
         report["events"] = segment.events if segment else []
         fields = {
@@ -324,7 +402,7 @@ def main():
     parser.add_argument("--stage", choices=("approach", "transport", "return_home"), default="approach")
     parser.add_argument("--scenario", choices=("clear", "static", "moving", "appear", "depart"), default="clear")
     parser.add_argument("--fault", choices=("none", "compute_delay", "link_delay", "stale_scene",
-                                           "feedback_error", "scene_changed", "worker_failure", "solver_failure"),
+                                           "feedback_error", "scene_changed", "worker_failure", "solver_failure", "admission_delay"),
                         default="none", help="simulation-only failure injection, at first tick")
     parser.add_argument("--compute-bound-s", type=float, required=True)
     parser.add_argument("--link-bound-s", type=float, required=True)

@@ -32,7 +32,7 @@ class SegmentReplanner:
             raise ValueError("this segment uses the fixed-base 15-joint model")
         if bool(snapshot.attachments) != self.payload:
             raise ValueError("payload mode must match execution-confirmed attachments")
-        self.backend.set_snapshot(snapshot, allow_attached=True)
+        self.backend.set_snapshot(snapshot, allow_attached=True, require_locked_state=True)
         robot_key = digest((snapshot.model_id, snapshot.frame_id, asdict(snapshot.state.base_pose),
                             tuple(sorted(self.boxes.items())), self.payload,
                             [asdict(item) for item in snapshot.attachments], self.backend.box_fit,
@@ -105,6 +105,8 @@ class SegmentReplanner:
             try:
                 report["prefix_validation"] = self.validate(prefix, validity)
             except ValueError as error:
+                report["failure_code"] = "UNSAFE_COMMITTED_PREFIX"
+                report["required_action"] = "independent_protective_stop"
                 raise ValueError(f"committed prefix unsafe: {error}") from error
             spans["prefix_validation"] = [spans["prefix_scene_update"][1], time.perf_counter()]
             scene_started = time.perf_counter()

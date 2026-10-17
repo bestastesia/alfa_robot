@@ -64,6 +64,15 @@ class SceneObservation:
             raise ValueError("motion must reference unique observed cuboids")
         object.__setattr__(self, "velocities", velocities)
 
+    @classmethod
+    def from_dict(cls, document):
+        values = {key: value for key, value in document.items() if key != "identity"}
+        values["snapshot"] = SceneSnapshot.from_dict(values["snapshot"])
+        observation = cls(**values)
+        if document.get("identity", observation.identity) != observation.identity:
+            raise ValueError("observation identity does not match its contents")
+        return observation
+
     @property
     def identity(self):
         return digest((self.snapshot.geometry_key, self.snapshot.revision, self.observed_at,
@@ -241,7 +250,8 @@ class RollingSegment:
                             "observed_at": observation.observed_at, "splice_at": splice_at})
         return self.pending
 
-    def stage(self, ticket, trajectory, observation, ready_at, received_at, *, previous_suffix_valid=False):
+    def stage(self, ticket, trajectory, observation, ready_at, received_at, *, previous_suffix_valid=False,
+              admission_clock=None):
         self._require_running()
         if ticket is not self.pending or ticket.trajectory_id != self.trajectory_id:
             raise ValueError("cancelled or obsolete planning result")
@@ -267,11 +277,17 @@ class RollingSegment:
             raise ValueError("terminal acceleration changed")
         if ticket.splice_at + candidate.duration > observation.valid_until:
             raise ValueError("candidate outlives the prediction")
+        # Contract checks/interpolation take CPU time too. A caller with a real
+        # clock must measure admission AFTER that work, not backdate acceptance.
+        admitted_at = received_at if admission_clock is None else admission_clock()
+        observation.require_fresh(admitted_at, self.max_scene_age_s)
+        if not received_at <= admitted_at <= ticket.splice_at or admitted_at-ready_at > self.schedule.link_bound_s:
+            raise ValueError("admission deadline miss")
         self.staged = candidate
-        self.events.append({"event": "staged", "at": received_at, "sequence": ticket.sequence,
+        self.events.append({"event": "staged", "at": admitted_at, "sequence": ticket.sequence,
                             "safe_ready_at": ready_at,
                             "available_latency_s": ready_at - observation.observed_at,
-                            "accepted_latency_s": received_at - observation.observed_at})
+                            "accepted_latency_s": admitted_at - observation.observed_at})
 
     def activate(self, feedback, observation, now):
         self._require_running()

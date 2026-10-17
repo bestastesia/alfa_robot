@@ -18,7 +18,7 @@ FAULTS = {
     "compute_delay": ("deadline",), "link_delay": ("delivered", "communication deadline"),
     "stale_scene": ("scene is stale",), "feedback_error": ("execution positions",),
     "scene_changed": ("scene changed",), "worker_failure": ("worker exited", "EOFError"),
-    "solver_failure": ("injected solver failure",),
+    "solver_failure": ("injected solver failure",), "admission_delay": ("admission deadline",),
 }
 
 
