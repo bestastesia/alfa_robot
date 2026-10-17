@@ -49,7 +49,8 @@
 - 根因之一：单调时钟相减使切点距原节点约1e-12s，生成极短五次插值区间导致伪加速度。修复仅丢弃距精确切点一纳秒内的内部节点，保留实际边界q/v/a；二次曲线回归验证不改变运动与速度。
 - `pr65-gates-v2/pilot`已结束6项：approach clear/static/moving及conveyor_place clear共4项通过，conveyor_place static/moving两项无可行替换路线，保留拒绝。全部成功项有独立GPU终检，不能冒称6/6或整体交付完成。
 - PR65原生持久碰撞的新增/移动/删除障碍GPU回归通过；`baseline-preservation.json`证明9个核心文件与PR65 HEAD逐字节一致。
-- `pr65-gates-v2/full-sequence.json`正在由新入口生成整墙基线及阶段事实，查看进程/日志确认结束，不假设15/15。
+- `pr65-gates-v2/full-sequence.json`新鲜完整规划已结束：**15/15轮、25/25箱**。复用`tools/verify_motion233_timed_trajectory.py`逐轮独立检查，15/15通过；结果见`round-audits/summary.json`。
+- 全15轮规划ms median/p95/max=2164.003/2990.275/3014.932；时间化ms median/p95/max=4261.147/8858.368/10526.793。整个准备wall=105.454s，含阶段事实导出，不是机器人动作时间。明确不把2.164s中位数当成t2上界。
 - CPU反馈过期负例已改为有效轨迹内的sampled_at=10、now=10.2、位速匹配，明确断言stale；不再靠越界错误假通过。
 
 证据目录：`/home/astesia/Sevenova/motion292-acceptance/pr65-integration` 和 `pr65-gates-v2`。

@@ -2246,3 +2246,6 @@
 - 接入补充：旧search_path覆写会影响Mentor自身full_cycle，已改为独立online_search_path，PR65九个核心文件逐字节一致（baseline-preservation.json）。joint_names按SDK list合同传入，避免tuple/list身份误拒绝。原始2.75s round验证成功后approach clear与独立审核通过。
 - pr65-gates-v2 pilot已终态4/6：approach clear/static/moving、conveyor_place clear通过；放箱static/moving无可行替换路线，未改为通过。旧20项pilot也保留。GPU world-update回归通过。
 - 当前完整新基线序列工具session66142（v3_rolling_prepare.py --sequence），输出pr65-gates-v2/full-sequence.json，日志同名.log。全序列结束后核对15/25、每段时序限制与可消费场景；不能根据日志尾行假设成功。仍有动态矩阵、受约束阶段/执行接口验收工作，目标保持active。
+
+- session66142完整序列已终态success：15/15轮、25/25箱；tools/verify_motion233_timed_trajectory.py逐轮15/15独立通过。规划ms median/p95/max2164.003/2990.275/3014.932；时间化4261.147/8858.368/10526.793；总准备105.454s。证据full-sequence-summary.json、round-audits/summary.json。旧“24箱”阻塞不能延用为新PR65结论。
+- 当前新增提交a348064；84项CPU通过，新原生GPU世界更新回归通过；PR65核心9文件哈希一致。所有本轮进程均已结束，没有待轮询GPU任务。下一轮必须在新PR65输入上处理剩余动态放箱/带载失败及扩大同版本场景矩阵，勿复用3b50c9e旧矩阵当新验收。
