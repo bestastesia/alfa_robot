@@ -2277,3 +2277,9 @@
 - 新增正常拒绝NO_VALID_REPLACEMENT与DEADLINE_MISS分类/审核，matrix的obstacle-response要求改为显式参数，避免仅按非clear标签声称发生避障。端点/受约束/前缀/无替换/截止五类分开。
 - v3_rolling_acceptance_report.py要求6阶段×5场景×3种子、8故障、独立audit、同一源码/模型/输入、PR65核心与15轮25箱证据；仅输出simulation_contract_complete，不冒充overall issue done。
 - CPU101/101；新增全部tools源码、模型、cuboid与输入哈希复核，证据目录/source被修改会拒绝。下一步冻结最终源码跑完整分组矩阵及所有15轮clear rolling；代码完成前不得用旧source hash矩阵冒充最终验收。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 并发OOM证据作废
+- 发现本任务pr65-final-v20与pr65-release-v21矩阵重叠运行，造成extract worker和contact audit CUDA OOM；已停止所有本任务矩阵/子进程并确认清零。未触碰其他用户长时Viser或随后启动的IK容量实验。
+- 作废清单固定在`motion292-acceptance/invalidated-evidence-20261017.json`；contact_approach/appear也从错误complete分组移到UNSAFE_COMMITTED_PREFIX拒绝组。最终汇总仅接收显式matrix路径，不扫描历史目录。
+- 当前GPU由robot_motion_control/curobo并行IK容量实验使用；等待其结束后只开一个冻结runtime串行重跑受影响/最终矩阵。不得把OOM写成功能失败或通过，也不得用旧audit补洞。
