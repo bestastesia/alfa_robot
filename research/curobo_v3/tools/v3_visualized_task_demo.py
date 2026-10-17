@@ -37,7 +37,7 @@ PHASE_NAMES = {
 }
 
 
-def main(default_port=8150):
+def main(default_port=8150, planner_class=SingleArmPlanner):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
@@ -61,7 +61,7 @@ def main(default_port=8150):
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
     planner_labels = {"多抽离根＋多目标Connect": "informed_connect"}
-    planner = FullCyclePlanner(args)
+    planner = planner_class(args)
     planner.warmup_resources()
     server_policy = '预测64个抽离终点→距离/旋转排序→8个起分批完整抽离验收；失败扩批，运输搜索共享2s预算。每次点击重新生成候选，不复用规划结果。'
     planner.selected_task={'left':22,'right':17}
@@ -152,6 +152,7 @@ def main(default_port=8150):
         collision_edge = server.gui.add_checkbox('显示被拒绝的碰撞连接（仅诊断，不能执行）', initial_value=False)
         first_collision = server.gui.add_button('定位首个碰撞帧')
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
+        timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
         comparison_status = server.gui.add_markdown("")
     current = {"result": None, "busy": False}
     collision_overlay = server.scene.add_frame('/collision_diagnostic', show_axes=False, visible=False)
@@ -253,6 +254,19 @@ def main(default_port=8150):
                     status.content += f"\n\n{role}（{item['link']}） ↔ {item['obstacle']}：穿入{item['penetration_mm']:.2f}mm。"
                 for item in edge['audit']['self_collisions']:
                     status.content += '\n\n' + ' ↔ '.join(item['links']) + f"：穿入{item['penetration_mm']:.2f}mm。"
+            segment = next((item for item in result.get('timed_segments', ())
+                            if item['frame_start'] <= index <= item['frame_end']), None)
+            if segment:
+                local = index - segment['frame_start']
+                timed_status.content = (
+                    f"**时间化阶段：{PHASE_NAMES.get(segment['name'], segment['name'])}**  \n"
+                    f"阶段运动时间：**{segment['duration_s']:.3f}s** · 当前：**{segment['time_from_start_s'][local]:.3f}s**  \n"
+                    f"方法：`{segment.get('parameterizer', 'recorded')}` · "
+                    f"时间化计算：**{result.get('trajectory_timing_ms', 0)/1000:.3f}s**  \n"
+                    f"全周期规划：**{result.get('total_ms', 0)/1000:.3f}s** · "
+                    f"运动：**{result.get('motion_duration_s', 0):.3f}s**")
+            else:
+                timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"
             if result.get('transport_rotation_metrics'):
                 for side,metrics in result['transport_rotation_metrics'].items():
                     status.content+=f"  \n{side}箱累计旋转{metrics['total_rotation_deg']:.1f}°，额外{max(0.,metrics['total_rotation_deg']-metrics['required_rotation_deg']):.2f}°，回退{metrics['backtracking_deg']:.1f}°，偏离弧最大{metrics['max_deviation_deg']:.2f}°"
@@ -461,8 +475,13 @@ def main(default_port=8150):
             result = displayed_result()
             if timed_frames is not result['frames']:
                 timed_frames = result['frames']
-                playback_interval = playback_frame_interval(result)
-                playback_status.content = f'播放：约{1/playback_interval:.1f}帧/s；旋转关节最快30°/s，Updown同比例。'
+                times = np.asarray(result.get('time_from_start_s', ()), dtype=float)
+                positive = np.diff(times)
+                positive = positive[positive > 1e-12]
+                playback_interval = float(np.median(positive)) if len(positive) else playback_frame_interval(result)
+                playback_status.content = (f'播放：记录时间步长约{playback_interval*1000:.1f}ms。'
+                                           if len(positive) else
+                                           f'播放：约{1/playback_interval:.1f}帧/s；旋转关节最快30°/s。')
             position = (id(timed_frames), int(frame.value))
             now = time.perf_counter()
             if position != observed_frame:

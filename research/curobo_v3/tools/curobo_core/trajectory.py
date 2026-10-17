@@ -260,7 +260,8 @@ def validate_timed_cycle(phases, time_values, velocities, accelerations, jerks,
     covered = np.zeros(frame_count, dtype=bool)
     for segment in timed_segments:
         covered[segment["frame_start"]:segment["frame_end"]+1] = True
-    event_phases = {"home", "attach", "release"}
+    event_phases = {"home", "attach", "release", "base_advance", "base_reposition",
+                    "base_return", "base_pick_reposition"}
     uncovered_motion = [index for index, phase in enumerate(phases)
                         if phase not in event_phases and not covered[index]]
     return {
@@ -281,6 +282,65 @@ def trajectory_fallback_path(rows, stats):
             np.allclose(sparse[[0, -1]], values[[0, -1]], atol=1e-6, rtol=0)):
         return sparse
     return values
+
+
+def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
+                               sample_dt=0.025, safety_factor=1.05):
+    """Time a dense collision-checked polyline without cutting its geometric edges."""
+    values = np.asarray(path, dtype=np.float64)
+    limits = [np.asarray(item, dtype=np.float64) for item in
+              (velocity_limits, acceleration_limits, jerk_limits)]
+    if values.ndim != 2 or len(values) < 2 or not np.isfinite(values).all():
+        raise ValueError("polyline must contain at least two finite joint rows")
+    if len(joint_names) != values.shape[1] or any(
+            item.shape != (values.shape[1],) or np.any(item <= 0) or not np.isfinite(item).all()
+            for item in limits):
+        raise ValueError("positive finite velocity, acceleration and jerk limits are required")
+    velocity_limits, acceleration_limits, jerk_limits = limits
+    distance = np.linalg.norm(np.diff(values, axis=0) / velocity_limits, axis=1)
+    keep = np.concatenate(([True], distance > 1e-12))
+    values = values[keep]
+    if len(values) < 2:
+        raise ValueError("polyline has no motion")
+    distance = np.linalg.norm(np.diff(values, axis=0) / velocity_limits, axis=1)
+    parameter = np.concatenate(([0.0], np.cumsum(distance)))
+    parameter /= parameter[-1]
+    duration = max(sample_dt, safety_factor * 1.875 * float(np.sum(distance)))
+    for _ in range(12):
+        sample_time = np.linspace(0.0, duration, max(3, int(np.ceil(duration / sample_dt)) + 1))
+        u = sample_time / duration
+        progress = 10*u**3 - 15*u**4 + 6*u**5
+        positions = np.column_stack([
+            np.interp(progress, parameter, values[:, joint]) for joint in range(values.shape[1])
+        ])
+        derivatives = [positions]
+        for _order in range(3):
+            derivatives.append(np.gradient(derivatives[-1], sample_time, axis=0, edge_order=2))
+        velocity, acceleration, jerk = derivatives[1:]
+        ratio = max(float(np.max(np.abs(velocity) / velocity_limits)),
+                    float(np.sqrt(np.max(np.abs(acceleration) / acceleration_limits))),
+                    float(np.cbrt(np.max(np.abs(jerk) / jerk_limits))))
+        if ratio <= 1.0:
+            break
+        duration *= ratio * safety_factor
+    else:
+        raise RuntimeError("polyline timing did not converge")
+    samples = {
+        "joint_names": list(joint_names), "dt_s": None,
+        "time_from_start_s": sample_time.tolist(),
+        "positions": positions.astype(np.float32).tolist(),
+        "velocities": velocity.astype(np.float32).tolist(),
+        "accelerations": acceleration.astype(np.float32).tolist(),
+        "jerks": jerk.astype(np.float32).tolist(),
+    }
+    return ({"joint_names": list(joint_names), "dt_s": None,
+             "duration_s": float(duration), "maximum_linear_deviation": 0.0,
+             "time_from_start_s": sample_time.tolist(),
+             "positions": positions.astype(np.float32).tolist(),
+             "velocities": velocity.astype(np.float32).tolist(),
+             "accelerations": acceleration.astype(np.float32).tolist(),
+             "jerks": jerk.astype(np.float32).tolist(),
+             "sampled_trajectory": samples}, positions.astype(np.float32))
 
 
 def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,

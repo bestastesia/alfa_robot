@@ -24,20 +24,22 @@ PHASE_NAMES = {
     "base_advance": "底盘前进0.3m", "base_advance_diagnostic": "底盘前进失败诊断",
     "home": "第一初始姿态", "approach": "初始→吸附起点", "attach": "吸附箱体",
     "extract": "固定Updown解析直线抽离35cm", "transport": "抽离终点→放置姿态",
-    "turn_loaded": "携箱转身180°", "release": "放置释放，箱体消失",
+    "turn_loaded": "携箱转身180°", "base_reposition": "导航到放置位",
+    "conveyor_place": "固定底盘放箱", "release": "放置释放，箱体消失",
     "turn_empty": "空载转身回来", "return_home": "双臂回到原第一初始姿态",
+    "base_return": "导航返回抓取位",
     "transport_diagnostic": "失败轨迹诊断",
 }
 
 
-def main():
+def main(planner_class=FullCyclePlanner, default_port=8120):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
     parser.add_argument("--urdf", type=Path, default=DEFAULT_URDF)
     parser.add_argument("--named-poses", type=Path, default=DEFAULT_NAMED_POSES)
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
-    parser.add_argument("--port", type=int, default=8120)
+    parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument('--result', type=Path, nargs='+')
     args = parser.parse_args()
@@ -45,7 +47,7 @@ def main():
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
     planner_labels = {"Connect + Informed": "informed_connect"}
-    planner = FullCyclePlanner(args)
+    planner = planner_class(args)
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
     preload = saved_results[0] if saved_results else None
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
@@ -102,6 +104,7 @@ def main():
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
+        timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
         comparison_status = server.gui.add_markdown("")
     current = {"result": None, "busy": False}
 
@@ -148,6 +151,17 @@ def main():
                 f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
                 f"最终Home误差：**{result.get('final_home_error', 0):.8f}**"
             )
+            segment = next((item for item in result.get("timed_segments", ())
+                            if item["frame_start"] <= index <= item["frame_end"]), None)
+            if segment:
+                local = index - segment["frame_start"]
+                timed_status.content = (
+                    f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
+                    f"时间化：`{segment.get('parameterizer', 'recorded')}` / {result.get('trajectory_timing_ms', 0):.1f}ms  \n"
+                    f"本轮规划：**{result.get('total_ms', 0)/1000:.3f}s** · "
+                    f"本轮运动：**{result.get('motion_duration_s', 0):.3f}s**")
+            else:
+                timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"
             if not result["success"]:
                 status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
                 failures = [attempt.get('approach',{}) for attempt in result.get('attempts',[]) if attempt.get('approach',{}).get('failure')]
@@ -317,7 +331,7 @@ def main():
                 play.value = False
             else:
                 frame.value = int(frame.value)+1
-        time.sleep(.03)
+        time.sleep(.025)
 
 
 if __name__ == "__main__":

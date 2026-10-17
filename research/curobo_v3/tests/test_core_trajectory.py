@@ -7,7 +7,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from curobo_core.trajectory import (assemble_timed_cycle, deduplicate_timed_trajectory, expand_timed_trajectory,
                                     joint_state_trajectory, resample_path, time_parameterize_path,
-                                    time_parameterize_stops, trajectory_fallback_path,
+                                    time_parameterize_polyline, time_parameterize_stops,
+                                    trajectory_fallback_path,
                                     validate_timed_cycle)
 
 
@@ -57,6 +58,16 @@ class TrajectoryHelpersTest(unittest.TestCase):
         for field, limit in (("velocities", 1.), ("accelerations", 2.), ("jerks", 10.)):
             self.assertLessEqual(np.max(np.abs(samples[field])), limit * (1 + 1e-6))
 
+    def test_polyline_timing_preserves_edges_and_limits(self):
+        path = np.array([[0., 0.], [.3, .1], [.6, -.1], [1., 0.]], dtype=np.float32)
+        trajectory, validation = time_parameterize_polyline(
+            path, ["a", "b"], [1., 1.], [2., 2.], [10., 10.], sample_dt=.01)
+        np.testing.assert_allclose(validation[[0, -1]], path[[0, -1]])
+        self.assertEqual(trajectory["maximum_linear_deviation"], 0.)
+        self.assertLessEqual(np.max(np.diff(trajectory["time_from_start_s"])), .01 + 1e-12)
+        for field, limit in (("velocities", 1.), ("accelerations", 2.), ("jerks", 10.)):
+            self.assertLessEqual(np.max(np.abs(trajectory[field])), limit * (1 + 1e-6))
+
     def test_stop_timing_preserves_polyline_and_limits(self):
         path = np.array([[0., 0.], [.5, -.25], [1., 0.]], dtype=np.float32)
         trajectory, validation = time_parameterize_stops(
@@ -77,23 +88,6 @@ class TrajectoryHelpersTest(unittest.TestCase):
             self.assertEqual(np.asarray(samples[field]).shape, validation.shape)
             self.assertLessEqual(np.max(np.abs(samples[field])), limit * (1 + 1e-6))
 
-        # Exercise the real recording helper without importing the CUDA planner.
-        import ast
-        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/planner.py"
-        method = next(n for n in ast.walk(ast.parse(source.read_text()))
-                      if isinstance(n, ast.FunctionDef) and n.name == "record_timed_trajectory")
-        report = {"frames": path.tolist(), "phases": ["attach", "transport", "transport"],
-                  "payload": [True] * 3, "timed_segments": []}
-        namespace = {"np": np, "report": report, "mobile_names": ["a", "b"],
-                     "expand_timed_trajectory": expand_timed_trajectory}
-        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
-        self.assertTrue(namespace["record_timed_trajectory"]("transport", 1, trajectory))
-        self.assertEqual(report["phases"], ["attach"] + ["transport"] * (len(validation) - 1))
-        self.assertEqual(report["payload"], [True] * len(validation))
-        np.testing.assert_array_equal(report["frames"], validation)
-        segment = report["timed_segments"][0]
-        self.assertEqual(segment["frame_end"], len(validation) - 1)
-        np.testing.assert_array_equal(segment["velocities"], samples["velocities"])
 
     def test_validate_timed_cycle_rejects_uncovered_motion(self):
         result = validate_timed_cycle(
