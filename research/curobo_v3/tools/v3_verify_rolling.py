@@ -18,8 +18,10 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     t1, t2, t3, n = (schedule[key] for key in ("duration_s", "compute_bound_s", "link_bound_s", "slices"))
     if not np.isfinite([t1, t2, t3]).all() or t2 <= 0 or t3 < 0 or type(n) is not int or not 1 <= n <= t1/(t2+t3):
         raise ValueError("invalid t1/t2/t3/n")
-    if report["success"] != expect_complete or report["hardware_commands"]:
-        raise ValueError("unexpected outcome or hardware-enabled report")
+    if report["hardware_commands"]:
+        raise ValueError("hardware-enabled report is not a simulation acceptance result")
+    if report["success"] != expect_complete:
+        raise ValueError(f"unexpected outcome: {report.get('error', 'run succeeded but rejection was expected')}")
     if not report.get("runtime_source_sha256") or not report.get("initial_cycle_sha256"):
         raise ValueError("missing reproducibility hashes")
     initial = TimedTrajectory(report["initial_trajectory"])
@@ -86,8 +88,19 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
             if not np.allclose(sample[key], expected[key], atol=1e-7, rtol=0):
                 raise ValueError(f"sample does not follow the installed trajectory: {key}")
     if expect_complete:
-        if report["completed_at"] < epochs[-1]+curves[-1].duration:
+        endpoint_at = epochs[-1] + curves[-1].duration
+        if report["completed_at"] < endpoint_at:
             raise ValueError("completion recorded before reaching the endpoint")
+        if report.get("schema_version", 1) >= 2:
+            final = report["final_feedback"]
+            expected_id = activated[-1]["trajectory_id"] if activated else report["samples"][0]["trajectory_id"]
+            if (final["trajectory_id"] != expected_id or tuple(final["joint_names"]) != names or
+                    abs(final["sampled_at"] - endpoint_at) > 1e-8 or
+                    not endpoint_at <= final["received_at"] <= report["completed_at"]):
+                raise ValueError("completion feedback refers to the wrong trajectory/time")
+            for key, tolerance in (("positions", 1e-4), ("velocities", 1e-3), ("accelerations", 1e-3)):
+                if not np.allclose(final["state"][key], goal[key], atol=tolerance, rtol=0):
+                    raise ValueError(f"completion feedback did not reach the segment goal: {key}")
     elif not any(e["event"] == "safety_required" for e in report["events"]):
         raise ValueError("failure without an explicit safety-required event")
     obstacle_responses = [s for s in report["solves"] if s.get("previous_suffix_valid") is False

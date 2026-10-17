@@ -1,4 +1,5 @@
 """Stage-local adapter; reuse the baseline search, TrajOpt and collision policies."""
+from dataclasses import asdict
 import math
 import time
 
@@ -7,7 +8,7 @@ import torch
 
 from .backend import CuroboBackend
 from .contracts import ACTIVE_JOINTS
-from .scene import Pose
+from .scene import Pose, digest
 from .trajectory import TimedTrajectory
 from v3_batched_loaded_search import GpuValidity
 
@@ -20,6 +21,8 @@ class SegmentReplanner:
             raise ValueError("positive validation sample interval required")
         self.backend, self.boxes, self.payload = backend, dict(boxes), payload
         self.sample_dt = sample_dt
+        self._checker = None
+        self._robot_key = None
         # Existing connect mode returns the first finely verified feasible path;
         # the baseline anytime RRT intentionally consumes its full search budget.
         self.backend.planner_kind = "informed_connect"
@@ -30,7 +33,18 @@ class SegmentReplanner:
         if bool(snapshot.attachments) != self.payload:
             raise ValueError("payload mode must match execution-confirmed attachments")
         self.backend.set_snapshot(snapshot, allow_attached=True)
-        checker = self.backend.collision_checker(self.boxes, payload=self.payload)
+        robot_key = digest((snapshot.model_id, snapshot.frame_id, asdict(snapshot.state.base_pose),
+                            tuple(sorted(self.boxes.items())), self.payload,
+                            [asdict(item) for item in snapshot.attachments], self.backend.box_fit,
+                            self.backend.suction_mode, self.backend.contact_offsets))
+        if self._checker is None or self._robot_key != robot_key:
+            self._checker = self.backend.collision_checker(self.boxes, payload=self.payload)
+            self._robot_key = robot_key
+        else:
+            # Native world update preserves the warmed robot model. Rebuilding
+            # that model for every moving obstacle cost ~0.6s in measured t2.
+            self._checker.update_world(self.backend.scene(self.boxes))
+        checker = self._checker
         return GpuValidity(
             checker, active_sides=tuple(self.boxes) if self.payload else (),
             attachments=self.backend.attachments(self.boxes) if self.payload else None,
@@ -73,7 +87,13 @@ class SegmentReplanner:
         try:
             if max_duration_s <= 0 or not math.isfinite(max_duration_s):
                 raise ValueError("positive bounded prediction duration required")
-            scene_end = ticket.splice_at + max_duration_s
+            remaining_duration = TimedTrajectory(ticket.remaining).duration
+            if remaining_duration > max_duration_s:
+                raise ValueError("remaining trajectory exceeds available prediction horizon")
+            # Prediction validity is NOT the duration occupied by the robot.
+            # Start with the current suffix duration; final validation below
+            # rebuilds the envelope for the candidate's actual arrival time.
+            scene_end = ticket.splice_at + remaining_duration
             # The committed prefix only occupies [observation, splice]. Using
             # the whole future envelope here rejects obstacles arriving later.
             prefix_snapshot = observation.swept_snapshot(observation.observed_at, ticket.splice_at)
@@ -90,8 +110,6 @@ class SegmentReplanner:
             scene_started = time.perf_counter()
             snapshot = observation.swept_snapshot(ticket.splice_at, scene_end)
             validity = self.scene(snapshot)
-            report["certificate"] = {"snapshot": snapshot.to_dict(),
-                                     "valid_from": ticket.splice_at, "valid_until": scene_end}
             spans["scene_update"] = [scene_started, time.perf_counter()]
             audit_started = time.perf_counter()
             try:
@@ -138,24 +156,34 @@ class SegmentReplanner:
                           "at": time.perf_counter(), "telemetry": telemetry})
                 report["attempts"] = candidates
                 if document is None or not telemetry["accepted"]:
+                    if report["previous_suffix_valid"]:
+                        break  # one optimization attempt; don't search for an already safe route
                     continue
                 validation_started = time.perf_counter()
                 try:
                     curve = TimedTrajectory(document)
                     if curve.duration > max_duration_s:
                         raise ValueError("optimized suffix outlives obstacle prediction envelope")
+                    candidate_end = ticket.splice_at + curve.duration
+                    candidate_snapshot = observation.swept_snapshot(ticket.splice_at, candidate_end)
+                    validity = self.scene(candidate_snapshot)
                     report["validation"] = self.validate(document, validity)
+                    candidate_certificate = {"snapshot": candidate_snapshot.to_dict(),
+                                             "valid_from": ticket.splice_at, "valid_until": candidate_end}
                     if (report["previous_suffix_valid"] and
                             curve.duration > ticket.remaining["time_from_start_s"][-1] + 1e-6):
                         telemetry["online_rejection"] = "would postpone an already safe arrival"
                         break
                 except ValueError as error:
                     telemetry["online_rejection"] = str(error)
+                    if report["previous_suffix_valid"]:
+                        break
                     continue
                 finally:
                     spans[f"final_validation_{attempt}"] = [validation_started, time.perf_counter()]
                 report.update(success=True, optimization_success=True,
-                              strategy="optimized_suffix", trajectory=curve.suffix(0))
+                              strategy="optimized_suffix", trajectory=curve.suffix(0),
+                              certificate=candidate_certificate)
                 break
             if not report["success"]:
                 # Retain a trajectory ONLY after validating its entire remaining
@@ -164,7 +192,10 @@ class SegmentReplanner:
                 fallback_started = time.perf_counter()
                 if TimedTrajectory(ticket.remaining).duration > max_duration_s:
                     raise ValueError("remaining trajectory outlives prediction")
+                validity = self.scene(snapshot)
                 report["validation"] = self.validate(ticket.remaining, validity)
+                report["certificate"] = {"snapshot": snapshot.to_dict(),
+                                         "valid_from": ticket.splice_at, "valid_until": scene_end}
                 spans["fallback_revalidation"] = [fallback_started, time.perf_counter()]
                 report.update(success=True, optimization_success=False,
                               strategy="revalidated_suffix", trajectory=ticket.remaining)

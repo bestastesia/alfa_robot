@@ -147,7 +147,7 @@ def run(args):
         raise ValueError("simulated link delay must fit its declared bound")
     parent, child = mp.get_context("spawn").Pipe()
     process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed))
-    report = {"success": False, "source": "wall_clock_simulation", "hardware_commands": False,
+    report = {"schema_version": 2, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
               "initial_trajectory": initial, "task_boxes": boxes, "payload": payload,
@@ -170,6 +170,14 @@ def run(args):
                                  max_scene_age_s=schedule.period_s + args.compute_bound_s + args.link_bound_s,
                                  max_feedback_age_s=args.max_feedback_age_s)
         report["started_at"] = started
+        def complete(received_at):
+            endpoint_at = segment.active_at + segment.active.duration
+            report["final_feedback"] = {
+                "source": "analytic_simulator", "sampled_at": endpoint_at, "received_at": received_at,
+                "trajectory_id": segment.trajectory_id, "joint_names": list(segment.active.joint_names),
+                "state": {key: value.tolist() for key, value in segment.active.sample(segment.active.duration).items()}}
+            report["success"] = True
+
         next_sample = started
         certificate = None
         while True:
@@ -178,7 +186,7 @@ def run(args):
             if now - started > args.execution_timeout_s:
                 raise TimeoutError("segment execution timeout")
             if now >= segment.active_at + segment.active.duration:
-                report["success"] = True
+                complete(now)
                 break
             expected = segment.state(now)
             observation = observe(snapshot, startup["obstacle_center"], args.scenario, segment.sequence,
@@ -239,9 +247,9 @@ def run(args):
                     installed = True
                 if now >= boundary:
                     if not installed:
-                        raise TimeoutError("replacement not delivered by splice")
+                        raise TimeoutError("communication deadline miss: replacement not delivered by splice")
                     if terminal:
-                        report["success"] = True
+                        complete(now)
                     else:
                         # Analytic simulator executes a buffered switch at its specified
                         # boundary; the supervisor receives that synthetic feedback now.
@@ -297,7 +305,8 @@ def run(args):
             report["deadline_miss_count"] = 1
         report["cancelled_count"] = sum(e["event"] == "safety_required" and e.get("cancelled_sequence") is not None
                                         for e in report["events"])
-        report["censored_compute_count"] = report["trigger_count"] - sum(not x.get("terminal", False) for x in report["solves"])
+        report["censored_compute_count"] = report["trigger_count"] - sum("compute_wall_s" in x and not x.get("terminal", False)
+                                                                     for x in report["solves"])
         report["collision_rejection_count"] = sum("collision" in x.get("previous_suffix_rejection", "")
                                                    for x in report["solves"])
         args.output.parent.mkdir(parents=True, exist_ok=True)

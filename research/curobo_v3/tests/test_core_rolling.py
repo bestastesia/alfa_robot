@@ -141,6 +141,123 @@ class RollingTest(unittest.TestCase):
                                  10., max_scene_age_s=2.)
         self.assertIsNone(segment.begin(observation(), feedback(segment, 10.), 10.))
 
+    def test_matrix_statistics_keep_failures_and_pool_raw_latency(self):
+        from v3_rolling_matrix import summarize_reports
+        first = dict(stage="approach", scenario="moving", success=True, trigger_count=2, splice_count=2,
+                     solves=[dict(compute_wall_s=.1), dict(compute_wall_s=.3)], events=[])
+        failed = dict(stage="approach", scenario="moving", success=False, trigger_count=1, splice_count=0,
+                      deadline_miss_count=1, censored_compute_count=1, solves=[], events=[])
+        other_seed = dict(stage="approach", scenario="moving", success=True, trigger_count=1, splice_count=1,
+                          solves=[dict(compute_wall_s=.9)], events=[])
+        summary = summarize_reports(iter([first, failed, other_seed]))["approach/moving/none"]
+        self.assertEqual(summary["runs"], 3)
+        self.assertEqual(summary["rejected"], 1)
+        self.assertEqual(summary["completion_rate"], 2/3)
+        self.assertEqual(summary["censored_computes"], 1)
+        self.assertEqual(summary["latencies"]["compute_wall_s"]["count"], 3)
+        self.assertAlmostEqual(summary["latencies"]["compute_wall_s"]["median"], .3)
+        self.assertAlmostEqual(summary["latencies"]["compute_wall_s"]["p95"], .84)
+
+    def test_scene_updates_reuse_robot_but_payload_parameters_invalidate_it(self):
+        import ast
+        import types
+        from dataclasses import asdict, replace
+        from curobo_core.scene import digest
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "scene")
+        context = dict(Pose=Pose, digest=digest, asdict=asdict,
+                       GpuValidity=lambda checker, **kwargs: checker)
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), context)
+        built, updates = [], []
+        def checker(*args, **kwargs):
+            value = types.SimpleNamespace(update_world=lambda world: updates.append(world))
+            built.append(value)
+            return value
+        backend = types.SimpleNamespace(box_fit={}, suction_mode="side", contact_offsets={},
+                                        collision_checker=checker, motion_weights=lambda boxes: np.ones(1))
+        backend.set_snapshot = lambda snapshot, **kw: setattr(backend, "snapshot", snapshot)
+        backend.scene = lambda boxes: backend.snapshot
+        adapter = types.SimpleNamespace(backend=backend, boxes={}, payload=False, _checker=None, _robot_key=None)
+        scene = observation().snapshot
+        first = context["scene"](adapter, scene)
+        moved = replace(scene, objects=(replace(scene.objects[0], pose=Pose((7., 0., 0.))),), revision=1)
+        self.assertIs(context["scene"](adapter, moved), first)
+        removed = replace(moved, objects=(), revision=2)
+        self.assertIs(context["scene"](adapter, removed), first)
+        self.assertEqual(updates, [moved, removed])
+        self.assertEqual(len(built), 1)
+        backend.box_fit = {"changed": True}
+        self.assertIsNot(context["scene"](adapter, removed), first)
+        self.assertEqual(len(built), 2)
+
+    def test_worker_rebuilds_envelope_for_actual_candidate_duration(self):
+        import ast
+        import types
+        # Exercise the actual worker solve method without a CUDA dependency.
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        for candidate_duration in (3., 5.):
+            obs = observation()
+            remaining = trajectory(4.)
+            ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=remaining,
+                                           initial_state={}, compute_deadline=12.)
+            envelopes = []
+            def scene(snapshot):
+                envelopes.append(snapshot)
+                return object()
+            def validate(document, validity):
+                if document is remaining:
+                    raise ValueError("old suffix blocked")
+                return {"test": True}
+            backend = types.SimpleNamespace(optimize_rrt_path=lambda *a, **kw: (
+                None, {"accepted": True, "trajectory": trajectory(candidate_duration)}))
+            adapter = types.SimpleNamespace(scene=scene, validate=validate, backend=backend, boxes={}, payload=False)
+            result = namespace["solve"](adapter, ticket, obs, trajectory(1.), max_duration_s=19.)
+            self.assertTrue(result["success"], result.get("error"))
+            self.assertEqual(result["certificate"]["valid_until"], 11.+candidate_duration)
+            self.assertEqual(envelopes[1].objects[0].dimensions_m[0], 5.)
+            self.assertEqual(envelopes[-1].objects[0].dimensions_m[0], 1.+candidate_duration)
+            self.assertLess(result["certificate"]["valid_until"], obs.valid_until)
+
+    def test_failed_optional_optimization_reuses_rechecked_safe_suffix_without_search(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        calls = []
+        def optimize(*args, **kwargs):
+            calls.append(kwargs)
+            return None, {"accepted": False}
+        backend = types.SimpleNamespace(optimize_rrt_path=optimize)
+        adapter = types.SimpleNamespace(scene=lambda s: object(), validate=lambda *args: {"valid": True},
+                                        backend=backend, boxes={}, payload=False)
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=trajectory(4.),
+                                       initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+        self.assertTrue(result["success"])
+        self.assertFalse(result["optimization_success"])
+        self.assertEqual(result["strategy"], "revalidated_suffix")
+        self.assertEqual(result["trajectory"], ticket.remaining)
+        self.assertEqual(len(calls), 1)
+
+    def test_long_prediction_ttl_does_not_mean_long_robot_occupancy(self):
+        obs = observation()
+        actual = obs.swept_snapshot(11., 13.)
+        entire_ttl = obs.swept_snapshot(11., obs.valid_until)
+        self.assertEqual(actual.objects[0].dimensions_m, (3., 1., 1.))
+        self.assertGreater(entire_ttl.objects[0].dimensions_m[0], 10.)
+        # A shorter certificate cannot validate a longer replacement.
+        self.assertFalse(obs.covered_by(actual, 11., 14.))
+
     def test_out_of_order_or_silently_mutated_scene_is_rejected(self):
         from dataclasses import replace
         for kind in ("revision", "timestamp", "geometry", "prediction"):
@@ -228,6 +345,15 @@ class RollingTest(unittest.TestCase):
             config = root / "robot.yml"
             config.write_text(f'kinematics:\n  urdf_path: {root / "robot.urdf"}\n  cspace:\n    joint_names: [q]\n    max_acceleration: [1]\n    max_jerk: [1]\n')
             self.assertTrue(audit(report, config)["verified"])
+            report["schema_version"] = 2
+            report["final_feedback"] = dict(
+                trajectory_id=segment.trajectory_id, joint_names=["q"], sampled_at=14., received_at=14.,
+                state={k: v.tolist() for k, v in segment.state(14.).items()})
+            self.assertTrue(audit(report, config)["verified"])
+            bad = copy.deepcopy(report)
+            bad["final_feedback"]["state"]["positions"] = [3.9]
+            with self.assertRaisesRegex(ValueError, "did not reach"):
+                audit(bad, config)
             bad = copy.deepcopy(report); bad["samples"][0]["positions"][0] += .1
             with self.assertRaisesRegex(ValueError, "sample"):
                 audit(bad, config)
