@@ -1,4 +1,6 @@
-# MOTION-292：接入 PR #65 的新规划基线（开发验收中）
+# MOTION-292：接入 PR #65 的新规划基线
+
+> 最终仿真验收摘要见 `docs/motion292_acceptance.md`。历史试验仍保留，正式结论只取 `pr65-release-v30`。
 
 ## 已确认的基线
 

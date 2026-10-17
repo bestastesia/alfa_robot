@@ -2290,3 +2290,11 @@
 - 最终矩阵纠偏：v20/v21并发OOM进程组已清零并作废；v22在exact BPoly修复后主动终止、source hash不再最终；v23主矩阵虽大部完成，但随后发现all-rounds混用t2且matrix遇缺失JSON继续，故整个v23不作为最终冻结汇总。
 - matrix现fail-fast：首个unverified立即退出；SIGTERM/timeout通过finally终止当前完整process group，CPU测试实测无孤儿。外层最终runner将`set -euo pipefail`。contact_approach/appear归入UNSAFE拒绝，不再放complete。
 - CPU103/103。invalidated-evidence-20261017.json追加v22/v23原因。后续必须以含fail-fast的新提交重新冻结一次；all-round按free/contact/extract不同t2拆分。任何旧矩阵通过项不得拼成最终报告。
+
+
+## 2026-10-18 运控 / Codex / MOTION-292 最终仿真证据闭环
+- 冻结源码b4998a3，PR65核心9文件逐字节不变。pr65-release-v30合同矩阵：正常90项=6阶段×5场景×3种子，45完成/45按明确原因拒绝；8故障全覆盖。接续=直接48、受检内部停稳重规划3、复核旧路181。acceptance-report-current.json为机器可读汇总。
+- 新鲜15轮整墙：15/15轮、25/25箱，逐轮时间化15/15；规划median/p95/max 2109.056/2807.312/2831.987ms，时间化独立计时。15轮每轮6阶段清场景消费90/90（free60/contact15/extract15）。
+- exact切片最终用局部PPoly系数，解决13.7us首段Bernstein导数消减；第3轮单臂放箱/抽离独立GPU通过。CPU106/106、GPU世界回归1/1。Firefox回放真实加载/播放/暂停通过。
+- 正式证据根`motion292-acceptance/pr65-release-v30`：acceptance-report-current.json、all-rounds-clear-summary.json、full-sequence-summary-current.json、release-manifest.json、round-audits、replay.png/DOM。invalidated-evidence列出v20-v23等旧源码/OOM/中止目录，不得混用。
+- 仿真合同完成但Issue不能Done：MOTION-296仍In Progress；真实动力学/力矩、15轴未来边界原子换轨与保护停机、真实感知/反馈/时钟、安全评审及PR merge仍外部未完成。未发硬件命令。
