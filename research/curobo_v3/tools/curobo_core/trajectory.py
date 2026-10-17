@@ -465,22 +465,45 @@ class TimedTrajectory:
     def window(self, start_s, end_s):
         if not 0 <= start_s < end_s <= self.duration:
             raise ValueError("window must be contained in the executable trajectory")
-        # A monotonic-clock subtraction can put a boundary ~1e-12s from
-        # an existing knot. Keeping both creates an ill-conditioned quintic
-        # interval and fictitious acceleration. Keep the exact requested
-        # boundary, dropping only interior knots within one nanosecond of it.
-        from math import factorial
-        from scipy.interpolate import BPoly, PPoly
+        # Wall-clock arithmetic can land picoseconds beside an existing knot.
+        # Snap only at representation scale; real sub-sample cuts (e.g. 14.7us)
+        # are preserved by de Casteljau below.
+        for name, value in (("start", start_s), ("end", end_s)):
+            nearest = self.times[np.argmin(np.abs(self.times-value))]
+            if abs(nearest-value) <= 1e-9:
+                if name == "start": start_s = float(nearest)
+                else: end_s = float(nearest)
 
-        interior = self.times[(self.times > start_s + 1e-9) & (self.times < end_s - 1e-9)]
-        times = np.concatenate(([start_s], interior, [end_s]))
-        degree = self.spline.c.shape[0] - 1
-        power = np.empty((degree+1, len(times)-1, len(self.joint_names)), dtype=np.float64)
-        for interval, start in enumerate(times[:-1]):
-            for order in range(degree+1):
-                power[degree-order, interval] = self.spline(start, nu=order) / factorial(order)
-        relative = times - start_s
-        exact = BPoly.from_power_basis(PPoly.construct_fast(power, relative, extrapolate=False, axis=0))
+        from scipy.interpolate import BPoly
+
+        def split(coefficients, fraction):
+            """de Casteljau split of one Bernstein interval, stable near knots."""
+            fraction = float(np.clip(fraction, 0., 1.))
+            table = [np.asarray(coefficients, dtype=np.float64)]
+            while len(table[-1]) > 1:
+                previous = table[-1]
+                table.append((1-fraction)*previous[:-1] + fraction*previous[1:])
+            left = np.stack([row[0] for row in table])
+            right = np.stack([row[-1] for row in table[::-1]])
+            return left, right
+
+        interior = self.times[(self.times > start_s + 1e-12) & (self.times < end_s - 1e-12)]
+        absolute = np.concatenate(([start_s], interior, [end_s]))
+        pieces = []
+        for left_x, right_x in zip(absolute[:-1], absolute[1:]):
+            index = min(len(self.times)-2, max(0, int(np.searchsorted(self.times, left_x, side="right")-1)))
+            interval_left, interval_right = self.times[index:index+2]
+            if right_x > interval_right + 1e-12:
+                raise ValueError("window partition crossed an original polynomial knot")
+            start_fraction = (left_x-interval_left)/(interval_right-interval_left)
+            end_fraction = (right_x-interval_left)/(interval_right-interval_left)
+            _, right_piece = split(self.spline.c[:, index], start_fraction)
+            relative_end = (end_fraction-start_fraction)/max(1e-300, 1-start_fraction)
+            selected, _ = split(right_piece, relative_end)
+            pieces.append(selected)
+        relative = absolute-start_s
+        coefficients = np.stack(pieces, axis=1)
+        exact = BPoly.construct_fast(coefficients, relative, extrapolate=False, axis=0)
         values = {key: exact(relative, nu=order) for order, key in enumerate(
             ("positions", "velocities", "accelerations", "jerks"))}
         source_start, source_end = self.sample(start_s), self.sample(end_s)
@@ -488,7 +511,7 @@ class TimedTrajectory:
             values[key][0] = source_start[key]
             values[key][-1] = source_end[key]
         return {"joint_names": list(self.joint_names), "dt_s": None,
-                "time_from_start_s": relative.tolist(), "bpoly_coefficients": exact.c.tolist(),
+                "time_from_start_s": relative.tolist(), "bpoly_coefficients": coefficients.tolist(),
                 **{key: value.tolist() for key, value in values.items()}}
 
     def suffix(self, time_s):

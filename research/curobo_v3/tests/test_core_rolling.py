@@ -947,6 +947,24 @@ class RollingTest(unittest.TestCase):
         self.assertEqual(samples[-1].tolist(), [0.])
         self.assertNotEqual(samples[1].tolist(), [.1])
 
+    def test_de_casteljau_window_is_stable_fourteen_microseconds_before_knot(self):
+        from scipy.interpolate import BPoly
+        knots = np.array([0., .025, .05])
+        source = BPoly.from_derivatives(knots, [
+            [[0.], [.2], [.1]], [[.006], [.25], [-.05]], [[.013], [.15], [0.]]])
+        document = {"joint_names": ["q"], "time_from_start_s": knots.tolist(),
+                    **{key: source(knots, nu=order).tolist() for order, key in enumerate(
+                        ("positions", "velocities", "accelerations", "jerks"))},
+                    "bpoly_coefficients": source.c.tolist()}
+        start = .025-14.694526148439913e-6
+        window = TimedTrajectory(TimedTrajectory(document).window(start, .05))
+        self.assertAlmostEqual(window.times[1], 14.694526148439913e-6, places=14)
+        samples = np.linspace(0., window.duration, 257)
+        for order, key in enumerate(("positions", "velocities", "accelerations", "jerks")):
+            np.testing.assert_allclose(window.sample(samples)[key], source(samples+start, nu=order),
+                                       atol=5e-10, rtol=5e-10)
+        window.validate_limits([-1.], [1.], [2.], [100.], [20000.])
+
     def test_exact_polynomial_window_does_not_invent_jerk_at_arbitrary_cut(self):
         from scipy.interpolate import BPoly
         knots = np.array([0., .025, .05])
