@@ -121,71 +121,119 @@ def record_reply_timing(result, requested_at, received_at):
                               "real_perception": "unmeasured", "real_network": "unmeasured"}
 
 
-def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, braking_duration_s, allow_braking_fallback):
-    # Own the CUDA context in a separate process so the deadline supervisor does
-    # not wait on a blocked solve/GIL. Process startup and warmup precede t1.
+def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, random_seed=0,
+           phase=None, braking_duration_s=.5, allow_braking_fallback=True):
+    """Own one CUDA backend; optional stage arguments preserve the legacy one-shot CLI."""
     from curobo_core.rolling_backend import RollingBackend
     from curobo_core.rolling_curobo import SegmentReplanner
     from curobo.types import JointState
+    from curobo_core.adapter import pose_matrix
     import torch
     import curobo
 
     try:
-        started = time.perf_counter()
-        torch.manual_seed(random_seed)
-        np.random.seed(random_seed)
+        service_started = time.perf_counter()
         assets = PlannerAssets()
         backend = RollingBackend(assets)
-        backend.configure_task(boxes)
-        adapter = SegmentReplanner(backend, boxes, payload=payload, phase=phase, braking_duration_s=braking_duration_s,
-                                   allow_braking_fallback=allow_braking_fallback)
-        validity = adapter.scene(snapshot)
-        initial_validation = adapter.validate(initial, validity)
-        curve = TimedTrajectory(initial)
-        cut = curve.duration / 4
-        _, warm = backend.optimize_rrt_path(curve.suffix(cut)["positions"], validity, boxes,
-                                            payload=payload, start_state=curve.sample(cut))
-        warm.pop("trajectory", None)
-        q = torch.tensor(curve.sample(curve.duration * .6)["positions"],
-                         device="cuda", dtype=torch.float32).reshape(1, 1, -1)
-        state = validity.checker.kinematics.compute_kinematics(
-            JointState.from_position(q, joint_names=list(ACTIVE_JOINTS)))
-        tool = state.tool_poses.to_dict()[next(iter(boxes), "left") + "_tool0"]
-        from curobo_core.adapter import pose_matrix
-        local_center = tool.position.reshape(-1, 3)[0].cpu().numpy()
-        center = (pose_matrix(snapshot.state.base_pose) @ np.r_[local_center, 1.])[:3].tolist()
-        connection.send({"ready": True, "initialization_s": time.perf_counter()-started,
-                         "validation": initial_validation, "warmup": warm,
-                         "obstacle_center": center, "model_id": backend.model_id,
-                         "hardware": {"gpu": torch.cuda.get_device_name(), "platform": platform.platform()},
-                         "packages": {**{name: importlib.metadata.version(name) for name in ("torch", "numpy", "scipy")},
-                                      "curobo": getattr(curobo, "__version__", "unpackaged source")},
-                         "curobo_module": str(curobo.__file__),
-                         "model_assets_sha256": {name: hashlib.sha256(path.read_bytes()).hexdigest()
-                                                 for name, path in vars(assets).items() if isinstance(path, Path)},
-                         "base_cuboids_sha256": hashlib.sha256((Path(__file__).resolve().parents[1] /
-                             "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json").read_bytes()).hexdigest()})
+        warmed = set()
+        metadata = {
+            "model_id": backend.model_id,
+            "hardware": {"gpu": torch.cuda.get_device_name(), "platform": platform.platform()},
+            "packages": {**{name: importlib.metadata.version(name) for name in ("torch", "numpy", "scipy")},
+                         "curobo": getattr(curobo, "__version__", "unpackaged source")},
+            "curobo_module": str(curobo.__file__),
+            "model_assets_sha256": {name: hashlib.sha256(path.read_bytes()).hexdigest()
+                                    for name, path in vars(assets).items() if isinstance(path, Path)},
+            "base_cuboids_sha256": hashlib.sha256((Path(__file__).resolve().parents[1] /
+                "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json").read_bytes()).hexdigest(),
+        }
+        adapter = validity = None
+
+        def configure(config, allow_warm):
+            nonlocal adapter, validity
+            began = time.perf_counter()
+            stage_snapshot = config["snapshot"]
+            stage_boxes = config["boxes"]
+            stage_payload = config["payload"]
+            stage_initial = config["initial"]
+            stage_phase = config["phase"]
+            seed = config["seed"]
+            torch.manual_seed(seed)
+            np.random.seed(seed)
+            backend.configure_task(stage_boxes)
+            adapter = SegmentReplanner(
+                backend, stage_boxes, payload=stage_payload, phase=stage_phase,
+                braking_duration_s=config["braking_duration_s"],
+                allow_braking_fallback=config["allow_braking_fallback"])
+            validity = adapter.scene(stage_snapshot)
+            initial_validation = adapter.validate(stage_initial, validity)
+            curve = TimedTrajectory(stage_initial)
+            topology = "loaded" if stage_payload else "empty"
+            warm = {"reused": topology in warmed}
+            if allow_warm and topology not in warmed and stage_phase not in ("contact_approach", "extract"):
+                cut = curve.duration / 4
+                _, warm = backend.optimize_rrt_path(
+                    curve.suffix(cut)["positions"], validity, stage_boxes,
+                    payload=stage_payload, start_state=curve.sample(cut))
+                warm.pop("trajectory", None)
+                warmed.add(topology)
+            q = torch.tensor(curve.sample(curve.duration * .6)["positions"],
+                             device="cuda", dtype=torch.float32).reshape(1, 1, -1)
+            state = validity.checker.kinematics.compute_kinematics(
+                JointState.from_position(q, joint_names=list(ACTIVE_JOINTS)))
+            tool = state.tool_poses.to_dict()[next(iter(stage_boxes), "left") + "_tool0"]
+            local_center = tool.position.reshape(-1, 3)[0].cpu().numpy()
+            center = (pose_matrix(stage_snapshot.state.base_pose) @ np.r_[local_center, 1.])[:3].tolist()
+            return {"ready": True, "initialization_s": time.perf_counter() - began,
+                    "validation": initial_validation, "warmup": warm,
+                    "obstacle_center": center, **metadata}
+
+        if initial is not None:
+            connection.send(configure({
+                "snapshot": snapshot, "boxes": boxes, "payload": payload, "initial": initial,
+                "seed": random_seed, "phase": phase, "braking_duration_s": braking_duration_s,
+                "allow_braking_fallback": allow_braking_fallback,
+            }, True))
+        else:
+            connection.send({"service_ready": True,
+                             "initialization_s": time.perf_counter() - service_started, **metadata})
+
         while True:
             command = connection.recv()
             if command is None:
                 break
+            if isinstance(command, dict):
+                if command.get("op") == "prime":
+                    began = time.perf_counter()
+                    details = [configure(config, True) for config in command["stages"]]
+                    adapter = validity = None
+                    connection.send({"prime_ready": True, "wall_s": time.perf_counter() - began,
+                                     "warmed_topologies": sorted(warmed), "stages": details})
+                    continue
+                if command.get("op") == "start_stage":
+                    connection.send(configure(command["stage"], False))
+                    continue
+                raise ValueError(f"unknown persistent worker command: {command.get('op')}")
+            if adapter is None:
+                raise ValueError("solve received without an active stage")
             ticket, observation, prefix, duration, seed, fault = command
             if fault == "compute_delay":
                 time.sleep(max(0., ticket.compute_deadline - time.perf_counter()) + .2)
             if fault == "worker_failure":
-                os._exit(91)  # controlled test fault in this run's own child only
+                os._exit(91)
             if fault == "solver_failure":
                 connection.send({"success": False, "error": "injected solver failure", "sequence": ticket.sequence,
                                  "ready_at": time.perf_counter()})
                 continue
             if ticket is None:
                 began = time.perf_counter()
-                snapshot = observation.swept_snapshot(observation.observed_at, observation.observed_at + duration)
-                certificate = {"snapshot": snapshot.to_dict(), "valid_from": observation.observed_at,
+                terminal_snapshot = observation.swept_snapshot(
+                    observation.observed_at, observation.observed_at + duration)
+                certificate = {"snapshot": terminal_snapshot.to_dict(), "valid_from": observation.observed_at,
                                "valid_until": observation.observed_at + duration}
                 response = {"success": False, "trajectory": prefix, "certificate": certificate}
                 try:
-                    check = adapter.scene(snapshot)
+                    check = adapter.scene(terminal_snapshot)
                     response.update(success=True, validation=adapter.validate(prefix, check))
                 except (ValueError, RuntimeError) as error:
                     response.update(error=str(error), failure_code="UNSAFE_COMMITTED_PREFIX",
@@ -194,9 +242,9 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, br
                 response.update(started_at=began, ready_at=ready, compute_wall_s=ready-began,
                                 observation_id=observation.identity, terminal=True)
             else:
-                response = adapter.solve(ticket, observation, prefix,
-                                         max_duration_s=duration, search_seed=seed,
-                                         progress=lambda event: connection.send({"progress": event}))
+                response = adapter.solve(
+                    ticket, observation, prefix, max_duration_s=duration, search_seed=seed,
+                    progress=lambda event: connection.send({"progress": event}))
             connection.send(response)
     except (Exception, EOFError) as error:
         try:
@@ -205,6 +253,61 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, br
             pass
     finally:
         connection.close()
+
+
+def start_persistent_worker(timeout_s=180.):
+    parent, child = mp.get_context("spawn").Pipe()
+    process = mp.get_context("spawn").Process(target=worker, args=(child,))
+    process.start(); child.close()
+    commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
+    io_thread = threading.Thread(target=exchange_worker, args=(parent, commands, replies, stop_io),
+                                 name="motion292-persistent-worker-transport", daemon=True)
+    io_thread.start()
+    try:
+        service = replies.get(timeout=timeout_s)
+    except queue.Empty as error:
+        process.terminate(); process.join(10); stop_io.set(); parent.close()
+        raise TimeoutError("persistent worker initialization timed out") from error
+    if not service.get("service_ready"):
+        process.terminate(); process.join(10); stop_io.set(); parent.close()
+        raise RuntimeError(service.get("error", "persistent worker failed to initialize"))
+    return {"parent": parent, "process": process, "commands": commands, "replies": replies,
+            "stop_io": stop_io, "io_thread": io_thread, "service": service,
+            "poisoned": False, "primed": False}
+
+
+def persistent_stage_config(initial, snapshot, boxes, payload, args):
+    return {"snapshot": snapshot, "boxes": boxes, "payload": payload, "initial": initial,
+            "seed": args.seed, "phase": args.stage, "braking_duration_s": args.braking_duration_s,
+            "allow_braking_fallback": not args.disable_braking_fallback}
+
+
+def prime_persistent_worker(shared, stages, timeout_s=240.):
+    shared["commands"].put({"op": "prime", "stages": stages})
+    try:
+        result = shared["replies"].get(timeout=timeout_s)
+    except queue.Empty as error:
+        shared["poisoned"] = True
+        raise TimeoutError("persistent worker warmup timed out") from error
+    if not result.get("prime_ready"):
+        shared["poisoned"] = True
+        raise RuntimeError(result.get("error", "persistent worker warmup failed"))
+    shared["primed"] = True
+    return result
+
+
+def close_persistent_worker(shared):
+    if shared["process"].is_alive() and not shared.get("poisoned"):
+        try:
+            shared["commands"].put(None, timeout=1.)
+        except queue.Full:
+            shared["poisoned"] = True
+    shared["process"].join(10)
+    if shared["process"].is_alive():
+        shared["process"].terminate(); shared["process"].join(10)
+    shared["stop_io"].set()
+    shared["io_thread"].join(1)
+    shared["parent"].close()
 
 
 def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedback, velocity_map=None, dimensions=(.08, .08, .08)):
@@ -224,14 +327,20 @@ def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedba
                             source=f"synthetic:{scenario}")
 
 
-def run(args):
+def run(args, shared=None):
     initial, snapshot, boxes, payload = stage_input(json.loads(args.initial_cycle.read_text()), args.stage, args.round)
     curve = TimedTrajectory(initial)
     schedule = SliceSchedule(curve.duration, args.compute_bound_s, args.link_bound_s, args.slices)
     if not 0 <= args.link_delay_s <= args.link_bound_s:
         raise ValueError("simulated link delay must fit its declared bound")
-    parent, child = mp.get_context("spawn").Pipe()
-    process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage, args.braking_duration_s, not args.disable_braking_fallback))
+    owns_worker = shared is None
+    if owns_worker:
+        parent, child = mp.get_context("spawn").Pipe()
+        process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage, args.braking_duration_s, not args.disable_braking_fallback))
+    else:
+        if not shared.get("primed"):
+            raise ValueError("persistent worker must be primed before stage execution")
+        parent, process = shared["parent"], shared["process"]
     report = {"schema_version": 3, "success": False, "source": "wall_clock_simulation", "hardware_commands": False,
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "obstacle_center_override_map_m": args.obstacle_center,
@@ -245,11 +354,16 @@ def run(args):
               "trajectories": [], "worker_events": [], "dynamics_enabled": False, "torque_constraints_enabled": False,
               "runtime_source_sha256": runtime_source_hashes(Path(__file__).parent),
               "initial_cycle_sha256": hashlib.sha256(args.initial_cycle.read_bytes()).hexdigest()}
-    process.start(); child.close()
-    commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
-    io_thread = threading.Thread(target=exchange_worker, args=(parent, commands, replies, stop_io),
-                                 name="motion292-worker-transport", daemon=True)
-    io_thread.start()
+    if owns_worker:
+        process.start(); child.close()
+        commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
+        io_thread = threading.Thread(target=exchange_worker, args=(parent, commands, replies, stop_io),
+                                     name="motion292-worker-transport", daemon=True)
+        io_thread.start()
+    else:
+        commands, replies = shared["commands"], shared["replies"]
+        commands.put({"op": "start_stage", "stage": persistent_stage_config(
+            initial, snapshot, boxes, payload, args)})
     segment = None
     try:
         try:
@@ -440,12 +554,13 @@ def run(args):
             segment.fail(report["error"], time.perf_counter())
         report["safety_action"] = "simulation_aborted; physical stopping NOT validated"
     finally:
-        stop_io.set()
-        if process.is_alive():
-            process.terminate()  # only this run's worker, including obsolete in-flight CUDA work
-        process.join(10)
-        io_thread.join(1)
-        parent.close()
+        if owns_worker:
+            stop_io.set()
+            if process.is_alive():
+                process.terminate()  # only this run's worker, including obsolete in-flight CUDA work
+            process.join(10)
+            io_thread.join(1)
+            parent.close()
         report["events"] = segment.events if segment else []
         fields = {
             "compute_wall_s": [x["compute_wall_s"] for x in report["solves"] if "compute_wall_s" in x],
@@ -501,7 +616,8 @@ def run(args):
                                             "braking_replan_count", "revalidated_fallback_count", "statistics")},
                      ensure_ascii=False), flush=True)
     if not report["success"]:
-        raise SystemExit(report["error"])
+        raise RuntimeError(report["error"]) if shared is not None else SystemExit(report["error"])
+    return report
 
 
 def main():

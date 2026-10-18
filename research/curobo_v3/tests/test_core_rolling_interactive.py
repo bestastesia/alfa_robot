@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from v3_rolling_interactive import STAGES, command_for, metrics_markdown, stage_planning_rows
+from v3_rolling_interactive import (STAGES, command_for, metrics_markdown,
+                                    round_command_for, stage_planning_rows)
 from v3_rolling_replan import PROGRESS_PREFIX, progress_line
 
 
@@ -17,7 +18,8 @@ class RollingInteractiveTest(unittest.TestCase):
         self.assertTrue(line.startswith(PROGRESS_PREFIX))
         self.assertEqual(json.loads(line[len(PROGRESS_PREFIX):])["compute_wall_s"], .123)
 
-        args = SimpleNamespace(runner=Path("runner.py"), execution_timeout_s=120.)
+        args = SimpleNamespace(runner=Path("runner.py"), round_runner=Path("round.py"),
+                               execution_timeout_s=120.)
         controls = dict(obstacle_stage="transport", scenario="static", center=(1., 2., 3.),
                         size=(.1, .2, .3), velocity=(0., 0., 0.), link_delay=.02,
                         braking=.5, seed=7)
@@ -29,6 +31,11 @@ class RollingInteractiveTest(unittest.TestCase):
         self.assertIn("static", commands["transport"])
         self.assertIn("clear", commands["approach"])
         self.assertNotIn("--obstacle-center", commands["approach"])
+
+        round_command = round_command_for(args, cycle, controls, Path("round-output"))
+        self.assertEqual(round_command[1], "round.py")
+        self.assertIn("--output-dir", round_command)
+        self.assertIn("--stream-progress", round_command)
 
         detail = stage_planning_rows({
             "pipeline_timing_ms": {"prepare_checkers": 2., "all_extract_and_validation": 3.,

@@ -2314,3 +2314,8 @@
 - 新增`v3_time_parameterization_compare.py`，在同一第1轮approach轨迹/场景上比较Mentor几何保持rest-to-rest时间化与cuRobo TrajOpt联合几何/时间优化；三个输入逐元素相同且有SHA256，GPU热运行10次。
 - Mentor阶段时间化median/p95=902.299/932.493ms；TrajOpt完整阶段生成+共同验证median/p95=253.536/255.794ms，运动时长15.824→10.500s，但左右末端对参考路径最大偏离34.8/28.6mm。滚动后缀TrajOpt median/p95=241.591/246.702ms，qdot/qddot接续误差1.87e-7/1.10e-6；Mentor函数强行重定时同后缀会产生0.05495rad/s与0.04810rad/s²跳变。
 - 结论暂不全局统一：自由空间阶段扩展15轮矩阵后再决定是否初始/滚动统一TrajOpt；contact_approach/extract在具备等价任务空间硬约束前保留Mentor/精确后缀。统一最终TimedTrajectory与验收，不强制统一生成算法。报告`docs/motion292_time_parameterization_comparison.html`，机器证据`motion292-acceptance/time-parameterization-compare-20261018/approach.json`。CPU core 109/109。
+
+## 2026-10-18 运控 / Codex / MOTION-292 六阶段常驻滚动worker
+- 新增`v3_rolling_round.py`与persistent worker协议：一轮开始时只创建一次CUDA/模型backend，预热empty/loaded两类TrajOpt与碰撞资源；六阶段各自新建adapter/RollingSegment/trajectory_id/场景会话，但复用同一worker、CUDA上下文和缓存。单阶段CLI仍兼容。
+- 新鲜第1轮默认场景六阶段6/6完成，接续6/4/31/4/7/3；worker初始化0.386s、一次性双拓扑预热6.638s，后续阶段会话初始化仅15～76ms且全部`warmup.reused=true`。与原每阶段独立进程结果逐阶段比较：success、接续数、策略序列以及全部初始/激活q/qdot/qddot/jerk/time逐元素完全一致，最大差0。
+- Viser已改为只启动一次六阶段round runner，侧栏单列“滚动服务一次性准备（六阶段共享）”；Firefox X11真实点击完成一轮。CPU core 110/110，证据`motion292-acceptance/persistent-worker-20261018/summary.json`。故障时仍由监督层终止整个worker，下一轮可重建，不复用污染状态。

@@ -60,6 +60,19 @@ def command_for(args, cycle, controls, stage, output):
     return command
 
 
+def round_command_for(args, cycle, controls, output_dir):
+    return [sys.executable, str(args.round_runner), "--initial-cycle", str(cycle),
+            "--obstacle-stage", controls["obstacle_stage"], "--scenario", controls["scenario"],
+            "--obstacle-center", *map(str, controls["center"]),
+            "--obstacle-size", *map(str, controls["size"]),
+            "--obstacle-velocity", *map(str, controls["velocity"]),
+            "--link-delay-s", str(controls["link_delay"]),
+            "--braking-duration-s", str(controls["braking"]),
+            "--execution-timeout-s", str(args.execution_timeout_s),
+            "--seed", str(controls["seed"]), "--output-dir", str(output_dir),
+            "--stream-progress"]
+
+
 def stage_planning_rows(result, stage):
     detail = phase_planning_detail(result, stage)
     return {
@@ -88,6 +101,10 @@ def metrics_markdown(ledger, baseline):
         rows.extend(f"- {name}：{value:.1f} ms" for name, value in baseline["core_rows"])
         rows.append("#### 轨迹时间化内部总账（可加和）")
         rows.extend(f"- {name}：{value:.1f} ms" for name, value in baseline["timing_rows"])
+        if baseline.get("rolling_service_ms") is not None:
+            rows += ["#### 滚动服务一次性准备（六阶段共享，不重复执行）",
+                     f"- 常驻CUDA worker与模型初始化：{baseline['rolling_service_ms']:.1f} ms",
+                     f"- 空载/带载TrajOpt与碰撞资源预热：{baseline['rolling_warmup_ms']:.1f} ms"]
     for stage in STAGES:
         item = ledger[stage]
         rows.append(f"### {PHASE_LABELS[stage]}")
@@ -125,7 +142,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preparer", type=Path, default=Path(__file__).with_name("v3_rolling_prepare.py"))
     parser.add_argument("--runner", type=Path, default=Path(__file__).with_name("v3_rolling_replan.py"),
-                        help="prepared isolated-runtime rolling runner")
+                        help="legacy single-stage runner; retained for compatibility")
+    parser.add_argument("--round-runner", type=Path, default=Path(__file__).with_name("v3_rolling_round.py"),
+                        help="persistent-worker six-stage runner")
     parser.add_argument("--round", type=int, choices=range(15), default=0)
     parser.add_argument("--urdf", type=Path, default=PlannerAssets().urdf)
     parser.add_argument("--port", type=int, default=8104)
@@ -294,15 +313,19 @@ def main():
                    "preparation_wall_s": record.get("preparation_wall_s", 0.),
                    "planner_ms": result.get("total_ms", 0.),
                    "timing_ms": result.get("trajectory_timing_ms", 0.)})
+        output_dir = root / "rolling-stages"
+        code, log = run_process(round_command_for(args, cycle, values, output_dir), "runner_log")
         for stage in STAGES:
-            output = root / f"{stage}.json"
-            code, log = run_process(command_for(args, cycle, values, stage, output), "runner_log")
+            output = output_dir / f"{stage}.json"
             report = json.loads(output.read_text()) if output.exists() else None
             inbox.put({"event": "stage_report", "stage": stage, "report": report})
-            if code or not report or not report.get("success"):
-                failure = (report or {}).get("failure_code", "PROCESS_FAILED")
-                inbox.put({"event": "run_failed", "error": f"{PHASE_LABELS[stage]}：{failure}\n{log[-1500:]}"})
+            if report is not None and not report.get("success"):
+                inbox.put({"event": "run_failed", "error":
+                           f"{PHASE_LABELS[stage]}：{report.get('failure_code', 'PLAN_REJECTED')}\n{log[-1500:]}"})
                 return
+        if code:
+            inbox.put({"event": "run_failed", "error": f"常驻滚动服务失败\n{log[-1500:]}"})
+            return
         inbox.put({"event": "run_finished", "round": values["round"]})
 
     def work(values):
@@ -360,10 +383,19 @@ def main():
                         "planner_ms": event["planner_ms"], "timing_ms": event["timing_ms"],
                         "residual_ms": residual_ms, "core_rows": planning_ledger(result),
                         "timing_rows": [(name, value) for name, value in timing_rows if value > 0.],
+                        "rolling_service_ms": None, "rolling_warmup_ms": None,
                     }
                     for stage in STAGES:
                         ledger[stage].update(stage_planning_rows(result, stage))
                     status.content = "**初始整轮新轨迹已完成。** 现在逐阶段执行滚动优化；路线会在实际产出时追加。"
+                elif kind == "rolling_service_ready":
+                    if baseline[0] is not None:
+                        baseline[0]["rolling_service_ms"] = event["service_initialization_s"] * 1000
+                        baseline[0]["rolling_warmup_ms"] = event["warmup_s"] * 1000
+                    status.content = ("**滚动服务已一次性初始化并完成空载/带载预热。** "
+                                      "后续六阶段复用同一个CUDA worker。")
+                elif kind == "round_finished":
+                    pass
                 elif kind == "stage_started":
                     stage = event["stage"]; current["stage"] = stage
                     install_snapshot(event["initial_snapshot"])

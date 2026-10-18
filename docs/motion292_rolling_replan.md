@@ -87,7 +87,7 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
 新界面启动时不载入任何历史轨迹。点击“从头规划并实时演示完整一轮”后，它会：
 
 1. 在本次点击后重新运行 `v3_rolling_prepare.py --round N`，完成该轮六阶段初始轨迹规划；
-2. 按 `approach → contact_approach → extract → transport → conveyor_place → return_home` 逐阶段执行墙钟滚动优化；
+2. 一次性启动常驻CUDA滚动worker，并在执行前预热空载/带载TrajOpt与碰撞资源；随后按 `approach → contact_approach → extract → transport → conveyor_place → return_home` 逐阶段复用同一worker；
 3. 灰色分别显示左右末端本次新生成的原轨迹，绿色/蓝色在每次接续轨迹真正产出并激活时才追加左右末端新路线；
 4. 主流程把点击到可执行轨迹拆成进程/CUDA启动、模型与GPU预热、Mentor核心规划、轨迹时间化、快照/写盘/通信五项；核心规划与时间化各自再提供可加和内部总账；
 5. 每个阶段分别显示核心规划归属账、RRT首次解/首次验收/总搜索等嵌套诊断、路径快捷化/时间参数化/时间化碰撞验证/结果组装，以及每次滚动求解和仿真实际运动墙钟。共享项与嵌套项明确禁止重复相加。
@@ -101,6 +101,7 @@ PYTHONPATH="/home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_
 python -u /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_interactive.py \
   --preparer /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_prepare.py \
   --runner /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_replan.py \
+  --round-runner /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_round.py \
   --round 0 \
   --execution-timeout-s 120 \
   --port 8105
