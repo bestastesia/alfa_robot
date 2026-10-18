@@ -2304,3 +2304,8 @@
 - `v3_rolling_replan.py --stream-progress`新增机器可读事件：阶段开始、观测、逐次求解耗时、轨迹激活、实时运动采样、阶段结束。侧栏按阶段显示本轮初始规划账、每次滚动`compute_wall_s`和仿真实际运动墙钟；共享/嵌套规划账不重复相加。
 - 验证：CPU core 108/108；新鲜第1轮初始规划成功（规划3077.557ms、时间化2949.314ms）；默认完整六阶段流式闭环6/6成功，接续数6/4/31/4/7/3，每次均有同数`trajectory_activated`，六阶段运动墙钟合计49.767s。摘要`motion292-acceptance/live-ui-20261018/verification-summary.json`。Viser 8105 HTTP 200；Firefox WebDriver BiDi在本机X11真实点击启动并抓取运行中/完成DOM与截图，确认双末端原/新轨迹及逐次耗时实时出现，证据`motion292-acceptance/live-ui-20261018/browser.png`、`browser-dom.json`。
 - 当前只做仿真，不发送硬件命令；真实控制/安全前置仍不变。启动命令与界面语义见`docs/motion292_rolling_replan.md`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 规划耗时分层细化
+- Viser主流程现将点击到初始可执行轨迹拆为进程/模块/CUDA启动、模型/GPU/碰撞资源预热、Mentor核心规划、六阶段轨迹时间化、阶段快照/写盘/通信五个可加和项目；核心规划与时间化均显示内部可加和总账。
+- 各阶段不再用一个容易误解的“初始完整轨迹”数字：明确区分核心规划归属账（不等于纯RRT/不一定是独立阶段墙钟）、嵌套RRT诊断（首次解、首次验收、总搜索，不重复相加）、阶段时间化（快捷化直连碰撞搜索、速度/加速度/jerk参数化、时间化碰撞门禁、结果组装）、在线滚动独立墙钟和实际运动。
+- 新鲜GPU第1轮通过：时间化2960.957ms可逐项精确相加，主要为approach快捷化909.897ms、transport快捷化1098.207ms、conveyor_place快捷化574.243ms、return_home快捷化264.778ms；新增计时不改变六阶段q/qdot/qddot/jerk/time，逐元素最大差均0。CPU core 108/108；Firefox X11实际点击完成六阶段，侧栏DOM与截图已复核。

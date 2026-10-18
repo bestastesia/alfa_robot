@@ -21,7 +21,7 @@ from curobo_core.contracts import PlannerAssets
 from curobo_core.scene import SceneSnapshot
 from curobo_core.trajectory import TimedTrajectory
 from v3_rolling_replan import PROGRESS_PREFIX
-from v3_timed_wall_report import PHASE_LABELS, phase_planning_detail
+from v3_timed_wall_report import PHASE_LABELS, phase_planning_detail, planning_ledger
 
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
@@ -62,25 +62,53 @@ def command_for(args, cycle, controls, stage, output):
 
 def stage_planning_rows(result, stage):
     detail = phase_planning_detail(result, stage)
-    additive = detail["additive"]
-    return sum(value for _, value in additive), additive, detail["diagnostics"]
+    return {
+        "core_ms": sum(value for _, value in detail["additive"]),
+        "core_rows": detail["additive"],
+        "diagnostics": detail["diagnostics"],
+        "notes": detail["notes"],
+        "timing_ms": sum(value for _, value in detail["timing"]),
+        "timing_rows": detail["timing"],
+    }
 
 
 def metrics_markdown(ledger, baseline):
-    rows = ["## 实时耗时账", "所有时间均来自本次点击后新启动的规划。"]
+    rows = ["## 实时耗时账", "所有时间均来自本次点击后新启动的规划；标注“嵌套”的数字不能重复相加。"]
     if baseline:
-        rows += [f"**整轮初始规划墙钟：{baseline['wall_s']:.3f} s**  ",
-                 f"规划核心：{baseline['planner_ms']:.1f} ms · 时间化：{baseline['timing_ms']:.1f} ms"]
+        rows += [
+            f"### 主流程：从点击到六阶段初始可执行轨迹 **{baseline['wall_s']:.3f} s**",
+            "以下五项可直接相加：",
+            f"- 进程启动、模块导入与CUDA上下文：**{baseline['startup_ms']:.1f} ms**",
+            f"- 模型、GPU、碰撞资源初始化/预热：**{baseline['initialization_ms']:.1f} ms**",
+            f"- Mentor核心路径规划：**{baseline['planner_ms']:.1f} ms**",
+            f"- 六阶段轨迹时间化与定时碰撞验证：**{baseline['timing_ms']:.1f} ms**",
+            f"- 阶段快照生成、JSON写盘与进程通信：**{baseline['residual_ms']:.1f} ms**",
+            "#### Mentor核心规划内部总账（可加和）",
+        ]
+        rows.extend(f"- {name}：{value:.1f} ms" for name, value in baseline["core_rows"])
+        rows.append("#### 轨迹时间化内部总账（可加和）")
+        rows.extend(f"- {name}：{value:.1f} ms" for name, value in baseline["timing_rows"])
     for stage in STAGES:
         item = ledger[stage]
         rows.append(f"### {PHASE_LABELS[stage]}")
-        if item["initial_ms"] is None:
-            rows.append("- 初始完整轨迹：等待本轮从头规划")
+        if item["core_ms"] is None:
+            rows.append("- 初始轨迹：等待本轮从头规划")
         else:
-            details = "；".join(f"{name} {value:.1f} ms" for name, value in item["initial_rows"])
-            rows.append(f"- 初始完整轨迹：**{item['initial_ms']:.1f} ms**（{details or '计入整轮共享账'}）")
-            for name, value in item["diagnostics"]:
-                rows.append(f"  - {name}：{value:.1f} ms（嵌套诊断，不重复相加）")
+            rows.append(f"#### A. 核心规划归属账：**{item['core_ms']:.1f} ms**")
+            rows.append("这是整轮核心规划中归属于该阶段的加和项，**不等于纯RRT，也不一定是独立阶段墙钟**：")
+            rows.extend(f"- {name}：{value:.1f} ms" for name, value in item["core_rows"])
+            for note in item["notes"]:
+                rows.append(f"- 说明：{note}")
+            if item["diagnostics"]:
+                rows.append("#### B. 核心规划嵌套诊断（已包含在上级管线中，不可再相加）")
+                rows.extend(f"- {name}：{value:.1f} ms" for name, value in item["diagnostics"])
+            rows.append(f"#### C. 该阶段轨迹时间化：**{item['timing_ms']:.1f} ms**")
+            if item["timing_rows"]:
+                rows.extend(f"- {name}：{value:.1f} ms" for name, value in item["timing_rows"])
+            else:
+                rows.append("- 当前结果没有阶段级时间化明细")
+        if item["solves"]:
+            rows.append("#### D. 在线滚动优化（每次为独立墙钟）")
         for index, solve in enumerate(item["solves"], 1):
             duration = solve.get("compute_wall_s")
             value = "未返回" if duration is None else f"{duration * 1000:.1f} ms"
@@ -126,8 +154,9 @@ def main():
     busy = threading.Event()
     current = {"snapshot": None, "base_transform": np.eye(4), "stage": None}
     baseline = [None]
-    ledger = {stage: {"initial_ms": None, "initial_rows": [], "diagnostics": [], "solves": [],
-                      "motion_s": 0., "running": False, "failure": None} for stage in STAGES}
+    ledger = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
+                      "timing_ms": 0., "timing_rows": [], "solves": [], "motion_s": 0.,
+                      "running": False, "failure": None} for stage in STAGES}
 
     server.gui.add_markdown(
         "## MOTION-292 · 一轮完整搬运实时诊断\n"
@@ -224,8 +253,9 @@ def main():
             obstacle[0].visible = False
         baseline[0] = None
         for stage in STAGES:
-            ledger[stage].update(initial_ms=None, initial_rows=[], diagnostics=[], solves=[],
-                                 motion_s=0., running=False, failure=None)
+            ledger[stage].update(core_ms=None, core_rows=[], diagnostics=[], notes=[],
+                                 timing_ms=0., timing_rows=[], solves=[], motion_s=0.,
+                                 running=False, failure=None)
         overall.value = 0.
 
     def run_process(command, event_type):
@@ -260,6 +290,8 @@ def main():
             return
         inbox.put({"event": "baseline_ready", "result": result,
                    "wall_s": time.perf_counter() - began,
+                   "initialization_s": record.get("initialization_s", 0.),
+                   "preparation_wall_s": record.get("preparation_wall_s", 0.),
                    "planner_ms": result.get("total_ms", 0.),
                    "timing_ms": result.get("trajectory_timing_ms", 0.)})
         for stage in STAGES:
@@ -303,10 +335,34 @@ def main():
                 if kind == "baseline_log":
                     status.content = f"**正在从头规划完整初始轨迹…**\n\n`{event['text'][-500:]}`"
                 elif kind == "baseline_ready":
-                    baseline[0] = {key: event[key] for key in ("wall_s", "planner_ms", "timing_ms")}
+                    result = event["result"]
+                    startup_ms = max(0., event["wall_s"] * 1000 -
+                                     event["initialization_s"] * 1000 - event["preparation_wall_s"] * 1000)
+                    residual_ms = max(0., event["preparation_wall_s"] * 1000 -
+                                      event["planner_ms"] - event["timing_ms"])
+                    timing_breakdown = result.get("trajectory_timing_breakdown_ms", {})
+                    phase_details = timing_breakdown.get("phases", {})
+                    phase_timing = [(f"{PHASE_LABELS[name]}阶段", sum(values.values()))
+                                    for name, values in phase_details.items() if name in PHASE_LABELS]
+                    event_timing = sum(sum(values.values()) for name, values in phase_details.items()
+                                       if name not in PHASE_LABELS)
+                    timing_rows = [
+                        ("时间化准备", timing_breakdown.get("setup", 0.)),
+                        *phase_timing,
+                        ("attach/release/base等事件帧处理", event_timing),
+                        ("整轮轨迹组装与最终约束验证",
+                         timing_breakdown.get("cycle_assembly_and_validation", 0.)),
+                        ("未归属微小开销", timing_breakdown.get("unattributed", 0.)),
+                    ]
+                    baseline[0] = {
+                        "wall_s": event["wall_s"], "startup_ms": startup_ms,
+                        "initialization_ms": event["initialization_s"] * 1000,
+                        "planner_ms": event["planner_ms"], "timing_ms": event["timing_ms"],
+                        "residual_ms": residual_ms, "core_rows": planning_ledger(result),
+                        "timing_rows": [(name, value) for name, value in timing_rows if value > 0.],
+                    }
                     for stage in STAGES:
-                        total, rows, diagnostics = stage_planning_rows(event["result"], stage)
-                        ledger[stage].update(initial_ms=total, initial_rows=rows, diagnostics=diagnostics)
+                        ledger[stage].update(stage_planning_rows(result, stage))
                     status.content = "**初始整轮新轨迹已完成。** 现在逐阶段执行滚动优化；路线会在实际产出时追加。"
                 elif kind == "stage_started":
                     stage = event["stage"]; current["stage"] = stage

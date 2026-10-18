@@ -85,7 +85,8 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
 1. 在本次点击后重新运行 `v3_rolling_prepare.py --round N`，完成该轮六阶段初始轨迹规划；
 2. 按 `approach → contact_approach → extract → transport → conveyor_place → return_home` 逐阶段执行墙钟滚动优化；
 3. 灰色分别显示左右末端本次新生成的原轨迹，绿色/蓝色在每次接续轨迹真正产出并激活时才追加左右末端新路线；
-4. 侧栏实时追加每阶段初始规划账、每次滚动求解墙钟耗时和仿真实际运动墙钟耗时。共享规划项会明确标“共享”，嵌套 SDK 诊断不重复相加。
+4. 主流程把点击到可执行轨迹拆成进程/CUDA启动、模型与GPU预热、Mentor核心规划、轨迹时间化、快照/写盘/通信五项；核心规划与时间化各自再提供可加和内部总账；
+5. 每个阶段分别显示核心规划归属账、RRT首次解/首次验收/总搜索等嵌套诊断、路径快捷化/时间参数化/时间化碰撞验证/结果组装，以及每次滚动求解和仿真实际运动墙钟。共享项与嵌套项明确禁止重复相加。
 
 在上面已准备的隔离 runtime 中直接启动（8104 若仍有旧界面，使用 8105）：
 

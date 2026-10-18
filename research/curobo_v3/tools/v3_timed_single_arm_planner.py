@@ -97,47 +97,81 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         frames, phases, payload, segments = [], [], [], []
         index = 0
         sample_dt = self.trajectory_sample_dt
+        setup_ms = (time.perf_counter() - started) * 1000
+        phase_timings = {}
         while index < len(source_frames):
+            phase_started = time.perf_counter()
             end = index + 1
             while end < len(source_frames) and source_phases[end] == source_phases[index]:
                 end += 1
             phase = source_phases[index]
             rows = source_frames[index:end]
+            detail = phase_timings.setdefault(phase, {
+                "shortcut_ms": 0., "parameterization_ms": 0.,
+                "collision_validation_ms": 0., "assembly_ms": 0.,
+            })
+            measured_before = sum(detail[key] for key in (
+                "shortcut_ms", "parameterization_ms", "collision_validation_ms"))
             if phase in EVENT_PHASES or len(rows) < 2 or np.allclose(rows[0], rows[-1], atol=1e-12, rtol=0):
                 frames.extend(rows.tolist())
                 phases.extend(source_phases[index:end])
                 payload.extend(source_payload[index:end])
             else:
+                step_started = time.perf_counter()
                 timing_rows, shortcut = self._shortcut_phase(
                     phase, rows, boxes, validation_snapshot)
+                detail["shortcut_ms"] += (time.perf_counter() - step_started) * 1000
                 candidates = []
+                step_started = time.perf_counter()
                 cubic, cubic_validation = time_parameterize_path(
                     timing_rows, names, *self._timed_limits, sample_dt=sample_dt)
+                detail["parameterization_ms"] += (time.perf_counter() - step_started) * 1000
                 cubic_valid = not (phase in ("contact_approach", "extract") and
                                    cubic["maximum_linear_deviation"] > .002)
-                if cubic_valid and self._timed_phase_valid(
-                        phase, cubic_validation, boxes, validation_snapshot):
+                cubic_collision_valid = False
+                if cubic_valid:
+                    step_started = time.perf_counter()
+                    cubic_collision_valid = self._timed_phase_valid(
+                        phase, cubic_validation, boxes, validation_snapshot)
+                    detail["collision_validation_ms"] += (time.perf_counter() - step_started) * 1000
+                if cubic_collision_valid:
                     candidates.append((cubic["duration_s"], "validated_shortcut_cubic",
                                        cubic, cubic_validation))
                 if len(timing_rows) < len(rows):
+                    step_started = time.perf_counter()
                     stopped, stopped_validation = time_parameterize_stops(
                         timing_rows, names, *self._timed_limits, sample_dt=sample_dt)
-                    if self._timed_phase_valid(
-                            phase, stopped_validation, boxes, validation_snapshot):
+                    detail["parameterization_ms"] += (time.perf_counter() - step_started) * 1000
+                    step_started = time.perf_counter()
+                    stopped_valid = self._timed_phase_valid(
+                        phase, stopped_validation, boxes, validation_snapshot)
+                    detail["collision_validation_ms"] += (time.perf_counter() - step_started) * 1000
+                    if stopped_valid:
                         candidates.append((stopped["duration_s"], "validated_shortcut_stops",
                                            stopped, stopped_validation))
                 if candidates:
                     _, parameterizer, trajectory, validation = min(candidates, key=lambda item: item[0])
                 else:
+                    step_started = time.perf_counter()
                     trajectory, validation = time_parameterize_path(
                         rows, names, *self._timed_limits, sample_dt=sample_dt)
+                    detail["parameterization_ms"] += (time.perf_counter() - step_started) * 1000
                     parameterizer = "original_path_cubic_fallback"
                     shortcut = {"raw_waypoints": len(rows), "shortcut_waypoints": len(rows)}
-                    if not self._timed_phase_valid(phase, validation, boxes, validation_snapshot):
+                    step_started = time.perf_counter()
+                    fallback_valid = self._timed_phase_valid(phase, validation, boxes, validation_snapshot)
+                    detail["collision_validation_ms"] += (time.perf_counter() - step_started) * 1000
+                    if not fallback_valid:
+                        step_started = time.perf_counter()
                         trajectory, validation = time_parameterize_polyline(
                             rows, names, *self._timed_limits, sample_dt=sample_dt)
+                        detail["parameterization_ms"] += (time.perf_counter() - step_started) * 1000
                         parameterizer = "original_path_polyline_fallback"
-                        if not self._timed_phase_valid(phase, validation, boxes, validation_snapshot):
+                        step_started = time.perf_counter()
+                        polyline_valid = self._timed_phase_valid(
+                            phase, validation, boxes, validation_snapshot)
+                        detail["collision_validation_ms"] += (time.perf_counter() - step_started) * 1000
+                        if not polyline_valid:
                             raise RuntimeError(f"{phase} timed samples failed the mentor collision gate")
                 sampled = trajectory["sampled_trajectory"]
                 constant = np.ptp(rows, axis=0) <= 1e-12
@@ -162,7 +196,12 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                     **shortcut,
                     **sampled,
                 })
+            phase_elapsed_ms = (time.perf_counter() - phase_started) * 1000
+            measured_ms = sum(detail[key] for key in (
+                "shortcut_ms", "parameterization_ms", "collision_validation_ms")) - measured_before
+            detail["assembly_ms"] += max(0., phase_elapsed_ms - measured_ms)
             index = end
+        cycle_started = time.perf_counter()
         result["frames"], result["phases"], result["payload"] = frames, phases, payload
         result["timed_segments"] = segments
         result.update(assemble_timed_cycle(len(frames), segments))
@@ -173,7 +212,16 @@ class TimedSingleArmPlanner(SingleArmPlanner):
             raise RuntimeError(f"timed trajectory validation failed: {result['timed_validation']}")
         for event in result.get("predicted_scene_events", ()):
             event["frame_index"] = phases.index(event["phase"])
-        result["trajectory_timing_ms"] = (time.perf_counter() - started) * 1000
+        total_timing_ms = (time.perf_counter() - started) * 1000
+        cycle_ms = (time.perf_counter() - cycle_started) * 1000
+        assigned_ms = setup_ms + cycle_ms + sum(sum(detail.values()) for detail in phase_timings.values())
+        result["trajectory_timing_breakdown_ms"] = {
+            "setup": setup_ms,
+            "phases": phase_timings,
+            "cycle_assembly_and_validation": cycle_ms,
+            "unattributed": max(0., total_timing_ms - assigned_ms),
+        }
+        result["trajectory_timing_ms"] = total_timing_ms
         result["dynamics_enabled"] = False
         result["torque_constraints_enabled"] = False
         return result
