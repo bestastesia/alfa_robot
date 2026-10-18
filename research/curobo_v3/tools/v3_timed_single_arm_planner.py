@@ -20,6 +20,17 @@ EVENT_PHASES = {"home", "attach", "release", "base_advance", "base_reposition",
                 "base_return", "base_pick_reposition"}
 
 
+def reverse_shortcut_blocks(source, final, batch_size=16):
+    """Cover every later waypoint once, searching farthest blocks first."""
+    if not 0 <= source < final or batch_size < 1:
+        raise ValueError("shortcut blocks need source < final and a positive batch size")
+    block_end = final
+    while block_end > source:
+        block_start = max(source + 1, block_end - batch_size + 1)
+        yield block_start, block_end
+        block_end = block_start - 1
+
+
 class TimedSingleArmPlanner(SingleArmPlanner):
     def __init__(self, args, sample_dt=.025):
         super().__init__(args)
@@ -73,15 +84,43 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         active = torch.tensor(np.ascontiguousarray(rows[:, indices]), device="cuda", dtype=torch.float32)
         selected = [0]
         source = 0
+        edge_calls = candidate_edges = actual_states = padded_states = 0
+        edge_check_ms = 0.
+        resolution = math.radians(.05)
+        collision_weights = getattr(validity, "collision_weights", validity.weights).to(active.device)
+        batch_size = 16
         while source < len(rows) - 1:
-            candidates = active[source + 1:]
-            starts = active[source].reshape(1, -1).repeat(len(candidates), 1)
-            connectable = validity.edges(starts, candidates, resolution=math.radians(.05))
-            valid = torch.nonzero(connectable, as_tuple=False).reshape(-1)
-            source += int(valid[-1].item()) + 1 if len(valid) else 1
+            next_source = None
+            for block_start, block_end in reverse_shortcut_blocks(source, len(rows) - 1, batch_size):
+                candidate_indices = torch.arange(block_start, block_end + 1, device=active.device)
+                candidates = active[candidate_indices]
+                starts = active[source].reshape(1, -1).repeat(len(candidates), 1)
+                weighted = torch.abs((candidates - starts) * collision_weights)
+                steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=1)
+                horizon = int(steps.max().item()) + 1
+                edge_calls += 1
+                candidate_edges += len(candidates)
+                actual_states += int((steps + 1).sum().item())
+                padded_states += len(candidates) * horizon
+                edge_started = time.perf_counter()
+                connectable = validity.edges(starts, candidates, resolution=resolution)
+                edge_check_ms += (time.perf_counter() - edge_started) * 1000
+                valid = torch.nonzero(connectable, as_tuple=False).reshape(-1)
+                if len(valid):
+                    next_source = int(candidate_indices[valid[-1]].item())
+                    break
+            source = source + 1 if next_source is None else next_source
             selected.append(source)
         self.snapshot = original_snapshot
-        return rows[selected], {"raw_waypoints": len(rows), "shortcut_waypoints": len(selected)}
+        return rows[selected], {
+            "raw_waypoints": len(rows), "shortcut_waypoints": len(selected),
+            "shortcut_selected_indices": selected,
+            "shortcut_edge_calls": edge_calls, "shortcut_candidate_edges": candidate_edges,
+            "shortcut_actual_states": actual_states, "shortcut_padded_states": padded_states,
+            "shortcut_padding_overhead_ratio": (padded_states / actual_states if actual_states else 1.),
+            "shortcut_edge_check_ms": edge_check_ms, "shortcut_resolution_deg": .05,
+            "shortcut_reverse_batch_size": batch_size,
+        }
 
     def time_parameterize_result(self, result):
         started = time.perf_counter()

@@ -78,6 +78,10 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
+### shortcut 性能优化
+
+旧shortcut一次检查当前点到全部后续点的0.05°精确边，并按最长边horizon补齐，15轮时间化累计69.916s。现改为从最远端开始每16条一批反向精确检查，保持分辨率、最远合法端点和最终轨迹不变；15轮时间化降至26.790s（-61.68%，2.61×），证据见`motion292-acceptance/shortcut-optimization-20261018/summary.json`。
+
 ### 时间化方法同阶段对照
 
 第1轮`approach`阶段的Mentor rest-to-rest与cuRobo TrajOpt量化对照、代价收益和当前选择建议见`docs/motion292_time_parameterization_comparison.html`；机器可读证据为`motion292-acceptance/time-parameterization-compare-20261018/approach.json`。

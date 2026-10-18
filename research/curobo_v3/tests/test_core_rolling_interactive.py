@@ -58,7 +58,8 @@ class RollingInteractiveTest(unittest.TestCase):
         self.assertEqual(detail["timing_ms"], 61.)
 
         empty = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
-                         "timing_ms": 0., "timing_rows": [], "solves": [], "motion_s": 0.,
+                         "timing_ms": 0., "timing_rows": [], "timing_diagnostics": [],
+                         "solves": [], "motion_s": 0.,
                          "running": False, "failure": None} for stage in STAGES}
         text = metrics_markdown(empty, {
             "wall_s": 13., "startup_ms": 3000., "initialization_ms": 4000.,

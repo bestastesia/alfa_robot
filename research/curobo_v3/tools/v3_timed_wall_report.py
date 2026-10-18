@@ -121,6 +121,15 @@ def phase_planning_detail(result, phase):
         "return_home": ["与放箱共享同一后缀总账；不能把共享项在两个阶段重复相加。"],
     }.get(phase, [])
     timing_detail = result.get("trajectory_timing_breakdown_ms", {}).get("phases", {}).get(phase, {})
+    segment = next((item for item in result.get("timed_segments", []) if item.get("name") == phase), {})
+    timing_diagnostics = []
+    if "shortcut_edge_check_ms" in segment:
+        timing_diagnostics = [
+            f"快捷化路径点：{segment['raw_waypoints']} → {segment['shortcut_waypoints']}",
+            f"精确候选边：{segment['shortcut_candidate_edges']}条，分{segment['shortcut_edge_calls']}批",
+            f"GPU碰撞状态：{segment['shortcut_padded_states']}个（有效采样{segment['shortcut_actual_states']}个）",
+            f"其中edge碰撞检查：{segment['shortcut_edge_check_ms']:.1f} ms",
+        ]
     timing_labels = {
         "shortcut_ms": "路径快捷化/直连碰撞搜索",
         "parameterization_ms": "速度、加速度与jerk时间参数化",
@@ -133,6 +142,7 @@ def phase_planning_detail(result, phase):
         "notes": notes,
         "timing": [(timing_labels[key], timing_detail.get(key, 0.)) for key in timing_labels
                    if key in timing_detail],
+        "timing_diagnostics": timing_diagnostics,
     }
 
 

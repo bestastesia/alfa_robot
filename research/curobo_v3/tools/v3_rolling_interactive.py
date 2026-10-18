@@ -82,6 +82,7 @@ def stage_planning_rows(result, stage):
         "notes": detail["notes"],
         "timing_ms": sum(value for _, value in detail["timing"]),
         "timing_rows": detail["timing"],
+        "timing_diagnostics": detail.get("timing_diagnostics", []),
     }
 
 
@@ -122,6 +123,7 @@ def metrics_markdown(ledger, baseline):
             rows.append(f"#### C. 该阶段轨迹时间化：**{item['timing_ms']:.1f} ms**")
             if item["timing_rows"]:
                 rows.extend(f"- {name}：{value:.1f} ms" for name, value in item["timing_rows"])
+                rows.extend(f"- 诊断：{text}" for text in item["timing_diagnostics"])
             else:
                 rows.append("- 当前结果没有阶段级时间化明细")
         if item["solves"]:
@@ -174,7 +176,8 @@ def main():
     current = {"snapshot": None, "base_transform": np.eye(4), "stage": None}
     baseline = [None]
     ledger = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
-                      "timing_ms": 0., "timing_rows": [], "solves": [], "motion_s": 0.,
+                      "timing_ms": 0., "timing_rows": [], "timing_diagnostics": [],
+                      "solves": [], "motion_s": 0.,
                       "running": False, "failure": None} for stage in STAGES}
 
     server.gui.add_markdown(
@@ -273,7 +276,7 @@ def main():
         baseline[0] = None
         for stage in STAGES:
             ledger[stage].update(core_ms=None, core_rows=[], diagnostics=[], notes=[],
-                                 timing_ms=0., timing_rows=[], solves=[], motion_s=0.,
+                                 timing_ms=0., timing_rows=[], timing_diagnostics=[], solves=[], motion_s=0.,
                                  running=False, failure=None)
         overall.value = 0.
 

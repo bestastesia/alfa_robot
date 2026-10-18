@@ -2319,3 +2319,8 @@
 - 新增`v3_rolling_round.py`与persistent worker协议：一轮开始时只创建一次CUDA/模型backend，预热empty/loaded两类TrajOpt与碰撞资源；六阶段各自新建adapter/RollingSegment/trajectory_id/场景会话，但复用同一worker、CUDA上下文和缓存。单阶段CLI仍兼容。
 - 新鲜第1轮默认场景六阶段6/6完成，接续6/4/31/4/7/3；worker初始化0.386s、一次性双拓扑预热6.638s，后续阶段会话初始化仅15～76ms且全部`warmup.reused=true`。与原每阶段独立进程结果逐阶段比较：success、接续数、策略序列以及全部初始/激活q/qdot/qddot/jerk/time逐元素完全一致，最大差0。
 - Viser已改为只启动一次六阶段round runner，侧栏单列“滚动服务一次性准备（六阶段共享）”；Firefox X11真实点击完成一轮。CPU core 110/110，证据`motion292-acceptance/persistent-worker-20261018/summary.json`。故障时仍由监督层终止整个worker，下一轮可重建，不复用污染状态。
+
+## 2026-10-18 运控 / Codex / MOTION-292 shortcut定向优化
+- profile确认shortcut约99%墙钟在`GpuValidity.edges()`：0.05°精确边插值后，对每个状态执行FK、机器人球、自碰撞、世界碰撞、关节边界及地面/稳定性检查。旧第1轮仅5次大批调用即检查906条候选边、约192.9万补齐状态；不同边共用最大horizon导致约2倍padding。
+- 保持0.05°分辨率和“选择最远合法端点”语义不变，改为从最远端开始每16条一批反向精确检查，发现合法端点立即停止。第1轮候选边906→79、补齐状态192.9万→13.5万；六阶段q/qdot/qddot/jerk/time逐元素最大差0。
+- 新鲜15轮/25箱全部成功，所有轨迹与旧证据逐元素完全相同；时间化总计69.916s→26.790s，减少43.126s（-61.68%，2.61×）。各轮提升1.84×～7.27×，后期复杂轮仍由edge检查主导。CPU core 111/111，证据`motion292-acceptance/shortcut-optimization-20261018/summary.json`。
