@@ -5,7 +5,7 @@
     "left_deg": [
       65,
       -75,
-      -20,
+      20,
       -90,
       0,
       40,
@@ -14,7 +14,7 @@
     "right_deg": [
       -65,
       75,
-      20,
+      -20,
       90,
       0,
       -40,
@@ -41,7 +41,7 @@
       ]
     },
     "updown_m": -0.3,
-    "source": "User-confirmed screenshot 2026-10-18; numeric angles applied to our re-zero model, not IPC encoder commands"
+    "source": "User-confirmed 2026-10-18 final Home with left J3 +20 degrees; our re-zero model, not IPC encoder commands"
   },
   {
     "name": "second_home",

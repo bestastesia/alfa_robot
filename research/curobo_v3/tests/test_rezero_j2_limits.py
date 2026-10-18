@@ -32,7 +32,7 @@ class RezeroJointLimitsTest(unittest.TestCase):
         policy=json.loads((root/'config/rezero_home.json').read_text())
         pose=yaml.safe_load((root/'generated/zero_model_candidate_20261018/named_poses.yaml').read_text())['named_poses']['home']
         self.assertEqual(pose['updown'],-.3)
-        for side,expected in [('left',[65,-75,-20,-90,0,40,90]),('right',[-65,75,20,90,0,-40,-90])]:
+        for side,expected in [('left',[65,-75,20,-90,0,40,90]),('right',[-65,75,-20,90,0,-40,-90])]:
             self.assertEqual(policy[side+'_deg'],expected)
             np.testing.assert_allclose(np.rad2deg([pose[f'{side}_joint{index}'] for index in range(1,8)]),expected,atol=1e-9)
 

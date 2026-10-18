@@ -1,8 +1,8 @@
 {
   "joint_coordinate_frame": "robot_rezero_candidate.urdf",
-  "source": "User-confirmed screenshot 2026-10-18; numeric angles applied to our re-zero model, not IPC encoder commands",
-  "left_deg": [65, -75, -20, -90, 0, 40, 90],
-  "right_deg": [-65, 75, 20, 90, 0, -40, -90],
+  "source": "User-confirmed 2026-10-18 final Home with left J3 +20 degrees; our re-zero model, not IPC encoder commands",
+  "left_deg": [65, -75, 20, -90, 0, 40, 90],
+  "right_deg": [-65, 75, -20, 90, 0, -40, -90],
   "j6_policy": "User corrected both J6 axes: reverse direction, retain zero and physical Home",
   "updown_m": -0.3,
   "updown_policy": "Unspecified in screenshot; retains original configured Home height",

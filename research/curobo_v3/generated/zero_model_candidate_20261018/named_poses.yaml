@@ -14,14 +14,14 @@ named_poses:
     head_pitch_joint: 0.0
     left_joint1: 1.1344640137963142
     left_joint2: -1.3089969389957472
-    left_joint3: -0.3490658503988659
+    left_joint3: 0.3490658503988659
     left_joint4: -1.5707963267948966
     left_joint5: 0.0
     left_joint6: 0.6981317007977318
     left_joint7: 1.5707963267948966
     right_joint1: -1.1344640137963142
     right_joint2: 1.3089969389957472
-    right_joint3: 0.3490658503988659
+    right_joint3: -0.3490658503988659
     right_joint4: 1.5707963267948966
     right_joint5: 0.0
     right_joint6: -0.6981317007977318
