@@ -121,7 +121,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         whole_sequence = server.gui.add_checkbox(
             "连续播放完整25箱", initial_value=bool(round_mode and sequence_result))
         play = server.gui.add_checkbox("播放", initial_value=False)
-        playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=3., step=.1,
+        playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=10., step=.1,
                                                initial_value=1.)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
