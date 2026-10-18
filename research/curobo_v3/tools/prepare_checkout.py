@@ -30,7 +30,7 @@ def main():
                         raise FileNotFoundError(destination)
                     mesh.set("filename", str(destination))
             tree.write(path, encoding="utf-8", xml_declaration=True)
-        for path in directory.rglob("*.yml"):
+        for path in (*directory.rglob("*.yml"), *directory.rglob("*.yaml")):
             data = yaml.safe_load(path.read_text())
             kin = data.get("robot_cfg", data).get("kinematics")
             if kin is None:

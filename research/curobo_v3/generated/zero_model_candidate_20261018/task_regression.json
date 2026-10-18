@@ -1,0 +1,156 @@
+{
+  "model": "rezero-20261018-asymmetric-j2-reversed-j6",
+  "home": "config/rezero_home.json",
+  "runs": [
+    {
+      "file": "L18_R22.json",
+      "checked_frames": 1346,
+      "max_adjacent_step_deg": 0.4992661932756852,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 0.00017833030348610244,
+          "place_error_deg": 1.1722974236685929e-05
+        },
+        "right": {
+          "place_error_mm": 7.361457627800957e-05,
+          "place_error_deg": 6.638417444766917e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 18,
+        "right": 22
+      },
+      "success": true,
+      "total_ms": 3154.874501982704,
+      "source": "/tmp/rezero_j6_tasks_20261018/L18_R22.json",
+      "sha256": "dfce168a4186c92a66d46fb7e19d1c31a73afc53abc5771abf1520ffe0488c07"
+    },
+    {
+      "file": "L4_R2.json",
+      "checked_frames": 1729,
+      "max_adjacent_step_deg": 0.49900166434585974,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 8.948039852837289e-05,
+          "place_error_deg": 4.5888896124264746e-06
+        },
+        "right": {
+          "place_error_mm": 0.0002271405362423098,
+          "place_error_deg": 5.947173119182739e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "success": true,
+      "total_ms": 2781.764285056852,
+      "source": "/tmp/rezero_j6_tasks_20261018/L4_R2.json",
+      "sha256": "ed6c10229f98bda3c68458433277377abf6a0fd615dc581f2822873196362bc5"
+    },
+    {
+      "file": "L4_R5.json",
+      "checked_frames": 1648,
+      "max_adjacent_step_deg": 0.49944855202929017,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 8.948039852837289e-05,
+          "place_error_deg": 4.5888896124264746e-06
+        },
+        "right": {
+          "place_error_mm": 0.0002271405362423098,
+          "place_error_deg": 5.947173119182739e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 4,
+        "right": 5
+      },
+      "success": true,
+      "total_ms": 2913.517501903698,
+      "source": "/tmp/rezero_j6_tasks_20261018/L4_R5.json",
+      "sha256": "2df4f7f9edae7720067039548db3f4e67c0df6a9bb281a4b74510ecf5a7d6744"
+    },
+    {
+      "file": "L7_R5.json",
+      "checked_frames": 1482,
+      "max_adjacent_step_deg": 0.4992081326701391,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 9.995112164543651e-05,
+          "place_error_deg": 1.1220892147491698e-06
+        },
+        "right": {
+          "place_error_mm": 0.00010473205358361129,
+          "place_error_deg": 7.73085798295997e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 7,
+        "right": 5
+      },
+      "success": true,
+      "total_ms": 2602.2856619674712,
+      "source": "/tmp/rezero_j6_tasks_20261018/L7_R5.json",
+      "sha256": "3017a0b64461dde15b4e4f560edde2ae6235276ecbc2c0972efedf08fac7c705"
+    },
+    {
+      "file": "L8_R7.json",
+      "checked_frames": 1372,
+      "max_adjacent_step_deg": 0.4992081326701391,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 9.995112164543651e-05,
+          "place_error_deg": 1.1220892147491698e-06
+        },
+        "right": {
+          "place_error_mm": 0.00010473205358361129,
+          "place_error_deg": 7.73085798295997e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 8,
+        "right": 7
+      },
+      "success": true,
+      "total_ms": 2580.11245704256,
+      "source": "/tmp/rezero_j6_tasks_20261018/L8_R7.json",
+      "sha256": "a05dcc20ddb18c085e30c4e5d8b04382e0ea09114983d0942f380b489a2a021b"
+    },
+    {
+      "file": "L9_R1.json",
+      "checked_frames": 1582,
+      "max_adjacent_step_deg": 0.4992717689951977,
+      "home_max_error": 0.0,
+      "boxes": {
+        "left": {
+          "place_error_mm": 9.900288647558236e-05,
+          "place_error_deg": 8.542326361753967e-06
+        },
+        "right": {
+          "place_error_mm": 9.18633253274389e-05,
+          "place_error_deg": 5.4349448196977556e-06
+        }
+      },
+      "collision_scope": "original policy: final contact excludes targets; extraction checks empty robot throughout plus loaded endpoint; transport/place loaded throughout",
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "total_ms": 2850.4269580589607,
+      "source": "/tmp/rezero_j6_tasks_20261018/L9_R1.json",
+      "sha256": "fd1daa1431492e12ddcbeb5237929d6db263f3132b8adbf56e28ad56ffc71109"
+    }
+  ]
+}

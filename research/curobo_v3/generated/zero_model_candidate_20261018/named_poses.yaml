@@ -1,0 +1,98 @@
+metadata:
+  schema_version: 1
+  robot: alfa_v3
+  model_revision: rezero-20261018-asymmetric-j2-reversed-j6
+  experimental: true
+  end_effector: suction
+  units: revolute_rad_prismatic_m
+  home_source: 'config/rezero_home.json: explicitly selected new Home, not a coordinate
+    redefinition'
+named_poses:
+  home:
+    updown: -0.3
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    left_joint1: 1.1344640137963142
+    left_joint2: -1.3089969389957472
+    left_joint3: -0.3490658503988659
+    left_joint4: -1.5707963267948966
+    left_joint5: 0.0
+    left_joint6: 0.6981317007977318
+    left_joint7: 1.5707963267948966
+    right_joint1: -1.1344640137963142
+    right_joint2: 1.3089969389957472
+    right_joint3: 0.3490658503988659
+    right_joint4: 1.5707963267948966
+    right_joint5: 0.0
+    right_joint6: -0.6981317007977318
+    right_joint7: -1.5707963267948966
+  second_home:
+    updown: -0.6
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    left_joint1: 2.0943951023931966
+    left_joint2: -1.1344640137963107
+    left_joint3: 0.34906585039886995
+    left_joint4: 1.5707963267949
+    left_joint5: 3.552713678800501e-15
+    left_joint6: -1.0471975511966
+    left_joint7: -1.5707963267948966
+    right_joint1: -2.0943951023931966
+    right_joint2: 1.1344640137963111
+    right_joint3: -0.34906585039886995
+    right_joint4: -1.5707963267949
+    right_joint5: -3.552713678800501e-15
+    right_joint6: 1.0471975511966
+    right_joint7: 1.5707963267948966
+  unloading:
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    updown: -0.3
+    left_joint1: -2.2689280275926285
+    left_joint2: 2.0071286397934784
+    left_joint3: -3.14159265
+    left_joint4: 0.34906585039886595
+    left_joint5: -3.141592653589793
+    left_joint6: 0.34906585039886595
+    left_joint7: -1.5707963267948966
+    right_joint1: 2.2689280275926285
+    right_joint2: -2.007128639793479
+    right_joint3: 3.1415926499999998
+    right_joint4: -0.34906585039886595
+    right_joint5: -3.141592653589793
+    right_joint6: -0.34906585039886595
+    right_joint7: 1.5707963267948966
+  second_unloading:
+    head_joint: 0.0
+    head_pitch_joint: 0.0
+    updown: -0.6
+    left_joint1: 1.5707963267948966
+    left_joint2: -1.4835298641951802
+    left_joint3: 0.0
+    left_joint4: -0.5235987755982987
+    left_joint5: 0.17453292519943275
+    left_joint6: -0.5235987755982987
+    left_joint7: -1.5707963267948966
+    right_joint1: -1.5707963267948966
+    right_joint2: 1.4835298641951802
+    right_joint3: 0.0
+    right_joint4: 0.5235987755982987
+    right_joint5: -0.17453292519943275
+    right_joint6: 0.5235987755982987
+    right_joint7: 1.5707963267948966
+  third_unloading:
+    updown: 0.0
+    left_joint1: -2.443460952792061
+    left_joint2: 2.0943951023931957
+    left_joint3: 0.17453292519943275
+    left_joint4: 1.5707963267948966
+    left_joint5: -3.141592653589793
+    left_joint6: 0.6981317007977319
+    left_joint7: -1.5707963267948966
+    right_joint1: 2.443460952792061
+    right_joint2: -2.0943951023931957
+    right_joint3: -0.17453292519943275
+    right_joint4: -1.5707963267948966
+    right_joint5: -3.141592653589793
+    right_joint6: -0.6981317007977319
+    right_joint7: 1.5707963267948966

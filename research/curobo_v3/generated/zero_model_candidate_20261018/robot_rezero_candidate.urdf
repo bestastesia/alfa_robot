@@ -1,0 +1,854 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="alfa_robot_v3">
+  <link name="base_footprint" />
+  <joint name="base_footprint_to_base_link" type="fixed">
+    <origin xyz="0 0 0.335" rpy="0 0 0" />
+    <parent link="base_footprint" />
+    <child link="base_link" />
+  </joint>
+  <link name="base_link">
+    <inertial>
+      <origin xyz="-0.036137515 -0.00063829515 0.22563075" rpy="0 0 0" />
+      <mass value="982.58382" />
+      <inertia ixx="294.37355" iyy="291.98628" izz="131.56855" ixy="0.038878568" ixz="-6.0994854" iyz="-0.18347327" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_001_solid_001-a9e1ccc18f01.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_049_solid_049-7d4e9d80ee1c.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_048_solid_048-ae9fa2f35ada.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_001_solid_001-a9e1ccc18f01.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_049_solid_049-7d4e9d80ee1c.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_048_solid_048-ae9fa2f35ada.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="arm_carriage">
+    <inertial>
+      <origin xyz="0.23241894 1.4548597e-09 0.35398238" rpy="0 0 0" />
+      <mass value="42.349928" />
+      <inertia ixx="1.461624" iyy="1.1919986" izz="1.2166646" ixy="0.00047758911" ixz="0.028235631" iyz="-2.4308674e-08" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_014_surface_shell_014-a0f5a6901345.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_004_surface_shell_004-5c8de5afa407.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_003_solid_003-b2cd56d30593.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_058_solid_058-86611fa58d21.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_050_solid_050-d2a80cadc42c.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_002_solid_002-cc0c5ce4401a.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_005_surface_shell_005-c3b5d0926db4.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_015_surface_shell_015-3f1e8dbb0074.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_018_surface_shell_018-5443449d2b9b.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_008_surface_shell_008-05cdb29c7788.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_006_surface_shell_006-05c645d276fb.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_009_surface_shell_009-a7fca2be3dfc.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_016_surface_shell_016-03e89afa43dc.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_019_surface_shell_019-a61cb522c782.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_017_surface_shell_017-1917586987ba.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_007_surface_shell_007-4ef6cae1e708.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_014_surface_shell_014-a0f5a6901345.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_004_surface_shell_004-5c8de5afa407.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_003_solid_003-b2cd56d30593.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_058_solid_058-86611fa58d21.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_050_solid_050-d2a80cadc42c.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_002_solid_002-cc0c5ce4401a.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_005_surface_shell_005-c3b5d0926db4.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_015_surface_shell_015-3f1e8dbb0074.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_018_surface_shell_018-5443449d2b9b.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_008_surface_shell_008-05cdb29c7788.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_006_surface_shell_006-05c645d276fb.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_009_surface_shell_009-a7fca2be3dfc.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_016_surface_shell_016-03e89afa43dc.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_019_surface_shell_019-a61cb522c782.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_017_surface_shell_017-1917586987ba.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.174 0 1.68" rpy="-3.1415927 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_007_surface_shell_007-4ef6cae1e708.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="head_yaw">
+    <inertial>
+      <origin xyz="-0.017162676 -0.0055771162 0.02718393" rpy="0 0 0" />
+      <mass value="0.072317618" />
+      <inertia ixx="5.6695638e-05" iyy="4.4027791e-05" izz="4.9804167e-05" ixy="-1.1455479e-06" ixz="4.6539858e-06" iyz="1.5137677e-06" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.441 0 -1.5041" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_047_solid_047-be857ede64e2.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.441 0 -1.5041" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_047_solid_047-be857ede64e2.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="head">
+    <inertial>
+      <origin xyz="0.011403312 0.052498 -0.013964383" rpy="0 0 0" />
+      <mass value="6.925078" />
+      <inertia ixx="0.58208657" iyy="0.090423591" izz="0.6242853" ixy="0.16278386" ixz="-1.9637467e-05" iyz="-2.3007969e-05" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_025_surface_shell_025-5f7a469272b3.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_035_surface_shell_035-8def6ba2cb12.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_045_solid_045-ebeb5ff8c9c9.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_024_solid_024-c71599234879.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_046_solid_046-37a951a3d0cb.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_036_surface_shell_036-bfea31d2980b.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_026_surface_shell_026-8712d6a53657.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_028_surface_shell_028-d6f448f4b30e.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_030_surface_shell_030-5e825eb90bfe.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_040_surface_shell_040-6d2448085b73.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_029_surface_shell_029-4d06e642f35b.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_027_surface_shell_027-53f14b397772.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_038_surface_shell_038-d7bfdf4109d3.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_037_surface_shell_037-6ed17aa4b7d8.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_039_surface_shell_039-3c14eef4cdc9.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_025_surface_shell_025-5f7a469272b3.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_035_surface_shell_035-8def6ba2cb12.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_045_solid_045-ebeb5ff8c9c9.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_024_solid_024-c71599234879.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_046_solid_046-37a951a3d0cb.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_036_surface_shell_036-bfea31d2980b.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_026_surface_shell_026-8712d6a53657.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_028_surface_shell_028-d6f448f4b30e.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_030_surface_shell_030-5e825eb90bfe.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_040_surface_shell_040-6d2448085b73.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_029_surface_shell_029-4d06e642f35b.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_027_surface_shell_027-53f14b397772.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_038_surface_shell_038-d7bfdf4109d3.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_037_surface_shell_037-6ed17aa4b7d8.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.419 1.5481 -0.01393364" rpy="1.5707963 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_039_surface_shell_039-3c14eef4cdc9.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link1">
+    <inertial>
+      <origin xyz="0.016307 0.0028851633 0.13851898" rpy="0 0 0" />
+      <mass value="12.131" />
+      <inertia ixx="0.051264138" iyy="0.042125665" izz="0.052363933" ixy="0.003049957" ixz="0.000823193" iyz="0.002952565" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.44 1.2700466 -0.64109938" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_051_solid_051-6a534d2545ed.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.44 1.2700466 -0.64109938" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_051_solid_051-6a534d2545ed.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link2">
+    <inertial>
+      <origin xyz="0.15909423 0.039606935 -0.047763" rpy="0 0 0" />
+      <mass value="9.297" />
+      <inertia ixx="0.057939842" iyy="0.032807939" izz="0.046851207" ixy="2.7731e-05" ixz="-8.356e-06" iyz="0.004077744" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43583677 -1.4316311 -0.48949" rpy="0 -1.5707963 -1.5707963" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_052_solid_052-c64730ee8435.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43583677 -1.4316311 -0.48949" rpy="0 -1.5707963 -1.5707963" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_052_solid_052-c64730ee8435.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link3">
+    <inertial>
+      <origin xyz="0.00353 0.0082399219 0.23122565" rpy="0 0 0" />
+      <mass value="9.614" />
+      <inertia ixx="0.074213854" iyy="0.03063768" izz="0.069427186" ixy="6.9444e-05" ixz="3.4182e-05" iyz="0.009656211" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43819 1.2700466 -1.0375194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_053_solid_053-b36916d54b92.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43819 1.2700466 -1.0375194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_053_solid_053-b36916d54b92.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link4">
+    <inertial>
+      <origin xyz="0.0035384869 -0.17943366 -0.07983361" rpy="0 0 0" />
+      <mass value="3.938" />
+      <inertia ixx="0.024706315" iyy="0.011824276" izz="0.020388183" ixy="6.4274e-05" ixz="-1.8679e-05" iyz="0.002092687" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43814751 1.2975194 1.1850466" rpy="2.8797933 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_055_solid_055-26bf67801b7a.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43814751 1.2975194 1.1850466" rpy="2.8797933 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_055_solid_055-26bf67801b7a.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link5">
+    <inertial>
+      <origin xyz="0.0054994869 -0.019052904 0.10062789" rpy="0 0 0" />
+      <mass value="3.025" />
+      <inertia ixx="0.01246249" iyy="0.00682627" izz="0.009725258" ixy="-6.9914e-05" ixz="0.000290081" iyz="-0.000417143" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43814751 1.2673466 -1.5385194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_054_solid_054-7a635b74e968.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43814751 1.2673466 -1.5385194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_054_solid_054-7a635b74e968.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link6">
+    <inertial>
+      <origin xyz="0.0032944869 -0.02865692 -0.25540891" rpy="0 0 0" />
+      <mass value="1.352" />
+      <inertia ixx="0.00174899" iyy="0.001103657" izz="0.001559634" ixy="-1.2156e-05" ixz="-2.88e-06" iyz="0.000121955" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43814751 -1.7715194 -1.3578466" rpy="-0.26179939 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_056_solid_056-d12fbcadfe1f.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43814751 -1.7715194 -1.3578466" rpy="-0.26179939 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_056_solid_056-d12fbcadfe1f.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="left_link7">
+    <inertial>
+      <origin xyz="7.48689e-06 0.0025867311 0.080573425" rpy="0 0 0" />
+      <mass value="2.786" />
+      <inertia ixx="0.026860899" iyy="0.026765423" izz="0.010612007" ixy="1.9793e-05" ixz="4.2113e-05" iyz="-0.004670502" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43814751 1.2663466 -1.8707194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_057_solid_057-21b67c6a2fcc.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43814751 1.2663466 -1.8707194" rpy="1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_057_solid_057-21b67c6a2fcc.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link1">
+    <inertial>
+      <origin xyz="0.016307 -0.0028851633 0.13851898" rpy="0 0 0" />
+      <mass value="12.131" />
+      <inertia ixx="0.051264138" iyy="0.042125665" izz="0.052363933" ixy="-0.003049957" ixz="0.000823193" iyz="-0.002952565" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.44 -1.2700466 -0.64109938" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_059_solid_059-41656193c290.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.44 -1.2700466 -0.64109938" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_059_solid_059-41656193c290.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link2">
+    <inertial>
+      <origin xyz="-0.15909423 0.039606935 -0.063273" rpy="0 0 0" />
+      <mass value="9.297" />
+      <inertia ixx="0.057939842" iyy="0.032807939" izz="0.046851207" ixy="-2.7731e-05" ixz="-8.356e-06" iyz="-0.004077744" />
+    </inertial>
+    <visual>
+      <origin xyz="0.43583677 -1.4316311 -0.505" rpy="0 -1.5707963 -1.5707963" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_060_solid_060-3d54830bcd0c.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.43583677 -1.4316311 -0.505" rpy="0 -1.5707963 -1.5707963" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_060_solid_060-3d54830bcd0c.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link3">
+    <inertial>
+      <origin xyz="0.00353 -0.0082399219 0.23122565" rpy="0 0 0" />
+      <mass value="9.614" />
+      <inertia ixx="0.074213854" iyy="0.03063768" izz="0.069427186" ixy="-6.9444e-05" ixz="3.4182e-05" iyz="-0.009656211" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43819 -1.2700466 -1.0375194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_061_solid_061-4ce1e26d93f9.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43819 -1.2700466 -1.0375194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_061_solid_061-4ce1e26d93f9.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link4">
+    <inertial>
+      <origin xyz="0.0034535131 0.17943366 -0.07983361" rpy="0 0 0" />
+      <mass value="3.938" />
+      <inertia ixx="0.024706315" iyy="0.011824276" izz="0.020388183" ixy="-6.4274e-05" ixz="-1.8679e-05" iyz="-0.002092687" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43823249 -1.2975194 1.1850466" rpy="-2.8797933 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_062_solid_062-cd1a2e5c351b.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43823249 -1.2975194 1.1850466" rpy="-2.8797933 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_062_solid_062-cd1a2e5c351b.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link5">
+    <inertial>
+      <origin xyz="0.0054145131 0.019052904 0.10062789" rpy="0 0 0" />
+      <mass value="3.025" />
+      <inertia ixx="0.01246249" iyy="0.00682627" izz="0.009725258" ixy="6.9914e-05" ixz="0.000290081" iyz="0.000417143" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43823249 -1.2673466 -1.5385194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_063_solid_063-287ec422cdbb.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43823249 -1.2673466 -1.5385194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_063_solid_063-287ec422cdbb.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link6">
+    <inertial>
+      <origin xyz="0.0032095131 0.02865692 -0.25540891" rpy="0 0 0" />
+      <mass value="1.352" />
+      <inertia ixx="0.00174899" iyy="0.001103657" izz="0.001559634" ixy="1.2156e-05" ixz="-2.88e-06" iyz="-0.000121955" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43823249 1.7715194 -1.3578466" rpy="0.26179939 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_064_solid_064-ad3731fdcea4.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43823249 1.7715194 -1.3578466" rpy="0.26179939 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_064_solid_064-ad3731fdcea4.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="right_link7">
+    <inertial>
+      <origin xyz="-7.748689e-05 -0.0025867311 0.080573425" rpy="0 0 0" />
+      <mass value="2.786" />
+      <inertia ixx="0.026860899" iyy="0.026765423" izz="0.010612007" ixy="-1.9793e-05" ixz="4.2113e-05" iyz="0.004670502" />
+    </inertial>
+    <visual>
+      <origin xyz="-0.43823249 -1.2663466 -1.8707194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_065_solid_065-a7076f23043e.stl" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.43823249 -1.2663466 -1.8707194" rpy="-1.3089969 0 0" />
+      <geometry>
+        <mesh filename="/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/meshes/part_065_solid_065-a7076f23043e.stl" scale="1 1 1" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="updown" type="prismatic">
+    <origin xyz="0.174 0 1.68" rpy="3.1415927 0 0" />
+    <parent link="base_link" />
+    <child link="arm_carriage" />
+    <axis xyz="0 0 -1" />
+    <limit lower="-1" upper="0" effort="10" velocity="5" />
+  </joint>
+  <joint name="head_joint" type="revolute">
+    <origin xyz="0.267 0 0.1759" rpy="-3.1415927 0 0" />
+    <parent link="arm_carriage" />
+    <child link="head_yaw" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="5" />
+  </joint>
+  <joint name="head_pitch_joint" type="revolute">
+    <origin xyz="-0.022 0.01393364 0.044" rpy="-1.5707963 0 0" />
+    <parent link="head_yaw" />
+    <child link="head" />
+    <axis xyz="0 0 1" />
+    <limit lower="-1.57" upper="1.57" effort="10" velocity="5" />
+  </joint>
+  <joint name="left_joint1" type="revolute">
+    <origin xyz="0.266 -0.29054221 0.2873005" rpy="-1.8325956999997934 -5.3336335098502575e-14 3.1415926535846967" />
+    <parent link="arm_carriage" />
+    <child link="left_link1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="647" velocity="1.309" />
+  </joint>
+  <joint name="left_joint2" type="revolute">
+    <origin xyz="0.04949 5.2471965e-10 0.15042" rpy="1.3947957182223183 -1.5707962871872845 1.746796881527541" />
+    <parent link="left_link1" />
+    <child link="left_link2" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-1.5707963267948966" upper="2.0943951023931953" effort="647" velocity="1.309" />
+  </joint>
+  <joint name="left_joint3" type="revolute">
+    <origin xyz="0.23761775 0.063669485 -0.04949" rpy="-1.0358530698496323e-09 -1.5707963000000003 -2.8797932985952555" />
+    <parent link="left_link2" />
+    <child link="left_link3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="484" velocity="1.309" />
+  </joint>
+  <joint name="left_joint4" type="revolute">
+    <origin xyz="0 0.085000001 0.26" rpy="-1.5707963000000003 0 0" />
+    <parent link="left_link3" />
+    <child link="left_link4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="459" velocity="1.749" />
+  </joint>
+  <joint name="left_joint5" type="revolute">
+    <origin xyz="0 -0.241 -0.085" rpy="-1.5707963009899999 -1.570134696690499e-16 -3.1415926535894658" />
+    <parent link="left_link4" />
+    <child link="left_link5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="217" velocity="2.618" />
+  </joint>
+  <joint name="left_joint6" type="revolute">
+    <origin xyz="0 -0.090499999 0.233" rpy="1.5707963000000003 -0 0" />
+    <parent link="left_link5" />
+    <child link="left_link6" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-1.91986218" upper="1.91986218" effort="107" velocity="3.142" />
+  </joint>
+  <joint name="left_joint7" type="revolute">
+    <origin xyz="0 0.0992 -0.0905" rpy="-6.2151183861033031e-09 1.5707963000000003 1.5707963205797781" />
+    <parent link="left_link6" />
+    <child link="left_link7" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="36" velocity="3.142" />
+  </joint>
+  <joint name="right_joint1" type="revolute">
+    <origin xyz="0.266 0.29054221 0.2873005" rpy="1.8325956999997934 -5.3336335098502575e-14 -3.1415926535846967" />
+    <parent link="arm_carriage" />
+    <child link="right_link1" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="647" velocity="1.309" />
+  </joint>
+  <joint name="right_joint2" type="revolute">
+    <origin xyz="0.065 -5.2471962e-10 0.15042" rpy="1.3947957191038485 1.5707962871872845 1.3947957163161049" />
+    <parent link="right_link1" />
+    <child link="right_link2" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-2.0943951023931953" upper="1.5707963267948966" effort="647" velocity="1.309" />
+  </joint>
+  <joint name="right_joint3" type="revolute">
+    <origin xyz="-0.23761775 0.063669485 -0.065" rpy="0 -1.5707963000000003 -0.26179939045932549" />
+    <parent link="right_link2" />
+    <child link="right_link3" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="484" velocity="1.309" />
+  </joint>
+  <joint name="right_joint4" type="revolute">
+    <origin xyz="0 -0.085000001 0.26" rpy="1.5707963000000003 -0 0" />
+    <parent link="right_link3" />
+    <child link="right_link4" />
+    <axis xyz="0 0 1" />
+    <limit lower="-2.53072742" upper="2.53072742" effort="459" velocity="1.749" />
+  </joint>
+  <joint name="right_joint5" type="revolute">
+    <origin xyz="0 0.241 -0.085" rpy="1.5707963009899999 -1.570134696690499e-16 3.1415926535894658" />
+    <parent link="right_link4" />
+    <child link="right_link5" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="217" velocity="2.618" />
+  </joint>
+  <joint name="right_joint6" type="revolute">
+    <origin xyz="0 0.090499999 0.233" rpy="-1.5707963000000003 0 0" />
+    <parent link="right_link5" />
+    <child link="right_link6" />
+    <axis xyz="-0 -0 -1" />
+    <limit lower="-1.91986218" upper="1.91986218" effort="107" velocity="3.142" />
+  </joint>
+  <joint name="right_joint7" type="revolute">
+    <origin xyz="0 -0.0992 -0.0905" rpy="6.2151183861033031e-09 1.5707963000000003 -1.5707963205797781" />
+    <parent link="right_link6" />
+    <child link="right_link7" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159265" upper="3.14159265" effort="36" velocity="3.142" />
+  </joint>
+  <link name="left_tool0" />
+  <joint name="left_tool0_fixed" type="fixed">
+    <parent link="left_link7" />
+    <child link="left_tool0" />
+    <origin xyz="0 0 0.151" rpy="0 0 0" />
+  </joint>
+  <link name="right_tool0" />
+  <joint name="right_tool0_fixed" type="fixed">
+    <parent link="right_link7" />
+    <child link="right_tool0" />
+    <origin xyz="0 0 0.151" rpy="0 0 0" />
+  </joint>
+</robot>

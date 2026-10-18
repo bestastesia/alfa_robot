@@ -98,6 +98,12 @@ class ConveyorCyclePlanner(AnalyticContacts):
         candidates = rows[numerical_success].contiguous()
         valid = validity.mask(candidates) if len(candidates) else torch.zeros(0, device='cuda', dtype=torch.bool)
         candidates = candidates[valid].contiguous()
+        margin_m = getattr(self, 'conveyor_search_margin_m', 0.)
+        validity.search_scene_margin_m = margin_m
+        validity.search_edge_resolution = getattr(self, 'conveyor_search_edge_resolution', .05)
+        if margin_m > 0 and len(candidates):
+            candidates = candidates[validity.scene_margin_mask(candidates, margin_m)].contiguous()
+        report['conveyor_search_margin'] = dict(margin_m=margin_m, edge_resolution=validity.search_edge_resolution, scope='external scene only during edge search; final collision acceptance uses original spheres', candidates_after_margin=len(candidates))
         report['conveyor_goal_ik'] = {'returned': len(rows), 'solver_success': int(numerical_success.sum()),
                                      'collision_valid': len(candidates), 'mode': 'cuRobo numerical IK, updown plus 14 arm joints'}
         report['conveyor_place_mode'] = 'fixed final box pose; multi-goal RRT; no Cartesian straight-line requirement'
@@ -106,6 +112,8 @@ class ConveyorCyclePlanner(AnalyticContacts):
         start_tensor = torch.tensor(start, device='cuda', dtype=torch.float32)
         if not bool(validity.mask(start_tensor[None]).all()):
             raise CycleBlocked('龙头车放置起点', '导航到位后的携箱起点碰撞', report)
+        if not bool(validity.scene_margin_mask(start_tensor[None], margin_m).all()):
+            raise CycleBlocked('龙头车放置起点余量', f'起点不足{margin_m*1000:.1f}mm外部场景间隙', report)
         distances = torch.linalg.vector_norm((candidates - start_tensor) * validity.weights, dim=-1)
         candidates = candidates[torch.argsort(distances)].contiguous()
         lower, upper = checker.kinematics.get_joint_limits().position

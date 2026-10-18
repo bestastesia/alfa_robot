@@ -147,7 +147,25 @@ class GpuValidity:
     def mask(self, values):
         return self.evaluate(values)[0]
 
+    def scene_margin_mask(self, values, margin_m):
+        if margin_m < 0:
+            raise ValueError('scene margin must be nonnegative')
+        if margin_m == 0:
+            return torch.ones(len(values), device=values.device, dtype=torch.bool)
+        output = []
+        for offset in range(0, len(values), 4096):
+            chunk = values[offset:offset + 4096]
+            state = self.checker.kinematics.compute_kinematics(
+                JointState.from_position(chunk[None], joint_names=self.joint_names))
+            spheres = state.robot_spheres.reshape(1, len(chunk), -1, 4)
+            inflated = spheres.clone()
+            inflated[..., 3] = torch.where(spheres[..., 3] > 0, spheres[..., 3] + margin_m, spheres[..., 3])
+            cost = self.checker.get_collision_constraint(inflated).reshape(len(chunk), -1).sum(-1)
+            output.append(cost == 0)
+        return torch.cat(output)
+
     def edges(self, starts, goals, resolution=0.05, return_stability=False):
+        resolution = min(resolution, getattr(self, 'search_edge_resolution', resolution))
         weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
         steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=1)
         horizon = int(steps.max().item()) + 1
@@ -155,6 +173,9 @@ class GpuValidity:
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
         points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
         valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+        margin_m = getattr(self, 'search_scene_margin_m', 0.)
+        if margin_m > 0:
+            valid = valid & self.scene_margin_mask(points.reshape(-1, starts.shape[1]), margin_m)
         valid = valid.reshape(len(starts), horizon)
         stability = stability.reshape(len(starts), horizon)
         edge_valid = valid.all(dim=1)

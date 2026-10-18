@@ -1,0 +1,40 @@
+{
+  "source": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/model/robot_meter_meshes.urdf",
+  "source_sha256": "79a6a9eb3ca48e7e76fa5d1c0b5be305f73c15369ab9f4da439c7b578b56d82c",
+  "reference_colleague_urdf": "/mnt/mydisk/ALFA/backpack/real2sim_v3.3.1/urdf/robot.urdf",
+  "offsets_deg": {
+    "left": [
+      -90.0,
+      15.0,
+      0.0,
+      0.0,
+      90.0,
+      0.0,
+      90.0
+    ],
+    "right": [
+      90.0,
+      -15.0,
+      0.0,
+      0.0,
+      -90.0,
+      0.0,
+      -90.0
+    ]
+  },
+  "signs": [
+    1,
+    -1,
+    1,
+    1,
+    1,
+    -1,
+    1
+  ],
+  "mapping": "q_legacy = offsets + signs * q_candidate; J6 direction reversed without changing zero",
+  "limits": "left J2 [-90,120]; right J2 [-120,90]; J3 +/-180; other numerical limits unchanged",
+  "status": "true coordinate redefinition, not Home change; legacy installation and confirmed legacy tool retained",
+  "rights_source": "mirrored legacy configuration; checked against shoulder/elbow/wrist reflection",
+  "random_reparameterization_trials": 100,
+  "maximum_all_link_fk_matrix_error": 1.889917963446286e-09
+}
