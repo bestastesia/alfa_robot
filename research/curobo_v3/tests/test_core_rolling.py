@@ -33,6 +33,14 @@ def feedback(segment, now):
 
 
 class RollingTest(unittest.TestCase):
+    def test_observe_uses_requested_obstacle_size(self):
+        from v3_rolling_replan import observe
+        snapshot = observation().snapshot
+        result = observe(snapshot, (1., 2., 3.), "static", 0, 10., 0., 4.,
+                         {"positions": [0.]}, dimensions=(.1, .2, .3))
+        obstacle = next(item for item in result.snapshot.objects if item.object_id == "rolling_obstacle")
+        self.assertEqual(obstacle.dimensions_m, (.1, .2, .3))
+
     def segment(self):
         return RollingSegment(trajectory(), SliceSchedule(4., .6, .2), 10., max_scene_age_s=2.)
 

@@ -196,7 +196,7 @@ def worker(connection, snapshot, boxes, payload, initial, random_seed, phase, br
         connection.close()
 
 
-def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedback, velocity_map=None):
+def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedback, velocity_map=None, dimensions=(.08, .08, .08)):
     active = scenario in ("static", "moving") or (scenario == "appear" and sequence >= 1) or (
         scenario == "depart" and sequence < 2)
     objects = snapshot.objects
@@ -204,7 +204,7 @@ def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedba
     if active:
         velocity = np.asarray([0., .025, 0.] if velocity_map is None else velocity_map) if scenario == "moving" else np.zeros(3)
         position = np.asarray(center) + velocity * (elapsed - duration * .6)
-        objects += (SceneObject("rolling_obstacle", (.08, .08, .08), Pose(tuple(position))),)
+        objects += (SceneObject("rolling_obstacle", tuple(dimensions), Pose(tuple(position))),)
         velocities = (("rolling_obstacle", tuple(velocity)),)
     state = replace(snapshot.state.with_positions(dict(zip(ACTIVE_JOINTS, feedback["positions"]))),
                     stamp_ns=round(now * 1e9))
@@ -225,6 +225,7 @@ def run(args):
               "scenario": args.scenario, "stage": args.stage, "round": args.round, "seed": args.seed, "fault": args.fault,
               "obstacle_center_override_map_m": args.obstacle_center,
               "obstacle_velocity_override_map_m_s": args.obstacle_velocity,
+              "obstacle_size_m": args.obstacle_size,
               "braking_duration_s": args.braking_duration_s,
               "braking_fallback_enabled": not args.disable_braking_fallback,
               "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
@@ -276,7 +277,7 @@ def run(args):
             expected = segment.state(now)
             obstacle_center = args.obstacle_center if args.obstacle_center is not None else startup["obstacle_center"]
             observation = observe(snapshot, obstacle_center, args.scenario, segment.sequence,
-                                  now, now-started, curve.duration, expected, args.obstacle_velocity)
+                                  now, now-started, curve.duration, expected, args.obstacle_velocity, args.obstacle_size)
             feedback = ExecutionFeedback(segment.trajectory_id, segment.active.joint_names, now, expected)
             fault = args.fault if segment.sequence == 0 else "none"
             if fault == "stale_scene":
@@ -472,6 +473,8 @@ def main():
                         help="explicit map-frame obstacle center at 0.6*t1; overrides the default TCP fixture")
     parser.add_argument("--obstacle-velocity", type=float, nargs=3,
                         help="map-frame m/s for moving scenario; default is 0 0.025 0")
+    parser.add_argument("--obstacle-size", type=float, nargs=3, default=(.08, .08, .08),
+                        help="map-frame box dimensions in meters")
     parser.add_argument("--fault", choices=("none", "compute_delay", "link_delay", "stale_scene",
                                            "feedback_error", "scene_changed", "worker_failure", "solver_failure", "admission_delay"),
                         default="none", help="simulation-only failure injection, at first tick")
@@ -496,6 +499,8 @@ def main():
         parser.error("obstacle center must contain three finite map coordinates")
     if args.obstacle_velocity is not None and not np.isfinite(args.obstacle_velocity).all():
         parser.error("obstacle velocity must contain three finite map components")
+    if not np.isfinite(args.obstacle_size).all() or np.any(np.asarray(args.obstacle_size) <= 0):
+        parser.error("obstacle size must contain three positive finite dimensions")
     run(args)
 
 
