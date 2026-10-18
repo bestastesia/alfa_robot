@@ -2324,3 +2324,8 @@
 - profile确认shortcut约99%墙钟在`GpuValidity.edges()`：0.05°精确边插值后，对每个状态执行FK、机器人球、自碰撞、世界碰撞、关节边界及地面/稳定性检查。旧第1轮仅5次大批调用即检查906条候选边、约192.9万补齐状态；不同边共用最大horizon导致约2倍padding。
 - 保持0.05°分辨率和“选择最远合法端点”语义不变，改为从最远端开始每16条一批反向精确检查，发现合法端点立即停止。第1轮候选边906→79、补齐状态192.9万→13.5万；六阶段q/qdot/qddot/jerk/time逐元素最大差0。
 - 新鲜15轮/25箱全部成功，所有轨迹与旧证据逐元素完全相同；时间化总计69.916s→26.790s，减少43.126s（-61.68%，2.61×）。各轮提升1.84×～7.27×，后期复杂轮仍由edge检查主导。CPU core 111/111，证据`motion292-acceptance/shortcut-optimization-20261018/summary.json`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 t2分阶段校准启动
+- 新增`v3_t2_calibration.py`：从最终90正常场景与15轮clear证据提取每阶段compute墙钟，按相同控制流signature逐项取span最大值形成组合上界，再加25%硬件/调度余量并向上取整50ms；不把互斥分支错误相加。
+- 初步候选（尚未冻结）：approach 0.95s、contact_approach 0.05s、extract 0.10s、transport 0.65s、conveyor_place 0.80s、return_home 1.10s；对应旧值1.8/0.2/0.2/1.8/0.85/1.8。
+- 常驻worker第1轮默认动态场景按候选t2六阶段6/6完成、0 deadline miss；实测max compute依次0.423/0.023/0.056/0.523/0.485/0.389s。仍需15轮clear、各阶段最坏障碍×3种子、GPU并发/热压与故障矩阵，完成前不改正式STAGE_SCHEDULES。证据`motion292-acceptance/t2-calibration-20261018/summary.json`。
