@@ -2309,3 +2309,8 @@
 - Viser主流程现将点击到初始可执行轨迹拆为进程/模块/CUDA启动、模型/GPU/碰撞资源预热、Mentor核心规划、六阶段轨迹时间化、阶段快照/写盘/通信五个可加和项目；核心规划与时间化均显示内部可加和总账。
 - 各阶段不再用一个容易误解的“初始完整轨迹”数字：明确区分核心规划归属账（不等于纯RRT/不一定是独立阶段墙钟）、嵌套RRT诊断（首次解、首次验收、总搜索，不重复相加）、阶段时间化（快捷化直连碰撞搜索、速度/加速度/jerk参数化、时间化碰撞门禁、结果组装）、在线滚动独立墙钟和实际运动。
 - 新鲜GPU第1轮通过：时间化2960.957ms可逐项精确相加，主要为approach快捷化909.897ms、transport快捷化1098.207ms、conveyor_place快捷化574.243ms、return_home快捷化264.778ms；新增计时不改变六阶段q/qdot/qddot/jerk/time，逐元素最大差均0。CPU core 108/108；Firefox X11实际点击完成六阶段，侧栏DOM与截图已复核。
+
+## 2026-10-18 运控 / Codex / MOTION-292 同阶段时间化方法对照
+- 新增`v3_time_parameterization_compare.py`，在同一第1轮approach轨迹/场景上比较Mentor几何保持rest-to-rest时间化与cuRobo TrajOpt联合几何/时间优化；三个输入逐元素相同且有SHA256，GPU热运行10次。
+- Mentor阶段时间化median/p95=902.299/932.493ms；TrajOpt完整阶段生成+共同验证median/p95=253.536/255.794ms，运动时长15.824→10.500s，但左右末端对参考路径最大偏离34.8/28.6mm。滚动后缀TrajOpt median/p95=241.591/246.702ms，qdot/qddot接续误差1.87e-7/1.10e-6；Mentor函数强行重定时同后缀会产生0.05495rad/s与0.04810rad/s²跳变。
+- 结论暂不全局统一：自由空间阶段扩展15轮矩阵后再决定是否初始/滚动统一TrajOpt；contact_approach/extract在具备等价任务空间硬约束前保留Mentor/精确后缀。统一最终TimedTrajectory与验收，不强制统一生成算法。报告`docs/motion292_time_parameterization_comparison.html`，机器证据`motion292-acceptance/time-parameterization-compare-20261018/approach.json`。CPU core 109/109。

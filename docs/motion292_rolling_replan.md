@@ -78,6 +78,10 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
+### 时间化方法同阶段对照
+
+第1轮`approach`阶段的Mentor rest-to-rest与cuRobo TrajOpt量化对照、代价收益和当前选择建议见`docs/motion292_time_parameterization_comparison.html`；机器可读证据为`motion292-acceptance/time-parameterization-compare-20261018/approach.json`。
+
 ### 实时 Viser 完整轮诊断界面
 
 新界面启动时不载入任何历史轨迹。点击“从头规划并实时演示完整一轮”后，它会：
