@@ -78,9 +78,9 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
-### t2 分阶段校准（初步，未冻结）
+### t2 分阶段实际预算（验证继续进行）
 
-基于最终正常场景与15轮clear证据，按同一控制流分支的各span最大值组合上界，加25%余量并向上取整50ms，得到候选：approach 0.95s、contact_approach 0.05s、extract 0.10s、transport 0.65s、conveyor_place 0.80s、return_home 1.10s。第1轮默认动态场景六阶段通过且0 deadline miss；完成15轮、最坏障碍多种子、GPU压力和故障矩阵前不替换正式预算。证据见`motion292-acceptance/t2-calibration-20261018/summary.json`。
+基于最终正常场景与15轮clear证据，按同一控制流分支的各span最大值组合上界，加25%余量并向上取整50ms，当前实际预算为：初始姿态→预接触点0.95s、最后3厘米贴近0.05s、抽离35厘米0.10s、携箱运输0.65s、固定底盘放箱0.80s、返回初始姿态1.10s。第1轮默认动态场景六阶段通过且0 deadline miss；15轮、最坏障碍多种子、GPU压力和故障矩阵仍在继续验证，若证据要求会继续调整。证据见`motion292-acceptance/t2-calibration-20261018/summary.json`。
 
 ### shortcut 性能优化
 

@@ -21,6 +21,7 @@ class RollingRoundTest(unittest.TestCase):
         self.assertTrue(all(stage.initial_cycle == Path("cycle.json") and stage.seed == 7 for stage in stages))
         self.assertEqual(stages[0].slices, 8)
         self.assertEqual(stages[2].slices, 32)
+        self.assertEqual([stage.compute_bound_s for stage in stages], [.95, .05, .1, .65, .8, 1.1])
 
 
 if __name__ == "__main__":

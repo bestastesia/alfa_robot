@@ -12,9 +12,9 @@ from v3_rolling_replan import (close_persistent_worker, persistent_stage_config,
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
 STAGE_SCHEDULES = {
-    "approach": (1.8, .1, 8), "contact_approach": (.2, .1, 5),
-    "extract": (.2, .1, 32), "transport": (1.8, .1, 4),
-    "conveyor_place": (.85, .1, 8), "return_home": (1.8, .1, 4),
+    "approach": (.95, .1, 8), "contact_approach": (.05, .1, 5),
+    "extract": (.1, .1, 32), "transport": (.65, .1, 4),
+    "conveyor_place": (.8, .1, 8), "return_home": (1.1, .1, 4),
 }
 
 

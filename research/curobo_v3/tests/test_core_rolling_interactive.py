@@ -27,7 +27,7 @@ class RollingInteractiveTest(unittest.TestCase):
         commands = {stage: command_for(args, cycle, controls, stage, output) for stage in STAGES}
         self.assertTrue(all("--stream-progress" in command and str(cycle) in command
                             for command in commands.values()))
-        self.assertEqual(float(commands["contact_approach"][commands["contact_approach"].index("--compute-bound-s") + 1]), .2)
+        self.assertEqual(float(commands["contact_approach"][commands["contact_approach"].index("--compute-bound-s") + 1]), .05)
         self.assertIn("static", commands["transport"])
         self.assertIn("clear", commands["approach"])
         self.assertNotIn("--obstacle-center", commands["approach"])

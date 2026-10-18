@@ -28,12 +28,12 @@ STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_plac
 # Proven per-stage budgets from the frozen acceptance matrix. One global budget cannot satisfy
 # both the 1.5 s contact phase and the long free-space phases.
 STAGE_SCHEDULES = {
-    "approach": (1.8, .1, 8),
-    "contact_approach": (.2, .1, 5),
-    "extract": (.2, .1, 32),
-    "transport": (1.8, .1, 4),
-    "conveyor_place": (.85, .1, 8),
-    "return_home": (1.8, .1, 4),
+    "approach": (.95, .1, 8),
+    "contact_approach": (.05, .1, 5),
+    "extract": (.1, .1, 32),
+    "transport": (.65, .1, 4),
+    "conveyor_place": (.8, .1, 8),
+    "return_home": (1.1, .1, 4),
 }
 ROLL_COLORS = (
     ((30, 225, 80), (30, 155, 245)),

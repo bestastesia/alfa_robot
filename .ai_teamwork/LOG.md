@@ -2329,3 +2329,7 @@
 - 新增`v3_t2_calibration.py`：从最终90正常场景与15轮clear证据提取每阶段compute墙钟，按相同控制流signature逐项取span最大值形成组合上界，再加25%硬件/调度余量并向上取整50ms；不把互斥分支错误相加。
 - 初步候选（尚未冻结）：approach 0.95s、contact_approach 0.05s、extract 0.10s、transport 0.65s、conveyor_place 0.80s、return_home 1.10s；对应旧值1.8/0.2/0.2/1.8/0.85/1.8。
 - 常驻worker第1轮默认动态场景按候选t2六阶段6/6完成、0 deadline miss；实测max compute依次0.423/0.023/0.056/0.523/0.485/0.389s。仍需15轮clear、各阶段最坏障碍×3种子、GPU并发/热压与故障矩阵，完成前不改正式STAGE_SCHEDULES。证据`motion292-acceptance/t2-calibration-20261018/summary.json`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 候选t2转为实际预算
+- 按用户决定，将正式`STAGE_SCHEDULES`改为：初始姿态→预接触点0.95s、最后3厘米贴近0.05s、抽离35厘米0.10s、携箱运输0.65s、固定底盘放箱0.80s、返回初始姿态1.10s，t3仍0.1s、切片数仍8/5/32/4/8/4。
+- 第1轮常驻worker动态场景已按该组预算六阶段6/6、0 deadline miss；后台子代理继续跑15轮、最坏障碍多种子、GPU压力及故障矩阵，后续按证据调整，不再称“未冻结候选”。
