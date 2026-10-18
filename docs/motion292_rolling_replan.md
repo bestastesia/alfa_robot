@@ -78,6 +78,31 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
+### 实时 Viser 完整轮诊断界面
+
+新界面启动时不载入任何历史轨迹。点击“从头规划并实时演示完整一轮”后，它会：
+
+1. 在本次点击后重新运行 `v3_rolling_prepare.py --round N`，完成该轮六阶段初始轨迹规划；
+2. 按 `approach → contact_approach → extract → transport → conveyor_place → return_home` 逐阶段执行墙钟滚动优化；
+3. 灰色分别显示左右末端本次新生成的原轨迹，绿色/蓝色在每次接续轨迹真正产出并激活时才追加左右末端新路线；
+4. 侧栏实时追加每阶段初始规划账、每次滚动求解墙钟耗时和仿真实际运动墙钟耗时。共享规划项会明确标“共享”，嵌套 SDK 诊断不重复相加。
+
+在上面已准备的隔离 runtime 中直接启动（8104 若仍有旧界面，使用 8105）：
+
+```bash
+cd /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3
+source /home/astesia/Sevenova/curobo_v2/activate.sh
+PYTHONPATH="/home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools:/home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main" \
+python -u /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_interactive.py \
+  --preparer /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_prepare.py \
+  --runner /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/tools/v3_rolling_replan.py \
+  --round 0 \
+  --execution-timeout-s 120 \
+  --port 8105
+```
+
+`--initial-cycle`/`--initial-result`只为兼容旧启动命令而保留，界面不会读取其中的预计算路线。
+
 CPU 合同测试（不要求 GPU）：
 
 ```bash

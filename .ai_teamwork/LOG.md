@@ -2298,3 +2298,9 @@
 - exact切片最终用局部PPoly系数，解决13.7us首段Bernstein导数消减；第3轮单臂放箱/抽离独立GPU通过。CPU106/106、GPU世界回归1/1。Firefox回放真实加载/播放/暂停通过。
 - 正式证据根`motion292-acceptance/pr65-release-v30`：acceptance-report-current.json、all-rounds-clear-summary.json、full-sequence-summary-current.json、release-manifest.json、round-audits、replay.png/DOM。invalidated-evidence列出v20-v23等旧源码/OOM/中止目录，不得混用。
 - 仿真合同完成但Issue不能Done：MOTION-296仍In Progress；真实动力学/力矩、15轴未来边界原子换轨与保护停机、真实感知/反馈/时钟、安全评审及PR merge仍外部未完成。未发硬件命令。
+
+## 2026-10-18 运控 / Codex / MOTION-292 实时完整轮Viser诊断界面
+- 原交互页已改为点击后才新跑`v3_rolling_prepare --round N`，不再加载`--initial-result`里的整段滚动结果；随后依次执行六阶段墙钟滚动优化。左右末端原轨迹分别以灰线显示，每个候选在真实激活事件到达时才追加左右末端新路线。
+- `v3_rolling_replan.py --stream-progress`新增机器可读事件：阶段开始、观测、逐次求解耗时、轨迹激活、实时运动采样、阶段结束。侧栏按阶段显示本轮初始规划账、每次滚动`compute_wall_s`和仿真实际运动墙钟；共享/嵌套规划账不重复相加。
+- 验证：CPU core 108/108；新鲜第1轮初始规划成功（规划3077.557ms、时间化2949.314ms）；默认完整六阶段流式闭环6/6成功，接续数6/4/31/4/7/3，每次均有同数`trajectory_activated`，六阶段运动墙钟合计49.767s。摘要`motion292-acceptance/live-ui-20261018/verification-summary.json`。Viser 8105 HTTP 200；Firefox WebDriver BiDi在本机X11真实点击启动并抓取运行中/完成DOM与截图，确认双末端原/新轨迹及逐次耗时实时出现，证据`motion292-acceptance/live-ui-20261018/browser.png`、`browser-dom.json`。
+- 当前只做仿真，不发送硬件命令；真实控制/安全前置仍不变。启动命令与界面语义见`docs/motion292_rolling_replan.md`。

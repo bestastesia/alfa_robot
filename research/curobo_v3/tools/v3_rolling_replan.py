@@ -26,6 +26,17 @@ from curobo_core.scene import Pose, SceneObject, SceneSnapshot
 from curobo_core.trajectory import TimedTrajectory
 
 
+PROGRESS_PREFIX = "MOTION292_PROGRESS "
+
+
+def progress_line(event, **fields):
+    return PROGRESS_PREFIX + json.dumps({"event": event, **fields}, ensure_ascii=False, separators=(",", ":"))
+
+
+def publish_progress(args, event, **fields):
+    if getattr(args, "stream_progress", False):
+        print(progress_line(event, **fields), flush=True)
+
 
 def runtime_source_hashes(tools):
     """Include inherited Mentor planners, not just the online adapter directory."""
@@ -253,6 +264,9 @@ def run(args):
                                  max_scene_age_s=schedule.period_s + args.compute_bound_s + args.link_bound_s,
                                  max_feedback_age_s=args.max_feedback_age_s)
         report["started_at"] = started
+        publish_progress(args, "stage_started", stage=args.stage, round=args.round,
+                         started_at=started, initial_snapshot=report["initial_snapshot"],
+                         initial_trajectory=initial, schedule=report["schedule"])
         def complete(received_at):
             if not any(event["event"] in ("terminal_validated", "terminal_certificate_reused")
                        for event in segment.events):
@@ -284,7 +298,13 @@ def run(args):
                 observation = replace(observation, observed_at=now-segment.max_scene_age_s-1.)
             if fault == "feedback_error":
                 feedback.state["positions"] = feedback.state["positions"] + .1
-            report["observations"].append({**asdict(observation), "identity": observation.identity})
+            observed = {**asdict(observation), "identity": observation.identity}
+            report["observations"].append(observed)
+            rolling_obstacle = next((item for item in observed["snapshot"]["objects"]
+                                     if item["object_id"] == "rolling_obstacle"), None)
+            publish_progress(args, "observation", stage=args.stage, elapsed_s=now-started,
+                             obstacle=rolling_obstacle,
+                             obstacle_velocity=dict(observed["velocities"]).get("rolling_obstacle"))
             report["feedbacks"].append({"trajectory_id": feedback.trajectory_id, "sampled_at": feedback.sampled_at,
                                        "joint_names": feedback.joint_names,
                                        "state": {k: v.tolist() for k, v in feedback.state.items()}})
@@ -331,6 +351,8 @@ def run(args):
                 if message is not None:
                     if "progress" in message:
                         report["worker_events"].append(message["progress"])
+                        publish_progress(args, "planner_progress", stage=args.stage,
+                                         detail=message["progress"])
                         continue
                     result = message
                     received_at = time.perf_counter()
@@ -339,6 +361,13 @@ def run(args):
                     if fault == "link_delay":
                         arrived += schedule.period_s + args.link_bound_s
                     report["solves"].append(result)
+                    publish_progress(args, "solve_finished", stage=args.stage,
+                                     sequence=result.get("sequence"), terminal=bool(result.get("terminal")),
+                                     success=bool(result.get("success")), strategy=result.get("strategy"),
+                                     compute_wall_s=result.get("compute_wall_s"),
+                                     request_to_ready_s=result.get("request_to_ready_s"),
+                                     sdk_solve_times_s=result.get("sdk_solve_times_s", []),
+                                     failure_code=result.get("failure_code"))
                     if not result.get("success"):
                         report["failure_code"] = result.get("failure_code", "PLAN_REJECTED")
                         report["required_action"] = result.get("required_action", "independent_safety_intervention")
@@ -386,10 +415,17 @@ def run(args):
                         segment.events[-1]["feedback_latency_s"] = now-observation.observed_at
                         report["trajectories"].append({"active_at": boundary,
                                                        "trajectory": result["trajectory"]})
+                        publish_progress(args, "trajectory_activated", stage=args.stage,
+                                         sequence=segment.sequence - 1, active_at=boundary,
+                                         strategy=result.get("strategy"), trajectory=result["trajectory"])
                     break
                 if now >= next_sample:
-                    report["samples"].append({"at": now, "trajectory_id": segment.trajectory_id,
-                                               **{k: v.tolist() for k, v in segment.state(now).items()}})
+                    sample = {"at": now, "trajectory_id": segment.trajectory_id,
+                              **{k: v.tolist() for k, v in segment.state(now).items()}}
+                    report["samples"].append(sample)
+                    publish_progress(args, "motion_sample", stage=args.stage,
+                                     elapsed_s=now-started, joint_names=list(segment.active.joint_names),
+                                     positions=sample["positions"])
                     next_sample = now + .02
                 time.sleep(min(.002, max(0., boundary-time.perf_counter())))
             if terminal:
@@ -456,6 +492,11 @@ def run(args):
                                                    for x in report["solves"])
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
+        motion_wall_s = (report.get("completed_at", 0.) - report.get("started_at", 0.)
+                         if "completed_at" in report and "started_at" in report else 0.)
+        publish_progress(args, "stage_finished", stage=args.stage, success=report["success"],
+                         motion_wall_s=max(0., motion_wall_s), splice_count=report["splice_count"],
+                         failure_code=report.get("failure_code"))
     print(json.dumps({k: report[k] for k in ("success", "trigger_count", "splice_count", "direct_optimization_success_count",
                                             "braking_replan_count", "revalidated_fallback_count", "statistics")},
                      ensure_ascii=False), flush=True)
@@ -489,6 +530,8 @@ def main():
     parser.add_argument("--max-feedback-age-s", type=float, default=.1)
     parser.add_argument("--seed", type=int, default=20261003)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--stream-progress", action="store_true",
+                        help="emit line-delimited UI progress on stdout")
     args = parser.parse_args()
     if (not math.isfinite(args.execution_timeout_s) or args.execution_timeout_s <= 0 or
             not math.isfinite(args.max_feedback_age_s) or args.max_feedback_age_s <= 0 or
