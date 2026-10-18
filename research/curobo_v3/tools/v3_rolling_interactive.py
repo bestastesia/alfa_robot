@@ -60,39 +60,47 @@ def main():
     urdf = yourdfpy.URDF.load(args.urdf, load_meshes=True, build_scene_graph=True,
                               filename_handler=lambda fname: str(mesh_dir / Path(fname).name))
     server = viser.ViserServer(host="127.0.0.1", port=args.port, label="MOTION-292 动态避障")
+    @server.on_client_connect
+    def _focus_path(client):
+        client.camera.position = (2.2, -1.7, 2.35)
+        client.camera.look_at = (.78, .68, 1.4)
+        client.camera.up_direction = (0., 0., 1.)
     robot = ViserUrdf(server, urdf, root_node_name="/robot")
     robot_frame = server.scene.add_frame("/robot", show_axes=False)
     original_path = server.scene.add_line_segments("/path/original", points=np.zeros((1, 2, 3)),
-                                                   colors=(160, 160, 160), line_width=3.)
+                                                   colors=(70, 70, 70), line_width=4.)
     active_path = server.scene.add_line_segments("/path/updated", points=np.zeros((1, 2, 3)),
-                                                 colors=(35, 220, 130), line_width=5.)
+                                                 colors=(20, 235, 70), line_width=7.)
     obstacle = [None]
     scene_nodes, payload_nodes = [], []
     state = {}
     preview = [False]
+    auto_play_after_replan = [False]
     inbox = queue.Queue()
     busy = threading.Event()
 
-    server.gui.add_markdown("## MOTION-292 · 动态避障\n**灰：原轨迹　绿：更新后轨迹　红：障碍物**\n\n仅仿真，不发送实机指令。")
-    with server.gui.add_folder("添加障碍", expand_by_default=True):
+    server.gui.add_markdown("## MOTION-292 · 完整搬运阶段（transport）\n**灰：原轨迹　绿：避障后轨迹　红：障碍物**\n\n下面的大按钮会自动完成全部步骤。仅仿真，不发送实机指令。")
+    demo = server.gui.add_button("▶ 一键演示：加障碍 → 重规划 → 完整播放", color="green")
+    replay = server.gui.add_button("↻ 重新播放完整阶段")
+    status = server.gui.add_markdown("**就绪。** 点击绿色按钮即可。")
+    with server.gui.add_folder("障碍设置（可选）", expand_by_default=False):
         stage = server.gui.add_dropdown("路径段", options=("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"), initial_value=report["stage"])
         scenario = server.gui.add_dropdown("障碍模式", options=("static", "moving", "appear", "depart"), initial_value=report["scenario"] if report["scenario"] != "clear" else "static")
         center = server.gui.add_vector3("中心 XYZ / m", initial_value=report.get("obstacle_center_override_map_m") or (-1.0486, .6355, 1.2774), step=.005)
         size = server.gui.add_vector3("尺寸 XYZ / m", initial_value=report.get("obstacle_size_m", (.08, .08, .08)), min=(.005, .005, .005), step=.005)
         velocity = server.gui.add_vector3("速度 XYZ / m/s", initial_value=report.get("obstacle_velocity_override_map_m_s") or (.025, 0., 0.), step=.005)
-        preview_button = server.gui.add_button("添加/预览障碍", color="red")
-    with server.gui.add_folder("实时编排", expand_by_default=True):
+        preview_button = server.gui.add_button("① 添加/预览障碍", color="red")
+        replan = server.gui.add_button("② 重新规划", color="green")
+    with server.gui.add_folder("编排参数（高级）", expand_by_default=False):
         t2 = server.gui.add_number("t2 计算上界 / s", initial_value=report["schedule"]["compute_bound_s"], min=.01, step=.01)
         t3 = server.gui.add_number("t3 通信上界 / s", initial_value=report["schedule"]["link_bound_s"], min=0., step=.01)
         link_delay = server.gui.add_number("模拟通信延迟 / s", initial_value=.02, min=0., step=.01)
         slices = server.gui.add_number("n 小段数", initial_value=report["schedule"]["slices"], min=1, step=1)
         braking = server.gui.add_number("内部减速时长 / s", initial_value=report.get("braking_duration_s", .4), min=.05, step=.05)
         seed = server.gui.add_number("随机种子", initial_value=report.get("seed", 20261003), min=0, step=1)
-        replan = server.gui.add_button("重新规划", color="green")
-    play = server.gui.add_checkbox("播放", initial_value=False)
+    play = server.gui.add_checkbox("播放/暂停", initial_value=False)
     speed = server.gui.add_slider("倍率", min=.1, max=3., step=.1, initial_value=1.)
-    progress = server.gui.add_slider("进度 / %", min=0., max=100., step=.1, initial_value=65.)
-    status = server.gui.add_markdown("")
+    progress = server.gui.add_slider("完整阶段进度 / %", min=0., max=100., step=.1, initial_value=0.)
 
     def replace_obstacle(dimensions):
         if obstacle[0] is not None:
@@ -110,6 +118,18 @@ def main():
             points = np.asarray(points)
             lines.append(np.stack((points[:-1], points[1:]), axis=1))
         return lines
+
+    def executed_line(new_report, joint_names, base_transform):
+        rows = new_report.get("samples", [])
+        if len(rows) < 2:
+            return np.zeros((1, 2, 3))
+        indices = np.unique(np.linspace(0, len(rows)-1, min(150, len(rows)), dtype=int))
+        points = []
+        for index in indices:
+            urdf.update_cfg(dict(zip(joint_names, rows[index]["positions"])))
+            points.append((base_transform @ urdf.get_transform("left_tool0", urdf.base_link))[:3, 3].copy())
+        points = np.asarray(points)
+        return np.stack((points[:-1], points[1:]), axis=1)
 
     def install(new_report):
         for node in scene_nodes + [node for _, node in payload_nodes]:
@@ -140,9 +160,10 @@ def main():
                      started=started, duration=max(.001, ended-started), observations=new_report["observations"],
                      observation_times=[item["received_at"] for item in new_report["observations"]])
         original_path.points = state["paths"][0]
+        active_path.points = executed_line(new_report, curves[0].joint_names, base_transform)
         replace_obstacle(new_report.get("obstacle_size_m", size.value))
         preview[0] = False
-        progress.value = 65.
+        progress.value = 0.
 
     def controls():
         values = dict(stage=stage.value, scenario=scenario.value, center=np.asarray(center.value, float),
@@ -170,8 +191,7 @@ def main():
         except ValueError as error:
             status.content = f"**输入错误：** {error}"
 
-    @replan.on_click
-    def _(_event):
+    def start_replan(autoplay):
         if busy.is_set():
             return
         try:
@@ -179,8 +199,8 @@ def main():
         except ValueError as error:
             status.content = f"**输入错误：** {error}"
             return
-        busy.set(); play.value = False
-        status.content = "**正在重新规划…** 机器人模型仍显示上一条安全轨迹。"
+        busy.set(); play.value = False; auto_play_after_replan[0] = autoplay
+        status.content = "**第 2/3 步：正在重新规划…** 保留上一条安全轨迹。"
         def work():
             output = Path(tempfile.mkdtemp(prefix="motion292-viser-")) / "result.json"
             command = command_for(args, values, output)
@@ -193,6 +213,26 @@ def main():
                 inbox.put((None, f"{type(error).__name__}: {error}"))
         threading.Thread(target=work, name="motion292-interactive-replan", daemon=True).start()
 
+    @replan.on_click
+    def _(_event):
+        start_replan(False)
+
+    @demo.on_click
+    def _(_event):
+        stage.value = "transport"; scenario.value = "static"
+        center.value = (.7253190279006958, .6944118738174438, 1.164883017539978)
+        size.value = (.08, .08, .08); velocity.value = (0., 0., 0.)
+        t2.value = 1.8; t3.value = .1; link_delay.value = .02; slices.value = 4; braking.value = .5
+        replace_obstacle(size.value); obstacle[0].position = center.value; obstacle[0].visible = True
+        preview[0] = True; progress.value = 0.
+        status.content = "**第 1/3 步：障碍已加入。** 即将计算避障轨迹。"
+        start_replan(True)
+
+    @replay.on_click
+    def _(_event):
+        preview[0] = False; progress.value = 0.; play.value = True
+        status.content = f"**正在播放完整阶段：{state['report']['stage']}（{state['duration']:.2f}s）**"
+
     install(report)
     previous = time.perf_counter()
     while True:
@@ -201,12 +241,16 @@ def main():
             busy.clear()
             if new_report and new_report.get("success"):
                 install(new_report)
-                status.content = (f"**更新完成。** 接续 {new_report['splice_count']} 次；"
+                status.content = (f"**第 3/3 步：开始完整播放。** 接续 {new_report['splice_count']} 次；"
                                   f"直接优化 {new_report.get('direct_splice_count', 0)} 次；"
                                   f"内部停稳后重规划 {new_report.get('braking_replan_count', 0)} 次。")
+                if auto_play_after_replan[0]:
+                    progress.value = 0.; play.value = True
+                auto_play_after_replan[0] = False
             else:
                 failure = (new_report or {}).get("failure_code", "PROCESS_FAILED")
                 action = (new_report or {}).get("required_action", "保持上一条安全轨迹")
+                auto_play_after_replan[0] = False
                 status.content = f"**规划拒绝：{failure}** 需要：{action}.\n\n`{log[-500:]}`"
         except queue.Empty:
             pass
@@ -215,6 +259,8 @@ def main():
             progress.value = min(100., progress.value + (now-previous) * speed.value / state["duration"] * 100.)
             if progress.value >= 100.:
                 play.value = False
+                status.content = (f"**完整阶段播放完成。** {state['report']['stage']} · "
+                                  f"{state['duration']:.2f}s · 接续 {state['report']['splice_count']} 次。")
         previous = now
         absolute = state["started"] + state["duration"] * progress.value / 100.
         index = max(0, bisect.bisect_right(state["epochs"], absolute)-1)
@@ -222,7 +268,6 @@ def main():
         sample = curve.sample(np.clip(absolute-state["epochs"][index], 0., curve.duration))
         cfg = dict(zip(curve.joint_names, sample["positions"]))
         urdf.update_cfg(cfg); robot.update_cfg(cfg)
-        active_path.points = state["paths"][index]
         for attachment, node in payload_nodes:
             pose = matrix_pose(state["base_transform"] @ urdf.get_transform(attachment.parent_link, urdf.base_link) @ pose_matrix(attachment.tool_to_object))
             node.position, node.wxyz = pose.position, pose.quaternion_wxyz
@@ -235,8 +280,6 @@ def main():
                 obs = state["observations"][obs_index]
                 velocity_map = dict(obs["velocities"])
                 obstacle[0].position = np.asarray(obj["pose"]["position"]) + np.asarray(velocity_map["rolling_obstacle"]) * (absolute-obs["observed_at"])
-        if not busy.is_set() and not status.content:
-            status.content = f"阶段 **{state['report']['stage']}** · 接续 **{index}** 次"
         time.sleep(.03)
 
 
