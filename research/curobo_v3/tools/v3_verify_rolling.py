@@ -115,9 +115,13 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     schedule = report["schedule"]
     t1, t2, t3, n = (schedule[key] for key in ("duration_s", "compute_bound_s", "link_bound_s", "slices"))
     t4 = schedule.get("admission_bound_s", 0.)
-    if (not np.isfinite([t1, t2, t3, t4]).all() or t2 <= 0 or min(t3, t4) < 0 or
-            type(n) is not int or not 1 <= n <= t1/(t2+t3+t4)):
-        raise ValueError("invalid t1/t2/t3/t4/n")
+    t2_first = schedule.get("first_compute_bound_s", t2)
+    required = t2_first+t3+t4 + (n-1)*(t2+t3+t4)
+    if (not np.isfinite([t1, t2, t2_first, t3, t4]).all() or min(t2, t2_first) <= 0 or
+            min(t3, t4) < 0 or type(n) is not int or n < 1 or required > t1+1e-9):
+        raise ValueError("invalid t1/t2_first/t2_rolling/t3/t4/n")
+    slack = (t1-required)/n
+    first_period, rolling_period = t2_first+t3+t4+slack, t2+t3+t4+slack
     if report["hardware_commands"]:
         raise ValueError("hardware-enabled report is not a simulation acceptance result")
     if report["success"] != expect_complete:
@@ -165,8 +169,10 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     if sequences != list(range(len(sequences))) or any(type(sequence) is not int for sequence in sequences):
         raise ValueError("duplicate, missing or out-of-order replanning request")
     for request in request_events:
-        tick = report["started_at"] + request["sequence"] * (t1/n)
-        if not tick <= request["at"] < tick+t1/n or abs(request["splice_at"]-(tick+t1/n)) > 1e-8:
+        sequence = request["sequence"]
+        tick = report["started_at"] if sequence == 0 else report["started_at"]+first_period+(sequence-1)*rolling_period
+        period = first_period if sequence == 0 else rolling_period
+        if not tick <= request["at"] < tick+period or abs(request["splice_at"]-(tick+period)) > 1e-8:
             raise ValueError("replanning request does not follow the declared time-slice schedule")
     requests = {e["sequence"]: e for e in request_events}
     staged = {e["sequence"]: e for e in report["events"] if e["event"] == "staged"}
@@ -177,7 +183,8 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     for i, event in enumerate(activated):
         request, stage = requests[event["sequence"]], staged[event["sequence"]]
         observation = observations[request["scene_id"]]
-        deadline = min(request["at"]+t2, request["splice_at"]-t3-t4)
+        compute_bound = t2_first if request["sequence"] == 0 else t2
+        deadline = min(request["at"]+compute_bound, request["splice_at"]-t3-t4)
         received_at = stage.get("received_at", stage["at"])
         transport_ok = stage["safe_ready_at"] <= received_at <= stage["safe_ready_at"]+t3+1e-8
         admission_ok = (received_at <= stage["at"] <= received_at+t4+1e-8 if t4 else

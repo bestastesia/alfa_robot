@@ -29,7 +29,8 @@ def stage_args(args, stage):
         admission_bound_s=t4, link_delay_s=min(args.link_delay_s, t3), slices=None,
         execution_timeout_s=args.execution_timeout_s, disable_braking_fallback=False,
         braking_duration_s=args.braking_duration_s, max_feedback_age_s=.1,
-        seed=args.seed, output=args.output_dir / f"{stage}.json", stream_progress=args.stream_progress)
+        seed=args.seed, output=args.output_dir / f"{stage}.json", stream_progress=args.stream_progress,
+        first_compute_bound_s=t2 + 1.5)
 
 
 def main():
@@ -74,6 +75,9 @@ def main():
         "worker_initialization_s": shared["service"]["initialization_s"],
         "worker_warmup_s": prime["wall_s"],
         "warmed_topologies": prime["warmed_topologies"],
+        "first_planning": [{"stage": stage, "t2_first_s": stage_options[index].first_compute_bound_s,
+                            "warmup": detail["warmup"]}
+                           for index, (stage, detail) in enumerate(zip(STAGES, prime["stages"]))],
         "stages": [{"stage": report["stage"], "success": report["success"],
                     "splice_count": report["splice_count"],
                     "motion_wall_s": report["completed_at"] - report["started_at"],

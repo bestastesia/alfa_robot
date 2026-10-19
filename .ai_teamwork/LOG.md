@@ -2344,3 +2344,8 @@
 - 按完整压力建议并执行用户1s封顶：t2=初始姿态→预接触点1.00s、最后3厘米贴近0.10s、抽离35厘米0.35s、携箱运输0.75s、固定底盘放箱0.90s、返回初始姿态1.00s；t3=0.15s、t4=0.05s。
 - t3统计ready到完整接收（含20ms模拟链路），t4统计接收到合同验收完成；CPU core 113/113。原固定切片造成的36项schedule infeasible不再属于运行配置。
 - 新基线冒烟补充：动态切片下第1轮初始姿态→预接触点、最后3厘米贴近、抽离35厘米通过；携箱运输static首轮出现request_to_ready=0.815s超过用户封顶后的t2=0.75s，正确fail-closed。该失败不回退用户指定预算，纳入后续子代理重跑与是否需调整的证据。
+
+## 2026-10-19 运控 / Codex / MOTION-292 首次规划与滚动预算拆分
+- 新增`t2_first=t2_rolling+1.5s`临时预算；自由空间阶段第一个切片使用first预算，后续切片使用rolling预算，动态切片按一个first窗口加若干rolling窗口计算。最后3厘米贴近/抽离35厘米无TrajOpt首次构建，仍按rolling窗口执行但报告保留配置的first预算。
+- 常驻worker预备阶段不再只按empty/loaded粗粒度，而按真实TrajectoryOptimizer key（箱号组合、吸附方式、接触偏移、箱体几何、附件）执行第一条真实形态的suffix求解，记录first_wall与deadline；不缓存轨迹结果。
+- 第1轮static携箱运输GPU冒烟六阶段6/6通过：approach first=2.386s<2.5s，loaded key first=1.623s<2.25s；后续rolling回落到正常分布。CPU core 114/114。

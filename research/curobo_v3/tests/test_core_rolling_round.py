@@ -22,6 +22,7 @@ class RollingRoundTest(unittest.TestCase):
         self.assertTrue(all(stage.slices is None for stage in stages))
         self.assertEqual([stage.compute_bound_s for stage in stages], [1., .1, .35, .75, .9, 1.])
         self.assertTrue(all(stage.admission_bound_s == .05 for stage in stages))
+        self.assertEqual([stage.first_compute_bound_s for stage in stages], [2.5, 1.6, 1.85, 2.25, 2.4, 2.5])
 
 
 if __name__ == "__main__":

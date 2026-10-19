@@ -78,6 +78,10 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
+### t2_first / t2_rolling
+
+当前`t2_first=t2_rolling+1.5s`（临时值）。自由空间阶段第一个窗口承担真实任务key的solver/CUDA Graph首次构建，后续窗口使用`t2_rolling`；动态切片由一个first窗口和若干rolling窗口共同计算。最后3厘米贴近与抽离35厘米不调用TrajOpt，因此不消耗额外first窗口。预备调用只缓存优化器/GPU资源，不缓存轨迹结果。
+
 ### t3 / t4 独立预算
 
 当前`t3=0.15s`只负责规划结果从ready到完整接收，`t4=0.05s`负责接收后连续性、场景版本、终点和有效期验收并进入双缓冲区。每轮每阶段按实际`t1`动态计算`n=floor(t1/(t2+t3+t4))`，不再使用固定切片数；结果报告分别记录`transport_latency_s`与`admission_latency_s`。

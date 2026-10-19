@@ -22,7 +22,7 @@ import numpy as np
 
 from curobo_core.contracts import ACTIVE_JOINTS, PlannerAssets
 from curobo_core.rolling import ExecutionFeedback, RollingSegment, SceneObservation, SliceSchedule
-from curobo_core.scene import Pose, SceneObject, SceneSnapshot
+from curobo_core.scene import Pose, SceneObject, SceneSnapshot, digest
 from curobo_core.trajectory import TimedTrajectory
 
 
@@ -168,15 +168,25 @@ def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, ra
             validity = adapter.scene(stage_snapshot)
             initial_validation = adapter.validate(stage_initial, validity)
             curve = TimedTrajectory(stage_initial)
-            topology = "loaded" if stage_payload else "empty"
-            warm = {"reused": topology in warmed}
-            if allow_warm and topology not in warmed and stage_phase not in ("contact_approach", "extract"):
-                cut = curve.duration / 4
-                _, warm = backend.optimize_rrt_path(
+            optimizer_key = backend.trajectory_optimizer_key(stage_boxes, stage_payload)
+            warm = {"reused": optimizer_key in warmed, "optimizer_key": digest(optimizer_key),
+                    "first_compute_bound_s": config["first_compute_bound_s"]}
+            if allow_warm and optimizer_key not in warmed and stage_phase not in ("contact_approach", "extract"):
+                schedule = SliceSchedule(curve.duration, config["compute_bound_s"],
+                                         config["link_bound_s"], None,
+                                         config["admission_bound_s"])
+                cut = schedule.period_s
+                first_started = time.perf_counter()
+                _, first = backend.optimize_rrt_path(
                     curve.suffix(cut)["positions"], validity, stage_boxes,
                     payload=stage_payload, start_state=curve.sample(cut))
-                warm.pop("trajectory", None)
-                warmed.add(topology)
+                first_wall_s = time.perf_counter() - first_started
+                first.pop("trajectory", None)
+                warm.update(first_planning=first, first_wall_s=first_wall_s,
+                            first_deadline_miss=first_wall_s > config["first_compute_bound_s"])
+                warmed.add(optimizer_key)
+            elif stage_phase in ("contact_approach", "extract"):
+                warm["not_applicable"] = "constrained phase has no TrajOpt first-call"
             q = torch.tensor(curve.sample(curve.duration * .6)["positions"],
                              device="cuda", dtype=torch.float32).reshape(1, 1, -1)
             state = validity.checker.kinematics.compute_kinematics(
@@ -279,7 +289,10 @@ def start_persistent_worker(timeout_s=180.):
 def persistent_stage_config(initial, snapshot, boxes, payload, args):
     return {"snapshot": snapshot, "boxes": boxes, "payload": payload, "initial": initial,
             "seed": args.seed, "phase": args.stage, "braking_duration_s": args.braking_duration_s,
-            "allow_braking_fallback": not args.disable_braking_fallback}
+            "allow_braking_fallback": not args.disable_braking_fallback,
+            "compute_bound_s": args.compute_bound_s, "link_bound_s": args.link_bound_s,
+            "admission_bound_s": getattr(args, "admission_bound_s", .05),
+            "first_compute_bound_s": getattr(args, "first_compute_bound_s", args.compute_bound_s + 1.5)}
 
 
 def prime_persistent_worker(shared, stages, timeout_s=240.):
@@ -330,8 +343,11 @@ def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedba
 def run(args, shared=None):
     initial, snapshot, boxes, payload = stage_input(json.loads(args.initial_cycle.read_text()), args.stage, args.round)
     curve = TimedTrajectory(initial)
+    configured_first_bound = getattr(args, "first_compute_bound_s", args.compute_bound_s + 1.5)
+    effective_first_bound = (args.compute_bound_s if args.stage in ("contact_approach", "extract")
+                             else configured_first_bound)
     schedule = SliceSchedule(curve.duration, args.compute_bound_s, args.link_bound_s, args.slices,
-                             getattr(args, "admission_bound_s", .1))
+                             getattr(args, "admission_bound_s", .05), effective_first_bound)
     if not 0 <= args.link_delay_s <= args.link_bound_s:
         raise ValueError("simulated link delay must fit its declared bound")
     owns_worker = shared is None
@@ -349,7 +365,8 @@ def run(args, shared=None):
               "obstacle_size_m": args.obstacle_size,
               "braking_duration_s": args.braking_duration_s,
               "braking_fallback_enabled": not args.disable_braking_fallback,
-              "schedule": asdict(schedule), "initial_snapshot": snapshot.to_dict(),
+              "schedule": {**asdict(schedule), "configured_first_compute_bound_s": configured_first_bound},
+              "initial_snapshot": snapshot.to_dict(),
               "initial_trajectory": initial, "task_boxes": boxes, "payload": payload,
               "initial_cycle_path": str(args.initial_cycle.resolve()), "solves": [], "observations": [], "feedbacks": [], "samples": [],
               "trajectories": [], "worker_events": [], "dynamics_enabled": False, "torque_constraints_enabled": False,
@@ -376,7 +393,7 @@ def run(args, shared=None):
             raise RuntimeError(startup.get("error", "worker failed to initialize"))
         started = time.perf_counter()
         segment = RollingSegment(initial, schedule, started,
-                                 max_scene_age_s=(schedule.period_s + args.compute_bound_s +
+                                 max_scene_age_s=(max(schedule.period_for(0), schedule.period_s) + args.compute_bound_s +
                                                   args.link_bound_s + schedule.admission_bound_s),
                                  max_feedback_age_s=args.max_feedback_age_s)
         report["started_at"] = started
@@ -649,6 +666,8 @@ def main():
                                            "feedback_error", "scene_changed", "worker_failure", "solver_failure", "admission_delay"),
                         default="none", help="simulation-only failure injection, at first tick")
     parser.add_argument("--compute-bound-s", type=float, required=True)
+    parser.add_argument("--first-compute-bound-s", type=float,
+                        help="test/startup budget for the first exact optimizer key; default t2+1.5s")
     parser.add_argument("--link-bound-s", type=float, required=True)
     parser.add_argument("--admission-bound-s", type=float, default=.05)
     parser.add_argument("--link-delay-s", type=float, default=0.)
@@ -663,6 +682,8 @@ def main():
     parser.add_argument("--stream-progress", action="store_true",
                         help="emit line-delimited UI progress on stdout")
     args = parser.parse_args()
+    if args.first_compute_bound_s is None:
+        args.first_compute_bound_s = args.compute_bound_s + 1.5
     if (not math.isfinite(args.execution_timeout_s) or args.execution_timeout_s <= 0 or
             not math.isfinite(args.max_feedback_age_s) or args.max_feedback_age_s <= 0 or
             not math.isfinite(args.braking_duration_s) or args.braking_duration_s <= 0 or

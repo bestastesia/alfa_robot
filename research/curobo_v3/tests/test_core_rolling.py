@@ -53,6 +53,18 @@ class RollingTest(unittest.TestCase):
             with self.subTest(args=args), self.assertRaises(ValueError):
                 SliceSchedule(*args)
 
+    def test_first_planning_budget_gets_a_longer_first_slice(self):
+        schedule = SliceSchedule(5., .5, .1, None, .1, 2.)
+        self.assertEqual(schedule.slices, 5)
+        self.assertAlmostEqual(schedule.compute_bound_for(0), 2.)
+        self.assertAlmostEqual(schedule.compute_bound_for(1), .5)
+        self.assertGreater(schedule.period_for(0), schedule.period_for(1))
+        self.assertAlmostEqual(schedule.period_for(0) + 4*schedule.period_for(1), 5.)
+        segment = RollingSegment(trajectory(5.), schedule, 10., max_scene_age_s=3.)
+        ticket = segment.begin(observation(), feedback(segment, 10.), 10.)
+        self.assertAlmostEqual(ticket.splice_at, 10. + schedule.period_for(0))
+        self.assertAlmostEqual(ticket.compute_deadline, 12.)
+
     def test_executes_prefix_then_installs_whole_suffix_with_nonzero_velocity(self):
         segment = self.segment()
         obs = observation()
@@ -626,16 +638,17 @@ class RollingTest(unittest.TestCase):
         source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_backend.py"
         tree = ast.parse(source.read_text())
         method = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)
-                      and n.name == "trajectory_optimizer")
+                      and n.name == "trajectory_optimizer_key")
         statements = []
         for statement in method.body:
-            if isinstance(statement, ast.If) and isinstance(statement.test, ast.Compare):
-                break  # stop before solver construction
+            if isinstance(statement, ast.Return):
+                statements.append(ast.Assign(targets=[ast.Name(id="key", ctx=ast.Store())], value=statement.value))
+                break
             statements.append(statement)
         obj = SimpleNamespace(prepare_task=lambda boxes: None, suction_mode="side", contact_offsets={},
                               box_fit={"dimensions": [1, 1, 1]}, snapshot=SimpleNamespace(attachments=()))
         context = dict(self=obj, boxes={"left": 24}, payload=True, digest=digest, asdict=asdict)
-        code = compile(ast.Module(body=statements, type_ignores=[]), str(source), "exec")
+        code = compile(ast.fix_missing_locations(ast.Module(body=statements, type_ignores=[])), str(source), "exec")
         exec(code, context)
         legacy = ("loaded", ("left",), "side", digest({}), digest(obj.box_fit))
         self.assertEqual(context["key"], legacy)

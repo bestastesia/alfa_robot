@@ -139,15 +139,17 @@ class RollingBackend(TimedSingleArmPlanner):
             raise ValueError("current checker only exempts base_link support")
         self.snapshot = snapshot
 
-    def trajectory_optimizer(self, boxes, payload=False):
-        """Return a cached kinematic TrajOpt solver; dynamics stay disabled until calibrated."""
-        self.prepare_task(boxes)
+    def trajectory_optimizer_key(self, boxes, payload=False):
         key = (("loaded", tuple(sorted(boxes)), self.suction_mode,
                 digest(self.contact_offsets), digest(self.box_fit)) if payload else ("empty",))
         if payload and self.snapshot.attachments:
-            # Only online confirmed attachments extend the legacy cache key.
-            # Static whole-cycle planning must retain its existing reuse policy.
             key = (*key, digest([asdict(item) for item in self.snapshot.attachments]))
+        return key
+
+    def trajectory_optimizer(self, boxes, payload=False):
+        """Return a cached kinematic TrajOpt solver; dynamics stay disabled until calibrated."""
+        self.prepare_task(boxes)
+        key = self.trajectory_optimizer_key(boxes, payload)
         if key not in self._cached_trajectory_optimizers:
             robot = loaded_robot(
                 self.robot, self.box_fit,

@@ -48,7 +48,9 @@ def command_for(args, cycle, controls, stage, output):
     scenario = controls["scenario"] if stage == controls["obstacle_stage"] else "clear"
     command = [sys.executable, str(args.runner), "--initial-cycle", str(cycle),
                "--round", "0", "--stage", stage, "--scenario", scenario,
-               "--compute-bound-s", str(t2), "--link-bound-s", str(t3),
+               "--compute-bound-s", str(t2), "--first-compute-bound-s",
+               str(t2 + 1.5),
+               "--link-bound-s", str(t3),
                "--admission-bound-s", str(t4),
                "--link-delay-s", str(min(controls["link_delay"], t3)),
                "--braking-duration-s", str(controls["braking"]),

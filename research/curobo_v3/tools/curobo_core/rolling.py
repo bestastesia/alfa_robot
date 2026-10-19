@@ -21,24 +21,40 @@ class SliceSchedule:
     link_bound_s: float
     slices: int | None = None
     admission_bound_s: float = 0.0
+    first_compute_bound_s: float | None = None
 
     def __post_init__(self):
+        first = self.compute_bound_s if self.first_compute_bound_s is None else self.first_compute_bound_s
         if (not all(math.isfinite(x) for x in
                     (self.duration_s, self.compute_bound_s, self.link_bound_s,
-                     self.admission_bound_s)) or
-                self.duration_s <= 0 or self.compute_bound_s <= 0 or
-                min(self.link_bound_s, self.admission_bound_s) < 0):
-            raise ValueError("positive t1/t2 and nonnegative t3/t4 required")
-        maximum = math.floor(self.duration_s / (
-            self.compute_bound_s + self.link_bound_s + self.admission_bound_s))
+                     self.admission_bound_s, first)) or
+                self.duration_s <= 0 or min(self.compute_bound_s, first) <= 0 or
+                min(self.link_bound_s, self.admission_bound_s) < 0 or first < self.compute_bound_s):
+            raise ValueError("positive t1/t2/t2_first and nonnegative t3/t4 required")
+        rolling = self.compute_bound_s + self.link_bound_s + self.admission_bound_s
+        initial = first + self.link_bound_s + self.admission_bound_s
+        maximum = 0 if self.duration_s < initial else 1 + math.floor((self.duration_s-initial) / rolling)
         count = maximum if self.slices is None else self.slices
         if type(count) is not int or not 1 <= count <= maximum:
-            raise ValueError("no feasible slicing: require integer 1 <= n <= t1/(t2+t3+t4)")
+            raise ValueError("no feasible slicing for t2_first/t2_rolling/t3/t4")
+        slack = (self.duration_s - initial - (count-1)*rolling) / count
         object.__setattr__(self, "slices", count)
+        object.__setattr__(self, "first_compute_bound_s", first)
+        object.__setattr__(self, "_first_period_s", initial + slack)
+        object.__setattr__(self, "_rolling_period_s", rolling + slack)
 
     @property
     def period_s(self):
-        return self.duration_s / self.slices
+        return self._rolling_period_s
+
+    def period_for(self, sequence):
+        return self._first_period_s if sequence == 0 else self._rolling_period_s
+
+    def tick_at(self, started_at, sequence):
+        return started_at if sequence == 0 else started_at + self._first_period_s + (sequence-1)*self._rolling_period_s
+
+    def compute_bound_for(self, sequence):
+        return self.first_compute_bound_s if sequence == 0 else self.compute_bound_s
 
 
 @dataclass(frozen=True)
@@ -239,18 +255,19 @@ class RollingSegment:
                     (previous.position_error_m, previous.velocity_error_m_s)):
                 raise ValueError("scene facts changed without a new revision")
         self.last_observation = observation
-        tick_at = self.started_at + self.sequence * self.schedule.period_s
-        if now < tick_at or now >= tick_at + self.schedule.period_s:
+        tick_at = self.schedule.tick_at(self.started_at, self.sequence)
+        period = self.schedule.period_for(self.sequence)
+        if now < tick_at or now >= tick_at + period:
             raise ValueError("missed scheduling tick")
         self._check_execution(feedback, now, self.state(feedback.sampled_at))
-        splice_at = tick_at + self.schedule.period_s
+        splice_at = tick_at + period
         # The final short remainder is executed to its original endpoint, not stretched.
         if splice_at >= self.active_at + self.active.duration - 1e-9:
             return None
         remaining = self.active.suffix(splice_at - self.active_at)
         self.pending = ReplanTicket(
             self.sequence, self.trajectory_id, observation.identity, tick_at, splice_at,
-            min(now + self.schedule.compute_bound_s,
+            min(now + self.schedule.compute_bound_for(self.sequence),
                 splice_at - self.schedule.link_bound_s - self.schedule.admission_bound_s),
             self.state(splice_at), remaining)
         self.events.append({"event": "requested", "at": now, "sequence": self.sequence,
