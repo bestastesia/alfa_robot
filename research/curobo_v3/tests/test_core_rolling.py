@@ -208,6 +208,25 @@ class RollingTest(unittest.TestCase):
         self.assertEqual(segment.events[-1]["at"], 10.75)
         self.assertEqual(segment.events[-1]["accepted_latency_s"], .75)
 
+    def test_t3_transport_and_t4_admission_have_independent_deadlines(self):
+        schedule = SliceSchedule(4., .5, .2, 5, .1)
+        segment = RollingSegment(trajectory(), schedule, 10., max_scene_age_s=2.)
+        obs = observation()
+        ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+        self.assertAlmostEqual(ticket.compute_deadline, 10.5)
+        segment.stage(ticket, ticket.remaining, obs, 10.49, 10.68,
+                      admission_clock=lambda: 10.75)
+        self.assertAlmostEqual(segment.events[-1]["transport_latency_s"], .19)
+        self.assertAlmostEqual(segment.events[-1]["admission_latency_s"], .07)
+        segment.activate(feedback(segment, 10.8), obs, 10.8)
+        for received, admitted, pattern in ((10.70, 10.75, "communication"),
+                                             (10.68, 10.79, "admission")):
+            segment = RollingSegment(trajectory(), schedule, 10., max_scene_age_s=2.)
+            ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+            with self.subTest(received=received, admitted=admitted), self.assertRaisesRegex(ValueError, pattern):
+                segment.stage(ticket, ticket.remaining, obs, 10.49, received,
+                              admission_clock=lambda: admitted)
+
     def test_reply_can_arrive_in_t3_after_a_valid_t2_computation(self):
         segment = self.segment(); obs = observation()
         ticket = segment.begin(obs, feedback(segment, 10.), 10.)

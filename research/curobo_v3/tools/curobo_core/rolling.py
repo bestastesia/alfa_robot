@@ -20,16 +20,20 @@ class SliceSchedule:
     compute_bound_s: float
     link_bound_s: float
     slices: int | None = None
+    admission_bound_s: float = 0.0
 
     def __post_init__(self):
         if (not all(math.isfinite(x) for x in
-                    (self.duration_s, self.compute_bound_s, self.link_bound_s)) or
-                self.duration_s <= 0 or self.compute_bound_s <= 0 or self.link_bound_s < 0):
-            raise ValueError("positive t1/t2 and nonnegative t3 required")
-        maximum = math.floor(self.duration_s / (self.compute_bound_s + self.link_bound_s))
+                    (self.duration_s, self.compute_bound_s, self.link_bound_s,
+                     self.admission_bound_s)) or
+                self.duration_s <= 0 or self.compute_bound_s <= 0 or
+                min(self.link_bound_s, self.admission_bound_s) < 0):
+            raise ValueError("positive t1/t2 and nonnegative t3/t4 required")
+        maximum = math.floor(self.duration_s / (
+            self.compute_bound_s + self.link_bound_s + self.admission_bound_s))
         count = maximum if self.slices is None else self.slices
         if type(count) is not int or not 1 <= count <= maximum:
-            raise ValueError("no feasible slicing: require integer 1 <= n <= t1/(t2+t3)")
+            raise ValueError("no feasible slicing: require integer 1 <= n <= t1/(t2+t3+t4)")
         object.__setattr__(self, "slices", count)
 
     @property
@@ -246,7 +250,8 @@ class RollingSegment:
         remaining = self.active.suffix(splice_at - self.active_at)
         self.pending = ReplanTicket(
             self.sequence, self.trajectory_id, observation.identity, tick_at, splice_at,
-            min(now + self.schedule.compute_bound_s, splice_at - self.schedule.link_bound_s),
+            min(now + self.schedule.compute_bound_s,
+                splice_at - self.schedule.link_bound_s - self.schedule.admission_bound_s),
             self.state(splice_at), remaining)
         self.events.append({"event": "requested", "at": now, "sequence": self.sequence,
                             "trajectory_id": self.trajectory_id, "scene_id": observation.identity,
@@ -285,11 +290,16 @@ class RollingSegment:
         # clock must measure admission AFTER that work, not backdate acceptance.
         admitted_at = received_at if admission_clock is None else admission_clock()
         observation.require_fresh(admitted_at, self.max_scene_age_s)
-        if not received_at <= admitted_at <= ticket.splice_at or admitted_at-ready_at > self.schedule.link_bound_s:
+        legacy_combined = self.schedule.admission_bound_s == 0.0
+        admission_ok = (admitted_at - ready_at <= self.schedule.link_bound_s if legacy_combined else
+                        admitted_at - received_at <= self.schedule.admission_bound_s)
+        if not received_at <= admitted_at <= ticket.splice_at or not admission_ok:
             raise ValueError("admission deadline miss")
         self.staged = candidate
         self.events.append({"event": "staged", "at": admitted_at, "sequence": ticket.sequence,
-                            "safe_ready_at": ready_at,
+                            "safe_ready_at": ready_at, "received_at": received_at,
+                            "transport_latency_s": received_at - ready_at,
+                            "admission_latency_s": admitted_at - received_at,
                             "available_latency_s": ready_at - observation.observed_at,
                             "accepted_latency_s": admitted_at - observation.observed_at})
 

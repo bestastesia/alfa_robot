@@ -78,6 +78,10 @@ python /home/astesia/Sevenova/motion292-acceptance/runtime/research/curobo_v3/to
   --output /home/astesia/Sevenova/motion292-acceptance/clear.json
 ```
 
+### t3 / t4 独立预算
+
+当前`t3=0.10s`只负责规划结果从ready到完整接收，`t4=0.10s`负责接收后连续性、场景版本、终点和有效期验收并进入双缓冲区；切片约束为`n <= t1/(t2+t3+t4)`。为留出t4，抽离35厘米切片由32改为24，固定底盘放箱由8改为7。结果报告分别记录`transport_latency_s`与`admission_latency_s`，不再把两类抖动混算。
+
 ### t2 分阶段实际预算（验证继续进行）
 
 基于最终正常场景与15轮clear证据，按同一控制流分支的各span最大值组合上界，加25%余量并向上取整50ms，当前实际预算为：初始姿态→预接触点0.95s、最后3厘米贴近0.05s、抽离35厘米0.10s、携箱运输0.65s、固定底盘放箱0.80s、返回初始姿态1.10s。第1轮默认动态场景六阶段通过且0 deadline miss；15轮、最坏障碍多种子、GPU压力和故障矩阵仍在继续验证，若证据要求会继续调整。证据见`motion292-acceptance/t2-calibration-20261018/summary.json`。

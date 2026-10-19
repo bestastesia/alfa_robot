@@ -12,21 +12,21 @@ from v3_rolling_replan import (close_persistent_worker, persistent_stage_config,
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
 STAGE_SCHEDULES = {
-    "approach": (.95, .1, 8), "contact_approach": (.05, .1, 5),
-    "extract": (.1, .1, 32), "transport": (.65, .1, 4),
-    "conveyor_place": (.8, .1, 8), "return_home": (1.1, .1, 4),
+    "approach": (.95, .1, .1, 8), "contact_approach": (.05, .1, .1, 5),
+    "extract": (.1, .1, .1, 24), "transport": (.65, .1, .1, 4),
+    "conveyor_place": (.8, .1, .1, 7), "return_home": (1.1, .1, .1, 4),
 }
 
 
 def stage_args(args, stage):
-    t2, t3, slices = STAGE_SCHEDULES[stage]
+    t2, t3, t4, slices = STAGE_SCHEDULES[stage]
     scenario = args.scenario if stage == args.obstacle_stage else "clear"
     return SimpleNamespace(
         initial_cycle=args.initial_cycle, round=0, stage=stage, scenario=scenario,
         obstacle_center=args.obstacle_center if scenario != "clear" else None,
         obstacle_velocity=args.obstacle_velocity if scenario != "clear" else None,
         obstacle_size=args.obstacle_size, fault="none", compute_bound_s=t2, link_bound_s=t3,
-        link_delay_s=min(args.link_delay_s, t3), slices=slices,
+        admission_bound_s=t4, link_delay_s=min(args.link_delay_s, t3), slices=slices,
         execution_timeout_s=args.execution_timeout_s, disable_braking_fallback=False,
         braking_duration_s=args.braking_duration_s, max_feedback_age_s=.1,
         seed=args.seed, output=args.output_dir / f"{stage}.json", stream_progress=args.stream_progress)
@@ -41,6 +41,8 @@ def main():
     parser.add_argument("--obstacle-size", type=float, nargs=3, default=(.08, .08, .08))
     parser.add_argument("--obstacle-velocity", type=float, nargs=3, default=(0., 0., 0.))
     parser.add_argument("--link-delay-s", type=float, default=.02)
+    parser.add_argument("--admission-bound-s", type=float, default=.1,
+                        help="t4 admission/contract-validation budget")
     parser.add_argument("--braking-duration-s", type=float, default=.5)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
     parser.add_argument("--seed", type=int, default=20261003)

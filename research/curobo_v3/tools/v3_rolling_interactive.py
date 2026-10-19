@@ -28,12 +28,12 @@ STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_plac
 # Proven per-stage budgets from the frozen acceptance matrix. One global budget cannot satisfy
 # both the 1.5 s contact phase and the long free-space phases.
 STAGE_SCHEDULES = {
-    "approach": (.95, .1, 8),
-    "contact_approach": (.05, .1, 5),
-    "extract": (.1, .1, 32),
-    "transport": (.65, .1, 4),
-    "conveyor_place": (.8, .1, 8),
-    "return_home": (1.1, .1, 4),
+    "approach": (.95, .1, .1, 8),
+    "contact_approach": (.05, .1, .1, 5),
+    "extract": (.1, .1, .1, 24),
+    "transport": (.65, .1, .1, 4),
+    "conveyor_place": (.8, .1, .1, 7),
+    "return_home": (1.1, .1, .1, 4),
 }
 ROLL_COLORS = (
     ((30, 225, 80), (30, 155, 245)),
@@ -44,11 +44,12 @@ ROLL_COLORS = (
 
 
 def command_for(args, cycle, controls, stage, output):
-    t2, t3, slices = STAGE_SCHEDULES[stage]
+    t2, t3, t4, slices = STAGE_SCHEDULES[stage]
     scenario = controls["scenario"] if stage == controls["obstacle_stage"] else "clear"
     command = [sys.executable, str(args.runner), "--initial-cycle", str(cycle),
                "--round", "0", "--stage", stage, "--scenario", scenario,
                "--compute-bound-s", str(t2), "--link-bound-s", str(t3),
+               "--admission-bound-s", str(t4),
                "--link-delay-s", str(min(controls["link_delay"], t3)),
                "--slices", str(slices), "--braking-duration-s", str(controls["braking"]),
                "--seed", str(controls["seed"]), "--execution-timeout-s",
@@ -67,6 +68,7 @@ def round_command_for(args, cycle, controls, output_dir):
             "--obstacle-size", *map(str, controls["size"]),
             "--obstacle-velocity", *map(str, controls["velocity"]),
             "--link-delay-s", str(controls["link_delay"]),
+            "--admission-bound-s", "0.1",
             "--braking-duration-s", str(controls["braking"]),
             "--execution-timeout-s", str(args.execution_timeout_s),
             "--seed", str(controls["seed"]), "--output-dir", str(output_dir),

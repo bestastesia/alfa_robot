@@ -90,7 +90,8 @@ def main():
         budget = report["schedule"]
         server.gui.add_markdown(f"周期 **{budget['duration_s']/budget['slices']:.3f}s** · "
                                 f"t2预算 **{budget['compute_bound_s']:.3f}s** · "
-                                f"t3假定 **{budget['link_bound_s']:.3f}s**")
+                                f"t3假定 **{budget['link_bound_s']:.3f}s** · "
+                                f"t4假定 **{budget.get('admission_bound_s', 0.):.3f}s**")
         timeline = server.gui.add_markdown("")
     selected = None
     previous = time.perf_counter()

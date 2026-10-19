@@ -54,7 +54,9 @@ def terminal_evidence(report):
     if source is None:
         raise ValueError("terminal observation is missing")
     observation = SceneObservation.from_dict(source)
-    observation.require_fresh(event["at"], period + report["schedule"]["compute_bound_s"] + report["schedule"]["link_bound_s"])
+    observation.require_fresh(event["at"], period + report["schedule"]["compute_bound_s"] +
+                              report["schedule"]["link_bound_s"] +
+                              report["schedule"].get("admission_bound_s", 0.))
     if not entry["active_at"] <= observation.observed_at <= event["at"] <= end:
         raise ValueError("terminal observation is outside the active interval")
     document = curve.window(observation.observed_at-entry["active_at"], curve.duration)
@@ -78,10 +80,16 @@ def terminal_evidence(report):
         if not result or not result.get("success") or "certificate" not in result:
             raise ValueError("missing terminal verification result")
         t2, t3 = report["schedule"]["compute_bound_s"], report["schedule"]["link_bound_s"]
+        t4 = report["schedule"].get("admission_bound_s", 0.)
+        received_at = event.get("received_at", event["at"])
+        terminal_deadline = min(observation.observed_at+t2, end-t3-t4)
+        transport_ok = result["ready_at"] <= received_at <= result["ready_at"]+t3
+        admission_ok = (received_at <= event["at"] <= received_at+t4 if t4 else
+                        result["ready_at"] <= event["at"] <= result["ready_at"]+t3)
         if (result["ready_at"] != event["safe_ready_at"] or
-                not observation.observed_at <= result["ready_at"] <= min(observation.observed_at+t2, end-t3) or
-                not result["ready_at"] <= event["at"] <= result["ready_at"]+t3):
-            raise ValueError("terminal computation/communication deadline violation")
+                not observation.observed_at <= result["ready_at"] <= terminal_deadline or
+                not transport_ok or not admission_ok):
+            raise ValueError("terminal computation/communication/admission deadline violation")
         certificate = result["certificate"]
         if (digest(result["trajectory"]) != digest(document) or
                 certificate["valid_from"] != observation.observed_at or abs(certificate["valid_until"]-end) > 1e-8 or
@@ -106,8 +114,10 @@ def verify_internal_braking_stop(document, duration_s):
 def audit(report, config_path, expect_complete=True, require_obstacle_response=False):
     schedule = report["schedule"]
     t1, t2, t3, n = (schedule[key] for key in ("duration_s", "compute_bound_s", "link_bound_s", "slices"))
-    if not np.isfinite([t1, t2, t3]).all() or t2 <= 0 or t3 < 0 or type(n) is not int or not 1 <= n <= t1/(t2+t3):
-        raise ValueError("invalid t1/t2/t3/n")
+    t4 = schedule.get("admission_bound_s", 0.)
+    if (not np.isfinite([t1, t2, t3, t4]).all() or t2 <= 0 or min(t3, t4) < 0 or
+            type(n) is not int or not 1 <= n <= t1/(t2+t3+t4)):
+        raise ValueError("invalid t1/t2/t3/t4/n")
     if report["hardware_commands"]:
         raise ValueError("hardware-enabled report is not a simulation acceptance result")
     if report["success"] != expect_complete:
@@ -167,13 +177,16 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     for i, event in enumerate(activated):
         request, stage = requests[event["sequence"]], staged[event["sequence"]]
         observation = observations[request["scene_id"]]
-        deadline = min(request["at"]+t2, request["splice_at"]-t3)
+        deadline = min(request["at"]+t2, request["splice_at"]-t3-t4)
+        received_at = stage.get("received_at", stage["at"])
+        transport_ok = stage["safe_ready_at"] <= received_at <= stage["safe_ready_at"]+t3+1e-8
+        admission_ok = (received_at <= stage["at"] <= received_at+t4+1e-8 if t4 else
+                        stage["safe_ready_at"] <= stage["at"] <= stage["safe_ready_at"]+t3+1e-8)
         if (abs(event["at"] - request["splice_at"]) > 1e-8 or
                 abs(event["at"] - epochs[i+1]) > 1e-8 or
                 not request["at"] <= stage["safe_ready_at"] <= deadline or
-                not stage["safe_ready_at"] <= stage["at"] <= event["at"] or
-                stage["at"]-stage["safe_ready_at"] > t3 + 1e-8):
-            raise ValueError("deadline/communication/boundary violation")
+                not transport_ok or not admission_ok or stage["at"] > event["at"]):
+            raise ValueError("deadline/communication/admission/boundary violation")
         if abs((stage["safe_ready_at"]-observation["observed_at"])-stage["available_latency_s"]) > 1e-8:
             raise ValueError("incorrect observation-to-safe-trajectory latency")
     braking_stops = []

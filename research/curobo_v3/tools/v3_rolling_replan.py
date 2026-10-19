@@ -330,7 +330,8 @@ def observe(snapshot, center, scenario, sequence, now, elapsed, duration, feedba
 def run(args, shared=None):
     initial, snapshot, boxes, payload = stage_input(json.loads(args.initial_cycle.read_text()), args.stage, args.round)
     curve = TimedTrajectory(initial)
-    schedule = SliceSchedule(curve.duration, args.compute_bound_s, args.link_bound_s, args.slices)
+    schedule = SliceSchedule(curve.duration, args.compute_bound_s, args.link_bound_s, args.slices,
+                             getattr(args, "admission_bound_s", .1))
     if not 0 <= args.link_delay_s <= args.link_bound_s:
         raise ValueError("simulated link delay must fit its declared bound")
     owns_worker = shared is None
@@ -375,7 +376,8 @@ def run(args, shared=None):
             raise RuntimeError(startup.get("error", "worker failed to initialize"))
         started = time.perf_counter()
         segment = RollingSegment(initial, schedule, started,
-                                 max_scene_age_s=schedule.period_s + args.compute_bound_s + args.link_bound_s,
+                                 max_scene_age_s=(schedule.period_s + args.compute_bound_s +
+                                                  args.link_bound_s + schedule.admission_bound_s),
                                  max_feedback_age_s=args.max_feedback_age_s)
         report["started_at"] = started
         publish_progress(args, "stage_started", stage=args.stage, round=args.round,
@@ -446,7 +448,8 @@ def run(args, shared=None):
                 requested_at = time.perf_counter()
                 commands.put_nowait((ticket, observation, prefix, forecast_duration,
                                      (args.seed + segment.sequence) % 2**32, fault))
-            deadline = min(now + args.compute_bound_s, boundary-args.link_bound_s) if terminal else ticket.compute_deadline
+            deadline = min(now + args.compute_bound_s,
+                           boundary - args.link_bound_s - schedule.admission_bound_s) if terminal else ticket.compute_deadline
             result = {"success": True, "ready_at": now, "terminal": True} if reuse else None
             arrived, installed = (now if reuse else None), reuse
             while True:
@@ -493,14 +496,22 @@ def run(args, shared=None):
                     raise TimeoutError("communication deadline miss before splice")
                 if result is not None and not installed and now >= arrived:
                     if terminal:
-                        if (result["ready_at"] > deadline or now > boundary or
-                                now-result["ready_at"] > args.link_bound_s):
-                            raise TimeoutError("terminal revalidation missed deadline")
-                        segment.events.append({"event": "terminal_validated", "at": now,
+                        received_at = now
+                        if (result["ready_at"] > deadline or received_at > boundary or
+                                received_at-result["ready_at"] > args.link_bound_s):
+                            raise TimeoutError("terminal revalidation missed communication deadline")
+                        admitted_at = time.perf_counter()
+                        if (admitted_at > boundary or
+                                admitted_at-received_at > schedule.admission_bound_s):
+                            raise TimeoutError("terminal revalidation missed admission deadline")
+                        segment.events.append({"event": "terminal_validated", "at": admitted_at,
                                                "scene_id": observation.identity,
                                                "safe_ready_at": result["ready_at"],
+                                               "received_at": received_at,
+                                               "transport_latency_s": received_at-result["ready_at"],
+                                               "admission_latency_s": admitted_at-received_at,
                                                "available_latency_s": result["ready_at"]-observation.observed_at,
-                                               "accepted_latency_s": now-observation.observed_at,
+                                               "accepted_latency_s": admitted_at-observation.observed_at,
                                                "trajectory_id": segment.trajectory_id})
                     else:
                         if fault == "admission_delay":
@@ -567,6 +578,8 @@ def run(args, shared=None):
             "available_latency_s": [x["available_latency_s"] for x in report["events"] if "available_latency_s" in x],
             "accepted_latency_s": [x["accepted_latency_s"] for x in report["events"] if "accepted_latency_s" in x],
             "feedback_latency_s": [x["feedback_latency_s"] for x in report["events"] if "feedback_latency_s" in x],
+            "transport_latency_s": [x["transport_latency_s"] for x in report["events"] if "transport_latency_s" in x],
+            "admission_latency_s": [x["admission_latency_s"] for x in report["events"] if "admission_latency_s" in x],
         }
         for result in report["solves"]:
             for name in ("queue_ipc_s", "request_to_ready_s", "result_ipc_s"):
@@ -637,6 +650,7 @@ def main():
                         default="none", help="simulation-only failure injection, at first tick")
     parser.add_argument("--compute-bound-s", type=float, required=True)
     parser.add_argument("--link-bound-s", type=float, required=True)
+    parser.add_argument("--admission-bound-s", type=float, default=.1)
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--slices", type=int)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
@@ -652,6 +666,7 @@ def main():
     if (not math.isfinite(args.execution_timeout_s) or args.execution_timeout_s <= 0 or
             not math.isfinite(args.max_feedback_age_s) or args.max_feedback_age_s <= 0 or
             not math.isfinite(args.braking_duration_s) or args.braking_duration_s <= 0 or
+            not math.isfinite(args.admission_bound_s) or args.admission_bound_s < 0 or
             not 0 <= args.seed < 2**32 or args.round < 0):
         parser.error("positive finite execution/freshness limits and unsigned 32-bit seed required")
     if args.obstacle_center is not None and not np.isfinite(args.obstacle_center).all():

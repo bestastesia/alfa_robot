@@ -81,7 +81,8 @@ def summarize_reports(reports):
             for name, (start, end) in solve.get("spans", {}).items():
                 record(f"stage_{name}_s", end-start)
         for event in report.get("events", []):
-            for name in ("available_latency_s", "accepted_latency_s", "feedback_latency_s"):
+            for name in ("available_latency_s", "accepted_latency_s", "feedback_latency_s",
+                         "transport_latency_s", "admission_latency_s"):
                 if name in event:
                     record(name, event[name])
     for group in groups.values():
@@ -102,9 +103,10 @@ def main():
                         default=["clear", "static", "moving", "appear", "depart"])
     parser.add_argument("--seeds", nargs="+", type=int, default=[20261003, 20261004, 20261005])
     parser.add_argument("--rounds", nargs="+", type=int, default=[0])
-    parser.add_argument("--slices", type=int, help="explicit n; each stage must satisfy n<=t1/(t2+t3)")
+    parser.add_argument("--slices", type=int, help="explicit n; each stage must satisfy n<=t1/(t2+t3+t4)")
     parser.add_argument("--compute-bound-s", type=float, required=True)
     parser.add_argument("--link-bound-s", type=float, required=True)
+    parser.add_argument("--admission-bound-s", type=float, default=.1)
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
     parser.add_argument("--obstacle-center", type=float, nargs=3)
@@ -140,6 +142,7 @@ def main():
                    "--initial-cycle", str(args.initial_cycle), "--stage", stage,
                    "--scenario", scenario, "--seed", str(seed), "--round", str(round_index), "--fault", fault,
                    "--compute-bound-s", str(args.compute_bound_s), "--link-bound-s", str(args.link_bound_s),
+                   "--admission-bound-s", str(args.admission_bound_s),
                    "--link-delay-s", str(args.link_delay_s), "--execution-timeout-s", str(args.execution_timeout_s),
                    "--output", str(result), "--braking-duration-s", str(args.braking_duration_s)]
         if args.disable_braking_fallback:
