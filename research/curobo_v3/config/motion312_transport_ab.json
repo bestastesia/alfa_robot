@@ -3,7 +3,7 @@
   "issue": "MOTION-323",
   "parent_issue": "MOTION-312",
   "registered_at": "2026-10-19",
-  "status": "pre-registered before implementation; decision thresholds pending acceptor confirmation",
+  "status": "pre-registered before implementation; amended with dev-set L1 evidence (A1-A3); decision thresholds pending acceptor confirmation",
   "baseline": {
     "method": "joint_rrt",
     "description": "existing single-arm transport RRT-Connect with joint distance J and rotation soft cost R (default)",
@@ -23,11 +23,12 @@
     "state": ["tool_x", "tool_y", "tool_z", "orientation_progress_s", "updown", "arm_angle_psi"],
     "orientation": "slerp(q_start, q_goal, s)",
     "branch_label": "sign(q2, q4, q6) of the active arm, fixed per search",
-    "idle_arm": "fixed at start value",
+    "idle_arm": "goals use the baseline idle-arm variants; the idle arm is joint-interpolated with transport progress s (A1)",
     "ik": "analytic bridge, unique solution for the given branch",
-    "tiers": ["direct line to top-K same-branch goals", "RRT-Connect with Cartesian validity adapter"],
-    "goal_snap": "path end equals the same-branch atlas joint row whose idle arm equals the start",
+    "tiers": ["RRT-Connect with Cartesian validity adapter (main, A2)", "direct line to top-K same-branch goals (first attempt)"],
+    "goal_snap": "path end equals the selected same-branch atlas joint row, including its idle-arm variant",
     "continuity": ["per-step joint jump threshold", "+/-pi unwrap", "q2/q4/q6 singularity margin", "joint limits +/-1e-5"],
+    "carriage_kinematics": "closed-form translation of arm_carriage along the updown axis, verified against URDF FK (A3)",
     "timing": "transport segment is not joint-shortcut; a shortcut variant is reported as diagnostic B'",
     "comparison_only": ["cuRobo batched IK"]
   },
@@ -71,5 +72,14 @@
     "success": "transport success rate not lower than baseline",
     "quality": "paired median extra box rotation on single-arm side tasks reduced by at least 30%, tool path/chord ratio not increased",
     "execution_duration": "paired median increase at most 20%"
-  }
+  },
+  "amendment_policy": "amendments use dev-set evidence only and are made before any holdout run",
+  "amendments": [
+    {"id": "A1", "date": "2026-10-19", "change": "idle arm no longer fixed at the start value; goals use the baseline idle-arm variants",
+     "evidence": "L1 dev (motion312-acceptance/l1-20261019): right12 and right07 have 0 valid goals with the idle arm equal to start"},
+    {"id": "A2", "date": "2026-10-19", "change": "RRT tier becomes the main tier; direct line kept as first attempt",
+     "evidence": "L1 dev: direct line succeeded on 1/5 tasks (right06 only), below the pre-registered 3/5 rule"},
+    {"id": "A3", "date": "2026-10-19", "change": "closed-form carriage transform instead of per-step URDF FK",
+     "evidence": "L1 dev: line checks took 28-73 ms, dominated by per-step yourdfpy FK; analytic IK solves in 17-20 us"}
+  ]
 }
