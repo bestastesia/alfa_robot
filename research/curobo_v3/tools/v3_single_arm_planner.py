@@ -155,7 +155,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
         validity.sample_transform = sample_transform
         return validity
 
-    def single_path(self, start, goals, checker, rotation=False, strict=None, budget=2., scene_margin_m=0.):
+    def single_path(self, start, goals, checker, rotation=False, strict=None, budget=2., scene_margin_m=0., seed=20261015):
         goals = np.asarray(goals).reshape(-1,15)
         validity = self.single_validity(checker,start,goals[0],rotation)
         validity.search_scene_margin_m = scene_margin_m
@@ -165,13 +165,16 @@ class SingleArmPlanner(LazyExtractionPlanner):
             validity.evaluate = strict.evaluate
         lower,upper = checker.kinematics.get_joint_limits().position
         search = getattr(self,'run_single_search',batched_rrt_connect_multi_goal)
-        path,stats = search(torch.tensor(start,device='cuda',dtype=torch.float32),torch.tensor(goals,device='cuda',dtype=torch.float32),lower+1e-5,upper-1e-5,validity,budget,20261015,stop_at_first_valid=True)
+        path,stats = search(torch.tensor(start,device='cuda',dtype=torch.float32),torch.tensor(goals,device='cuda',dtype=torch.float32),lower+1e-5,upper-1e-5,validity,budget,seed,stop_at_first_valid=True)
         if path is None:
             return None,stats
         dense = np.asarray(densify(path))
         if not validity.mask(torch.tensor(dense,device='cuda',dtype=torch.float32)).all():
             return None,dict(failure='单臂完整15轴密化碰撞验收失败')
         return dense,stats
+
+    def transport_path(self, start, goals, checker, candidates):
+        return self.single_path(start,goals,checker,True)
 
     def joint_plan(self, start, target, checker, validity, seed):
         if len(self.selected_task)==2:
@@ -288,7 +291,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
         weights=np.array([math.radians(15)/.1]+[1.]*14)
         order=np.argsort(np.linalg.norm((candidates-extracted[-1])*weights,axis=1))
         goals=candidates[order[:64]]
-        transport,stats=self.single_path(extracted[-1],goals,loaded,True)
+        transport,stats=self.transport_path(extracted[-1],goals,loaded,candidates)
         timing['transport_ms']=(time.perf_counter()-started)*1000
         if transport is None:
             raise CycleBlocked('运输RRT','单臂15轴携箱搜索超时',report)
