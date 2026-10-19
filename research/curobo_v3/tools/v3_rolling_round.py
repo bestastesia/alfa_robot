@@ -11,22 +11,22 @@ from v3_rolling_replan import (close_persistent_worker, persistent_stage_config,
 
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
-STAGE_SCHEDULES = {
-    "approach": (.95, .1, .1, 8), "contact_approach": (.05, .1, .1, 5),
-    "extract": (.1, .1, .1, 24), "transport": (.65, .1, .1, 4),
-    "conveyor_place": (.8, .1, .1, 7), "return_home": (1.1, .1, .1, 4),
+STAGE_BUDGETS = {
+    "approach": (1., .15, .05), "contact_approach": (.1, .15, .05),
+    "extract": (.35, .15, .05), "transport": (.75, .15, .05),
+    "conveyor_place": (.9, .15, .05), "return_home": (1., .15, .05),
 }
 
 
 def stage_args(args, stage):
-    t2, t3, t4, slices = STAGE_SCHEDULES[stage]
+    t2, t3, t4 = STAGE_BUDGETS[stage]
     scenario = args.scenario if stage == args.obstacle_stage else "clear"
     return SimpleNamespace(
         initial_cycle=args.initial_cycle, round=0, stage=stage, scenario=scenario,
         obstacle_center=args.obstacle_center if scenario != "clear" else None,
         obstacle_velocity=args.obstacle_velocity if scenario != "clear" else None,
         obstacle_size=args.obstacle_size, fault="none", compute_bound_s=t2, link_bound_s=t3,
-        admission_bound_s=t4, link_delay_s=min(args.link_delay_s, t3), slices=slices,
+        admission_bound_s=t4, link_delay_s=min(args.link_delay_s, t3), slices=None,
         execution_timeout_s=args.execution_timeout_s, disable_braking_fallback=False,
         braking_duration_s=args.braking_duration_s, max_feedback_age_s=.1,
         seed=args.seed, output=args.output_dir / f"{stage}.json", stream_progress=args.stream_progress)

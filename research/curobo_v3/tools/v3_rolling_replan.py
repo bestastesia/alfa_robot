@@ -650,7 +650,7 @@ def main():
                         default="none", help="simulation-only failure injection, at first tick")
     parser.add_argument("--compute-bound-s", type=float, required=True)
     parser.add_argument("--link-bound-s", type=float, required=True)
-    parser.add_argument("--admission-bound-s", type=float, default=.1)
+    parser.add_argument("--admission-bound-s", type=float, default=.05)
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--slices", type=int)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)

@@ -19,11 +19,9 @@ class RollingRoundTest(unittest.TestCase):
         self.assertEqual([stage.stage for stage in stages], list(STAGES))
         self.assertEqual([stage.scenario for stage in stages].count("static"), 1)
         self.assertTrue(all(stage.initial_cycle == Path("cycle.json") and stage.seed == 7 for stage in stages))
-        self.assertEqual(stages[0].slices, 8)
-        self.assertEqual(stages[2].slices, 24)
-        self.assertEqual([stage.compute_bound_s for stage in stages], [.95, .05, .1, .65, .8, 1.1])
-        self.assertEqual([stage.slices for stage in stages], [8, 5, 24, 4, 7, 4])
-        self.assertTrue(all(stage.admission_bound_s == .1 for stage in stages))
+        self.assertTrue(all(stage.slices is None for stage in stages))
+        self.assertEqual([stage.compute_bound_s for stage in stages], [1., .1, .35, .75, .9, 1.])
+        self.assertTrue(all(stage.admission_bound_s == .05 for stage in stages))
 
 
 if __name__ == "__main__":

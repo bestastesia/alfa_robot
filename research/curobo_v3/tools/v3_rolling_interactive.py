@@ -27,13 +27,13 @@ from v3_timed_wall_report import PHASE_LABELS, phase_planning_detail, planning_l
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
 # Proven per-stage budgets from the frozen acceptance matrix. One global budget cannot satisfy
 # both the 1.5 s contact phase and the long free-space phases.
-STAGE_SCHEDULES = {
-    "approach": (.95, .1, .1, 8),
-    "contact_approach": (.05, .1, .1, 5),
-    "extract": (.1, .1, .1, 24),
-    "transport": (.65, .1, .1, 4),
-    "conveyor_place": (.8, .1, .1, 7),
-    "return_home": (1.1, .1, .1, 4),
+STAGE_BUDGETS = {
+    "approach": (1., .15, .05),
+    "contact_approach": (.1, .15, .05),
+    "extract": (.35, .15, .05),
+    "transport": (.75, .15, .05),
+    "conveyor_place": (.9, .15, .05),
+    "return_home": (1., .15, .05),
 }
 ROLL_COLORS = (
     ((30, 225, 80), (30, 155, 245)),
@@ -44,14 +44,14 @@ ROLL_COLORS = (
 
 
 def command_for(args, cycle, controls, stage, output):
-    t2, t3, t4, slices = STAGE_SCHEDULES[stage]
+    t2, t3, t4 = STAGE_BUDGETS[stage]
     scenario = controls["scenario"] if stage == controls["obstacle_stage"] else "clear"
     command = [sys.executable, str(args.runner), "--initial-cycle", str(cycle),
                "--round", "0", "--stage", stage, "--scenario", scenario,
                "--compute-bound-s", str(t2), "--link-bound-s", str(t3),
                "--admission-bound-s", str(t4),
                "--link-delay-s", str(min(controls["link_delay"], t3)),
-               "--slices", str(slices), "--braking-duration-s", str(controls["braking"]),
+               "--braking-duration-s", str(controls["braking"]),
                "--seed", str(controls["seed"]), "--execution-timeout-s",
                str(args.execution_timeout_s), "--output", str(output), "--stream-progress"]
     if scenario != "clear":

@@ -11,8 +11,8 @@ import numpy as np
 
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
-CURRENT_T2 = {"approach": .95, "contact_approach": .05, "extract": .1,
-              "transport": .65, "conveyor_place": .8, "return_home": 1.1}
+CURRENT_T2 = {"approach": 1., "contact_approach": .1, "extract": .35,
+              "transport": .75, "conveyor_place": .9, "return_home": 1.}
 
 
 def round_up(value, quantum=.05):

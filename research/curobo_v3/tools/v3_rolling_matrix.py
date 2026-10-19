@@ -106,7 +106,7 @@ def main():
     parser.add_argument("--slices", type=int, help="explicit n; each stage must satisfy n<=t1/(t2+t3+t4)")
     parser.add_argument("--compute-bound-s", type=float, required=True)
     parser.add_argument("--link-bound-s", type=float, required=True)
-    parser.add_argument("--admission-bound-s", type=float, default=.1)
+    parser.add_argument("--admission-bound-s", type=float, default=.05)
     parser.add_argument("--link-delay-s", type=float, default=0.)
     parser.add_argument("--execution-timeout-s", type=float, default=120.)
     parser.add_argument("--obstacle-center", type=float, nargs=3)
