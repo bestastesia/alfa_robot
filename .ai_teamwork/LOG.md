@@ -2207,3 +2207,8 @@
 - 运输侧吸旧2cm升降网格跳过合法窗口；原范围内加密到5mm，重求运输库并独立FK验收，保留碰撞/限位/1.05m包络。补齐16/64形状真实LM预热、长求解器共享及完整显示快照恢复。
 - 35项回归通过，侧吸L22/R17→顶吸L03/R02→单臂R02→侧吸四次GPU完整流程通过，Home误差约4.4e-8，显存峰值约1.7GiB；非117组全量验收。8210独立预览已通过浏览器实时计算，结果独立目录generated/forward_precontact_current_urdf。
 - 保留抽离途中空载/终点携箱验碰、导航瞬移、释放移除边界。polish录图/早停留后续；未对外宣称全流程携箱安全或实机完成。恢复服务与复测入口见原HANDOFF_8209_ALGORITHM_AND_WARMUP.md迁移补充。
+## 2026-10-19 运控 / MOTION-323 单臂转运笛卡尔搜索预注册与基线冻结
+- 分支feature/cartesian-transport-search-motion-323基于PR65头a77abd5（规划代码同541fdbc，仅v3_task_full_cycle_demo.py一行回放差异），叠加在PR65上；上游alfa_v3_curobo已到0942d18（重零/新Home），本分支结论不外推。
+- 实现前预注册config/motion312_transport_ab.json：单臂transport、状态p+s+u+ψ与固定分支、解析IK、直线→RRT两层、同分支atlas终点吸附、同一loaded validity与2s预算、transport不shortcut；开发集WALL_SEQUENCE 5个单臂轮（全右臂），留出集其余20单臂任务（左右各10），每法5个配对种子；判定阈值待李昊洋确认。
+- 冻结基线/home/astesia/Sevenova/motion312-acceptance/frozen-20261019：15/15轮25/25箱；与10/17 PR65运行逐轮比对，搜索统计与旋转指标0差异、frames最大差0.0，默认种子下确定。provenance记录源码tree、10个资产sha256、cuRobo 78fd485f、torch与驱动。
+- 留给下个AI：下一步L1前置验证S1–S6（分支分布、直线可行性、解析IK、cuRobo对照、shortcut效应、计时公平）；右02单臂接触为已知失败，不进运输配对统计。作者审阅前不开PR，只推送fork。
