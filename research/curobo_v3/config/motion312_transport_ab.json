@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "issue": "MOTION-323",
+  "parent_issue": "MOTION-312",
+  "registered_at": "2026-10-19",
+  "status": "pre-registered before implementation; decision thresholds pending acceptor confirmation",
+  "baseline": {
+    "method": "joint_rrt",
+    "description": "existing single-arm transport RRT-Connect with joint distance J and rotation soft cost R (default)",
+    "planning_commit": "541fdbc",
+    "branch_base": "a77abd5",
+    "mentor_base": "a02372b",
+    "not_included": "0942d18 (upstream re-zero / new Home); conclusions are not extrapolated to it"
+  },
+  "stage": {
+    "name": "transport",
+    "scope": "single_arm",
+    "start": "extraction end configuration",
+    "goal": "stowed transport placement from the existing atlas, same candidates and filters as baseline"
+  },
+  "method": {
+    "name": "cartesian",
+    "state": ["tool_x", "tool_y", "tool_z", "orientation_progress_s", "updown", "arm_angle_psi"],
+    "orientation": "slerp(q_start, q_goal, s)",
+    "branch_label": "sign(q2, q4, q6) of the active arm, fixed per search",
+    "idle_arm": "fixed at start value",
+    "ik": "analytic bridge, unique solution for the given branch",
+    "tiers": ["direct line to top-K same-branch goals", "RRT-Connect with Cartesian validity adapter"],
+    "goal_snap": "path end equals the same-branch atlas joint row whose idle arm equals the start",
+    "continuity": ["per-step joint jump threshold", "+/-pi unwrap", "q2/q4/q6 singularity margin", "joint limits +/-1e-5"],
+    "timing": "transport segment is not joint-shortcut; a shortcut variant is reported as diagnostic B'",
+    "comparison_only": ["cuRobo batched IK"]
+  },
+  "constraints": {
+    "validity": "same loaded GpuValidity including payload spheres",
+    "densify_deg": 0.5,
+    "goal_envelope_m": 1.05,
+    "budget_s": 2.0,
+    "relaxation": "none",
+    "independent_audit": "FCL mesh check on both methods"
+  },
+  "test_sets": {
+    "dev_single": [{"right": 22}, {"right": 17}, {"right": 12}, {"right": 7}, {"right": 6}],
+    "holdout_single": [
+      {"right": 0}, {"right": 1}, {"right": 2}, {"left": 3}, {"left": 4},
+      {"right": 5}, {"left": 8}, {"left": 9}, {"right": 10}, {"right": 11},
+      {"left": 13}, {"left": 14}, {"right": 15}, {"right": 16}, {"left": 18},
+      {"left": 19}, {"right": 20}, {"right": 21}, {"left": 23}, {"left": 24}
+    ],
+    "dev_dual_non_regression": "the 10 dual-arm rounds of WALL_SEQUENCE, baseline transport unchanged",
+    "notes": [
+      "dev_single is right-arm only; holdout_single has 10 left and 10 right tasks, 8 top-suction and 12 side-suction",
+      "holdout_single runs only after the method configuration is frozen",
+      "known contact-IK failures are recorded but excluded from transport paired statistics"
+    ]
+  },
+  "seeds": {
+    "per_method": [20261015, 312001, 312002, 312003, 312004],
+    "first_is_baseline_default": true,
+    "order": "ABBA",
+    "gpu_lock": "/tmp/sevenova-curobo-gpu.lock"
+  },
+  "metrics": {
+    "planning": ["success with failure class", "first_verified_solution_ms", "transport_stage_ms", "round_planning_ms", "time_parameterization_ms"],
+    "execution_on_executed_trajectory": ["motion_duration_s", "weighted_joint_arc", "tool_path_to_chord_ratio", "box_rotation_total_extra_backtrack_deg", "branch_flips", "singularity_margin"],
+    "safety": ["single-arm validate", "FCL audit"],
+    "reporting": "planning wall-clock and execution duration are reported separately; failures, timeouts and invalidated runs are kept"
+  },
+  "decision_rules_proposed": {
+    "planning_time": "transport stage median and P95 not worse than baseline by more than 10%, and within the 2 s budget",
+    "success": "transport success rate not lower than baseline",
+    "quality": "paired median extra box rotation on single-arm side tasks reduced by at least 30%, tool path/chord ratio not increased",
+    "execution_duration": "paired median increase at most 20%"
+  }
+}

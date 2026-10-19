@@ -2187,3 +2187,9 @@
 - 四切片：优先64与等价cuboid（PR61）、常驻world更新（PR62）、8起按需抽离及旋转软代价（PR63）、25单臂与整机终点1.05m硬圆柱（当前切片）。9份算法/合同/测试源码与交接快照一致；UI归一到正式v3_visualized_task_demo.py，8151入口只作兼容包装。
 - 验证：四任务64集合与全枚举相同/完整FK通过；11场景11264状态与fresh一致且四完整周期不再创建拓扑；lazy三组成功包括L18/R22；25单臂24成功、右02接触264候选0合法保留失败。24成功27040帧碰撞重验、40附着球、独立FK包络最大1.003365m，原4违规终点现0.932856m；双臂回归成功。35core与语法检查通过。
 - 正式说明OPTIMIZED_CYCLE.md、CONVEYOR_DELIVERY.md；evidence为当前小型摘要，原实验轨迹/cache不入库。验证服务8152复用冻结前端包；原8150 PID161088、8151 PID1877730未停止，仍是各自启动时版本。119任务不等于119成功，不作导航路径、动力学、物理落稳/实机或生产并发验收。Linear由专门工程师维护，本轮不主动变更。
+
+## 2026-10-19 运控 / MOTION-323 单臂转运笛卡尔搜索预注册与基线冻结
+- 分支feature/cartesian-transport-search-motion-323基于PR65头a77abd5（规划代码同541fdbc，仅v3_task_full_cycle_demo.py一行回放差异），叠加在PR65上；上游alfa_v3_curobo已到0942d18（重零/新Home），本分支结论不外推。
+- 实现前预注册config/motion312_transport_ab.json：单臂transport、状态p+s+u+ψ与固定分支、解析IK、直线→RRT两层、同分支atlas终点吸附、同一loaded validity与2s预算、transport不shortcut；开发集WALL_SEQUENCE 5个单臂轮（全右臂），留出集其余20单臂任务（左右各10），每法5个配对种子；判定阈值待李昊洋确认。
+- 冻结基线/home/astesia/Sevenova/motion312-acceptance/frozen-20261019：15/15轮25/25箱；与10/17 PR65运行逐轮比对，搜索统计与旋转指标0差异、frames最大差0.0，默认种子下确定。provenance记录源码tree、10个资产sha256、cuRobo 78fd485f、torch与驱动。
+- 留给下个AI：下一步L1前置验证S1–S6（分支分布、直线可行性、解析IK、cuRobo对照、shortcut效应、计时公平）；右02单臂接触为已知失败，不进运输配对统计。作者审阅前不开PR，只推送fork。
