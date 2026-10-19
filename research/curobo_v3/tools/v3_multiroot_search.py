@@ -4,7 +4,8 @@ from v3_batched_loaded_search import densify
 
 
 def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
-                                  informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0):
+                                  informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0,
+                                  batch=1024, connect_candidates=256, step=0.28):
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
     weights = validity.weights
@@ -47,7 +48,6 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     while time.perf_counter() - started < budget_s:
         if first_verified_ms is not None and (time.perf_counter()-started)*1000 >= first_verified_ms+refinement_s*1000:
             break
-        batch = 1024
         goal_indices = torch.randint(len(goals), (batch,), device="cuda", generator=generator)
         progress = torch.rand((batch, 1), device="cuda", generator=generator)
         root_indices=torch.randint(len(roots),(batch,),device='cuda',generator=generator)
@@ -79,7 +79,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         nearest_values = tree[nearest_indices]
         delta = samples - nearest_values
         scale = torch.clamp(
-            0.28 / torch.max(torch.abs(delta * weights), dim=1).values, max=1.0
+            step / torch.max(torch.abs(delta * weights), dim=1).values, max=1.0
         )
         steered = nearest_values + delta * scale[:, None]
         edge_valid, edge_stability = validity.edges(
@@ -115,7 +115,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         other_indices = nearest(other_tree, accepted)
         other_values = other_tree[other_indices]
         pair_distance = torch.linalg.vector_norm((accepted - other_values) * weights, dim=1)
-        candidate_indices = torch.argsort(pair_distance)[:min(256, len(accepted))]
+        candidate_indices = torch.argsort(pair_distance)[:min(connect_candidates, len(accepted))]
         connect_valid, connect_stability = validity.edges(
             accepted[candidate_indices], other_values[candidate_indices], return_stability=True
         )
