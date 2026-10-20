@@ -86,5 +86,12 @@
     "execution_duration": "paired median increase at most 20%",
     "judged_arm": "cartesian_v2_toppra",
     "report_only": ["configuration continuity", "FCL mesh audit (shared GPU sphere-model gap, MOTION-326)"]
+  },
+  "frozen": {
+    "date": "2026-10-20",
+    "before_test_run": true,
+    "cartesian_options": {"edge_resolution": 0.08, "batch": 128, "connect_candidates": 32, "shortcut": true,
+                          "monotonic_progress": true, "strict_budget": true, "budget_reserve_s": 0.25},
+    "dev_evidence": "motion312-acceptance/v2-dev-20261020 (25 nominal scenes x 2 seeds x 3 arms, source ac8331a): primary arm 48/50 = baseline 48/50 (right02 contact-IK boundary), paired stage +8.6%, duration +13.8%, side extra rotation -100%, max search 1764 ms; no further tuning to avoid overfitting the seen scenes"
   }
 }
