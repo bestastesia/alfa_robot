@@ -83,6 +83,10 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         self.snapshot = original_snapshot
         return rows[selected], {"raw_waypoints": len(rows), "shortcut_waypoints": len(selected)}
 
+    def _extra_timing_candidates(self, phase, rows, names, sample_dt, boxes, original_snapshot):
+        """Extra validated (duration, parameterizer, trajectory, validation) candidates; none by default."""
+        return []
+
     def time_parameterize_result(self, result):
         started = time.perf_counter()
         names = list(result["joint_names"])
@@ -126,6 +130,8 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                             phase, stopped_validation, boxes, validation_snapshot):
                         candidates.append((stopped["duration_s"], "validated_shortcut_stops",
                                            stopped, stopped_validation))
+                candidates.extend(self._extra_timing_candidates(
+                    phase, timing_rows, names, sample_dt, boxes, validation_snapshot))
                 if candidates:
                     _, parameterizer, trajectory, validation = min(candidates, key=lambda item: item[0])
                 else:
