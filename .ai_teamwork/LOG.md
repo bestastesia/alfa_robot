@@ -2212,3 +2212,9 @@
 - 实现前预注册config/motion312_transport_ab.json：单臂transport、状态p+s+u+ψ与固定分支、解析IK、直线→RRT两层、同分支atlas终点吸附、同一loaded validity与2s预算、transport不shortcut；开发集WALL_SEQUENCE 5个单臂轮（全右臂），留出集其余20单臂任务（左右各10），每法5个配对种子；判定阈值待李昊洋确认。
 - 冻结基线/home/astesia/Sevenova/motion312-acceptance/frozen-20261019：15/15轮25/25箱；与10/17 PR65运行逐轮比对，搜索统计与旋转指标0差异、frames最大差0.0，默认种子下确定。provenance记录源码tree、10个资产sha256、cuRobo 78fd485f、torch与驱动。
 - 留给下个AI：下一步L1前置验证S1–S6（分支分布、直线可行性、解析IK、cuRobo对照、shortcut效应、计时公平）；右02单臂接触为已知失败，不进运输配对统计。作者审阅前不开PR，只推送fork。
+
+## 2026-10-20 运控 / MOTION-324 笛卡尔转运保持路径时间化（TOPP-RA）
+- 分支feature/cartesian-transport-timing-motion-324叠加在MOTION-323分支c26e49f上。新增tools/v3_path_timing.py：与现有时间化同一clamped几何样条，TOPP-RA求逐点最大路径速度→平滑→C2时间缩放，q(t)=path(s(t))解析给出速度/加速度/jerk，整体放慢至三项≤1；加速度预留0.4由开发集扫描确定。
+- 接入方式：TimedSingleArmPlanner._extra_timing_candidates钩子（默认无候选，基线15轮几何字段与帧0差异）；CartesianTransportPlanner(transport_timing="toppra")只给笛卡尔transport段提供候选，与流水线候选同一碰撞校验、按最短时长选。
+- 开发集5单臂：5/5成功、均选validated_toppra；transport 15.85/14.20/10.70/8.05/5.13s（现有时间化60.99/71.74/16.43/11.99/5.74s），整轮执行时长较基线−4.9%~+2.7%；箱体旋转等于需求值；工具路径偏差≤0.36mm。证据/home/astesia/Sevenova/motion312-acceptance/l1-324-20261019。
+- 依赖toppra==0.6.10已装入curobo_v2/.venv（无其他包变化）。同口径下基线也用TOPP-RA时仍快5–49%，与部署口径分开报告；留出集/双臂未运行。作者审阅前不开PR，只推送fork。
