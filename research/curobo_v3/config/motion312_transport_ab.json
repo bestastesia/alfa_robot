@@ -80,6 +80,9 @@
     {"id": "A2", "date": "2026-10-19", "change": "RRT tier becomes the main tier; direct line kept as first attempt",
      "evidence": "L1 dev: direct line succeeded on 1/5 tasks (right06 only), below the pre-registered 3/5 rule"},
     {"id": "A3", "date": "2026-10-19", "change": "closed-form carriage transform instead of per-step URDF FK",
-     "evidence": "L1 dev: line checks took 28-73 ms, dominated by per-step yourdfpy FK; analytic IK solves in 17-20 us"}
-  ]
+     "evidence": "L1 dev: line checks took 28-73 ms, dominated by per-step yourdfpy FK; analytic IK solves in 17-20 us"},
+    {"id": "A4", "date": "2026-10-20", "change": "search options tuned on dev and frozen as cartesian_options_frozen",
+     "evidence": "motion312-acceptance/tune-20261020: 5 settings x 25 dev runs, all 25/25 successful; S3 gave search median 48 ms, P95 118 ms (default 50/207 ms)"}
+  ],
+  "cartesian_options_frozen": {"edge_resolution": 0.08, "batch": 128, "connect_candidates": 32}
 }
