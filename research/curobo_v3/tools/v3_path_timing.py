@@ -88,7 +88,10 @@ def _toppra(path, joint_names, velocity_limits, acceleration_limits, jerk_limits
 
     stretch = 1.0
     for _ in range(8):
-        probe = np.linspace(0.0, base * stretch, max(4000, int(np.ceil(base * stretch / sample_dt)) * 4))
+        duration = base * stretch
+        validation_time = np.linspace(0.0, duration, max(2, int(np.ceil(duration / sample_dt)) + 1))
+        # Check the output sample times themselves, not only a denser probe: the pipeline validates the samples.
+        probe = np.union1d(np.linspace(0.0, duration, max(4000, len(validation_time) * 4)), validation_time)
         _, s1, _, velocity, acceleration, jerk = evaluate(probe, stretch)
         if np.min(s1) < -1e-6:
             raise RuntimeError("TOPP-RA time scaling is not monotonic")
@@ -101,8 +104,6 @@ def _toppra(path, joint_names, velocity_limits, acceleration_limits, jerk_limits
     else:
         raise RuntimeError("TOPP-RA time scaling did not meet the limits")
 
-    duration = base * stretch
-    validation_time = np.linspace(0.0, duration, max(2, int(np.ceil(duration / sample_dt)) + 1))
     s, _, positions, velocity, acceleration, jerk = evaluate(validation_time, stretch)
     knot_time_out = np.interp(parameter, s, validation_time)
     _, _, _, knot_velocity, knot_acceleration, knot_jerk = evaluate(knot_time_out, stretch)
