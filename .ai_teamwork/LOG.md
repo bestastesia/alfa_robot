@@ -2199,3 +2199,9 @@
 - 接入方式：TimedSingleArmPlanner._extra_timing_candidates钩子（默认无候选，基线15轮几何字段与帧0差异）；CartesianTransportPlanner(transport_timing="toppra")只给笛卡尔transport段提供候选，与流水线候选同一碰撞校验、按最短时长选。
 - 开发集5单臂：5/5成功、均选validated_toppra；transport 15.85/14.20/10.70/8.05/5.13s（现有时间化60.99/71.74/16.43/11.99/5.74s），整轮执行时长较基线−4.9%~+2.7%；箱体旋转等于需求值；工具路径偏差≤0.36mm。证据/home/astesia/Sevenova/motion312-acceptance/l1-324-20261019。
 - 依赖toppra==0.6.10已装入curobo_v2/.venv（无其他包变化）。同口径下基线也用TOPP-RA时仍快5–49%，与部署口径分开报告；留出集/双臂未运行。作者审阅前不开PR，只推送fork。
+
+## 2026-10-20 运控 / MOTION-323 单臂转运笛卡尔直接搜索A/B收口
+- 分支feature/cartesian-transport-ab-motion-323（叠加在324 7811672与323 c26e49f上）：tools/v3_motion312_transport_ab.py（run/summarize/audit），三组joint_rrt/cartesian/cartesian_toppra共用同一规划器，按种子交替；开发集调参冻结edge 0.08、batch 128、connect 32（A4）；规划耗时以配对中位为主。
+- 开发集75次全部成功；留出集300次（25ae159）正式判定：笛卡尔（现有时间化）规划耗时+12.8%✗、成功率94/100 vs 95✗、执行时长+420.8%✗、side额外旋转配对中位降100%✓（基线中位9.3°→0.03°）；TOPP-RA组时长+19.1%✓，但最大搜索2032ms超预算、3次时间化校验失败。结论：不优于现有方案（质量单项更优），原规划器保持默认。证据/home/astesia/Sevenova/motion312-acceptance/ab-holdout-20261020。
+- FCL网格审计：两组side搬运都有接触（基线≤33.5mm开发集/≤10.5mm留出集，笛卡尔≤34.2mm），属共用GPU球模型缺口→MOTION-326。TOPP-RA校验漏采样时刻已在324分支e86978a修复并复测→MOTION-324。
+- 留给下个AI：方法v2（状态空间shortcut、进度s单调、预算严格截止、左右臂开发样本、新独立测试集）→MOTION-327。作者审阅前不开PR，只推送fork。
