@@ -22,7 +22,9 @@ from v3_multiroot_search import batched_rrt_connect_multi_goal
 STATE_NAMES = ["tool_x", "tool_y", "tool_z", "progress", "updown", "psi"]
 GOAL_WEIGHTS = np.array([METRE] + [1.] * 14)
 DEFAULTS = dict(goals_per_group=32, max_jump_deg=8., edge_resolution=.05, path_resolution=.01,
-                workspace_margin_m=.35, batch=256, connect_candidates=64, step=.28)
+                workspace_margin_m=.35, batch=256, connect_candidates=64, step=.28,
+                # MOTION-327 v2 options; all off keeps the MOTION-323 (v1) behaviour.
+                shortcut=False, monotonic_progress=False, strict_budget=False, budget_reserve_s=.25)
 
 
 class BatchAnalyticIk:
@@ -131,6 +133,27 @@ class CartesianTransportSpace:
             valid[np.nonzero(valid)[0]] = self._collision_free(rows[valid])
         return torch.tensor(valid, device=states.device)
 
+    def shortcut(self, waypoints):
+        """Greedy state-space shortcut: from each kept waypoint jump to the farthest one with a valid edge."""
+        points = np.asarray(waypoints, dtype=np.float64)
+        kept = [0]
+        while kept[-1] < len(points) - 1:
+            source = kept[-1]
+            targets = np.arange(len(points) - 1, source, -1)
+            starts = torch.tensor(np.repeat(points[source][None], len(targets), axis=0), dtype=torch.float32)
+            valid = self.edges(starts, torch.tensor(points[targets], dtype=torch.float32)).cpu().numpy()
+            kept.append(int(targets[np.argmax(valid)]) if valid.any() else source + 1)
+        return points[kept]
+
+    def monotonic(self, waypoints):
+        """Waypoints with non-decreasing orientation progress, or None if a changed edge is invalid."""
+        points = np.array(waypoints, dtype=np.float64)
+        points[:, 3] = np.maximum.accumulate(points[:, 3])
+        if np.allclose(points, waypoints):
+            return points
+        valid = self.edges(torch.tensor(points[:-1], dtype=torch.float32), torch.tensor(points[1:], dtype=torch.float32))
+        return points if bool(valid.all().item()) else None
+
     def joint_path(self, waypoints, goal_row):
         """Dense joint path for state waypoints, snapped to the exact start and goal rows, or a failure reason."""
         rows, found = self.joints(refine(waypoints, self.weights_np, self.options["path_resolution"]))
@@ -181,8 +204,10 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
     ordered = sorted((np.asarray(group) for group in groups.values()),
                      key=lambda group: np.linalg.norm((group - start) * GOAL_WEIGHTS, axis=1).min())
     lower, upper = (values[0].item() for values in checker.kinematics.get_joint_limits().position)
+    strict = options["strict_budget"]
+    over_budget = lambda: time.perf_counter() - began >= budget_s
     for group in ordered:
-        if time.perf_counter() - began >= budget_s:
+        if over_budget():
             break
         goals = group[np.argsort(np.linalg.norm((group - start) * GOAL_WEIGHTS, axis=1))][:options["goals_per_group"]]
         space = CartesianTransportSpace(planner, start, goals, checker, _IK, options)
@@ -193,12 +218,14 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
         line_ok = space.edges(start_states, torch.tensor(space.goal_states, device="cuda", dtype=torch.float32))
         attempt["direct_lines_coarse_valid"] = int(line_ok.sum().item())
         for index in torch.nonzero(line_ok).reshape(-1).tolist():
+            if strict and over_budget():
+                break
             stats["first_solution_ms"] = stats["first_solution_ms"] or (time.perf_counter() - began) * 1000
             path, failure = space.joint_path([space.start_state, space.goal_states[index]], goals[index])
-            if path is not None:
+            if path is not None and not (strict and over_budget()):
                 return finish(path, tier="direct_line", selected_goal=index, raw_waypoints=2)
-            attempt.setdefault("direct_line_fine_failures", []).append(failure)
-        remaining = budget_s - (time.perf_counter() - began)
+            attempt.setdefault("direct_line_fine_failures", []).append(failure or "over_budget")
+        remaining = budget_s - (time.perf_counter() - began) - (options["budget_reserve_s"] if strict else 0.)
         if remaining <= 0:
             break
         bound_low, bound_high = space.bounds(lower + 1e-5, upper - 1e-5)
@@ -215,9 +242,21 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
             stats["first_solution_ms"] = (time.perf_counter() - began) * 1000 - search["search_ms"] + search["first_solution_ms"]
         if waypoints is None:
             continue
-        path, failure = space.joint_path(waypoints, goals[search["selected_goal"]])
-        if path is not None:
-            return finish(path, tier="rrt", selected_goal=search["selected_goal"], raw_waypoints=len(waypoints),
-                          state_waypoints=np.asarray(waypoints, dtype=float).round(6).tolist())
-        attempt["rrt_fine_failure"] = failure
-    return finish(None, failure="budget_exhausted" if time.perf_counter() - began >= budget_s else "no_valid_path")
+        variants = [("raw", np.asarray(waypoints, dtype=np.float64))]
+        if options["shortcut"]:
+            variants.insert(0, ("shortcut", space.shortcut(waypoints)))
+        if options["monotonic_progress"]:
+            monotonic = space.monotonic(variants[0][1])
+            if monotonic is not None:
+                variants.insert(0, (f"{variants[0][0]}_monotonic", monotonic))
+        for label, points in variants:
+            if strict and over_budget():
+                attempt.setdefault("rrt_fine_failures", {})[label] = "over_budget"
+                break
+            path, failure = space.joint_path(points, goals[search["selected_goal"]])
+            if path is not None and not (strict and over_budget()):
+                return finish(path, tier="rrt", path_variant=label, selected_goal=search["selected_goal"],
+                              raw_waypoints=len(waypoints), final_waypoints=len(points),
+                              state_waypoints=points.round(6).tolist())
+            attempt.setdefault("rrt_fine_failures", {})[label] = failure or "over_budget"
+    return finish(None, failure="budget_exhausted" if over_budget() else "no_valid_path")
