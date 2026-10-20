@@ -122,7 +122,9 @@ def record_reply_timing(result, requested_at, received_at):
 
 
 def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, random_seed=0,
-           phase=None, braking_duration_s=.5, allow_braking_fallback=True):
+           phase=None, braking_duration_s=.5, allow_braking_fallback=True,
+           compute_bound_s=1., link_bound_s=.15, admission_bound_s=.05,
+           first_compute_bound_s=None):
     """Own one CUDA backend; optional stage arguments preserve the legacy one-shot CLI."""
     from curobo_core.rolling_backend import RollingBackend
     from curobo_core.rolling_curobo import SegmentReplanner
@@ -203,6 +205,10 @@ def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, ra
                 "snapshot": snapshot, "boxes": boxes, "payload": payload, "initial": initial,
                 "seed": random_seed, "phase": phase, "braking_duration_s": braking_duration_s,
                 "allow_braking_fallback": allow_braking_fallback,
+                "compute_bound_s": compute_bound_s, "link_bound_s": link_bound_s,
+                "admission_bound_s": admission_bound_s,
+                "first_compute_bound_s": (compute_bound_s + 1.5 if first_compute_bound_s is None
+                                            else first_compute_bound_s),
             }, True))
         else:
             connection.send({"service_ready": True,
@@ -254,7 +260,8 @@ def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, ra
             else:
                 response = adapter.solve(
                     ticket, observation, prefix, max_duration_s=duration, search_seed=seed,
-                    progress=lambda event: connection.send({"progress": event}))
+                    progress=lambda event: connection.send({"progress": {
+                        "sequence": ticket.sequence, "observation_id": observation.identity, **event}}))
             connection.send(response)
     except (Exception, EOFError) as error:
         try:
@@ -353,7 +360,11 @@ def run(args, shared=None):
     owns_worker = shared is None
     if owns_worker:
         parent, child = mp.get_context("spawn").Pipe()
-        process = mp.get_context("spawn").Process(target=worker, args=(child, snapshot, boxes, payload, initial, args.seed, args.stage, args.braking_duration_s, not args.disable_braking_fallback))
+        process = mp.get_context("spawn").Process(target=worker, args=(
+            child, snapshot, boxes, payload, initial, args.seed, args.stage,
+            args.braking_duration_s, not args.disable_braking_fallback,
+            args.compute_bound_s, args.link_bound_s, getattr(args, "admission_bound_s", .05),
+            configured_first_bound))
     else:
         if not shared.get("primed"):
             raise ValueError("persistent worker must be primed before stage execution")
@@ -467,55 +478,104 @@ def run(args, shared=None):
                                      (args.seed + segment.sequence) % 2**32, fault))
             deadline = min(now + args.compute_bound_s,
                            boundary - args.link_bound_s - schedule.admission_bound_s) if terminal else ticket.compute_deadline
-            result = {"success": True, "ready_at": now, "terminal": True} if reuse else None
-            arrived, installed = (now if reuse else None), reuse
+            active_result = {"success": True, "ready_at": now, "terminal": True} if reuse else None
+            installed = reuse
+            worker_done = reuse
+            candidate = None
+            candidate_arrived = None
+            candidate_staged = reuse
+            safe_fallback = None
             while True:
                 now = time.perf_counter()
-                # A reply may legitimately spend t3 in transit AFTER computation
-                # finishes at its t2 deadline. The complete-message deadline is
-                # t2+t3; the reported ready_at is checked separately when received.
-                if result is None and now > deadline + args.link_bound_s:
+                # A validated current suffix is staged as soon as its compact
+                # certificate arrives. Optional TrajOpt may then use the remaining
+                # window, but its timeout cannot invalidate that already-safe path.
+                if not worker_done and not installed and now > deadline + args.link_bound_s:
                     raise TimeoutError("worker reply deadline miss (supervisor)")
                 message = None
-                if result is None:
+                if not worker_done:
                     try:
                         message = replies.get_nowait()
                     except queue.Empty:
                         pass
                 if message is not None:
                     if "progress" in message:
-                        report["worker_events"].append(message["progress"])
-                        publish_progress(args, "planner_progress", stage=args.stage,
-                                         detail=message["progress"])
+                        detail = message["progress"]
+                        if (not terminal and (detail.get("sequence") != ticket.sequence or
+                                              detail.get("observation_id") != observation.identity)):
+                            report.setdefault("late_worker_events", []).append(detail)
+                            continue
+                        report["worker_events"].append(detail)
+                        publish_progress(args, "planner_progress", stage=args.stage, detail=detail)
+                        if not terminal and detail.get("phase") == "safe_suffix":
+                            received_at = time.perf_counter()
+                            safe_arrived = received_at + args.link_delay_s
+                            if fault == "link_delay":
+                                safe_arrived += schedule.period_s + args.link_bound_s
+                            safe_snapshot = observation.swept_snapshot(
+                                detail["valid_from"], detail["valid_until"])
+                            safe_fallback = {
+                                "success": True, "sequence": ticket.sequence,
+                                "observation_id": observation.identity,
+                                "previous_suffix_valid": True, "optimization_success": False,
+                                "strategy": "revalidated_suffix", "trajectory": ticket.remaining,
+                                "certificate": {"snapshot": safe_snapshot.to_dict(),
+                                                "valid_from": detail["valid_from"],
+                                                "valid_until": detail["valid_until"]},
+                                "started_at": detail["started_at"], "ready_at": detail["at"],
+                                "deadline_miss": False, "received_at": received_at,
+                                "arrived_at": safe_arrived,
+                            }
                         continue
-                    result = message
+                    if (not terminal and (message.get("sequence") != ticket.sequence or
+                                          message.get("observation_id") != observation.identity)):
+                        report.setdefault("late_worker_results", []).append({
+                            key: value for key, value in message.items()
+                            if key not in ("trajectory", "certificate", "prefix_certificate",
+                                           "planning_certificate", "validation")})
+                        continue
+                    worker_done = True
                     received_at = time.perf_counter()
-                    record_reply_timing(result, requested_at, received_at)
+                    record_reply_timing(message, requested_at, received_at)
                     arrived = received_at + args.link_delay_s
                     if fault == "link_delay":
                         arrived += schedule.period_s + args.link_bound_s
-                    report["solves"].append(result)
+                    report["solves"].append(message)
                     publish_progress(args, "solve_finished", stage=args.stage,
-                                     sequence=result.get("sequence"), terminal=bool(result.get("terminal")),
-                                     success=bool(result.get("success")), strategy=result.get("strategy"),
-                                     compute_wall_s=result.get("compute_wall_s"),
-                                     request_to_ready_s=result.get("request_to_ready_s"),
-                                     sdk_solve_times_s=result.get("sdk_solve_times_s", []),
-                                     failure_code=result.get("failure_code"))
-                    if not result.get("success"):
-                        report["failure_code"] = result.get("failure_code", "PLAN_REJECTED")
-                        report["required_action"] = result.get("required_action", "independent_safety_intervention")
-                        raise RuntimeError(result.get("error", "planning failed"))
-                    if not terminal and (result.get("sequence") != ticket.sequence or
-                                         result.get("observation_id") != observation.identity):
-                        raise ValueError("worker returned an obsolete task or scene")
-                if result is not None and not installed and now > result["ready_at"] + args.link_bound_s:
-                    raise TimeoutError("communication deadline miss before splice")
-                if result is not None and not installed and now >= arrived:
+                                     sequence=message.get("sequence"), terminal=bool(message.get("terminal")),
+                                     success=bool(message.get("success")), strategy=message.get("strategy"),
+                                     compute_wall_s=message.get("compute_wall_s"),
+                                     request_to_ready_s=message.get("request_to_ready_s"),
+                                     sdk_solve_times_s=message.get("sdk_solve_times_s", []),
+                                     failure_code=message.get("failure_code"))
+                    if not message.get("success"):
+                        report["failure_code"] = message.get("failure_code", "PLAN_REJECTED")
+                        report["required_action"] = message.get("required_action", "independent_safety_intervention")
+                        raise RuntimeError(message.get("error", "planning failed"))
+                    if message.get("strategy") == "deadline_revalidated_suffix" and installed:
+                        active_result = message
+                    else:
+                        candidate, candidate_arrived = message, arrived
+                if safe_fallback is not None and not installed and now >= safe_fallback["arrived_at"]:
+                    if fault == "admission_delay":
+                        time.sleep(schedule.period_s)
+                    segment.stage(ticket, ticket.remaining, observation, safe_fallback["ready_at"],
+                                  safe_fallback["arrived_at"], previous_suffix_valid=True,
+                                  admission_clock=time.perf_counter)
+                    installed = True
+                    active_result = safe_fallback
+                    now = time.perf_counter()
+                if candidate is not None and not candidate_staged and now > candidate["ready_at"] + args.link_bound_s:
+                    if installed and candidate.get("previous_suffix_valid"):
+                        candidate["optional_communication_deadline_miss"] = True
+                        candidate = None
+                    else:
+                        raise TimeoutError("communication deadline miss before splice")
+                if candidate is not None and not candidate_staged and now >= candidate_arrived:
                     if terminal:
                         received_at = now
-                        if (result["ready_at"] > deadline or received_at > boundary or
-                                received_at-result["ready_at"] > args.link_bound_s):
+                        if (candidate["ready_at"] > deadline or received_at > boundary or
+                                received_at-candidate["ready_at"] > args.link_bound_s):
                             raise TimeoutError("terminal revalidation missed communication deadline")
                         admitted_at = time.perf_counter()
                         if (admitted_at > boundary or
@@ -523,24 +583,33 @@ def run(args, shared=None):
                             raise TimeoutError("terminal revalidation missed admission deadline")
                         segment.events.append({"event": "terminal_validated", "at": admitted_at,
                                                "scene_id": observation.identity,
-                                               "safe_ready_at": result["ready_at"],
+                                               "safe_ready_at": candidate["ready_at"],
                                                "received_at": received_at,
-                                               "transport_latency_s": received_at-result["ready_at"],
+                                               "transport_latency_s": received_at-candidate["ready_at"],
                                                "admission_latency_s": admitted_at-received_at,
-                                               "available_latency_s": result["ready_at"]-observation.observed_at,
+                                               "available_latency_s": candidate["ready_at"]-observation.observed_at,
                                                "accepted_latency_s": admitted_at-observation.observed_at,
                                                "trajectory_id": segment.trajectory_id})
                     else:
                         if fault == "admission_delay":
-                            time.sleep(schedule.period_s)  # simulate a blocked contract validator
-                        segment.stage(ticket, result["trajectory"], observation, result["ready_at"], now,
-                                      previous_suffix_valid=result["previous_suffix_valid"],
-                                      admission_clock=time.perf_counter)
+                            time.sleep(schedule.period_s)
+                        segment.stage(ticket, candidate["trajectory"], observation, candidate["ready_at"], now,
+                                      previous_suffix_valid=candidate["previous_suffix_valid"],
+                                      admission_clock=time.perf_counter, replace_staged=installed)
                         now = time.perf_counter()
-                    installed = True
+                    installed = candidate_staged = True
+                    active_result = candidate
                 if now >= boundary:
                     if not installed:
                         raise TimeoutError("communication deadline miss: replacement not delivered by splice")
+                    if not terminal and active_result is safe_fallback:
+                        safe_result = dict(safe_fallback)
+                        safe_result.pop("received_at", None)
+                        safe_result.pop("arrived_at", None)
+                        safe_result["optional_optimization_pending"] = not worker_done
+                        safe_result["optional_candidate_discarded"] = candidate is None and worker_done
+                        record_reply_timing(safe_result, requested_at, safe_fallback["received_at"])
+                        report["solves"].append(safe_result)
                     if terminal:
                         complete(now)
                     else:
@@ -552,14 +621,16 @@ def run(args, shared=None):
                             observation = replace(observation, snapshot=replace(
                                 observation.snapshot, revision=observation.snapshot.revision+1))
                         segment.activate(feedback, observation, boundary)
-                        certificate = result["certificate"]
+                        certificate = active_result["certificate"]
                         segment.events[-1]["feedback_received_at"] = now
                         segment.events[-1]["feedback_latency_s"] = now-observation.observed_at
+                        segment.events[-1]["strategy"] = active_result.get("strategy")
                         report["trajectories"].append({"active_at": boundary,
-                                                       "trajectory": result["trajectory"]})
+                                                       "trajectory": active_result["trajectory"]})
                         publish_progress(args, "trajectory_activated", stage=args.stage,
                                          sequence=segment.sequence - 1, active_at=boundary,
-                                         strategy=result.get("strategy"), trajectory=result["trajectory"])
+                                         strategy=active_result.get("strategy"),
+                                         trajectory=active_result["trajectory"])
                     break
                 if now >= next_sample:
                     sample = {"at": now, "trajectory_id": segment.trajectory_id,
@@ -613,19 +684,24 @@ def run(args, shared=None):
         report["optimization_success_count"] = sum(x.get("optimization_success", False) for x in report["solves"])
         report["direct_optimization_success_count"] = sum(x.get("strategy") == "optimized_suffix" and x.get("success", False)
                                                          for x in report["solves"])
-        report["revalidated_fallback_count"] = sum(x.get("strategy") in ("revalidated_suffix", "revalidated_constrained_suffix")
-                                                  for x in report["solves"])
+        report["revalidated_fallback_count"] = sum(x.get("strategy") in (
+            "revalidated_suffix", "revalidated_constrained_suffix", "deadline_revalidated_suffix")
+            for x in report["solves"])
+        report["optional_timeout_skip_count"] = sum(
+            x.get("strategy") == "deadline_revalidated_suffix" for x in report["solves"])
         report["constrained_revalidation_count"] = sum(x.get("strategy") == "revalidated_constrained_suffix"
                                                          for x in report["solves"])
-        installed_sequences = {event["sequence"] for event in report["events"] if event["event"] == "activated"}
+        installed_strategies = {event["sequence"]: event.get("strategy") for event in report["events"]
+                                if event["event"] == "activated"}
         report["braking_candidate_count"] = sum(x.get("strategy") == "brake_then_optimize" and x.get("success", False)
                                                  for x in report["solves"])
-        report["braking_replan_count"] = sum(x.get("strategy") == "brake_then_optimize" and x.get("success", False)
-                                              and x.get("sequence") in installed_sequences for x in report["solves"])
-        report["direct_splice_count"] = sum(x.get("strategy") == "optimized_suffix" and x.get("sequence") in installed_sequences
-                                             for x in report["solves"])
-        report["revalidated_splice_count"] = sum(x.get("strategy") == "revalidated_suffix" and x.get("sequence") in installed_sequences
-                                                  for x in report["solves"])
+        report["braking_replan_count"] = sum(strategy == "brake_then_optimize"
+                                              for strategy in installed_strategies.values())
+        report["direct_splice_count"] = sum(strategy == "optimized_suffix"
+                                             for strategy in installed_strategies.values())
+        report["revalidated_splice_count"] = sum(strategy in (
+            "revalidated_suffix", "deadline_revalidated_suffix")
+            for strategy in installed_strategies.values())
         report["deadline_miss_count"] = sum(x.get("deadline_miss", False) for x in report["solves"])
         if "deadline" in report.get("error", "") and not report["deadline_miss_count"]:
             report["deadline_miss_count"] = 1

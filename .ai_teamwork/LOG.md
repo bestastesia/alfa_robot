@@ -2349,3 +2349,9 @@
 - 新增`t2_first=t2_rolling+1.5s`临时预算；自由空间阶段第一个切片使用first预算，后续切片使用rolling预算，动态切片按一个first窗口加若干rolling窗口计算。最后3厘米贴近/抽离35厘米无TrajOpt首次构建，仍按rolling窗口执行但报告保留配置的first预算。
 - 常驻worker预备阶段不再只按empty/loaded粗粒度，而按真实TrajectoryOptimizer key（箱号组合、吸附方式、接触偏移、箱体几何、附件）执行第一条真实形态的suffix求解，记录first_wall与deadline；不缓存轨迹结果。
 - 第1轮static携箱运输GPU冒烟六阶段6/6通过：approach first=2.386s<2.5s，loaded key first=1.623s<2.25s；后续rolling回落到正常分布。CPU core 114/114。
+
+## 2026-10-20 Codex / MOTION-292 可选优化超时降级
+- 做了什么：worker在旧后缀确认安全后先发布紧凑安全证书；TrajOpt按时完成则替换，超时则跳过本次优化并执行已验证旧后缀；旧后缀碰撞时仍严格fail-closed。
+- 改了哪里：`rolling_curobo.py`、`rolling.py`、`v3_rolling_replan.py`及CPU合同测试；同时补齐legacy one-shot worker的`t2_first/t2/t3/t4`配置。
+- 验证结果：CPU core 116/116；0.35s低预算+CPU×4冒烟触发10次optional skip仍完整执行并通过独立audit；碰撞重规划在0.35s不足预算时拒绝、0.75s时成功；六阶段static运输冒烟6/6及逐阶段audit通过。
+- 留给下个AI：以此提交为新基线，继续跑六阶段static/moving/appear/depart、多尺寸/速度/位置障碍矩阵；后台长测必须带桌面通知和`TEST-FINISHED.md`。

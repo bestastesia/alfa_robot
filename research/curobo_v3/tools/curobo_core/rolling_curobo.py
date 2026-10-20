@@ -184,6 +184,11 @@ class SegmentReplanner:
                 report["required_action"] = "independent_safety_intervention"
                 report["endpoint_check_interval"] = [ticket.splice_at, scene_end]
                 raise ValueError(f"{report['failure_code']}: fixed endpoint violates the planning envelope")
+            if report["previous_suffix_valid"]:
+                safe_ready_at = time.perf_counter()
+                report["safe_fallback_ready_at"] = safe_ready_at
+                progress({"phase": "safe_suffix", "started_at": started, "at": safe_ready_at,
+                          "valid_from": ticket.splice_at, "valid_until": scene_end})
             if getattr(self, "constrained_phase", False):
                 if not report["previous_suffix_valid"]:
                     report["failure_code"] = "CONSTRAINED_PHASE_BLOCKED"
@@ -303,9 +308,17 @@ class SegmentReplanner:
             report.update(success=False, error=f"{type(error).__name__}: {error}")
             report.pop("trajectory", None)
         ready_at = time.perf_counter()
-        if ready_at > ticket.compute_deadline:
-            report.update(success=False, error="compute deadline miss")
-            report.pop("trajectory", None)
+        deadline_miss = ready_at > ticket.compute_deadline
+        if deadline_miss:
+            if report.get("previous_suffix_valid") and report.get("safe_fallback_ready_at", math.inf) <= ticket.compute_deadline:
+                report.update(success=True, optimization_success=False,
+                              strategy="deadline_revalidated_suffix", trajectory=ticket.remaining,
+                              certificate=report["planning_certificate"],
+                              optional_optimization_deadline_miss=True)
+                report.pop("error", None)
+            else:
+                report.update(success=False, error="compute deadline miss")
+                report.pop("trajectory", None)
         report.update(started_at=started, ready_at=ready_at, compute_wall_s=ready_at-started,
-                      deadline_miss=ready_at > ticket.compute_deadline)
+                      deadline_miss=deadline_miss)
         return report

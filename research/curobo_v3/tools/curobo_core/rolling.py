@@ -277,7 +277,7 @@ class RollingSegment:
         return self.pending
 
     def stage(self, ticket, trajectory, observation, ready_at, received_at, *, previous_suffix_valid=False,
-              admission_clock=None):
+              admission_clock=None, replace_staged=False):
         self._require_running()
         if ticket is not self.pending or ticket.trajectory_id != self.trajectory_id:
             raise ValueError("cancelled or obsolete planning result")
@@ -313,12 +313,21 @@ class RollingSegment:
         if not received_at <= admitted_at <= ticket.splice_at or not admission_ok:
             raise ValueError("admission deadline miss")
         self.staged = candidate
-        self.events.append({"event": "staged", "at": admitted_at, "sequence": ticket.sequence,
-                            "safe_ready_at": ready_at, "received_at": received_at,
-                            "transport_latency_s": received_at - ready_at,
-                            "admission_latency_s": admitted_at - received_at,
-                            "available_latency_s": ready_at - observation.observed_at,
-                            "accepted_latency_s": admitted_at - observation.observed_at})
+        event = {"event": "staged", "at": admitted_at, "sequence": ticket.sequence,
+                 "safe_ready_at": ready_at, "received_at": received_at,
+                 "transport_latency_s": received_at - ready_at,
+                 "admission_latency_s": admitted_at - received_at,
+                 "available_latency_s": ready_at - observation.observed_at,
+                 "accepted_latency_s": admitted_at - observation.observed_at}
+        if replace_staged:
+            index = next((i for i in range(len(self.events)-1, -1, -1)
+                          if self.events[i]["event"] == "staged" and
+                          self.events[i]["sequence"] == ticket.sequence), None)
+            if index is None:
+                raise ValueError("no staged fallback to replace")
+            self.events[index] = event
+        else:
+            self.events.append(event)
 
     def activate(self, feedback, observation, now):
         self._require_running()

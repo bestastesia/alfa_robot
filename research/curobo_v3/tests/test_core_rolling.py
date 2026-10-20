@@ -560,6 +560,46 @@ class RollingTest(unittest.TestCase):
         self.assertEqual(result["trajectory"], ticket.remaining)
         self.assertEqual(len(calls), 1)
 
+    def test_late_optional_optimization_keeps_the_early_safe_suffix(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        clock = [10.1]
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: clock[0]))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        progress = []
+        def optimize(*args, **kwargs):
+            clock[0] = 12.2
+            return None, {"accepted": False}
+        adapter = types.SimpleNamespace(
+            scene=lambda snapshot: object(), validate=lambda *args, **kwargs: {"valid": True},
+            backend=types.SimpleNamespace(optimize_rrt_path=optimize), boxes={}, payload=False,
+            check_endpoints=lambda *args: [True, True])
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=trajectory(4.),
+                                       initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.),
+                                    max_duration_s=19., progress=progress.append)
+        self.assertTrue(result["success"])
+        self.assertTrue(result["deadline_miss"])
+        self.assertTrue(result["optional_optimization_deadline_miss"])
+        self.assertEqual(result["strategy"], "deadline_revalidated_suffix")
+        self.assertEqual(result["trajectory"], ticket.remaining)
+        self.assertEqual(progress[0]["phase"], "safe_suffix")
+        self.assertLessEqual(progress[0]["at"], ticket.compute_deadline)
+
+    def test_staged_safe_suffix_can_be_replaced_by_an_on_time_optimization(self):
+        segment = self.segment(); obs = observation()
+        ticket = segment.begin(obs, feedback(segment, 10.), 10.)
+        segment.stage(ticket, ticket.remaining, obs, 10.2, 10.3, previous_suffix_valid=True)
+        segment.stage(ticket, ticket.remaining, obs, 10.4, 10.5, previous_suffix_valid=True,
+                      replace_staged=True)
+        staged = [event for event in segment.events if event["event"] == "staged"]
+        self.assertEqual(len(staged), 1)
+        self.assertEqual(staged[0]["safe_ready_at"], 10.4)
+
     def test_long_prediction_ttl_does_not_mean_long_robot_occupancy(self):
         obs = observation()
         actual = obs.swept_snapshot(11., 13.)
