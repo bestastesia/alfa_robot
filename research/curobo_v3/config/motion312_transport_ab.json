@@ -73,6 +73,10 @@
     "quality": "paired median extra box rotation on single-arm side tasks reduced by at least 30%, tool path/chord ratio not increased",
     "execution_duration": "paired median increase at most 20%"
   },
+  "decision_rule_clarifications": [
+    {"date": "2026-10-20", "rule": "planning_time", "before_holdout": true,
+     "clarification": "primary: paired (same task and seed) median change of the transport stage time; per-arm median and P95 reported as secondary; every search within the 2 s budget"}
+  ],
   "amendment_policy": "amendments use dev-set evidence only and are made before any holdout run",
   "amendments": [
     {"id": "A1", "date": "2026-10-19", "change": "idle arm no longer fixed at the start value; goals use the baseline idle-arm variants",

@@ -202,9 +202,39 @@ def summarize(args):
             side_extra_rotation_reduction_percent_median=_median(reduction),
             path_to_chord_change_percent_median=_median(ratio("executed.path_to_chord")))
     summary["paired_vs_joint_rrt"] = paired
+    summary["decisions"] = decisions(summary, records)
     output = args.output or args.input / "summary.json"
     output.write_text(json.dumps(summary, ensure_ascii=False, indent=1, default=float) + "\n")
     print(json.dumps(summary, ensure_ascii=False, indent=1, default=float))
+
+
+def decisions(summary, records, budget_ms=2000.):
+    """Pre-registered rules per arm against joint_rrt; planning time: paired median primary, per-arm secondary."""
+    base = summary["arms"].get("joint_rrt")
+    output = {}
+    for arm, paired in summary["paired_vs_joint_rrt"].items():
+        stats = summary["arms"][arm]
+        change = lambda key: (stats[key] / base[key] - 1) * 100 if base and base.get(key) else None
+        searches = [_get(record, "planning.search_ms") for record in records if record["arm"] == arm and record.get("success")]
+        output[arm] = dict(
+            planning_time=dict(
+                paired_stage_change_percent=paired["transport_stage_ms_change_percent_median"],
+                per_arm_stage_median_change_percent=change("transport_stage_ms_median"),
+                per_arm_stage_p95_change_percent=change("transport_stage_ms_p95"),
+                max_search_ms=max((value for value in searches if value is not None), default=None),
+                passed=bool(paired["transport_stage_ms_change_percent_median"] is not None
+                            and paired["transport_stage_ms_change_percent_median"] <= 10
+                            and max((value for value in searches if value is not None), default=0) <= budget_ms)),
+            success=dict(arm=stats["success"], baseline=base["success"] if base else None,
+                         passed=bool(base and stats["success"] / stats["runs"] >= base["success"] / base["runs"])),
+            quality=dict(side_extra_rotation_reduction_percent=paired["side_extra_rotation_reduction_percent_median"],
+                         path_to_chord_change_percent=paired["path_to_chord_change_percent_median"],
+                         passed=bool((paired["side_extra_rotation_reduction_percent_median"] or 0) >= 30
+                                     and (paired["path_to_chord_change_percent_median"] or 0) <= 0)),
+            execution_duration=dict(paired_change_percent=paired["transport_duration_change_percent_median"],
+                                    passed=bool(paired["transport_duration_change_percent_median"] is not None
+                                                and paired["transport_duration_change_percent_median"] <= 20)))
+    return output
 
 
 def audit(args):
