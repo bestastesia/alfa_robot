@@ -11,6 +11,7 @@ the proposed decision rules come from config/motion312_transport_ab.json.
 """
 import argparse
 import copy
+from dataclasses import replace
 import json
 import math
 import subprocess
@@ -133,7 +134,11 @@ def run(args):
     runs, full = args.output / "runs", args.output / "full"
     runs.mkdir(parents=True, exist_ok=True)
     full.mkdir(exist_ok=True)
-    assets = PlannerAssets()
+    assets = replace(PlannerAssets(), **{key: getattr(args, key) for key in ("robot_config", "mobile_robot_config")
+                                         if getattr(args, key)})
+    if assets != PlannerAssets():
+        (args.output / "assets.json").write_text(json.dumps({key: str(getattr(assets, key)) for key in
+                                                          ("robot_config", "mobile_robot_config")}, indent=1) + "\n")
     options = json.loads(args.cartesian_options) if args.cartesian_options else config.get("cartesian_options_frozen", {})
     planner = HarnessPlanner(assets, cartesian_options=options)
     planner.warmup_resources()
@@ -296,6 +301,9 @@ def main():
     runner.add_argument("--keep-full", choices=("none", "first", "all"), default="first")
     runner.add_argument("--cartesian-options", help="JSON overrides of v3_cartesian_transport.DEFAULTS; "
                                                      "default: cartesian_options_frozen from the config")
+    runner.add_argument("--robot-config", type=Path, help="research copy of the fixed-base robot config (default: frozen)")
+    runner.add_argument("--mobile-robot-config", type=Path, help="research copy of the mobile robot config; its "
+                        "directory must contain model/ like the frozen one (default: frozen)")
     runner.add_argument("--output", type=Path, required=True)
     summary = commands.add_parser("summarize")
     summary.add_argument("--input", type=Path, required=True)
