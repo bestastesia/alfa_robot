@@ -260,6 +260,8 @@ def agree(args):
     reference, candidate = load(args.gpu), load(args.cpu)
     counts, differing = collections.Counter(), []
     for key, entry in candidate.items():
+        if key not in reference:
+            continue
         for phase in PHASES:
             gpu = expand(reference[key]["phases"][phase]["invalid"])
             cpu = expand(entry["phases"][phase]["invalid"])

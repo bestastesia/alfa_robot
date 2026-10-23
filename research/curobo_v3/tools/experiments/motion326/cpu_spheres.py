@@ -7,6 +7,11 @@ base link is exempt, as in GpuValidity) or a base cuboid. The ignore table is th
 BallFullCyclePlanner skips the arm <-> base_link sphere pairs (replace_arm_base_pairs) and checks
 every sphere except those of base_link and arm_carriage against the frozen base cuboids instead
 (BaseCuboidLayer). Forward kinematics is vectorized over frames.
+
+Not replicated: in approach the GPU target validity also treats the box to be grasped as an obstacle,
+while the world cuboids here come from the attach snapshot. GPU-verified (patch_eval agree): appended
+sphere vs sphere (arm_carriage patch) and appended base cuboids vs all spheres (cuboid-v2); the
+appended-sphere vs world/base cuboid paths have not been exercised on the GPU yet.
 """
 import collections
 import copy
@@ -134,8 +139,9 @@ def appended_collisions(groups, centers, ignored, cuboids, ground_z, ground_exem
     for label, link, _, radii in (g for g in groups if g[0].endswith("+")):
         a = centers[label]
         for other, other_link, _, other_radii in groups:
-            # payload groups carry link7 as their link, so the ignore table applies to them as on the GPU
-            if other.endswith("+") or other_link == link or frozenset((link, other_link)) in ignored:
+            # payload groups carry link7 as their link, so the ignore table applies to them as on the GPU;
+            # a pair of appended groups on two links is checked once
+            if other_link == link or frozenset((link, other_link)) in ignored or (other.endswith("+") and other <= label):
                 continue
             distance = np.linalg.norm(a[:, :, None, :] - centers[other][:, None, :, :], axis=-1)
             record(f"{link} | {other}", radii[None, :, None] + other_radii[None, None, :] - distance)
@@ -155,7 +161,7 @@ def appended_collisions(groups, centers, ignored, cuboids, ground_z, ground_exem
                 continue
             relative = np.einsum("nji,nkj->nki", poses[:, :3, :3], centers[label] - poses[:, None, :3, 3])
             for name, pose, half in boxes:
-                record(f"{label.rstrip('+')} | base+:{name}", radii[None, :] - box_distance(relative, pose, half))
+                record(f"{label} | base+:{name}", radii[None, :] - box_distance(relative, pose, half))
     return hit, {key: dict(frames=value[0], max_overlap_mm=value[1]) for key, value in found.items()}
 
 
