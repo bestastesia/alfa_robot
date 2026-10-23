@@ -12,6 +12,8 @@ from v3_wall_ik_benchmark import ACTIVE_JOINTS
 
 class LazyExtractionPlanner(PersistentCollisionPlanner):
     rotation_quality_hard_gate = False
+    lazy_schedule = ((8, 350.), (16, 450.), (32, 600.), (64, 600.))
+    lazy_search_budget_ms = 2000.
 
     def predict_endpoint(self, contact):
         self.fk(contact)
@@ -29,13 +31,23 @@ class LazyExtractionPlanner(PersistentCollisionPlanner):
             predicted[offset:offset + 7] = solutions[np.argmin(np.sum((solutions - seed) ** 2, axis=1))]
         return predicted
 
-    def rank_contacts(self, boxes):
+    def generate_contacts(self, boxes):
         began = time.perf_counter()
         self.analytic_task = None
         self.ik_solver(boxes)
         torch.cuda.synchronize()
         self.lazy_timings['contact_generation_ms'] = (time.perf_counter() - began) * 1000
-        contacts = self.analytic_result.js_solution.position.detach().cpu().numpy().reshape(-1, 15).astype(np.float64)
+        return self.analytic_result.js_solution.position.detach().cpu().numpy().reshape(-1, 15).astype(np.float64)
+
+    def rank_contacts(self, boxes):
+        return self.baseline_ranking(boxes, self.generate_contacts(boxes))
+
+    def lazy_batches(self, boxes, ranked):
+        """Yield (allowed contact indices, candidate limit, search allocation ms, kind) per lazy batch."""
+        for limit, allocation_ms in self.lazy_schedule:
+            yield ranked[:limit], limit, allocation_ms, 'baseline'
+
+    def baseline_ranking(self, boxes, contacts):
         began = time.perf_counter()
         predictions = [self.predict_endpoint(contact) for contact in contacts]
         self.lazy_timings['endpoint_prediction_ms'] = (time.perf_counter() - began) * 1000
@@ -124,9 +136,9 @@ class LazyExtractionPlanner(PersistentCollisionPlanner):
         self._contact_indices = {tuple(np.round(contact.astype(np.float64), 7)): index for index, contact in enumerate(contacts)}
         batches = []
         search_spent_ms = 0.
-        for limit, allocation_ms in [(8, 350.), (16, 450.), (32, 600.), (64, 600.)]:
-            self._allowed_contacts = set(ranked[:limit])
-            self.transport_search_budget_ms = min(allocation_ms, max(0., 2000. - search_spent_ms))
+        for allowed, limit, allocation_ms, kind in self.lazy_batches(boxes, ranked):
+            self._allowed_contacts = set(allowed)
+            self.transport_search_budget_ms = min(allocation_ms, max(0., self.lazy_search_budget_ms - search_spent_ms))
             progress(f'预测排序完成：验收前{min(limit,len(ranked))}／{len(ranked)}个候选，再做低旋转联合搜索')
             batch_started = time.perf_counter()
             self.last_multiroot_search_ms = 0.
@@ -136,7 +148,9 @@ class LazyExtractionPlanner(PersistentCollisionPlanner):
             batches.append(dict(candidate_limit=limit, actual_extractions=len(self._extraction_cache), success=result['success'],
                                 total_ms=(time.perf_counter() - batch_started) * 1000, search_ms=search_ms,
                                 search_budget_ms=self.transport_search_budget_ms, blocked_stage=result.get('blocked_stage')))
-            if result['success'] or result.get('blocked_stage') not in ['抽离候选验收', '全链路候选验证'] or len(self._allowed_contacts) == len(ranked) or search_spent_ms >= 2000:
+            if kind != 'baseline':
+                batches[-1].update(kind=kind, allowed_contacts=list(allowed))
+            if result['success'] or result.get('blocked_stage') not in ['抽离候选验收', '全链路候选验证'] or len(self._allowed_contacts) == len(ranked) or search_spent_ms >= self.lazy_search_budget_ms:
                 break
         result['lazy_extraction'] = dict(timings_ms=dict(self.lazy_timings), batches=batches, ranking=ranked,
                                          predictions=self.prediction_records, checked_candidates=len(self._extraction_cache),

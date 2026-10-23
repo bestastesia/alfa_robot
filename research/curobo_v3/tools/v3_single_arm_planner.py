@@ -205,6 +205,15 @@ class SingleArmPlanner(LazyExtractionPlanner):
         append(frames,'conveyor_place',True)
         return path[-1]
 
+    def single_contact_order(self, boxes, contacts):
+        """Order in which single-arm contact candidates are tried; the default keeps the cost order."""
+        return range(len(contacts))
+
+    def order_transport_goals(self, start, candidates):
+        """Order of filtered transport goals; the first 64 enter the multi-goal search."""
+        weights=np.array([math.radians(15)/.1]+[1.]*14)
+        return np.argsort(np.linalg.norm((candidates-start)*weights,axis=1))
+
     def _full_cycle(self, boxes, progress=lambda text:None):
         if len(boxes)==2:
             return super()._full_cycle(boxes,progress)
@@ -241,7 +250,8 @@ class SingleArmPlanner(LazyExtractionPlanner):
             raise CycleBlocked('接触IK','单臂接触无合法候选',report)
         selected = None
         timing['extraction_and_approach_ms'] = 0.
-        for index,contact in enumerate(contacts):
+        for index in self.single_contact_order(boxes,contacts):
+            contact=contacts[index]
             progress(f'单臂候选{index+1}/{len(contacts)}：抽离验收及Home到预接触')
             started = time.perf_counter()
             extracted,detail = self.cartesian_single(contact,np.linspace(.01,.35,35))
@@ -286,8 +296,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
         candidates=candidates[np.asarray(mask)]
         if not len(candidates):
             raise CycleBlocked('运输终点','单臂携箱放置无合法候选',report)
-        weights=np.array([math.radians(15)/.1]+[1.]*14)
-        order=np.argsort(np.linalg.norm((candidates-extracted[-1])*weights,axis=1))
+        order=self.order_transport_goals(extracted[-1],candidates)
         goals=candidates[order[:64]]
         transport,stats=self.single_path(extracted[-1],goals,loaded,True)
         timing['transport_ms']=(time.perf_counter()-started)*1000

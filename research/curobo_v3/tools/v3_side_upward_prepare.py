@@ -12,6 +12,7 @@ from v3_box_rotation_cost import BoxRotationCost,quaternion_multiply,rotation_ve
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
 from v3_interactive_60_tasks import DEFAULT_ROBOT_CONFIG,DEFAULT_URDF,DEFAULT_NAMED_POSES,DEFAULT_BOX_FIT,DEFAULT_MOBILE_ROBOT_CONFIG
 from curobo_core.planner import CycleBlocked
+from v3_goal_matching import match_goals
 
 
 from v3_research_assets import ROOT, planner_identity, atlas_path
@@ -63,22 +64,7 @@ def main(planner=None,task=None,prepare_only=False):
     roots=torch.tensor([row['start'] for row in rows],device='cuda',dtype=torch.float32).contiguous()
     selected_goals=[];began=time.perf_counter()
     for root in roots:
-        distances=torch.linalg.vector_norm((candidates-root)*weights,dim=-1);indices=torch.topk(distances,min(512,len(candidates)),largest=False).indices
-        shortlisted=candidates[indices].contiguous();metric=BoxRotationCost(loaded,ACTIVE_JOINTS,root,shortlisted[0],p.top_grasp)
-        values=(root[None,None]+torch.linspace(0,1,17,device='cuda')[None,:,None]*(shortlisted[:,None]-root[None,None])).reshape(-1,15).contiguous()
-        count=len(shortlisted)
-        orientations=metric.orientations(values);penalty=torch.zeros(count,device='cuda')
-        for side,quaternions in orientations.items():
-            quaternion=quaternions.reshape(count,17,4)
-            motion=torch.linalg.vector_norm(rotation_vector(quaternion_multiply(metric.conjugate(quaternion[:,:-1]),quaternion[:,1:])),dim=-1)
-            metric.current_side=side;progress,deviation=metric.terms(quaternions);progress=progress.reshape(count,17);deviation=deviation.reshape(count,17)
-            penalty+=2*torch.relu(motion.sum(-1)-metric.angles[side])+deviation.mean(-1)+torch.relu(progress[:,:-1]-progress[:,1:]).sum(-1)
-        score=distances[indices]+penalty;selected=[]
-        for index in torch.argsort(score).cpu().tolist():
-            if not selected or torch.linalg.vector_norm((shortlisted[selected]-shortlisted[index])*weights,dim=-1).min()>.35:
-                selected.append(index)
-            if len(selected)==8:break
-        selected_goals.extend(shortlisted[selected].cpu().tolist())
+        selected_goals.extend(match_goals(p,root,candidates,weights,loaded))
     unique=np.unique(np.round(np.asarray(selected_goals),6),axis=0,return_index=True)[1]
     goals=torch.tensor(np.asarray(selected_goals)[unique],device='cuda',dtype=torch.float32).contiguous()
     torch.cuda.synchronize();match_ms=(time.perf_counter()-began)*1000
