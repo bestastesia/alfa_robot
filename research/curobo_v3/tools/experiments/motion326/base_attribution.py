@@ -37,6 +37,8 @@ def link_meshes(urdf, link):
     meshes = []
     for collision in urdf.link_map[link].collisions:
         mesh = trimesh.load(collision.geometry.mesh.filename, force="mesh")
+        if collision.geometry.mesh.scale is not None:
+            mesh.apply_scale(collision.geometry.mesh.scale)
         mesh.apply_transform(collision.origin if collision.origin is not None else np.eye(4))
         meshes.append(mesh)
     return meshes

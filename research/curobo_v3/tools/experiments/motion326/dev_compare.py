@@ -95,10 +95,11 @@ def main():
         depth = (" | true depth >2/5/10 mm " + " ".join(f"{a}/{b}" for a, b in row["true_depth_runs_over_mm"].values())
                  + f" max {row['true_depth_max_mm']:.1f}") if "true_depth_runs_over_mm" in row else ""
         changed = row["paired_changed"]["transport_duration_s"]
+        stage = row["medians"]["transport_stage_ms"]
         print(f"{row['variant']:9s} {row['arm']:17s} success {row['success']}/{row['runs']} validated {row['validated']} "
               f"changed {len(row['changed_transports'])}" + (f" (duration {changed * 100:+.1f}%)" if changed is not None else "")
-              + f" | stage median/P95 {row['medians']['transport_stage_ms'][0]:.0f}/"
-              f"{row['medians']['transport_stage_ms'][1]:.0f} ms | paired vs {args.reference}: {paired}{audit}{depth}"
+              + (f" | stage median/P95 {stage[0]:.0f}/{stage[1]:.0f} ms" if stage else " | no successful run")
+              + f" | paired vs {args.reference}: {paired}{audit}{depth}"
               + (f" | failures {row['failures']}" if row["failures"] else ""))
 
 

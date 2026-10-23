@@ -38,7 +38,7 @@ def shape_indices(checker, label):
         return [i for i, s in enumerate(checker.shapes) if s["kind"] == "payload" and s["link"].startswith(label[8:])]
     if label.startswith("world:"):
         return [i for i, s in enumerate(checker.shapes) if s["kind"] == "world" and s["name"] == label[6:]]
-    return [i for i, s in enumerate(checker.shapes) if s["kind"] == "robot" and s["link"] == label]
+    return [i for i, s in enumerate(checker.shapes) if s["kind"] == "robot" and s["link"] == label.rstrip("+")]
 
 
 def measure(checker, cache, first, second):
@@ -69,6 +69,8 @@ def main():
     parser.add_argument("--per-run", type=int, default=4, help="rejected frames re-checked per run and phase")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if not (args.patch or args.cuboids):
+        parser.error("needs --patch and/or --cuboids")
     directories = {label: Path(path) for label, path in args.set}
     config = yaml.safe_load((ROOT / "generated/v3_analytic_071cb95/mobile18/alfa_v322_suction_mobile18.yml").read_text())["kinematics"]
     fixed = yaml.safe_load(PlannerAssets().robot_config.read_text())["kinematics"]
