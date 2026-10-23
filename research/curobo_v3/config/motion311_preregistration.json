@@ -110,7 +110,7 @@
   },
   "features": {
     "T0": "contact joints (15), dq to Home, max |dq|/v_max, psi per arm (analytic swivel), branch signs sign(q2,q4,q6), singularity and limit margins, Home cost with in-set rank and z-score, box pose in the robot frame, side/top, single/dual",
-    "T1": "35 cm extraction endpoint (analytic, CPU), 8 nearest atlas goal distances (cKDTree built at init)",
+    "T1": "35 cm extraction endpoint (analytic, CPU), 8 nearest atlas goal distances (cKDTree built at init); atlases above 4096 rows subsampled (rng 311) for these distances (A8)",
     "T2": "baseline GPU rotation probe (ablation only)",
     "S2_T0": "root and goal joints, weighted difference and norm, atlas metadata, goal-to-Home weighted distance, in-pool rank",
     "S2_T2": "baseline goal-matching rotation terms (ablation only)"
@@ -158,7 +158,8 @@
     "score": "S = P * J_hat + (1 - P) * max(J_hat over eligible); lambda = 0",
     "m": "chosen on dev from {1, 2, 3}",
     "abstain": "max P < 0.5 or any standardised T0 feature |z| > 6 -> baseline for that stage",
-    "exclusion": "S1 candidates without a 35 cm endpoint are excluded (necessary for extraction)"
+    "exclusion": "S1 candidates without a 35 cm endpoint are excluded (necessary for extraction)",
+    "recommendation": "only candidates with P >= theta (A9)"
   },
   "arms": {
     "A": "baseline",
@@ -222,5 +223,9 @@
     "A5 baseline crash fix (crash path only): TaskCyclePlanner top-grasp failure partials without 'phases'/'payload' raised KeyError; L0 re-verified",
     "A6 time comparisons use forced (warm) runs on both sides (dual: A' simulated from the forced runs; single: baseline order simulated), because each instance's first run carries per-scene warm-up",
     "A7 S2 instances: half of train/dev by sha1 parity (unchanged); S1 for all; noise subset = sha1 % 10 == 0 (33 instances); censoring probe = up to 200 budget_exhausted S1 candidates at budget_scale 3"
+  ],
+  "amendments_336": [
+    "A8 (2026-10-23, before any training on train-split labels) T1 nearest-goal distance features use a fixed rng-311 subsample of 4096 rows for atlases larger than that (top: 44032 rows); 15-D k-d queries over the full top atlas took 11-17 ms. Planning atlases are unchanged",
+    "A9 (2026-10-23, same) the network recommends only candidates with P >= theta (0.5), ranked by S over those; the remaining candidates keep the baseline order; no candidate reaching theta = abstain. Offline ranking quality in CV is measured with theta = 0, the dev policy with theta = 0.5"
   ]
 }
