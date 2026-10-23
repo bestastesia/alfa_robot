@@ -58,14 +58,20 @@ class Track:
                                            color=tuple(int(255 * c) for c in color[:3]), opacity=0.9, visible=False)
                       for item in self.attachments]
         transport = [i for i, phase in enumerate(self.phases) if phase == "transport"]
-        self.transport_start = self.times[transport[0]] if transport else 0.
-        self.offset = 0.
+        self.transport_start = self.times[transport[0]] if transport else None
+        self.offset, self.extra_rotation = 0., None
         if transport and self.attachments:
-            points = []
-            for i in transport[::4] + [transport[-1]]:
+            item = self.attachments[0]
+            points, rotations = [], []
+            for i in transport:
                 self.set_cfg(i, robot=False)
-                points.append(self.urdf.get_transform(self.attachments[0]["parent_link"], self.urdf.base_link)[:3, 3])
-            server.scene.add_spline_catmull_rom(f"/paths/{index}", positions=np.asarray(points),
+                tool = self.urdf.get_transform(item["parent_link"], self.urdf.base_link)
+                points.append(tool[:3, 3])
+                rotations.append((tool @ pose_matrix(item["tool_to_object"]))[:3, :3])
+            rotations = Rotation.from_matrix(np.asarray(rotations))
+            total = np.degrees((rotations[:-1].inv() * rotations[1:]).magnitude()).sum()
+            self.extra_rotation = total - np.degrees((rotations[0].inv() * rotations[-1]).magnitude())
+            server.scene.add_spline_catmull_rom(f"/paths/{index}", positions=np.asarray(points[::4] + points[-1:]),
                                                 color=tuple(int(255 * c) for c in color[:3]), line_width=3.)
 
     def set_cfg(self, index, robot=True):
@@ -87,16 +93,16 @@ class Track:
         return f"帧 {index + 1}/{len(self.frames)} · {self.phases[index]} · {self.times[index]:.2f}/{self.times[-1]:.2f} s"
 
 
-def summary(result):
+def summary(track):
+    result = track.result
     segment = {item["name"]: item for item in result.get("timed_segments", [])}
-    rotation = next(iter((result.get("transport_rotation_metrics") or {}).values()), {})
     parts = ["成功" if result["success"] else f"失败：{result.get('blocked_stage')}（{result.get('blocked_details')}）"]
     if "transport" in segment:
         parts.append(f"transport {segment['transport']['duration_s']:.2f} s")
     if result.get("motion_duration_s"):
         parts.append(f"整轮运动 {result['motion_duration_s']:.1f} s")
-    if rotation.get("extra_rotation_deg") is not None:
-        parts.append(f"额外旋转（shortcut 前记录）{rotation['extra_rotation_deg']:.1f}°")
+    if track.extra_rotation is not None:
+        parts.append(f"额外旋转 {track.extra_rotation:.1f}°")
     return " · ".join(parts)
 
 
@@ -112,6 +118,8 @@ def main():
     paths = list(args.result)
     if args.case:
         paths += [args.results_dir / f"{args.case}-{arm}.json" for arm in args.arms.split(",")]
+    if args.case and not args.results_dir:
+        parser.error("--case needs --results-dir")
     if not paths:
         parser.error("give --result or --results-dir with --case")
     urdf_path = yaml.safe_load((args.runtime / MOBILE).read_text())["kinematics"]["urdf_path"]
@@ -119,7 +127,8 @@ def main():
     server = viser.ViserServer(host="127.0.0.1", port=args.port, label="MOTION-312 回放")
     server.scene.set_up_direction("+z")
     server.scene.add_grid("/grid", width=6, height=4)
-    first = results[0]
+    first = next((result for result in results if any(item["phase"] == "attach" for item in result.get("predicted_scene_events", []))),
+                 results[0])
     event = next((item for item in first.get("predicted_scene_events", []) if item["phase"] == "attach"), None)
     scene_nodes = {}
     if event:
@@ -142,18 +151,21 @@ def main():
         align = server.gui.add_checkbox("transport 起点对齐", initial_value=False)
         walls = server.gui.add_checkbox("显示顶棚/地面", initial_value=False)
         status = server.gui.add_markdown("")
-    legend = "  \n".join(f"{['灰', '橙', '绿', '紫'][i % 4]}：**{track.label}** — {summary(track.result)}" for i, track in enumerate(tracks))
+    legend = "  \n".join(f"{['灰', '橙', '绿', '紫'][i % 4]}：**{track.label}** — {summary(track)}" for i, track in enumerate(tracks))
+    lock = threading.Lock()  # the playback thread and viser's callback workers both render
 
     def render(_=None):
-        lines = [f"{['灰', '橙', '绿', '紫'][i % 4]} {track.label}：{track.show(slider.value)}" for i, track in enumerate(tracks)]
-        status.content = legend + "\n\n" + "  \n".join(lines)
+        with lock:
+            lines = [f"{['灰', '橙', '绿', '紫'][i % 4]} {track.label}：{track.show(slider.value)}" for i, track in enumerate(tracks)]
+            status.content = legend + "\n\n" + "  \n".join(lines)
 
     @align.on_update
     def _(_):
-        latest = max(track.transport_start for track in tracks)
-        for track in tracks:
-            track.offset = latest - track.transport_start if align.value else 0.
-        slider.max = float(max(track.times[-1] + track.offset for track in tracks if len(track.times)))
+        starts = [track.transport_start for track in tracks if track.transport_start is not None]
+        latest = max(starts, default=0.)
+        for track in tracks:  # runs without a transport phase keep their own timing
+            track.offset = latest - track.transport_start if align.value and track.transport_start is not None else 0.
+        slider.max = float(max((track.times[-1] + track.offset for track in tracks if len(track.times)), default=1.))
         render()
 
     @walls.on_update
@@ -172,7 +184,10 @@ def main():
             now = time.perf_counter()
             if playing.value:
                 value = slider.value + (now - last) * speed.value
-                slider.value = 0. if value > slider.max else value
+                try:
+                    slider.value = 0. if value > slider.max else value
+                except Exception as error:  # keep playing after a failed render
+                    print(f"render failed: {error}", flush=True)
             last = now
 
     threading.Thread(target=loop, daemon=True).start()
