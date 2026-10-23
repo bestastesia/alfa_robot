@@ -2355,3 +2355,16 @@
 - 改了哪里：`rolling_curobo.py`、`rolling.py`、`v3_rolling_replan.py`及CPU合同测试；同时补齐legacy one-shot worker的`t2_first/t2/t3/t4`配置。
 - 验证结果：CPU core 116/116；0.35s低预算+CPU×4冒烟触发10次optional skip仍完整执行并通过独立audit；碰撞重规划在0.35s不足预算时拒绝、0.75s时成功；六阶段static运输冒烟6/6及逐阶段audit通过。
 - 留给下个AI：以此提交为新基线，继续跑六阶段static/moving/appear/depart、多尺寸/速度/位置障碍矩阵；后台长测必须带桌面通知和`TEST-FINISHED.md`。
+
+## 2026-10-21 Codex / MOTION-292 first与NVR复盘
+- 做了什么：拆出first的optimizer构建/seed/首次TrajOpt/decode/project gate计时；实现0.5s失败后自适应尝试1.0s braking；修复安全后缀证书与最终revalidated结果的重复验收。
+- 改了哪里：`rolling_backend.py`、`rolling_curobo.py`、`v3_rolling_replan.py`、`v3_verify_rolling.py`及CPU合同测试。
+- 验证结果：CPU core 118/118。first普通冷启动空载median 2180.5ms（optimizer 362.1ms + first TrajOpt 1780.2ms），带载1604.7ms（538.8ms + 1056.9ms）。3b7984f完整旧候选基线：障碍114/114 audit，成功46；NO_VALID_REPLACEMENT从11降到6，但clear压力出现10个重复admission deadline miss，已由d168765根因修复。
+- 留给下个AI：先用d168765复跑11个admission失败点；通过后必须重跑最终一致源码的障碍114、hot1/2/3、CPU×4 soak和8项fault；然后压缩本地提交并推送，不开PR。
+
+## 2026-10-23 Codex / MOTION-292 最终基线
+- 做了什么：完成最终一致算法基线；修正`NO_VALID_REPLACEMENT`文本被误计为deadline miss的统计条件。
+- 验证结果：定向admission失败点11/11通过；障碍114/114 audit，成功46、成功避障换轨40、NVR 6；hot1/hot2/hot3/CPU×4共360/360成功且audit通过；fault 8/8按预期fail-closed；CPU core 118/118。
+- first结论：空载median 2049.4ms（optimizer构建350.2ms + 首次TrajOpt 1668.6ms），带载1495.7ms（529.5ms + 952.6ms）；当前first预算内0 miss。
+- 证据：`motion292-acceptance/baseline-6a2a474-20261023/`；最终汇总`SUMMARY.md`/`summary.json`，障碍散点`obstacles/obstacle-scatter.html`。
+- 遗留：6个NVR与2个真实compute deadline fail均是额外障碍压力下的fail-closed，不阻塞clear/CPU基线；后续若继续优化应独立处理appear/高速moving拓扑。

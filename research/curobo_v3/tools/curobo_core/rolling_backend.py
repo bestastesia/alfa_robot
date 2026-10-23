@@ -177,7 +177,10 @@ class RollingBackend(TimedSingleArmPlanner):
 
     def optimize_rrt_path(self, path, validity, boxes, payload=False, *, start_state=None, timing_scale=None, uniform_seed=False):
         """Optimize one 15-DoF RRT path and retain the original path on failure."""
+        total_started = time.perf_counter()
+        optimizer_started = total_started
         optimizer = self.trajectory_optimizer(boxes, payload=payload)
+        optimizer_ready = time.perf_counter()
         seed = resample_path(path, optimizer.action_horizon,
                              None if uniform_seed else validity.weights.detach().cpu().numpy())
         seed = torch.tensor(seed, device="cuda", dtype=torch.float32).reshape(
@@ -201,7 +204,8 @@ class RollingBackend(TimedSingleArmPlanner):
                     not np.allclose(positions, path[0], atol=1e-5, rtol=0)):
                 raise ValueError("splice position differs from the seed start")
         torch.cuda.synchronize()
-        started = time.perf_counter()
+        seed_ready = time.perf_counter()
+        started = seed_ready
         solve_options = {}
         if timing_scale is not None:
             # Nonzero-boundary feasibility is non-monotonic in dt. Bounded
@@ -228,6 +232,8 @@ class RollingBackend(TimedSingleArmPlanner):
             "payload_collision_model": bool(payload),
             "timing_scale": timing_scale,
             "uniform_seed": bool(uniform_seed),
+            "optimizer_setup_ms": (optimizer_ready - optimizer_started) * 1000.0,
+            "seed_setup_ms": (seed_ready - optimizer_ready) * 1000.0,
             "dynamics_enabled": False,
             "torque_constraints_enabled": False,
         }
@@ -242,19 +248,21 @@ class RollingBackend(TimedSingleArmPlanner):
         )
         telemetry["solver_success"] = solver_success
         telemetry["maximum_constraint_residual"] = constraint_residual
-        if not solver_success and constraint_residual > 1e-6:
-            telemetry["fallback_reason"] = "cuRobo TrajOpt constraints did not converge"
+        def rejected(reason):
+            telemetry["fallback_reason"] = reason
+            telemetry["total_wall_ms"] = (time.perf_counter() - total_started) * 1000.0
             return None, telemetry
+        if not solver_success and constraint_residual > 1e-6:
+            return rejected("cuRobo TrajOpt constraints did not converge")
+        decode_started = time.perf_counter()
         trajectory = result.get_interpolated_plan()
         if trajectory is None:
-            telemetry["fallback_reason"] = "cuRobo TrajOpt returned no interpolated trajectory"
-            return None, telemetry
+            return rejected("cuRobo TrajOpt returned no interpolated trajectory")
         timed = joint_state_trajectory(trajectory, ACTIVE_JOINTS, preserve_timing=start_state is not None)
         positions = np.asarray(timed["positions"], dtype=np.float32)
         if (not np.allclose(positions[0], path[0], atol=1e-5, rtol=0) or
                 not np.allclose(positions[-1], path[-1], atol=1e-5, rtol=0)):
-            telemetry["fallback_reason"] = "optimized trajectory changed an endpoint"
-            return None, telemetry
+            return rejected("optimized trajectory changed an endpoint")
         positions[0] = np.asarray(path[0], dtype=np.float32)
         positions[-1] = np.asarray(path[-1], dtype=np.float32)
         timed["positions"] = positions.tolist()
@@ -265,8 +273,9 @@ class RollingBackend(TimedSingleArmPlanner):
                 error = float(np.max(np.abs(np.asarray(timed[key][0]) - start_state[key])))
                 telemetry[f"splice_{key}_error"] = error
                 if error > tolerance:
-                    telemetry["fallback_reason"] = f"optimizer changed splice {key}"
-                    return None, telemetry
+                    return rejected(f"optimizer changed splice {key}")
+        telemetry["trajectory_decode_ms"] = (time.perf_counter() - decode_started) * 1000.0
+        gate_started = time.perf_counter()
         positions = np.asarray(timed["positions"], dtype=np.float32)
         values = torch.tensor(positions, device="cuda", dtype=torch.float32)
         node_mask = validity.mask(values)
@@ -276,8 +285,9 @@ class RollingBackend(TimedSingleArmPlanner):
         invalid_edges = torch.nonzero(~edge_mask, as_tuple=False).reshape(-1).cpu().tolist()
         telemetry["project_invalid_nodes"] = invalid_nodes[:20]
         telemetry["project_invalid_edges"] = invalid_edges[:20]
+        telemetry["project_gate_ms"] = (time.perf_counter() - gate_started) * 1000.0
         if invalid_nodes or invalid_edges:
-            telemetry["fallback_reason"] = "project collision/stability gate rejected optimized trajectory"
-            return None, telemetry
-        telemetry.update(accepted=True, output_frames=len(positions), trajectory=timed)
+            return rejected("project collision/stability gate rejected optimized trajectory")
+        telemetry.update(accepted=True, output_frames=len(positions), trajectory=timed,
+                         total_wall_ms=(time.perf_counter() - total_started) * 1000.0)
         return positions, telemetry

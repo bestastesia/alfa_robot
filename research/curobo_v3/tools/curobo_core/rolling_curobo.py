@@ -69,23 +69,24 @@ class SegmentReplanner:
                 "edge_resolution_rad": math.radians(.5), "sample_dt_s": self.sample_dt,
                 "dynamics_enabled": False, "torque_constraints_enabled": False}
 
-    def brake_then_plan(self, ticket, validity, search_seed):
+    def brake_then_plan(self, ticket, validity, search_seed, duration_s=None):
         """Conservative fallback: preserve moving boundary, stop inside the new suffix,
         then reuse Mentor search + the existing TrajOpt to the ORIGINAL goal.
         All work shares the original deadline. This is not an emergency stop API.
         """
         began = time.perf_counter()
+        duration_s = self.braking_duration_s if duration_s is None else duration_s
         telemetry = {"attempted": True, "accepted": False, "strategy": "brake_then_optimize",
-                     "braking_duration_s": self.braking_duration_s}
+                     "braking_duration_s": duration_s}
         try:
-            brake = braking_trajectory(ticket.initial_state, ACTIVE_JOINTS, self.braking_duration_s)
+            brake = braking_trajectory(ticket.initial_state, ACTIVE_JOINTS, duration_s)
             generated = time.perf_counter()
             telemetry["braking_generation_s"] = generated-began
             telemetry["braking_validation"] = self.validate(brake, validity)
             telemetry["braking_validation_s"] = time.perf_counter()-generated
             if time.perf_counter() >= ticket.compute_deadline:
                 raise TimeoutError("deadline expired during braking validation")
-            rest_start = TimedTrajectory(brake).sample(self.braking_duration_s)
+            rest_start = TimedTrajectory(brake).sample(duration_s)
             goal = np.asarray(ticket.remaining["positions"][-1], dtype=np.float32)
             limits = validity.checker.kinematics.get_joint_limits().position
             lower, upper = self.backend.motion_bounds(limits[0]+1e-5, limits[1]-1e-5, self.boxes)
@@ -184,11 +185,6 @@ class SegmentReplanner:
                 report["required_action"] = "independent_safety_intervention"
                 report["endpoint_check_interval"] = [ticket.splice_at, scene_end]
                 raise ValueError(f"{report['failure_code']}: fixed endpoint violates the planning envelope")
-            if report["previous_suffix_valid"]:
-                safe_ready_at = time.perf_counter()
-                report["safe_fallback_ready_at"] = safe_ready_at
-                progress({"phase": "safe_suffix", "started_at": started, "at": safe_ready_at,
-                          "valid_from": ticket.splice_at, "valid_until": scene_end})
             if getattr(self, "constrained_phase", False):
                 if not report["previous_suffix_valid"]:
                     report["failure_code"] = "CONSTRAINED_PHASE_BLOCKED"
@@ -204,6 +200,11 @@ class SegmentReplanner:
                 report.update(started_at=started, ready_at=ready_at,
                               compute_wall_s=ready_at-started, deadline_miss=ready_at>ticket.compute_deadline)
                 return report
+            if report["previous_suffix_valid"]:
+                safe_ready_at = time.perf_counter()
+                report["safe_fallback_ready_at"] = safe_ready_at
+                progress({"phase": "safe_suffix", "started_at": started, "at": safe_ready_at,
+                          "valid_from": ticket.splice_at, "valid_until": scene_end})
             candidates = []
             # Loaded-boundary probe: weighted arc-length seeding + max dt failed,
             # while the same geometry resampled uniformly at .75*max dt passed.
@@ -249,12 +250,20 @@ class SegmentReplanner:
                         break  # one optimization attempt; don't search for an already safe route
                     if attempt == 0 and self.allow_braking_fallback:
                         brake_started = time.perf_counter()
-                        document, braking = self.brake_then_plan(ticket, validity, search_seed)
+                        durations = tuple(dict.fromkeys((self.braking_duration_s, 1.)))
+                        for duration_s in durations:
+                            if time.perf_counter() >= ticket.compute_deadline:
+                                break
+                            document, braking = (self.brake_then_plan(ticket, validity, search_seed)
+                                if duration_s == self.braking_duration_s else
+                                self.brake_then_plan(ticket, validity, search_seed, duration_s))
+                            candidates.append(braking)
+                            progress({"phase": "braking_fallback", "at": time.perf_counter(),
+                                      "telemetry": braking})
+                            if document is not None:
+                                telemetry = braking
+                                break
                         spans["brake_then_plan"] = [brake_started, time.perf_counter()]
-                        candidates.append(braking)
-                        progress({"phase": "braking_fallback", "at": time.perf_counter(), "telemetry": braking})
-                        if document is not None:
-                            telemetry = braking
                     if document is None or not telemetry["accepted"]:
                         continue
                 validation_started = time.perf_counter()
@@ -283,6 +292,8 @@ class SegmentReplanner:
                               strategy=telemetry.get("strategy", "optimized_suffix"), trajectory=curve.suffix(0),
                               internal_stops=telemetry.get("internal_stops", 0),
                               certificate=candidate_certificate)
+                if report["strategy"] == "brake_then_optimize":
+                    report["braking_duration_s"] = telemetry.get("braking_duration_s", self.braking_duration_s)
                 break
             if not report["success"]:
                 # Retain a trajectory ONLY after validating its entire remaining

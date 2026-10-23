@@ -552,7 +552,9 @@ def run(args, shared=None):
                         report["failure_code"] = message.get("failure_code", "PLAN_REJECTED")
                         report["required_action"] = message.get("required_action", "independent_safety_intervention")
                         raise RuntimeError(message.get("error", "planning failed"))
-                    if message.get("strategy") == "deadline_revalidated_suffix" and installed:
+                    if (message.get("strategy") in (
+                            "revalidated_suffix", "revalidated_constrained_suffix",
+                            "deadline_revalidated_suffix") and installed):
                         active_result = message
                     else:
                         candidate, candidate_arrived = message, arrived
@@ -703,7 +705,7 @@ def run(args, shared=None):
             "revalidated_suffix", "deadline_revalidated_suffix")
             for strategy in installed_strategies.values())
         report["deadline_miss_count"] = sum(x.get("deadline_miss", False) for x in report["solves"])
-        if "deadline" in report.get("error", "") and not report["deadline_miss_count"]:
+        if report.get("failure_code") == "DEADLINE_MISS" and not report["deadline_miss_count"]:
             report["deadline_miss_count"] = 1
         report["cancelled_count"] = sum(e["event"] == "safety_required" and e.get("cancelled_sequence") is not None
                                         for e in report["events"])

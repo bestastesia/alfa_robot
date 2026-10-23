@@ -99,6 +99,13 @@ def terminal_evidence(report):
 
 
 
+def braking_duration_s(solve, default):
+    """Use the duration of the installed braking candidate, not the request default."""
+    return solve.get("braking_duration_s", next((
+        attempt.get("braking_duration_s") for attempt in solve.get("attempts", [])
+        if attempt.get("strategy") == "brake_then_optimize" and attempt.get("accepted")), default))
+
+
 def verify_internal_braking_stop(document, duration_s):
     curve = TimedTrajectory(document)
     if not np.isfinite(duration_s) or not 0 < duration_s < curve.duration:
@@ -201,7 +208,8 @@ def audit(report, config_path, expect_complete=True, require_obstacle_response=F
     for event, entry in zip(activated, entries[1:]):
         solve = solves_by_sequence.get(event["sequence"], {})
         if solve.get("strategy") == "brake_then_optimize":
-            braking_stops.append(verify_internal_braking_stop(entry["trajectory"], report["braking_duration_s"]))
+            braking_stops.append(verify_internal_braking_stop(
+                entry["trajectory"], braking_duration_s(solve, report["braking_duration_s"])))
     if "braking_candidate_count" in report and len(braking_stops) != report.get("braking_replan_count"):
         raise ValueError("reported braking replans do not match installed trajectories")
     sample_times = [s["at"] for s in report["samples"]]

@@ -845,6 +845,38 @@ class RollingTest(unittest.TestCase):
         self.assertEqual(result["certificate"]["valid_until"], 16.)
         self.assertEqual(result["internal_stops"], 1)
 
+    def test_braking_fallback_retries_one_second_only_after_default_failure(self):
+        import ast
+        import types
+        source = Path(__file__).resolve().parents[1] / "tools/curobo_core/rolling_curobo.py"
+        method = next(n for n in ast.walk(ast.parse(source.read_text()))
+                      if isinstance(n, ast.FunctionDef) and n.name == "solve")
+        namespace = dict(np=np, math=math, TimedTrajectory=TimedTrajectory,
+                         time=types.SimpleNamespace(perf_counter=lambda: 10.1))
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
+        remaining, candidate, durations = trajectory(4.), trajectory(4.), []
+        def validate(document, validity, **kwargs):
+            if document is remaining: raise ValueError("old suffix blocked")
+            return {"valid": True}
+        def brake(*args):
+            duration = args[3] if len(args) == 4 else .5
+            durations.append(duration)
+            telemetry = {"accepted": duration == 1., "strategy": "brake_then_optimize",
+                         "internal_stops": 1, "braking_duration_s": duration}
+            return (candidate if duration == 1. else None), telemetry
+        adapter = types.SimpleNamespace(scene=lambda snapshot: object(), validate=validate,
+            boxes={}, payload=False, check_endpoints=lambda *args: [True, True],
+            allow_braking_fallback=True, braking_duration_s=.5,
+            backend=types.SimpleNamespace(optimize_rrt_path=lambda *args, **kwargs: (None, {"accepted": False})),
+            brake_then_plan=brake)
+        ticket = types.SimpleNamespace(sequence=0, splice_at=11., remaining=remaining,
+                                       initial_state={}, compute_deadline=12.)
+        result = namespace["solve"](adapter, ticket, observation(), trajectory(1.), max_duration_s=19.)
+        self.assertTrue(result["success"], result.get("error"))
+        self.assertEqual(durations, [.5, 1.])
+        self.assertEqual(result["strategy"], "brake_then_optimize")
+        self.assertEqual(result["braking_duration_s"], 1.)
+
     def test_braking_fallback_uses_actual_boundary_and_original_goal_or_returns_no_path(self):
         import ast
         import types
@@ -897,6 +929,16 @@ class RollingTest(unittest.TestCase):
                 self.assertIsNone(document)
                 self.assertFalse(stats["accepted"])
                 if mode == "brake_collision": self.assertEqual(events, ["validate"])
+
+    def test_braking_audit_uses_the_accepted_adaptive_duration(self):
+        from v3_verify_rolling import braking_duration_s
+        solve = {"strategy": "brake_then_optimize", "attempts": [
+            {"strategy": "brake_then_optimize", "braking_duration_s": .5, "accepted": False},
+            {"strategy": "brake_then_optimize", "braking_duration_s": 1., "accepted": True},
+        ]}
+        self.assertEqual(braking_duration_s(solve, .5), 1.)
+        solve["braking_duration_s"] = .75
+        self.assertEqual(braking_duration_s(solve, .5), .75)
 
     def test_braking_candidate_matches_nonzero_boundary_without_changing_it(self):
         from curobo_core.trajectory import braking_trajectory
