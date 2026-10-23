@@ -176,8 +176,8 @@ class TaskCyclePlanner(FullCyclePlanner):
         if len(advance_frames):
             advance_frames[:, names.index('base_x')] += self.base_advance
             result['frames'] = advance_frames[:-1].tolist() + local_frames.tolist()
-            result['phases'] = ['base_advance'] * (len(advance_frames)-1) + result['phases']
-            result['payload'] = [False] * (len(advance_frames)-1) + result['payload']
+            result['phases'] = ['base_advance'] * (len(advance_frames)-1) + result.get('phases', [])
+            result['payload'] = [False] * (len(advance_frames)-1) + result.get('payload', [])
         else:
             result['frames'] = local_frames.tolist()
         result.update(top_grasp=self.top_grasp, base_advance_m=self.base_advance, generated_obstacles=obstacles,

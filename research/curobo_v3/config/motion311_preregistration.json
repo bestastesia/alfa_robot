@@ -1,0 +1,226 @@
+{
+  "schema_version": 1,
+  "issue": "MOTION-335",
+  "parent_issue": "MOTION-311",
+  "related": [
+    "MOTION-336",
+    "MOTION-337",
+    "MOTION-313",
+    "MOTION-306"
+  ],
+  "registered_at": "2026-10-23",
+  "version": "v1",
+  "status": "frozen 2026-10-23 after the L1 pilot and before any test-cell scene is planned; later changes only as dated amendments on dev evidence",
+  "baseline": {
+    "planner": "TimedSingleArmPlanner at a77abd5 (planning code 541fdbc, includes MOTION-294)",
+    "note": "old zero/Home; conclusions are not extrapolated to upstream 0942d18",
+    "frozen_reference": "motion312-acceptance/frozen-20261019/baseline-wall (15 rounds, deterministic)"
+  },
+  "scope": {
+    "S1": "contact candidate ranking, dual and single arm (64 analytic contacts per round)",
+    "S2": "placement goal ranking for the selected root (dual: 8 of the 512 shortlist; single: 64 of the filtered pool)",
+    "out_of_scope": [
+      "joint multi-stage combinations (MOTION-306)",
+      "interpretable custom cost (MOTION-313)",
+      "extraction speed-ups",
+      "contact pools larger than 64",
+      "backtracking after selection",
+      "collision model, budgets, time parameterization"
+    ]
+  },
+  "cost": {
+    "J_arc": "sum over all consecutive frames of the untimed round of ||dq * w||, w = [2.6179939 (updown, 10 cm = 15 deg), 1 x 14], plus the box rotation soft cost BoxRotationCost.edge_cost (ActiveRotationCost for single arm) summed over the densified transport path",
+    "primary": "J_arc (user decision 2026-10-23)",
+    "secondary": [
+      "executed weighted arc and motion duration of the timed round (A/B only)",
+      "transport extra rotation (side)"
+    ],
+    "diagnostic": "Spearman(J_arc, T_motion) on the time-parameterized 8 lowest-J_arc S1 successes of 10 dev instances; boundary statement only"
+  },
+  "classes": {
+    "module": "tools/v3_label_classes.py",
+    "censored": [
+      "budget_exhausted",
+      "solver_or_validation_failure"
+    ],
+    "wording": "budget_exhausted is reported as 'not connected within budget', never as infeasible"
+  },
+  "scenes": {
+    "registry": "config/motion311_registry.json",
+    "registry_sha256": "4ca596d6332a0795c5e4b484f79244454022c27c58805b571c375a9470f37419",
+    "cells": "cell = (row, min(column, 4 - column)); rng 311 draws 3 test cells (one per column class, >=1 top-suction and >=1 side-suction row) and 2 dev cells (one top row, one side row)",
+    "test_cells": [
+      [
+        0,
+        0
+      ],
+      [
+        2,
+        2
+      ],
+      [
+        3,
+        1
+      ]
+    ],
+    "dev_cells": [
+      [
+        0,
+        1
+      ],
+      [
+        4,
+        1
+      ]
+    ],
+    "assignment": "test if any box lies in a test cell, else dev if any lies in a dev cell, else train; all offsets and seeds of a task stay in its split",
+    "docking_offset": "(dx, dy) ~ U(-0.05, 0.05) m rounded to 0.1 mm; pick-side scene shifted as in MOTION-327; conveyor and placement targets fixed",
+    "streams": {
+      "train_dev": 311,
+      "test": 3111,
+      "seen_test": 3112,
+      "out_of_range": 3113,
+      "reserve_for_313_306": 3114
+    },
+    "variants": {
+      "train_dev": "nominal + 3 offsets (dual), nominal + 5 (single)",
+      "test": "2 offsets (dual), 6 (single)",
+      "seen_test": "1 new offset per train/dev task, online only",
+      "out_of_range": "1 offset with max |d| in (5, 8] cm per test task, report only",
+      "reserve": "2 offsets per task, sealed"
+    }
+  },
+  "labels": {
+    "harness": "tools/v3_motion311_labels.py",
+    "S1": "every contact forced alone; dual = one lazy batch with only that contact and the 2 s transport budget (exact simulator of a single-candidate batch, whose smaller budget is a prefix of the same search); single = contact order [i]",
+    "S2": "baseline-selected root + 1 random successful root; dual: the 8 baseline goals + 8 distance-quantile goals of the 512 shortlist; single: reached goal + 7 of the baseline 64 + 8 distance-quantile goals beyond them; each forced alone",
+    "S2_instances": "half of the train/dev instances (sha1(instance) even), all test instances",
+    "suffix_memo": "conveyor suffix memoised per instance by the transport-end configuration (exact replay)",
+    "budgets_ms": {
+      "transport": 2000,
+      "approach": 2000,
+      "conveyor_place": 2000,
+      "return_home": 2000
+    },
+    "budget_success_rule": "success under budget B <=> first_verified_solution_ms <= B; within +-15 % of B marked ambiguous",
+    "noise_subset": "about 10 % of train/dev instances re-labelled with seed offset k = 1 (all RRT seeds + k * 1000003)",
+    "censoring_subset": "up to 200 budget_exhausted S1 candidates re-run with budget_scale 3 (6 s)",
+    "chunking": "<= 25 min per GPU-lock acquisition; resumable per instance",
+    "timed_diagnostic": "dev instances: baseline pick + 3 J_arc quantiles (A3)"
+  },
+  "features": {
+    "T0": "contact joints (15), dq to Home, max |dq|/v_max, psi per arm (analytic swivel), branch signs sign(q2,q4,q6), singularity and limit margins, Home cost with in-set rank and z-score, box pose in the robot frame, side/top, single/dual",
+    "T1": "35 cm extraction endpoint (analytic, CPU), 8 nearest atlas goal distances (cKDTree built at init)",
+    "T2": "baseline GPU rotation probe (ablation only)",
+    "S2_T0": "root and goal joints, weighted difference and norm, atlas metadata, goal-to-Home weighted distance, in-pool rank",
+    "S2_T2": "baseline goal-matching rotation terms (ablation only)"
+  },
+  "latency_budget_ms": {
+    "S1_T0_inference_p95_64": 2.0,
+    "S1_T0_T1_inference_p95_64": 10.0,
+    "S2_T0_inference_p95_512": 2.0,
+    "model_load": 50.0,
+    "measurement": "in-process perf_counter including Python overhead and the copy of candidates to CPU; numpy inference, no CUDA kernels, no RNG"
+  },
+  "model": {
+    "architecture": "per-candidate MLP, width {32, 64} x depth {1, 2}, SiLU; set information through in-set relative features",
+    "heads": {
+      "S1": "success-within-allocation logit + log J_arc",
+      "S2": "connect-and-complete-within-allocation logit + log J_S2 (transport + conveyor place + return home arc + rotation cost)"
+    },
+    "loss": "BCE on y (ambiguous +-15 % band masked) + 0.5 Huber(delta 0.1) on log J of successes",
+    "optimizer": "AdamW lr 3e-3, weight decay {1e-4, 1e-3}, cosine schedule, <= 600 epochs, patience 80, CPU",
+    "selection": "5-fold CV grouped by cell on the train split; median out-of-fold regret; within 2 % prefer the smaller model; deploy a 5-seed ensemble",
+    "convergence": {
+      "train_loss_change_last_50_epochs": 0.005,
+      "seed_regret_spread": 0.1,
+      "learning_curve_fractions": [
+        0.25,
+        0.5,
+        0.75,
+        1.0
+      ],
+      "ece_max": 0.05
+    },
+    "baselines_offline": [
+      "baseline order",
+      "single heuristics",
+      "linear/logistic model",
+      "random order",
+      "hindsight best"
+    ]
+  },
+  "policy": {
+    "dual": "network top-m contacts as single-candidate lazy batches of 350 ms each (shared 2 s), then the unchanged baseline 8/16/32/64 schedule",
+    "single": "network top-m first, then the remaining candidates in baseline order",
+    "S2": "network goal order only inside the network's single-candidate attempts; baseline goals in fallback batches",
+    "fallback": "any failure after selection re-plans the round with the unchanged baseline; time counted",
+    "score": "S = P * J_hat + (1 - P) * max(J_hat over eligible); lambda = 0",
+    "m": "chosen on dev from {1, 2, 3}",
+    "abstain": "max P < 0.5 or any standardised T0 feature |z| > 6 -> baseline for that stage",
+    "exclusion": "S1 candidates without a 35 cm endpoint are excluded (necessary for extraction)"
+  },
+  "arms": {
+    "A": "baseline",
+    "A_prime": "single-candidate batches in the baseline lazy order + same fallback (single arm: A' = A)",
+    "B1": "S1 network + baseline S2",
+    "B2": "S1 + S2 network (primary)"
+  },
+  "seeds": {
+    "primary": "offset 0",
+    "robustness": "offset 1 for dual test, offsets 1, 2 for single test"
+  },
+  "metrics": [
+    "selection time (features + inference separately)",
+    "extractions, searches, goals, selection attempts, fallbacks",
+    "success with failure class",
+    "T_plan (round total_ms)",
+    "J_arc (primary)",
+    "T_timing, executed arc, T_motion (separate, never added to planning time)",
+    "side extra rotation"
+  ],
+  "gates": {
+    "G1": "per subset (side/top x single/dual x S1/S2): median [J_arc(baseline choice) - hindsight best] / J_arc >= 5 %, or (S1) median [A' selection time - best-first selection time] >= 150 ms; and median within-instance Spearman of J across seed offsets >= 0.5; failing subsets are not trained and are reported",
+    "G2": "out-of-fold: S1 vs A' dJ_arc <= -3 % or selection time <= -150 ms with first-attempt success >= A'; S2 vs baseline goals dJ_S2 <= -3 % without lower connection rate; regret >= 10 % better than the linear model, otherwise report only",
+    "G3": "dev online: B1 selections equal the simulator in >= 95 %, online/simulated planning-time median ratio in [0.8, 1.25]; B2 - B1 J_arc change has the predicted sign and no success regression"
+  },
+  "decision_rules_proposed": {
+    "status": "proposed defaults, to be confirmed by 李昊洋 in MOTION-337 before the test run",
+    "primary_analysis": "held-out-cell test, seed offset 0, cluster bootstrap by task (10000) + Wilcoxon on per-task means",
+    "success": "B2 >= A and at most one instance where A succeeds and B2 fails",
+    "cost": "improved if median dJ_arc <= -5 % with p < 0.05 and CI upper < 0; non-inferior if <= +2 % with CI upper <= +4 %",
+    "time": "improved if median dT_plan <= -15 %; non-inferior if <= +5 %; P95 <= 1.10 x A in both cases",
+    "attribution": "B1 better than A' for S1 credit; B2 better than B1 for S2 credit",
+    "verdicts": {
+      "effective": "success + latency + one metric improved and the other non-inferior, not contradicted by the seen-cell test",
+      "limited": "only in pre-registered subsets, or attribution fails, or abstention > 50 % on the held-out test",
+      "not_applicable": "G1 fails, success fails, or no subset improves"
+    }
+  },
+  "hygiene": [
+    "keep every run; infrastructure failures get one rerun with the original moved to invalidated/ with its reason",
+    "amendments only on dev evidence and before the test",
+    "pin commits and sha256 of runtime, registry and model",
+    "every GPU process under flock /tmp/sevenova-curobo-gpu.lock"
+  ],
+  "gpu_budget_h": {
+    "total": "12-14",
+    "cut_order": [
+      "out-of-range probe",
+      "seen-cell online test",
+      "dual seed offset 1",
+      "T2 ablation",
+      "ensemble 5 -> 3",
+      "S2 offline only (no B2 online)"
+    ]
+  },
+  "amendments_v1": [
+    "A1 targets: y = success within the single-candidate allocation (dual: transport first_verified <= 350 ms; single arm keeps its 2 s searches); censored outcomes count as 'not within budget' for y (operational, not a feasibility claim); network outputs = success logit + log J; failure classes stay for reporting only",
+    "A2 score: J_fb = max predicted J over the eligible candidates of the set; lambda = 0",
+    "A3 timed diagnostic: the baseline pick + 3 J_arc-quantile S1 successes, on every dev instance (replaces top-8 on 10 instances)",
+    "A4 every successful run records its motion-phase endpoint configurations, so a velocity-limited straight-line time bound T_lb = sum_phase max_j |dq_j| / v_j is available for every candidate (diagnostic; J_arc stays primary unless the user decides otherwise at G1)",
+    "A5 baseline crash fix (crash path only): TaskCyclePlanner top-grasp failure partials without 'phases'/'payload' raised KeyError; L0 re-verified",
+    "A6 time comparisons use forced (warm) runs on both sides (dual: A' simulated from the forced runs; single: baseline order simulated), because each instance's first run carries per-scene warm-up",
+    "A7 S2 instances: half of train/dev by sha1 parity (unchanged); S1 for all; noise subset = sha1 % 10 == 0 (33 instances); censoring probe = up to 200 budget_exhausted S1 candidates at budget_scale 3"
+  ]
+}
