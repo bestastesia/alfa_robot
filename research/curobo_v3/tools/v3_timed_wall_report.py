@@ -44,12 +44,17 @@ def planning_ledger(result):
 
 
 def phase_planning_detail(result, phase):
-    """Return an additive phase ledger plus nested diagnostics."""
+    """Explain additive ownership separately from nested planner diagnostics."""
     pipeline = result.get("pipeline_timing_ms", {})
     lazy = result.get("lazy_extraction", {}).get("timings_ms", {})
     timing = result.get("timing_ms", {})
-    place_search = result.get("conveyor_search_stats", {}).get("search_ms")
-    home_search = result.get("conveyor_home_search_stats", {}).get("search_ms")
+    attempts = result.get("attempts", [])
+    selected_attempt = next((item for item in reversed(attempts) if item.get("approach")), {})
+    approach = selected_attempt.get("approach", {})
+    transport = result.get("transport_search_stats", {})
+    place = result.get("conveyor_search_stats", {})
+    home = result.get("conveyor_home_search_stats", {})
+    validation = result.get("validation_detail_ms", {})
     if "prepare_checkers" in pipeline:
         additive = {
             "approach": [("接触候选生成", lazy.get("contact_generation_ms")),
@@ -77,12 +82,67 @@ def phase_planning_detail(result, phase):
             "return_home": [("放箱与回Home后缀（共享）", result.get("conveyor_suffix_ms"))],
         }.get(phase, [])
     diagnostics = {
-        "conveyor_place": [("其中：放箱RRT", place_search)],
-        "return_home": [("其中：回Home RRT", home_search)],
+        "approach": [
+            ("RRT首次找到路径", approach.get("first_solution_ms")),
+            ("RRT首次完整验收通过", approach.get("first_verified_solution_ms")),
+            ("RRT搜索总墙钟", approach.get("search_ms")),
+            ("预接触规划+验证管线总墙钟", approach.get("contact_pipeline_ms")),
+        ],
+        "contact_approach": [
+            ("共享的预接触规划+验证管线", approach.get("contact_pipeline_ms")),
+        ],
+        "extract": [
+            ("抽离候选实际计算（包含于完整验收）", lazy.get("extraction_work_ms")),
+        ],
+        "transport": [
+            ("RRT首次找到路径", transport.get("first_solution_ms")),
+            ("RRT首次完整验收通过", transport.get("first_verified_solution_ms")),
+            ("RRT搜索总墙钟", transport.get("search_ms")),
+        ],
+        "conveyor_place": [
+            ("放箱RRT首次找到路径", place.get("first_solution_ms")),
+            ("放箱RRT首次完整验收通过", place.get("first_verified_solution_ms")),
+            ("放箱RRT搜索总墙钟", place.get("search_ms")),
+            ("组装与全轨迹重复验收", validation.get("assembly_revalidate_actual")),
+        ],
+        "return_home": [
+            ("回Home RRT首次找到路径", home.get("first_solution_ms")),
+            ("回Home RRT首次完整验收通过", home.get("first_verified_solution_ms")),
+            ("回Home RRT搜索总墙钟", home.get("search_ms")),
+            ("组装与全轨迹重复验收（与放箱共享）", validation.get("assembly_revalidate_actual")),
+        ],
     }.get(phase, [])
+    notes = {
+        "approach": ["上面的“核心规划归属账”不是纯RRT时间；RRT数据列在嵌套诊断中。"],
+        "contact_approach": ["最后3cm由初始→接触的联合路径一次生成，没有独立再跑一遍RRT。"],
+        "extract": ["抽离预测、排序和候选验收属于联合候选管线，不是单条RRT。"],
+        "transport": ["多根/多目标搜索是该阶段主要RRT账；首次解、验收和总搜索互相嵌套。"],
+        "conveyor_place": ["该共享项主要是组装与全轨迹重复碰撞验收，不是放箱RRT本身。"],
+        "return_home": ["与放箱共享同一后缀总账；不能把共享项在两个阶段重复相加。"],
+    }.get(phase, [])
+    timing_detail = result.get("trajectory_timing_breakdown_ms", {}).get("phases", {}).get(phase, {})
+    segment = next((item for item in result.get("timed_segments", []) if item.get("name") == phase), {})
+    timing_diagnostics = []
+    if "shortcut_edge_check_ms" in segment:
+        timing_diagnostics = [
+            f"快捷化路径点：{segment['raw_waypoints']} → {segment['shortcut_waypoints']}",
+            f"精确候选边：{segment['shortcut_candidate_edges']}条，分{segment['shortcut_edge_calls']}批",
+            f"GPU碰撞状态：{segment['shortcut_padded_states']}个（有效采样{segment['shortcut_actual_states']}个）",
+            f"其中edge碰撞检查：{segment['shortcut_edge_check_ms']:.1f} ms",
+        ]
+    timing_labels = {
+        "shortcut_ms": "路径快捷化/直连碰撞搜索",
+        "parameterization_ms": "速度、加速度与jerk时间参数化",
+        "collision_validation_ms": "时间化轨迹碰撞与阶段门禁验证",
+        "assembly_ms": "采样结果组装与常量关节处理",
+    }
     return {
         "additive": [(name, value) for name, value in additive if value is not None],
         "diagnostics": [(name, value) for name, value in diagnostics if value is not None],
+        "notes": notes,
+        "timing": [(timing_labels[key], timing_detail.get(key, 0.)) for key in timing_labels
+                   if key in timing_detail],
+        "timing_diagnostics": timing_diagnostics,
     }
 
 

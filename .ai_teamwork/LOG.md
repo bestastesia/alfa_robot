@@ -2187,3 +2187,184 @@
 - 四切片：优先64与等价cuboid（PR61）、常驻world更新（PR62）、8起按需抽离及旋转软代价（PR63）、25单臂与整机终点1.05m硬圆柱（当前切片）。9份算法/合同/测试源码与交接快照一致；UI归一到正式v3_visualized_task_demo.py，8151入口只作兼容包装。
 - 验证：四任务64集合与全枚举相同/完整FK通过；11场景11264状态与fresh一致且四完整周期不再创建拓扑；lazy三组成功包括L18/R22；25单臂24成功、右02接触264候选0合法保留失败。24成功27040帧碰撞重验、40附着球、独立FK包络最大1.003365m，原4违规终点现0.932856m；双臂回归成功。35core与语法检查通过。
 - 正式说明OPTIMIZED_CYCLE.md、CONVEYOR_DELIVERY.md；evidence为当前小型摘要，原实验轨迹/cache不入库。验证服务8152复用冻结前端包；原8150 PID161088、8151 PID1877730未停止，仍是各自启动时版本。119任务不等于119成功，不作导航路径、动力学、物理落稳/实机或生产并发验收。Linear由专门工程师维护，本轮不主动变更。
+
+
+## 2026-10-15 运控 / Codex / MOTION-292 滚动接续开发中
+- 用户确认：按 t1 分 n 段、n<=t1/(t2+t3)，执行当前段时从下一接续点的非零位速重算到大段终点；不是事件触发后再整段重跑。
+- 分支/目录：`feature/motion-292-dynamic-replan` / `.motion-292-dynamic-replan`，基于 `3b50c9e`；原基线工作树未修改。
+- 实现中：基线 TrajOpt 可选非零起始导数、保留在线时间轴、SciPy 插值取接续点、CPU 双缓冲合同、阶段薄适配、独立 GPU worker 墙钟模拟。
+- 证据：CPU core 69/69（含8项滚动测试）；隔离 runtime 新单轮周期成功，approach 非零速度/加速度接续 GPU 探针通过现有碰撞及新增插值限制检查。证据在 `/home/astesia/Sevenova/motion292-acceptance`。
+- 风险/下一步：连续多轮求解仍在调通；默认时间收缩和 anytime 搜索耗尽预算已定位，复用 SDK 时间设置与已有首解 Connect。尚未交付场景矩阵/回放/ROS/实机；不要宣称 Done。详见 `docs/motion292_rolling_replan.md`。
+
+- 后续证据更新：approach 静止/突现/撤离分别11/7/9次接续完成，moving-v3完成9次；均有原剩余路线碰撞被检出。clear-v7是3优化+3最新场景复核回用，不能混计优化成功。带载transport clear完成3次。
+- 最新CPU 71项通过后新增第72项float32边界回归；return_home先修正已释放物体仍被查询，再定位约1.13e-7rad float32舍入误拒绝并加两相对ULP数值容差。新run：return_home-clear-v3.json；需查看结果，不假设通过。
+- 已在MOTION-292评论6e31357f记录开发进度。只读Viser运行在127.0.0.1:8099（工具session11748）；HTTP200，Firefox截图白页，未视觉验收。正式多种子/故障矩阵、特殊阶段、ROS接口和实机前置仍未完成。所有GPU实验串行；运行副本需从源码显式同步tools，不覆盖模型配置。
+- checkpoint：完整CPU 72/72、compileall、git diff --check通过。return_home-clear-v3在诊断元数据读取时失败（SDK为源码安装、无curobo distribution metadata），已改为读取模块版本；return_home-clear-v4正在同一runtime串行验证，工具session74552，勿因暂未产出JSON而重启。最新运行文件带源文件SHA256、硬件/包信息与逐阶段统计。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 故障矩阵与带载避障收敛
+- 上轮pilot工具句柄73268已不存在，OS无对应进程；保存8项（6过、2带载拒绝），没有重启覆盖旧产物。回程v4终态为120s超时/55次推迟到达；加“已复核安全的旧路不允许被更晚到达替换”后v5完成4次移动接续。
+- 当前前缀与未来后缀分开预测时域，独立GPU验证器同时从观测重建包络和实际旧轨迹前缀；拒绝用伪造certificate掩盖碰撞。新增乱序版本/同版改几何或速度拒绝。
+- `checkpoint-v2/faults` 8/8完成；带载static小段3s确于2.961s碰撞，保留负例。t2假定1.8s得到2s小段，复用SDK .75*max_dt和等权重种子重采样后`transport-static-seed`完成5次移动接续/1次实际避障，独立GPU复核通过。
+- 修正扩展附件缓存key误作用到静态流程的问题，只有snapshot.attachments非空时扩展。CPU77/77；源码未动外部SDK，未修改原基线工作树，未发硬件命令。
+- 真实执行硬阻塞已读代码确认：现有rt-control桥14轴/双臂各6轴，与15轴cuRobo基线不匹配，且缺少条件定时替换合同。不得通过丢第7轴来接入；需要用户/控制部门提供对应接口。
+- 当前同版本52项矩阵：`candidate-20261017/matrix.log`、`matrix/matrix.json`，工具session64221。继续时先查句柄/OS，不因未结束重开GPU。该runtime代码冻结，不同步开发修改进去。修正缓存后25箱对照、特殊约束阶段、真实接口和最终验收仍未完成。
+- 回放已在真实浏览器加载并播放/暂停，证据`replay-playing.png`/`replay-playing-dom.json`；新的截图不是原白页。参考docs/motion292_rolling_replan.md。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 52项矩阵结束与热更新修复
+- `candidate-20261017/matrix`已完成52项，43过/9失败；正常场景36/45完成，7故障均正确拒绝。失败分组：approach moving不收敛3、transport moving deadline3、transport appear当前前缀碰撞3。不能标记全验收通过。原始延迟分组见`raw-latency-summary.json`，保留截尾/拒绝样本。
+- 后续代码：碰撞包络按实际剩余/候选时长而非预测TTL，终点反馈schema2，原生update_world复用预热机器人并按载荷/model参数失效；新增GPU add/move/remove回归通过。CPU81/81。
+- `warm-world-v1/approach-moving-n7`独立GPU审核通过，7移动接续/1避障，max计算0.988s；配置n7/t2=1.8/t3=.1，与失败矩阵n8不同，不混淆。`duration-window-v1`只改时域仍失败，未删负例。
+- 真实接口认知补充：只读检查robot_motion_control@a2c7cf4，已有3.1.1十五轴TwinFjtServer（不是只有旧14轴桥）。其future stamp支持等待，但replacement在apply_replacement立即取消旧goal，不能当作未来边界原子换路。模型版本亦不同。后续应复用此仿真接口，并按其AGENTS/冻结合同要求申请必要变更，未修改该仓库。
+- 串行probe工具session23972：transport-moving-n3(t2=1.8)后transport-appear-n5-1p1(t2=1.1)，路径warm-world-v1；下轮先查询句柄，不盲目重启。没有其他GPU矩阵仍在运行。MOTION-296重新读仍In Progress。
+
+- 本轮末补充：native update_world GPU回归通过；最新CPU82/82。`phase-progress-v1`移动approach n7与transport n3独立审核均过（8/6条含初始），终点反馈schema2实际产出；max计算0.701/0.642s，仅单次证据。优化失败且旧路已复核安全时立即走复核回用，不额外搜索；危险旧路仍保留全部尝试，未缩小避障目标。
+- session23972已结束：transport-moving-n3成功；transport-appear-n5-1p1仍因deadline拒绝。未把不可修改前缀内的突现碰撞或超时改计为成功。所有本轮GPU进程均已结束后再启动下一轮。
+- 待办：以本轮最新源冻结重跑必要多种子/故障矩阵（matrix支持--slices及原始时长分组summary）；缓存兼容性修正后的静态基线对照；特殊约束段与真实/孪生接续接口确认。不要复活已结束的64221/33198旧队列。
+- 并发提醒：本轮末只读检查发现原`.motion-233-curobo-trajopt`已有别的工作产生的staged/unstaged改动及分支分叉（ahead16/behind11），涉及trajectory/adapter/cache和timed单臂/整墙入口。292分支当前clean，仍以3b50c9e冻结证据为准；不要reset、覆盖或擅自吸收这些未完成改动。外部GPU PID73423为curobo_v2_ros试验，之后已退出；重开GPU测试前重新确认空闲。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 尾段、I/O与接收截止门禁
+- `acceptance-v3`已全部结束：49/52（approach22/22、transport12/15、return_home15/15），3个transport/appear是已冻结当前前缀内碰撞，不能靠下一接续点之后的换路修复。后续响应加UNSAFE_COMMITTED_PREFIX/independent_protective_stop，不伪称实际停机已完成。
+- 当前前缀/候选之外，schema3补最后尾段证据及终点反馈；GPU审核不再漏掉最后短段。共享模型锁定轴检查堵住在线入口忽略head轴/缺状态的旁路，静态旧调用保持兼容。
+- 管道I/O移出监督线程，1个命令槽/8个回复槽；半包读和阻塞写CPU回归通过。完整消息截止是t2+t3，ready_at仍按t2复核；stage在CPU门禁结束后采样实际接受时间，不允许晚到门禁倒填接续时间。新增admission_delay故障。
+- CPU89/89；watchdog-v1 GPU/故障9/9，admission-v1 3/3（慢门禁0次接续）；input-gate-v1原生世界更新GPU回归见world-update.log。没有改变碰撞/运动限值。
+- 修正缓存后的静态序列与3b50c9e逐元素相同（q/v/a/jerk/time最大差0），同样24箱后箱2 IK失败；acceptance-v3/static-regression.json。不能把继承的24箱结果写成25箱过关。
+- 负责人路径纠正已读取：Linear4f5a357f明确先由文子轩本人决定任务/接口修改，之前向李昊洋提出的授权请求撤回；不代表已授权。不能绕过负责人或Frozen Interface规则继续改15轴孪生合同。
+- 尚未完成：保护停止/条件定时换轨及模型对接确认，MOTION-296验收，完整阶段与真实端到端接口接入、PR/review。原baseline工作树并发改动保留；公开fork未推送，remote基线已是2edee780而非冻结3b50c9e，发布基线待确认。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 rebase PR65进行中
+- 用户明确要求接入刚提交的快基线。通过GitHub API确认kkozia188/alfa_robot#65 HEAD=541fdbc7250b50ffd5daadae6c8385c54f7b3a92，cpu-contracts通过。fetch TLS失败但本地完整对象SHA相同；实际rebase完成，备份backup/motion-292-before-pr65=d70c183，未推送。
+- 解决冲突时保留PR65的backend/planner/contracts等核心文件。在线扩展迁到rolling_backend.py(TimedSingleArmPlanner子类)，不覆盖full_cycle/search_path/collision_checker/time_parameterize_result，使用持久cuboid gate和multiroot Connect，优化器继续用原cuRobo包装。新快照由Mentor阶段frame/attachment生成，拒绝混用旧结果。
+- 新鲜round-01-v2：规划2754.568ms、时间化2893.957ms、完整准备5.677s；不是在线t2上界。approach clear完成5次移动接续，独立GPU审核初始/候选/尾段通过。
+- CPU84/84。修复实际过期反馈负例(sample10/now10.2)，补enqueue→worker、worker墙钟、reply IPC和SDK求解独立统计；新基线固定非零base pose不归零，真的moving base仍拒绝。
+- 初20项pilot结束且有失败，不混入通过率。PR65接近gate包含任务箱，而旧TrajOpt world排除任务箱，已在在线适配器补齐优化世界；放箱slice发现~1e-12s相邻切点产生伪加速度，保留精确边界、只去一纳秒内内部节点。
+- 当前pr65-gates-v2 pilot工具session24895（approach/conveyor_place×clear/static/moving，单种子6项）串行运行中；必须查句柄/OS，不能修改其冻结runtime。证据pr65-integration和pr65-gates-v2；下一步查看失败根因、扩大新基线验收，不宣称产品完成。原PR65工作树保持不动。
+
+- 接入补充：旧search_path覆写会影响Mentor自身full_cycle，已改为独立online_search_path，PR65九个核心文件逐字节一致（baseline-preservation.json）。joint_names按SDK list合同传入，避免tuple/list身份误拒绝。原始2.75s round验证成功后approach clear与独立审核通过。
+- pr65-gates-v2 pilot已终态4/6：approach clear/static/moving、conveyor_place clear通过；放箱static/moving无可行替换路线，未改为通过。旧20项pilot也保留。GPU world-update回归通过。
+- 当前完整新基线序列工具session66142（v3_rolling_prepare.py --sequence），输出pr65-gates-v2/full-sequence.json，日志同名.log。全序列结束后核对15/25、每段时序限制与可消费场景；不能根据日志尾行假设成功。仍有动态矩阵、受约束阶段/执行接口验收工作，目标保持active。
+
+- session66142完整序列已终态success：15/15轮、25/25箱；tools/verify_motion233_timed_trajectory.py逐轮15/15独立通过。规划ms median/p95/max2164.003/2990.275/3014.932；时间化4261.147/8858.368/10526.793；总准备105.454s。证据full-sequence-summary.json、round-audits/summary.json。旧“24箱”阻塞不能延用为新PR65结论。
+- 当前新增提交a348064；84项CPU通过，新原生GPU世界更新回归通过；PR65核心9文件哈希一致。所有本轮进程均已结束，没有待轮询GPU任务。下一轮必须在新PR65输入上处理剩余动态放箱/带载失败及扩大同版本场景矩阵，勿复用3b50c9e旧矩阵当新验收。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 放箱失败分类与固定端点门禁
+- 实测pr65-gates-v2默认conveyor_place static/moving的起终点GPU mask=[true,false]，无新增障碍时[true,true]。新增check_endpoints在求解前拒绝，保留目标不改、附时域和required_action。独立GPU审核original-goal-blocked确认负例，没有把拒绝标成运动成功。
+- 新增可配置obstacle-center/velocity，默认fixture保持。几何检查（不调用搜索/求解）选中中途阻挡center[-1.0486119239962108,.635462145723246,1.277392864227295]，前缀/终点合法、中段碰撞。static三种子3/3完成，每次5接续/1实际绕障，独立GPU审核通过；证据pr65-scene-contract-v4/conveyor-interior的static项。
+- 新center -Y/.025移动3种子仍goal碰撞，+X/.025移动3种子终检失败；这些不同位置/速度分组未替换默认失败，文档明确分列。把搜索提前的v5试验未改善成功率已撤回，保留失败实验，不把复杂化留在生产。
+- 阶段内禁止base/payload/policy变化（只允许环境更新），CPU88/88；运行源码hash扩为全部tools.py、startup模型/cuboid资产hash。没有改PR65九个核心规划文件。
+- 最新源冻结pr65-contract-v6，工具session31970串行复核conveyor-static-interior三种子后原终点负例；下轮先查询进程/工具。新拒绝审计CLI --require-rejection-code，仍非实机停机证明。完整动态目标未完成。
+
+- session31970已结束：pr65-contract-v6正例static三种子3/3，各5次移动接续、1次旧路碰撞→安全优化、6条含初始轨迹和尾段独立GPU过；original-goal-blocked负例0接续，独立GPU endpoint mask[true,false]。原默认正向/新负向及X向moving失败全部保留，不互相覆盖。CPU88/88、compileall、diff-check通过。此轮GPU任务全结束。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 移动放箱的连续减速回退
+- 诊断同一原失败用例：SDK控制点16/24/32及dt变化仍限位/碰撞拒绝；清零初速可求解但显式标记NOT_AN_ONLINE_RESULT，从未作为在线结果。没有修改SDK或PR65核心规划文件。
+- 有依据的最小扩展：已有SciPy BPoly生成匹配真实q/v/a的C2减速候选，完整门禁通过后在其停稳终点复用Mentor搜索+原TrajOpt，拼接后按新实际时长再验。原大段目标不变；它含内部停稳，明确不是不停顿规划或保护停机接口。
+- pr65-braking-release-v13同源码/同初始轨迹/同场景/n8/t2=.85/t3=.1/link=.02/减速.4的A/B：禁用0/3（deadline拒绝），启用3/3；actual接续7/8/7=直接0+减速1+旧路复核6/7/6。起点最大速度0.0760454非零，独立GPU检查内部.4s停稳及所有候选/原前缀/尾段。compute max .6421/.6491/.6325s，小样本非普遍上界。controlled-comparison.json逐字段确认无换场景/放宽预算。
+- v12 approach clear/static/moving开启/关闭各3/3，原终点阻挡仍拒绝；v13 native世界更新GPU过。CPU95/95、compileall/diff-check过。v13真实Firefox回放播放/暂停与截图通过，UI显式分三类实际接续，非仅报optimization_success_count。
+- 保留失败对照：.5s回退v8为2/3，扩大时域v9为1/3（该扩大策略已撤出）；.4s曾遇末尾窗口大epoch相减越界，修复用精确relative duration而非容差放宽。验证失败候选后恢复规划world，避免时域缓存污染下一attempt。phase/payload/回退布尔参数必须明确，未支持约束阶段拒绝，不冒充完成。
+- GUI截图证据pr65-braking-release-v13/replay-playing.png/DOM；为同条件时延对照已停止本轮自己的8102服务器和headless Firefox，无残留GPU任务。所有此轮probe/matrix已结束（v13 enabled/disabled各3种子）；勿对结束句柄盲目重启。
+- 仍未完成：完整新基线多阶段动态矩阵、受约束接触/抽离阶段与任务事件闭环、实际执行/安全接口确认及PR交付。该回退是新增可验证能力，不替代上述目标。负责人文子轩决定任何范围/接口修改，未改新仓库Frozen Interface，未发硬件命令。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 受约束阶段与完整验收汇总
+- contact_approach/extract已接节拍框架但禁止自由空间绕行；extract路径沿用PR65空载gate，只有原段终点查带载gate，避免把每个小段误当抽离完成。阶段/载荷不匹配拒绝。
+- pr65-constrained-v17：clear contact/extract各3种子共6/6；默认static/moving 12/12均按UNSAFE_COMMITTED_PREFIX预期拒绝并由GPU重建，0次越权绕行。当前进程已结束。
+- 新增正常拒绝NO_VALID_REPLACEMENT与DEADLINE_MISS分类/审核，matrix的obstacle-response要求改为显式参数，避免仅按非clear标签声称发生避障。端点/受约束/前缀/无替换/截止五类分开。
+- v3_rolling_acceptance_report.py要求6阶段×5场景×3种子、8故障、独立audit、同一源码/模型/输入、PR65核心与15轮25箱证据；仅输出simulation_contract_complete，不冒充overall issue done。
+- CPU101/101；新增全部tools源码、模型、cuboid与输入哈希复核，证据目录/source被修改会拒绝。下一步冻结最终源码跑完整分组矩阵及所有15轮clear rolling；代码完成前不得用旧source hash矩阵冒充最终验收。
+
+
+## 2026-10-17 运控 / Codex / MOTION-292 并发OOM证据作废
+- 发现本任务pr65-final-v20与pr65-release-v21矩阵重叠运行，造成extract worker和contact audit CUDA OOM；已停止所有本任务矩阵/子进程并确认清零。未触碰其他用户长时Viser或随后启动的IK容量实验。
+- 作废清单固定在`motion292-acceptance/invalidated-evidence-20261017.json`；contact_approach/appear也从错误complete分组移到UNSAFE_COMMITTED_PREFIX拒绝组。最终汇总仅接收显式matrix路径，不扫描历史目录。
+- 当前GPU由robot_motion_control/curobo并行IK容量实验使用；等待其结束后只开一个冻结runtime串行重跑受影响/最终矩阵。不得把OOM写成功能失败或通过，也不得用旧audit补洞。
+
+- 证据纠偏续：pr65-release-v22单进程已完成approach/contact/extract/transport多数分组，但运行期间修复exact BPoly切片，runtime source hash已不是最终源码；主动停止在transport-prefix组并整目录排除最终汇总，保留回归参考。invalidated-evidence清单已追加。
+- 原因：extract任意wall-clock切点的4.5ms首段从q/v/a重新拟合，个别种子产生伪jerk；不是场景碰撞。TimedTrajectory现在序列化Bernstein系数并精确分割原五次多项式，系数与q/v/a不一致拒绝。CPU102/102、compileall/diff-check通过后才可冻结v23终验。
+
+- 最终矩阵纠偏：v20/v21并发OOM进程组已清零并作废；v22在exact BPoly修复后主动终止、source hash不再最终；v23主矩阵虽大部完成，但随后发现all-rounds混用t2且matrix遇缺失JSON继续，故整个v23不作为最终冻结汇总。
+- matrix现fail-fast：首个unverified立即退出；SIGTERM/timeout通过finally终止当前完整process group，CPU测试实测无孤儿。外层最终runner将`set -euo pipefail`。contact_approach/appear归入UNSAFE拒绝，不再放complete。
+- CPU103/103。invalidated-evidence-20261017.json追加v22/v23原因。后续必须以含fail-fast的新提交重新冻结一次；all-round按free/contact/extract不同t2拆分。任何旧矩阵通过项不得拼成最终报告。
+
+
+## 2026-10-18 运控 / Codex / MOTION-292 最终仿真证据闭环
+- 冻结源码b4998a3，PR65核心9文件逐字节不变。pr65-release-v30合同矩阵：正常90项=6阶段×5场景×3种子，45完成/45按明确原因拒绝；8故障全覆盖。接续=直接48、受检内部停稳重规划3、复核旧路181。acceptance-report-current.json为机器可读汇总。
+- 新鲜15轮整墙：15/15轮、25/25箱，逐轮时间化15/15；规划median/p95/max 2109.056/2807.312/2831.987ms，时间化独立计时。15轮每轮6阶段清场景消费90/90（free60/contact15/extract15）。
+- exact切片最终用局部PPoly系数，解决13.7us首段Bernstein导数消减；第3轮单臂放箱/抽离独立GPU通过。CPU106/106、GPU世界回归1/1。Firefox回放真实加载/播放/暂停通过。
+- 正式证据根`motion292-acceptance/pr65-release-v30`：acceptance-report-current.json、all-rounds-clear-summary.json、full-sequence-summary-current.json、release-manifest.json、round-audits、replay.png/DOM。invalidated-evidence列出v20-v23等旧源码/OOM/中止目录，不得混用。
+- 仿真合同完成但Issue不能Done：MOTION-296仍In Progress；真实动力学/力矩、15轴未来边界原子换轨与保护停机、真实感知/反馈/时钟、安全评审及PR merge仍外部未完成。未发硬件命令。
+
+## 2026-10-18 运控 / Codex / MOTION-292 实时完整轮Viser诊断界面
+- 原交互页已改为点击后才新跑`v3_rolling_prepare --round N`，不再加载`--initial-result`里的整段滚动结果；随后依次执行六阶段墙钟滚动优化。左右末端原轨迹分别以灰线显示，每个候选在真实激活事件到达时才追加左右末端新路线。
+- `v3_rolling_replan.py --stream-progress`新增机器可读事件：阶段开始、观测、逐次求解耗时、轨迹激活、实时运动采样、阶段结束。侧栏按阶段显示本轮初始规划账、每次滚动`compute_wall_s`和仿真实际运动墙钟；共享/嵌套规划账不重复相加。
+- 验证：CPU core 108/108；新鲜第1轮初始规划成功（规划3077.557ms、时间化2949.314ms）；默认完整六阶段流式闭环6/6成功，接续数6/4/31/4/7/3，每次均有同数`trajectory_activated`，六阶段运动墙钟合计49.767s。摘要`motion292-acceptance/live-ui-20261018/verification-summary.json`。Viser 8105 HTTP 200；Firefox WebDriver BiDi在本机X11真实点击启动并抓取运行中/完成DOM与截图，确认双末端原/新轨迹及逐次耗时实时出现，证据`motion292-acceptance/live-ui-20261018/browser.png`、`browser-dom.json`。
+- 当前只做仿真，不发送硬件命令；真实控制/安全前置仍不变。启动命令与界面语义见`docs/motion292_rolling_replan.md`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 规划耗时分层细化
+- Viser主流程现将点击到初始可执行轨迹拆为进程/模块/CUDA启动、模型/GPU/碰撞资源预热、Mentor核心规划、六阶段轨迹时间化、阶段快照/写盘/通信五个可加和项目；核心规划与时间化均显示内部可加和总账。
+- 各阶段不再用一个容易误解的“初始完整轨迹”数字：明确区分核心规划归属账（不等于纯RRT/不一定是独立阶段墙钟）、嵌套RRT诊断（首次解、首次验收、总搜索，不重复相加）、阶段时间化（快捷化直连碰撞搜索、速度/加速度/jerk参数化、时间化碰撞门禁、结果组装）、在线滚动独立墙钟和实际运动。
+- 新鲜GPU第1轮通过：时间化2960.957ms可逐项精确相加，主要为approach快捷化909.897ms、transport快捷化1098.207ms、conveyor_place快捷化574.243ms、return_home快捷化264.778ms；新增计时不改变六阶段q/qdot/qddot/jerk/time，逐元素最大差均0。CPU core 108/108；Firefox X11实际点击完成六阶段，侧栏DOM与截图已复核。
+
+## 2026-10-18 运控 / Codex / MOTION-292 同阶段时间化方法对照
+- 新增`v3_time_parameterization_compare.py`，在同一第1轮approach轨迹/场景上比较Mentor几何保持rest-to-rest时间化与cuRobo TrajOpt联合几何/时间优化；三个输入逐元素相同且有SHA256，GPU热运行10次。
+- Mentor阶段时间化median/p95=902.299/932.493ms；TrajOpt完整阶段生成+共同验证median/p95=253.536/255.794ms，运动时长15.824→10.500s，但左右末端对参考路径最大偏离34.8/28.6mm。滚动后缀TrajOpt median/p95=241.591/246.702ms，qdot/qddot接续误差1.87e-7/1.10e-6；Mentor函数强行重定时同后缀会产生0.05495rad/s与0.04810rad/s²跳变。
+- 结论暂不全局统一：自由空间阶段扩展15轮矩阵后再决定是否初始/滚动统一TrajOpt；contact_approach/extract在具备等价任务空间硬约束前保留Mentor/精确后缀。统一最终TimedTrajectory与验收，不强制统一生成算法。报告`docs/motion292_time_parameterization_comparison.html`，机器证据`motion292-acceptance/time-parameterization-compare-20261018/approach.json`。CPU core 109/109。
+
+## 2026-10-18 运控 / Codex / MOTION-292 六阶段常驻滚动worker
+- 新增`v3_rolling_round.py`与persistent worker协议：一轮开始时只创建一次CUDA/模型backend，预热empty/loaded两类TrajOpt与碰撞资源；六阶段各自新建adapter/RollingSegment/trajectory_id/场景会话，但复用同一worker、CUDA上下文和缓存。单阶段CLI仍兼容。
+- 新鲜第1轮默认场景六阶段6/6完成，接续6/4/31/4/7/3；worker初始化0.386s、一次性双拓扑预热6.638s，后续阶段会话初始化仅15～76ms且全部`warmup.reused=true`。与原每阶段独立进程结果逐阶段比较：success、接续数、策略序列以及全部初始/激活q/qdot/qddot/jerk/time逐元素完全一致，最大差0。
+- Viser已改为只启动一次六阶段round runner，侧栏单列“滚动服务一次性准备（六阶段共享）”；Firefox X11真实点击完成一轮。CPU core 110/110，证据`motion292-acceptance/persistent-worker-20261018/summary.json`。故障时仍由监督层终止整个worker，下一轮可重建，不复用污染状态。
+
+## 2026-10-18 运控 / Codex / MOTION-292 shortcut定向优化
+- profile确认shortcut约99%墙钟在`GpuValidity.edges()`：0.05°精确边插值后，对每个状态执行FK、机器人球、自碰撞、世界碰撞、关节边界及地面/稳定性检查。旧第1轮仅5次大批调用即检查906条候选边、约192.9万补齐状态；不同边共用最大horizon导致约2倍padding。
+- 保持0.05°分辨率和“选择最远合法端点”语义不变，改为从最远端开始每16条一批反向精确检查，发现合法端点立即停止。第1轮候选边906→79、补齐状态192.9万→13.5万；六阶段q/qdot/qddot/jerk/time逐元素最大差0。
+- 新鲜15轮/25箱全部成功，所有轨迹与旧证据逐元素完全相同；时间化总计69.916s→26.790s，减少43.126s（-61.68%，2.61×）。各轮提升1.84×～7.27×，后期复杂轮仍由edge检查主导。CPU core 111/111，证据`motion292-acceptance/shortcut-optimization-20261018/summary.json`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 t2分阶段校准启动
+- 新增`v3_t2_calibration.py`：从最终90正常场景与15轮clear证据提取每阶段compute墙钟，按相同控制流signature逐项取span最大值形成组合上界，再加25%硬件/调度余量并向上取整50ms；不把互斥分支错误相加。
+- 初步候选（尚未冻结）：approach 0.95s、contact_approach 0.05s、extract 0.10s、transport 0.65s、conveyor_place 0.80s、return_home 1.10s；对应旧值1.8/0.2/0.2/1.8/0.85/1.8。
+- 常驻worker第1轮默认动态场景按候选t2六阶段6/6完成、0 deadline miss；实测max compute依次0.423/0.023/0.056/0.523/0.485/0.389s。仍需15轮clear、各阶段最坏障碍×3种子、GPU并发/热压与故障矩阵，完成前不改正式STAGE_SCHEDULES。证据`motion292-acceptance/t2-calibration-20261018/summary.json`。
+
+## 2026-10-18 运控 / Codex / MOTION-292 候选t2转为实际预算
+- 按用户决定，将正式`STAGE_SCHEDULES`改为：初始姿态→预接触点0.95s、最后3厘米贴近0.05s、抽离35厘米0.10s、携箱运输0.65s、固定底盘放箱0.80s、返回初始姿态1.10s，t3仍0.1s、切片数仍8/5/32/4/8/4。
+- 第1轮常驻worker动态场景已按该组预算六阶段6/6、0 deadline miss；后台子代理继续跑15轮、最坏障碍多种子、GPU压力及故障矩阵，后续按证据调整，不再称“未冻结候选”。
+
+## 2026-10-19 运控 / Codex / MOTION-292 拆分t3与t4
+- 按用户决定新增`t4 admission_bound_s=0.1s`，`t3=0.1s`只约束结果ready到完整接收，`t4=0.1s`约束接收后连续性/场景/终点合同验收到staged；报告新增`transport_latency_s`和`admission_latency_s`，验收器按`t1/n >= t2+t3+t4`独立复核。
+- 为给t4留出真实切片窗口，抽离35厘米切片32→24，固定底盘放箱8→7；其他切片8/5/4/4不变。第1轮常驻worker六阶段6/6通过并由GPU审计复核；transport median/max约25/30ms，admission median/max约2～4/5ms，当前100ms/100ms均有余量。
+- 单阶段CLI/矩阵/回放/Viser均接入t4；旧报告缺t4时验收器保留旧t3合并语义。CPU core 113/113。
+
+## 2026-10-19 运控 / Codex / MOTION-292 动态切片与新t2/t3/t4基线
+- 纠正Viser重构时把验收矩阵固定切片误带入实际运行的问题：不再传`--slices`，每轮每阶段由`SliceSchedule`按实际`t1`计算`n=floor(t1/(t2+t3+t4))`。
+- 按完整压力建议并执行用户1s封顶：t2=初始姿态→预接触点1.00s、最后3厘米贴近0.10s、抽离35厘米0.35s、携箱运输0.75s、固定底盘放箱0.90s、返回初始姿态1.00s；t3=0.15s、t4=0.05s。
+- t3统计ready到完整接收（含20ms模拟链路），t4统计接收到合同验收完成；CPU core 113/113。原固定切片造成的36项schedule infeasible不再属于运行配置。
+- 新基线冒烟补充：动态切片下第1轮初始姿态→预接触点、最后3厘米贴近、抽离35厘米通过；携箱运输static首轮出现request_to_ready=0.815s超过用户封顶后的t2=0.75s，正确fail-closed。该失败不回退用户指定预算，纳入后续子代理重跑与是否需调整的证据。
+
+## 2026-10-19 运控 / Codex / MOTION-292 首次规划与滚动预算拆分
+- 新增`t2_first=t2_rolling+1.5s`临时预算；自由空间阶段第一个切片使用first预算，后续切片使用rolling预算，动态切片按一个first窗口加若干rolling窗口计算。最后3厘米贴近/抽离35厘米无TrajOpt首次构建，仍按rolling窗口执行但报告保留配置的first预算。
+- 常驻worker预备阶段不再只按empty/loaded粗粒度，而按真实TrajectoryOptimizer key（箱号组合、吸附方式、接触偏移、箱体几何、附件）执行第一条真实形态的suffix求解，记录first_wall与deadline；不缓存轨迹结果。
+- 第1轮static携箱运输GPU冒烟六阶段6/6通过：approach first=2.386s<2.5s，loaded key first=1.623s<2.25s；后续rolling回落到正常分布。CPU core 114/114。
+
+## 2026-10-20 Codex / MOTION-292 可选优化超时降级
+- 做了什么：worker在旧后缀确认安全后先发布紧凑安全证书；TrajOpt按时完成则替换，超时则跳过本次优化并执行已验证旧后缀；旧后缀碰撞时仍严格fail-closed。
+- 改了哪里：`rolling_curobo.py`、`rolling.py`、`v3_rolling_replan.py`及CPU合同测试；同时补齐legacy one-shot worker的`t2_first/t2/t3/t4`配置。
+- 验证结果：CPU core 116/116；0.35s低预算+CPU×4冒烟触发10次optional skip仍完整执行并通过独立audit；碰撞重规划在0.35s不足预算时拒绝、0.75s时成功；六阶段static运输冒烟6/6及逐阶段audit通过。
+- 留给下个AI：以此提交为新基线，继续跑六阶段static/moving/appear/depart、多尺寸/速度/位置障碍矩阵；后台长测必须带桌面通知和`TEST-FINISHED.md`。
+
+## 2026-10-21 Codex / MOTION-292 first与NVR复盘
+- 做了什么：拆出first的optimizer构建/seed/首次TrajOpt/decode/project gate计时；实现0.5s失败后自适应尝试1.0s braking；修复安全后缀证书与最终revalidated结果的重复验收。
+- 改了哪里：`rolling_backend.py`、`rolling_curobo.py`、`v3_rolling_replan.py`、`v3_verify_rolling.py`及CPU合同测试。
+- 验证结果：CPU core 118/118。first普通冷启动空载median 2180.5ms（optimizer 362.1ms + first TrajOpt 1780.2ms），带载1604.7ms（538.8ms + 1056.9ms）。3b7984f完整旧候选基线：障碍114/114 audit，成功46；NO_VALID_REPLACEMENT从11降到6，但clear压力出现10个重复admission deadline miss，已由d168765根因修复。
+- 留给下个AI：先用d168765复跑11个admission失败点；通过后必须重跑最终一致源码的障碍114、hot1/2/3、CPU×4 soak和8项fault；然后压缩本地提交并推送，不开PR。
+
+## 2026-10-23 Codex / MOTION-292 最终基线
+- 做了什么：完成最终一致算法基线；修正`NO_VALID_REPLACEMENT`文本被误计为deadline miss的统计条件。
+- 验证结果：定向admission失败点11/11通过；障碍114/114 audit，成功46、成功避障换轨40、NVR 6；hot1/hot2/hot3/CPU×4共360/360成功且audit通过；fault 8/8按预期fail-closed；CPU core 118/118。
+- first结论：空载median 2049.4ms（optimizer构建350.2ms + 首次TrajOpt 1668.6ms），带载1495.7ms（529.5ms + 952.6ms）；当前first预算内0 miss。
+- 证据：`motion292-acceptance/baseline-6a2a474-20261023/`；最终汇总`SUMMARY.md`/`summary.json`，障碍散点`obstacles/obstacle-scatter.html`。
+- 遗留：6个NVR与2个真实compute deadline fail均是额外障碍压力下的fail-closed，不阻塞clear/CPU基线；后续若继续优化应独立处理appear/高速moving拓扑。
