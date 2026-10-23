@@ -22,7 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from curobo_core.contracts import PlannerAssets
 from curobo_core.scene import SceneSnapshot
 from experiments.motion326.contact_points import AllContactsChecker
-from experiments.motion326.cpu_spheres import ChainFK, appended_collisions, sphere_groups, world, world_cuboids
+from experiments.motion326.cpu_spheres import (ChainFK, added_base_cuboids, appended_collisions, base_cuboids, planner_ignored,
+                                               sphere_groups, world, world_cuboids)
 from experiments.motion326.verify_depth import penetration, shape_mesh
 from v3_research_assets import ROOT
 
@@ -30,7 +31,9 @@ PAYLOAD_PHASES = {"transport"}
 
 
 def shape_indices(checker, label):
-    """Shape indices of an attribution label: robot link, 'payload:<side>' or 'world:<object>'."""
+    """Shape indices of an attribution label: robot link, 'payload:<side>', 'world:<object>' or 'base[+]:<cuboid>'."""
+    if label.startswith(("base:", "base+:")):  # base cuboid layer: measured against the real base_link meshes
+        return [i for i, s in enumerate(checker.shapes) if s["kind"] == "robot" and s["link"] == "base_link"]
     if label.startswith("payload:"):
         return [i for i, s in enumerate(checker.shapes) if s["kind"] == "payload" and s["link"].startswith(label[8:])]
     if label.startswith("world:"):
@@ -61,7 +64,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--set", nargs=2, action="append", metavar=("LABEL", "RUN_DIR"), required=True)
     parser.add_argument("--checked", type=Path, required=True, help="patched check JSONL")
-    parser.add_argument("--patch", type=Path, required=True, help="patch.json the check used")
+    parser.add_argument("--patch", type=Path, help="patch.json the check used")
+    parser.add_argument("--cuboids", type=Path, help="cuboids.json the check used")
     parser.add_argument("--per-run", type=int, default=4, help="rejected frames re-checked per run and phase")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -69,8 +73,10 @@ def main():
     config = yaml.safe_load((ROOT / "generated/v3_analytic_071cb95/mobile18/alfa_v322_suction_mobile18.yml").read_text())["kinematics"]
     fixed = yaml.safe_load(PlannerAssets().robot_config.read_text())["kinematics"]
     box_fit = json.loads(PlannerAssets().box_fit.read_text())
-    added = {link: value["added_spheres"] for link, value in json.loads(args.patch.read_text())["links"].items()}
-    ignored = {frozenset((a, b)) for a, links in fixed["self_collision_ignore"].items() for b in links}
+    added = {link: value["added_spheres"] for link, value in json.loads(args.patch.read_text())["links"].items()} if args.patch else {}
+    ignored = planner_ignored(fixed)
+    boxes = base_cuboids()
+    extra = added_base_cuboids(args.cuboids) if args.cuboids else []
     records, cache = [], {}
     for entry in map(json.loads, args.checked.read_text().splitlines()):
         flagged = {phase: [i for a, b in value["invalid"] for i in range(a, b + 1)] for phase, value in entry["phases"].items()}
@@ -93,8 +99,10 @@ def main():
                 positions = dict(zip(names, rows[index]))
                 positions["base_x"] -= advance
                 values = {**base, **positions}
-                _, pairs = appended_collisions(groups, world(groups, fk.transforms(values, 1)), ignored, world_cuboids(snapshot),
-                                               snapshot.policy.ground_z_m)
+                poses = fk.transforms(values, 1)
+                _, pairs = appended_collisions(groups, world(groups, poses), ignored, world_cuboids(snapshot),
+                                               snapshot.policy.ground_z_m, base=(poses["base_link"], boxes),
+                                               added_base=(poses["base_link"], extra) if extra else None)
                 checker.contacts(positions, attached=payload, payload_enabled=payload, max_contacts=1)  # sets transforms
                 for pair, overlap in pairs.items():
                     link, other = pair.split(" | ")
