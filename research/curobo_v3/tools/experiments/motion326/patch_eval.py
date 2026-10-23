@@ -7,6 +7,7 @@ payload attached in transport) under one robot config, and writes the invalid fr
 phase. For invalid transport frames it also lists overlapping sphere pairs that involve spheres
 appended by a patch. `compare` joins a frozen and a patched check with the true-depth records and
 the FCL audits: detection of runs with real penetration, and new rejections of mesh-clean runs.
+`agree` checks the CPU replica (`check-cpu`) frame by frame against the GPU check of the same patch.
 """
 import argparse
 import collections
@@ -25,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from curobo.types import JointState
 from curobo_core.contracts import PlannerAssets
 from curobo_core.scene import SceneSnapshot
-from experiments.motion326.cpu_spheres import ChainFK, appended_collisions, sphere_groups, world, world_cuboids
+from experiments.motion326.cpu_spheres import (ChainFK, added_base_cuboids, appended_collisions, base_cuboids, planner_ignored,
+                                               sphere_groups, world, world_cuboids)
 from experiments.motion326.miss_inventory import task_kind
 from v3_batched_loaded_search import GpuValidity
 from v3_motion327_transport_v2 import FROZEN_V1, DockingOffsetPlanner
@@ -99,7 +101,7 @@ def check(args):
                                          if getattr(args, key)})
     planner = DockingOffsetPlanner(assets, cartesian_options=json.loads(FROZEN_V1.read_text())["cartesian_options_frozen"])
     robot = yaml.safe_load(assets.robot_config.read_text())
-    ignored = {frozenset((a, b)) for a, links in robot["kinematics"]["self_collision_ignore"].items() for b in links}
+    ignored = planner_ignored(robot["kinematics"])
     added_counts = {}
     if args.patch:
         added_counts = {link: len(value["added_spheres"]) for link, value in json.loads(args.patch.read_text())["links"].items()}
@@ -143,14 +145,16 @@ def check(args):
 
 
 def check_cpu(args):
-    """CPU replica of `check` for a patched model: only appended spheres can reject a frame (see cpu_spheres)."""
+    """CPU replica of `check` for a patched model: only appended spheres or cuboids can reject a frame (see cpu_spheres)."""
     assets = PlannerAssets()
     fixed = yaml.safe_load(assets.robot_config.read_text())["kinematics"]
     mobile = yaml.safe_load(assets.mobile_robot_config.read_text())["kinematics"]
     fk = ChainFK(yourdfpy.URDF.load(mobile["urdf_path"], load_meshes=False))
     box_fit = json.loads(assets.box_fit.read_text())
-    added = {link: value["added_spheres"] for link, value in json.loads(args.patch.read_text())["links"].items()}
-    ignored = {frozenset((a, b)) for a, links in fixed["self_collision_ignore"].items() for b in links}
+    added = {link: value["added_spheres"] for link, value in json.loads(args.patch.read_text())["links"].items()} if args.patch else {}
+    ignored = planner_ignored(fixed)
+    boxes = base_cuboids()
+    extra = added_base_cuboids(args.cuboids) if args.cuboids else []
     locked = dict(mobile.get("lock_joints", {}))
     done = set()
     if args.output.exists():
@@ -177,8 +181,10 @@ def check_cpu(args):
                     for chunk in np.array_split(indices, max(1, len(indices) // args.chunk)):
                         values = {**base, **{name: rows[chunk, column] for column, name in enumerate(result["joint_names"])}}
                         values["base_x"] = values["base_x"] - advance
-                        hit, found = appended_collisions(groups, world(groups, fk.transforms(values, len(chunk))), ignored,
-                                                         cuboids, snapshot.policy.ground_z_m)
+                        poses = fk.transforms(values, len(chunk))
+                        hit, found = appended_collisions(groups, world(groups, poses), ignored, cuboids,
+                                                         snapshot.policy.ground_z_m, base=(poses["base_link"], boxes),
+                                                         added_base=(poses["base_link"], extra) if extra else None)
                         invalid.extend(np.searchsorted(indices, chunk[hit]).tolist())
                         for key, value in found.items():
                             merged = overlaps.setdefault(key, dict(frames=0, max_overlap_mm=0.))
@@ -248,6 +254,27 @@ def compare(args):
               f" | other phases {row['other_phases_new_invalid_runs']} | frozen invalid {row['frozen_transport_invalid_runs']}")
 
 
+def agree(args):
+    """Frame-level agreement of a CPU replica check with the GPU check of the same patch."""
+    load = lambda path: {(item["set"], item["run"]): item for item in map(json.loads, path.read_text().splitlines())}
+    reference, candidate = load(args.gpu), load(args.cpu)
+    counts, differing = collections.Counter(), []
+    for key, entry in candidate.items():
+        for phase in PHASES:
+            gpu = expand(reference[key]["phases"][phase]["invalid"])
+            cpu = expand(entry["phases"][phase]["invalid"])
+            counts[f"{phase}:both"] += len(gpu & cpu)
+            counts[f"{phase}:gpu_only"] += len(gpu - cpu)
+            counts[f"{phase}:cpu_only"] += len(cpu - gpu)
+            if gpu != cpu:
+                differing.append(dict(set=key[0], run=key[1], phase=phase, gpu_only=len(gpu - cpu), cpu_only=len(cpu - gpu)))
+    report = dict(runs=len(candidate), missing_in_gpu=len(set(candidate) - set(reference)), frames=dict(counts),
+                  differing_run_phases=differing)
+    args.output.write_text(json.dumps(report, indent=1) + "\n")
+    print(json.dumps({key: value for key, value in report.items() if key != "differing_run_phases"})
+          + f" | differing run-phases {len(differing)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -260,7 +287,8 @@ def main():
     checker.add_argument("--output", type=Path, required=True, help="JSONL, appended and resumable")
     cpu = commands.add_parser("check-cpu")
     cpu.add_argument("--set", nargs=2, action="append", metavar=("LABEL", "RUN_DIR"), required=True)
-    cpu.add_argument("--patch", type=Path, required=True, help="patch.json from sphere_patch.py")
+    cpu.add_argument("--patch", type=Path, help="patch.json from sphere_patch.py")
+    cpu.add_argument("--cuboids", type=Path, help="cuboids.json from cuboid_patch.py (frozen + added base cuboids)")
     cpu.add_argument("--chunk", type=int, default=400, help="frames per vectorized chunk")
     cpu.add_argument("--output", type=Path, required=True, help="JSONL, appended and resumable")
     comparer = commands.add_parser("compare")
@@ -270,8 +298,14 @@ def main():
     comparer.add_argument("--links", type=lambda text: text.split(","), help="only count rejections caused by spheres "
                           "appended to these links (e.g. arm_carriage); approximate per run: a run counts if any such pair overlaps")
     comparer.add_argument("--output", type=Path, required=True)
+    agreement = commands.add_parser("agree")
+    agreement.add_argument("--gpu", type=Path, required=True, help="`check` output with the patched configs")
+    agreement.add_argument("--cpu", type=Path, required=True, help="`check-cpu` output for the same patch")
+    agreement.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    {"check": check, "check-cpu": check_cpu, "compare": compare}[args.command](args)
+    if args.command == "check-cpu" and not (args.patch or args.cuboids):
+        parser.error("check-cpu needs --patch and/or --cuboids")
+    {"check": check, "check-cpu": check_cpu, "compare": compare, "agree": agree}[args.command](args)
 
 
 if __name__ == "__main__":

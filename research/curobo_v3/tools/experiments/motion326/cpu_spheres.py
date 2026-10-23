@@ -2,16 +2,50 @@
 
 The frozen model accepts every audited frame, so a patched model rejects a frame exactly when an
 appended sphere overlaps a sphere of a non-ignored link (payload spheres count as link7, as in
-loaded_robot), a world cuboid (ground excluded, as in to_curobo_scene), or the ground plane (the
-base link is exempt, as in GpuValidity). Forward kinematics is vectorized over frames.
+loaded_robot), a world cuboid (ground excluded, as in to_curobo_scene), the ground plane (the
+base link is exempt, as in GpuValidity) or a base cuboid. The ignore table is the planner's:
+BallFullCyclePlanner skips the arm <-> base_link sphere pairs (replace_arm_base_pairs) and checks
+every sphere except those of base_link and arm_carriage against the frozen base cuboids instead
+(BaseCuboidLayer). Forward kinematics is vectorized over frames.
 """
 import collections
+import copy
+import json
+from pathlib import Path
 
 import numpy as np
 from scipy.spatial.transform import Rotation
 
 from curobo_core.adapter import pose_matrix
+from v3_base_mesh_layer import replace_arm_base_pairs
 from v3_batched_loaded_search import loaded_robot
+from v3_research_assets import CUBOID_PATH
+
+BASE_CUBOID_EXEMPT = ("base_link", "arm_carriage")  # BaseMeshLayer.excluded_links
+
+
+def planner_ignored(kinematics):
+    """Link pairs the planner's self-collision check skips: the configured table plus arm <-> base_link."""
+    robot = {"kinematics": copy.deepcopy(kinematics)}
+    replace_arm_base_pairs(robot)
+    return {frozenset((a, b)) for a, links in robot["kinematics"]["self_collision_ignore"].items() for b in links}
+
+
+def base_cuboids(path=CUBOID_PATH):
+    """Frozen base cuboids as (name, pose in the base_link frame, half extents)."""
+    result = []
+    for item in json.loads(Path(path).read_text())["cuboids"]:
+        pose = np.eye(4)
+        pose[:3, :3] = Rotation.from_euler("xyz", item["rotation_deg"], degrees=True).as_matrix()
+        pose[:3, 3] = item["center"]
+        result.append((item["name"], pose, np.asarray(item["dimensions"], dtype=float) / 2))
+    return result
+
+
+def box_distance(points, pose, half):
+    """Signed distance of points (..., 3) to a box with the given pose and half extents (negative inside)."""
+    local = np.abs((points - pose[:3, 3]) @ pose[:3, :3]) - half
+    return np.linalg.norm(np.maximum(local, 0.), axis=-1) + np.minimum(np.max(local, axis=-1), 0.)
 
 
 class ChainFK:
@@ -78,8 +112,13 @@ def world(groups, poses):
             for label, link, centers, _ in groups}
 
 
-def appended_collisions(groups, centers, ignored, cuboids, ground_z, ground_exempt=("base_link",)):
-    """Per frame: True where an appended sphere collides; attribution label -> [frames, max overlap mm]."""
+def appended_collisions(groups, centers, ignored, cuboids, ground_z, ground_exempt=("base_link",), base=None,
+                        added_base=None):
+    """Per frame: True where an appended sphere or cuboid collides; attribution label -> [frames, max overlap mm].
+
+    base: (base_link poses (N, 4, 4) in the root frame, base_cuboids()) to check appended spheres against the
+    base cuboid layer; added_base: (the same poses, cuboids appended to the layer) to check every sphere against.
+    """
     count = next(iter(centers.values())).shape[0]
     hit = np.zeros(count, dtype=bool)
     found = collections.defaultdict(lambda: [0, 0.])
@@ -101,13 +140,29 @@ def appended_collisions(groups, centers, ignored, cuboids, ground_z, ground_exem
             distance = np.linalg.norm(a[:, :, None, :] - centers[other][:, None, :, :], axis=-1)
             record(f"{link} | {other}", radii[None, :, None] + other_radii[None, None, :] - distance)
         for name, pose, half in cuboids:
-            local = (a - pose[:3, 3]) @ pose[:3, :3]
-            outside = np.linalg.norm(np.maximum(np.abs(local) - half, 0.), axis=-1)
-            inside = np.minimum(np.max(np.abs(local) - half, axis=-1), 0.)
-            record(f"{link} | world:{name}", radii[None, :] - (outside + inside))
+            record(f"{link} | world:{name}", radii[None, :] - box_distance(a, pose, half))
+        if base is not None and link not in BASE_CUBOID_EXEMPT:
+            poses, boxes = base
+            relative = np.einsum("nji,nkj->nki", poses[:, :3, :3], a - poses[:, None, :3, 3])  # base_link frame
+            for name, pose, half in boxes:
+                record(f"{link} | base:{name}", radii[None, :] - box_distance(relative, pose, half))
         if link not in ground_exempt:
             record(f"{link} | ground", ground_z - (a[..., 2] - radii[None, :]))
+    if added_base is not None:
+        poses, boxes = added_base
+        for label, link, _, radii in groups:
+            if link in BASE_CUBOID_EXEMPT or not len(radii):
+                continue
+            relative = np.einsum("nji,nkj->nki", poses[:, :3, :3], centers[label] - poses[:, None, :3, 3])
+            for name, pose, half in boxes:
+                record(f"{label.rstrip('+')} | base+:{name}", radii[None, :] - box_distance(relative, pose, half))
     return hit, {key: dict(frames=value[0], max_overlap_mm=value[1]) for key, value in found.items()}
+
+
+def added_base_cuboids(path):
+    """Cuboids that cuboid_patch.py appended to a base cuboid file (listed in its "patch" entry)."""
+    added = set(json.loads(Path(path).read_text())["patch"]["added"])
+    return [item for item in base_cuboids(path) if item[0] in added]
 
 
 def world_cuboids(snapshot):
