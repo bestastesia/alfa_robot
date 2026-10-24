@@ -9,8 +9,8 @@
     "MOTION-306"
   ],
   "registered_at": "2026-10-23",
-  "version": "v1",
-  "status": "frozen 2026-10-23 after the L1 pilot and before any test-cell scene is planned; later changes only as dated amendments on dev evidence",
+  "version": "v2",
+  "status": "v2 registered 2026-10-24 after G1 (train/dev only) and before any network training on the v2 targets or any test-cell scene; the v1 S1/S2 targets are superseded, v1 data and results are kept as evidence",
   "baseline": {
     "planner": "TimedSingleArmPlanner at a77abd5 (planning code 541fdbc, includes MOTION-294)",
     "note": "old zero/Home; conclusions are not extrapolated to upstream 0942d18",
@@ -224,6 +224,64 @@
     "A6 time comparisons use forced (warm) runs on both sides (dual: A' simulated from the forced runs; single: baseline order simulated), because each instance's first run carries per-scene warm-up",
     "A7 S2 instances: half of train/dev by sha1 parity (unchanged); S1 for all; noise subset = sha1 % 10 == 0 (33 instances); censoring probe = up to 200 budget_exhausted S1 candidates at budget_scale 3"
   ],
+  "correction_v2": {
+    "reason": "user clarification 2026-10-24: 'global optimum' means the three coupled IKs of one transport - contact IK (with its 35 cm extraction end), carry IK (回中) and conveyor place IK (放箱) - chosen stage by stage without going back. v1 ranked only contacts and carry goals and kept the baseline place rule; G1 showed the first two choices near-optimal (median headroom 1-3 %), while place + return is 33-49 % of the round cost and the dual-top failures sit at the conveyor place RRT",
+    "decision": "per round: contact c (64 analytic candidates), then carry g (carry atlas), then place p (enumerated place set), each chosen given the previous one; per-stage retry with the next candidate, never revisiting an earlier stage; final fallback = baseline round (time counted)",
+    "cost": {
+      "primary": "T_lb = sum over the motion segments Home->c, c->r(c), r(c)->g, g->p, p->Home of max_j |dq_j| / v_j (URDF velocity limits); evaluated on executed plans as T_lb_path = sum over planned frames of max_j |dq_j| / v_j",
+      "secondary": [
+        "J_arc (v1 definition)",
+        "time-parameterized motion duration",
+        "planning wall time"
+      ]
+    },
+    "networks": {
+      "N3": "(g, p) -> P(place + return-home connect within budget), residual of realized place+return time over T_lb; V3(g) = min_p Q3, precomputed per mode",
+      "N2": "(r(c), g, task context) -> P(transport connects within budget), residual; Q2 = T_lb(r->g) + residual + V3(g)",
+      "N1": "(c, task context) -> P(extraction + approach), residual, and V2(c) (direct prediction; explicit min over N2 is an ablation)",
+      "training": "backward induction N3 -> N2 -> N1 on train-split labels; CV grouped by box cells as in v1; ensembles of 5",
+      "recommendation": "only candidates with P >= theta (0.5) by S = P*Q + (1-P)*Q_fallback; abstain otherwise (A9 kept)",
+      "latency_budget_ms": {
+        "per_round_p95": 15.0,
+        "model_load": 50.0
+      }
+    },
+    "data": {
+      "P3": "v1 labels (352 train/dev instances): contact/extraction/approach/transport outcomes; T_lb from recorded phase ends",
+      "D3": "place stage: per mode (dual side/top, single left/right x side/top) 150 carry IKs from the P3 transport ends, contexts rotated over train/dev tasks and offsets; per carry the baseline place rule + 4 best analytic T_lb + 2 nearest to the baseline placement + 2 random enumerated place IKs, each through the real conveyor suffix; 20 pairs per mode re-run under 3 contexts (independence check)"
+    },
+    "gates": {
+      "G1p": "place stage headroom per mode: median over carries of (realized place+return T of the baseline rule - best labelled feasible) / baseline >= 5 %; plus the full-triple T_lb headroom from P3 + D3",
+      "G2p": "offline on dev: network stage choices vs baseline and vs B0 on T_lb, first-try success and estimated planning time",
+      "G3p": "dev online: selections equal the offline prediction, fallbacks equal the baseline, frames reproducible"
+    },
+    "arms": {
+      "A": "baseline",
+      "B0": "T_lb-only analytic stage choices (no feasibility prediction), same retries and fallback",
+      "B": "networks N1 -> N2 -> N3"
+    },
+    "metrics": [
+      "T_lb_path of the executed round (primary)",
+      "J_arc",
+      "motion duration",
+      "first-try success of the selected triple",
+      "success with retries/fallback and failure classes",
+      "planning wall time incl. features, inference and verification",
+      "per-stage attempts and fallbacks"
+    ],
+    "decision_rules_proposed": {
+      "status": "proposed, to be confirmed by 李昊洋 in MOTION-337 before the test run",
+      "success": "B >= A and at most one instance where A succeeds and B fails",
+      "cost": "improved if median paired dT_lb_path <= -5 % (cluster bootstrap CI upper < 0); non-inferior if <= +2 %",
+      "time": "non-inferior if median dT_plan <= +10 %; improved if <= -15 %",
+      "attribution": "B better than B0 on the claimed metric for network credit",
+      "verdicts": {
+        "effective": "success + latency + cost improved (time non-inferior) + attribution, on held-out cells",
+        "limited": "only in some modes, or attribution fails, or abstention > 50 %",
+        "not_applicable": "G1p fails in all modes, or no mode improves"
+      }
+    }
+  },
   "amendments_336": [
     "A8 (2026-10-23, before any training on train-split labels) T1 nearest-goal distance features use a fixed rng-311 subsample of 4096 rows for atlases larger than that (top: 44032 rows); 15-D k-d queries over the full top atlas took 11-17 ms. Planning atlases are unchanged",
     "A9 (2026-10-23, same) the network recommends only candidates with P >= theta (0.5), ranked by S over those; the remaining candidates keep the baseline order; no candidate reaching theta = abstain. Offline ranking quality in CV is measured with theta = 0, the dev policy with theta = 0.5"

@@ -191,7 +191,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
     def plan_conveyor_target(self, start, targets, checker, validity, solver, report, append):
         if len(self.selected_task)==2:
             return super().plan_conveyor_target(start,targets,checker,validity,solver,report,append)
-        candidates = self.enumerate_single(targets[self.active_side],start,checker)
+        candidates = self.single_place_candidates(targets,start,checker)
         report['conveyor_goal_ik'] = dict(mode='single active TCP analytic updown/swivel enumeration; idle arm free in 15D search',collision_valid=len(candidates))
         if not len(candidates):
             raise CycleBlocked('龙头车放置目标IK','单臂目标没有合法候选',report)
@@ -204,6 +204,10 @@ class SingleArmPlanner(LazyExtractionPlanner):
         frames[:,[names.index(name) for name in ACTIVE_JOINTS]] = path
         append(frames,'conveyor_place',True)
         return path[-1]
+
+    def single_place_candidates(self, targets, start, checker):
+        """Single-arm placement configurations: analytic enumeration ordered by distance from the transport end."""
+        return self.enumerate_single(targets[self.active_side],start,checker)
 
     def single_contact_order(self, boxes, contacts):
         """Order in which single-arm contact candidates are tried; the default keeps the cost order."""

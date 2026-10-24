@@ -213,9 +213,23 @@ def round_costs(planner, boxes, result):
         if phase in MOTION_PHASES:
             first, _ = ends.get(phase, (frames[index - 1] if index else frames[index], None))
             ends[phase] = (first, frames[index])
+    velocity = active_velocities(planner)
+    seconds = np.max(np.abs(np.diff(frames, axis=0)) / velocity, axis=1)
+    path_by_phase = {}
+    for step, phase in zip(seconds, phases[1:]):
+        if phase in MOTION_PHASES:
+            path_by_phase[phase] = path_by_phase.get(phase, 0.) + float(step)
+    bound_by_phase = {phase: float(np.max(np.abs(last - first) / velocity)) for phase, (first, last) in ends.items()}
     return dict(arc=arc, arc_by_phase=by_phase, rotation_cost=rotation, j_arc=arc + rotation,
+                t_path=float(sum(path_by_phase.values())), t_path_by_phase=path_by_phase,
+                t_lb=float(sum(bound_by_phase.values())), t_lb_by_phase=bound_by_phase,
                 transport_end=rounded(transport[-1]) if len(transport) else None,
                 phase_ends={phase: [rounded(first), rounded(last)] for phase, (first, last) in ends.items()})
+
+
+def active_velocities(planner):
+    """URDF velocity limits of the 15 active joints, from the timed planner's limit table."""
+    return planner._timed_limits[0][[planner._timed_joint_names.index(name) for name in ACTIVE_JOINTS]]
 
 
 def compact_search(call):

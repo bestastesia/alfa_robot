@@ -86,20 +86,7 @@ class ConveyorCyclePlanner(AnalyticContacts):
                 for side in ('left', 'right')}
 
     def plan_conveyor_target(self, start, targets, checker, validity, solver, report, append):
-        poses = {side + '_tool0': {'position': matrix[:3, 3].tolist(),
-                                  'quaternion': np.roll(Rotation.from_matrix(matrix[:3, :3]).as_quat(), 1).tolist()}
-                 for side, matrix in targets.items()}
-        current = JointState.from_position(torch.tensor(np.asarray(start)[None], device='cuda', dtype=torch.float32), joint_names=ACTIVE_JOINTS)
-        with torch.enable_grad():
-            solved = solver.solve_pose(goal(poses), current_state=current, return_seeds=64)
-        rows = solved.js_solution.position.reshape(-1, len(solved.js_solution.joint_names))
-        rows = rows[:, [solved.js_solution.joint_names.index(name) for name in ACTIVE_JOINTS]].contiguous()
-        numerical_success = solved.success.reshape(-1).bool()
-        candidates = rows[numerical_success].contiguous()
-        valid = validity.mask(candidates) if len(candidates) else torch.zeros(0, device='cuda', dtype=torch.bool)
-        candidates = candidates[valid].contiguous()
-        report['conveyor_goal_ik'] = {'returned': len(rows), 'solver_success': int(numerical_success.sum()),
-                                     'collision_valid': len(candidates), 'mode': 'cuRobo numerical IK, updown plus 14 arm joints'}
+        candidates = self.dual_place_candidates(start, targets, validity, solver, report)
         report['conveyor_place_mode'] = 'fixed final box pose; multi-goal RRT; no Cartesian straight-line requirement'
         if not len(candidates):
             raise CycleBlocked('龙头车放置目标IK', f"目标IK没有合法终点：{report['conveyor_goal_ik']}", report)
@@ -162,6 +149,46 @@ class ConveyorCyclePlanner(AnalyticContacts):
             previous = next_row
         return previous
 
+    def conveyor_ik_solver(self, boxes):
+        """cuRobo numerical IK for the conveyor placement (only the dual-arm default candidates use it)."""
+        robot = loaded_robot(self.robot, self.box_fit, attachments=self.task_attachments(boxes))
+        config = InverseKinematicsCfg.create(robot=copy.deepcopy(robot), scene_model=self.scene(boxes),
+            collision_cache={'cuboid': max(40, len(self.snapshot.objects)), 'mesh': len(self.snapshot.meshes)},
+            num_seeds=64, self_collision_check=True, use_cuda_graph=False,
+            position_tolerance=.002, orientation_tolerance=math.radians(1),
+            override_iters_for_multi_link_ik=160, optimizer_collision_activation_distance=.005)
+        return InverseKinematics(config)
+
+    def conveyor_place_targets(self, start):
+        """Tool targets (robot frame) that put each carried box 0.8 m further, yaw-only, at conveyor height; and those box poses."""
+        targets, boxes = {}, {}
+        for side, tool in self.tool_matrices(start).items():
+            box = tool @ grasp_transform(side, self.top_grasp)
+            box[0, 3] += self.conveyor_push_m
+            box[:3, :3] = Rotation.from_euler('z', math.atan2(box[1, 0], box[0, 0])).as_matrix()
+            box[2, 3] = self.conveyor_height_m + self.box_fit['dimensions_m'][2] * .5 + self.placement_clearance_m
+            targets[side] = box @ np.linalg.inv(grasp_transform(side, self.top_grasp))
+            boxes[side] = box
+        return targets, boxes
+
+    def dual_place_candidates(self, start, targets, validity, solver, report):
+        """Collision-valid placement configurations from cuRobo numerical IK seeded at the transport end."""
+        poses = {side + '_tool0': {'position': matrix[:3, 3].tolist(),
+                                  'quaternion': np.roll(Rotation.from_matrix(matrix[:3, :3]).as_quat(), 1).tolist()}
+                 for side, matrix in targets.items()}
+        current = JointState.from_position(torch.tensor(np.asarray(start)[None], device='cuda', dtype=torch.float32), joint_names=ACTIVE_JOINTS)
+        with torch.enable_grad():
+            solved = solver.solve_pose(goal(poses), current_state=current, return_seeds=64)
+        rows = solved.js_solution.position.reshape(-1, len(solved.js_solution.joint_names))
+        rows = rows[:, [solved.js_solution.joint_names.index(name) for name in ACTIVE_JOINTS]].contiguous()
+        numerical_success = solved.success.reshape(-1).bool()
+        candidates = rows[numerical_success].contiguous()
+        valid = validity.mask(candidates) if len(candidates) else torch.zeros(0, device='cuda', dtype=torch.bool)
+        candidates = candidates[valid].contiguous()
+        report['conveyor_goal_ik'] = {'returned': len(rows), 'solver_success': int(numerical_success.sum()),
+                                     'collision_valid': len(candidates), 'mode': 'cuRobo numerical IK, updown plus 14 arm joints'}
+        return candidates
+
     def conveyor_suffix(self, boxes, report, append, progress):
         began = time.perf_counter()
         original_snapshot = self.snapshot
@@ -202,27 +229,16 @@ class ConveyorCyclePlanner(AnalyticContacts):
             progress('导航到位瞬移完成；底盘冻结，求固定放箱目标IK并用RRT连接，启用双龙头车碰撞')
             loaded_checker = self.checker(boxes, payload=True)
             loaded_validity = GpuValidity(loaded_checker, check_ground=True)
-            robot = loaded_robot(self.robot, self.box_fit, attachments=self.task_attachments(boxes))
-            config = InverseKinematicsCfg.create(robot=copy.deepcopy(robot), scene_model=self.scene(boxes),
-                collision_cache={'cuboid': max(40, len(self.snapshot.objects)), 'mesh': len(self.snapshot.meshes)},
-                num_seeds=64, self_collision_check=True, use_cuda_graph=False,
-                position_tolerance=.002, orientation_tolerance=math.radians(1),
-                override_iters_for_multi_link_ik=160, optimizer_collision_activation_distance=.005)
-            solver = InverseKinematics(config)
-            targets = {}
-            for side, tool in self.tool_matrices(start).items():
-                box = tool @ grasp_transform(side, self.top_grasp)
-                box[0, 3] += self.conveyor_push_m
-                box[:3, :3] = Rotation.from_euler('z', math.atan2(box[1, 0], box[0, 0])).as_matrix()
-                box[2, 3] = self.conveyor_height_m + self.box_fit['dimensions_m'][2] * .5 + self.placement_clearance_m
-                targets[side] = box @ np.linalg.inv(grasp_transform(side, self.top_grasp))
+            solver = self.conveyor_ik_solver(boxes)
+            targets, boxes_at_targets = self.conveyor_place_targets(start)
+            for side, box in boxes_at_targets.items():
                 report['conveyor_box_targets'][side] = {'position': (base @ box)[:3, 3].tolist(),
                     'quaternion_wxyz': matrix_pose(base @ box).quaternion_wxyz,
                     'table_height_m': self.conveyor_height_m, 'box_height_m': self.box_fit['dimensions_m'][2],
                     'conveyor_position': reference_targets[side]['conveyor_position']}
             placed = self.plan_conveyor_target(start, targets, loaded_checker, loaded_validity, solver,
                                                 report, append)
-            del solver, config, robot, loaded_checker, loaded_validity
+            del solver, loaded_checker, loaded_validity
             gc.collect()
             torch.cuda.empty_cache()
             for side, tool in self.tool_matrices(placed).items():
