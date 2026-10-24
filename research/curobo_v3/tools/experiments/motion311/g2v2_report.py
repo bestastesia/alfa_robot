@@ -59,6 +59,7 @@ def contact_stage(records, models, tables, velocity, theta=.5):
         contacts = np.asarray(record["contacts"], dtype=np.float64)
         features, ends, eligible = triple.contact_features(contacts, context, kinematics, velocity)
         probability, distilled, max_z = models["n1"].predict(features)
+        distilled = distilled * triple.V2_SCALE_S
         masked = np.where(eligible[:, None], ends, np.nan)
         explicit = {name: triple.contact_downstream(masked, *tables["b0"][mode], velocity, context, model)
                     for name, model in (("b", models["n2"]), ("b0", None))}

@@ -102,9 +102,14 @@ def transport_outcome(record, entry, budget_ms=350.):
 
 
 def record_context(record):
+    """The ranker context of a P3 record. Its contact-pose quaternions were stored rounded to 1e-6 (norm off by ~3e-7),
+    which is enough to make the analytic 35 cm endpoint fail near the workspace limit (L19-R21: 0 of 64 vs 62 at run
+    time), so they are renormalized here."""
     context = record["context"]
+    poses = {name: dict(position=pose["position"], quaternion=list(np.asarray(pose["quaternion"]) / np.linalg.norm(pose["quaternion"])))
+             for name, pose in context["contact_poses"].items()}
     return dict(kind=record["kind"], sides=sorted(record["task"]), top_grasp=context["top_grasp"], box_centers=context["box_centers"],
-                contact_poses=context["contact_poses"], home=context["home"])
+                contact_poses=poses, home=context["home"])
 
 
 def cells_key(record):
@@ -388,7 +393,8 @@ def load_tables(output, name):
 
 def n1_rows(records, velocity, tables, n2):
     """N1 samples: every contact of the instances. y = extraction + approach success of the forced contact (masked when
-    unlabelled or censored); r = log V2(c), the explicit downstream value with N2 and the V3 tables (distillation target)."""
+    unlabelled or censored); r = log(V2(c) / V2_SCALE_S), V2 being the explicit downstream value with N2 and the V3
+    tables (distillation target, centred so that the regression head starts near it)."""
     from curobo_core.planner import AnalyticBridge
     home = np.asarray(records[0]["context"]["home"], dtype=np.float64)
     atlases = {mode: np.load(path, allow_pickle=False)["joints"] for mode, path in base.ATLASES.items()}
@@ -407,7 +413,8 @@ def n1_rows(records, velocity, tables, n2):
             outcome = outcomes.get(index)
             if outcome is None and not np.isfinite(v2[index]):
                 continue
-            rows.append(dict(x=features[index], y=outcome or 0., mask=outcome is None, r=math.log(v2[index]) if np.isfinite(v2[index]) else np.nan,
+            rows.append(dict(x=features[index], y=outcome or 0., mask=outcome is None,
+                             r=math.log(v2[index] / triple.V2_SCALE_S) if np.isfinite(v2[index]) else np.nan,
                              group=cells_key(record), instance=record["instance"], option=index))
     return rows
 

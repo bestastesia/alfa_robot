@@ -107,7 +107,7 @@ class TripleSelectionPlanner(TimedSingleArmPlanner):
         else:
             probability, distilled = np.ones(len(contacts)), None
         if self.arm == "B" and self.contact_value == "distilled":
-            downstream = distilled
+            downstream = distilled * triple.V2_SCALE_S
         else:
             table = self.table(boxes)
             masked = np.where(eligible[:, None], ends, np.nan)

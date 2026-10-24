@@ -19,6 +19,7 @@ import v3_candidate_ranker as ranker
 C_FAIL_S = 2.0
 Z_LIMIT = 6.  # a candidate with a feature beyond 6 training standard deviations is never recommended (P := 0)
 PLACE_KEEP = 64  # V3 and the place choice consider the places of lowest T_lb(g,p) + T_lb(p,Home) only
+V2_SCALE_S = 20.  # N1's regression head predicts log(V2 / V2_SCALE_S): a centred target (V2 is 12-31 s)
 FLAG_NAMES = ["dual", "top_grasp", "left_active", "right_active"]
 
 
