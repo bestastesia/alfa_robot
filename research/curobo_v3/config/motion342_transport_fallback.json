@@ -1,0 +1,515 @@
+{
+ "schema_version": 1,
+ "issue": "MOTION-342",
+ "parent_issue": "MOTION-312",
+ "registered_at": "2026-10-24",
+ "status": "pre-registered before the test run; design data = the MOTION-327 test set (motion312-acceptance/v2-test-20261020) and its fallback re-run (v2-test-fallback-20261023)",
+ "baseline": {
+  "method": "joint_rrt",
+  "planning_commit": "541fdbc",
+  "note": "same baseline as MOTION-323/327; conclusions not extrapolated to upstream 0942d18"
+ },
+ "method": {
+  "base": "MOTION-327 cartesian_v2 frozen options (846f0dc) with TOPP-RA timing",
+  "options": {
+   "fallback_joint_rrt": "if the Cartesian search returns no path, the rest of the same 2 s transport budget goes to the baseline joint RRT (same goals and seed)",
+   "route_branch_change": "if the nearest goal in the baseline's goal order lies on another wrist branch sign(q2,q4,q6) than the start, the stage goes to the baseline joint RRT directly"
+  },
+  "code_commit": "e189184",
+  "design_evidence": "motion312-acceptance/r20-diag-20261023 (right20 diagnosis, straight-line failure classes and the routing proxy on the 50 MOTION-327 test scenes)"
+ },
+ "arms": {
+  "baseline": "joint_rrt",
+  "variants": {
+   "cartesian_v21_toppra": {
+    "fallback_joint_rrt": true
+   },
+   "cartesian_v21r_toppra": {
+    "fallback_joint_rrt": true,
+    "route_branch_change": true
+   }
+  }
+ },
+ "test_set": {
+  "purpose": "independent: new docking offsets and new seeds, never run before",
+  "scene_model": "as MOTION-327: container walls, ground, filler blocks and target boxes shifted by (dx, dy, 0) relative to the robot; conveyor unchanged",
+  "generator": "numpy.random.default_rng(342).uniform(-0.05, 0.05, size=(25, 2, 2)), rounded to 0.1 mm; tasks = the 25 single-arm tasks of MOTION-327",
+  "seeds": [
+   342001,
+   342002,
+   342003
+  ],
+  "instances": [
+   {
+    "task": {
+     "right": 0
+    },
+    "offset_m": [
+     0.0099,
+     -0.0028
+    ]
+   },
+   {
+    "task": {
+     "right": 0
+    },
+    "offset_m": [
+     -0.0362,
+     -0.0383
+    ]
+   },
+   {
+    "task": {
+     "right": 1
+    },
+    "offset_m": [
+     -0.0016,
+     0.0328
+    ]
+   },
+   {
+    "task": {
+     "right": 1
+    },
+    "offset_m": [
+     0.0135,
+     -0.0476
+    ]
+   },
+   {
+    "task": {
+     "right": 2
+    },
+    "offset_m": [
+     -0.0239,
+     0.0302
+    ]
+   },
+   {
+    "task": {
+     "right": 2
+    },
+    "offset_m": [
+     0.0084,
+     0.0389
+    ]
+   },
+   {
+    "task": {
+     "left": 3
+    },
+    "offset_m": [
+     -0.0262,
+     0.0201
+    ]
+   },
+   {
+    "task": {
+     "left": 3
+    },
+    "offset_m": [
+     0.0209,
+     0.0079
+    ]
+   },
+   {
+    "task": {
+     "left": 4
+    },
+    "offset_m": [
+     0.0329,
+     0.0473
+    ]
+   },
+   {
+    "task": {
+     "left": 4
+    },
+    "offset_m": [
+     -0.0294,
+     -0.0073
+    ]
+   },
+   {
+    "task": {
+     "right": 5
+    },
+    "offset_m": [
+     -0.0116,
+     -0.0083
+    ]
+   },
+   {
+    "task": {
+     "right": 5
+    },
+    "offset_m": [
+     -0.0109,
+     0.0014
+    ]
+   },
+   {
+    "task": {
+     "right": 6
+    },
+    "offset_m": [
+     0.0386,
+     -0.0448
+    ]
+   },
+   {
+    "task": {
+     "right": 6
+    },
+    "offset_m": [
+     -0.0231,
+     -0.0439
+    ]
+   },
+   {
+    "task": {
+     "right": 7
+    },
+    "offset_m": [
+     0.014,
+     0.0251
+    ]
+   },
+   {
+    "task": {
+     "right": 7
+    },
+    "offset_m": [
+     -0.0193,
+     -0.0303
+    ]
+   },
+   {
+    "task": {
+     "left": 8
+    },
+    "offset_m": [
+     -0.043,
+     0.0079
+    ]
+   },
+   {
+    "task": {
+     "left": 8
+    },
+    "offset_m": [
+     -0.0447,
+     0.0323
+    ]
+   },
+   {
+    "task": {
+     "left": 9
+    },
+    "offset_m": [
+     -0.042,
+     0.0142
+    ]
+   },
+   {
+    "task": {
+     "left": 9
+    },
+    "offset_m": [
+     -0.0485,
+     0.0003
+    ]
+   },
+   {
+    "task": {
+     "right": 10
+    },
+    "offset_m": [
+     -0.009,
+     0.0437
+    ]
+   },
+   {
+    "task": {
+     "right": 10
+    },
+    "offset_m": [
+     0.0464,
+     0.047
+    ]
+   },
+   {
+    "task": {
+     "right": 11
+    },
+    "offset_m": [
+     -0.0164,
+     0.0476
+    ]
+   },
+   {
+    "task": {
+     "right": 11
+    },
+    "offset_m": [
+     -0.0391,
+     -0.0297
+    ]
+   },
+   {
+    "task": {
+     "right": 12
+    },
+    "offset_m": [
+     -0.0022,
+     -0.0125
+    ]
+   },
+   {
+    "task": {
+     "right": 12
+    },
+    "offset_m": [
+     0.0286,
+     0.0263
+    ]
+   },
+   {
+    "task": {
+     "left": 13
+    },
+    "offset_m": [
+     0.0148,
+     -0.0107
+    ]
+   },
+   {
+    "task": {
+     "left": 13
+    },
+    "offset_m": [
+     -0.0,
+     0.001
+    ]
+   },
+   {
+    "task": {
+     "left": 14
+    },
+    "offset_m": [
+     -0.0482,
+     -0.0434
+    ]
+   },
+   {
+    "task": {
+     "left": 14
+    },
+    "offset_m": [
+     -0.0011,
+     0.0404
+    ]
+   },
+   {
+    "task": {
+     "right": 15
+    },
+    "offset_m": [
+     -0.0091,
+     -0.0433
+    ]
+   },
+   {
+    "task": {
+     "right": 15
+    },
+    "offset_m": [
+     -0.011,
+     0.0344
+    ]
+   },
+   {
+    "task": {
+     "right": 16
+    },
+    "offset_m": [
+     0.0476,
+     0.0479
+    ]
+   },
+   {
+    "task": {
+     "right": 16
+    },
+    "offset_m": [
+     0.0222,
+     -0.02
+    ]
+   },
+   {
+    "task": {
+     "right": 17
+    },
+    "offset_m": [
+     0.0395,
+     -0.0185
+    ]
+   },
+   {
+    "task": {
+     "right": 17
+    },
+    "offset_m": [
+     0.0444,
+     -0.0261
+    ]
+   },
+   {
+    "task": {
+     "left": 18
+    },
+    "offset_m": [
+     -0.008,
+     0.0366
+    ]
+   },
+   {
+    "task": {
+     "left": 18
+    },
+    "offset_m": [
+     -0.0418,
+     -0.003
+    ]
+   },
+   {
+    "task": {
+     "left": 19
+    },
+    "offset_m": [
+     -0.0156,
+     0.0265
+    ]
+   },
+   {
+    "task": {
+     "left": 19
+    },
+    "offset_m": [
+     0.0212,
+     -0.0442
+    ]
+   },
+   {
+    "task": {
+     "right": 20
+    },
+    "offset_m": [
+     0.0012,
+     -0.0243
+    ]
+   },
+   {
+    "task": {
+     "right": 20
+    },
+    "offset_m": [
+     -0.03,
+     -0.0353
+    ]
+   },
+   {
+    "task": {
+     "right": 21
+    },
+    "offset_m": [
+     0.0074,
+     -0.0038
+    ]
+   },
+   {
+    "task": {
+     "right": 21
+    },
+    "offset_m": [
+     -0.0108,
+     0.0308
+    ]
+   },
+   {
+    "task": {
+     "right": 22
+    },
+    "offset_m": [
+     0.0043,
+     -0.0003
+    ]
+   },
+   {
+    "task": {
+     "right": 22
+    },
+    "offset_m": [
+     -0.0198,
+     0.0313
+    ]
+   },
+   {
+    "task": {
+     "left": 23
+    },
+    "offset_m": [
+     -0.0357,
+     -0.0242
+    ]
+   },
+   {
+    "task": {
+     "left": 23
+    },
+    "offset_m": [
+     -0.0412,
+     0.0164
+    ]
+   },
+   {
+    "task": {
+     "left": 24
+    },
+    "offset_m": [
+     -0.0325,
+     -0.0431
+    ]
+   },
+   {
+    "task": {
+     "left": 24
+    },
+    "offset_m": [
+     -0.0054,
+     0.0028
+    ]
+   }
+  ]
+ },
+ "decision_rules": {
+  "same_as": "MOTION-327 decision_rules, applied to each variant against joint_rrt",
+  "planning_time": "paired median change of the transport stage time <= +10%; every search within 2 s (expected to fail; the time cost was accepted by the owner on 2026-10-23 and is reported, not waived)",
+  "success": "success rate not lower than the baseline",
+  "quality": "paired median extra box rotation on side tasks reduced by at least 30%; tool path/chord ratio not increased",
+  "execution_duration": "paired median increase at most 20%"
+ },
+ "tradeoff_report": {
+  "purpose": "choose between the two variants (owner decision after the run); report-only, no threshold",
+  "metrics": [
+   "runs whose transport execution takes more than 2x / 3x the paired baseline, P90 and max of that ratio",
+   "runs with at least one wrist branch flip in the executed transport; min singularity margin",
+   "side and top extra rotation medians; paired side reduction",
+   "transports by tier (direct_line, rrt, joint_rrt_fallback, joint_rrt_routed)"
+  ]
+ },
+ "hypotheses": {
+  "cartesian_v21_toppra": "success equal to the baseline; quality and duration as MOTION-327; long-detour tail remains",
+  "cartesian_v21r_toppra": "success equal to the baseline; no >2x tail from routed stages; flips and extra rotation in routed stages as the baseline's"
+ }
+}
