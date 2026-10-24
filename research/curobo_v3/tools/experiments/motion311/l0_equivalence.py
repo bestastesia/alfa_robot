@@ -52,6 +52,22 @@ class PassThroughPlanner(DockingOffsetMixin, TimedSingleArmPlanner):
         self.count("placement_goal_order")
         return None
 
+    def conveyor_ik_solver(self, boxes):
+        self.count("conveyor_ik_solver")
+        return super().conveyor_ik_solver(boxes)
+
+    def conveyor_place_targets(self, start):
+        self.count("conveyor_place_targets")
+        return super().conveyor_place_targets(start)
+
+    def dual_place_candidates(self, start, targets, validity, solver, report):
+        self.count("dual_place_candidates")
+        return super().dual_place_candidates(start, targets, validity, solver, report)
+
+    def single_place_candidates(self, targets, start, checker):
+        self.count("single_place_candidates")
+        return super().single_place_candidates(targets, start, checker)
+
 
 def untimed_stats(stats):
     return {key: value for key, value in (stats or {}).items() if not key.endswith("_ms")}
