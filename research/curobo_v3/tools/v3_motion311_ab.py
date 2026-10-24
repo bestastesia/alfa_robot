@@ -11,6 +11,7 @@ selection report and a digest of the frames (reproducibility, G3'). Models and V
 --max-minutes ends a chunk with exit status 3 (more work).
 """
 import argparse
+import gc
 import json
 import os
 import time
@@ -18,6 +19,7 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+import torch
 
 import v3_candidate_ranker as ranker
 import v3_triple_ranker as triple
@@ -65,9 +67,11 @@ def run_arm(planner, boxes, kind, arm, recorder):
     try:
         planner.configure_task(boxes)
         result = planner.full_cycle(boxes)
-    except Exception as exception:  # a crash is an outcome of the arm, not a reason to stop the run
+    except Exception as exception:  # a crash (incl. CUDA out of memory) is an outcome of the arm, not a reason to stop the run
         result, error = None, f"{type(exception).__name__}: {exception}"[:500]
         traceback.print_exc()
+        gc.collect()
+        torch.cuda.empty_cache()
     wall_ms = (time.perf_counter() - began) * 1000
     label, stage = classify(kind, result, planner.trace)
     entry = dict(arm=arm, class_=label, stage=stage, error=error, wall_ms=wall_ms,
