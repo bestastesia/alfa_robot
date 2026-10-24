@@ -24,7 +24,7 @@ import torch
 import v3_candidate_ranker as ranker
 import v3_triple_ranker as triple
 from curobo_core.contracts import PlannerAssets
-from v3_label_classes import classify
+from v3_label_classes import SCENE_MARKERS, classify
 from v3_motion311_labels import array_digest, compact_search, gpu_state, provenance, round_costs, timings
 from v3_scene_variants import DockingOffsetMixin, load_registry
 from v3_search_recorder import SearchRecorder
@@ -74,6 +74,8 @@ def run_arm(planner, boxes, kind, arm, recorder):
         torch.cuda.empty_cache()
     wall_ms = (time.perf_counter() - began) * 1000
     label, stage = classify(kind, result, planner.trace)
+    if error is not None and any(marker in error for marker in SCENE_MARKERS):
+        label = "scene_infeasible"
     entry = dict(arm=arm, class_=label, stage=stage, error=error, wall_ms=wall_ms,
                  searches=[compact_search(call) for call in recorder.since(mark)], trace=planner.trace)
     if result is not None:
@@ -116,6 +118,8 @@ def main():
     parser.add_argument("--kinds", default="dual,single")
     parser.add_argument("--instances", help="comma separated instance ids (default: all selected)")
     parser.add_argument("--arms", default="A,B0,B")
+    parser.add_argument("--contact-value", choices=("distilled", "explicit"), default="distilled",
+                        help="arm B's contact value (A13/A15: explicit for the test)")
     parser.add_argument("--max-minutes", type=float, default=25.)
     args = parser.parse_args()
     registry = load_registry(args.registry)
@@ -132,8 +136,10 @@ def main():
     planner.warmup_resources()
     models = load_models(args.models)
     planner.setup_selection(args.models / "assets", models)
+    planner.contact_value = args.contact_value
     with open(args.output / "provenance.jsonl", "a") as handle:
-        handle.write(json.dumps(dict(provenance(args), arms=args.arms, theta=planner.theta, m=planner.m, place_attempts=planner.place_attempts,
+        handle.write(json.dumps(dict(provenance(args), arms=args.arms, contact_value=planner.contact_value, theta=planner.theta, m=planner.m,
+                                     place_attempts=planner.place_attempts,
                                      allocation_ms=planner.allocation_ms, models={name: model.sha256 for name, model in models.items()},
                                      selection_setup_ms=planner.selection_setup_ms), ensure_ascii=False) + "\n")
     with SearchRecorder(0) as recorder:

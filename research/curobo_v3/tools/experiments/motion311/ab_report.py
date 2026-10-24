@@ -2,21 +2,42 @@
 """MOTION-311 v2 A/B report (MOTION-337): paired arm comparison per mode and the G3' consistency checks.
 
 Per arm: success (first try = no fallback round; overall) and failure classes; paired relative differences against
-A (and B against B0) of T_lb_path (primary), J_arc, motion duration and planning wall time, over the instances where
-both arms succeed, with the median and its cluster-bootstrap 95 % interval (clusters = box cells, 2000 resamples,
+A (and B against B0) of T_lb_path (primary), J_arc, motion duration, planning time (the planner's total_ms: selection,
+search, verification and any fallback round), the trajectory time-parameterization that follows it and the wall time
+of both, over the instances where both arms succeed, with the median and its cluster-bootstrap 95 % interval (clusters = box cells, 2000 resamples,
 seed 311); the stage selection latency (p50/p95 per round); stage outcomes (abstention, carry/place choices,
 place attempts, fallbacks). G3': a B/B0 round whose selection abstained or fell back to a full baseline round must
 reproduce arm A's frames; online contact choices are compared with the offline G2' prediction when given.
-The proposed decision rules (prereg decision_rules_proposed) are evaluated per mode.
+The proposed decision rules (prereg decision_rules_proposed) are evaluated per mode. Instances whose scene is infeasible
+for the baseline (no contact IK) are listed and left out.
 """
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from v3_label_classes import SCENE_MARKERS
+
 METRICS = {"t_lb_path": lambda entry: entry["cost"]["t_path"], "j_arc": lambda entry: entry["cost"]["j_arc"],
-           "motion_s": lambda entry: entry.get("motion_duration_s"), "plan_ms": lambda entry: entry["wall_ms"]}
+           "motion_s": lambda entry: entry.get("motion_duration_s"), "plan_ms": lambda entry: entry.get("total_ms"),
+           "timing_ms": lambda entry: entry.get("trajectory_timing_ms"), "wall_ms": lambda entry: entry["wall_ms"]}
+
+
+def outcome(entry):
+    """The arm's class; exceptions are split by their message (scene, CUDA memory, time-parameterization gate)."""
+    if entry["class_"] != "exception":
+        return entry["class_"]
+    error = entry.get("error") or ""
+    if any(marker in error for marker in SCENE_MARKERS):
+        return "scene_infeasible"
+    if "out of memory" in error.lower():
+        return "exception:cuda_oom"
+    if "timed samples failed" in error:
+        return "exception:timing_gate"
+    return "exception"
 
 
 def cells(record):
@@ -62,7 +83,7 @@ def arm_summary(records, arm):
         return None
     classes = {}
     for entry in entries:
-        classes[entry["class_"]] = classes.get(entry["class_"], 0) + 1
+        classes[outcome(entry)] = classes.get(outcome(entry), 0) + 1
     selections = [entry.get("selection") or {} for entry in entries]
     fallback = [bool(selection.get("fallback")) for selection in selections]
     output = dict(n=len(entries), success=float(np.mean([entry["class_"] == "success" for entry in entries])),
@@ -124,10 +145,11 @@ def main():
     parser.add_argument("--offline", type=Path, help="g2v2_report.py output (contact choice agreement)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    records = [json.loads(path.read_text()) for path in sorted((args.ab / "instances").glob("*.json"))]
+    loaded = [json.loads(path.read_text()) for path in sorted((args.ab / "instances").glob("*.json"))]
+    records = [record for record in loaded if outcome(record["arms"]["A"]) != "scene_infeasible"]
     offline = json.loads(args.offline.read_text()) if args.offline else None
     arms = sorted({arm for record in records for arm in record["arms"]})
-    report = dict(instances=len(records), arms=arms, by_mode={})
+    report = dict(instances=len(records), scene_infeasible=[record["instance"] for record in loaded if record not in records], arms=arms, by_mode={})
     for mode in sorted({record["mode"] for record in records}) + ["dual", "single", "all"]:
         mine = [record for record in records if mode in ("all", record["mode"], record["kind"])]
         if not mine:
