@@ -24,7 +24,8 @@ from experiments.motion311 import train_ranker as base
 
 ROOT = Path(__file__).resolve().parents[3]
 URDF = ROOT / "generated/v3_analytic_071cb95/model/robot_meter_meshes.urdf"
-GRID = [dict(width=width, depth=depth, weight_decay=decay, tier="pair") for width in (32, 64) for depth in (1, 2) for decay in (1e-4, 1e-3)]
+GRID = [dict(width=width, depth=depth, weight_decay=decay, tier="pair", clip=triple.Z_LIMIT)
+        for width in (32, 64) for depth in (1, 2) for decay in (1e-4, 1e-3)]
 
 
 def velocities():
@@ -146,7 +147,7 @@ def prefix_outcome(record, entry):
 
 
 def as_arrays(rows):
-    return (np.stack([row["x"] for row in rows]), np.array([row["y"] for row in rows]), np.zeros(len(rows), dtype=bool),
+    return (np.stack([row["x"] for row in rows]), np.array([row["y"] for row in rows]), np.array([row.get("mask", False) for row in rows]),
             np.array([row["r"] for row in rows]))
 
 
@@ -158,7 +159,8 @@ def group_folds(groups, folds=5, seed=311):
 
 
 def cross_validate(rows, config, folds, seed=0):
-    """Out-of-fold predictions (probability, ratio) and the per-fold epochs of one configuration."""
+    """Out-of-fold predictions (probability, ratio) and the per-fold epochs of one configuration. Rows the runtime would
+    never recommend (a feature beyond Z_LIMIT standard deviations of the fold's training rows) get NaN (abstention)."""
     x, y, mask, r = as_arrays(rows)
     probability, ratio, epochs = np.zeros(len(rows)), np.ones(len(rows)), []
     for fold in sorted(set(folds)):
@@ -169,23 +171,63 @@ def cross_validate(rows, config, folds, seed=0):
         fitted = base.fit((x[fit_index], y[fit_index], mask[fit_index], r[fit_index]),
                           (x[stop_index], y[stop_index], mask[stop_index], r[stop_index]) if len(stop_index) else None, config, seed)
         probability[valid], ratio[valid] = base.predict(fitted, x[valid])
+        z = np.abs((x[valid] - fitted["mean"].numpy()) / fitted["scale"].numpy()).max(axis=1)
+        outside = np.flatnonzero(valid)[z > triple.Z_LIMIT]
+        probability[outside], ratio[outside] = np.nan, np.nan
         epochs.append(fitted["epochs"])
     return probability, ratio, epochs
 
 
 def scores(rows, probability, ratio):
-    y = np.array([row["y"] for row in rows])
+    """Out-of-fold scores over the rows the runtime would use (abstained rows: `ood_share`); `combined` is the training
+    loss (BCE on labelled rows + 0.5 Huber(0.1) on log corrections)."""
+    known = ~np.isnan(probability)
+    labelled = ~np.array([row.get("mask", False) for row in rows]) & known
+    y = np.array([row["y"] for row in rows])[labelled]
     r = np.array([row["r"] for row in rows])
     eps = 1e-6
-    loss = float(-np.mean(y * np.log(probability + eps) + (1 - y) * np.log(1 - probability + eps)))
-    success = ~np.isnan(r)
-    order = np.argsort(probability)
+    p = probability[labelled]
+    loss = float(-np.mean(y * np.log(p + eps) + (1 - y) * np.log(1 - p + eps)))
+    success = ~np.isnan(r) & known
+    order = np.argsort(p)
     ranks = np.empty(len(order))
     ranks[order] = np.arange(len(order))
     positives = y == 1
     auc = float((ranks[positives].mean() - (positives.sum() - 1) / 2) / max((~positives).sum(), 1)) if positives.any() and (~positives).any() else None
-    return dict(bce=loss, auc=auc, log_ratio_mae=float(np.mean(np.abs(np.log(ratio[success]) - r[success]))) if success.any() else None,
-                ece=ece(probability, y))
+    error = np.abs(np.log(ratio[success]) - r[success])
+    huber = float(np.mean(np.where(error < .1, .5 * error ** 2, .1 * (error - .05)))) if success.any() else 0.
+    return dict(bce=loss, auc=auc, log_ratio_mae=float(np.mean(error)) if success.any() else None, ece=ece(p, y),
+                combined=loss + .5 * huber, ood_share=float(np.mean(~known)))
+
+
+def platt(probability, y, iterations=50):
+    """(a, b) minimising the BCE of sigmoid(a * logit(p) + b) (Newton steps on the two parameters)."""
+    logit = np.log(np.clip(probability, 1e-6, 1 - 1e-6) / (1 - np.clip(probability, 1e-6, 1 - 1e-6)))
+    design = np.column_stack([logit, np.ones(len(logit))])
+    weights = np.array([1., 0.])
+    for _ in range(iterations):
+        p = 1. / (1. + np.exp(-design @ weights))
+        hessian = design.T @ (design * (p * (1 - p))[:, None]) + 1e-9 * np.eye(2)
+        step = np.linalg.solve(hessian, design.T @ (p - y))
+        weights -= step
+        if np.abs(step).max() < 1e-10:
+            break
+    return float(weights[0]), float(weights[1])
+
+
+def calibrate(rows, probability, folds):
+    """Platt calibration of the out-of-fold probabilities: the exported (a, b) from all labelled rows, and the
+    cross-fitted calibrated probabilities (each fold calibrated by the others) with their ECE for the report."""
+    y = np.array([row["y"] for row in rows])
+    use = ~np.array([row.get("mask", False) for row in rows]) & ~np.isnan(probability)
+    calibrated = probability.copy()
+    for fold in sorted(set(folds)):
+        a, b = platt(probability[use & (folds != fold)], y[use & (folds != fold)])
+        inside = folds == fold
+        logit = np.log(np.clip(probability[inside], 1e-6, 1 - 1e-6) / (1 - np.clip(probability[inside], 1e-6, 1 - 1e-6)))
+        calibrated[inside] = np.where(np.isnan(probability[inside]), np.nan, 1. / (1. + np.exp(-(a * logit + b))))
+    a, b = platt(probability[use], y[use])
+    return (a, b), calibrated, dict(a=a, b=b, ece_raw=ece(probability[use], y[use]), ece_cross_fitted=ece(calibrated[use], y[use]))
 
 
 def ece(probability, y, bins=10):
@@ -241,17 +283,27 @@ def train_n3(args, home, velocity, output):
         entry = dict(config=config, epochs=epochs, **scores(rows, probability, ratio))
         entry["choice"] = summarise_choice(restricted_choice(rows, probability, ratio))
         report["cv"].append(entry)
-        print(json.dumps(dict(stage="N3", **{key: entry[key] for key in ("config", "bce", "auc", "log_ratio_mae", "ece")},
+        print(json.dumps(dict(stage="N3", **{key: entry[key] for key in ("config", "combined", "bce", "auc", "log_ratio_mae", "ece")},
                               network_vs_baseline=entry["choice"]["network_vs_baseline"]), ensure_ascii=False, default=float), flush=True)
-    best = min(entry["bce"] for entry in report["cv"])
-    close = [entry for entry in report["cv"] if entry["bce"] <= best * 1.02]
+    best = min(entry["combined"] for entry in report["cv"])
+    close = [entry for entry in report["cv"] if entry["combined"] <= best * 1.02]
     selected = min(close, key=lambda entry: (entry["config"]["width"] * entry["config"]["depth"], entry["config"]["weight_decay"]))["config"]
     report["selected"] = selected
     spread = []
     for seed in range(5):
         probability, ratio, _ = cross_validate(rows, selected, folds, seed)
-        spread.append(scores(rows, probability, ratio)["bce"])
-    report["seed_bce"] = spread
+        spread.append(scores(rows, probability, ratio)["combined"])
+        if seed == 0:
+            calibration, probability, report["calibration"] = calibrate(rows, probability, folds)
+            choices = restricted_choice(rows, probability, ratio)
+            report["choice_by_mode"] = {mode: summarise_choice([item for item in choices if item["mode"] == mode])
+                                        for mode in sorted({item["mode"] for item in choices})}
+            report["calibration_by_mode"] = {mode: dict(ece=ece(probability[index], np.array([rows[i]["y"] for i in index])),
+                                                        success=float(np.mean([rows[i]["y"] for i in index])), n=len(index))
+                                             for mode in sorted({row["mode"] for row in rows})
+                                             for index in [np.array([i for i, row in enumerate(rows) if row["mode"] == mode
+                                                                     and not np.isnan(probability[i])])]}
+    report["seed_loss"] = spread
     report["seed_spread"] = float((max(spread) - min(spread)) / np.median(spread))
     x, y, mask, r = as_arrays(rows)
     inner = group_folds([row["group"] for row in rows], seed=99) == 0
@@ -260,12 +312,83 @@ def train_n3(args, home, velocity, output):
     report["members"] = [dict(epochs=member["epochs"], best_epoch=int(np.argmin([check for _, check in member["curve"]])),
                               validation_plateau=validation_plateau(member["curve"])) for member in members]
     report["curves"] = [member["curve"] for member in members]
-    report["model_sha256"] = base.export(output / "n3_place.npz", members, triple.PLACE_NAMES, selected, dict(stage="N3", c_fail_s=triple.C_FAIL_S))
+    report["model_sha256"] = base.export(output / "n3_place.npz", members, triple.PLACE_NAMES, selected,
+                                         dict(stage="N3", c_fail_s=triple.C_FAIL_S, calibration=calibration))
     return report
 
 
-def n1_rows(records, velocity):
-    """N1 samples from the S1 forced contacts: contact features and extraction + approach success (censored dropped)."""
+def planner_home():
+    """The planner's Home (float32 from the named poses, as curobo_core.backend builds it)."""
+    import yaml
+    from v3_interactive_60_tasks import DEFAULT_NAMED_POSES
+    home = yaml.safe_load(Path(DEFAULT_NAMED_POSES).read_text())["named_poses"]["home"]
+    return np.asarray([home[name] for name in triple.ranker.ACTIVE_JOINTS], dtype=np.float32)
+
+
+def mode_of(record):
+    grasp = "top" if record["context"]["top_grasp"] else "side"
+    return f"dual-{grasp}" if record["kind"] == "dual" else f"single-{next(iter(record['task']))}-{grasp}"
+
+
+def carry_set(mode, atlas, home):
+    """Task-independent carry IK candidates of a mode, bit-identical to the planner's: dual = the atlas; single = the
+    atlas and its rows with the idle arm at Home and the 4 shoulder/elbow offsets (float32, rounded to 1e-6 like
+    SingleArmPlanner; the variant of the extraction end's idle arm is task-dependent and computed at run time)."""
+    atlas = np.asarray(atlas, dtype=np.float32)
+    if mode.startswith("dual"):
+        return atlas
+    idle = list(range(8, 15)) if mode.split("-")[1] == "left" else list(range(1, 8))
+    blocks = [atlas.copy()]
+    variants = [home[idle].copy()]
+    for shoulder, elbow in [(-20, 15), (20, -15), (-35, 30), (35, -30)]:
+        arm = home[idle].copy()
+        arm[1] += math.radians(shoulder)
+        arm[3] += math.radians(elbow)
+        variants.append(arm)
+    for arm in variants:
+        values = atlas.copy()
+        values[:, idle] = arm
+        blocks.append(values)
+    return np.unique(np.round(np.concatenate(blocks), 6), axis=0).astype(np.float32)
+
+
+def build_tables(d3, output, home, velocity, n3):
+    """Per mode: assets/<mode>/place_set.npz (copied) and v3_b0.npz / v3_b.npz = V3 of every carry candidate (T_lb
+    only / with N3). Arms use v3_b0 (A10); v3_b and `n3_extrapolation` (V3_b / V3_b0 on the D3 carries against all
+    carry candidates) document why: N3 has seen 150 carries per mode."""
+    report = {}
+    for folder in sorted(path for path in Path(d3).iterdir() if (path / "place_set.npz").exists()):
+        mode, target = folder.name, output / "assets" / folder.name
+        target.mkdir(parents=True, exist_ok=True)
+        places = np.load(folder / "place_set.npz")
+        np.savez(target / "place_set.npz", rows=places["rows"], params=places["params"])
+        carries = carry_set(mode, np.load(base.ATLASES["top" if mode.endswith("top") else "side"])["joints"], home)
+        report[mode] = dict(carries=len(carries), places=len(places["rows"]))
+        for name, model in (("b0", None), ("b", n3)):
+            began = time.perf_counter()
+            values, choice = triple.downstream_values(carries, places["rows"], home, velocity, mode_context(mode), model)
+            np.savez(target / f"v3_{name}.npz", carries=carries, v3=values, choice=choice)
+            report[mode][name] = dict(seconds=time.perf_counter() - began, v3_median=float(np.median(values)),
+                                      v3_q10_q90=[float(np.quantile(values, .1)), float(np.quantile(values, .9))],
+                                      sha256=hashlib.sha256((target / f"v3_{name}.npz").read_bytes()).hexdigest())
+        seen = np.unique(np.array([json.loads(line)["carry"] for line in (folder / "labels.jsonl").read_text().splitlines() if line.strip()]), axis=0) \
+            if (folder / "labels.jsonl").exists() else np.empty((0, 15))
+        if len(seen):
+            ratio = [triple.downstream_values(seen, places["rows"], home, velocity, mode_context(mode), model)[0] for model in (n3, None)]
+            tables = [np.load(target / f"v3_{name}.npz")["v3"] for name in ("b", "b0")]
+            report[mode]["n3_extrapolation"] = dict(d3_carries=float(np.median(ratio[0] / ratio[1])), all_carries=float(np.median(tables[0] / tables[1])))
+        print(json.dumps({mode: report[mode]}, ensure_ascii=False, default=float), flush=True)
+    return report
+
+
+def load_tables(output, name):
+    return {folder.name: (np.load(folder / f"v3_{name}.npz")["carries"].astype(np.float64), np.load(folder / f"v3_{name}.npz")["v3"])
+            for folder in sorted((output / "assets").iterdir()) if (folder / f"v3_{name}.npz").exists()}
+
+
+def n1_rows(records, velocity, tables, n2):
+    """N1 samples: every contact of the instances. y = extraction + approach success of the forced contact (masked when
+    unlabelled or censored); r = log V2(c), the explicit downstream value with N2 and the V3 tables (distillation target)."""
     from curobo_core.planner import AnalyticBridge
     home = np.asarray(records[0]["context"]["home"], dtype=np.float64)
     atlases = {mode: np.load(path, allow_pickle=False)["joints"] for mode, path in base.ATLASES.items()}
@@ -273,58 +396,44 @@ def n1_rows(records, velocity):
                                           atlases=atlases)
     rows = []
     for record in records:
-        if not record["s1"] or record["contacts"] is None:
+        if record["contacts"] is None or mode_of(record) not in tables:
             continue
-        features, _, _ = triple.contact_features(np.asarray(record["contacts"]), record_context(record), kinematics, velocity)
-        for entry in record["s1"]:
-            outcome = prefix_outcome(record, entry)
-            if outcome is not None:
-                rows.append(dict(x=features[entry["index"]], y=outcome, r=np.nan, group=cells_key(record), instance=record["instance"],
-                                 option=entry["index"]))
+        context = record_context(record)
+        features, ends, eligible = triple.contact_features(np.asarray(record["contacts"]), context, kinematics, velocity)
+        table_rows, table_values = tables[mode_of(record)]
+        v2 = triple.contact_downstream(np.where(eligible[:, None], ends, np.nan), table_rows, table_values, velocity, context, n2)
+        outcomes = {entry["index"]: prefix_outcome(record, entry) for entry in record["s1"]}
+        for index in range(len(features)):
+            outcome = outcomes.get(index)
+            if outcome is None and not np.isfinite(v2[index]):
+                continue
+            rows.append(dict(x=features[index], y=outcome or 0., mask=outcome is None, r=math.log(v2[index]) if np.isfinite(v2[index]) else np.nan,
+                             group=cells_key(record), instance=record["instance"], option=index))
     return rows
 
 
-def single_carry_set(atlas, home, side):
-    """Single-arm carry candidates: the placement atlas with the idle arm in each of the planner's 5 distinct variants."""
-    idle = slice(8, 15) if side == "left" else slice(1, 8)
-    variants = [home[idle]]
-    for shoulder, elbow in [(-20, 15), (20, -15), (-35, 30), (35, -30)]:
-        arm = home[idle].copy()
-        arm[1] += math.radians(shoulder)
-        arm[3] += math.radians(elbow)
-        variants.append(arm)
-    blocks = []
-    for arm in variants:
-        block = atlas.copy()
-        block[:, idle] = arm
-        blocks.append(block)
-    return np.concatenate(blocks)
-
-
-def downstream_table(carries, places, home, velocity, context, model=None, chunk=64):
-    """V3(g) and argmin place index for every carry candidate (model=None: B0, pure T_lb)."""
-    values, choice = np.empty(len(carries)), np.empty(len(carries), dtype=int)
-    for offset in range(0, len(carries), chunk):
-        for row, carry in enumerate(carries[offset:offset + chunk]):
-            q, probability = triple.place_values(carry, places, home, velocity, context, model)
-            index = int(np.argmin(q))
-            values[offset + row], choice[offset + row] = q[index], index
-    return values, choice
-
-
-def train_binary(rows, name, names, output):
-    """Grouped CV over the grid on BCE, Occam tie-break, 5-seed ensemble export (for N2 and the N1 prefix head)."""
+def train_stage(rows, name, names, output):
+    """Grouped CV over the grid on the combined loss, Occam tie-break, seed spread, 5-seed ensemble export (N2, N1)."""
     folds = group_folds([row["group"] for row in rows])
-    report = dict(samples=len(rows), groups=len(set(row["group"] for row in rows)), success_rate=float(np.mean([row["y"] for row in rows])), cv=[])
+    labelled = [row["y"] for row in rows if not row.get("mask", False)]
+    report = dict(samples=len(rows), labelled=len(labelled), groups=len(set(row["group"] for row in rows)), success_rate=float(np.mean(labelled)), cv=[])
     for config in GRID:
         probability, ratio, epochs = cross_validate(rows, config, folds)
         entry = dict(config=config, epochs=epochs, **scores(rows, probability, ratio))
         report["cv"].append(entry)
-        print(json.dumps(dict(stage=name, **{key: entry[key] for key in ("config", "bce", "auc", "ece")}), ensure_ascii=False, default=float), flush=True)
-    best = min(entry["bce"] for entry in report["cv"])
-    close = [entry for entry in report["cv"] if entry["bce"] <= best * 1.02]
+        print(json.dumps(dict(stage=name, **{key: entry[key] for key in ("config", "combined", "bce", "auc", "log_ratio_mae", "ece")}),
+                         ensure_ascii=False, default=float), flush=True)
+    best = min(entry["combined"] for entry in report["cv"])
+    close = [entry for entry in report["cv"] if entry["combined"] <= best * 1.02]
     selected = min(close, key=lambda entry: (entry["config"]["width"] * entry["config"]["depth"], entry["config"]["weight_decay"]))["config"]
     report["selected"] = selected
+    spread = []
+    for seed in range(5):
+        probability, ratio, _ = cross_validate(rows, selected, folds, seed)
+        spread.append(scores(rows, probability, ratio)["combined"])
+        if seed == 0:
+            calibration, _, report["calibration"] = calibrate(rows, probability, folds)
+    report["seed_loss"], report["seed_spread"] = spread, float((max(spread) - min(spread)) / np.median(spread))
     x, y, mask, r = as_arrays(rows)
     inner = group_folds([row["group"] for row in rows], seed=99) == 0
     members = [base.fit((x[~inner], y[~inner], mask[~inner], r[~inner]), (x[inner], y[inner], mask[inner], r[inner]), selected, seed)
@@ -332,7 +441,8 @@ def train_binary(rows, name, names, output):
     report["members"] = [dict(epochs=member["epochs"], best_epoch=int(np.argmin([check for _, check in member["curve"]])),
                               validation_plateau=validation_plateau(member["curve"])) for member in members]
     report["curves"] = [member["curve"] for member in members]
-    report["model_sha256"] = base.export(output / f"{name.lower()}.npz", members, names, selected, dict(stage=name))
+    report["model_sha256"] = base.export(output / f"{name.lower()}.npz", members, names, selected,
+                                         dict(stage=name, c_fail_s=triple.C_FAIL_S, calibration=calibration))
     return report
 
 
@@ -341,26 +451,33 @@ def main():
     parser.add_argument("--d3", type=Path, required=True)
     parser.add_argument("--primary", type=Path, help="P3 primary label folder (N2, N1)")
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--stages", default="n3")
+    parser.add_argument("--stages", default="n3,tables,n2,n1", help="in backward-induction order: n3, tables (V3), n2, n1 (V2 targets)")
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
     torch.set_num_threads(args.threads)
     args.output.mkdir(parents=True, exist_ok=True)
     velocity = velocities()
-    home = np.array([-0.3] + list(np.radians([155, -90, 20, 90, -90, -40, 0])) + list(-np.radians([155, -90, 20, 90, -90, -40, 0])))
-    report = dict(created_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"), d3=str(args.d3))
-    if "n3" in args.stages:
+    home32 = planner_home()
+    home = home32.astype(np.float64)
+    stages = args.stages.split(",")
+    path = args.output / "train_v2_report.json"
+    report = json.loads(path.read_text()) if path.exists() else {}
+    report.update(created_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"), d3=str(args.d3), primary=str(args.primary))
+    load = lambda name, names: triple.ranker.Ensemble.load(args.output / name, feature_names=names)
+    if "n3" in stages:
         report["n3"] = train_n3(args, home, velocity, args.output)
-    if "n2" in args.stages:
-        records = [json.loads(path.read_text()) for path in sorted((args.primary / "instances").glob("*.json"))]
+    if "tables" in stages:
+        report["tables"] = build_tables(args.d3, args.output, home32, velocity, load("n3_place.npz", triple.PLACE_NAMES))
+    if "n2" in stages or "n1" in stages:
+        records = [json.loads(item.read_text()) for item in sorted((args.primary / "instances").glob("*.json"))]
         train_records = [record for record in records if record["split"] == "train"]
-        report["n2"] = train_binary(n2_rows(train_records, velocity), "N2", triple.TRANSPORT_NAMES, args.output)
-    if "n1" in args.stages:
-        records = [json.loads(path.read_text()) for path in sorted((args.primary / "instances").glob("*.json"))]
-        train_records = [record for record in records if record["split"] == "train"]
-        report["n1"] = train_binary(n1_rows(train_records, velocity), "N1", triple.CONTACT_NAMES, args.output)
-    (args.output / "train_v2_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=1, default=float) + "\n")
-    print(json.dumps({stage: {key: value for key, value in item.items() if key in ("samples", "selected", "seed_spread", "model_sha256")}
+    if "n2" in stages:
+        report["n2"] = train_stage(n2_rows(train_records, velocity), "N2", triple.TRANSPORT_NAMES, args.output)
+    if "n1" in stages:
+        rows = n1_rows(train_records, velocity, load_tables(args.output, "b0"), load("n2.npz", triple.TRANSPORT_NAMES))
+        report["n1"] = train_stage(rows, "N1", triple.CONTACT_NAMES, args.output)
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=1, default=float) + "\n")
+    print(json.dumps({stage: {key: value for key, value in item.items() if key in ("samples", "labelled", "selected", "seed_spread", "model_sha256")}
                       for stage, item in report.items() if isinstance(item, dict)}, ensure_ascii=False, default=float))
 
 

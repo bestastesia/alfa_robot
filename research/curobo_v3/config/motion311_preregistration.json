@@ -285,5 +285,11 @@
   "amendments_336": [
     "A8 (2026-10-23, before any training on train-split labels) T1 nearest-goal distance features use a fixed rng-311 subsample of 4096 rows for atlases larger than that (top: 44032 rows); 15-D k-d queries over the full top atlas took 11-17 ms. Planning atlases are unchanged",
     "A9 (2026-10-23, same) the network recommends only candidates with P >= theta (0.5), ranked by S over those; the remaining candidates keep the baseline order; no candidate reaching theta = abstain. Offline ranking quality in CV is measured with theta = 0, the dev policy with theta = 0.5"
+  ],
+  "amendments_v2": [
+    "A10 (2026-10-24, from train-split diagnostics, before any v2 online run) the downstream value V3(g) used by the carry and contact stages is the analytic T_lb table (min over the place set of T_lb(g,p) + T_lb(p,Home)) in every arm; N3 trained on 150 realized carry IKs per mode predicts 1.8-2.9x the analytic value over the full carry atlas (D3 carries: ~1.2x), i.e. it extrapolates. N3 ranks the places of the realized carry, where its inputs are in distribution",
+    "A11 (same) out-of-distribution rule per candidate: a candidate with any feature beyond 6 training standard deviations gets P := 0 (never recommended) instead of the whole stage abstaining; candidate sets now mix generators (stored places, baseline IK). Cross-validation scores are computed over the rows the runtime would use; the excluded share is reported (ood_share)",
+    "A12 (same) model selection for N1/N2/N3 by the out-of-fold training loss (BCE + 0.5 Huber(0.1) on the log correction), Occam tie-break within 2 %; N1 now has a regression target",
+    "A13 (same) N1's regression head predicts log V2(c), distilled from the explicit V2 = min over the baseline goal pool (512 nearest carry rows of the predicted extraction end) of T_lb(r,g) + (1 - P2) C_fail + V3(g); the extraction/approach time correction is not modelled (T_lb). Arm Bx uses the explicit V2 (ablation). Which of the two is arm B's contact value in the test is fixed from the dev comparison and recorded here before any test instance runs"
   ]
 }

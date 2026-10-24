@@ -110,8 +110,11 @@ def fit(train, valid, config, seed, epochs=600, patience=80):
     schedule = torch.optim.lr_scheduler.CosineAnnealingLR(optimiser, epochs)
     validation = None if valid is None else tuple(torch.tensor(part, dtype=torch.float64) for part in valid)
 
+    clip = config.get("clip")
+
     def loss(model, x, y, mask, cost):
-        output = model((x - mean) / scale)
+        z = (x - mean) / scale
+        output = model(z.clamp(-clip, clip) if clip else z)
         keep = ~mask.bool()
         classification = torch.nn.functional.binary_cross_entropy_with_logits(output[keep, 0], y[keep])
         success = ~torch.isnan(cost)
@@ -137,12 +140,13 @@ def fit(train, valid, config, seed, epochs=600, patience=80):
             if waited >= patience:
                 break
     model.load_state_dict(best_state)
-    return dict(model=model, mean=mean, scale=scale, curve=curve, epochs=len(curve))
+    return dict(model=model, mean=mean, scale=scale, curve=curve, epochs=len(curve), clip=clip)
 
 
 def predict(fitted, features):
     with torch.no_grad():
-        output = fitted["model"]((torch.tensor(features, dtype=torch.float64) - fitted["mean"]) / fitted["scale"]).numpy()
+        z = (torch.tensor(features, dtype=torch.float64) - fitted["mean"]) / fitted["scale"]
+        output = fitted["model"](z.clamp(-fitted["clip"], fitted["clip"]) if fitted.get("clip") else z).numpy()
     return 1. / (1. + np.exp(-output[:, 0])), np.exp(output[:, 1])
 
 

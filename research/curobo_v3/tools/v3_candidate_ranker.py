@@ -163,14 +163,21 @@ class Ensemble:
         meta = json.loads(str(arrays.pop("meta")))
         if feature_names is not None and meta["feature_hash"] != feature_hash(feature_names):
             raise ValueError("model was trained on a different feature list")
-        return cls(arrays, meta)
+        ensemble = cls(arrays, meta)
+        ensemble.sha256 = digest
+        return ensemble
 
     def standardise(self, features):
         return (np.asarray(features, dtype=np.float64) - self.mean) / self.scale
 
     def predict(self, features):
-        """(probability of success, predicted cost) averaged over members; also returns the max |z| per row."""
+        """(probability of success, predicted cost) averaged over members; also returns the max |z| per row (before the
+        optional input clipping). The mean logit passes the optional Platt calibration (a, b) of the model."""
         x = self.standardise(features)
+        max_z = np.abs(x).max(axis=1)
+        clip = (self.meta.get("config") or {}).get("clip")
+        if clip:
+            x = np.clip(x, -clip, clip)
         logits, costs = [], []
         for layers in self.members:
             hidden = x
@@ -180,8 +187,9 @@ class Ensemble:
                     hidden = silu(hidden)
             logits.append(hidden[:, 0])
             costs.append(hidden[:, 1])
-        probability = 1. / (1. + np.exp(-np.mean(logits, axis=0)))
-        return probability, np.exp(np.mean(costs, axis=0)), np.abs(x).max(axis=1)
+        slope, offset = self.meta.get("calibration") or (1., 0.)
+        probability = 1. / (1. + np.exp(-(slope * np.mean(logits, axis=0) + offset)))
+        return probability, np.exp(np.mean(costs, axis=0)), max_z
 
 
 def feature_hash(names):
