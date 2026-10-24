@@ -5,6 +5,7 @@ Modes:
   plain         TimedSingleArmPlanner as shipped (hooks present, default behaviour)
   instrumented  DockingOffsetMixin at (0, 0) + SearchRecorder(k=0) + every hook overridden by an explicit
                 pass-through, so the hook call paths themselves are exercised
+  triple        TripleSelectionPlanner arm A with the frozen models and V3 tables loaded (--models)
 Frames, selected candidates, lazy rankings, and the non-timing fields of the search statistics are compared
 with the frozen round JSONs; any difference exits with status 1.
 """
@@ -93,14 +94,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--frozen", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--mode", choices=("plain", "instrumented"), required=True)
+    parser.add_argument("--mode", choices=("plain", "instrumented", "triple"), required=True)
+    parser.add_argument("--models", type=Path, help="triple: folder with the models, train_v2_report.json and assets/")
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    planner_class = PassThroughPlanner if args.mode == "instrumented" else TimedSingleArmPlanner
-    planner = planner_class(PlannerAssets(), .025)
+    if args.mode == "triple":
+        from v3_motion311_ab import load_models
+        from v3_triple_selection_planner import TripleSelectionPlanner
+        planner = TripleSelectionPlanner(PlannerAssets(), .025)
+    else:
+        planner_class = PassThroughPlanner if args.mode == "instrumented" else TimedSingleArmPlanner
+        planner = planner_class(PlannerAssets(), .025)
     if args.mode == "instrumented":
         planner.hook_calls = {}
     planner.warmup_resources()
+    if args.mode == "triple":
+        planner.setup_selection(args.models / "assets", load_models(args.models))
     rounds, began = [], time.perf_counter()
     recorder = SearchRecorder(0) if args.mode == "instrumented" else None
     if recorder:
