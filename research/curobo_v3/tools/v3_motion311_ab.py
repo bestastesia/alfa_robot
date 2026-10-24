@@ -3,7 +3,7 @@
 
 Per instance the arms plan the same scene (task, docking offset) back to back, in an order that alternates between
 instances (as listed on even instances, reversed on odd ones); each arm is a complete round including its own
-fallback. A warm-up round (not recorded) starts every chunk, so no arm carries the cold start. Recorded per arm:
+fallback. A warm-up round per arm (not recorded) starts every chunk, so no arm carries the cold start. Recorded per arm:
 outcome class and stage (v3_label_classes), T_lb_path / T_lb / J_arc by phase (round_costs), motion duration,
 planning wall time (incl. features, inference, verification and any fallback round), lazy batches, the stage
 selection report and a digest of the frames (reproducibility, G3'). Models and V3 tables come from --models
@@ -134,7 +134,8 @@ def main():
                                      selection_setup_ms=planner.selection_setup_ms), ensure_ascii=False) + "\n")
     with SearchRecorder(0) as recorder:
         planner.scene_offset = (0., 0.)
-        run_arm(planner, WARMUP_TASK, "dual", "A", recorder)
+        for arm in args.arms.split(","):
+            run_arm(planner, WARMUP_TASK, "dual", arm, recorder)
     started = time.perf_counter()
     for number, item in pending:
         if time.perf_counter() - started > args.max_minutes * 60:

@@ -242,8 +242,9 @@ class TripleSelectionPlanner(TimedSingleArmPlanner):
             baseline = super().single_place_candidates(targets, start, checker)
             baseline_row = baseline[0] if len(baseline) else None
         self._baseline_places = (baseline, dict(report.get('conveyor_goal_ik') or {}))
+        selected = time.perf_counter()
         attempts, record = self.place_options(start, targets, baseline_row)
-        record.update(ms=(time.perf_counter() - began) * 1000, outcomes=[])
+        record.update(ms=(time.perf_counter() - selected) * 1000, baseline_ik_ms=(selected - began) * 1000, outcomes=[])
         self.selection_report["place"].append(record)
         for row in attempts:
             self._forced_place = row
