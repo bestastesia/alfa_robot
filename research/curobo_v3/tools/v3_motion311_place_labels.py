@@ -10,6 +10,7 @@ place-IK solver is not built for forced runs and return-home plans are memoised 
 The independence check re-runs pairs under other tasks/offsets of the same mode.
 """
 import argparse
+import gc
 import hashlib
 import json
 import time
@@ -119,9 +120,14 @@ def label_pair(planner, boxes, kind, carry, place, recorder):
     planner.forced_place = None if place is None else np.asarray(place, dtype=np.float32)
     planner.trace = []
     mark = recorder.mark()
+    began = time.perf_counter()
     try:
         planner.configure_task(boxes)
         report, wall_ms = run_suffix(planner, boxes, carry)
+    except torch.OutOfMemoryError as error:  # a failing 2 s search can grow its trees past the 8 GB card: record, free, go on
+        report, wall_ms = dict(success=False, blocked_stage="cuda_oom", blocked_details=str(error)[:200]), (time.perf_counter() - began) * 1000
+        gc.collect()
+        torch.cuda.empty_cache()
     finally:
         planner.forced_place = None
     label, stage = classify(kind, report, getattr(planner, "trace", []))
