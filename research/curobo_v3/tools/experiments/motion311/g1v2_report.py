@@ -71,7 +71,12 @@ def triple_bound(records, places, velocity, atlas):
     home = np.asarray(records[0]["context"]["home"], dtype=np.float64)
     single = records[0]["kind"] == "single"
     side = next(iter(records[0]["task"])) if single else None
-    table = None if single else downstream_table(atlas, places, home, velocity)
+    carries = atlas
+    if single:  # contacts are enumerated with the Home-based idle variants and extraction keeps the idle arm: one table
+        idle, variants = idle_variants(home, home, side)
+        carries = np.unique(np.concatenate([atlas] + [np.concatenate([atlas[:, :idle.start], np.repeat(arm[None], len(atlas), 0), atlas[:, idle.stop:]], axis=1)
+                                                      for arm in variants]), axis=0)
+    table = downstream_table(carries, places, home, velocity)
     for record in records:
         if record["baseline"]["class_"] != "success":
             continue
@@ -83,17 +88,7 @@ def triple_bound(records, places, velocity, atlas):
             ends = entry["cost"]["phase_ends"]
             root = np.asarray(ends["extract"][1], dtype=np.float64)
             front = phase_bound(entry["cost"], FRONT, velocity)
-            if single:
-                idle, variants = idle_variants(home, root, side)
-                candidates = []
-                for arm in variants:
-                    values = atlas.copy()
-                    values[:, idle] = arm
-                    candidates.append(values)
-                carries = np.concatenate(candidates)
-                values = bound(root[None], carries, velocity) + downstream_table(carries, places, home, velocity)
-            else:
-                values = bound(root[None], atlas, velocity) + table
+            values = bound(root[None], carries, velocity) + table
             best = min(best, front + float(values.min()))
         if np.isfinite(best):
             gains.append((base - best) / base)
