@@ -152,6 +152,10 @@ class Ensemble:
                 layers.append((arrays[f"m{member}_w{depth}"], arrays[f"m{member}_b{depth}"]))
                 depth += 1
             self.members.append(layers)
+        # the members' first layers as one matrix: one GEMM and one activation for the whole ensemble
+        self.first = np.concatenate([layers[0][0] for layers in self.members], axis=1)
+        self.first_bias = np.concatenate([layers[0][1] for layers in self.members])
+        self.width = self.members[0][0][0].shape[1]
 
     @classmethod
     def load(cls, path, sha256=None, feature_names=None):
@@ -178,10 +182,11 @@ class Ensemble:
         clip = (self.meta.get("config") or {}).get("clip")
         if clip:
             x = np.clip(x, -clip, clip)
+        first = silu(x @ self.first + self.first_bias)
         logits, costs = [], []
-        for layers in self.members:
-            hidden = x
-            for depth, (weight, bias) in enumerate(layers):
+        for member, layers in enumerate(self.members):
+            hidden = first[:, member * self.width:(member + 1) * self.width]
+            for depth, (weight, bias) in enumerate(layers[1:], start=1):
                 hidden = hidden @ weight + bias
                 if depth < len(layers) - 1:
                     hidden = silu(hidden)
