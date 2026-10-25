@@ -68,10 +68,11 @@ python experiments/motion311/label_analysis.py g1 --labels <OUT> --repeat <OUT_K
 |---|---|---|---|
 | N3 | (g, p) 66 维 | 放箱 + 回 Home 在预算内成功概率、实际/T_lb 比值 | 给实际到达的 g 选放箱 IK |
 | N2 | (r, g) 56 维 | 运输在预算内连通概率 | 回中阶段的失败风险 |
-| N1 | 接触 c 的 73 维 | 抽离 + 贴近成功概率、log V2（蒸馏） | 接触阶段 |
+| N1 | 接触 c 的 73 维 | 抽离 + 贴近成功概率、log(V2 / 20 s)（蒸馏，A16居中） | 接触阶段 |
 
 - V3(g) = min_p [T_lb(g,p) + T_lb(p,Home)]（只看 T_lb 最小的 64 个放箱 IK），各模式离线建表（`assets/<mode>/v3_b0.npz`，与规划器的回中候选逐位一致）。N3 只见过每模式 150 个 g，外推到整个回中解集时偏差大，所以回中和接触阶段用解析 V3（A10）。
-- 显式 V2(c) = 预测抽离终点的基线目标池（512 近邻）上 min [T_lb(r,g) + (1−P2)·2 s + V3(g)]；N1 的回归头学它（A13）。
+- 显式 V2(c)：先取预测抽离终点的512个近邻，再在解析下游代价最小的32个候选上取 min [T_lb(r,g) + (1−P2)·2 s + V3(g)]；N1回归头学这个截断目标，不是全部组合的严格全局最优。2026-10-25新增非负风险下界剪枝，保持同一32候选范围内的最小值。
+- 训练中的P3位姿四元数只记录6位小数，`record_context`会重新归一化；未修复的T1特征和N1模型不能混用。
 - 每个网络：分组 5 折交叉验证（按箱位格）、8 组网格、按联合损失选型、5 种子集成、输入 ±6σ 截断、Platt 校准；特征超出训练分布 6σ 的候选不推荐（A11）。
 
 ```bash
@@ -90,7 +91,9 @@ python experiments/motion311/g2v2_report.py --primary <P3>/primary --models <TRA
 3. 放箱：存储放箱 IK 按本轮目标重新解析求解，与基线规则最近的放箱 IK 一起按 Q3 排序，依次单目标尝试至多 2 个，再回到原放箱规则。
 4. 整轮失败时由 A 重规划，两轮时间都计入。
 
-`tools/v3_motion311_ab.py` 在同一场景上依次跑各臂（逐实例交替顺序，每块先给每个臂热身一轮），`tools/experiments/motion311/ab_report.py` 给出按模式的配对差（聚类 bootstrap）、判定和 G3′ 一致性。
+`tools/v3_motion311_ab.py` 在同一场景上依次跑各臂（逐实例交替顺序，每块先给每个臂热身一轮），`tools/experiments/motion311/ab_report.py` 给出按模式的配对差（聚类 bootstrap）、判定和 G3′ 一致性。A13/A16拟用于最终评估的B必须传 `--contact-value explicit`（等同历史Bx），默认distilled仅用于消融。
+
+`first_selected_triple`只计有记录证明的三IK单候选无重试成功；`success_without_round_fallback`不是该指标。G3分别报告完整成功路径、失败部分路径与缺失摘要。交付限制及复现入口见 [交付说明](NN_CONFIG_SELECTION_DELIVERY.md)、[运行手册](NN_CONFIG_SELECTION_RUNBOOK.md)。
 
 ```bash
 # GPU，加锁分块

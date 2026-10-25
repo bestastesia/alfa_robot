@@ -1,0 +1,116 @@
+{
+  "issue": "MOTION-337",
+  "parent": "MOTION-311",
+  "code_commit": "6bad08eaed2620d75ff0927a13082a1991f6c62f",
+  "baseline": "a77abd5",
+  "scope": "research prototype; dev only; not accepted",
+  "cpu_tests": 94,
+  "dev": {
+    "instances": 96,
+    "classes": {
+      "success": 91,
+      "scene_infeasible": 3,
+      "budget_exhausted": 2
+    },
+    "all_equal": true,
+    "first": {
+      "success": 80,
+      "failed_or_retried": 13,
+      "unknown": 0
+    },
+    "selection_ms_p50_p95": [
+      16.27712996560149,
+      21.341037197271362
+    ],
+    "selection_ms_max": 22.70312505424954,
+    "g3": {
+      "frames_equal": null,
+      "checks": 0,
+      "partial_frames_equal": null,
+      "partial_checks": 0,
+      "unverifiable": [],
+      "mismatches": [],
+      "contact_choice_equal_offline": 1.0,
+      "compared": 90
+    }
+  },
+  "l0": {
+    "rounds": 15,
+    "all_equal": true
+  },
+  "fallback": {
+    "cases": 2,
+    "all_equal": true
+  },
+  "cost": {
+    "B_vs_A": {
+      "t_lb_path": {
+        "n": 89,
+        "median": -0.07094138949115004,
+        "ci95": [
+          -0.09160493728786098,
+          -0.04429903340874574
+        ]
+      },
+      "j_arc": {
+        "n": 89,
+        "median": 0.09279284368904518,
+        "ci95": [
+          0.01633180506030227,
+          0.22453794782241265
+        ]
+      },
+      "motion_s": {
+        "n": 89,
+        "median": -0.07024213413303408,
+        "ci95": [
+          -0.09596430324462153,
+          -0.04130387032973713
+        ]
+      }
+    },
+    "B_vs_B0": {
+      "t_lb_path": {
+        "n": 90,
+        "median": 0.0013262293455763188,
+        "ci95": [
+          0.0,
+          0.0039913490685740665
+        ]
+      },
+      "j_arc": {
+        "n": 90,
+        "median": 0.022883206034789747,
+        "ci95": [
+          0.0,
+          0.0361139541470558
+        ]
+      },
+      "motion_s": {
+        "n": 90,
+        "median": 3.9896498735287354e-05,
+        "ci95": [
+          -0.00019996354419212815,
+          0.004009406652154661
+        ]
+      }
+    }
+  },
+  "unmet": [
+    "selection p95 <= 15 ms",
+    "network attribution over B0",
+    "held-out acceptance confirmation/test",
+    "N1 convergence stability"
+  ],
+  "external_status": {
+    "linear_drafts_posted": false,
+    "pr_created": false,
+    "heldout_run": false
+  },
+  "local_evidence": "/home/astesia/Sevenova/motion311-acceptance/delivery-20261025",
+  "model_sha256": {
+    "n1.npz": "7253c11c904a923398eb9fa1778f56155b23aa78e79161845c3ad4b0080d0da0",
+    "n2.npz": "3b140d96913c9a7642cd1bfe8e3f9988e2e0e99faa9c3fef74ad06911cb3b68b",
+    "n3_place.npz": "4dd0dd8a780a221759d995a45ba8ae71bf28aca607c45b10543b7ad1cefb61c5"
+  }
+}
