@@ -40,6 +40,42 @@ class FeatureTest(unittest.TestCase):
         permutation = np.random.default_rng(2).permutation(64)
         np.testing.assert_allclose(ranker.s1_t0(self.contacts[permutation], CONTEXT, self.kinematics), features[permutation])
 
+    def test_contact_features_reuse_swivels_without_changing_values(self):
+        from types import SimpleNamespace
+        from v3_triple_ranker import contact_features, time_bound
+
+        class Analytic:
+            calls = 0
+
+            def swivel(self, side, row):
+                self.calls += 1
+                return float(row.sum() + side)
+
+            def solve(self, side, target, swivel, seed):
+                return np.asarray([seed + swivel * .001])
+
+        class Tree:
+            def query(self, rows, k):
+                return np.zeros((len(rows), k)), np.zeros((len(rows), k), dtype=int)
+
+        analytic = Analytic()
+        self.kinematics.analytic = analytic
+        self.kinematics.carriage = SimpleNamespace(inverse=lambda u: np.repeat(np.eye(4)[None], len(u), 0))
+        self.kinematics.trees = {"side": {"full": Tree()}}
+        context = dict(CONTEXT, contact_poses={side + "_tool0": dict(position=[1., 0., 1.], quaternion=[1., 0., 0., 0.])
+                                             for side in ("left", "right")})
+        ends = ranker.endpoints(self.contacts, context, self.kinematics)
+        extra, eligible = ranker.s1_t1(self.contacts, context, self.kinematics, ends)
+        times = np.column_stack([time_bound(context["home"], self.contacts, self.kinematics.velocity),
+                                 time_bound(self.contacts, ends, self.kinematics.velocity)])
+        expected = np.concatenate([ranker.s1_t0(self.contacts, context, self.kinematics), extra, times], axis=1)
+        analytic.calls = 0
+        actual, actual_ends, actual_eligible = contact_features(self.contacts, context, self.kinematics, self.kinematics.velocity)
+        np.testing.assert_array_equal(expected, actual)
+        np.testing.assert_array_equal(ends, actual_ends)
+        np.testing.assert_array_equal(eligible, actual_eligible)
+        self.assertEqual(analytic.calls, len(self.contacts) * 2)
+
     def test_limits_from_urdf(self):
         self.assertEqual(self.kinematics.lower[0], -1.)
         self.assertTrue(np.all(self.kinematics.velocity > 0))

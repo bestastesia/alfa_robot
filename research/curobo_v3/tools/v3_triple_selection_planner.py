@@ -24,6 +24,7 @@ import torch
 import v3_candidate_ranker as ranker
 import v3_triple_ranker as triple
 from curobo_core.planner import CycleBlocked
+from v3_goal_pool import exact_goal_pool
 from v3_place_ik import resolve
 from v3_timed_single_arm_planner import TimedSingleArmPlanner
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
@@ -115,8 +116,7 @@ class TripleSelectionPlanner(TimedSingleArmPlanner):
             near = None
             if finite.any():  # the baseline goal pool of every end, on the GPU like v3_goal_matching
                 weighted = torch.tensor(masked[finite], device='cuda', dtype=torch.float32) * table.weighted.new_tensor(ranker.WEIGHTS)
-                distances = torch.cdist(weighted, table.weighted, compute_mode='donot_use_mm_for_euclid_dist')
-                near = torch.topk(distances, min(512, len(table.rows)), largest=False).indices.cpu().numpy()
+                near = exact_goal_pool(weighted, table.weighted).cpu().numpy()
             downstream = triple.contact_downstream(masked, table.rows, table.values, self._velocity, context, self.model("n2"), near=near)
         home = np.asarray(self.home_values, dtype=np.float64)
         values = (triple.time_bound(home, contacts, self._velocity) + triple.time_bound(contacts, ends, self._velocity)
@@ -191,16 +191,24 @@ class TripleSelectionPlanner(TimedSingleArmPlanner):
     def placement_goal_order(self, root, shortlisted, distances, baseline_scores):
         if not self.selection_active():
             return None
+        began = time.perf_counter()
         baseline_index = int(torch.argmin(baseline_scores()).item())
+        baseline_ms = (time.perf_counter() - began) * 1000
         choice = self.carry_choice(root.cpu().numpy().astype(np.float64), shortlisted.cpu().numpy(), baseline_index)
+        record = self.selection_report["carry"][-1]
+        record.update(value_ms=record["ms"], baseline_score_ms=baseline_ms, ms=(time.perf_counter() - began) * 1000)
         return None if choice is None else [choice]
 
     def order_transport_goals(self, start, candidates):
+        began = time.perf_counter()
         order = super().order_transport_goals(start, candidates)
+        baseline_ms = (time.perf_counter() - began) * 1000
         if not self.selection_active():
             return order
         shortlist = order[:512]
         choice = self.carry_choice(np.asarray(start, dtype=np.float64), np.asarray(candidates)[shortlist], 0)
+        record = self.selection_report["carry"][-1]
+        record.update(value_ms=record["ms"], baseline_score_ms=baseline_ms, ms=(time.perf_counter() - began) * 1000)
         return order if choice is None else shortlist[[choice]]
 
     # place stage -----------------------------------------------------------------------------------------
@@ -213,16 +221,18 @@ class TripleSelectionPlanner(TimedSingleArmPlanner):
         options = np.concatenate([rows[shortlist], np.asarray(baseline_row, dtype=np.float64)[None]]) if baseline_row is not None else rows[shortlist]
         values, probability = triple.place_values(start, options, self.home_values, self._velocity, self.context(boxes), self.model("n3"))
         order = triple.ranked(values, probability, self.theta)
-        attempts, record = [], dict(abstained=not order, values_s=[], probability=[])
+        attempts, record = [], dict(abstained=not order, values_s=[], probability=[], attempt_ranks=[], resolution=[])
         sides = {side: targets[side] for side in (boxes if len(boxes) == 1 else targets)}
-        for index in order:
+        for rank, index in enumerate(order):
             record["values_s"].append(float(values[index]))
             record["probability"].append(float(probability[index]))
             if index == len(shortlist):
                 break
             solved = resolve(self, sides, rows[shortlist[index]], params[shortlist[index]])
+            record["resolution"].append(dict(rank=rank, place_index=int(shortlist[index]), success=solved is not None))
             if solved is not None:
                 attempts.append(solved)
+                record["attempt_ranks"].append(rank)
             if len(attempts) == self.place_attempts:
                 break
         record["baseline_value_s"] = None if baseline_row is None else float(values[len(shortlist)])

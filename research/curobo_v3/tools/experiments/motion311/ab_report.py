@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """MOTION-311 v2 A/B report (MOTION-337): paired arm comparison per mode and the G3' consistency checks.
 
-Per arm: success (first try = no fallback round; overall) and failure classes; paired relative differences against
+Per arm: success, success without a full-round fallback, and verified no-retry single-triple success (unknown or
+not applicable kept separate); failure classes; paired relative differences against
 A (and B against B0) of T_lb_path (primary), J_arc, motion duration, planning time (the planner's total_ms: selection,
 search, verification and any fallback round), the trajectory time-parameterization that follows it and the wall time
 of both, over the instances where both arms succeed, with the median and its cluster-bootstrap 95 % interval (clusters = box cells, 2000 resamples,
@@ -77,6 +78,62 @@ def selection_ms(entry):
     return float(sum(parts))
 
 
+def first_selected_triple(entry):
+    """True only with evidence of three single-candidate choices succeeding without a retry; False for a failed
+    recommendation/retry; None when no triple was recommended or the recorded evidence is insufficient. In
+    particular the baseline's parallel pool is not evidence of single-triple success."""
+    selection = entry.get("selection")
+    if not selection or selection.get("abstained"):
+        return None
+    if entry["class_"] != "success" or selection.get("fallback") or selection.get("baseline_ranking"):
+        return False
+    order = (selection.get("contact") or {}).get("order") or []
+    if not order:
+        return None
+    batches = ((entry.get("timings") or {}).get("lazy") or {}).get("batches")
+    if batches is not None:
+        if len(batches) != 1 or batches[0].get("kind") != "selection" or not batches[0].get("success"):
+            return False
+        if batches[0].get("allowed_contacts") != [order[0]]:
+            return False
+        selected = entry.get("selected_contact")  # dual is zero-based
+    else:
+        attempts = [call for call in entry.get("trace", []) if call.get("call") == "cartesian_single" and not call.get("along_normal")]
+        if not attempts:
+            return None
+        if len(attempts) != 1 or not attempts[0].get("ok"):
+            return False
+        selected = entry.get("selected_contact")
+        selected = selected - 1 if selected is not None else None  # single is one-based
+    if selected is None:
+        return None
+    if selected != order[0]:
+        return False
+    carries, places = selection.get("carry", []), selection.get("place", [])
+    if not carries or not places:
+        return None
+    if len(carries) != 1 or len(places) != 1:
+        return False
+    outcomes = places[0].get("outcomes", [])
+    if len(outcomes) > 1 or any(value not in ("success", "baseline_rule") for value in outcomes):
+        return False
+    if carries[0].get("choice") is None or outcomes != ["success"]:
+        return None
+    attempt_ranks = places[0].get("attempt_ranks")
+    if not attempt_ranks:
+        return None  # old logs did not record silent IK-resolution skips
+    if attempt_ranks[0] != 0:
+        return False
+    searches = entry.get("searches") or []
+    if not searches:
+        return None
+    if any(not call.get("success") for call in searches):
+        return False
+    if any(call.get("starts") != 1 or call.get("goals") != 1 for call in searches):
+        return None
+    return True
+
+
 def arm_summary(records, arm):
     entries = [record["arms"][arm] for record in records if arm in record["arms"]]
     if not entries:
@@ -86,8 +143,15 @@ def arm_summary(records, arm):
         classes[outcome(entry)] = classes.get(outcome(entry), 0) + 1
     selections = [entry.get("selection") or {} for entry in entries]
     fallback = [bool(selection.get("fallback")) for selection in selections]
+    first = [first_selected_triple(entry) for entry in entries]
+    known = [value for value in first if value is not None]
     output = dict(n=len(entries), success=float(np.mean([entry["class_"] == "success" for entry in entries])),
-                  first_try=float(np.mean([entry["class_"] == "success" and not back for entry, back in zip(entries, fallback)])),
+                  success_without_round_fallback=float(np.mean([entry["class_"] == "success" and not back for entry, back in zip(entries, fallback)])),
+                  first_selected_triple=dict(verified_success=sum(value is True for value in first),
+                                             failed_or_retried=sum(value is False for value in first),
+                                             not_applicable_or_unknown=len(first) - len(known),
+                                             rate_among_known=float(np.mean(known)) if known else None,
+                                             verified_share_all=sum(value is True for value in first) / len(entries)),
                   classes=classes, fallback_rounds=int(sum(fallback)))
     if arm != "A":
         latency = [selection_ms(entry) for entry in entries]
@@ -103,27 +167,35 @@ def arm_summary(records, arm):
 
 def g3(records, offline=None):
     """B/B0 rounds that abstained or fell back must reproduce arm A's frames; online contact choice vs offline."""
-    checks, agree = [], []
+    checks, partial, unverifiable, agree = [], [], [], []
     choices = {}
     if offline is not None:
         for row in offline["rows"]["contact"]:
             for arm in ("B", "Bx", "B0"):
-                if arm in row and row[arm].get("choice") is not None:
+                if arm in row and "choice" in row[arm]:
                     choices[row["instance"], arm] = row[arm]["choice"]
     for record in records:
         reference = record["arms"].get("A")
         for arm, entry in record["arms"].items():
-            if arm == "A" or reference is None:
+            if arm == "A":
                 continue
             selection = entry.get("selection") or {}
-            if selection.get("abstained") or selection.get("fallback"):
-                checks.append(dict(instance=record["instance"], arm=arm, kind="abstained" if selection.get("abstained") else "fallback",
-                                   equal=entry.get("frames_digest") == reference.get("frames_digest")))
+            if reference is not None and (selection.get("abstained") or selection.get("fallback")):
+                item = dict(instance=record["instance"], arm=arm, kind="abstained" if selection.get("abstained") else "fallback")
+                digest, baseline = entry.get("frames_digest"), reference.get("frames_digest")
+                if not digest or not baseline:
+                    unverifiable.append(dict(item, reason="missing frames digest"))
+                else:
+                    item["equal"] = digest == baseline and outcome(entry) == outcome(reference)
+                    (checks if entry["class_"] == reference["class_"] == "success" else partial).append(item)
             online = ((selection.get("contact") or {}).get("order") or [None])[0]
-            if (record["instance"], arm) in choices and online is not None:
-                agree.append(online == choices[record["instance"], arm])
+            policy = "Bx" if arm == "B" and entry.get("contact_value") == "explicit" else arm
+            if (record["instance"], policy) in choices and entry.get("selection") is not None:
+                agree.append(online == choices[record["instance"], policy])
     return dict(frames_equal=float(np.mean([item["equal"] for item in checks])) if checks else None, checks=len(checks),
-                mismatches=[item for item in checks if not item["equal"]],
+                partial_frames_equal=float(np.mean([item["equal"] for item in partial])) if partial else None,
+                partial_checks=len(partial), unverifiable=unverifiable,
+                mismatches=[item for item in checks + partial if not item["equal"]],
                 contact_choice_equal_offline=float(np.mean(agree)) if agree else None, compared=len(agree))
 
 

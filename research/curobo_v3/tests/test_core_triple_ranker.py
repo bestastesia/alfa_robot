@@ -73,6 +73,36 @@ class TripleRankerTest(unittest.TestCase):
                     values, _ = triple.carry_values(ends[index], self.carries[best], downstream[best], VELOCITY, CONTEXT, model)
                 self.assertAlmostEqual(output[index], values.min(), places=10)
 
+    def test_contact_pruning_preserves_exhaustive_values(self):
+        class RiskModel:
+            def __init__(self, probability):
+                self.probability, self.rows_seen = probability, 0
+
+            def predict(self, features):
+                self.rows_seen += len(features)
+                p = np.full(len(features), self.probability)
+                return p, np.ones(len(p)), np.zeros(len(p))
+
+        ends = np.zeros((3, 15))
+        rows = np.repeat(np.arange(40.)[:, None], 15, axis=1)
+        downstream = np.zeros(40)
+        for probability in (0., .5, 1.):
+            model = RiskModel(probability)
+            actual = triple.contact_downstream(ends, rows, downstream, np.ones(15), CONTEXT, model)
+            np.testing.assert_array_equal(actual, np.full(3, (1. - probability) * triple.C_FAIL_S))
+            self.assertLess(model.rows_seen, 3 * 32)
+
+        # The analytic winner can have high risk: do not prune a genuinely better runner-up.
+        class VariableRisk(RiskModel):
+            def predict(self, features):
+                self.rows_seen += len(features)
+                p = np.where(features[:, 15] == 0., 0., 1.)
+                return p, np.ones(len(p)), np.zeros(len(p))
+
+        model = VariableRisk(0.)
+        actual = triple.contact_downstream(ends, rows, downstream, np.ones(15), CONTEXT, model)
+        np.testing.assert_array_equal(actual, np.ones(3))
+
     def test_row_table_finds_exact_rows_only(self):
         rows = np.random.default_rng(5).uniform(-3, 3, (500, 15)).astype(np.float32)
         table = triple.RowTable(rows, np.arange(500.))

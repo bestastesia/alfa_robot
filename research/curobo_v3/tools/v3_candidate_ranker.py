@@ -52,7 +52,7 @@ def swivels(kinematics, contacts):
     return np.array([[kinematics.analytic.swivel(index, row[ARMS[side]]) for index, side in enumerate(ARMS)] for row in contacts])
 
 
-def s1_t0(contacts, context, kinematics):
+def s1_t0(contacts, context, kinematics, psi=None):
     """(N, F) T0 features; context: kind, sides (active arms), top_grasp, box_centers {side: xyz}, home (15)."""
     contacts = np.asarray(contacts, dtype=np.float64)
     home = np.asarray(context["home"], dtype=np.float64)
@@ -61,7 +61,7 @@ def s1_t0(contacts, context, kinematics):
     total = np.linalg.norm(delta, axis=1)
     rank = np.argsort(np.argsort(total, kind="stable"), kind="stable") / max(len(total) - 1, 1)
     z = (total - total.mean()) / (total.std() + 1e-9)
-    psi = swivels(kinematics, contacts)
+    psi = swivels(kinematics, contacts) if psi is None else psi
     signs = np.concatenate([np.sign(contacts[:, ARMS[side]][:, SINGULAR]) for side in ARMS], axis=1)
     singular = np.concatenate([np.abs(contacts[:, ARMS[side]][:, SINGULAR]) for side in ARMS], axis=1)
     margin = np.minimum(contacts - kinematics.lower, kinematics.upper - contacts)
@@ -76,7 +76,7 @@ def s1_t0(contacts, context, kinematics):
                            np.repeat(boxes[None], len(contacts), 0)], axis=1)
 
 
-def endpoints(contacts, context, kinematics):
+def endpoints(contacts, context, kinematics, psi=None):
     """35 cm extraction endpoints with fixed updown and swivel (NaN rows where the analytic chain has no solution)."""
     contacts = np.asarray(contacts, dtype=np.float64)
     output = contacts.copy()
@@ -91,7 +91,8 @@ def endpoints(contacts, context, kinematics):
         target[0, 3] -= .35
         for row, contact in enumerate(contacts):
             seed = contact[ARMS[side]]
-            solutions = kinematics.analytic.solve(side_index, carriage[row] @ target, kinematics.analytic.swivel(side_index, seed), seed)
+            swivel = kinematics.analytic.swivel(side_index, seed) if psi is None else psi[row, side_index]
+            solutions = kinematics.analytic.solve(side_index, carriage[row] @ target, swivel, seed)
             output[row, ARMS[side]] = (solutions[np.argmin(np.sum((solutions - seed) ** 2, axis=1))] if len(solutions) else np.nan)
     return output
 

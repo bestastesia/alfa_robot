@@ -67,12 +67,13 @@ TRANSPORT_NAMES = ([f"root_{name}" for name in ranker.ACTIVE_JOINTS] + [f"carry_
 def contact_features(contacts, context, kinematics, velocity):
     """(N, 73) = S1 T0 + T1 features + T_lb(Home, c) and T_lb(c, r(c)); also returns the endpoints and eligibility."""
     contacts = np.asarray(contacts, dtype=np.float64)
-    ends = ranker.endpoints(contacts, context, kinematics)
+    psi = ranker.swivels(kinematics, contacts)
+    ends = ranker.endpoints(contacts, context, kinematics, psi)
     extra, eligible = ranker.s1_t1(contacts, context, kinematics, ends)
     filled = np.where(np.isfinite(ends), ends, contacts)
     home = np.asarray(context["home"], dtype=np.float64)
     times = np.column_stack([time_bound(home, contacts, velocity), time_bound(contacts, filled, velocity)])
-    return np.concatenate([ranker.s1_t0(contacts, context, kinematics), extra, times], axis=1), filled, eligible
+    return np.concatenate([ranker.s1_t0(contacts, context, kinematics, psi), extra, times], axis=1), filled, eligible
 
 
 CONTACT_NAMES = ranker.S1_T0_NAMES + ranker.S1_T1_NAMES + ["t_lb_approach", "t_lb_extract"]
@@ -144,8 +145,19 @@ def contact_downstream(ends, rows, downstream, velocity, context, model=None, po
         return output
     keep = min(keep, near.shape[1])
     best = np.take_along_axis(near, np.argsort(values, axis=1, kind="stable")[:, :keep], axis=1)
-    q, _ = carry_values(np.repeat(ends[valid], keep, axis=0), rows[best.reshape(-1)], downstream[best.reshape(-1)], velocity, context, model)
-    output[valid] = q.reshape(len(valid), keep).min(axis=1)
+    # Q2 = analytic bound + nonnegative failure risk. Evaluate the analytic winner first;
+    # candidates whose bound already exceeds its Q2 cannot improve the minimum. This is
+    # exact pruning within the same top-keep set, not a smaller pool or an approximate value.
+    first = best[:, 0]
+    q, _ = carry_values(ends[valid], rows[first], downstream[first], velocity, context, model)
+    output[valid] = q
+    remaining = best[:, 1:]
+    bounds = np.max(np.abs(rows[remaining] - ends[valid][:, None]) / velocity, axis=-1) + downstream[remaining]
+    root_index, position = np.nonzero(bounds <= q[:, None] + 1e-12)
+    if len(root_index):
+        candidates = remaining[root_index, position]
+        extra, _ = carry_values(ends[valid[root_index]], rows[candidates], downstream[candidates], velocity, context, model)
+        np.minimum.at(output, valid[root_index], extra)
     return output
 
 

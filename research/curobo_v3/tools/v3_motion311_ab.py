@@ -76,7 +76,8 @@ def run_arm(planner, boxes, kind, arm, recorder):
     label, stage = classify(kind, result, planner.trace)
     if error is not None and any(marker in error for marker in SCENE_MARKERS):
         label = "scene_infeasible"
-    entry = dict(arm=arm, class_=label, stage=stage, error=error, wall_ms=wall_ms,
+    entry = dict(arm=arm, contact_value="explicit" if arm == "Bx" else planner.contact_value,
+                 class_=label, stage=stage, error=error, wall_ms=wall_ms,
                  searches=[compact_search(call) for call in recorder.since(mark)], trace=planner.trace)
     if result is not None:
         frames = np.asarray(result.get("frames") or [], dtype=np.float64)
