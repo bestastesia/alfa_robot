@@ -1,0 +1,74 @@
+{
+  "schema": 3,
+  "experiment": "motion311-fourroutes-v3",
+  "baseline_commit": "69be4f9",
+  "date": "2026-10-25",
+  "routes": {
+    "r1": "backward full-return supervised current-candidate policy",
+    "r2": "same supervised data and objectives plus current-body features",
+    "r3": "online candidate-conditioned Double DQN",
+    "r4": "online SAC over normalized redundancy parameters with analytic IK"
+  },
+  "observation_contract": {
+    "state_dim": 94,
+    "q_dim": 15,
+    "physics_dim": 23,
+    "continuous_dim": 3,
+    "allowed": ["stage", "current_configuration", "home", "known_current_targets", "known_carry_task_targets", "box_geometry", "offset", "cumulative_raw_path_cost"],
+    "forbidden": ["future_candidate_pool", "future_selected_ik", "future_planner_outcome", "V3_lookup", "scene_id_as_feature", "planner_seed_as_feature"]
+  },
+  "action_contract": {
+    "candidate_caps": [64, 512, 64],
+    "grid_updown_levels": 21,
+    "grid_swivel_levels": 36,
+    "branch": "nearest_previous_configuration_with_lexicographic_tie_break",
+    "single_idle_endpoint": "preserve_previous",
+    "single_idle_path": "may_move_under_existing_single_path_policy",
+    "collision_prefilter": false,
+    "stage_retries": 0,
+    "fallback_training_reward": false
+  },
+  "reward": {
+    "terminal_success": 1.0,
+    "terminal_task_failure": -1.0,
+    "cost_weight": 0.2,
+    "reference_s": 40.0,
+    "cost": "raw_planned_path_t_lb",
+    "potential": "C / (C + 40)",
+    "gamma": 1.0,
+    "executed_path_time_and_motion_duration": "reported_separately_after_timing"
+  },
+  "planning": {
+    "transport_budget_s": 2.0,
+    "other_segment_budgets": "existing frozen approach/place/return planners, 2s each",
+    "timing": "validate newly appended phases before each next observation; assemble checked blocks at terminal",
+    "terminal_success_requires_timed_validation": true,
+    "infrastructure_truncation_trainable": false,
+    "global_lock": "/tmp/sevenova-curobo-gpu.lock"
+  },
+  "data": {
+    "train_filter": "split=train AND group=train",
+    "evaluation_filter": "split=dev AND group=dev",
+    "old_P3_D3": "diagnostic only; no unaudited warm-start",
+    "old_test_and_reserve": "sealed",
+    "teacher": {"branches": 4, "repeats": 2, "behavior": "nearest_quarter_plus_diverse_current_candidates"},
+    "split_seed": 311,
+    "training_seeds": [0, 1, 2],
+    "evaluation_seeds": [101, 102, 103]
+  },
+  "budget": {
+    "initial_ceiling_gpu_h": 38,
+    "chunk_minutes": 24,
+    "teacher_gpu_h": 4,
+    "r3_gpu_h": 12,
+    "r4_gpu_h": 14,
+    "status": "limits are resource caps, not convergence guarantees; pilot/review overhead counted separately"
+  },
+  "acceptance": {
+    "primary": "strict three-choice completion without retries",
+    "secondary": ["third-stage conditional failures", "third-stage failures per full episode", "raw_T_lb_path", "executed_T_lb_path", "motion_duration", "J_arc", "full_selection_latency", "planning_calls", "GPU_hours"],
+    "test_requires_separate_acceptance_confirmation": true,
+    "linear_writes_require_confirmed_drafts": true,
+    "no_PR_before_user_review": true
+  }
+}
