@@ -306,8 +306,9 @@ class FullCyclePlanner(CuroboBackend):
             attempt_started = time.perf_counter()
             extracted, details = self.analytic_extract(contact, extracting_validity, loaded_validity)
             torch.cuda.synchronize()
-            timing["analytic_extract_and_validation"] += (time.perf_counter()-attempt_started)*1000
-            attempt = {"candidate": index+1, "extraction": details}
+            extraction_ms = (time.perf_counter()-attempt_started)*1000
+            timing["analytic_extract_and_validation"] += extraction_ms
+            attempt = {"candidate": index+1, "extraction": details, "extraction_ms": extraction_ms}
             report["attempts"].append(attempt)
             if extracted is None:
                 attempt["wall_ms"] = (time.perf_counter()-attempt_started)*1000
@@ -317,8 +318,10 @@ class FullCyclePlanner(CuroboBackend):
             approach, stats = self.plan_contact_approach(contact, empty_checker,
                                                        empty_validity, 20261003 + index)
             torch.cuda.synchronize()
-            timing["approach_rrt_and_validation"] += (time.perf_counter()-segment_started)*1000
+            approach_ms = (time.perf_counter()-segment_started)*1000
+            timing["approach_rrt_and_validation"] += approach_ms
             attempt["approach"] = stats
+            attempt["approach_ms"] = approach_ms
             attempt["wall_ms"] = (time.perf_counter()-attempt_started)*1000
             if approach is not None:
                 selected = (approach, extracted)

@@ -17,6 +17,7 @@ from v3_interactive_60_tasks import (
     DEFAULT_MOBILE_ROBOT_CONFIG, quaternion,
 )
 from v3_wall_ik_benchmark import canonical_side_tool_to_box, wall_center
+from v3_timed_wall_report import PHASE_LABELS, phase_planning_detail, planning_ledger
 
 
 PHASE_NAMES = {
@@ -24,33 +25,43 @@ PHASE_NAMES = {
     "base_advance": "底盘前进0.3m", "base_advance_diagnostic": "底盘前进失败诊断",
     "home": "第一初始姿态", "approach": "初始→吸附起点", "attach": "吸附箱体",
     "extract": "固定Updown解析直线抽离35cm", "transport": "抽离终点→放置姿态",
-    "turn_loaded": "携箱转身180°", "release": "放置释放，箱体消失",
+    "turn_loaded": "携箱转身180°", "base_reposition": "导航到放置位",
+    "conveyor_place": "固定底盘放箱", "release": "放置释放，箱体消失",
     "turn_empty": "空载转身回来", "return_home": "双臂回到原第一初始姿态",
+    "base_return": "导航返回抓取位",
     "transport_diagnostic": "失败轨迹诊断",
 }
 
 
-def main():
+def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
     parser.add_argument("--urdf", type=Path, default=DEFAULT_URDF)
     parser.add_argument("--named-poses", type=Path, default=DEFAULT_NAMED_POSES)
     parser.add_argument("--box-fit", type=Path, default=DEFAULT_BOX_FIT)
-    parser.add_argument("--port", type=int, default=8120)
+    parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument('--result', type=Path, nargs='+')
+    parser.add_argument('--sequence-json', type=Path)
     args = parser.parse_args()
     comparisons = {}
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
     planner_labels = {"Connect + Informed": "informed_connect"}
-    planner = FullCyclePlanner(args)
+    planner = planner_class(args)
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
+    sequence_result = json.loads(args.sequence_json.read_text()) if args.sequence_json else None
     preload = saved_results[0] if saved_results else None
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
         planner.selected_task = preload['task']
+    if round_mode and saved_results:
+        planner.task_options = [
+            (f"第 {index+1:02d} 轮 · " + " / ".join(f"{side}:{box}" for side, box in result["task"].items()),
+             result["task"])
+            for index, result in enumerate(saved_results)]
+        planner.task_map = dict(planner.task_options)
     config = planner.mobile_robot["kinematics"]
     joint_names = config["cspace"]["joint_names"]
     urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=True, build_scene_graph=True)
@@ -60,6 +71,12 @@ def main():
     server.scene.add_grid("/ground", width=5, height=3)
     robot = ViserUrdf(server, urdf, root_node_name="/robot",
                       mesh_color_override=(0.68, 0.73, 0.80, 0.8))
+    joint_models = {joint.name: joint for joint in urdf.robot.joints if joint.type != "fixed"}
+    velocity_arrows = server.scene.add_arrows(
+        "/trajectory/joint_velocity", points=np.zeros((len(joint_names), 2, 3), dtype=np.float32),
+        colors=np.array([(61, 170, 210) if joint_models[name].type == "prismatic" else (239, 146, 62)
+                         for name in joint_names], dtype=np.uint8),
+        shaft_radius=.006, head_radius=.014, head_length=.025, visible=False)
     attached = {}
     sphere_mesh = trimesh.creation.icosphere(subdivisions=2)
     for side in ("left", "right"):
@@ -81,6 +98,12 @@ def main():
             f"/wall/box_{box_id}", position=item.pose.position,
             wxyz=item.pose.quaternion_wxyz, dimensions=item.dimensions_m,
             color=(87, 145, 165), opacity=.25)
+    for box_id in range(25):
+        if box_id not in source_boxes:
+            source_boxes[box_id] = server.scene.add_box(
+                f"/wall/box_{box_id}", position=(0., 0., 0.),
+                dimensions=planner.box_fit["dimensions_m"], color=(87, 145, 165),
+                opacity=.35, visible=False)
     for item in planner.snapshot.objects:
         if not item.object_id.startswith("wall_box_") and item.object_id != "ground":
             server.scene.add_box(f"/container/{item.object_id}", dimensions=item.dimensions_m,
@@ -89,21 +112,80 @@ def main():
     labels = [entry[0] for entry in planner.task_options]
     fill_nodes = [server.scene.add_box('/task_fill/' + str(index), dimensions=(0.3,0.1,0.1),
                   color=(235,65,85), opacity=0.35, visible=False) for index in range(4)]
-    with server.gui.add_folder("完整任务实时规划"):
+    with server.gui.add_folder("完整25箱序列回放" if round_mode else "完整任务实时规划"):
         initial_label = next(label for label, boxes in planner.task_options if boxes == planner.selected_task)
-        task = server.gui.add_dropdown("组合任务", options=labels, initial_value=initial_label)
+        task = server.gui.add_dropdown("查看轮次" if round_mode else "组合任务", options=labels, initial_value=initial_label)
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Connect + Informed")
         run = server.gui.add_button("计算完整流程并播放")
+        whole_sequence = server.gui.add_checkbox(
+            "连续播放完整25箱", initial_value=bool(round_mode and sequence_result))
         play = server.gui.add_checkbox("播放", initial_value=False)
+        playback_speed = server.gui.add_slider("真实时间回放倍率", min=.1, max=10., step=.1,
+                                               initial_value=1.)
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
+        timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
+        with server.gui.add_folder("各阶段规划 / 运动耗时", expand_by_default=True):
+            timing_stage = server.gui.add_dropdown(
+                "耗时阶段", options=tuple(PHASE_LABELS.values()),
+                initial_value=PHASE_LABELS["approach"])
+            timing_detail = server.gui.add_markdown("请选择轮次和阶段。")
+        with server.gui.add_folder("q / qdot 轨迹", expand_by_default=False):
+            show_velocity = server.gui.add_checkbox("显示关节速度轴矢量", initial_value=True)
+            curve_joint = server.gui.add_dropdown("曲线关节", options=tuple(joint_names),
+                                                  initial_value="left_joint1")
+            trajectory_curve = server.gui.add_uplot(
+                data=(np.array([0., 1.]), np.zeros(2), np.zeros(2)),
+                series=(viser.uplot.Series(label="time"), viser.uplot.Series(label="q", stroke="#3daad2"),
+                        viser.uplot.Series(label="qdot", stroke="#ef923e")),
+                mode=1, scales={"x": {"time": False}}, title="所选阶段 q / qdot", height=300,
+                visible=False)
         comparison_status = server.gui.add_markdown("")
-    current = {"result": None, "busy": False}
+    current = {"result": None, "busy": False, "curve_binding": None, "render_round": None}
+
+    def selected_cycle_result():
+        result = current.get("result")
+        if result and result.get("sequence"):
+            task_value = planner.task_map[task.value]
+            record = next((item for item in result["rounds"] if item["task"] == task_value), None)
+            return record.get("result") if record else None
+        return result
+
+    def refresh_stage_timing():
+        result = selected_cycle_result()
+        if not result:
+            timing_detail.content = "请选择轮次和阶段。"
+            return
+        phase = next(key for key, label in PHASE_LABELS.items() if label == timing_stage.value)
+        segment = next((item for item in result.get("timed_segments", ()) if item["name"] == phase), None)
+        if segment is None:
+            timing_detail.content = "当前轮次没有该运动阶段。"
+            return
+        detail = phase_planning_detail(result, phase)
+        additive = [(name, value) for name, value in detail["additive"] if value >= 10.]
+        hidden = sum(value < 10. for _, value in detail["additive"])
+        total = sum(value for _, value in detail["additive"])
+        rows = ["| 可相加规划子阶段（≥10ms） | 耗时 |", "|---|---:|"]
+        rows += [f"| {name} | {value:.2f} ms |" for name, value in additive]
+        if hidden:
+            rows.append(f"\n总计另含 **{hidden}** 项小于10ms的记录。")
+        if detail["diagnostics"]:
+            rows += ["", "**内部诊断（已包含在上表，不重复相加）**", "",
+                     "| 内部记录 | 耗时 |", "|---|---:|"]
+            rows += [f"| {name} | {value:.2f} ms |" for name, value in detail["diagnostics"]
+                     if value >= 10.]
+        timing_detail.content = (
+            f"## {PHASE_LABELS[phase]}  \n"
+            f"**运动时间：{segment['duration_s']:.3f}s** · "
+            f"**阶段规划归属时间：{total/1000:.3f}s** · "
+            f"本轮规划：{result.get('total_ms', 0)/1000:.3f}s  \n"
+            + "\n".join(rows))
+
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -120,8 +202,32 @@ def main():
 
     def show_frame(index):
         result = current["result"]
-        if result and diagnostic.value and result.get('extraction_diagnostic'):
+        if result and diagnostic.value and result.get('extraction_diagnostic') and not result.get("sequence"):
             result = dict(result, **result['extraction_diagnostic'])
+        cycle_result = result
+        cycle_index = index
+        active_task = planner.selected_task
+        top_grasp = planner.top_grasp
+        round_number = None
+        if result and result.get("sequence"):
+            index = min(max(0, index), len(result["frames"]) - 1)
+            round_number = result["frame_rounds"][index]
+            record = result["rounds"][round_number]
+            cycle_result = record["result"]
+            active_task = record["task"]
+            top_grasp = cycle_result.get("top_grasp", False)
+            cycle_index = index - result["frame_rounds"].index(round_number)
+            if current["render_round"] != round_number:
+                planner.selected_task = active_task
+                centers, obstacles = planner.configure_task(active_task)
+                for side, box_id in active_task.items():
+                    source_boxes[box_id].position = centers[side]
+                for fill_index, node in enumerate(fill_nodes):
+                    node.visible = fill_index < len(obstacles)
+                    if fill_index < len(obstacles):
+                        node.position = obstacles[fill_index]["center"]
+                        node.dimensions = obstacles[fill_index]["dimensions"]
+                current["render_round"] = round_number
         if result is None:
             values = {**planner.home, "base_x": 0., "base_y": 0., "base_yaw": 0.}
             phase = "home"
@@ -134,20 +240,58 @@ def main():
         urdf.update_cfg(cfg)
         robot.update_cfg(cfg)
         for side, node in attached.items():
-            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ grasp_transform(side, planner.top_grasp)
+            matrix = urdf.get_transform(side+"_tool0", urdf.base_link) @ grasp_transform(side, top_grasp)
             node.position = matrix[:3, 3]
             node.wxyz = quaternion(matrix)
-            node.visible = has_payload
+            node.visible = has_payload and side in active_task
         for box_id, box in source_boxes.items():
-            box.visible = box_id in planner.selected_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
+            box.visible = box_id in active_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
         if result:
             status.content = (
                 f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
-                f"全部规划：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
-                f"最终Home误差：**{result.get('final_home_error', 0):.8f}**"
+                f"全部规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s**  \n"
+                f"最终Home误差：**{cycle_result.get('final_home_error', 0):.8f}**"
             )
+            if round_number is not None:
+                status.content += f"  \n当前第 **{round_number+1}/15** 轮 · {active_task}"
+            segment = next((item for item in cycle_result.get("timed_segments", ())
+                            if item["frame_start"] <= cycle_index <= item["frame_end"]), None)
+            if segment:
+                local = cycle_index - segment["frame_start"]
+                related = phase_planning_detail(cycle_result, segment["name"])["additive"]
+                detail = "".join(f"  \n- {name}：{value:.2f}ms" for name, value in related)
+                timed_status.content = (
+                    f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
+                    f"时间化：`{segment.get('parameterizer', 'recorded')}` / {cycle_result.get('trajectory_timing_ms', 0):.1f}ms  \n"
+                    f"本轮规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{cycle_result.get('motion_duration_s', 0):.3f}s**"
+                    + ("  \n**相关规划记录（共享项不重复求和）**" + detail if detail else ""))
+                names = segment["joint_names"]
+                joint_index = names.index(curve_joint.value)
+                binding = (id(cycle_result), segment["name"], curve_joint.value)
+                if current["curve_binding"] != binding:
+                    trajectory_curve.data = (np.asarray(segment["time_from_start_s"]),
+                                             np.asarray(segment["positions"])[:, joint_index],
+                                             np.asarray(segment["velocities"])[:, joint_index])
+                    trajectory_curve.visible = True
+                    current["curve_binding"] = binding
+                velocity = dict(zip(names, segment["velocities"][local]))
+                points = np.zeros((len(joint_names), 2, 3), dtype=np.float32)
+                for joint_index, name in enumerate(joint_names):
+                    joint = joint_models[name]
+                    transform = urdf.get_transform(joint.child, urdf.base_link)
+                    axis = transform[:3, :3] @ np.asarray(joint.axis)
+                    limit = joint.limit.velocity if joint.limit and joint.limit.velocity else 1.0
+                    points[joint_index, 0] = transform[:3, 3]
+                    points[joint_index, 1] = transform[:3, 3] + axis * np.clip(velocity[name] / limit, -1., 1.) * .15
+                velocity_arrows.points = points
+                velocity_arrows.visible = show_velocity.value
+            else:
+                timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"
+                trajectory_curve.visible = False
+                velocity_arrows.visible = False
+                current["curve_binding"] = None
             if not result["success"]:
                 status.content += f"  \n{result.get('blocked_stage')}: {result.get('blocked_details')}"
                 failures = [attempt.get('approach',{}) for attempt in result.get('attempts',[]) if attempt.get('approach',{}).get('failure')]
@@ -168,6 +312,21 @@ def main():
                 for pair in pairs:
                     status.content += '\n\n' + ' ↔ '.join(pair['links']) + f"：{pair['penetration_mm']:.2f}mm"
 
+    @timing_stage.on_update
+    def on_timing_stage(_event):
+        refresh_stage_timing()
+
+    @curve_joint.on_update
+    def on_curve_joint(_event):
+        current["curve_binding"] = None
+        if current["result"]:
+            show_frame(int(frame.value)-1)
+
+    @show_velocity.on_update
+    def on_show_velocity(_event):
+        if current["result"]:
+            show_frame(int(frame.value)-1)
+
     @frame.on_update
     def on_frame(_event):
         if current["result"]:
@@ -182,6 +341,9 @@ def main():
         if selected in phases:
             play.value = False
             frame.value = phases.index(selected)+1
+            if selected in PHASE_LABELS:
+                timing_stage.value = PHASE_LABELS[selected]
+                refresh_stage_timing()
 
     @spheres.on_update
     def on_spheres(_event):
@@ -191,6 +353,8 @@ def main():
 
     def displayed_result():
         result = current['result']
+        if result and result.get("sequence"):
+            return result
         return dict(result, **result['extraction_diagnostic']) if diagnostic.value and result and result.get('extraction_diagnostic') else result
 
     @diagnostic.on_update
@@ -200,6 +364,21 @@ def main():
         frame.max = max(1, len(result['frames'])) if result else 1
         frame.value = 1
         show_frame(0)
+
+    @whole_sequence.on_update
+    def on_whole_sequence(_event):
+        play.value = False
+        if whole_sequence.value and sequence_result:
+            current["result"] = sequence_result
+            frame.max = len(sequence_result["frames"])
+            frame.value = 1
+        else:
+            current["result"] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
+            frame.max = max(1, len(current["result"]["frames"])) if current["result"] else 1
+            frame.value = 1
+        current["render_round"] = None
+        show_frame(0)
+        refresh_stage_timing()
 
     @task.on_update
     def on_task(_event):
@@ -213,10 +392,19 @@ def main():
         comparisons.clear()
         planner.comparison_contact = None
         refresh_comparison()
-        current['result'] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
-        frame.max = max(1,len(current['result']['frames'])) if current['result'] else 1
-        frame.value = 1
-        show_frame(0)
+        selected_result = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
+        if whole_sequence.value and sequence_result:
+            current["result"] = sequence_result
+            number = next(index for index, record in enumerate(sequence_result["rounds"])
+                          if record["task"] == planner.selected_task)
+            frame.max = len(sequence_result["frames"])
+            frame.value = sequence_result["frame_rounds"].index(number) + 1
+        else:
+            current["result"] = selected_result
+            frame.max = max(1, len(selected_result["frames"])) if selected_result else 1
+            frame.value = 1
+        show_frame(int(frame.value)-1)
+        refresh_stage_timing()
 
     def refresh_task_geometry():
         centers, obstacles = planner.configure_task(planner.selected_task)
@@ -298,7 +486,11 @@ def main():
         client.camera.up_direction = (0, 0, 1)
 
     refresh_task_geometry()
-    if preload:
+    if sequence_result and round_mode:
+        current["result"] = sequence_result
+        frame.max = max(1, len(sequence_result["frames"]))
+        play.value = False
+    elif preload:
         current['result'] = preload
         frame.max = max(1, len(preload['frames']))
         play.value = False
@@ -310,6 +502,7 @@ def main():
         frame.max = len(baseline["frames"]) if baseline else 1
     refresh_comparison()
     show_frame(0)
+    refresh_stage_timing()
     print(f"Ready: http://localhost:{server.get_port()}", flush=True)
     while True:
         if play.value and current["result"]:
@@ -317,7 +510,7 @@ def main():
                 play.value = False
             else:
                 frame.value = int(frame.value)+1
-        time.sleep(.03)
+        time.sleep(.025 / playback_speed.value if play.value else .025)
 
 
 if __name__ == "__main__":
