@@ -1,0 +1,160 @@
+{
+  "records": [
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "frames": 2918,
+      "geometric_frames": 1304,
+      "motion_s": 72.55979251976248,
+      "compute_ms": 7821.640774986008,
+      "postprocessing_ms": 3066.9335940037854,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9061745729727163,
+        "jerk_limit_ratio": 0.04531917953491211,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "independent_velocity_ratio": 0.9523779215425088,
+      "shortcuts": {
+        "approach": [
+          302,
+          3,
+          "validated_shortcut_stops"
+        ],
+        "contact_approach": [
+          12,
+          12,
+          "validated_shortcut_cubic"
+        ],
+        "extract": [
+          96,
+          96,
+          "validated_shortcut_cubic"
+        ],
+        "transport": [
+          342,
+          4,
+          "validated_shortcut_stops"
+        ],
+        "conveyor_place": [
+          183,
+          2,
+          "validated_shortcut_stops"
+        ],
+        "return_home": [
+          364,
+          3,
+          "validated_shortcut_stops"
+        ]
+      }
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "frames": 2987,
+      "geometric_frames": 1590,
+      "motion_s": 74.1589209614577,
+      "compute_ms": 10514.729494985659,
+      "postprocessing_ms": 5184.70954199438,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9062142449881455,
+        "jerk_limit_ratio": 0.050212860107421875,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "independent_velocity_ratio": 0.9523807925145802,
+      "shortcuts": {
+        "approach": [
+          444,
+          4,
+          "validated_shortcut_stops"
+        ],
+        "contact_approach": [
+          31,
+          31,
+          "validated_shortcut_cubic"
+        ],
+        "extract": [
+          117,
+          117,
+          "validated_shortcut_cubic"
+        ],
+        "transport": [
+          432,
+          3,
+          "validated_shortcut_stops"
+        ],
+        "conveyor_place": [
+          256,
+          3,
+          "validated_shortcut_stops"
+        ],
+        "return_home": [
+          303,
+          3,
+          "validated_shortcut_stops"
+        ]
+      }
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "frames": 3002,
+      "geometric_frames": 1658,
+      "motion_s": 74.60581766073139,
+      "compute_ms": 10513.118759990903,
+      "postprocessing_ms": 5125.953899987508,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9070190689453453,
+        "jerk_limit_ratio": 0.04533921432495117,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "independent_velocity_ratio": 0.9523818436189879,
+      "shortcuts": {
+        "approach": [
+          479,
+          5,
+          "validated_shortcut_stops"
+        ],
+        "contact_approach": [
+          30,
+          30,
+          "validated_shortcut_cubic"
+        ],
+        "extract": [
+          118,
+          118,
+          "validated_shortcut_cubic"
+        ],
+        "transport": [
+          489,
+          2,
+          "validated_shortcut_stops"
+        ],
+        "conveyor_place": [
+          232,
+          3,
+          "validated_shortcut_stops"
+        ],
+        "return_home": [
+          303,
+          3,
+          "validated_shortcut_stops"
+        ]
+      }
+    }
+  ],
+  "scope": "three representative tasks; no hardware; extraction intermediate empty collision model retained"
+}

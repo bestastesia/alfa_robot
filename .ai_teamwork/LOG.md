@@ -2195,6 +2195,7 @@
 - 证据/tmp/rezero_j6_tasks_20261018及generated/zero_model_candidate_20261018/task_regression.json，完整命令REZERO_TASK_VALIDATION.md；旧J6符号结果不可配新URDF回放。PR67由旧阻塞草稿收口为该模型/新Home六组验收，不把同事原3.3.1或实机标定算作已适配。
 
 ## 2026-10-24 运控 / Codex / 8209新算法适配当前URDF
+- 2026-10-26开启8210后处理：feature/curobo-8210-timed接PR65时间化器、显存有界Shortcut及0.5°补边验碰；保持191mm TCP和六段端点、原抽离验碰边界，J1～4限15°/s、J5～7限30°/s。三类任务均通过，运动约73～75秒，计算约8～11秒；12专项＋52core（1跳过）通过，浏览器已验25ms时间步播放和阶段耗时。证据generated/current_urdf_timed/acceptance/summary.json；部分段停点回退如实保留，未连接实机。
 - 2026-10-26集成：PR65由用户合入96c2c70c；40项开发提交已rebase，入口同时保留planner_class/default_assets并修复默认类绑定，52项core（1项跳过）＋17项当前合同测试通过，四次GPU六段流程通过。保留#65独立时间化入口，未自动替换8210算法；本地未提交随机误差/模型路径工作已备份并恢复，不夹带发布。
 - feature/curobo-8209-current-urdf保存六段前向预接触/LM/首合法Informed Connect研究依赖，新增CurrentUrdfForwardPlanner，统一确认零位、191mm TCP及Rezero解析网格；没有改工控机或联调分支提交。
 - 运输侧吸旧2cm升降网格跳过合法窗口；原范围内加密到5mm，重求运输库并独立FK验收，保留碰撞/限位/1.05m包络。补齐16/64形状真实LM预热、长求解器共享及完整显示快照恢复。

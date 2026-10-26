@@ -44,6 +44,20 @@ class StagePlayback:
                     indices.insert(0, indices[0] - 1)
             for field in ('frames', 'phases', 'payload'):
                 view[field] = [result[field][index] for index in indices]
+        for field in ('time_from_start_s', 'velocities', 'accelerations', 'jerks'):
+            if field in result:
+                if diagnostic:
+                    view.pop(field, None)
+                else:
+                    view[field] = [result[field][index] for index in indices]
+        if 'timed_segments' in result and phase is not None:
+            positions = {source: local for local, source in enumerate(indices)}
+            view['timed_segments'] = [dict(segment, frame_start=positions[segment['frame_start']],
+                                            frame_end=positions[segment['frame_end']])
+                                      for segment in result['timed_segments']
+                                      if segment['frame_start'] in positions and segment['frame_end'] in positions]
+        if diagnostic:
+            view.pop('timed_segments', None)
         view['_source_indices'] = indices
         view['_playback_source'] = result
         view['_view_phase'] = phase if diagnostic is None else None

@@ -114,7 +114,10 @@ def main(default_port=8150, planner_class=None, default_assets=None):
     @reference_control.on_update
     def show_references(_event):
         renderer.submit(lambda: setattr(references, 'visible', reference_control.value and not renderer.collision_view))
-    server.gui.add_markdown(f'只读显示：规划模型与关节来自核心，匹配{renderer.material_matches}个彩色网格。完整集装箱统一装配到快照内壁边界；外观框架不额外参与碰撞。仅最里面一面箱墙，非475箱展示模板。\n\n播放帧率按最快旋转关节30°/s统一换算，Updown等比播放；底盘到位仍为瞬移。未加入加速度或动力学时间参数化。')
+    motion_policy = ('PR65后处理已开启：按记录时间播放，含速度/加速度/jerk代理限制；不是力矩或真实动力学验证。'
+                     if getattr(planner, 'trajectory_optimization_enabled', False) else
+                     '播放帧率按最快旋转关节30°/s统一换算，Updown等比播放；未加入加速度或动力学时间参数化。')
+    server.gui.add_markdown(f'只读显示：规划模型与关节来自核心，匹配{renderer.material_matches}个彩色网格。完整集装箱统一装配到快照内壁边界；外观框架不额外参与碰撞。仅最里面一面箱墙，非475箱展示模板。\n\n{motion_policy} 底盘到位仍为瞬移。')
     attached = {}
     sphere_mesh = trimesh.creation.icosphere(subdivisions=2)
     for side in ("left", "right"):
@@ -164,6 +167,7 @@ def main(default_port=8150, planner_class=None, default_assets=None):
         scope = server.gui.add_dropdown('回放范围', options=list(PLAYBACK_SCOPES), initial_value='全流程')
         replay = server.gui.add_button('从当前范围起点播放')
         play = server.gui.add_checkbox("播放", initial_value=False)
+        playback_rate = server.gui.add_slider('播放倍率（只影响显示）', min=.1, max=3., step=.1, initial_value=1.)
         playback_status = server.gui.add_markdown('播放速度：旋转关节最快约30°/s。')
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
         stage = server.gui.add_dropdown("范围内跳转阶段", options=[label for key, label in PHASE_NAMES.items() if key != 'conveyor_retreat'],
@@ -298,6 +302,8 @@ def main(default_port=8150, planner_class=None, default_assets=None):
             lazy = result.get('lazy_extraction')
             if result.get('guided_search_events'):
                 from v3_guided_cycle_planner import guidance_summary
+                if result.get('trajectory_postprocessing', {}).get('enabled'):
+                    status.content += '\n\n**以下为几何搜索阶段诊断（Shortcut/平滑前），优化后轨迹见当前TCP曲线。**'
                 status.content += '\n\n'+guidance_summary(result['guided_search_events'])
             if result.get('forward_precontact_policy'):
                 status.content += f"\n\n**直接预接触IK：{result.get('precontact_ik_count',0)}个，{result.get('timing_ms',{}).get('precontact_ik_ms',0):.1f}ms。** 仅参考初始构型；实际到位后才求吸附IK并前向接近，没有反推3cm运动。"
@@ -354,7 +360,7 @@ def main(default_port=8150, planner_class=None, default_assets=None):
                     f"阶段运动时间：**{segment['duration_s']:.3f}s** · 当前：**{segment['time_from_start_s'][local]:.3f}s**  \n"
                     f"方法：`{segment.get('parameterizer', 'recorded')}` · "
                     f"时间化计算：**{result.get('trajectory_timing_ms', 0)/1000:.3f}s**  \n"
-                    f"全周期规划：**{result.get('total_ms', 0)/1000:.3f}s** · "
+                    f"全周期计算：**{result.get('measured_wall_ms', result.get('total_ms', 0))/1000:.3f}s** · "
                     f"运动：**{result.get('motion_duration_s', 0):.3f}s**")
             else:
                 timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"
@@ -606,17 +612,22 @@ def main(default_port=8150, planner_class=None, default_assets=None):
                 playback_status.content = (f'播放：记录时间步长约{playback_interval*1000:.1f}ms。'
                                            if len(positive) else
                                            f'播放：约{1/playback_interval:.1f}帧/s；旋转关节最快30°/s。')
-            position = (id(timed_frames), int(frame.value))
+            cursor = int(frame.value) - 1
+            times = result.get('time_from_start_s', ())
+            if len(times) == len(timed_frames) and cursor + 1 < len(times):
+                interval = max(0., times[cursor + 1] - times[cursor]) / playback_rate.value
+            else:
+                interval = playback_interval / playback_rate.value
+            position = (id(timed_frames), int(frame.value), playback_rate.value)
             now = time.perf_counter()
             if position != observed_frame:
                 observed_frame = position
-                next_frame_time = now + playback_interval
+                next_frame_time = now + interval
             if int(frame.value) >= len(result["frames"]):
                 play.value = False
             elif now >= next_frame_time:
                 frame.value = int(frame.value)+1
-                observed_frame = (id(timed_frames), int(frame.value))
-                next_frame_time = time.perf_counter() + playback_interval
+                observed_frame = None
         else:
             observed_frame = None
         delay = min(.005, max(0., next_frame_time - time.perf_counter())) if play.value else .005

@@ -3,6 +3,8 @@
 
 ## 当前URDF迁移补充（2026-10-24）
 
+2026-10-26后续开启：8210默认改为TimedCurrentUrdfPlanner，直接复用PR65时间化器并保留当前六段规划器；四个关节路径阶段GPU验碰Shortcut、所有运动阶段时间化、0.5°补充验边、阶段端点不变。J1～J4限制15°/s和30°/s²，J5～J7为30°/s和60°/s²，jerk沿用模型配置；仍非力矩动力学验证。Shortcut查询按16条边分批以限制显存，不改变原最远合法点选择规则。侧吸L22/R17、顶吸L03/R02、单臂R02三例成功，速度/加速度/jerk及独立差分速度检查通过；名义运动72.56/74.16/74.61秒，计算7.82/10.51/10.51秒。部分段使用PR65的validated_shortcut_stops安全回退，不能宣称全部无停点。证据generated/current_urdf_timed/acceptance/summary.json。页面支持0.1～3倍播放，按真实相邻时间戳调度；阶段截取同步时间/导数及帧索引，不修改实机。
+
 2026-10-26集成：PR65已合入alfa_v3_curobo@96c2c70c；本开发分支40项提交rebase完成，GUI入口兼容planner_class与default_assets，缺省仍使用原选择的FullCyclePlanner。旧94双臂测试同步为现行92双臂＋25单臂合同，明确排除L07/R02及L02/R07。52项core测试（1项历史资产测试跳过）及17项当前模型/GUI合同测试通过；rebase后四次GPU全流程通过，证据/tmp/curobo-pr65-rebase-verification。PR65时间化入口保留独立，未默认套用在六段LM结果上，不把原时间化25箱证据冒作新模型验收。
 
 - 本轮分支 `feature/curobo-8209-current-urdf`；当前入口仍是 `tools/v3_forward_precontact_demo.py`，默认端口改为8210，与原研究入口和工控机分开。

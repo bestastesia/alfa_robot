@@ -1,4 +1,5 @@
-from v3_current_urdf_forward import CurrentUrdfForwardPlanner, current_assets
+from v3_current_urdf_forward import current_assets
+from v3_current_urdf_timed import TimedCurrentUrdfPlanner
 from v3_contact_roll_policy import aligned_grasp_transform
 import v3_visualized_task_demo as demo
 
@@ -8,6 +9,7 @@ original_server = demo.viser.ViserServer
 
 def server_factory(*args, **kwargs):
     server = original_server(*args, **kwargs)
+    server.gui.add_markdown('**PR65轨迹后处理已开启**：六段几何规划后执行GPU验碰Shortcut、平滑与时间参数化，输出q/qdot/qddot/jerk。J1～J4最高15°/s、J5～J7最高30°/s；播放按记录时间，倍率不修改轨迹。仅本地预览，不发送实机。')
     server.gui.add_markdown('**直接预接触IK＋前向接近：117组任务按需实时计算。** 本页不预载整组规划结果。选择任务后点击“计算完整流程并播放”，只计算当前任务；每次重新生成候选和路径，求解器/检查器资源复用。')
     server.gui.add_markdown('任务吸附6D Pose→沿吸盘法向外退3cm得到预接触Pose→参考初始构型求预接触IK→Home规划到位→参考实际到达构型求吸附IK→LM先验＋Informed Connect前向接近。没有从吸附关节构型反推3cm运动，也不会先验证下一段再回选上一段。')
     server.gui.add_markdown('之后继续实际35cm抽离、运输收束、导航到位、龙头车放箱、释放和回Home。可看完整流程或六段独立轨迹/TCP朝向；偏线和过程朝向只作软代价及观察，不作硬拒绝。')
@@ -22,7 +24,7 @@ if __name__ == '__main__':
         '搜索5 · 龙头车放箱': 'conveyor_place', '搜索6 · 释放后回Home': 'return_home'})
     demo.PHASE_NAMES['contact_approach'] = '前向LM软参考接近吸附（目标箱排除）'
     demo.PHASE_NAMES['extract'] = 'LM软参考后撤35cm（途中空载验碰，终点携箱）'
-    demo.FullCyclePlanner = CurrentUrdfForwardPlanner
+    demo.FullCyclePlanner = TimedCurrentUrdfPlanner
     demo.grasp_transform = aligned_grasp_transform
     demo.viser.ViserServer = server_factory
     demo.main(default_port=8210, default_assets=current_assets())
