@@ -16,6 +16,7 @@ from v3_multiroot_search import batched_rrt_connect_multi_goal
 from v3_research_assets import atlas_path
 from v3_research_assets import ROOT
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
+from v3_idle_arm_candidates import solve_idle_candidates
 
 
 class ActiveRotationCost(BoxRotationCost):
@@ -43,6 +44,9 @@ class IdleArmCost:
 
 
 class SingleArmPlanner(LazyExtractionPlanner):
+    conveyor_search_margin_m = .003
+    conveyor_search_edge_resolution = .05
+
     def __init__(self, args):
         super().__init__(args)
         for box_id in range(25):
@@ -70,13 +74,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
         return {side: matrix for side, matrix in matrices.items() if side in self.selected_task}
 
     def free_arm_variants(self, reference):
-        variants = [reference[self.idle_indices].copy(), self.home_values[self.idle_indices].copy()]
-        for shoulder, elbow in [(-20, 15), (20, -15), (-35, 30), (35, -30)]:
-            arm = self.home_values[self.idle_indices].copy()
-            arm[1] += math.radians(shoulder)
-            arm[3] += math.radians(elbow)
-            variants.append(arm)
-        return variants
+        return [reference[self.idle_indices].copy(), self.home_values[self.idle_indices].copy()]
 
     def full_envelope_radius(self, checker, values):
         values = torch.as_tensor(values, device='cuda', dtype=torch.float32).reshape(-1,15)
@@ -110,21 +108,9 @@ class SingleArmPlanner(LazyExtractionPlanner):
             self.single_enumeration_report = dict(raw_candidates=0, checked_candidates=0, accepted_candidates=0)
             return np.empty((0, 15), dtype=np.float32)
         candidates = np.unique(np.round(candidates, 7), axis=0).astype(np.float32)
-        weights = np.array([math.radians(15)/.1] + [1.]*14)
-        costs = np.sum(((candidates-reference)*weights)**2, axis=1) + 3*np.sum((candidates[:,self.idle_indices]-self.home_values[self.idle_indices])**2, axis=1)
-        order = np.argsort(costs)
-        validity = GpuValidity(checker, check_ground=True)
-        accepted = []
-        checked = 0
-        for batch_start in range(0, len(order), 512):
-            values = candidates[order[batch_start:batch_start+512]]
-            checked += len(values)
-            valid = validity.mask(torch.tensor(values, device='cuda')).cpu().numpy()
-            accepted.extend(values[valid])
-            if len(accepted) >= limit:
-                break
-        self.single_enumeration_report = dict(raw_candidates=len(candidates), checked_candidates=checked, accepted_candidates=min(limit,len(accepted)))
-        return np.asarray(accepted[:limit], dtype=np.float32).reshape(-1, 15)
+        selected,report = solve_idle_candidates(self,candidates,reference,checker,limit)
+        self.single_enumeration_report = dict(raw_candidates=len(candidates),**report)
+        return selected
 
     def cartesian_single(self, contact, distances, along_normal=False):
         self.fk(contact)
@@ -169,13 +155,17 @@ class SingleArmPlanner(LazyExtractionPlanner):
         validity.sample_transform = sample_transform
         return validity
 
-    def single_path(self, start, goals, checker, rotation=False, strict=None, budget=2.):
+    def single_path(self, start, goals, checker, rotation=False, strict=None, budget=2., scene_margin_m=0.):
         goals = np.asarray(goals).reshape(-1,15)
         validity = self.single_validity(checker,start,goals[0],rotation)
+        validity.search_scene_margin_m = scene_margin_m
+        if scene_margin_m > 0:
+            validity.search_edge_resolution = self.conveyor_search_edge_resolution
         if strict is not None:
             validity.evaluate = strict.evaluate
         lower,upper = checker.kinematics.get_joint_limits().position
-        path,stats = batched_rrt_connect_multi_goal(torch.tensor(start,device='cuda',dtype=torch.float32),torch.tensor(goals,device='cuda',dtype=torch.float32),lower+1e-5,upper-1e-5,validity,budget,20261015,stop_at_first_valid=True)
+        search = getattr(self,'run_single_search',batched_rrt_connect_multi_goal)
+        path,stats = search(torch.tensor(start,device='cuda',dtype=torch.float32),torch.tensor(goals,device='cuda',dtype=torch.float32),lower+1e-5,upper-1e-5,validity,budget,20261015,stop_at_first_valid=True)
         if path is None:
             return None,stats
         dense = np.asarray(densify(path))
@@ -192,10 +182,16 @@ class SingleArmPlanner(LazyExtractionPlanner):
         if len(self.selected_task)==2:
             return super().plan_conveyor_target(start,targets,checker,validity,solver,report,append)
         candidates = self.enumerate_single(targets[self.active_side],start,checker)
+        margin_m = getattr(self, 'conveyor_search_margin_m', 0.)
+        if margin_m > 0 and len(candidates):
+            candidates = candidates[validity.scene_margin_mask(torch.tensor(candidates,device='cuda'),margin_m).cpu().numpy()]
+        report['conveyor_search_margin'] = dict(margin_m=margin_m,edge_resolution=self.conveyor_search_edge_resolution,candidates_after_margin=len(candidates),scope='external scene edge-search clearance; original model final acceptance')
         report['conveyor_goal_ik'] = dict(mode='single active TCP analytic updown/swivel enumeration; idle arm free in 15D search',collision_valid=len(candidates))
         if not len(candidates):
             raise CycleBlocked('龙头车放置目标IK','单臂目标没有合法候选',report)
-        path,stats = self.single_path(start,candidates,checker)
+        if not validity.scene_margin_mask(torch.tensor(np.asarray(start)[None],device='cuda',dtype=torch.float32),margin_m).all():
+            raise CycleBlocked('龙头车放置起点余量',f'起点不足{margin_m*1000:.1f}mm外部场景间隙',report)
+        path,stats = self.single_path(start,candidates,checker,scene_margin_m=margin_m)
         report['conveyor_place_search_stats'] = stats
         if path is None:
             raise CycleBlocked('龙头车放置RRT','单臂15轴联合搜索超时',report)
@@ -284,6 +280,9 @@ class SingleArmPlanner(LazyExtractionPlanner):
             mask.extend((loaded_valid.mask(batch)&(radius<=radius_limit)).cpu().tolist())
         report['transport_endpoint_filter']=dict(candidate_count=len(candidates),full_envelope_radius_limit_m=radius_limit,passed=int(np.sum(mask)),scope='whole robot including idle arm and active payload, distance to base_footprint axis')
         candidates=candidates[np.asarray(mask)]
+        if not len(candidates):
+            candidates,idle_report=solve_idle_candidates(self,atlas,extracted[-1],loaded,64,radius_limit)
+            report['transport_idle_arm_solver']=idle_report
         if not len(candidates):
             raise CycleBlocked('运输终点','单臂携箱放置无合法候选',report)
         weights=np.array([math.radians(15)/.1]+[1.]*14)

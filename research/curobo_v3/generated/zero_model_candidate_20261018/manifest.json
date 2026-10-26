@@ -28,13 +28,16 @@
     1,
     1,
     1,
-    -1,
+    1,
     1
   ],
-  "mapping": "q_legacy = offsets + signs * q_candidate; J6 direction reversed without changing zero",
-  "limits": "left J2 [-90,120]; right J2 [-120,90]; J3 +/-180; other numerical limits unchanged",
-  "status": "true coordinate redefinition, not Home change; legacy installation and confirmed legacy tool retained",
-  "rights_source": "mirrored legacy configuration; checked against shoulder/elbow/wrist reflection",
+  "mapping": "q_legacy = offsets + signs * q_candidate; approved dual zero and J6 positive axes; tool0 J7+Z191mm",
+  "limits": "left J2 [-90,120]; right J2 [-120,90]; both J4 +/-145; J3 +/-180; both J6 +/-110",
+  "status": "approved dual joint-coordinate redefinition; original installation retained, tool0 extended to J7+Z191mm",
+  "rights_source": "Only discrete 90/180-degree zero shifts, J2 +/-15deg and confirmed axis signs; no fitted small-angle zero offsets",
+  "tool_offset_m": 0.191,
+  "planning_assets_validated": false,
+  "coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
   "random_reparameterization_trials": 100,
   "maximum_all_link_fk_matrix_error": 1.889917963446286e-09
 }

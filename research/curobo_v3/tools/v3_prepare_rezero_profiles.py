@@ -33,8 +33,9 @@ def main():
         config=yaml.safe_load(source.read_text())
         config['kinematics']['urdf_path']=str(urdf)
         names=config['kinematics']['cspace']['joint_names']
-        if config['kinematics']['cspace'].get('nominal_joint_position') is not None:
-            config['kinematics']['cspace']['nominal_joint_position']=convert_row(names,config['kinematics']['cspace']['nominal_joint_position']).tolist()
+        for field in ('nominal_joint_position','default_joint_position','retract_config'):
+            if config['kinematics']['cspace'].get(field) is not None:
+                config['kinematics']['cspace'][field]=convert_row(names,config['kinematics']['cspace'][field]).tolist()
         profiles[label]=config
     old_model=yourdfpy.URDF.load(OLD,load_meshes=False)
     solver=RezeroAnalytic()

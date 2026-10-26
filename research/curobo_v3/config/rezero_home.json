@@ -1,10 +1,28 @@
 {
   "joint_coordinate_frame": "robot_rezero_candidate.urdf",
-  "source": "User-confirmed 2026-10-18 final Home with left J3 +20 degrees; our re-zero model, not IPC encoder commands",
-  "left_deg": [65, -75, 20, -90, 0, 40, 90],
-  "right_deg": [-65, 75, -20, 90, 0, -40, -90],
-  "j6_policy": "User corrected both J6 axes: reverse direction, retain zero and physical Home",
+  "source": "Discrete-only zero convention; accidental left J4 -1.3deg removed; no fitted zero offsets",
+  "left_deg": [
+    65.0,
+    -75.0,
+    20.0,
+    -90.0,
+    0.0,
+    -40.0,
+    90.0
+  ],
+  "coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
+  "left_j5_policy": "Previous left J5=180deg now zero",
+  "right_deg": [
+    -65.0,
+    75.0,
+    -20.0,
+    90.0,
+    0.0,
+    40.0,
+    -90.0
+  ],
+  "j6_policy": "Both positive axes reversed relative to prior model",
   "updown_m": -0.3,
   "updown_policy": "Unspecified in screenshot; retains original configured Home height",
-  "right_policy": "Mirror of the left configuration in our re-zero coordinate convention"
+  "right_policy": "Right arm unchanged; no longer a numerical mirror after left-only J5 zero change"
 }

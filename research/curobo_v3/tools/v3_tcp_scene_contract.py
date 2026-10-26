@@ -40,24 +40,32 @@ def reconstruct_scene(grasps, world_from_footprint, dimensions=(.3, .4, .4), lat
     working_top = max(bounds[side][1][2] for side, matrix in boxes.items() if matrix[2, 3] <= lowest_center+.02)
     front = min(lower[0] for lower, upper in bounds.values())
     rear = max(upper[0] for lower, upper in bounds.values())
-    intervals = [lateral_bounds]
-    for lower, upper in bounds.values():
-        opening = (lower[1]-gap, upper[1]+gap)
-        updated = []
-        for begin, end in intervals:
-            if opening[1] <= begin or opening[0] >= end:
-                updated.append((begin, end))
-            else:
-                if begin < opening[0]: updated.append((begin, opening[0]))
-                if end > opening[1]: updated.append((opening[1], end))
-        intervals = updated
     fills = []
     def cuboid(lower, upper, name):
         if np.min(upper-lower) > 1e-8:
             fills.append(dict(name=name, center=((lower+upper)/2).tolist(), dimensions=(upper-lower).tolist()))
     cuboid(np.array([front, lateral_bounds[0], 0.]), np.array([rear, lateral_bounds[1], max(0.,minimum_bottom)]), 'lower_solid')
-    for index, (begin, end) in enumerate(intervals):
-        cuboid(np.array([front, begin, max(0.,minimum_bottom)]), np.array([rear, end, working_top]), f'working_solid_{index}')
+    working_bottom=max(0.,minimum_bottom)
+    levels=sorted(set([working_bottom,working_top]+[float(value) for lower,upper in bounds.values()
+        for value in (lower[2],upper[2]) if working_bottom<value<working_top]))
+    index=0
+    for bottom,top in zip(levels,levels[1:]):
+        intervals=[lateral_bounds]
+        for lower,upper in bounds.values():
+            if upper[2]<=bottom or lower[2]>=top:
+                continue
+            opening=(lower[1]-gap,upper[1]+gap)
+            updated=[]
+            for begin,end in intervals:
+                if opening[1]<=begin or opening[0]>=end:
+                    updated.append((begin,end))
+                else:
+                    if begin<opening[0]:updated.append((begin,opening[0]))
+                    if end>opening[1]:updated.append((opening[1],end))
+            intervals=updated
+        for begin,end in intervals:
+            cuboid(np.array([front,begin,bottom]),np.array([rear,end,top]),f'working_solid_{index}')
+            index+=1
     outward_world = np.array([-1., 0., 0.])
     return dict(boxes=boxes, fills=fills, bounds=bounds, outward_world=outward_world,
                 outward_footprint=world_from_footprint[:3, :3].T@outward_world)

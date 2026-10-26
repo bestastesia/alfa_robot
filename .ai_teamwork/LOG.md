@@ -2193,3 +2193,10 @@
 - URDF固定/planar、解析映射、球配置、命名姿态、side/top候选库已同步；新入口v3_rezero_task_demo.py使用RezeroTaskPlanner，不依赖未提交AdaptiveRaised/闲臂优化，其他AI工作保留。8152改新模型全流程界面并预载六组成功结果，8151/8153和实机未动。
 - 两侧各100解析回归、两模型各100全link等价、4模型合同测试及39core测试通过；六组双臂完整6/6成功2.58～3.15s，9159帧独立碰撞/限位/.5°连续性/世界抽离35cm/最终6D/Home审计通过。保留原接近目标排除及抽离空载全段+载荷终点策略，不冒称抽离全段负载精检或119任务全覆盖。
 - 证据/tmp/rezero_j6_tasks_20261018及generated/zero_model_candidate_20261018/task_regression.json，完整命令REZERO_TASK_VALIDATION.md；旧J6符号结果不可配新URDF回放。PR67由旧阻塞草稿收口为该模型/新Home六组验收，不把同事原3.3.1或实机标定算作已适配。
+
+## 2026-10-24 运控 / Codex / 8209新算法适配当前URDF
+- 2026-10-26集成：PR65由用户合入96c2c70c；40项开发提交已rebase，入口同时保留planner_class/default_assets并修复默认类绑定，52项core（1项跳过）＋17项当前合同测试通过，四次GPU六段流程通过。保留#65独立时间化入口，未自动替换8210算法；本地未提交随机误差/模型路径工作已备份并恢复，不夹带发布。
+- feature/curobo-8209-current-urdf保存六段前向预接触/LM/首合法Informed Connect研究依赖，新增CurrentUrdfForwardPlanner，统一确认零位、191mm TCP及Rezero解析网格；没有改工控机或联调分支提交。
+- 运输侧吸旧2cm升降网格跳过合法窗口；原范围内加密到5mm，重求运输库并独立FK验收，保留碰撞/限位/1.05m包络。补齐16/64形状真实LM预热、长求解器共享及完整显示快照恢复。
+- 35项回归通过，侧吸L22/R17→顶吸L03/R02→单臂R02→侧吸四次GPU完整流程通过，Home误差约4.4e-8，显存峰值约1.7GiB；非117组全量验收。8210独立预览已通过浏览器实时计算，结果独立目录generated/forward_precontact_current_urdf。
+- 保留抽离途中空载/终点携箱验碰、导航瞬移、释放移除边界。polish录图/早停留后续；未对外宣称全流程携箱安全或实机完成。恢复服务与复测入口见原HANDOFF_8209_ALGORITHM_AND_WARMUP.md迁移补充。

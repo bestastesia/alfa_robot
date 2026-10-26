@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from v3_zero_model_candidate import OFFSETS_DEG,J2_LIMITS_DEG,JOINT_SIGNS
+from v3_zero_model_candidate import OFFSETS_DEG,J2_LIMITS_DEG,JOINT_SIGNS,TOOL_OFFSET_M
 
 
 class RezeroAnalytic:
@@ -29,9 +29,21 @@ class RezeroAnalytic:
     def swivel(self,side,angles):
         return self.library.v3_swivel(side,self.legacy(side,angles))
 
+    def solve_grid(self, side, matrices, swivels, seed):
+        values = np.zeros((len(matrices), len(swivels), 16, 7), dtype=np.float64)
+        counts = np.zeros((len(matrices), len(swivels)), dtype=np.int32)
+        for matrix_index, matrix in enumerate(matrices):
+            for swivel_index, swivel in enumerate(swivels):
+                solutions = self.solve(side, matrix, swivel, seed)
+                counts[matrix_index, swivel_index] = len(solutions)
+                values[matrix_index, swivel_index, :len(solutions)] = solutions
+        return values, counts
+
     def solve(self,side,target,swivel,seed):
         output=np.zeros((16,7),dtype=np.float64)
-        count=self.library.v3_solve(side,np.ascontiguousarray(target,dtype=np.float64),swivel,
+        legacy_target=np.asarray(target,dtype=np.float64).copy()
+        legacy_target[:3,3]+=legacy_target[:3,:3]@np.array([0.,0.,.151-TOOL_OFFSET_M])
+        count=self.library.v3_solve(side,np.ascontiguousarray(legacy_target,dtype=np.float64),swivel,
             self.legacy(side,seed),output,16)
         converted=(output[:count]-self.offsets[side])*self.signs
         converted=(converted+np.pi)%(2*np.pi)-np.pi

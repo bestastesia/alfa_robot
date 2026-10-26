@@ -10,6 +10,22 @@ from v3_tcp_scene_contract import GraspInput, reconstruct_scene, random_parking,
 
 
 class TcpSceneContractTest(unittest.TestCase):
+    def test_higher_target_does_not_cut_opening_under_it(self):
+        inputs=[]
+        for side,lateral,height in [('left',.82,1.841),('right',-.82,1.431)]:
+            box=np.eye(4)
+            box[:3,:3]=Rotation.from_euler('xyz',[1.2,.57,-4.49],degrees=True).as_matrix()
+            box[:3,3]=[1.55,lateral,height]
+            inputs.append(GraspInput(side,'side',box@np.linalg.inv(tool_to_box('side'))))
+        scene=reconstruct_scene(inputs,np.eye(4))
+        point=np.array([1.55,.82,1.40])
+        self.assertTrue(any(np.all(np.abs(point-fill['center'])<=np.asarray(fill['dimensions'])/2+1e-10) for fill in scene['fills']))
+        for fill in scene['fills']:
+            lower=np.asarray(fill['center'])-np.asarray(fill['dimensions'])/2
+            upper=np.asarray(fill['center'])+np.asarray(fill['dimensions'])/2
+            for bottom,top in scene['bounds'].values():
+                self.assertTrue(np.any(upper<=bottom+1e-10) or np.any(lower>=top-1e-10))
+
     def test_rotated_mixed_grasps_and_parking(self):
         rng=np.random.default_rng(18)
         for sample in range(500):

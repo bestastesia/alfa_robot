@@ -103,7 +103,7 @@ class GpuValidity:
         worst_up_z = torch.stack(up_z_values).min(dim=0).values
         return 1.0 - torch.clamp(worst_up_z, -1.0, 1.0)
 
-    def evaluate(self, values):
+    def evaluate(self, values, base_margin_m=0.0):
         valid_output = []
         stability_output = []
         for start in range(0, len(values), 4096):
@@ -125,7 +125,8 @@ class GpuValidity:
             ).reshape(-1)
             base_mesh=getattr(self.checker,'base_mesh_layer',None)
             if base_mesh is not None:
-                collision_cost=collision_cost+base_mesh.cost(state,hard=True).reshape(1,horizon,-1).sum(-1).reshape(-1)
+                base_cost=base_mesh.cost(state,hard=True,margin_m=base_margin_m) if base_margin_m else base_mesh.cost(state,hard=True)
+                collision_cost=collision_cost+base_cost.reshape(1,horizon,-1).sum(-1).reshape(-1)
             if self.check_ground:
                 ground_indices = [
                     index for index in range(spheres.shape[2])
@@ -172,7 +173,11 @@ class GpuValidity:
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
         points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
-        valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+        base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
+        if base_margin_m:
+            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]), base_margin_m=base_margin_m)
+        else:
+            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
         margin_m = getattr(self, 'search_scene_margin_m', 0.)
         if margin_m > 0:
             valid = valid & self.scene_margin_mask(points.reshape(-1, starts.shape[1]), margin_m)

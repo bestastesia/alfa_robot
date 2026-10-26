@@ -52,9 +52,11 @@ class AnalyticBridge:
 
 
 class FullCyclePlanner(CuroboBackend):
+    analytic_bridge_type = AnalyticBridge
+
     def __init__(self, args):
         super().__init__(args)
-        self.analytic = AnalyticBridge()
+        self.analytic = self.analytic_bridge_type()
         self.fk_robot = yourdfpy.URDF.load(args.urdf, load_meshes=False, build_scene_graph=True)
         self.last_partial = None
         self._planning_lock = threading.Lock()

@@ -12,8 +12,8 @@ class TargetContactValidity(GpuValidity):
         self.contact_spheres = contact_spheres
         self.allow_contact = allow_contact
 
-    def evaluate(self, values):
-        valid, stability = super().evaluate(values)
+    def evaluate(self, values, base_margin_m=0.0):
+        valid, stability = super().evaluate(values, base_margin_m=base_margin_m)
         for offset in range(0, len(values), 4096):
             chunk = values[offset:offset + 4096]
             fk = self.checker.kinematics.compute_kinematics(JointState.from_position(chunk.unsqueeze(0), joint_names=self.joint_names))

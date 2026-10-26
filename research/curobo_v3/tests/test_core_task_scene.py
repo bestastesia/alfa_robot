@@ -15,9 +15,11 @@ class TaskSceneTest(unittest.TestCase):
         original = tasks()
         bottom = tasks([1, 0])
         self.assertEqual(len(original), 60)
-        self.assertEqual(len(bottom), 34)
+        self.assertEqual(len(bottom), 32)
         identities = {tuple(sorted(pair.items())) for _, pair in original + bottom}
-        self.assertEqual(len(identities), 94)
+        self.assertEqual(len(identities), 92)
+        self.assertNotIn((('left', 7), ('right', 2)), identities)
+        self.assertNotIn((('left', 2), ('right', 7)), identities)
         for _, pair in original + bottom:
             self.assertNotEqual(pair['left'], pair['right'])
             self.assertLessEqual(abs(pair['left'] // 5 - pair['right'] // 5), 1)

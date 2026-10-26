@@ -1,0 +1,116 @@
+{
+  "coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
+  "tool_offset_m": 0.191,
+  "warmup": {
+    "complete": true,
+    "events": [
+      {
+        "point_count": 16,
+        "batch_points": 16,
+        "seeds_per_point": 16,
+        "returned_rows": 256,
+        "lm_ms": 1390.483581002627,
+        "soft_refine_ms": 485.75259399876813,
+        "solver_setup_ms": 416.45417700055987
+      },
+      {
+        "point_count": 128,
+        "batch_points": 64,
+        "seeds_per_point": 16,
+        "returned_rows": 2048,
+        "lm_ms": 1043.831245999172,
+        "soft_refine_ms": 285.74227199715097,
+        "solver_setup_ms": 361.42246300005354
+      }
+    ],
+    "coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
+    "wall_ms": 8114.051391999965,
+    "peak_gpu_allocated_mib": 1191.7119140625,
+    "caches_planning_results": false,
+    "shared_long_solver": true
+  },
+  "records": [
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "frames": 1304,
+      "wall_ms": 4807.323146000272,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 302,
+        "contact_approach": 12,
+        "extract": 96,
+        "transport": 342,
+        "conveyor_place": 183,
+        "return_home": 364
+      }
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "success": true,
+      "frames": 1590,
+      "wall_ms": 5317.7861780022795,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 444,
+        "contact_approach": 31,
+        "extract": 117,
+        "transport": 432,
+        "conveyor_place": 256,
+        "return_home": 303
+      }
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "success": true,
+      "frames": 1658,
+      "wall_ms": 5191.541080999741,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 479,
+        "contact_approach": 30,
+        "extract": 118,
+        "transport": 489,
+        "conveyor_place": 232,
+        "return_home": 303
+      }
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "frames": 1326,
+      "wall_ms": 4847.794192002766,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 302,
+        "contact_approach": 12,
+        "extract": 96,
+        "transport": 364,
+        "conveyor_place": 183,
+        "return_home": 364
+      }
+    }
+  ],
+  "distinct_tasks": 3,
+  "peak_gpu_allocated_mib": 1714.947265625,
+  "validation_scope": "representative tasks only, not all 117; no hardware commands"
+}

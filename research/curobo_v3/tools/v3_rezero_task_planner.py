@@ -1,11 +1,15 @@
 from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
+import json
 from unittest.mock import patch
 
 import numpy as np
 
 from curobo_core.contracts import PlannerAssets
+from curobo_core.adapter import matrix_pose
+from curobo_core.scene import AttachedObject
+from v3_contact_roll_policy import aligned_tool_pose,aligned_grasp_transform,aligned_atlas
 from v3_single_arm_planner import SingleArmPlanner
 from v3_fine_collision_retry import search_with_fine_retry
 from v3_prepare_rezero_profiles import convert_row
@@ -27,10 +31,14 @@ class RezeroTaskPlanner(SingleArmPlanner):
     conveyor_search_edge_resolution = .05
 
     def __init__(self,args=None):
+        manifest=json.loads((FOLDER/'manifest.json').read_text())
+        if manifest.get('planning_assets_validated') is False:
+            raise RuntimeError('双臂零位/J6/tool191模型已更新；旧抓放候选库和轨迹尚未按新TCP重建验收，禁止沿用旧缓存规划')
         super().__init__(args or migrated_assets())
         self.analytic=RezeroAnalytic()
         self.target_values=convert_row(['updown']+[f'{side}_joint{index}' for side in ('left','right') for index in range(1,8)],self.target_values)
         self.placement_atlas_override=FOLDER/'top_atlas.npz'
+        self.contact_roll_atlases={mode:aligned_atlas(FOLDER/(mode+'_atlas.npz'),FOLDER/(mode+'_contact_roll_atlas.npz')) for mode in ('side','top')}
         self._placement_search=False
 
     def configure_task(self,boxes):
@@ -38,7 +46,16 @@ class RezeroTaskPlanner(SingleArmPlanner):
         if self.top_grasp:
             for pose in self.target_poses.values():
                 pose['position'][2]=1.2
+        self.target_poses={frame:aligned_tool_pose(pose) for frame,pose in self.target_poses.items()}
         return result
+
+    def contact_poses_for_task(self,boxes):
+        return {frame:aligned_tool_pose(pose) for frame,pose in super().contact_poses_for_task(boxes).items()}
+
+    def task_attachments(self,boxes):
+        return tuple(AttachedObject(f'wall_box_{box_id:02d}',tuple(self.box_fit['dimensions_m']),
+            side+'_tool0',matrix_pose(aligned_grasp_transform(side,self.top_grasp)),
+            (side+'_link7',side+'_tool0')) for side,box_id in boxes.items())
 
     def plan_conveyor_target(self,*args,**kwargs):
         previous=self._placement_search
@@ -54,14 +71,17 @@ class RezeroTaskPlanner(SingleArmPlanner):
         return super().search_path(start,goals,lower,upper,validity,budget,seed)
 
     def _atlas(self,planner):
-        return FOLDER/('top_atlas.npz' if planner.top_grasp else 'side_atlas.npz')
+        return self.contact_roll_atlases['top' if planner.top_grasp else 'side']
 
     def full_cycle(self,boxes,progress=lambda message:None):
         self.configure_task(boxes)
         with ExitStack() as stack:
             for module in ('v3_research_assets','v3_all_extraction_roots_test','v3_side_upward_prepare','v3_lazy_extraction_planner','v3_single_arm_planner'):
                 stack.enter_context(patch(module+'.atlas_path',self._atlas))
+            for module in ('v3_task_cycle_planner','v3_conveyor_cycle_planner','v3_box_rotation_cost'):
+                stack.enter_context(patch(module+'.grasp_transform',aligned_grasp_transform))
             result=super().full_cycle(boxes,progress)
+        result['contact_roll_policy']='Face normal unchanged; reversed legacy in-plane roll with inverse attachment and consistent carry atlas'
         result['coordinate_model']='Rezero with legacy tool: left J2 [-90,120], right [-120,90]; both J6 axes reversed'
         return result
 

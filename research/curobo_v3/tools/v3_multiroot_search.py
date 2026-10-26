@@ -71,6 +71,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
 
             samples = informed_samples(roots[0], goals, weights, lower, upper, batch,
                                        best_connections[0]["cost"], generator)
+        post_sampling_transform = getattr(validity, 'post_sampling_transform', None)
+        if post_sampling_transform is not None:
+            samples = post_sampling_transform(samples, generator, lower, upper,
+                best_cost=best_connections[0]['cost'] if best_connections else None)
         expand_start = iterations % 2 == 0
         tree = start_tree if expand_start else goal_tree
         tree_parents = start_parents if expand_start else goal_parents

@@ -4,6 +4,7 @@ from pathlib import Path
 import threading
 import time
 import sys
+from dataclasses import asdict
 
 import numpy as np
 import trimesh
@@ -11,7 +12,7 @@ import viser
 from viser.extras import ViserUrdf
 import yourdfpy
 
-from v3_single_arm_planner import SingleArmPlanner as FullCyclePlanner
+from v3_adaptive_raised_cycle_planner import AdaptiveRaisedCyclePlanner as FullCyclePlanner
 from curobo_core.planner import CycleBlocked
 from v3_task_scene import row_obstacles, grasp_transform
 from v3_interactive_60_tasks import (
@@ -20,9 +21,11 @@ from v3_interactive_60_tasks import (
 )
 from v3_wall_ik_benchmark import canonical_side_tool_to_box, wall_center
 from v3_playback import playback_frame_interval
+from v3_stage_playback import PLAYBACK_SCOPES, StagePlayback, TcpTrajectoryPreview
 
 
 PHASE_NAMES = {
+    'extraction_teleport': '抽离瞬移35cm（未生成/未验收抽离轨迹）',
     'contact_approach': '最后3cm贴近（排除目标箱碰撞）',
     "base_advance": "底盘前进0.3m", "base_advance_diagnostic": "底盘前进失败诊断",
     "home": "第一初始姿态", "approach": "初始→吸附起点", "attach": "吸附箱体",
@@ -37,7 +40,7 @@ PHASE_NAMES = {
 }
 
 
-def main(default_port=8150, planner_class=SingleArmPlanner):
+def main(default_port=8150, planner_class=None, default_assets=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
     parser.add_argument("--mobile-robot-config", type=Path, default=DEFAULT_MOBILE_ROBOT_CONFIG)
@@ -51,6 +54,9 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
     parser.add_argument('--asset-root', type=Path)
     parser.add_argument('--floor-asset', type=Path)
     parser.add_argument('--marker-asset', type=Path)
+    if default_assets is not None:
+        parser.set_defaults(**{name: getattr(default_assets, name) for name in
+                              ('robot_config', 'mobile_robot_config', 'urdf', 'named_poses', 'box_fit')})
     args = parser.parse_args()
     if args.frontend_root:
         sys.path.insert(0, str(args.frontend_root))
@@ -61,9 +67,16 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
     for path in args.comparison_json or []:
         comparisons.update(json.loads(path.read_text()))
     planner_labels = {"多抽离根＋多目标Connect": "informed_connect"}
-    planner = planner_class(args)
+    planner = (planner_class or FullCyclePlanner)(args)
     planner.warmup_resources()
     server_policy = '预测64个抽离终点→距离/旋转排序→8个起分批完整抽离验收；失败扩批，运输搜索共享2s预算。每次点击重新生成候选，不复用规划结果。'
+    serial_policy=getattr(planner,'serial_endpoint_policy',False)
+    if serial_policy:
+        server_policy='前驱构型独立串行选型，先固定终点再连接；吸附只参考Home，运输只参考抽离终点，放箱只参考运输构型。不回溯，不用后续可行性反选。抽离只瞬移，非已验证动作。'
+    chained_policy=getattr(planner,'lm_chained_cycle_policy',False)
+    if chained_policy:
+        planner_labels={'六段LM先验＋Informed Connect':'informed_connect'}
+        server_policy='六段LM先验＋Informed Connect实际串联：新接近/抽离构型交给前后阶段重规划，接缝检查关节连续性。不回溯、不因偏线或沿途朝向变化拒绝。抽离有运动；仍沿用途中空载验碰、终点携箱验碰。'
     planner.selected_task={'left':22,'right':17}
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
     preload = saved_results[0] if saved_results else None
@@ -88,6 +101,12 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
     renderer = ReadOnlyScene(server, planner.args.urdf, assets)
     server.gui.add_markdown(f'前端冻结版本：{frontend_identity["commit"][:12]}；碰撞与轨迹由当前核心提供。')
     server.gui.add_markdown(server_policy)
+    if chained_policy:
+        server.gui.add_markdown('内部底盘粗搜索余量2mm，首条原模型细验合法路径即停，每段搜索上限2秒；不强制走满预算。顶吸收束TCP高1.2m，放箱箱心高1.082m。')
+    else:
+        server.gui.add_markdown('首轮粗验统一约2.86°；仅放箱候选细验碰撞后，按剩余2秒预算以约1.72°粗验重搜。保留3mm搜索余量与原模型0.5°最终细验。顶吸收束TCP高1.2m（提高20cm），放箱箱心高1.082m（降低10cm）。')
+    if getattr(planner, 'warmup_report', {}).get('complete'):
+        server.gui.add_markdown('当前确认零位与191mm TCP；16点／64点批量LM已完成真实预热。运输候选按新TCP重求、独立URDF FK复核，侧吸升降采样加密到5mm，未改目标和限位。仅本地算法规划与回放，不连接实机。')
     server.gui.add_markdown('任务列表新增25个“单臂”任务：第1/2列左手，第3/4/5列右手。单臂仍15轴联合规划；空闲臂用收拢偏离/累计运动软代价，允许随升降避碰。')
     references = renderer.reference_conveyors()
     references.visible = True
@@ -140,12 +159,14 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         initial_label = next(label for label, boxes in planner.task_options if boxes == planner.selected_task)
         task = server.gui.add_dropdown("组合任务", options=labels, initial_value=initial_label)
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
-                                                   initial_value="多抽离根＋多目标Connect")
+                                                   initial_value=next(iter(planner_labels)))
         run = server.gui.add_button("计算完整流程并播放")
+        scope = server.gui.add_dropdown('回放范围', options=list(PLAYBACK_SCOPES), initial_value='全流程')
+        replay = server.gui.add_button('从当前范围起点播放')
         play = server.gui.add_checkbox("播放", initial_value=False)
         playback_status = server.gui.add_markdown('播放速度：旋转关节最快约30°/s。')
         frame = server.gui.add_slider("轨迹帧", min=1, max=1, step=1, initial_value=1)
-        stage = server.gui.add_dropdown("查看阶段", options=[label for key, label in PHASE_NAMES.items() if key != 'conveyor_retreat'],
+        stage = server.gui.add_dropdown("范围内跳转阶段", options=[label for key, label in PHASE_NAMES.items() if key != 'conveyor_retreat'],
                                         initial_value=PHASE_NAMES["home"])
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
@@ -154,10 +175,22 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
         comparison_status = server.gui.add_markdown("")
+    with server.gui.add_folder('末端运动轨迹与朝向'):
+        trace_paths = server.gui.add_checkbox('保留左右TCP轨迹', initial_value=True)
+        trace_axes = server.gui.add_checkbox('显示沿途TCP朝向', initial_value=True)
+        trace_count = server.gui.add_slider('每臂朝向采样数', min=2, max=30, step=1, initial_value=10)
+        server.gui.add_markdown('左TCP蓝线、右TCP橙线；朝向坐标轴X红/Y绿/Z蓝。轨迹使用world坐标，导航瞬移处不连线。单段包含起始边界帧，播放到该段末尾停止。')
+        tcp_status = server.gui.add_markdown('选择任务并计算，或查看已载入的结果。')
+    playback = StagePlayback()
+    tcp_preview = TcpTrajectoryPreview(server, args.urdf, planner.home)
     current = {"result": None, "busy": False}
+    navigation_export = {'last_values': None, 'stamp': 0.}
+    navigation_export_enabled = getattr(planner, 'navigation_export_enabled', True)
+    if navigation_export_enabled:
+        server.gui.add_markdown('末端独立导航页：http://localhost:8180/ 。暂停本页后，在导航页读取当前场景与TCP。')
     collision_overlay = server.scene.add_frame('/collision_diagnostic', show_axes=False, visible=False)
     collision_nodes = []
-    server.gui.add_markdown('箱体旋转仅作软代价：累计额外旋转、回退和偏离弧继续影响连接代价，不再因超过90°/15°/45°直接拒绝。接触候选按8/16/32/64逐批完整抽离验收；碰撞、限位和末端Pose验收仍保留。')
+    server.gui.add_markdown(server_policy if chained_policy else '串行实验：终点只选一次，碰撞/限位/末端Pose验收仍保留；不批量验收抽离运动，抽离段是未验证瞬移。' if serial_policy else '箱体旋转仅作软代价：累计额外旋转、回退和偏离弧继续影响连接代价，不再因超过90°/15°/45°直接拒绝。接触候选按8/16/32/64逐批完整抽离验收；碰撞、限位和末端Pose验收仍保留。')
 
     def refresh_comparison():
         lines = ["已计算完整流程对比（计算结果回放）", "", "| 规划器 | 结果 | 总计算 |",
@@ -167,9 +200,11 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
             if result is None:
                 continue
             verdict = "完成全部阶段" if result["success"] else result.get("blocked_stage", "失败")
-            seconds = result.get("measured_wall_ms", result.get("total_ms", 0)) / 1000
+            seconds = result.get("measured_wall_ms", result.get("experiment_wall_ms", result.get("total_ms", 0))) / 1000
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
-        lines += ["", "94组双臂＋25组单臂可选。首次生成当前场景终点缓存，后续复用；每次重新计算接触候选和路径。含双龙头车长方体碰撞，无Shortcut/TrajOpt，释放后RRT回Home。"]
+        dual_count=sum(len(boxes)==2 for label,boxes in planner.task_options)
+        single_count=sum(len(boxes)==1 for label,boxes in planner.task_options)
+        lines += ["", f"{dual_count}组双臂＋{single_count}组单臂可选。首次生成当前场景终点缓存，后续复用；每次重新计算接触候选和路径。含双龙头车长方体碰撞，无Shortcut/TrajOpt，释放后RRT回Home。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
@@ -186,6 +221,41 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         def render_state(values=dict(values), phase=phase, has_payload=has_payload, top_grasp=planner.top_grasp, boxes=dict(planner.selected_task)):
             state = {**planner.home, **values}
             renderer.apply_state(state)
+            export_key = (tuple(sorted(boxes.items())), tuple(sorted(values.items())), phase)
+            now = time.monotonic()
+            if navigation_export_enabled and export_key != navigation_export['last_values']:
+                obstacles = []
+                for item in planner.snapshot.objects:
+                    data = asdict(item)
+                    position = list(data['pose']['position'])
+                    position[0] += planner.base_advance
+                    obstacles.append(dict(name=item.object_id, dimensions=list(item.dimensions_m), position=position, quaternion_wxyz=list(item.pose.quaternion_wxyz)))
+                obstacles.append(dict(name='navigation_ground', dimensions=[100.,100.,.1],position=[0.,0.,-.05],quaternion_wxyz=[1.,0.,0.,0.]))
+                targets = {}
+                for side in boxes:
+                    item = planner.snapshot.object(f'wall_box_{boxes[side]:02d}')
+                    box = np.eye(4)
+                    from scipy.spatial.transform import Rotation
+                    box[:3, :3] = Rotation.from_quat(np.roll(item.pose.quaternion_wxyz,-1)).as_matrix()
+                    box[:3, 3] = item.pose.position
+                    box[0, 3] += planner.base_advance
+                    targets[side] = (box @ np.linalg.inv(grasp_transform(side, top_grasp))).tolist()
+                export = dict(task=boxes,phase=phase,frame_index=index+1,tcp_world={side:matrix.tolist() for side,matrix in renderer.tool_poses.items()},targets=targets,objects=obstacles,stamp_ns=time.time_ns(),source='8151 current displayed frame',payload=bool(has_payload),busy=bool(current['busy']))
+                destination = Path('/tmp/alfa_curobo_8151_navigation_state.json')
+                temporary = destination.with_suffix('.tmp')
+                temporary.write_text(json.dumps(export,ensure_ascii=False))
+                temporary.replace(destination)
+                navigation_export.update(last_values=export_key,stamp=now)
+            tcp_preview.update(result, trace_paths.value, trace_axes.value, int(trace_count.value))
+            lines = ['当前TCP位姿（world，四元数wxyz）：']
+            for side, matrix in renderer.tool_poses.items():
+                position = ', '.join(f'{value:.4f}' for value in matrix[:3, 3])
+                orientation = ', '.join(f'{value:.4f}' for value in quaternion(matrix))
+                lines.append(f"\n\n**{'左' if side == 'left' else '右'}臂**：XYZ=({position})m；q=({orientation})")
+                metric = tcp_preview.metrics.get(side)
+                if metric:
+                    lines.append(f"；当前范围路径长{metric['length_m']:.3f}m，累计转角{metric['rotation_deg']:.1f}°")
+            tcp_status.content = ''.join(lines)
             for side, node in attached.items():
                 matrix = renderer.tool_poses[side] @ grasp_transform(side, top_grasp)
                 node.position = matrix[:3, 3]
@@ -215,15 +285,24 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
                             dimensions=obstacle['dimensions'], position=obstacle['position'], wxyz=obstacle['quaternion_wxyz'],
                             color=(255, 30, 30), opacity=.18))
         renderer.submit(render_state)
-        if result:
+        if result and result.get('frames'):
+            source_index = result['_source_indices'][index]
+            location = f"；全流程帧{source_index + 1}/{len(current['result']['frames'])}" if source_index is not None else '；诊断帧'
             status.content = (
-                f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
-                f"帧：**{index+1}/{len(result['frames'])}**  \n"
+                f"**{('六段连接完成（原抽离验碰口径）' if result.get('lm_chained_cycle') else '实验阶段通过（抽离瞬移未验）' if result.get('extraction_policy',{}).get('mode')=='teleport_only' else '完整流程成功') if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
+                f"{scope.value} · 帧：**{index+1}/{len(result['frames'])}**{location}  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
-                f"{'诊断搜索' if result.get('rotation_diagnostic') else '全部规划'}：**{result.get('total_ms', 0)/1000:.3f}s**  \n"
+                f"{'诊断搜索' if result.get('rotation_diagnostic') else '全部规划'}：**{(result.get('measured_wall_ms',result.get('experiment_wall_ms',result.get('total_ms',0))) if result.get('lm_chained_cycle') else result.get('total_ms',0))/1000:.3f}s**  \n"
                 f"最终Home误差：**{format(result['final_home_error'], '.8f') if 'final_home_error' in result else '尚未回Home'}**"
             )
             lazy = result.get('lazy_extraction')
+            if result.get('guided_search_events'):
+                from v3_guided_cycle_planner import guidance_summary
+                status.content += '\n\n'+guidance_summary(result['guided_search_events'])
+            if result.get('forward_precontact_policy'):
+                status.content += f"\n\n**直接预接触IK：{result.get('precontact_ik_count',0)}个，{result.get('timing_ms',{}).get('precontact_ik_ms',0):.1f}ms。** 仅参考初始构型；实际到位后才求吸附IK并前向接近，没有反推3cm运动。"
+            if result.get('extraction_policy',{}).get('mode')=='teleport_only':
+                status.content+='\n\n**实验包含抽离瞬移：接触→后撤35cm终点之间未生成运动、未验碰撞，不能称为可执行完整抓取。其他RRT段按原完整模型验收。**'
             if lazy:
                 costs = lazy['timings_ms']
                 status.content += (
@@ -237,12 +316,24 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
                 status.content += '\n\n**旋转拒绝候选回放：仅显示搬运段，未通过执行验收。**'
             if result.get('rotation_quality_hard_gate') is False:
                 status.content += '\n\n**旋转采用软代价，不设硬拒绝门槛；下方指标仅供观察。**'
+            margin = result.get('conveyor_search_margin')
+            if margin:
+                status.content += f"\n\n放箱搜索余量：{margin['margin_m']*1000:.1f}mm；验边间隔：{np.rad2deg(margin.get('edge_resolution',.05)):.2f}°（加权关节单位）。"
+            policy = result.get('adaptive_raised_policy')
+            if policy:
+                retry = policy.get('fine_collision_retry')
+                if retry:
+                    status.content += f"\n\n细验碰撞后加密：{'已触发' if retry['triggered'] else '未触发，保持原粗验'}；放箱搜索合计{retry['total_ms']:.1f}ms。"
+                status.content += '\n\n当前高度：顶吸收束TCP z=1.2m，龙头车释放箱心z=1.082m。'
             if result.get('single_arm'):
                 side_label = '左' if result['active_side'] == 'left' else '右'
                 status.content += f'\n\n**单臂任务：{side_label}手工作；15轴联合规划，空闲臂可避让。**'
                 idle_motion = result.get('idle_arm_motion')
                 if idle_motion:
                     status.content += f"\n\n空闲臂最大偏离Home：{idle_motion['max_home_deviation_deg']:.2f}°；7关节累计运动：{idle_motion['cumulative_joint_motion_deg']:.1f}°。"
+                idle_solver = result.get('single_contact_enumeration', {})
+                if 'stages' in idle_solver:
+                    status.content += f"\n\n空闲臂候选：GPU共筛{idle_solver['checked_candidates']}个组合，返回{idle_solver['accepted_candidates']}个；{idle_solver['total_ms']:.1f}ms，优化兜底{idle_solver['optimization_iterations']}轮。"
                 envelope = result.get('transport_endpoint_envelope')
                 if envelope:
                     status.content += f"\n\n运输终点整机包络（含空闲臂＋携箱）：**{envelope['radius_m']:.4f}m / {envelope['limit_m']:.3f}m**；{'通过' if envelope['passed'] else '未通过'}。"
@@ -303,6 +394,37 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
             play.value = False
             frame.value = phases.index(selected)+1
 
+    def refresh_playback():
+        result = displayed_result()
+        frame.label = '全流程轨迹帧' if scope.value == '全流程' else '当前RRT段轨迹帧'
+        frame.max = max(1, len(result.get('frames', []))) if result else 1
+        frame.value = 1
+        show_frame(0)
+        if result and not result.get('frames'):
+            status.content = f'当前结果没有“{scope.value}”的轨迹，该阶段可能尚未规划完成。'
+
+    @scope.on_update
+    def on_scope(_event):
+        play.value = False
+        diagnostic.value = False
+        collision_edge.value = False
+        refresh_playback()
+
+    @replay.on_click
+    def on_replay(_event):
+        if current['busy']:
+            return
+        play.value = False
+        refresh_playback()
+        result = displayed_result()
+        play.value = bool(result and result.get('frames'))
+
+    @trace_paths.on_update
+    @trace_axes.on_update
+    @trace_count.on_update
+    def on_trace_options(_event):
+        show_frame(int(frame.value) - 1)
+
     @spheres.on_update
     def on_spheres(_event):
         for side in ("left", "right"):
@@ -311,10 +433,12 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
 
     def displayed_result():
         result = current['result']
+        mode = None
         if collision_edge.value and result and result.get('conveyor_edge_diagnostic'):
-            edge = result['conveyor_edge_diagnostic']
-            return dict(result, frames=edge['frames'], phases=['conveyor_place'] * len(edge['frames']), payload=[True] * len(edge['frames']))
-        return dict(result, **result['extraction_diagnostic']) if diagnostic.value and result and result.get('extraction_diagnostic') else result
+            mode = 'collision'
+        elif diagnostic.value and result and result.get('extraction_diagnostic'):
+            mode = 'extraction'
+        return playback.select(result, PLAYBACK_SCOPES[scope.value], mode)
 
     @collision_edge.on_update
     def collision_edge_changed(_event):
@@ -353,9 +477,7 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         planner.comparison_contact = None
         refresh_comparison()
         current['result'] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
-        frame.max = max(1,len(current['result']['frames'])) if current['result'] else 1
-        frame.value = 1
-        show_frame(0)
+        refresh_playback()
 
     def refresh_task_geometry():
         centers, obstacles = planner.configure_task(planner.selected_task)
@@ -371,7 +493,7 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
                 server.scene.add_mesh_simple(f'/attached/{side}/spheres/{sphere_index}',
                     vertices=sphere_mesh.vertices*radius, faces=sphere_mesh.faces, position=center,
                     color=(61,170,210), opacity=0.5)
-        status.content = ('顶吸：搬运目标TCP朝下z=1m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.182)m，含龙头车长方体碰撞。'
+        status.content = ('顶吸：搬运目标TCP朝下z=1.2m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + ('六段LM先验＋Informed Connect串联；新接近/抽离构型传给后续阶段。抽离有运动，仍按原途中空载/终点携箱验碰；导航到位瞬移，放箱后回Home。' if chained_policy else '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.082)m，含龙头车长方体碰撞。')
 
     @planner_selector.on_update
     def on_planner(_event):
@@ -381,9 +503,7 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         planner.planner_kind = planner_labels[planner_selector.value]
         result = comparisons.get(planner.planner_kind)
         current["result"] = result
-        frame.max = max(1, len(result["frames"])) if result else 1
-        frame.value = 1
-        show_frame(0)
+        refresh_playback()
         if result:
             play.value = result["success"]
 
@@ -395,6 +515,7 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         run.disabled = True
         task.disabled = True
         planner_selector.disabled = True
+        scope.disabled = True
         play.value = False
         collision_edge.value = False
         diagnostic.value = False
@@ -417,7 +538,8 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
             result.setdefault('phases', [])
             result.setdefault('payload', [])
             result.setdefault('joint_names', joint_names)
-            path = Path(__file__).resolve().parents[1] / 'generated/priority_visualized_task_live/latest.json'
+            result_directory = getattr(planner, 'result_directory', Path(__file__).resolve().parents[1] / 'generated/priority_visualized_task_live')
+            path = result_directory / 'latest.json'
             path.parent.mkdir(parents=True,exist_ok=True)
             archive=path.parent/'runs'
             archive.mkdir(exist_ok=True)
@@ -427,16 +549,15 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
             comparisons[planner.planner_kind] = result
             refresh_comparison()
             if result["frames"]:
-                frame.max = len(displayed_result()['frames'])
-                frame.value = 1
-                show_frame(0)
-                play.value = result["success"]
+                refresh_playback()
+                play.value = result["success"] and bool(displayed_result()['frames'])
             else:
                 status.content = f"**已停止** {result.get('blocked_stage')}: {result.get('blocked_details')}"
             current['busy'] = False
             run.disabled = False
             task.disabled = False
             planner_selector.disabled = False
+            scope.disabled = False
         threading.Thread(target=worker, daemon=True).start()
 
     @server.on_client_connect
@@ -473,6 +594,9 @@ def main(default_port=8150, planner_class=SingleArmPlanner):
         renderer.drain()
         if play.value and current["result"]:
             result = displayed_result()
+            if not result.get('frames'):
+                play.value = False
+                continue
             if timed_frames is not result['frames']:
                 timed_frames = result['frames']
                 times = np.asarray(result.get('time_from_start_s', ()), dtype=float)

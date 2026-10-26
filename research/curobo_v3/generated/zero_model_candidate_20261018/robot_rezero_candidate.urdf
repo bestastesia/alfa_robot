@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<robot name="alfa_robot_v3">
+<robot name="alfa_robot_v3" alfa_coordinate_revision="dual-zero-discrete-only-tool191-20261024">
   <link name="base_footprint" />
   <joint name="base_footprint_to_base_link" type="fixed">
     <origin xyz="0 0 0.335" rpy="0 0 0" />
@@ -780,7 +780,7 @@
     <origin xyz="0 -0.090499999 0.233" rpy="1.5707963000000003 -0 0" />
     <parent link="left_link5" />
     <child link="left_link6" />
-    <axis xyz="-0 -0 -1" />
+    <axis xyz="0 0 1" />
     <limit lower="-1.91986218" upper="1.91986218" effort="107" velocity="3.142" />
   </joint>
   <joint name="left_joint7" type="revolute">
@@ -829,7 +829,7 @@
     <origin xyz="0 0.090499999 0.233" rpy="-1.5707963000000003 0 0" />
     <parent link="right_link5" />
     <child link="right_link6" />
-    <axis xyz="-0 -0 -1" />
+    <axis xyz="0 0 1" />
     <limit lower="-1.91986218" upper="1.91986218" effort="107" velocity="3.142" />
   </joint>
   <joint name="right_joint7" type="revolute">
@@ -843,12 +843,12 @@
   <joint name="left_tool0_fixed" type="fixed">
     <parent link="left_link7" />
     <child link="left_tool0" />
-    <origin xyz="0 0 0.151" rpy="0 0 0" />
+    <origin xyz="0 0 0.191" rpy="0 0 0" />
   </joint>
   <link name="right_tool0" />
   <joint name="right_tool0_fixed" type="fixed">
     <parent link="right_link7" />
     <child link="right_tool0" />
-    <origin xyz="0 0 0.151" rpy="0 0 0" />
+    <origin xyz="0 0 0.191" rpy="0 0 0" />
   </joint>
 </robot>

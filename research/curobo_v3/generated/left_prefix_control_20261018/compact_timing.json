@@ -1,0 +1,47 @@
+{
+  "speed_limit_deg_s": 15,
+  "max_duration_s": 60,
+  "max_points": 200,
+  "geometry_tolerance_rad": 2e-07,
+  "quintic_peak_velocity_factor": 1.875,
+  "quintic_peak_acceleration_factor": 5.773503,
+  "quintic_peak_jerk_factor": 60,
+  "runs": [
+    {
+      "task": "L18_R22",
+      "source_points": 300,
+      "sent_points": 10,
+      "duration_s": 16.392499100240954
+    },
+    {
+      "task": "L4_R2",
+      "source_points": 464,
+      "sent_points": 17,
+      "duration_s": 25.473029756838386
+    },
+    {
+      "task": "L4_R5",
+      "source_points": 497,
+      "sent_points": 17,
+      "duration_s": 31.616198997593955
+    },
+    {
+      "task": "L7_R5",
+      "source_points": 601,
+      "sent_points": 20,
+      "duration_s": 38.726914637119634
+    },
+    {
+      "task": "L8_R7",
+      "source_points": 597,
+      "sent_points": 21,
+      "duration_s": 38.17812328003982
+    },
+    {
+      "task": "L9_R1",
+      "source_points": 406,
+      "sent_points": 17,
+      "duration_s": 27.05098997136642
+    }
+  ]
+}

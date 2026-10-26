@@ -14,6 +14,12 @@ CUBOID_PATH = ROOT / 'generated/endpoint_optimizer_compare/base_cuboids_20261009
 
 
 def atlas_path(planner):
+    overrides = getattr(planner, 'transport_atlas_paths', None)
+    if overrides is not None:
+        return Path(overrides['top' if planner.top_grasp else 'side'])
+    override = getattr(planner, 'placement_atlas_override', None)
+    if planner.top_grasp and override is not None:
+        return Path(override)
     policy = json.loads((ROOT / 'config/placement_task_policy.json').read_text())
     mode = 'top' if planner.top_grasp else 'side'
     return ROOT / policy[mode].get('atlas_path', 'generated/placement_analytic_atlas/top.npz')
