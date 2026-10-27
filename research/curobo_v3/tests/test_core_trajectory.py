@@ -5,7 +5,8 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from curobo_core.trajectory import (assemble_timed_cycle, deduplicate_timed_trajectory, expand_timed_trajectory,
+from curobo_core.trajectory import (assemble_timed_cycle, controller_segments,
+                                    deduplicate_timed_trajectory, expand_timed_trajectory,
                                     joint_state_trajectory, resample_path, time_parameterize_path,
                                     time_parameterize_polyline, time_parameterize_stops,
                                     trajectory_fallback_path,
@@ -178,6 +179,29 @@ class TrajectoryHelpersTest(unittest.TestCase):
         self.assertEqual(result["time_from_start_s"], [0., .025])
         self.assertEqual(result["positions"], [[0.], [1.]])
         self.assertEqual(result["velocities"], [[0.], [.5]])
+
+    def test_controller_export_excludes_events_and_requires_strict_time(self):
+        segment = {"name": "transport", "frame_start": 1, "frame_end": 2,
+                   "joint_names": ["base_x", "base_y", "base_yaw", "joint"],
+                   "time_from_start_s": [0., .1],
+                   "positions": [[0., 0., 0., 1.], [0., 0., 0., 2.]],
+                   "velocities": [[0., 0., 0., 0.], [0., 0., 0., 0.]],
+                   "accelerations": [[0., 0., 0., 0.], [0., 0., 0., 0.]],
+                   "jerks": [[0., 0., 0., 1.], [0., 0., 0., 1.]],
+                   "torque_joint_names": ["joint"], "torques_nm": [[3.], [4.]],
+                   "gravity_torques_nm": [[2.], [2.]], "parameterizer": "test"}
+        result = {"rounds": [{"result": {"task": {"left": 1},
+                  "joint_names": segment["joint_names"],
+                  "frames": [[0., 0., 0., 1.], [0., 0., 0., 1.], [0., 0., 0., 2.]],
+                  "payload": [False, True, True], "timed_segments": [segment]}}]}
+        exported = controller_segments(result, ["joint"])
+        self.assertTrue(exported["controller_ready"])
+        self.assertEqual(len(exported["segments"]), 1)
+        self.assertEqual(exported["segments"][0]["positions"], [[1.], [2.]])
+        self.assertEqual(exported["segments"][0]["rnea_required_torque_nm"], [[3.], [4.]])
+        segment["time_from_start_s"] = [0., 0.]
+        with self.assertRaises(ValueError):
+            controller_segments(result, ["joint"])
 
     def test_joint_state_serialization_reorders_all_derivatives(self):
         class State:

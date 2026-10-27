@@ -3,11 +3,13 @@
 import argparse
 import json
 from pathlib import Path
+import tempfile
 import time
 
 import numpy as np
 
 from curobo_core.contracts import PlannerAssets
+from curobo_core.torque import TorqueModel, write_dynamics_robot_config
 from v3_timed_single_arm_planner import TimedSingleArmPlanner
 
 
@@ -24,16 +26,46 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--trajopt-interpolation-dt", type=float, default=.025)
+    parser.add_argument("--disable-trajopt", action="store_true",
+                        help="keep the shortcut/custom timing baseline without cuRobo TrajectoryOptimizer")
+    parser.add_argument("--payload-mass-kg", type=float,
+                        help="enable RNEA torque constraints with this per-box mass")
+    parser.add_argument("--payload-dimensions-m", type=float, nargs=3, default=(.3, .4, .4))
+    parser.add_argument("--torque-limit-scale", type=float, default=.9)
+    dynamics_root = Path(__file__).resolve().parents[1] / "generated/v3_dynamics_20261019"
+    parser.add_argument("--dynamics-urdf", type=Path, default=(
+        dynamics_root / "robot_dynamics_overlay.urdf"))
+    parser.add_argument("--joint-torque-profile", type=Path, default=(
+        dynamics_root / "erob_joint_profiles.json"))
     args = parser.parse_args()
     args.output_dir.mkdir(parents=True, exist_ok=True)
     assets = PlannerAssets()
-    planner = TimedSingleArmPlanner(assets, args.trajopt_interpolation_dt)
+    torque_model = None
+    if args.payload_mass_kg is not None:
+        with tempfile.TemporaryDirectory() as directory:
+            dynamics_config = Path(directory) / "robot.yml"
+            write_dynamics_robot_config(
+                assets.robot_config, args.dynamics_urdf, assets.urdf.parent, dynamics_config)
+            torque_model = TorqueModel(
+                dynamics_config, args.payload_mass_kg, args.payload_dimensions_m,
+                args.torque_limit_scale, args.joint_torque_profile)
+    planner = TimedSingleArmPlanner(
+        assets, args.trajopt_interpolation_dt, torque_model,
+        use_trajopt=not args.disable_trajopt)
     planner.warmup_resources()
     report = {"success": False, "sequence": True, "rounds": [], "frames": [],
               "phases": [], "payload": [], "frame_rounds": [],
               "joint_names": list(planner.mobile_robot["kinematics"]["cspace"]["joint_names"]),
               "time_from_start_s": [], "velocities": [], "accelerations": [], "jerks": [],
-              "completed_box_ids": []}
+              "completed_box_ids": [],
+              "trajectory_optimizer_enabled": not args.disable_trajopt,
+              "dynamics_enabled": torque_model is not None,
+              "torque_constraints_enabled": torque_model is not None,
+              "payload_mass_kg": args.payload_mass_kg,
+              "payload_dimensions_m": list(args.payload_dimensions_m),
+              "torque_limit_scale": args.torque_limit_scale if torque_model else None,
+              "dynamics_urdf": str(args.dynamics_urdf) if torque_model else None,
+              "joint_torque_profile": str(args.joint_torque_profile) if torque_model else None}
     began = time.perf_counter()
     for number, boxes in enumerate(WALL_SEQUENCE):
         print(f"整墙第{number+1}/15轮 {boxes}", flush=True)

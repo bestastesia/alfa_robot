@@ -28,7 +28,7 @@ PHASE_NAMES = {
     "turn_loaded": "携箱转身180°", "base_reposition": "导航到放置位",
     "conveyor_place": "固定底盘放箱", "release": "放置释放，箱体消失",
     "turn_empty": "空载转身回来", "return_home": "双臂回到原第一初始姿态",
-    "base_return": "导航返回抓取位",
+    "base_return": "导航返回抓取位", "base_pick_reposition": "导航到下一轮抓取位",
     "transport_diagnostic": "失败轨迹诊断",
 }
 
@@ -43,7 +43,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     parser.add_argument("--port", type=int, default=default_port)
     parser.add_argument("--comparison-json", type=Path, nargs="+")
     parser.add_argument('--result', type=Path, nargs='+')
-    parser.add_argument('--sequence-json', type=Path)
+    parser.add_argument('--sequence-json', type=Path, nargs='+')
     args = parser.parse_args()
     comparisons = {}
     for path in args.comparison_json or []:
@@ -51,7 +51,14 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     planner_labels = {"Connect + Informed": "informed_connect"}
     planner = planner_class(args)
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
-    sequence_result = json.loads(args.sequence_json.read_text()) if args.sequence_json else None
+    sequence_results = {}
+    for path in args.sequence_json or []:
+        document = json.loads(path.read_text())
+        label = document.get("comparison_label") or path.parent.name or path.stem
+        if label in sequence_results:
+            label += " · " + path.stem
+        sequence_results[label] = document
+    sequence_result = next(iter(sequence_results.values()), None)
     preload = saved_results[0] if saved_results else None
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
@@ -65,6 +72,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     config = planner.mobile_robot["kinematics"]
     joint_names = config["cspace"]["joint_names"]
     urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=True, build_scene_graph=True)
+    trace_urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=False, build_scene_graph=True)
     server = viser.ViserServer(host="127.0.0.1", port=args.port,
                                label="V3初版94组任务 · 抓取抽离放置回Home")
     server.scene.set_up_direction("+z")
@@ -115,9 +123,15 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     with server.gui.add_folder("完整25箱序列回放" if round_mode else "完整任务实时规划"):
         initial_label = next(label for label, boxes in planner.task_options if boxes == planner.selected_task)
         task = server.gui.add_dropdown("查看轮次" if round_mode else "组合任务", options=labels, initial_value=initial_label)
+        version_selector = server.gui.add_dropdown(
+            "回放版本", options=tuple(sequence_results) or ("当前结果",),
+            initial_value=next(iter(sequence_results), "当前结果"))
+        version_selector.disabled = len(sequence_results) < 2
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value="Connect + Informed")
-        run = server.gui.add_button("计算完整流程并播放")
+        run = server.gui.add_button(
+            "已加载对比结果，无需重新计算" if round_mode and sequence_results else "计算完整流程并播放")
+        run.disabled = bool(round_mode and sequence_results)
         whole_sequence = server.gui.add_checkbox(
             "连续播放完整25箱", initial_value=bool(round_mode and sequence_result))
         play = server.gui.add_checkbox("播放", initial_value=False)
@@ -127,6 +141,13 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         stage = server.gui.add_dropdown("查看阶段", options=list(PHASE_NAMES.values()),
                                         initial_value=PHASE_NAMES["home"])
         spheres = server.gui.add_checkbox("显示附着箱40球", initial_value=False)
+        with server.gui.add_folder("末端轨迹连线", expand_by_default=True):
+            show_tcp_trace = server.gui.add_checkbox("显示所选轮次末端轨迹", initial_value=True)
+            overlay_tcp_versions = server.gui.add_checkbox("叠加显示基线与新链路", initial_value=True)
+            show_left_trace = server.gui.add_checkbox("左手 Tool0", initial_value=True)
+            show_right_trace = server.gui.add_checkbox("右手 Tool0", initial_value=True)
+            show_stop_markers = server.gui.add_checkbox("标记阶段内部停车点", initial_value=True)
+            tcp_trace_status = server.gui.add_markdown("等待载入轨迹。")
         diagnostic = server.gui.add_checkbox('显示接近/抽离失败候选（仅诊断）', initial_value=False)
         status = server.gui.add_markdown("从第一初始姿态开始，一次计算完整流程。")
         timed_status = server.gui.add_markdown("当前结果没有时间化轨迹。")
@@ -146,7 +167,11 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 mode=1, scales={"x": {"time": False}}, title="所选阶段 q / qdot", height=300,
                 visible=False)
         comparison_status = server.gui.add_markdown("")
-    current = {"result": None, "busy": False, "curve_binding": None, "render_round": None}
+    current = {"result": None, "busy": False, "curve_binding": None, "render_round": None,
+               "tcp_trace_binding": None, "tcp_trace_handles": []}
+
+    def active_sequence():
+        return sequence_results.get(version_selector.value, sequence_result)
 
     def selected_cycle_result():
         result = current.get("result")
@@ -155,6 +180,119 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
             record = next((item for item in result["rounds"] if item["task"] == task_value), None)
             return record.get("result") if record else None
         return result
+
+    def clear_tcp_traces():
+        for handle in current["tcp_trace_handles"]:
+            handle.remove()
+        current["tcp_trace_handles"] = []
+        current["tcp_trace_binding"] = None
+
+    def refresh_tcp_traces():
+        selected = selected_cycle_result()
+        sides = tuple(side for side, visible in (("left", show_left_trace.value),
+                                                  ("right", show_right_trace.value)) if visible)
+        if overlay_tcp_versions.value and len(sequence_results) > 1:
+            sources = []
+            for label, sequence in sequence_results.items():
+                task_value = planner.task_map[task.value]
+                record = next((item for item in sequence["rounds"]
+                               if item["task"] == task_value), None)
+                if record:
+                    sources.append((label, record["result"]))
+        else:
+            sources = [(version_selector.value, selected)] if selected else []
+        binding = (tuple((label, id(result)) for label, result in sources),
+                   sides, show_tcp_trace.value, overlay_tcp_versions.value, show_stop_markers.value)
+        if binding == current["tcp_trace_binding"]:
+            return
+        clear_tcp_traces()
+        if not show_tcp_trace.value or not sources or not sides:
+            tcp_trace_status.content = "末端轨迹已隐藏或当前轮次没有时间化轨迹。"
+            current["tcp_trace_binding"] = binding
+            return
+        sampled = {}
+        total_points = 0
+        for source_number, (label, result) in enumerate(sources):
+            is_new = bool(result.get("dynamics_enabled") or result.get("trajectory_optimizer_enabled"))
+            colors = ({"left": (235, 55, 55), "right": (35, 105, 225)} if is_new else
+                      {"left": (255, 170, 160), "right": (145, 195, 245)})
+            thickness = .009 if is_new else .004
+            for segment_number, segment in enumerate(result["timed_segments"]):
+                start, end = segment["frame_start"], segment["frame_end"]
+                count = min(300, end - start + 1)
+                indices = np.unique(np.linspace(start, end, count).astype(int))
+                traces = {side: [] for side in sides}
+                for index in indices:
+                    values = dict(zip(result["joint_names"], result["frames"][int(index)]))
+                    cfg = np.array([values.get(name, 0.0) for name in trace_urdf.actuated_joint_names])
+                    trace_urdf.update_cfg(cfg)
+                    for side in sides:
+                        traces[side].append(trace_urdf.get_transform(
+                            f"{side}_tool0", trace_urdf.base_link)[:3, 3])
+                for side, points in traces.items():
+                    points = np.asarray(points, dtype=np.float32)
+                    sampled[(label, segment["name"], side)] = points
+                    if len(points) < 2:
+                        continue
+                    current["tcp_trace_handles"].append(server.scene.add_line_segments(
+                        f"/tcp_trace/{source_number}_{side}/{segment_number:02d}_{segment['name']}",
+                        points=np.stack((points[:-1], points[1:]), axis=1),
+                        colors=colors[side], thickness=thickness, thickness_units="world"))
+                    total_points += len(points)
+        stop_count = 0
+        if show_stop_markers.value:
+            marker_result = sources[-1][1]
+            for segment_number, segment in enumerate(marker_result["timed_segments"]):
+                velocity = np.linalg.norm(np.asarray(segment["velocities"]), axis=1)
+                stops = np.flatnonzero(velocity < 1e-8)
+                stops = stops[(stops > 0) & (stops < len(velocity) - 1)]
+                for stop_number, local in enumerate(stops):
+                    frame_index = segment["frame_start"] + int(local)
+                    values = dict(zip(marker_result["joint_names"],
+                                      marker_result["frames"][frame_index]))
+                    cfg = np.array([values.get(name, 0.0) for name in trace_urdf.actuated_joint_names])
+                    trace_urdf.update_cfg(cfg)
+                    for side in sides:
+                        position = trace_urdf.get_transform(
+                            f"{side}_tool0", trace_urdf.base_link)[:3, 3]
+                        current["tcp_trace_handles"].append(server.scene.add_icosphere(
+                            f"/tcp_trace/stops/{side}/{segment_number:02d}_{stop_number:02d}",
+                            radius=.018, color=(255, 190, 35), position=position))
+                        stop_count += 1
+        rows = []
+        if len(sources) >= 2:
+            baseline_label, baseline = sources[0]
+            new_label, optimized = sources[-1]
+            base_segments = {item["name"]: item for item in baseline["timed_segments"]}
+            new_segments = {item["name"]: item for item in optimized["timed_segments"]}
+            for phase in (name for name in base_segments if name in new_segments):
+                bq, nq = (np.asarray(base_segments[phase]["positions"]),
+                          np.asarray(new_segments[phase]["positions"]))
+                u = np.linspace(0.0, 1.0, 160)
+                def resample(values):
+                    source = np.linspace(0.0, 1.0, len(values))
+                    return np.column_stack([np.interp(u, source, values[:, joint])
+                                            for joint in range(values.shape[1])])
+                joint_delta = float(np.max(np.abs(resample(bq) - resample(nq))))
+                tcp_delta = 0.0
+                for side in sides:
+                    a = sampled[(baseline_label, phase, side)]
+                    b = sampled[(new_label, phase, side)]
+                    distances = np.linalg.norm(a[:, None, :] - b[None, :, :], axis=2)
+                    tcp_delta = max(tcp_delta, float(max(distances.min(axis=0).max(),
+                                                         distances.min(axis=1).max())))
+                method = new_segments[phase].get("parameterizer", "recorded")
+                changed = "相同" if joint_delta < 1e-7 else "已改变"
+                rows.append(f"| {PHASE_NAMES.get(phase, phase)} | `{method}` | {changed} | "
+                            f"{joint_delta:.4f} rad | {tcp_delta*1000:.1f} mm |")
+        current["tcp_trace_binding"] = binding
+        legend = ("细浅色：基线；粗深色：新链路。" if len(sources) >= 2 else
+                  "红色：左 Tool0；蓝色：右 Tool0。")
+        table = ("  \n\n| 阶段 | 新链路方法 | 关节路径 | 最大关节差 | TCP形状差 |\n"
+                 "|---|---|---|---:|---:|\n" + "\n".join(rows)) if rows else ""
+        tcp_trace_status.content = (
+            f"已显示 **{len(current['tcp_trace_handles'])}** 条阶段折线 / **{total_points}** 个采样点。  \n"
+            + legend + f"黄色球：内部停车点（{stop_count}个）。各阶段独立连线，不跨越导航瞬移。" + table)
 
     def refresh_stage_timing():
         result = selected_cycle_result()
@@ -248,7 +386,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
             box.visible = box_id in active_task.values() and phase in ("home", "approach", 'contact_approach', "base_advance", "base_advance_diagnostic")
         if result:
             status.content = (
-                f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES[phase]}**  \n"
+                f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES.get(phase, phase)}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
                 f"全部规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s**  \n"
@@ -262,10 +400,19 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 local = cycle_index - segment["frame_start"]
                 related = phase_planning_detail(cycle_result, segment["name"])["additive"]
                 detail = "".join(f"  \n- {name}：{value:.2f}ms" for name, value in related)
+                torque_text = ""
+                torque_names = segment.get("torque_joint_names", ())
+                if curve_joint.value in torque_names and segment.get("torques_nm"):
+                    torque_index = torque_names.index(curve_joint.value)
+                    torque = segment["torques_nm"][local][torque_index]
+                    gravity = segment["gravity_torques_nm"][local][torque_index]
+                    torque_text = (f"  \n所选关节力矩：**{torque:.3f} Nm** · "
+                                   f"其中重力：**{gravity:.3f} Nm**")
                 timed_status.content = (
                     f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
                     f"时间化：`{segment.get('parameterizer', 'recorded')}` / {cycle_result.get('trajectory_timing_ms', 0):.1f}ms  \n"
                     f"本轮规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{cycle_result.get('motion_duration_s', 0):.3f}s**"
+                    + torque_text
                     + ("  \n**相关规划记录（共享项不重复求和）**" + detail if detail else ""))
                 names = segment["joint_names"]
                 joint_index = names.index(curve_joint.value)
@@ -357,6 +504,14 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
             return result
         return dict(result, **result['extraction_diagnostic']) if diagnostic.value and result and result.get('extraction_diagnostic') else result
 
+    @show_tcp_trace.on_update
+    @overlay_tcp_versions.on_update
+    @show_left_trace.on_update
+    @show_right_trace.on_update
+    @show_stop_markers.on_update
+    def on_tcp_trace(_event):
+        refresh_tcp_traces()
+
     @diagnostic.on_update
     def diagnostic_changed(_event):
         play.value = False
@@ -368,9 +523,10 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     @whole_sequence.on_update
     def on_whole_sequence(_event):
         play.value = False
-        if whole_sequence.value and sequence_result:
-            current["result"] = sequence_result
-            frame.max = len(sequence_result["frames"])
+        sequence = active_sequence()
+        if whole_sequence.value and sequence:
+            current["result"] = sequence
+            frame.max = len(sequence["frames"])
             frame.value = 1
         else:
             current["result"] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
@@ -379,6 +535,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         current["render_round"] = None
         show_frame(0)
         refresh_stage_timing()
+        refresh_tcp_traces()
 
     @task.on_update
     def on_task(_event):
@@ -393,18 +550,20 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         planner.comparison_contact = None
         refresh_comparison()
         selected_result = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
-        if whole_sequence.value and sequence_result:
-            current["result"] = sequence_result
-            number = next(index for index, record in enumerate(sequence_result["rounds"])
+        sequence = active_sequence()
+        if whole_sequence.value and sequence:
+            current["result"] = sequence
+            number = next(index for index, record in enumerate(sequence["rounds"])
                           if record["task"] == planner.selected_task)
-            frame.max = len(sequence_result["frames"])
-            frame.value = sequence_result["frame_rounds"].index(number) + 1
+            frame.max = len(sequence["frames"])
+            frame.value = sequence["frame_rounds"].index(number) + 1
         else:
             current["result"] = selected_result
             frame.max = max(1, len(selected_result["frames"])) if selected_result else 1
             frame.value = 1
         show_frame(int(frame.value)-1)
         refresh_stage_timing()
+        refresh_tcp_traces()
 
     def refresh_task_geometry():
         centers, obstacles = planner.configure_task(planner.selected_task)
@@ -421,6 +580,23 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                     vertices=sphere_mesh.vertices*radius, faces=sphere_mesh.faces, position=center,
                     color=(61,170,210), opacity=0.5)
         status.content = ('顶吸：底盘前进0.3m，放置目标一起前移0.3m。' if planner.top_grasp else '侧吸任务。') + '到3cm预抓取前检查目标；最后3cm排除两个目标碰撞；吸附后启用附着箱模型。最低排及以下填满；后撤35cm；仅Informed＋Connect。'
+
+    @version_selector.on_update
+    def on_version(_event):
+        if current["busy"] or not sequence_results:
+            return
+        play.value = False
+        sequence = active_sequence()
+        current["result"] = sequence
+        current["render_round"] = None
+        frame.max = max(1, len(sequence["frames"]))
+        number = next((index for index, record in enumerate(sequence["rounds"])
+                       if record["task"] == planner.selected_task), 0)
+        frame.value = sequence["frame_rounds"].index(number) + 1
+        current["curve_binding"] = None
+        show_frame(int(frame.value)-1)
+        refresh_stage_timing()
+        refresh_tcp_traces()
 
     @planner_selector.on_update
     def on_planner(_event):
@@ -462,10 +638,11 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 result["blocked_details"] = f"{type(error).__name__}: {error}"
             finally:
                 current["busy"] = False
-                run.disabled = False
+                run.disabled = bool(round_mode and sequence_results)
                 task.disabled = False
                 planner_selector.disabled = False
             path = Path(__file__).resolve().parents[1] / 'generated/task_dynamic_cycle/latest.json'
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(result, indent=2, ensure_ascii=False)+"\n")
             current["result"] = result
             comparisons[planner.planner_kind] = result
@@ -484,11 +661,14 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         client.camera.position = (-3.2, 3.4, 2.8)
         client.camera.look_at = (.6, 0, 1.2)
         client.camera.up_direction = (0, 0, 1)
+        if round_mode and active_sequence():
+            frame.value = 1
+            play.value = True
 
     refresh_task_geometry()
-    if sequence_result and round_mode:
-        current["result"] = sequence_result
-        frame.max = max(1, len(sequence_result["frames"]))
+    if active_sequence() and round_mode:
+        current["result"] = active_sequence()
+        frame.max = max(1, len(active_sequence()["frames"]))
         play.value = False
     elif preload:
         current['result'] = preload
@@ -503,6 +683,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     refresh_comparison()
     show_frame(0)
     refresh_stage_timing()
+    refresh_tcp_traces()
     print(f"Ready: http://localhost:{server.get_port()}", flush=True)
     while True:
         if play.value and current["result"]:

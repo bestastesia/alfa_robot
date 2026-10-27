@@ -1,63 +1,93 @@
-# MOTION-233 cuRobo RRT种子轨迹优化与时间化
+# MOTION-233 RRT → cuRobo TrajOpt → RNEA 动力学轨迹产品
 
 ## 当前合同
 
-在PR #53基线`bb4ac23`上显式启用`--trajopt-rrt`后：
+当前完整链路为：
 
-1. `approach`、`transport`、`return_home`将现有15维RRT作为固定cuRobo main `78fd485`的`TrajectoryOptimizer.solve_cspace()` seed。
-2. cuRobo输出`q/qdot/qddot/jerk/dt`；结果仍须通过项目`GpuValidity`节点和0.5°边门禁，不通过时回退原RRT几何路径。
-3. 回退RRT使用逐路点停稳的五次时间律，严格保留已验碰的关节空间直边。
-4. 解析`extract`与loaded/empty yaw保持原几何节点，以C2样条和五次时间律时间化，并对样条密采样重新验碰；extract另复核笛卡尔走廊。
-5. 输出包含完整周期`time_from_start_s/velocities/accelerations/jerks/motion_duration_s`，home/attach/release为零时长静止事件。
-6. Viser按真实时间回放，显示每关节`q/qdot`、选中关节曲线和按速度上限归一化的关节轴矢量。
+1. Mentor 规划器生成接触/放置 IK、RRT 路径和解析笛卡尔接近/抽离段。
+2. 对 RRT 阶段执行现有碰撞 Shortcut。
+3. `approach/transport/conveyor_place/return_home` 将 Shortcut 路径作为 cuRobo V2 `TrajectoryOptimizer.solve_cspace()` 的 seed。
+4. TrajOpt 输出必须重新通过项目 `GpuValidity`、地面、携箱和导数限制；失败时回退现有已验收的 cubic/stops/polyline 路径，不降低整墙成功率。
+5. `contact_approach/extract` 保持解析笛卡尔几何，只做 C2/五次时间化，避免破坏吸盘法向和抽离走廊。
+6. TrajOpt 输出后冻结 `q`。RNEA 动力学阶段只能调整局部时间，必须满足 `geometry_hash_before == geometry_hash_after` 且 `maximum_position_delta == 0`。
+7. 动力学模型包含连杆/吸盘自重、箱体质量/COM/惯量、速度、加速度、科氏/离心项；静态重力超限直接拒绝，动态超限可局部减速。
+8. 控制器导出只包含严格递增、rest-to-rest 的运动段，移除零时长 attach/release 和轮次间导航瞬移；输出 `q/qdot/qddot/jerk/RNEA-required-torque/time`。
 
-这仍是冻结代理模型下的研究产品：`load_dynamics=false`，不加载箱体质量/COM/惯量，不运行RNEA或torque约束，不可直接下发实机。
+这仍是代理刚体模型下的研究控制产品，不等于实机闭环力矩安全认证。摩擦、减速器损耗/回差、电气热限制和吸盘柔性仍需台架标定。
 
-## 完整0.75m墙规划
+## 复现
 
-以下命令可在新终端完整复制。`prepare_checkout.py`会把本工作树中的模型绝对路径重定位到当前目录并编译解析IK桥；因此应在专用工作树执行。
+先重定位工作树模型并编译解析 IK：
 
 ```bash
-cd /home/astesia/Sevenova/.motion-233-curobo-trajopt/research/curobo_v3 && \
-/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/prepare_checkout.py --compiler g++ && \
-PYTHONPATH=/home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main \
-PYTORCH_ALLOC_CONF=expandable_segments:True \
-/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/v3_plan_cycle.py \
-  --sequence \
-  --wall-distance 0.75 \
-  --trajopt-rrt \
-  --trajopt-interpolation-dt 0.025 \
-  --output /tmp/curobo-trajopt-full-wall-075.json
+cd /home/astesia/Sevenova/.motion-233-curobo-trajopt
+MAKEFLAGS='-j8 -l12' CMAKE_BUILD_PARALLEL_LEVEL=8 \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python \
+  research/curobo_v3/tools/prepare_checkout.py --compiler g++
 ```
 
-## 离线产品门禁
+生成 10 kg/工作手的完整 TrajOpt + RNEA 产品：
 
 ```bash
-cd /home/astesia/Sevenova/.motion-233-curobo-trajopt && \
-/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/verify_motion233_timed_trajectory.py \
-  --result /tmp/curobo-trajopt-full-wall-075.json \
-  --mobile-robot-config /home/astesia/Sevenova/.motion-233-curobo-trajopt/research/curobo_v3/generated/v3_analytic_071cb95/mobile18/alfa_v322_suction_mobile18.yml \
-  --output /tmp/curobo-trajopt-full-wall-summary.json
+PYTHONPATH=research/curobo_v3/tools \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python \
+  research/curobo_v3/tools/v3_timed_wall_sequence.py \
+  --output-dir /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg \
+  --payload-mass-kg 10 \
+  --torque-limit-scale .9
 ```
 
-门禁检查：规划/全部轮次成功、关节顺序、时间与导数数组对齐、数值有限、时间不倒退、速度/加速度/jerk不超过冻结配置、home/attach/release静止、各轮`timed_validation`通过。
-
-## Viser只读回放
+导出控制器轨迹：
 
 ```bash
-cd /home/astesia/Sevenova/.motion-233-curobo-trajopt/research/curobo_v3 && \
-PYTHONPATH=/home/astesia/Sevenova/golden_curobo_adapter/mentor-repro-20261006/curobo-main \
-/home/astesia/Sevenova/curobo_v2_ros/bin/python tools/v3_full_cycle_demo.py \
+PYTHONPATH=research/curobo_v3/tools \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python \
+  research/curobo_v3/tools/v3_export_controller_trajectory.py \
+  --input /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg/full-wall.json \
+  --output /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg/controller-trajectory.json
+```
+
+执行产品门禁：
+
+```bash
+PYTHONPATH=research/curobo_v3/tools \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python \
+  research/curobo_v3/tools/v3_verify_dynamic_pipeline.py \
+  --result /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg/full-wall.json \
+  --controller /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg/controller-trajectory.json
+```
+
+## 验证证据
+
+### PR #65 HEAD `a77abd5`（2026-10-26完整产品回归）
+
+- 15/15 轮、25/25 箱成功。
+- 60 个 RRT 阶段尝试 TrajOpt：33 段采纳，27 段因求解失败或 Mentor 碰撞复验失败而安全回退。
+- 90 个运动阶段全部通过时间和动力学门禁。
+- 动力学前后 15/15 轮几何 hash 一致，最大位置变化为 0。
+- 速度/加速度/jerk 最大限制比例：0.9851 / 0.9867 / 0.0443。
+- 10 kg 峰值持续力矩利用率 67.44%，无动力学重定时、无力矩失败。
+- 名义动作时间：基线 897.260 s，新链路 815.870 s。
+- 控制器导出 90 个严格递增、rest-to-rest 段，包含逐帧位置、速度、加速度、jerk、RNEA需求力矩和重力力矩（力矩不可直接作为实机指令）。
+
+### 最新基线 `3e0ec15` 兼容性复核（2026-10-27）
+
+- Core：59项通过；GPU cuRobo compatibility：3项通过。
+- 最新基线修改Home/J6和8210流程后，整墙规划完成前9轮，在第10轮原始`龙头车放置RRT`处因固定2秒预算无路径而停止。
+- 独立关闭TrajOpt和RNEA后重跑第10轮，仍在同一基线RRT阶段失败，因此不是本PR的TrajOpt、动力学或时间重定时引入。
+- 本PR的TrajOpt/RNEA单轮产品门禁和控制器导出继续通过；完整15轮证据暂沿用上面的PR #65 HEAD固定输入回归。
+
+## Viser 对比
+
+```bash
+PYTHONPATH=research/curobo_v3/tools \
+/home/astesia/Sevenova/curobo_v2_ros/bin/python \
+  research/curobo_v3/tools/v3_timed_task_demo.py \
   --port 8090 \
-  --sequence-json /tmp/curobo-trajopt-full-wall-075.json \
-  --replay-only \
-  --wall-distance 0.75
+  --result /home/astesia/Sevenova/visualizations/mentor-rebased-timed/round-*.json \
+  --sequence-json \
+    /home/astesia/Sevenova/visualizations/mentor-rebased-timed/full-wall.json \
+    /home/astesia/Sevenova/visualizations/mentor-trajopt-dynamics-10kg/full-wall.json
 ```
 
-浏览器打开`http://127.0.0.1:8090`。页面中的时间、速度和曲线来自规划结果，不由回放帧差推测。
-
-## 当前完整墙证据
-
-2026-10-10当前严格源码在0.75m墙完成15/15轮、25/25箱：19869帧，规划162.521s，名义动作972.081s。TrajOpt累计12.733s；warm中位数为approach 94.66ms、transport 356.12ms、return-home 94.77ms。15轮中分别采纳8/11/11段，未采纳段保持原已验碰几何并使用保守停稳时间律。速度、加速度、jerk冻结限制最大比例为0.952、0.996、0.868。结果哈希见`generated/trajopt_validation/summary.json`。
-
-本分支还吸收上游`8e396a3`的关节距离合同：`updown`移动0.1m与普通旋转关节15°等代价；轨迹密化仍保持至少5 rad/m采样权重，距离代价和检查精度不混用。
+浏览器打开 `http://127.0.0.1:8090`，使用“回放版本”切换基线和新链路；所选关节会同时显示 `q/qdot`、当前 RNEA 总力矩和重力力矩。
