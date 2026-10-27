@@ -40,6 +40,32 @@ def time_parameterize_toppra(path, joint_names, velocity_limits, acceleration_li
     raise RuntimeError("; ".join(errors))
 
 
+def time_parameterize_toppra_pieces(pieces, joint_names, velocity_limits, acceleration_limits, jerk_limits,
+                                    sample_dt=0.025, **kwargs):
+    """Rest-to-rest TOPP-RA per piece, joined end to end (the robot stops between pieces).
+
+    Same return contract as `time_parameterize_toppra`; consecutive pieces must share their boundary row.
+    """
+    keys = ("time_from_start_s", "positions", "velocities", "accelerations", "jerks")
+    trajectory = {"joint_names": list(joint_names), "dt_s": None, "duration_s": 0., "maximum_linear_deviation": 0.,
+                  **{key: [] for key in keys}, "toppra": [],
+                  "sampled_trajectory": {"joint_names": list(joint_names), "dt_s": None, **{key: [] for key in keys}}}
+    validation = []
+    for index, piece in enumerate(pieces):
+        part, positions = time_parameterize_toppra(piece, joint_names, velocity_limits, acceleration_limits, jerk_limits,
+                                                   sample_dt, **kwargs)
+        skip = 1 if index else 0  # the first row of a later piece repeats the previous piece's last row
+        for target, source in ((trajectory, part), (trajectory["sampled_trajectory"], part["sampled_trajectory"])):
+            target["time_from_start_s"].extend((np.asarray(source["time_from_start_s"][skip:]) + trajectory["duration_s"]).tolist())
+            for key in keys[1:]:
+                target[key].extend(source[key][skip:])
+        validation.append(np.asarray(positions)[skip:])
+        trajectory["duration_s"] += part["duration_s"]
+        trajectory["maximum_linear_deviation"] = max(trajectory["maximum_linear_deviation"], part["maximum_linear_deviation"])
+        trajectory["toppra"].append(part["toppra"])
+    return trajectory, np.vstack(validation).astype(np.float32)
+
+
 def _toppra(path, joint_names, velocity_limits, acceleration_limits, jerk_limits, sample_dt, safety_factor,
             acceleration_scale, gridpoints, smoothing):
     import toppra

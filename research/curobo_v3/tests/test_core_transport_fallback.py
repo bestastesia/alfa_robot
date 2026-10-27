@@ -100,5 +100,80 @@ class TransportFallbackTest(unittest.TestCase):
         self.assertEqual(baseline.call_count, 1)
 
 
+class WristFlipRoutingTest(unittest.TestCase):
+    def setUp(self):
+        self.start = row((1, -1, 1))
+        self.wrist = np.stack([row((1, -1, -1))])      # only the wrist branch differs
+        self.elbow = np.stack([row((1, 1, -1))])       # elbow and wrist differ
+
+    def test_wrist_only_change_tries_the_wrist_flip_first(self):
+        planner = stub_planner(route_branch_change=True, wrist_flip=True)
+        flip = (np.ones((6, 15)), dict(swing_indices=[2, 4], search_ms=12.))
+        with mock.patch.object(planner_module, 'plan_wrist_flip', return_value=flip) as search, \
+                mock.patch.object(planner_module.cartesian, 'BatchAnalyticIk'):
+            path, stats = planner.transport_path(self.start, self.wrist, None, self.wrist)
+        self.assertEqual(search.call_count, 1)
+        self.assertEqual(path.shape, (6, 15))
+        self.assertEqual(stats['tier'], 'wrist_flip')
+        self.assertEqual(planner.last_wrist_flip, dict(rows=6, swing=[2, 4]))
+        self.assertEqual(planner.joint_calls, [])
+        self.assertFalse(planner.transport_joint_path_used)
+
+    def test_failed_wrist_flip_falls_back_to_the_joint_rrt_within_the_budget(self):
+        planner = stub_planner(route_branch_change=True, wrist_flip=True)
+        with mock.patch.object(planner_module, 'plan_wrist_flip', return_value=(None, dict(failure='no_wrist_flip_path'))), \
+                mock.patch.object(planner_module.cartesian, 'BatchAnalyticIk'):
+            path, stats = planner.transport_path(self.start, self.wrist, None, self.wrist)
+        self.assertIsNotNone(path)
+        self.assertEqual(stats['tier'], 'joint_rrt_routed')
+        self.assertEqual(stats['wrist_flip']['failure'], 'no_wrist_flip_path')
+        self.assertLess(planner.joint_calls[0]['budget'], TRANSPORT_BUDGET_S)
+        self.assertIsNone(planner.last_wrist_flip)
+        self.assertTrue(planner.transport_joint_path_used)
+
+    def test_wrist_flip_search_is_capped_and_leaves_the_rest_to_the_joint_rrt(self):
+        planner = stub_planner(route_branch_change=True, wrist_flip=True, wrist_flip_budget_s=.4)
+        deadlines = []
+
+        def search(planner_, start, candidates, checker, ik, options, deadline):
+            deadlines.append((deadline - planner_module.time.perf_counter(), options['wrist_flip_budget_s']))
+            return None, dict(failure='wrist_flip_deadline')
+
+        with mock.patch.object(planner_module, 'plan_wrist_flip', side_effect=search), \
+                mock.patch.object(planner_module.cartesian, 'BatchAnalyticIk'):
+            planner.transport_path(self.start, self.wrist, None, self.wrist)
+        self.assertLessEqual(deadlines[0][0], .4)
+        self.assertEqual(deadlines[0][1], .4)
+        self.assertGreater(planner.joint_calls[0]['budget'], TRANSPORT_BUDGET_S - .4 - .05)
+
+    def test_other_branch_changes_are_routed_without_a_wrist_flip(self):
+        planner = stub_planner(route_branch_change=True, wrist_flip=True)
+        with mock.patch.object(planner_module, 'plan_wrist_flip') as search:
+            _, stats = planner.transport_path(self.start, self.elbow, None, self.elbow)
+        self.assertEqual(search.call_count, 0)
+        self.assertEqual(stats['tier'], 'joint_rrt_routed')
+        self.assertEqual(planner.joint_calls, [dict(budget=2., seed=7)])
+
+
+class ToppraPiecesTest(unittest.TestCase):
+    def test_pieces_stop_at_their_joins_and_add_up(self):
+        from v3_path_timing import time_parameterize_toppra, time_parameterize_toppra_pieces
+
+        rows = np.column_stack([np.linspace(0., 1., 31), np.r_[np.linspace(0., .5, 16), np.linspace(.5, .5, 16)[1:]]])
+        limits = (np.full(2, 1.), np.full(2, 2.), np.full(2, 20.))
+        pieces = [rows[:16], rows[15:]]
+        joined, validation = time_parameterize_toppra_pieces(pieces, ['a', 'b'], *limits)
+        parts = [time_parameterize_toppra(piece, ['a', 'b'], *limits)[0] for piece in pieces]
+        self.assertAlmostEqual(joined['duration_s'], sum(part['duration_s'] for part in parts))
+        times = np.asarray(joined['time_from_start_s'])
+        self.assertTrue(np.all(np.diff(times) > 0))
+        self.assertEqual(len(joined['positions']), len(rows))
+        join = 15
+        self.assertLess(np.abs(np.asarray(joined['velocities'])[join]).max(), 1e-6)
+        sampled = np.asarray(joined['sampled_trajectory']['time_from_start_s'])
+        self.assertTrue(np.all(np.diff(sampled) > 0))
+        self.assertEqual(len(validation), len(sampled))
+
+
 if __name__ == '__main__':
     unittest.main()
