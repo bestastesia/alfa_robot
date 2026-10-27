@@ -399,6 +399,11 @@ def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_lim
     }, validation)
 
 
+
+def deterministic_search_seeds(seed):
+    """Keep the baseline seed and add one fixed conveyor fallback without weakening checks."""
+    return (seed, 20261014) if seed == 20261013 else (seed,)
+
 def controller_segments(document, joint_names, require_torque=True):
     """Export strictly timed motion segments, excluding zero-time events/navigation resets."""
     import hashlib

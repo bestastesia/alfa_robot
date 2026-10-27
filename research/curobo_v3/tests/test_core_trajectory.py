@@ -6,7 +6,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from curobo_core.trajectory import (assemble_timed_cycle, controller_segments,
-                                    deduplicate_timed_trajectory, expand_timed_trajectory,
+                                    deduplicate_timed_trajectory, deterministic_search_seeds,
+                                    expand_timed_trajectory,
                                     joint_state_trajectory, resample_path, time_parameterize_path,
                                     time_parameterize_polyline, time_parameterize_stops,
                                     trajectory_fallback_path,
@@ -179,6 +180,10 @@ class TrajectoryHelpersTest(unittest.TestCase):
         self.assertEqual(result["time_from_start_s"], [0., .025])
         self.assertEqual(result["positions"], [[0.], [1.]])
         self.assertEqual(result["velocities"], [[0.], [.5]])
+
+    def test_deterministic_conveyor_retry_seed_contract(self):
+        self.assertEqual(deterministic_search_seeds(20261013), (20261013, 20261014))
+        self.assertEqual(deterministic_search_seeds(7), (7,))
 
     def test_controller_export_excludes_events_and_requires_strict_time(self):
         segment = {"name": "transport", "frame_start": 1, "frame_end": 2,
