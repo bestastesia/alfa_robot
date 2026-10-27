@@ -1,4 +1,7 @@
 # 8209 cuRobo研究链路交接：算法、代码、预热与性能优化
+
+2026-10-27：用户已指定8221的球面软参考＋平滑冗余角解析＋整段30轮＋RRT为**新WARP**。最新迁移以 [NEW_WARP_HANDOFF.md](/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/NEW_WARP_HANDOFF.md) 为准；本文保留旧LM链路及1.1后处理迁移背景，不覆盖新算法定义。
+
 更新：2026-10-24。面向接手实现、同步仓库和继续优化的工程师。
 
 ## 当前URDF迁移补充（2026-10-24）

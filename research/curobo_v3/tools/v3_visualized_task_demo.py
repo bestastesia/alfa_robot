@@ -69,16 +69,20 @@ def main(default_port=8150, planner_class=None, default_assets=None):
     planner_labels = {"多抽离根＋多目标Connect": "informed_connect"}
     planner = (planner_class or FullCyclePlanner)(args)
     planner.warmup_resources()
+    conveyor_target_z = planner.conveyor_height_m + planner.box_fit['dimensions_m'][2] * .5 + planner.placement_clearance_m
     server_policy = '预测64个抽离终点→距离/旋转排序→8个起分批完整抽离验收；失败扩批，运输搜索共享2s预算。每次点击重新生成候选，不复用规划结果。'
     serial_policy=getattr(planner,'serial_endpoint_policy',False)
     if serial_policy:
         server_policy='前驱构型独立串行选型，先固定终点再连接；吸附只参考Home，运输只参考抽离终点，放箱只参考运输构型。不回溯，不用后续可行性反选。抽离只瞬移，非已验证动作。'
     chained_policy=getattr(planner,'lm_chained_cycle_policy',False)
     if chained_policy:
-        planner_labels={'六段LM先验＋Informed Connect':'informed_connect'}
-        server_policy='六段LM先验＋Informed Connect实际串联：新接近/抽离构型交给前后阶段重规划，接缝检查关节连续性。不回溯、不因偏线或沿途朝向变化拒绝。抽离有运动；仍沿用途中空载验碰、终点携箱验碰。'
+        planner_labels={getattr(planner, 'pipeline_label', '六段LM先验＋Informed Connect'):'informed_connect'}
+        server_policy=getattr(planner, 'pipeline_description', '六段LM先验＋Informed Connect实际串联：新接近/抽离构型交给前后阶段重规划，接缝检查关节连续性。不回溯、不因偏线或沿途朝向变化拒绝。抽离有运动；仍沿用途中空载验碰、终点携箱验碰。')
     planner.selected_task={'left':22,'right':17}
     saved_results = [json.loads(path.read_text()) for path in args.result or []]
+    if hasattr(planner, 'validate_saved_result'):
+        for result in saved_results:
+            planner.validate_saved_result(result)
     preload = saved_results[0] if saved_results else None
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
@@ -102,11 +106,11 @@ def main(default_port=8150, planner_class=None, default_assets=None):
     server.gui.add_markdown(f'前端冻结版本：{frontend_identity["commit"][:12]}；碰撞与轨迹由当前核心提供。')
     server.gui.add_markdown(server_policy)
     if chained_policy:
-        server.gui.add_markdown('内部底盘粗搜索余量2mm，首条原模型细验合法路径即停，每段搜索上限2秒；不强制走满预算。顶吸收束TCP高1.2m，放箱箱心高1.082m。')
+        server.gui.add_markdown(f'内部底盘粗搜索余量2mm，首条原模型细验合法路径即停，每段搜索上限2秒；不强制走满预算。顶吸收束TCP高1.2m，放箱箱心高{conveyor_target_z:.3f}m。')
     else:
         server.gui.add_markdown('首轮粗验统一约2.86°；仅放箱候选细验碰撞后，按剩余2秒预算以约1.72°粗验重搜。保留3mm搜索余量与原模型0.5°最终细验。顶吸收束TCP高1.2m（提高20cm），放箱箱心高1.082m（降低10cm）。')
     if getattr(planner, 'warmup_report', {}).get('complete'):
-        server.gui.add_markdown('当前确认零位与191mm TCP；16点／64点批量LM已完成真实预热。运输候选按新TCP重求、独立URDF FK复核，侧吸升降采样加密到5mm，未改目标和限位。仅本地算法规划与回放，不连接实机。')
+        server.gui.add_markdown(getattr(planner, 'warmup_description', '当前确认零位与191mm TCP；16点／64点批量LM已完成真实预热。运输候选按新TCP重求、独立URDF FK复核，侧吸升降采样加密到5mm，未改目标和限位。仅本地算法规划与回放，不连接实机。'))
     server.gui.add_markdown('任务列表新增25个“单臂”任务：第1/2列左手，第3/4/5列右手。单臂仍15轴联合规划；空闲臂用收拢偏离/累计运动软代价，允许随升降避碰。')
     references = renderer.reference_conveyors()
     references.visible = True
@@ -117,7 +121,8 @@ def main(default_port=8150, planner_class=None, default_assets=None):
     motion_policy = ('PR65后处理已开启：按记录时间播放，含速度/加速度/jerk代理限制；不是力矩或真实动力学验证。'
                      if getattr(planner, 'trajectory_optimization_enabled', False) else
                      '播放帧率按最快旋转关节30°/s统一换算，Updown等比播放；未加入加速度或动力学时间参数化。')
-    server.gui.add_markdown(f'只读显示：规划模型与关节来自核心，匹配{renderer.material_matches}个彩色网格。完整集装箱统一装配到快照内壁边界；外观框架不额外参与碰撞。仅最里面一面箱墙，非475箱展示模板。\n\n{motion_policy} 底盘到位仍为瞬移。')
+    visual_description = f'只读显示：规划模型与关节来自核心，匹配{renderer.material_matches}个彩色网格。完整集装箱统一装配到快照内壁边界；外观框架不额外参与碰撞。仅最里面一面箱墙，非475箱展示模板。'
+    motion_policy_status = server.gui.add_markdown(f'{visual_description}\n\n{motion_policy} 底盘到位仍为瞬移。')
     attached = {}
     sphere_mesh = trimesh.creation.icosphere(subdivisions=2)
     for side in ("left", "right"):
@@ -163,6 +168,24 @@ def main(default_port=8150, planner_class=None, default_assets=None):
         task = server.gui.add_dropdown("组合任务", options=labels, initial_value=initial_label)
         planner_selector = server.gui.add_dropdown("规划器", options=list(planner_labels),
                                                    initial_value=next(iter(planner_labels)))
+        postprocessing = None
+        if hasattr(planner, 'trajectory_optimization_enabled'):
+            postprocessing = server.gui.add_checkbox('启用PR65后处理（关闭可看纯几何规划）', initial_value=planner.trajectory_optimization_enabled)
+
+            @postprocessing.on_update
+            def on_postprocessing(_event):
+                if current['busy']:
+                    return
+                planner.trajectory_optimization_enabled = postprocessing.value
+                description = ('PR65后处理已开启，按记录时间播放，含速度/加速度/jerk代理限制。' if postprocessing.value
+                               else 'PR65后处理已关闭；显示纯几何路径，播放速度仅作可视化换算，不是执行时间。')
+                motion_policy_status.content = visual_description + '\n\n' + description + ' 底盘到位仍为瞬移，不涉及实机。'
+                play.value = False
+                current['result'] = None
+                comparisons.clear()
+                refresh_comparison()
+                refresh_playback()
+                status.content = '后处理已' + ('开启' if postprocessing.value else '关闭') + '，请重新计算当前任务。'
         run = server.gui.add_button("计算完整流程并播放")
         scope = server.gui.add_dropdown('回放范围', options=list(PLAYBACK_SCOPES), initial_value='全流程')
         replay = server.gui.add_button('从当前范围起点播放')
@@ -208,7 +231,9 @@ def main(default_port=8150, planner_class=None, default_assets=None):
             lines.append(f"| {label} | {verdict} | {seconds:.2f}s |")
         dual_count=sum(len(boxes)==2 for label,boxes in planner.task_options)
         single_count=sum(len(boxes)==1 for label,boxes in planner.task_options)
-        lines += ["", f"{dual_count}组双臂＋{single_count}组单臂可选。首次生成当前场景终点缓存，后续复用；每次重新计算接触候选和路径。含双龙头车长方体碰撞，无Shortcut/TrajOpt，释放后RRT回Home。"]
+        processing = ('启用PR65验碰Shortcut/平滑时间化，无TrajOpt' if getattr(planner, 'trajectory_optimization_enabled', False)
+                      else '无搜索后Shortcut/TrajOpt或时间化')
+        lines += ["", f"{dual_count}组双臂＋{single_count}组单臂可选。终点库按模型/目标身份复用；每次重新计算接触候选和路径。含双龙头车长方体碰撞，{processing}，释放后RRT回Home。"]
         comparison_status.content = "\n".join(lines) if comparisons else ""
 
     def show_frame(index):
@@ -330,7 +355,7 @@ def main(default_port=8150, planner_class=None, default_assets=None):
                 retry = policy.get('fine_collision_retry')
                 if retry:
                     status.content += f"\n\n细验碰撞后加密：{'已触发' if retry['triggered'] else '未触发，保持原粗验'}；放箱搜索合计{retry['total_ms']:.1f}ms。"
-                status.content += '\n\n当前高度：顶吸收束TCP z=1.2m，龙头车释放箱心z=1.082m。'
+                status.content += f'\n\n当前高度：顶吸收束TCP z=1.2m，龙头车释放箱心z={conveyor_target_z:.3f}m。'
             if result.get('single_arm'):
                 side_label = '左' if result['active_side'] == 'left' else '右'
                 status.content += f'\n\n**单臂任务：{side_label}手工作；15轴联合规划，空闲臂可避让。**'
@@ -500,6 +525,8 @@ def main(default_port=8150, planner_class=None, default_assets=None):
                     vertices=sphere_mesh.vertices*radius, faces=sphere_mesh.faces, position=center,
                     color=(61,170,210), opacity=0.5)
         status.content = ('顶吸：搬运目标TCP朝下z=1.2m；抓取底盘到位偏移0.3m。' if planner.top_grasp else '侧吸：搬运目标箱心z=1.2m、Y倾斜45°。') + ('六段LM先验＋Informed Connect串联；新接近/抽离构型传给后续阶段。抽离有运动，仍按原途中空载/终点携箱验碰；导航到位瞬移，放箱后回Home。' if chained_policy else '接触64候选，解析抽离35cm；随后导航到位瞬移，固定底盘用目标IK＋RRT放箱。释放后箱子消失，直接RRT回Home，再导航返回。放箱箱心(-1.45,±0.425,1.082)m，含龙头车长方体碰撞。')
+        if hasattr(planner, 'pipeline_description'):
+            status.content = planner.pipeline_description
 
     @planner_selector.on_update
     def on_planner(_event):
@@ -518,6 +545,8 @@ def main(default_port=8150, planner_class=None, default_assets=None):
         if current["busy"]:
             return
         current["busy"] = True
+        if postprocessing is not None:
+            postprocessing.disabled = True
         run.disabled = True
         task.disabled = True
         planner_selector.disabled = True
@@ -560,6 +589,8 @@ def main(default_port=8150, planner_class=None, default_assets=None):
             else:
                 status.content = f"**已停止** {result.get('blocked_stage')}: {result.get('blocked_details')}"
             current['busy'] = False
+            if postprocessing is not None:
+                postprocessing.disabled = False
             run.disabled = False
             task.disabled = False
             planner_selector.disabled = False

@@ -1,0 +1,467 @@
+{
+  "height": 1.082,
+  "timed": false,
+  "tasks": [
+    {
+      "left": 24,
+      "right": 20
+    },
+    {
+      "left": 24,
+      "right": 21
+    },
+    {
+      "left": 24,
+      "right": 22
+    },
+    {
+      "left": 23,
+      "right": 20
+    },
+    {
+      "left": 23,
+      "right": 21
+    },
+    {
+      "left": 23,
+      "right": 22
+    },
+    {
+      "left": 22,
+      "right": 20
+    },
+    {
+      "left": 22,
+      "right": 21
+    },
+    {
+      "left": 24,
+      "right": 15
+    },
+    {
+      "left": 24,
+      "right": 16
+    },
+    {
+      "left": 24,
+      "right": 17
+    },
+    {
+      "left": 23,
+      "right": 15
+    },
+    {
+      "left": 23,
+      "right": 16
+    },
+    {
+      "left": 23,
+      "right": 17
+    },
+    {
+      "left": 22,
+      "right": 15
+    },
+    {
+      "left": 22,
+      "right": 16
+    },
+    {
+      "left": 22,
+      "right": 17
+    },
+    {
+      "left": 19,
+      "right": 20
+    },
+    {
+      "left": 19,
+      "right": 21
+    },
+    {
+      "left": 19,
+      "right": 22
+    },
+    {
+      "left": 18,
+      "right": 20
+    },
+    {
+      "left": 18,
+      "right": 21
+    },
+    {
+      "left": 18,
+      "right": 22
+    },
+    {
+      "left": 17,
+      "right": 20
+    },
+    {
+      "left": 17,
+      "right": 21
+    },
+    {
+      "left": 17,
+      "right": 22
+    },
+    {
+      "left": 19,
+      "right": 15
+    },
+    {
+      "left": 19,
+      "right": 16
+    },
+    {
+      "left": 19,
+      "right": 17
+    },
+    {
+      "left": 18,
+      "right": 15
+    },
+    {
+      "left": 18,
+      "right": 16
+    },
+    {
+      "left": 18,
+      "right": 17
+    },
+    {
+      "left": 17,
+      "right": 15
+    },
+    {
+      "left": 17,
+      "right": 16
+    },
+    {
+      "left": 19,
+      "right": 10
+    },
+    {
+      "left": 19,
+      "right": 11
+    },
+    {
+      "left": 19,
+      "right": 12
+    },
+    {
+      "left": 18,
+      "right": 10
+    },
+    {
+      "left": 18,
+      "right": 11
+    },
+    {
+      "left": 18,
+      "right": 12
+    },
+    {
+      "left": 17,
+      "right": 10
+    },
+    {
+      "left": 17,
+      "right": 11
+    },
+    {
+      "left": 17,
+      "right": 12
+    },
+    {
+      "left": 14,
+      "right": 15
+    },
+    {
+      "left": 14,
+      "right": 16
+    },
+    {
+      "left": 14,
+      "right": 17
+    },
+    {
+      "left": 13,
+      "right": 15
+    },
+    {
+      "left": 13,
+      "right": 16
+    },
+    {
+      "left": 13,
+      "right": 17
+    },
+    {
+      "left": 12,
+      "right": 15
+    },
+    {
+      "left": 12,
+      "right": 16
+    },
+    {
+      "left": 12,
+      "right": 17
+    },
+    {
+      "left": 14,
+      "right": 10
+    },
+    {
+      "left": 14,
+      "right": 11
+    },
+    {
+      "left": 14,
+      "right": 12
+    },
+    {
+      "left": 13,
+      "right": 10
+    },
+    {
+      "left": 13,
+      "right": 11
+    },
+    {
+      "left": 13,
+      "right": 12
+    },
+    {
+      "left": 12,
+      "right": 10
+    },
+    {
+      "left": 12,
+      "right": 11
+    },
+    {
+      "left": 9,
+      "right": 5
+    },
+    {
+      "left": 9,
+      "right": 6
+    },
+    {
+      "left": 9,
+      "right": 7
+    },
+    {
+      "left": 8,
+      "right": 5
+    },
+    {
+      "left": 8,
+      "right": 6
+    },
+    {
+      "left": 8,
+      "right": 7
+    },
+    {
+      "left": 7,
+      "right": 5
+    },
+    {
+      "left": 7,
+      "right": 6
+    },
+    {
+      "left": 9,
+      "right": 0
+    },
+    {
+      "left": 9,
+      "right": 1
+    },
+    {
+      "left": 9,
+      "right": 2
+    },
+    {
+      "left": 8,
+      "right": 0
+    },
+    {
+      "left": 8,
+      "right": 1
+    },
+    {
+      "left": 8,
+      "right": 2
+    },
+    {
+      "left": 7,
+      "right": 0
+    },
+    {
+      "left": 7,
+      "right": 1
+    },
+    {
+      "left": 4,
+      "right": 5
+    },
+    {
+      "left": 4,
+      "right": 6
+    },
+    {
+      "left": 4,
+      "right": 7
+    },
+    {
+      "left": 3,
+      "right": 5
+    },
+    {
+      "left": 3,
+      "right": 6
+    },
+    {
+      "left": 3,
+      "right": 7
+    },
+    {
+      "left": 2,
+      "right": 5
+    },
+    {
+      "left": 2,
+      "right": 6
+    },
+    {
+      "left": 4,
+      "right": 0
+    },
+    {
+      "left": 4,
+      "right": 1
+    },
+    {
+      "left": 4,
+      "right": 2
+    },
+    {
+      "left": 3,
+      "right": 0
+    },
+    {
+      "left": 3,
+      "right": 1
+    },
+    {
+      "left": 3,
+      "right": 2
+    },
+    {
+      "left": 2,
+      "right": 0
+    },
+    {
+      "left": 2,
+      "right": 1
+    },
+    {
+      "right": 0
+    },
+    {
+      "right": 1
+    },
+    {
+      "right": 2
+    },
+    {
+      "left": 3
+    },
+    {
+      "left": 4
+    },
+    {
+      "right": 5
+    },
+    {
+      "right": 6
+    },
+    {
+      "right": 7
+    },
+    {
+      "left": 8
+    },
+    {
+      "left": 9
+    },
+    {
+      "right": 10
+    },
+    {
+      "right": 11
+    },
+    {
+      "right": 12
+    },
+    {
+      "left": 13
+    },
+    {
+      "left": 14
+    },
+    {
+      "right": 15
+    },
+    {
+      "right": 16
+    },
+    {
+      "right": 17
+    },
+    {
+      "left": 18
+    },
+    {
+      "left": 19
+    },
+    {
+      "right": 20
+    },
+    {
+      "right": 21
+    },
+    {
+      "right": 22
+    },
+    {
+      "left": 23
+    },
+    {
+      "left": 24
+    }
+  ],
+  "source_sha256": {
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/config/new_warp.json": "23b96601d3b2e70d63169fc46dcd53baef5449345c51e7de18fbad8c3f17a12b",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf": "d05c6abeef1c8362010d5f341ff918deef2e7f2e6cf9b32b9e5294003b6a2401",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/fixed.yaml": "10825106b456264a2e3d4e7079e1c7f3d7156986c3bdebd5030ab37f1e0f7863",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/mobile.yaml": "6b15dfc2a275fd0866d41b632fa5682c6b3f19d3c98cbe48834d47904b6135fb",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_refined_cycle.py": "e0fb2017783726bbea691fc9d49e16a2baffc0122c9c0fa429292646a8cfc78c",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_new_warp.py": "fccd727da039ea1f41fd066815e087719577ac2f75064d3d08cfd763769c8d3a",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/new_warp_objective.py": "84e42bc0b0f53db66c46a39553fe6d4411690b4cef49c54c908fdbd85538fa29",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/new_warp_prior.py": "8adbe7d5f5456ecc6f0a2fb7dc993500a7cabf54285ba47be8eb3d7579cbdc0d",
+    "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/new_warp_reference.py": "908f8898ee45f72b213dca83ac545493cdf40ec934507f8de79e32f805181389"
+  },
+  "warmup": {
+    "complete": true,
+    "lm_used": false,
+    "wall_ms": 2077.5762900011614,
+    "joint_adjustment_iterations": 30,
+    "caches_planning_results": false
+  }
+}

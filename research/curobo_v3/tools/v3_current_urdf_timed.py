@@ -35,7 +35,7 @@ class TimedCurrentUrdfPlanner(TimedSingleArmPlanner, CurrentUrdfForwardPlanner):
                 starts = active[offset:offset + 16]
                 ends = active[offset + 1:offset + 17]
                 starts = starts[:len(ends)]
-                if not bool(validity.edges(starts, ends, resolution=np.deg2rad(.5)).all()):
+                if not bool(validity.edges(starts, ends, resolution=np.deg2rad(getattr(self, 'timed_validation_resolution_deg', .5))).all()):
                     return False
             return True
         finally:
@@ -66,9 +66,12 @@ class TimedCurrentUrdfPlanner(TimedSingleArmPlanner, CurrentUrdfForwardPlanner):
             self.snapshot = original_snapshot
         return rows[selected], dict(raw_waypoints=len(rows), shortcut_waypoints=len(selected))
 
+    def plan_geometric_cycle(self, boxes, progress):
+        return CurrentUrdfForwardPlanner.full_cycle(self, boxes, progress)
+
     def full_cycle(self, boxes, progress=lambda text: None):
         began = time.perf_counter()
-        result = CurrentUrdfForwardPlanner.full_cycle(self, boxes, progress)
+        result = self.plan_geometric_cycle(boxes, progress)
         if not result.get('success'):
             return result
         progress('几何规划完成：GPU验碰Shortcut、平滑与速度/加速度/jerk时间化')
