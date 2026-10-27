@@ -11,8 +11,8 @@ import torch
 
 from curobo_core.scene import Pose
 from curobo_core.torque import constrain_timed_result
-from curobo_core.trajectory import (assemble_timed_cycle, deterministic_search_seeds,
-                                    joint_state_trajectory, resample_path, time_parameterize_path,
+from curobo_core.trajectory import (assemble_timed_cycle, joint_state_trajectory,
+                                    resample_path, time_parameterize_path,
                                     time_parameterize_polyline, time_parameterize_stops,
                                     validate_timed_cycle)
 from v3_batched_loaded_search import GpuValidity, loaded_robot
@@ -50,22 +50,6 @@ class TimedSingleArmPlanner(SingleArmPlanner):
             self.time_parameterize_result(result)
         return result
 
-    def search_path(self, start, goals, lower, upper, validity, budget, seed):
-        path, stats = super().search_path(start, goals, lower, upper, validity, budget, seed)
-        if path is not None or seed != 20261013:
-            if isinstance(stats, dict):
-                stats["selected_seed"] = seed if path is not None else None
-            return path, stats
-        retry_seed = deterministic_search_seeds(seed)[1]
-        retry_path, retry_stats = super().search_path(
-            start, goals, lower, upper, validity, budget, retry_seed)
-        output = dict(retry_stats)
-        output["selected_seed"] = retry_seed if retry_path is not None else None
-        output["seed_attempts"] = [
-            {"seed": seed, "success": False, "stats": stats},
-            {"seed": retry_seed, "success": retry_path is not None, "stats": retry_stats},
-        ]
-        return retry_path, output
 
     def _set_timed_phase_snapshot(self, phase, original_snapshot, first_position):
         self.snapshot = original_snapshot
