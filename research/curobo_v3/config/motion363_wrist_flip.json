@@ -1,0 +1,529 @@
+{
+ "schema_version": 1,
+ "issue": "MOTION-363",
+ "parent_issue": "MOTION-312",
+ "registered_at": "2026-10-27",
+ "status": "pre-registered before the test run; design data = the dev set below (MOTION-342 test scenes routed by B)",
+ "baseline": {
+  "method": "joint_rrt",
+  "planning_commit": "541fdbc",
+  "note": "same baseline as MOTION-323/327/342; conclusions not extrapolated to upstream 0942d18"
+ },
+ "method": {
+  "base": "MOTION-342 B: MOTION-327 v2 frozen options (846f0dc) + fallback_joint_rrt + route_branch_change, TOPP-RA timing",
+  "option": {
+   "wrist_flip": "a stage routed by B whose nearest goal differs from the start only in the wrist branch (q2, q4 equal, q6 opposite) first tries a straight tool path with one controlled wrist flip: the box stops at a point X* with q6 = 0, q5 and q7 counter-rotate (self-motion), and the arm continues on the flipped branch; timed in three rest-to-rest TOPP-RA pieces (or one piece if shorter and valid). X* comes from Gauss-Newton steps from 16 points of the straight line in (progress, swivel, lift) onto the q6 = 0 curve, tried in the order of an estimated execution time (at most 3 per goal, up to 3 flipped-branch goals); a position offset of X* (<= 5 cm) only after every goal failed on the exact line. The search is capped at wrist_flip_budget_s = 0.6 s, otherwise the joint RRT gets the rest of the 2 s stage budget"
+  },
+  "code_commit": "b3c9552",
+  "design_evidence": "motion312-acceptance/wristflip-20261024 (feasibility scan) and motion312-acceptance/m363-20261027: dev (first prototype, all arms), dev-v2..dev-v5 (X* search variants, wrist-flip arm only); dev-v5 is the frozen design"
+ },
+ "arms": {
+  "baseline": "joint_rrt",
+  "reference": "cartesian_v21r_toppra (MOTION-342 B)",
+  "primary": "cartesian_v22_toppra (B + wrist_flip)"
+ },
+ "dev_set": {
+  "purpose": "design data: the MOTION-342 test scenes that B routed to the joint RRT",
+  "scenes": [
+   "left18-o0",
+   "left18-o1",
+   "left19-o1",
+   "left23-o0",
+   "left23-o1",
+   "left24-o0",
+   "left24-o1",
+   "right15-o1",
+   "right16-o0",
+   "right16-o1",
+   "right20-o0",
+   "right20-o1",
+   "right21-o0",
+   "right21-o1"
+  ],
+  "seeds": [
+   342001,
+   342002,
+   342003
+  ]
+ },
+ "dev_check": {
+  "data": "motion312-acceptance/m363-20261027/dev-v5 against the MOTION-342 test runs of the same scenes and seeds",
+  "result": "success 42/42; 30 wrist flips, 12 joint RRT (left23/right21, elbow swing ~170 deg); wrist-flip search median 39 ms, max 611 ms; branch-change stages: paired median duration +32.4% against the reference (above the +30% rule), +10% to +61% per scene, larger with a wrist swing near 30 deg; projected on the MOTION-342 test: stage paired median +3.3%, duration +7.8%",
+  "note": "the duration threshold was set with the draft before any dev run and is kept unchanged"
+ },
+ "test_set": {
+  "purpose": "independent: new docking offsets and new seeds, never run before",
+  "scene_model": "as MOTION-327/342: container walls, ground, filler blocks and target boxes shifted by (dx, dy, 0) relative to the robot; conveyor unchanged",
+  "generator": "numpy.random.default_rng(363).uniform(-0.05, 0.05, size=(25, 2, 2)), rounded to 0.1 mm; tasks = the 25 single-arm tasks of MOTION-327 in the MOTION-342 order (the MOTION-342 generator reproduces its instances exactly)",
+  "seeds": [
+   363001,
+   363002,
+   363003
+  ],
+  "instances": [
+   {
+    "task": {
+     "right": 0
+    },
+    "offset_m": [
+     0.0451,
+     0.0407
+    ]
+   },
+   {
+    "task": {
+     "right": 0
+    },
+    "offset_m": [
+     0.0015,
+     -0.0361
+    ]
+   },
+   {
+    "task": {
+     "right": 1
+    },
+    "offset_m": [
+     0.0429,
+     -0.0233
+    ]
+   },
+   {
+    "task": {
+     "right": 1
+    },
+    "offset_m": [
+     0.0414,
+     0.0461
+    ]
+   },
+   {
+    "task": {
+     "right": 2
+    },
+    "offset_m": [
+     0.0168,
+     -0.0062
+    ]
+   },
+   {
+    "task": {
+     "right": 2
+    },
+    "offset_m": [
+     0.0223,
+     0.0059
+    ]
+   },
+   {
+    "task": {
+     "left": 3
+    },
+    "offset_m": [
+     0.0314,
+     -0.0168
+    ]
+   },
+   {
+    "task": {
+     "left": 3
+    },
+    "offset_m": [
+     0.0476,
+     -0.0255
+    ]
+   },
+   {
+    "task": {
+     "left": 4
+    },
+    "offset_m": [
+     0.0186,
+     0.0093
+    ]
+   },
+   {
+    "task": {
+     "left": 4
+    },
+    "offset_m": [
+     -0.0021,
+     -0.0463
+    ]
+   },
+   {
+    "task": {
+     "right": 5
+    },
+    "offset_m": [
+     0.0216,
+     0.0256
+    ]
+   },
+   {
+    "task": {
+     "right": 5
+    },
+    "offset_m": [
+     0.0263,
+     0.0483
+    ]
+   },
+   {
+    "task": {
+     "right": 6
+    },
+    "offset_m": [
+     0.0002,
+     -0.0092
+    ]
+   },
+   {
+    "task": {
+     "right": 6
+    },
+    "offset_m": [
+     -0.009,
+     -0.0105
+    ]
+   },
+   {
+    "task": {
+     "right": 7
+    },
+    "offset_m": [
+     -0.0169,
+     0.0262
+    ]
+   },
+   {
+    "task": {
+     "right": 7
+    },
+    "offset_m": [
+     -0.048,
+     -0.0389
+    ]
+   },
+   {
+    "task": {
+     "left": 8
+    },
+    "offset_m": [
+     -0.0436,
+     0.0224
+    ]
+   },
+   {
+    "task": {
+     "left": 8
+    },
+    "offset_m": [
+     0.0334,
+     -0.0095
+    ]
+   },
+   {
+    "task": {
+     "left": 9
+    },
+    "offset_m": [
+     -0.0041,
+     0.0038
+    ]
+   },
+   {
+    "task": {
+     "left": 9
+    },
+    "offset_m": [
+     0.0106,
+     0.0233
+    ]
+   },
+   {
+    "task": {
+     "right": 10
+    },
+    "offset_m": [
+     0.0287,
+     -0.0378
+    ]
+   },
+   {
+    "task": {
+     "right": 10
+    },
+    "offset_m": [
+     -0.0328,
+     0.0298
+    ]
+   },
+   {
+    "task": {
+     "right": 11
+    },
+    "offset_m": [
+     0.0001,
+     0.0258
+    ]
+   },
+   {
+    "task": {
+     "right": 11
+    },
+    "offset_m": [
+     0.0375,
+     0.0457
+    ]
+   },
+   {
+    "task": {
+     "right": 12
+    },
+    "offset_m": [
+     0.0322,
+     -0.0484
+    ]
+   },
+   {
+    "task": {
+     "right": 12
+    },
+    "offset_m": [
+     -0.0191,
+     -0.0381
+    ]
+   },
+   {
+    "task": {
+     "left": 13
+    },
+    "offset_m": [
+     0.0229,
+     0.0446
+    ]
+   },
+   {
+    "task": {
+     "left": 13
+    },
+    "offset_m": [
+     -0.0489,
+     -0.0478
+    ]
+   },
+   {
+    "task": {
+     "left": 14
+    },
+    "offset_m": [
+     0.0282,
+     0.0262
+    ]
+   },
+   {
+    "task": {
+     "left": 14
+    },
+    "offset_m": [
+     0.0124,
+     -0.0183
+    ]
+   },
+   {
+    "task": {
+     "right": 15
+    },
+    "offset_m": [
+     0.0411,
+     -0.0242
+    ]
+   },
+   {
+    "task": {
+     "right": 15
+    },
+    "offset_m": [
+     0.0345,
+     -0.0152
+    ]
+   },
+   {
+    "task": {
+     "right": 16
+    },
+    "offset_m": [
+     -0.0019,
+     -0.0356
+    ]
+   },
+   {
+    "task": {
+     "right": 16
+    },
+    "offset_m": [
+     -0.0257,
+     -0.0497
+    ]
+   },
+   {
+    "task": {
+     "right": 17
+    },
+    "offset_m": [
+     -0.0206,
+     -0.0358
+    ]
+   },
+   {
+    "task": {
+     "right": 17
+    },
+    "offset_m": [
+     0.0025,
+     0.0424
+    ]
+   },
+   {
+    "task": {
+     "left": 18
+    },
+    "offset_m": [
+     0.0377,
+     -0.0304
+    ]
+   },
+   {
+    "task": {
+     "left": 18
+    },
+    "offset_m": [
+     0.0127,
+     0.0147
+    ]
+   },
+   {
+    "task": {
+     "left": 19
+    },
+    "offset_m": [
+     0.0205,
+     0.0165
+    ]
+   },
+   {
+    "task": {
+     "left": 19
+    },
+    "offset_m": [
+     -0.0369,
+     -0.0349
+    ]
+   },
+   {
+    "task": {
+     "right": 20
+    },
+    "offset_m": [
+     0.035,
+     -0.043
+    ]
+   },
+   {
+    "task": {
+     "right": 20
+    },
+    "offset_m": [
+     -0.0439,
+     0.008
+    ]
+   },
+   {
+    "task": {
+     "right": 21
+    },
+    "offset_m": [
+     -0.0179,
+     -0.0342
+    ]
+   },
+   {
+    "task": {
+     "right": 21
+    },
+    "offset_m": [
+     -0.0092,
+     -0.0364
+    ]
+   },
+   {
+    "task": {
+     "right": 22
+    },
+    "offset_m": [
+     -0.0421,
+     0.0346
+    ]
+   },
+   {
+    "task": {
+     "right": 22
+    },
+    "offset_m": [
+     -0.0434,
+     0.0341
+    ]
+   },
+   {
+    "task": {
+     "left": 23
+    },
+    "offset_m": [
+     0.0266,
+     0.0328
+    ]
+   },
+   {
+    "task": {
+     "left": 23
+    },
+    "offset_m": [
+     -0.0286,
+     0.0332
+    ]
+   },
+   {
+    "task": {
+     "left": 24
+    },
+    "offset_m": [
+     0.03,
+     0.0055
+    ]
+   },
+   {
+    "task": {
+     "left": 24
+    },
+    "offset_m": [
+     0.0054,
+     0.0391
+    ]
+   }
+  ]
+ },
+ "decision_rules": {
+  "against_baseline": "MOTION-342 rules for the primary arm: paired median transport stage change <= +10% and every search within 2 s; success rate not lower than the baseline; paired median side extra rotation reduced by at least 30% and path/chord not increased; paired median execution duration increase <= 20%",
+  "against_reference": "in stages that the reference routes to the joint RRT (branch-change stages): success not lower than the reference; every wrist flip that the primary arm makes in its wrist-flip tier is made at rest (tool speeds <= 5 mm/s and <= 2 deg/s at the q6 sign change); paired median execution duration of those stages <= +30% against the reference",
+  "recommendation": "the primary arm is recommended over the reference if both rule sets pass; otherwise the reference stays the recommended form"
+ },
+ "report_only": [
+  "branch-change stages: tier counts (wrist_flip / joint_rrt_routed), wrist-flip search time, flips at rest vs moving, side extra rotation, duration ratio to the reference and to the baseline",
+  "outside branch-change stages: share of transports frame-identical to the reference (same seed; time-budgeted searches may differ)",
+  "mesh audit (FCL meshes, true depth as in MOTION-326) of the executed transport frames"
+ ],
+ "hypotheses": {
+  "cartesian_v22_toppra": "baseline rules as B; in branch-change stages most wrist-only changes take the wrist flip with zero extra rotation and no flip while moving; scenes that need an elbow swing of about 170 deg (MOTION-342 left23/right21) fall back to the joint RRT"
+ }
+}
