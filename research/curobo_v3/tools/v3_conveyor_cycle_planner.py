@@ -101,9 +101,11 @@ class ConveyorCyclePlanner(AnalyticContacts):
         margin_m = getattr(self, 'conveyor_search_margin_m', 0.)
         validity.search_scene_margin_m = margin_m
         validity.search_edge_resolution = getattr(self, 'conveyor_search_edge_resolution', .05)
+        if margin_m > 0:
+            validity.path_quality_callback = lambda values: bool(validity.scene_margin_mask(values, margin_m).all().item())
         if margin_m > 0 and len(candidates):
             candidates = candidates[validity.scene_margin_mask(candidates, margin_m)].contiguous()
-        report['conveyor_search_margin'] = dict(margin_m=margin_m, edge_resolution=validity.search_edge_resolution, scope='external scene only during edge search; final collision acceptance uses original spheres', candidates_after_margin=len(candidates))
+        report['conveyor_search_margin'] = dict(margin_m=margin_m, edge_resolution=validity.search_edge_resolution, fine_edge_resolution_rad=math.radians(.5), scope='coarse scene-margin screening plus 0.5deg dense collision and scene-margin acceptance', candidates_after_margin=len(candidates))
         report['conveyor_goal_ik'] = {'returned': len(rows), 'solver_success': int(numerical_success.sum()),
                                      'collision_valid': len(candidates), 'mode': 'cuRobo numerical IK, updown plus 14 arm joints'}
         report['conveyor_place_mode'] = 'fixed final box pose; multi-goal RRT; no Cartesian straight-line requirement'
@@ -123,8 +125,10 @@ class ConveyorCyclePlanner(AnalyticContacts):
         if path is None:
             raise CycleBlocked('龙头车放置RRT', '2秒预算内未找到无碰撞路径', report)
         dense = np.asarray(densify(path))
-        if not bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all()):
-            raise CycleBlocked('龙头车放置RRT细验', '密化后的路径未通过碰撞检查', report)
+        dense_tensor = torch.tensor(dense, device='cuda', dtype=torch.float32)
+        if (not bool(validity.mask(dense_tensor).all()) or
+                not bool(validity.scene_margin_mask(dense_tensor, margin_m).all())):
+            raise CycleBlocked('龙头车放置RRT细验', '密化后的路径未通过碰撞或场景余量检查', report)
         names = report['joint_names']
         mobile = np.repeat(np.asarray(report['frames'][-1])[None], len(dense), axis=0)
         mobile[:, [names.index(name) for name in ACTIVE_JOINTS]] = dense

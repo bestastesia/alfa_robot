@@ -167,28 +167,35 @@ class GpuValidity:
 
     def edges(self, starts, goals, resolution=0.05, return_stability=False):
         resolution = min(resolution, getattr(self, 'search_edge_resolution', resolution))
-        weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
-        steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=1)
-        horizon = int(steps.max().item()) + 1
-        fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
-        fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
-        points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
-        base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
-        if base_margin_m:
-            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]), base_margin_m=base_margin_m)
-        else:
-            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+        collision_weights = getattr(self, 'collision_weights', self.weights).to(starts.device)
         margin_m = getattr(self, 'search_scene_margin_m', 0.)
-        if margin_m > 0:
-            valid = valid & self.scene_margin_mask(points.reshape(-1, starts.shape[1]), margin_m)
-        valid = valid.reshape(len(starts), horizon)
-        stability = stability.reshape(len(starts), horizon)
-        edge_valid = valid.all(dim=1)
-        if not return_stability:
-            return edge_valid
-        actual_steps = torch.arange(horizon, device=starts.device).reshape(1, -1) <= steps.reshape(-1, 1)
-        mean_stability = (stability * actual_steps).sum(dim=1) / (steps + 1)
-        return edge_valid, mean_stability
+
+        def check(edge_starts, edge_goals, step, scene_margin_m):
+            weighted = torch.abs((edge_goals - edge_starts) * collision_weights)
+            steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / step).long(), min=1)
+            horizon = int(steps.max().item()) + 1
+            fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
+            fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
+            points = edge_starts[:, None, :] + fractions[:, :, None] * (edge_goals - edge_starts)[:, None, :]
+            base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
+            if base_margin_m:
+                valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]), base_margin_m=base_margin_m)
+            else:
+                valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+            if scene_margin_m > 0:
+                valid = valid & self.scene_margin_mask(points.reshape(-1, starts.shape[1]), scene_margin_m)
+            valid = valid.reshape(len(edge_starts), horizon)
+            stability = stability.reshape(len(edge_starts), horizon)
+            actual = torch.arange(horizon, device=starts.device).reshape(1, -1) <= steps.reshape(-1, 1)
+            return valid.all(dim=1), (stability * actual).sum(dim=1) / (steps + 1)
+
+        edge_valid, mean_stability = check(starts, goals, resolution, margin_m)
+        fine_resolution = math.radians(.5)
+        if margin_m > 0 and resolution > fine_resolution and edge_valid.any():
+            accepted = torch.nonzero(edge_valid, as_tuple=False).reshape(-1)
+            fine_valid, _ = check(starts[accepted], goals[accepted], fine_resolution, margin_m)
+            edge_valid[accepted] = fine_valid
+        return (edge_valid, mean_stability) if return_stability else edge_valid
 
 
 def densify(path, weights=None, maximum_weighted_step=math.radians(0.5)):
@@ -701,7 +708,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                         continue
                     fine_checked.add(identity)
                     dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
-                    if bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all().item()):
+                    dense_tensor = torch.tensor(dense, device='cuda', dtype=torch.float32)
+                    quality = getattr(validity, 'path_quality_callback', None)
+                    if (bool(validity.mask(dense_tensor).all().item()) and
+                            (quality is None or quality(dense_tensor))):
                         if first_verified_ms is None:first_verified_ms=(time.perf_counter()-started)*1000
                         if best_valid_connection is None or connection['cost']<best_valid_connection['cost']:
                             best_valid_path=candidate_path.detach().clone();best_valid_connection=dict(connection)
@@ -742,7 +752,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
         dense_path = densify(path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
         checked += 1
-        if bool(validity.mask(torch.tensor(dense_path, device="cuda", dtype=torch.float32)).all().item()):
+        dense_tensor = torch.tensor(dense_path, device="cuda", dtype=torch.float32)
+        quality = getattr(validity, 'path_quality_callback', None)
+        if (bool(validity.mask(dense_tensor).all().item()) and
+                (quality is None or quality(dense_tensor))):
             selected_path = path
             selected = connection
             break

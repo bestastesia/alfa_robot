@@ -161,6 +161,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
         validity.search_scene_margin_m = scene_margin_m
         if scene_margin_m > 0:
             validity.search_edge_resolution = self.conveyor_search_edge_resolution
+            validity.path_quality_callback = lambda values: bool(validity.scene_margin_mask(values, scene_margin_m).all().item())
         if strict is not None:
             validity.evaluate = strict.evaluate
         lower,upper = checker.kinematics.get_joint_limits().position
@@ -169,8 +170,10 @@ class SingleArmPlanner(LazyExtractionPlanner):
         if path is None:
             return None,stats
         dense = np.asarray(densify(path))
-        if not validity.mask(torch.tensor(dense,device='cuda',dtype=torch.float32)).all():
-            return None,dict(failure='单臂完整15轴密化碰撞验收失败')
+        dense_tensor = torch.tensor(dense,device='cuda',dtype=torch.float32)
+        if (not validity.mask(dense_tensor).all() or
+                not validity.scene_margin_mask(dense_tensor, scene_margin_m).all()):
+            return None,dict(failure='单臂完整15轴密化碰撞或场景余量验收失败')
         return dense,stats
 
     def joint_plan(self, start, target, checker, validity, seed):
