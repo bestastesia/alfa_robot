@@ -12,14 +12,21 @@ collision gate. MOTION-342 options in `cartesian_options` (both off by default):
   sign(q2, q4, q6) than the start, the stage goes to the baseline joint RRT directly, because the
   branch-fixed Cartesian search then needs a long detour around the wrist singularity.
 A joint-space transport path from either option is shortcut and timed like the baseline's.
+With `wrist_flip` (also off by default, used together with `route_branch_change`), a stage whose nearest
+goal differs from the start only in the wrist branch first tries a straight tool path with one
+controlled wrist flip (v3_cartesian_wrist_flip); the box stops at the flip, so that path is timed in
+three rest-to-rest TOPP-RA pieces. That search is capped at `wrist_flip_budget_s`; if it finds no path,
+the stage goes to the joint RRT with the rest of the budget.
 """
 import time
 
 import numpy as np
 
+import v3_cartesian_transport as cartesian
 from v3_cartesian_math import branch
 from v3_cartesian_transport import plan_cartesian_transport
-from v3_path_timing import time_parameterize_toppra
+from v3_cartesian_wrist_flip import DEFAULTS as WRIST_FLIP_DEFAULTS, plan_wrist_flip, wrist_only_change
+from v3_path_timing import time_parameterize_toppra, time_parameterize_toppra_pieces
 from v3_timed_single_arm_planner import TimedSingleArmPlanner
 
 TRANSPORT_SEARCH_MODES = ("joint_rrt", "cartesian")
@@ -41,6 +48,7 @@ class CartesianTransportPlanner(TimedSingleArmPlanner):
         self.transport_timing = transport_timing
         self.last_toppra_error = None
         self.transport_joint_path_used = False
+        self.last_wrist_flip = None
 
     def _branch_change(self, start, goals):
         arm = slice(1, 8) if self.active_side == "left" else slice(8, 15)
@@ -48,12 +56,27 @@ class CartesianTransportPlanner(TimedSingleArmPlanner):
 
     def transport_path(self, start, goals, checker, candidates):
         self.transport_joint_path_used = False
+        self.last_wrist_flip = None
         if self.transport_search_mode == "joint_rrt":
             path, stats = self.single_path(start, goals, checker, True, seed=self.transport_seed)
         elif self.cartesian_options.get("route_branch_change") and self._branch_change(start, goals):
-            path, stats = self.single_path(start, goals, checker, True, seed=self.transport_seed)
-            stats = dict(stats or {}, tier="joint_rrt_routed")
-            self.transport_joint_path_used = path is not None
+            began, path, flip = time.perf_counter(), None, None
+            arm = slice(1, 8) if self.active_side == "left" else slice(8, 15)
+            if self.cartesian_options.get("wrist_flip") and wrist_only_change(np.asarray(start)[arm], np.asarray(goals)[0][arm]):
+                cartesian._IK = cartesian._IK or cartesian.BatchAnalyticIk()
+                options = {**cartesian.DEFAULTS, **WRIST_FLIP_DEFAULTS, **self.cartesian_options}
+                path, flip = plan_wrist_flip(self, start, candidates, checker, cartesian._IK, options,
+                                             began + min(options["wrist_flip_budget_s"], TRANSPORT_BUDGET_S))
+            if path is not None:
+                stats = dict(flip, tier="wrist_flip", first_verified_solution_ms=flip["search_ms"])
+                self.last_wrist_flip = dict(rows=len(path), swing=flip["swing_indices"])
+            else:
+                remaining = TRANSPORT_BUDGET_S - (time.perf_counter() - began) if flip else TRANSPORT_BUDGET_S
+                path, stats = self.single_path(start, goals, checker, True, budget=remaining, seed=self.transport_seed)
+                elapsed = (time.perf_counter() - began) * 1000
+                stats = dict(stats or {}, tier="joint_rrt_routed", wrist_flip=flip, search_ms=elapsed,
+                             first_verified_solution_ms=elapsed)
+                self.transport_joint_path_used = path is not None
         else:
             began = time.perf_counter()
             path, stats = plan_cartesian_transport(self, start, candidates, checker, budget_s=TRANSPORT_BUDGET_S,
@@ -82,12 +105,21 @@ class CartesianTransportPlanner(TimedSingleArmPlanner):
         if not (phase == "transport" and self.transport_search_mode == "cartesian" and self.transport_timing == "toppra"
                 and not self.transport_joint_path_used):
             return super()._extra_timing_candidates(phase, rows, names, sample_dt, boxes, original_snapshot)
-        try:
-            trajectory, validation = time_parameterize_toppra(rows, names, *self._timed_limits, sample_dt=sample_dt)
-        except RuntimeError as error:
-            self.last_toppra_error = str(error)
-            return []
-        if not self._timed_phase_valid(phase, validation, boxes, original_snapshot):
-            self.last_toppra_error = "TOPP-RA timed samples failed the collision gate"
-            return []
-        return [(trajectory["duration_s"], "validated_toppra", trajectory, validation)]
+        candidates = []
+        timings = [("validated_toppra", lambda: time_parameterize_toppra(rows, names, *self._timed_limits, sample_dt=sample_dt))]
+        if self.last_wrist_flip and self.last_wrist_flip["rows"] == len(rows):
+            first, last = self.last_wrist_flip["swing"]
+            pieces = [rows[:first + 1], rows[first:last + 1], rows[last:]]
+            timings.append(("validated_toppra_wrist_flip", lambda: time_parameterize_toppra_pieces(
+                pieces, names, *self._timed_limits, sample_dt=sample_dt)))
+        for name, timing in timings:
+            try:
+                trajectory, validation = timing()
+            except RuntimeError as error:
+                self.last_toppra_error = str(error)
+                continue
+            if not self._timed_phase_valid(phase, validation, boxes, original_snapshot):
+                self.last_toppra_error = f"{name}: timed samples failed the collision gate"
+                continue
+            candidates.append((trajectory["duration_s"], name, trajectory, validation))
+        return candidates
