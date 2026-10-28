@@ -188,7 +188,7 @@ def build_report(records):
     """Per route (with/without screening): overall, seen/held-out sizes, per level, per mode. Paired by (instance, seed)."""
     groups, seen = {}, set()
     for row in records:
-        label = route_label(row["route"], row["screen"])
+        label = row.get("label") or route_label(row["route"], row["screen"])
         identity = (label, row["instance"], row["seed"], row["split"])
         if identity in seen:
             raise ValueError("duplicate evaluation identity")

@@ -170,6 +170,37 @@ class ScreeningTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_report(rows + rows[:1])
 
+    def test_interleaved_routes_rotate_per_instance_and_report_by_label(self):
+        import json as jsonlib
+        from motion306_learning import interleave
+        with tempfile.TemporaryDirectory() as folder:
+            registry = Path(folder) / 'registry.json'
+            registry.write_text(jsonlib.dumps(dict(instances=[item(name) for name in ('a', 'b', 'c')])))
+            calls = []
+
+            class Env(ScreenEnv):
+                def __init__(self, **kwargs):
+                    super().__init__()
+
+                def reset(self, item_, seed):
+                    calls.append(item_['instance'])
+                    return super().reset(item_, seed)
+
+            specs = ['h=heuristic', 'u=uniform']
+            self.assertTrue(interleave.run(registry, Path(folder) / 'out', specs, env_factory=lambda **kwargs: Env()))
+            self.assertEqual(calls, ['a', 'a', 'b', 'b', 'c', 'c'])
+            orders = {}
+            for path in (Path(folder) / 'out').glob('*/*/instances/*.json'):
+                row = jsonlib.loads(path.read_text())
+                orders[(row['instance'], row['label'])] = row['interleave_position']
+            self.assertEqual([orders[('a', 'h')], orders[('b', 'u')], orders[('b', 'h')]], [0, 0, 1])
+            report = jsonlib.loads((Path(folder) / 'out' / 'report.json').read_text())
+            self.assertEqual(sorted(report['summaries']['dev']['all']), ['h', 'u'])
+            self.assertTrue(interleave.run(registry, Path(folder) / 'out', specs, env_factory=lambda **kwargs: Env()))
+            self.assertEqual(len(calls), 6)  # resumed: nothing reruns
+            with self.assertRaises(ValueError):
+                interleave.parse_routes(['h=heuristic', 'h=uniform'])
+
     def test_test_split_stays_sealed(self):
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(ValueError):
