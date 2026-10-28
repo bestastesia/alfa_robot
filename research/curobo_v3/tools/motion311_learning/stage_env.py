@@ -184,7 +184,7 @@ class StageEnv:
         if self.continuous:
             rows, actions = np.empty((0, 15)), np.empty((0, 3))
         else:
-            rows, actions = self.decoder.candidate_set(self.targets, self.previous, self.caps[self.stage], self.stage)
+            rows, actions = self.candidate_pool()
         self.generation_ms = (time.perf_counter() - began) * 1000
         feature_began = time.perf_counter()
         physical = self.physical.candidates(rows, self.previous, self.targets, self.boxes) if self.include_physics else np.zeros((len(rows), PHYSICS_DIM))
@@ -194,6 +194,10 @@ class StageEnv:
         self.observation = Observation(self.stage, state, rows, actions, physical, targets)
         self.feature_ms = (time.perf_counter() - feature_began) * 1000
         return self.observation
+
+    def candidate_pool(self):
+        """Current-stage analytic candidate rows and their normalized redundancy actions."""
+        return self.decoder.candidate_set(self.targets, self.previous, self.caps[self.stage], self.stage)
 
     def _path_cost(self, rows):
         if rows is None or len(rows) < 2:
@@ -209,7 +213,9 @@ class StageEnv:
             if np.linalg.norm(actual[:3, 3] - target[:3, 3]) > .002 or angle > math.radians(1):
                 raise EpisodeFailure('action_pose_error')
 
-    def _contact(self, row):
+    def contact_checks(self, row):
+        """Deterministic contact gates without search: collision, extraction and the single-arm pre-approach.
+        Returns (extracted, backwards); backwards is None for dual-arm tasks."""
         p = self.planner
         if not bool(self.empty_valid.mask(torch.tensor(row[None], device='cuda', dtype=torch.float32)).all()):
             raise EpisodeFailure('contact_collision')
@@ -217,6 +223,39 @@ class StageEnv:
             extracted, detail = FullCyclePlanner.analytic_extract(p, row, self.empty_valid, self.loaded_valid)
             if extracted is None:
                 raise EpisodeFailure('extraction_invalid:' + str(detail))
+            return extracted, None
+        extracted, detail = p.cartesian_single(row, extraction_steps(p.box_fit['dimensions_m']))
+        if extracted is None:
+            raise EpisodeFailure('extraction_invalid:' + str(detail))
+        if not bool(self.empty_valid.mask(torch.tensor(extracted, device='cuda', dtype=torch.float32)).all()) or not bool(self.loaded_valid.mask(torch.tensor(extracted[-1:], device='cuda', dtype=torch.float32)).all()):
+            raise EpisodeFailure('extraction_collision')
+        backwards, detail = p.cartesian_single(row, np.linspace(.005, .03, 6), True)
+        if backwards is None or not bool(self.empty_valid.mask(torch.tensor(backwards, device='cuda', dtype=torch.float32)).all()):
+            raise EpisodeFailure('preapproach_invalid')
+        return extracted, backwards
+
+    def contact_collision_free(self, rows):
+        """Batched form of contact_checks' first gate (empty-scene collision) for a whole pool."""
+        rows = torch.tensor(np.asarray(rows, dtype=np.float32).reshape(-1, 15), device='cuda')
+        return self.empty_valid.mask(rows).cpu().numpy() if len(rows) else np.zeros(0, dtype=bool)
+
+    def carry_checks(self, rows):
+        """Deterministic carry gates for a batch of goals: payload collision and the single-arm 1.05 m envelope.
+        Returns a reason per row, None when the row passes."""
+        rows = torch.tensor(np.asarray(rows, dtype=np.float32).reshape(-1, 15), device='cuda')
+        if not len(rows):
+            return []
+        valid = self.loaded_valid.mask(rows).cpu().numpy()
+        reasons = [None if ok else 'carry_collision' for ok in valid]
+        if len(self.boxes) == 1:
+            radius = self.planner.full_envelope_radius(self.loaded, rows).cpu().numpy()
+            reasons = [reason or ('carry_envelope' if value > 1.05 else None) for reason, value in zip(reasons, radius)]
+        return reasons
+
+    def _contact(self, row):
+        p = self.planner
+        extracted, backwards = self.contact_checks(row)
+        if len(self.boxes) == 2:
             approach, stats = TaskCyclePlanner.plan_contact_approach(p, row, self.empty, self.empty_valid, 20261003)
             if approach is None:
                 raise EpisodeFailure('approach_budget_or_validation')
@@ -225,14 +264,6 @@ class StageEnv:
             self.append(approach[max(0, split - 1):], 'contact_approach', False)
             cost = self._path_cost(approach) + self._path_cost(extracted)
         else:
-            extracted, detail = p.cartesian_single(row, extraction_steps(p.box_fit['dimensions_m']))
-            if extracted is None:
-                raise EpisodeFailure('extraction_invalid:' + str(detail))
-            if not bool(self.empty_valid.mask(torch.tensor(extracted, device='cuda', dtype=torch.float32)).all()) or not bool(self.loaded_valid.mask(torch.tensor(extracted[-1:], device='cuda', dtype=torch.float32)).all()):
-                raise EpisodeFailure('extraction_collision')
-            backwards, detail = p.cartesian_single(row, np.linspace(.005, .03, 6), True)
-            if backwards is None or not bool(self.empty_valid.mask(torch.tensor(backwards, device='cuda', dtype=torch.float32)).all()):
-                raise EpisodeFailure('preapproach_invalid')
             approach, stats = p.single_path(p.home_values, [backwards[-1]], self.empty, strict=p.target_validity(self.empty))
             if approach is None:
                 raise EpisodeFailure('approach_budget_or_validation')
@@ -245,12 +276,10 @@ class StageEnv:
 
     def _carry(self, row):
         p = self.planner
-        if not bool(self.loaded_valid.mask(torch.tensor(row[None], device='cuda', dtype=torch.float32)).all()):
-            raise EpisodeFailure('carry_collision')
+        reason = self.carry_checks(row[None])[0]
+        if reason is not None:
+            raise EpisodeFailure(reason)
         if len(self.boxes) == 1:
-            radius = float(p.full_envelope_radius(self.loaded, row[None])[0])
-            if radius > 1.05:
-                raise EpisodeFailure('carry_envelope')
             path, stats = p.single_path(self.previous, [row], self.loaded, rotation=True, budget=self.transport_budget_s)
         else:
             start = torch.tensor(self.previous, device='cuda', dtype=torch.float32)
