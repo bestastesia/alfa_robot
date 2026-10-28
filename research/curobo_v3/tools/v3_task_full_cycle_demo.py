@@ -33,6 +33,19 @@ PHASE_NAMES = {
 }
 
 
+def sequence_round_index(sequence, task):
+    return next(index for index, record in enumerate(sequence["rounds"])
+                if record["task"] == task)
+
+
+def sequence_round_result(sequence, task):
+    return sequence["rounds"][sequence_round_index(sequence, task)]["result"]
+
+
+def sequence_round_start(sequence, task):
+    return sequence["frame_rounds"].index(sequence_round_index(sequence, task))
+
+
 def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--robot-config", type=Path, default=DEFAULT_ROBOT_CONFIG)
@@ -63,12 +76,16 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     saved_tasks = {tuple(sorted(result['task'].items())):result for result in saved_results}
     if preload:
         planner.selected_task = preload['task']
-    if round_mode and saved_results:
+    round_results = (saved_results if saved_results else
+                     [record["result"] for record in sequence_result.get("rounds", ())]
+                     if sequence_result else [])
+    if round_mode and round_results:
         planner.task_options = [
             (f"第 {index+1:02d} 轮 · " + " / ".join(f"{side}:{box}" for side, box in result["task"].items()),
              result["task"])
-            for index, result in enumerate(saved_results)]
+            for index, result in enumerate(round_results)]
         planner.task_map = dict(planner.task_options)
+        planner.selected_task = round_results[0]["task"]
     config = planner.mobile_robot["kinematics"]
     joint_names = config["cspace"]["joint_names"]
     urdf = yourdfpy.URDF.load(config["urdf_path"], load_meshes=True, build_scene_graph=True)
@@ -528,18 +545,21 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
 
     @whole_sequence.on_update
     def on_whole_sequence(_event):
+        was_playing = play.value
         play.value = False
         sequence = active_sequence()
         if whole_sequence.value and sequence:
             current["result"] = sequence
             frame.max = len(sequence["frames"])
-            frame.value = 1
+            frame.value = sequence_round_start(sequence, planner.selected_task) + 1
         else:
-            current["result"] = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
+            current["result"] = (sequence_round_result(sequence, planner.selected_task) if sequence else
+                                 saved_tasks.get(tuple(sorted(planner.selected_task.items()))))
             frame.max = max(1, len(current["result"]["frames"])) if current["result"] else 1
             frame.value = 1
         current["render_round"] = None
-        show_frame(0)
+        show_frame(int(frame.value)-1)
+        play.value = bool(was_playing and current["result"])
         refresh_stage_timing()
         refresh_tcp_traces()
 
@@ -547,6 +567,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
     def on_task(_event):
         if current["busy"]:
             return
+        was_playing = play.value
         play.value = False
         diagnostic.value = False
         current["result"] = None
@@ -555,21 +576,22 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         comparisons.clear()
         planner.comparison_contact = None
         refresh_comparison()
-        selected_result = saved_tasks.get(tuple(sorted(planner.selected_task.items())))
         sequence = active_sequence()
+        selected_result = (sequence_round_result(sequence, planner.selected_task) if sequence else
+                           saved_tasks.get(tuple(sorted(planner.selected_task.items()))))
         if whole_sequence.value and sequence:
             current["result"] = sequence
-            number = next(index for index, record in enumerate(sequence["rounds"])
-                          if record["task"] == planner.selected_task)
             frame.max = len(sequence["frames"])
-            frame.value = sequence["frame_rounds"].index(number) + 1
+            frame.value = sequence_round_start(sequence, planner.selected_task) + 1
         else:
             current["result"] = selected_result
             frame.max = max(1, len(selected_result["frames"])) if selected_result else 1
             frame.value = 1
+        current["render_round"] = None
         show_frame(int(frame.value)-1)
         refresh_stage_timing()
         refresh_tcp_traces()
+        play.value = bool(was_playing and current["result"])
 
     def refresh_task_geometry():
         centers, obstacles = planner.configure_task(planner.selected_task)
@@ -596,9 +618,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
         current["result"] = sequence
         current["render_round"] = None
         frame.max = max(1, len(sequence["frames"]))
-        number = next((index for index, record in enumerate(sequence["rounds"])
-                       if record["task"] == planner.selected_task), 0)
-        frame.value = sequence["frame_rounds"].index(number) + 1
+        frame.value = sequence_round_start(sequence, planner.selected_task) + 1
         current["curve_binding"] = None
         show_frame(int(frame.value)-1)
         refresh_stage_timing()
