@@ -16,6 +16,20 @@ from motion306_learning.evaluate import (ROUTES, SCHEMA, _atomic_json, _load_pol
                                          evaluate_instance, select_items, sha256_file)
 
 
+def level_blocks(items, block=8):
+    """Cycle through box levels in blocks, so a run stopped early still covers every level about evenly
+    (blocks keep the per-level checker cache warm on the 8 GB card)."""
+    per_level = {}
+    for item in items:
+        per_level.setdefault(item.get("box_level"), []).append(item)
+    queues, ordered = [rows for _, rows in sorted(per_level.items(), key=lambda pair: str(pair[0]))], []
+    while any(queues):
+        for rows in queues:
+            ordered.extend(rows[:block])
+            del rows[:block]
+    return ordered
+
+
 def parse_routes(specs):
     routes = []
     for spec in specs:
@@ -34,7 +48,7 @@ def run(registry, output, specs, group="dev", levels=(), seed=101, stride=1, lim
     if group == "test":
         raise ValueError("test split stays sealed for MOTION-364")
     registry, output = Path(registry), Path(output)
-    items = select_items(json.loads(registry.read_text()), group, set(levels), limit, stride)
+    items = level_blocks(select_items(json.loads(registry.read_text()), group, set(levels), limit, stride))
     routes = parse_routes(specs)
     configs = {}
     for route in routes:

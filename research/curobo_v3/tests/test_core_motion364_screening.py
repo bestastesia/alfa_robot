@@ -200,6 +200,9 @@ class ScreeningTest(unittest.TestCase):
             self.assertEqual(len(calls), 6)  # resumed: nothing reruns
             with self.assertRaises(ValueError):
                 interleave.parse_routes(['h=heuristic', 'h=uniform'])
+        rows = [dict(instance=f'{level}{index}', box_level=level) for level in 'AB' for index in range(5)]
+        self.assertEqual([row['instance'] for row in interleave.level_blocks(rows, 2)],
+                         ['A0', 'A1', 'B0', 'B1', 'A2', 'A3', 'B2', 'B3', 'A4', 'B4'])
 
     def test_test_split_stays_sealed(self):
         with tempfile.TemporaryDirectory() as folder:
