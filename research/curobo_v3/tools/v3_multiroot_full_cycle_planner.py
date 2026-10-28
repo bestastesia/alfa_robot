@@ -109,6 +109,8 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
                 torch.cuda.synchronize();search_total+=(time.perf_counter()-segment)*1000
                 self.last_multiroot_search_ms=search_total
                 if path is None:break
+                stats = dict(stats)
+                stats['trajectory_fallback_waypoints'] = np.asarray(path).tolist()
                 dense=np.asarray(densify(path))
                 root_index=active_roots[int(torch.linalg.vector_norm(roots[active_roots]-torch.tensor(dense[0],device='cuda'),dim=-1).argmin())]
                 goal_index=active_goals[int(torch.linalg.vector_norm(goals[active_goals]-torch.tensor(dense[-1],device='cuda'),dim=-1).argmin())]

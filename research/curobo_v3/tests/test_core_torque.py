@@ -4,8 +4,10 @@ import unittest
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from curobo_core.torque import (TorqueModel, combine_inertials, constrain_timed_result,
-                                cuboid_inertia, load_joint_torque_profiles, scale_derivatives)
+from curobo_core.torque import (TorqueModel, _time_warp, combine_inertials,
+                                constrain_timed_result, cuboid_inertia, geometry_digest,
+                                load_joint_torque_profiles, scale_derivatives,
+                                trajectory_identity_digest)
 
 
 class TorqueHelpersTest(unittest.TestCase):
@@ -51,7 +53,7 @@ class TorqueHelpersTest(unittest.TestCase):
                 "velocity": [None, Values([2.])], "acceleration": [None, Values([4.])],
                 "jerk": [None, Values([8.])]})()})()
 
-            def constrain(self, segment, active_sides=(), tool_to_box=None):
+            def constrain(self, segment, active_sides=(), tool_to_box=None, deadline=None):
                 output = scale_derivatives(segment, 2.)
                 audit = {"maximum_utilization": 1.0}
                 return output, audit, {"success": True, "time_scale": 2., "after": audit}
@@ -68,6 +70,12 @@ class TorqueHelpersTest(unittest.TestCase):
                   "payload": [False, False], "timed_segments": [segment],
                   "time_from_start_s": [0., 1.], "velocities": segment["velocities"],
                   "accelerations": segment["accelerations"], "jerks": segment["jerks"]}
+        result["baseline_trajectory_contract"] = {
+            "collision_validation_success": True,
+            "timed_geometry_sha256": geometry_digest(result["frames"]),
+            "identity_sha256": trajectory_identity_digest(result),
+            "joint_names": result["joint_names"],
+        }
         updated = constrain_timed_result(result, Model())
         self.assertEqual(updated["motion_duration_s"], 2.)
         self.assertEqual(updated["velocities"], [[1.], [1.]])
@@ -77,6 +85,44 @@ class TorqueHelpersTest(unittest.TestCase):
         self.assertEqual(updated["torque_validation"]["retimed_segments"], 1)
         self.assertEqual(updated["timed_segments"][0]["torque_joint_names"], ["joint"])
         self.assertEqual(len(updated["timed_segments"][0]["torques_nm"]), 2)
+        result["frames"][0][0] = .25
+        with self.assertRaises(ValueError):
+            constrain_timed_result(result, Model())
+
+
+    def test_nonuniform_time_warp_keeps_positions_and_scales_constant_profile(self):
+        segment = {"duration_s": 2., "time_from_start_s": [0., 1., 2.],
+                   "positions": [[0.], [1.], [2.]],
+                   "velocities": [[2.], [2.], [2.]],
+                   "accelerations": [[4.], [4.], [4.]],
+                   "jerks": [[8.], [8.], [8.]]}
+        result = _time_warp(segment, [2., 2., 2.])
+        self.assertEqual(result["positions"], segment["positions"])
+        np.testing.assert_allclose(result["time_from_start_s"], [0., 2., 4.])
+        np.testing.assert_allclose(result["velocities"], 1.)
+        np.testing.assert_allclose(result["accelerations"], 1.)
+        np.testing.assert_allclose(result["jerks"], 1.)
+
+    def test_local_retiming_changes_only_time_and_derivatives(self):
+        model = object.__new__(TorqueModel)
+        model.torque_limit_scale = .9
+        model._derivative_ratio = lambda segment: 0.
+        def audit(segment, *_):
+            values = np.max(np.abs(np.asarray(segment["velocities"])), axis=1)
+            return {"maximum_utilization": float(values.max()),
+                    "maximum_gravity_utilization": 0.,
+                    "frame_maximum_utilization": values.tolist(),
+                    "frame_maximum_gravity_utilization": [0.] * len(values)}
+        model.audit = audit
+        segment = {"duration_s": 1., "time_from_start_s": [0., .25, .5, .75, 1.],
+                   "positions": [[0.], [.25], [.5], [.75], [1.]],
+                   "velocities": [[0.], [.6], [1.2], [.6], [0.]],
+                   "accelerations": [[0.]] * 5, "jerks": [[0.]] * 5}
+        result, _, constraint = model.constrain(segment)
+        self.assertTrue(constraint["success"])
+        self.assertEqual(constraint["retiming_mode"], "local_window")
+        self.assertEqual(result["positions"], segment["positions"])
+        self.assertGreater(result["time_from_start_s"][-1], 1.)
 
     def test_uniform_retiming_uses_unscaled_end_time_when_duration_is_absent(self):
         source = {"time_from_start_s": [0., 1.], "positions": [[0.], [1.]],

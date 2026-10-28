@@ -232,6 +232,8 @@ class FullCyclePlanner(CuroboBackend):
         dense = np.asarray(densify(path))
         if not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
             return None, {"failure": "密化轨迹验收失败"}
+        stats = dict(stats)
+        stats["trajectory_fallback_waypoints"] = np.asarray(path).tolist()
         return dense, stats
 
     def _full_cycle(self, boxes, progress=lambda text: None):

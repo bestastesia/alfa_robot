@@ -37,5 +37,5 @@ def test_timing_adapter_does_not_add_another_planning_stage():
     planner = TimedCurrentUrdfPlanner()
     assert planner.forward_precontact_policy
     assert planner.lm_chained_cycle_policy
-    assert planner.trajectory_optimization_enabled
+    assert not planner.trajectory_optimization_enabled
     assert v3_forward_precontact_demo.TimedCurrentUrdfPlanner is TimedCurrentUrdfPlanner

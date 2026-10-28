@@ -105,7 +105,7 @@ def main():
         for number, record in enumerate(source["rounds"], 1):
             result = record["result"]
             constrained_result = constrain_timed_result(
-                constrained["rounds"][number-1]["result"], model, copy_result=False)
+                constrained["rounds"][number-1]["result"], model, copy_result=False, require_contract=False)
             validation = constrained_result["torque_validation"]
             failed |= not validation["success"]
             constrained["rounds"][number-1]["result"] = constrained_result

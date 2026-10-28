@@ -355,12 +355,19 @@ def main(default_port=8150, planner_class=None, default_assets=None):
                             if item['frame_start'] <= index <= item['frame_end']), None)
             if segment:
                 local = index - segment['frame_start']
+                torque_report = next((item for item in result.get('torque_validation', {}).get('segments', ())
+                                      if item.get('phase') == segment['name']), None)
+                constraint = torque_report.get('constraint', {}) if torque_report else {}
+                timing = result.get('planning_timing_ms', {})
                 timed_status.content = (
                     f"**时间化阶段：{PHASE_NAMES.get(segment['name'], segment['name'])}**  \n"
                     f"阶段运动时间：**{segment['duration_s']:.3f}s** · 当前：**{segment['time_from_start_s'][local]:.3f}s**  \n"
                     f"方法：`{segment.get('parameterizer', 'recorded')}` · "
-                    f"时间化计算：**{result.get('trajectory_timing_ms', 0)/1000:.3f}s**  \n"
-                    f"全周期计算：**{result.get('measured_wall_ms', result.get('total_ms', 0))/1000:.3f}s** · "
+                    f"动力学缩放：`{constraint.get('retiming_mode', 'none')}`  \n"
+                    f"几何/时间化/动力学：**{timing.get('geometric_planning_ms', 0):.1f}/"
+                    f"{timing.get('time_parameterization_ms', 0):.1f}/"
+                    f"{timing.get('dynamics_audit_and_retiming_ms', 0):.1f}ms**  \n"
+                    f"端到端计算：**{result.get('measured_wall_ms', result.get('total_ms', 0))/1000:.3f}s** · "
                     f"运动：**{result.get('motion_duration_s', 0):.3f}s**")
             else:
                 timed_status.content = "当前为吸附、释放或导航状态切换，不计机械臂运动时间。"

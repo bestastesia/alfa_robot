@@ -26,8 +26,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--trajopt-interpolation-dt", type=float, default=.025)
-    parser.add_argument("--disable-trajopt", action="store_true",
-                        help="keep the shortcut/custom timing baseline without cuRobo TrajectoryOptimizer")
+    parser.add_argument("--enable-trajopt", action="store_true",
+                        help="experimental geometry-changing TrajOpt; production default is fixed-path timing")
     parser.add_argument("--payload-mass-kg", type=float,
                         help="enable RNEA torque constraints with this per-box mass")
     parser.add_argument("--payload-dimensions-m", type=float, nargs=3, default=(.3, .4, .4))
@@ -51,14 +51,14 @@ def main():
                 args.torque_limit_scale, args.joint_torque_profile)
     planner = TimedSingleArmPlanner(
         assets, args.trajopt_interpolation_dt, torque_model,
-        use_trajopt=not args.disable_trajopt)
+        use_trajopt=args.enable_trajopt)
     planner.warmup_resources()
     report = {"success": False, "sequence": True, "rounds": [], "frames": [],
               "phases": [], "payload": [], "frame_rounds": [],
               "joint_names": list(planner.mobile_robot["kinematics"]["cspace"]["joint_names"]),
               "time_from_start_s": [], "velocities": [], "accelerations": [], "jerks": [],
               "completed_box_ids": [],
-              "trajectory_optimizer_enabled": not args.disable_trajopt,
+              "trajectory_optimizer_enabled": args.enable_trajopt,
               "dynamics_enabled": torque_model is not None,
               "torque_constraints_enabled": torque_model is not None,
               "payload_mass_kg": args.payload_mass_kg,

@@ -174,6 +174,8 @@ class SingleArmPlanner(LazyExtractionPlanner):
         if (not validity.mask(dense_tensor).all() or
                 not validity.scene_margin_mask(dense_tensor, scene_margin_m).all()):
             return None,dict(failure='单臂完整15轴密化碰撞或场景余量验收失败')
+        stats = dict(stats)
+        stats['trajectory_fallback_waypoints'] = np.asarray(path).tolist()
         return dense,stats
 
     def joint_plan(self, start, target, checker, validity, seed):
@@ -256,6 +258,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
             timing['extraction_and_approach_ms'] += (time.perf_counter()-started)*1000
             if approach is not None:
                 selected=(contact,extracted,backwards,approach)
+                report['approach_search_stats']=stats
                 report['selected_candidate']=index+1
                 break
         if selected is None:

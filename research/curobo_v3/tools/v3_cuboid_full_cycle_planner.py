@@ -111,6 +111,8 @@ class BallFullCyclePlanner(TaskCyclePlanner):
         timing['transport_rrt']=(time.perf_counter()-segment)*1000
         if path is None:
             raise CycleBlocked('搬运路径','2秒上限内无合法首解',self.last_partial)
+        stats = dict(stats)
+        stats['trajectory_fallback_waypoints'] = np.asarray(path).tolist()
         transport=np.asarray(densify(path))
         if not validity.mask(torch.tensor(transport,device='cuda',dtype=torch.float32)).all():
             raise CycleBlocked('搬运细验','球碰撞验收未通过',self.last_partial)

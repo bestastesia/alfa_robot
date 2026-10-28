@@ -71,6 +71,72 @@ def scale_derivatives(trajectory, factor):
     return result
 
 
+def _time_warp(segment, slowdown):
+    """Retain q samples while applying a smooth, non-uniform time dilation."""
+    result = copy.deepcopy(segment)
+    time_values = np.asarray(segment["time_from_start_s"], dtype=np.float64)
+    slowdown = np.asarray(slowdown, dtype=np.float64)
+    if (time_values.ndim != 1 or len(time_values) < 3 or slowdown.shape != time_values.shape or
+            np.any(np.diff(time_values) <= 0) or np.any(slowdown < 1) or
+            not np.isfinite(slowdown).all()):
+        raise ValueError("local retiming requires finite increasing samples and slowdown >= 1")
+    dt = np.diff(time_values)
+    warped_time = np.concatenate(([0.0], np.cumsum(dt * (slowdown[:-1] + slowdown[1:]) * .5)))
+    inverse = 1.0 / slowdown
+    inverse_t = np.gradient(inverse, time_values, edge_order=2)
+    inverse_tt = np.gradient(inverse_t, time_values, edge_order=2)
+    velocity = np.asarray(segment["velocities"], dtype=np.float64)
+    acceleration = np.asarray(segment["accelerations"], dtype=np.float64)
+    jerk = np.asarray(segment["jerks"], dtype=np.float64)
+    a = inverse[:, None]
+    at = inverse_t[:, None]
+    att = inverse_tt[:, None]
+    result["dt_s"] = None
+    result["time_from_start_s"] = warped_time.tolist()
+    result["duration_s"] = float(warped_time[-1])
+    result["velocities"] = (velocity * a).tolist()
+    result["accelerations"] = (acceleration * a**2 + velocity * a * at).tolist()
+    result["jerks"] = (jerk * a**3 + 3 * acceleration * a**2 * at +
+                       velocity * (a * at**2 + a**2 * att)).tolist()
+    return result
+
+
+def _violation_windows(times, mask, padding_s):
+    indices = np.flatnonzero(mask)
+    if not len(indices):
+        return []
+    groups = np.split(indices, np.flatnonzero(np.diff(indices) > 1) + 1)
+    windows = []
+    for group in groups:
+        core_start, core_end = float(times[group[0]]), float(times[group[-1]])
+        item = [max(float(times[0]), core_start - padding_s), core_start, core_end,
+                min(float(times[-1]), core_end + padding_s)]
+        if windows and item[0] <= windows[-1][3]:
+            windows[-1][1] = min(windows[-1][1], item[1])
+            windows[-1][2] = max(windows[-1][2], item[2])
+            windows[-1][3] = max(windows[-1][3], item[3])
+        else:
+            windows.append(item)
+    return windows
+
+
+def _slowdown_profile(times, windows, factor):
+    profile = np.ones(len(times), dtype=np.float64)
+    for left, core_start, core_end, right in windows:
+        bump = np.zeros(len(times), dtype=np.float64)
+        bump[(times >= core_start) & (times <= core_end)] = 1.0
+        if core_start > left:
+            mask = (times >= left) & (times < core_start)
+            x = (times[mask] - left) / (core_start - left)
+            bump[mask] = 6*x**5 - 15*x**4 + 10*x**3
+        if right > core_end:
+            mask = (times > core_end) & (times <= right)
+            x = (right - times[mask]) / (right - core_end)
+            bump[mask] = 6*x**5 - 15*x**4 + 10*x**3
+        profile = np.maximum(profile, 1.0 + (factor - 1.0) * bump)
+    return profile
+
+
 class TorqueModel:
     """Compute and constrain arm torque using a dynamics-overlay cuRobo model."""
     def __init__(self, robot_yaml, payload_mass_kg=0.0, payload_dimensions=(.3, .4, .4),
@@ -206,27 +272,39 @@ class TorqueModel:
             "per_joint_start_stop_utilization": np.max(start_stop_ratio, axis=0).tolist(),
             "per_joint_instantaneous_utilization": np.max(instantaneous_ratio, axis=0).tolist(),
             "per_joint_gravity_utilization": np.max(gravity_ratio, axis=0).tolist(),
+            "frame_maximum_utilization": np.max(ratio[:, self.enforced], axis=1).tolist(),
+            "frame_maximum_gravity_utilization": np.max(gravity_ratio[:, self.enforced], axis=1).tolist(),
             "compute_ms": wall_ms + gravity_ms,
             "updown_peak_force_n": float(np.max(np.abs(torque[:, self.names.index("updown")]))),
             "updown_effort_not_enforced": True,
         }
 
-    def constrain(self, segment, active_sides=(), tool_to_box=None):
-        before = self.audit(segment, active_sides, tool_to_box)
-        if before["maximum_gravity_utilization"] > self.torque_limit_scale:
-            return None, before, {"success": False, "reason": "static gravity torque exceeds limit"}
-        if before["maximum_utilization"] <= self.torque_limit_scale:
-            return segment, before, {"success": True, "time_scale": 1.0, "after": before}
+    def _derivative_ratio(self, segment):
+        source_names = list(segment.get("joint_names", self.names))
+        indices = [source_names.index(name) for name in self.names]
+        limits = self.base_kp.joint_limits
+        ratios = []
+        for field, values in (("velocities", limits.velocity[1]),
+                              ("accelerations", limits.acceleration[1]),
+                              ("jerks", limits.jerk[1])):
+            array = np.asarray(segment[field], dtype=np.float64)[:, indices]
+            ratios.append(float(np.max(np.abs(array) / values.detach().cpu().numpy())))
+        return max(ratios)
+
+    def _uniform_constraint(self, segment, before, active_sides, tool_to_box, deadline):
         lower, upper = 1.0, 2.0
         while upper < 128:
+            if deadline is not None and time.perf_counter() > deadline:
+                return None, {"success": False, "reason": "dynamics retiming budget exceeded"}
             candidate = scale_derivatives(segment, upper)
-            audit = self.audit(candidate, active_sides, tool_to_box)
-            if audit["maximum_utilization"] <= self.torque_limit_scale:
+            if self.audit(candidate, active_sides, tool_to_box)["maximum_utilization"] <= self.torque_limit_scale:
                 break
             upper *= 2
         else:
-            return None, before, {"success": False, "reason": "torque retiming did not converge"}
-        for _ in range(18):
+            return None, {"success": False, "reason": "torque retiming did not converge"}
+        for _ in range(12):
+            if deadline is not None and time.perf_counter() > deadline:
+                return None, {"success": False, "reason": "dynamics retiming budget exceeded"}
             middle = (lower + upper) / 2
             candidate = scale_derivatives(segment, middle)
             if self.audit(candidate, active_sides, tool_to_box)["maximum_utilization"] <= self.torque_limit_scale:
@@ -235,7 +313,68 @@ class TorqueModel:
                 lower = middle
         result = scale_derivatives(segment, upper)
         after = self.audit(result, active_sides, tool_to_box)
-        return result, before, {"success": True, "time_scale": upper, "after": after}
+        return result, {"success": True, "retiming_mode": "uniform_fallback",
+                        "time_scale": upper, "time_scale_peak": upper,
+                        "retimed_windows": [], "after": after,
+                        "duration_before_s": float(segment["time_from_start_s"][-1]),
+                        "duration_after_s": float(result["time_from_start_s"][-1])}
+
+    def constrain(self, segment, active_sides=(), tool_to_box=None, deadline=None):
+        before = self.audit(segment, active_sides, tool_to_box)
+        if before["maximum_gravity_utilization"] > self.torque_limit_scale:
+            return None, before, {"success": False, "reason": "static gravity torque exceeds limit"}
+        if before["maximum_utilization"] <= self.torque_limit_scale:
+            return segment, before, {"success": True, "retiming_mode": "none",
+                                     "time_scale": 1.0, "time_scale_peak": 1.0,
+                                     "retimed_windows": [], "after": before,
+                                     "duration_before_s": float(segment["time_from_start_s"][-1]),
+                                     "duration_after_s": float(segment["time_from_start_s"][-1])}
+        times = np.asarray(segment["time_from_start_s"], dtype=np.float64)
+        if len(times) < 3:
+            result, constraint = self._uniform_constraint(
+                segment, before, active_sides, tool_to_box, deadline)
+            return result, before, constraint
+        violation = np.asarray(before["frame_maximum_utilization"]) > self.torque_limit_scale
+        for expansion in range(3):
+            windows = _violation_windows(times, violation, .25 * (expansion + 1))
+            lower, upper = 1.0, 2.0
+            accepted = None
+            while upper <= 128:
+                if deadline is not None and time.perf_counter() > deadline:
+                    return None, before, {"success": False, "reason": "dynamics retiming budget exceeded"}
+                candidate = _time_warp(segment, _slowdown_profile(times, windows, upper))
+                audit = self.audit(candidate, active_sides, tool_to_box)
+                if (audit["maximum_utilization"] <= self.torque_limit_scale and
+                        self._derivative_ratio(candidate) <= 1.0001):
+                    accepted = (candidate, audit)
+                    break
+                upper *= 2
+            if accepted is None:
+                continue
+            for _ in range(12):
+                if deadline is not None and time.perf_counter() > deadline:
+                    return None, before, {"success": False, "reason": "dynamics retiming budget exceeded"}
+                middle = (lower + upper) / 2
+                candidate = _time_warp(segment, _slowdown_profile(times, windows, middle))
+                audit = self.audit(candidate, active_sides, tool_to_box)
+                if (audit["maximum_utilization"] <= self.torque_limit_scale and
+                        self._derivative_ratio(candidate) <= 1.0001):
+                    upper, accepted = middle, (candidate, audit)
+                else:
+                    lower = middle
+            result, after = accepted
+            return result, before, {"success": True, "retiming_mode": "local_window",
+                                    "time_scale": upper, "time_scale_peak": upper,
+                                    "retimed_windows": [{"start_s": item[0], "core_start_s": item[1],
+                                                         "core_end_s": item[2], "end_s": item[3]}
+                                                        for item in windows],
+                                    "after": after,
+                                    "duration_before_s": float(times[-1]),
+                                    "duration_after_s": float(result["time_from_start_s"][-1])}
+        result, constraint = self._uniform_constraint(
+            segment, before, active_sides, tool_to_box, deadline)
+        return result, before, constraint
+
 
 
 def geometry_digest(positions):
@@ -243,19 +382,44 @@ def geometry_digest(positions):
     return hashlib.sha256(values.tobytes()).hexdigest()
 
 
-def constrain_timed_result(result, model, copy_result=True):
+def trajectory_identity_digest(result):
+    identity = {
+        "model_id": result.get("model_id"),
+        "scene_id": result.get("scene_id"),
+        "scene_revision": result.get("scene_revision"),
+        "task": result.get("task"),
+        "tool_to_box": result.get("tool_to_box"),
+        "joint_names": result.get("joint_names"),
+        "payload_sha256": hashlib.sha256(
+            np.ascontiguousarray(result.get("payload", ()), dtype=np.uint8).tobytes()).hexdigest(),
+    }
+    encoded = json.dumps(identity, sort_keys=True,
+                         default=lambda value: np.asarray(value).tolist()).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def constrain_timed_result(result, model, copy_result=True, retime_budget_s=.5,
+                           require_contract=True):
     """Apply the RNEA torque gate to every timed motion segment in one cycle."""
     from curobo_core.trajectory import assemble_timed_cycle, validate_timed_cycle
 
     source_positions = np.asarray(result["frames"], dtype=np.float32).copy()
     source_digest = geometry_digest(source_positions)
+    contract = result.get("baseline_trajectory_contract")
+    if require_contract and (not contract or not contract.get("collision_validation_success") or
+                             contract.get("timed_geometry_sha256") != source_digest or
+                             contract.get("identity_sha256") != trajectory_identity_digest(result) or
+                             contract.get("joint_names") != list(result.get("joint_names", ()))):
+        raise ValueError("missing or stale validated baseline trajectory contract")
     updated = copy.deepcopy(result) if copy_result else result
     segments, reports, failed = [], [], False
+    started = time.perf_counter()
+    deadline = started + retime_budget_s if retime_budget_s is not None else None
     active_sides = tuple(result["task"])
     for segment in result["timed_segments"]:
         loaded = bool(result["payload"][segment["frame_start"]])
         output, before, constraint = model.constrain(
-            segment, active_sides if loaded else (), result["tool_to_box"])
+            segment, active_sides if loaded else (), result["tool_to_box"], deadline=deadline)
         failed |= not constraint["success"]
         segments.append(segment if output is None else output)
         reports.append({"phase": segment["name"], "payload": loaded,
@@ -303,7 +467,13 @@ def constrain_timed_result(result, model, copy_result=True):
         "torque_limit_scale": model.torque_limit_scale,
         "retimed_segments": sum(item["constraint"].get("time_scale", 1.0) > 1.000001
                                   for item in reports),
+        "local_retimed_segments": sum(item["constraint"].get("retiming_mode") == "local_window"
+                                        for item in reports),
+        "uniform_fallback_segments": sum(item["constraint"].get("retiming_mode") == "uniform_fallback"
+                                           for item in reports),
         "failed_segments": sum(not item["constraint"]["success"] for item in reports),
+        "retiming_wall_ms": (time.perf_counter() - started) * 1000.0,
+        "retiming_budget_ms": None if retime_budget_s is None else retime_budget_s * 1000.0,
         "segments": reports,
     }
     return updated

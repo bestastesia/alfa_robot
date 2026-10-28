@@ -389,7 +389,7 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                 f"**{'完整流程成功' if result['success'] else '已停止：存在阻塞'} · {PHASE_NAMES.get(phase, phase)}**  \n"
                 f"帧：**{index+1}/{len(result['frames'])}**  \n"
                 f"接触IK：**{result.get('contact_ik_count', 0)}** · 选中候选：**{result.get('selected_candidate', '无')}**  \n"
-                f"全部规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s**  \n"
+                f"端到端计算：**{cycle_result.get('measured_wall_ms', cycle_result.get('total_ms', 0))/1000:.3f}s**  \n"
                 f"最终Home误差：**{cycle_result.get('final_home_error', 0):.8f}**"
             )
             if round_number is not None:
@@ -408,10 +408,16 @@ def main(planner_class=FullCyclePlanner, default_port=8120, round_mode=False):
                     gravity = segment["gravity_torques_nm"][local][torque_index]
                     torque_text = (f"  \n所选关节力矩：**{torque:.3f} Nm** · "
                                    f"其中重力：**{gravity:.3f} Nm**")
+                torque_report = next((item for item in cycle_result.get("torque_validation", {}).get("segments", ())
+                                      if item.get("phase") == segment["name"]), None)
+                constraint = torque_report.get("constraint", {}) if torque_report else {}
+                retime_text = (f"  \n动力学缩放：`{constraint.get('retiming_mode', 'none')}` · "
+                               f"峰值倍率：**{constraint.get('time_scale_peak', 1.0):.3f}**")
                 timed_status.content = (
                     f"**阶段运动：{segment['duration_s']:.3f}s** · 当前：{segment['time_from_start_s'][local]:.3f}s  \n"
                     f"时间化：`{segment.get('parameterizer', 'recorded')}` / {cycle_result.get('trajectory_timing_ms', 0):.1f}ms  \n"
-                    f"本轮规划：**{cycle_result.get('total_ms', 0)/1000:.3f}s** · 本轮运动：**{cycle_result.get('motion_duration_s', 0):.3f}s**"
+                    f"端到端计算：**{cycle_result.get('measured_wall_ms', cycle_result.get('total_ms', 0))/1000:.3f}s** · 本轮运动：**{cycle_result.get('motion_duration_s', 0):.3f}s**"
+                    + retime_text
                     + torque_text
                     + ("  \n**相关规划记录（共享项不重复求和）**" + detail if detail else ""))
                 names = segment["joint_names"]

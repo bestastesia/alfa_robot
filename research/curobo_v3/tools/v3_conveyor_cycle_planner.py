@@ -121,6 +121,9 @@ class ConveyorCyclePlanner(AnalyticContacts):
         lower, upper = checker.kinematics.get_joint_limits().position
         path, stats = self.search_path(start_tensor, candidates, lower + 1e-5, upper - 1e-5,
                                        validity, 2.0, 20261013)
+        if path is not None:
+            stats = dict(stats)
+            stats['trajectory_fallback_waypoints'] = np.asarray(path).tolist()
         report['conveyor_search_stats'] = stats
         if path is None:
             raise CycleBlocked('龙头车放置RRT', '2秒预算内未找到无碰撞路径', report)
