@@ -32,7 +32,8 @@ INFO_KEYS = ("stage", "class_", "reason", "success", "stage_cost_s", "cumulative
              "executed_t_path_s", "motion_duration_s")
 
 
-def train_items(registry, levels):
+def train_items(registry, levels, exclude=()):
+    """Training groups (level, mode) -> task -> instances; `exclude` drops (level, mode) groups by name."""
     heldout = set(registry.get("heldout_levels", ()))
     if heldout & set(levels):
         raise ValueError("held-out box levels never enter training")
@@ -42,6 +43,8 @@ def train_items(registry, levels):
         raise ValueError("no group=train, split=train items for the requested levels")
     groups = {}
     for item in sorted(items, key=lambda row: row["instance"]):
+        if f"{item['box_level']}:{mode(item)}" in exclude:
+            continue
         task = json.dumps(item["task"], sort_keys=True, separators=(",", ":"))
         groups.setdefault((item["box_level"], mode(item)), {}).setdefault(task, []).append(item)
     return [[groups[key][task] for task in sorted(groups[key])] for key in sorted(groups)]
@@ -167,6 +170,8 @@ def main(argv=None):
     parser.add_argument("--selection", choices=("q", "veto"), default="q")
     parser.add_argument("--veto-margin", type=float, default=.15)
     parser.add_argument("--success-target", choices=("stage", "episode"), default="stage")
+    parser.add_argument("--value-weight", type=float, default=1., help="weight of the Q loss (0: train the logit head only)")
+    parser.add_argument("--exclude-groups", default="", help="comma-separated level:mode groups never sampled")
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args(argv)
     if args.episodes < 1 or args.updates < 0 or not math.isfinite(args.max_minutes) or args.max_minutes <= 0:
@@ -175,13 +180,14 @@ def main(argv=None):
     registry = json.loads(args.registry.read_text())
     levels = [level for level in args.levels.split(",") if level] or [
         level for level in registry["size_levels"] if level not in registry.get("heldout_levels", ())]
-    groups = train_items(registry, levels)
+    exclude = sorted(group for group in args.exclude_groups.split(",") if group)
+    groups = train_items(registry, levels, exclude)
     configuration = dict(schema="motion364-lookahead-dqn-v1", resume_version=RESUME_VERSION, seed=args.seed,
                          episodes=args.episodes, updates=args.updates, levels=sorted(levels),
                          epsilon=[args.epsilon_start, args.epsilon_end], feasibility_weight=args.feasibility_weight,
                          prior=args.prior, prior_weight=args.prior_weight, residual=args.residual, contact_pool=args.contact_pool,
                          place_gate=args.place_gate, selection=args.selection, veto_margin=args.veto_margin,
-                         success_target=args.success_target,
+                         success_target=args.success_target, value_weight=args.value_weight, exclude_groups=exclude,
                          registry_sha256=file_sha256(args.registry), source_sha256=source_fingerprint(),
                          init_311=None if args.init_311 is None else dict(path=str(args.init_311.resolve()), sha256=file_sha256(args.init_311)),
                          reward=f"success +/-1 -{args.cost_weight:g} delta raw_T/(raw_T+40)", screening="selector-side exact gates")
@@ -205,7 +211,8 @@ def main(argv=None):
         if episodes_dir.is_dir() and any(episodes_dir.glob("*.json")):
             raise ValueError("records exist without their initial checkpoint")
         kwargs = dict(feasibility_weight=args.feasibility_weight, seed=args.seed, prior=args.prior,
-                      prior_weight=args.prior_weight, selection=args.selection, veto_margin=args.veto_margin)
+                      prior_weight=args.prior_weight, selection=args.selection, veto_margin=args.veto_margin,
+                      value_weight=args.value_weight)
         if args.residual and args.init_311 is None:
             parser.error("--residual widens a MOTION-311 agent; pass --init-311")
         agent = (LookaheadAgent.from_311(DQNAgent.load(args.init_311), residual=args.residual, **kwargs)

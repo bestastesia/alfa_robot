@@ -65,17 +65,18 @@ def _mlp(width):
 
 class LookaheadAgent:
     def __init__(self, width=64, lr=3e-4, gamma=1., tau=.005, feasibility_weight=.5, seed=0, prior="none", prior_weight=0.,
-                 selection="q", veto_margin=.15):
+                 selection="q", veto_margin=.15, value_weight=1.):
         if prior != "none" and prior not in PRIOR_COLUMNS:
             raise ValueError("unknown prior")
         if selection not in ("q", "veto") or (selection == "veto" and prior == "none"):
             raise ValueError("selection is q or veto; veto needs an analytic prior")
         self.config = dict(width=int(width), lr=float(lr), gamma=float(gamma), tau=float(tau),
                            feasibility_weight=float(feasibility_weight), seed=int(seed), prior=prior,
-                           prior_weight=float(prior_weight), selection=selection, veto_margin=float(veto_margin))
+                           prior_weight=float(prior_weight), selection=selection, veto_margin=float(veto_margin),
+                           value_weight=float(value_weight))
         self.gamma, self.tau, self.feasibility_weight = float(gamma), float(tau), float(feasibility_weight)
         self.prior, self.prior_weight = prior, float(prior_weight)
-        self.selection, self.veto_margin = selection, float(veto_margin)
+        self.selection, self.veto_margin, self.value_weight = selection, float(veto_margin), float(value_weight)
         self.rng = np.random.default_rng(seed)
         with torch.random.fork_rng(devices=[]):
             torch.random.default_generator.manual_seed(seed)
@@ -99,6 +100,8 @@ class LookaheadAgent:
                 new[2].bias.copy_(middle.bias)
                 new[4].weight[0] = 0. if residual else last.weight[0]
                 new[4].bias[0] = RESIDUAL_OFFSET if residual else last.bias[0]
+                if residual:
+                    new[4].weight[1] = 0.  # constant initial success prediction: a veto starts with no effect
                 new[4].bias[1] = 2.
         agent.target = copy.deepcopy(agent.online).requires_grad_(False)
         agent.optimizers = [torch.optim.Adam(model.parameters(), lr=agent.config["lr"]) for model in agent.online]
@@ -157,7 +160,7 @@ class LookaheadAgent:
             prior = prior_values(stage, inputs[:, STATE_IN:], self.prior, self.prior_weight)
             value_loss = F.smooth_l1_loss(output[:, 0] + prior, targets[indices])
             logit_loss = F.binary_cross_entropy_with_logits(output[:, 1], labels)
-            loss = value_loss + self.feasibility_weight * logit_loss
+            loss = self.value_weight * value_loss + self.feasibility_weight * logit_loss
             if not torch.isfinite(loss):
                 raise FloatingPointError("nonfinite loss")
             self.optimizers[stage].zero_grad(set_to_none=True)

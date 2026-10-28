@@ -134,6 +134,7 @@ class AgentTest(unittest.TestCase):
         obs = LookaheadObservation(2, base.state, base.candidates, base.actions, base.physics, base.targets,
                                    extra=extra, valid=base.valid, dims=base.dims)
         self.assertEqual(agent.order(obs).tolist(), [5, 1, 2, 0, 4, 3])
+        self.assertEqual(len(set(np.round(agent.scores(obs)[1], 9))), 1)  # residual init: constant success prediction
         with patch.object(LookaheadAgent, 'scores', return_value=(np.zeros(6), np.array([.9, .9, .9, .9, .9, .5]))):
             self.assertEqual(agent.order(obs).tolist(), [1, 2, 0, 4, 3, 5])
         with self.assertRaises(ValueError):
@@ -243,6 +244,7 @@ class TrainTest(unittest.TestCase):
         self.assertEqual(train.sample_item(groups, np.random.default_rng(0))['box_level'], 'S30x40x40')
         with self.assertRaises(ValueError):
             train.train_items(document, ['S30x40x40', 'S35x38x42'])
+        self.assertEqual(len(train.train_items(document, ['S30x40x40'], {'S30x40x40:single-right-top'})), 1)
         self.assertAlmostEqual(train.epsilon_at(0, 11, .3, .05), .3)
         self.assertAlmostEqual(train.epsilon_at(10, 11, .3, .05), .05)
 
