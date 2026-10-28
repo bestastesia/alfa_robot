@@ -12,6 +12,7 @@ import hashlib
 import itertools
 import json
 import math
+import os
 from pathlib import Path
 import signal
 import time
@@ -57,7 +58,7 @@ def evaluate_instance(env, item, route, policy=None, seed=0, screen=True):
                   box_dims=item.get("box_dims"), size_split=item.get("size_split"), route=route, screen=bool(screen),
                   seed=int(seed), planner_seed=planner_seed, success=False, status="infrastructure", failure_stage=None,
                   terminated=False, truncated=False, outcomes=[], rewards=[], third_stage_reached=False,
-                  third_stage_failed=False)
+                  third_stage_failed=False, load_average_start=list(os.getloadavg()))
     current_stage, reset_ok = None, False
     last_info, selection = {}, None
     try:
@@ -151,6 +152,7 @@ def evaluate_instance(env, item, route, policy=None, seed=0, screen=True):
                                                 for outcome in record["outcomes"]))
     record["report"] = compact_report(report)
     record["wall_s"] = time.perf_counter() - began
+    record["load_average_end"] = list(os.getloadavg())  # wall-clock RRT budgets and timings depend on host load
     return _jsonable(record)
 
 

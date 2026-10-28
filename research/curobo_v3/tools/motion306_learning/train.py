@@ -80,14 +80,16 @@ def shaped_rewards(rows, cost_weight):
     return rewards
 
 
-def learnable(record, cost_weight=COST_WEIGHT):
+def learnable(record, cost_weight=COST_WEIGHT, success_target="stage"):
+    """Replay rows; the logit label is the executed stage's own outcome ("stage") or the episode's ("episode")."""
     rows = record.get("transitions", [])
     if not rows or any(row["truncated"] for row in rows):
         return []
     rewards = [row["reward"] for row in rows] if cost_weight == COST_WEIGHT else shaped_rewards(rows, cost_weight)
+    episode = float(bool(rows[-1]["info"].get("success")))
     return [dict(stage=row["stage"], state=np.asarray(row["state"], dtype=np.float32),
                  action=np.asarray(row["action"], dtype=np.float32), reward=reward, terminated=row["terminated"],
-                 feasible=row["feasible"], next_state=None if row["next_state"] is None else np.asarray(row["next_state"], dtype=np.float32),
+                 feasible=row["feasible"] if success_target == "stage" else episode, next_state=None if row["next_state"] is None else np.asarray(row["next_state"], dtype=np.float32),
                  next_candidates=None if row["next_candidates"] is None else np.asarray(row["next_candidates"], dtype=np.float32))
             for row, reward in zip(rows, rewards)]
 
@@ -114,11 +116,11 @@ def run_episode(env, agent, item, planner_seed, epsilon, rng):
     return transitions, None
 
 
-def commit(agent, replay, state, record, path, updates, checkpoint, cost_weight=COST_WEIGHT):
+def commit(agent, replay, state, record, path, updates, checkpoint, cost_weight=COST_WEIGHT, success_target="stage"):
     index = record["episode_index"]
     if index != state["last_committed_episode"] + 1:
         raise ValueError("episodes must commit in contiguous order")
-    rows = learnable(record, cost_weight)
+    rows = learnable(record, cost_weight, success_target)
     replay.extend(rows)
     rng = np.random.default_rng(np.random.SeedSequence([record["seed"], index, 7]))
     count = 0
@@ -162,6 +164,9 @@ def main(argv=None):
     parser.add_argument("--residual", action="store_true", help="widen 311 but start its Q output at a constant")
     parser.add_argument("--contact-pool", choices=("capped", "gated"), default="capped")
     parser.add_argument("--place-gate", action="store_true", help="gate placement rows at the conveyor pose")
+    parser.add_argument("--selection", choices=("q", "veto"), default="q")
+    parser.add_argument("--veto-margin", type=float, default=.15)
+    parser.add_argument("--success-target", choices=("stage", "episode"), default="stage")
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args(argv)
     if args.episodes < 1 or args.updates < 0 or not math.isfinite(args.max_minutes) or args.max_minutes <= 0:
@@ -175,7 +180,8 @@ def main(argv=None):
                          episodes=args.episodes, updates=args.updates, levels=sorted(levels),
                          epsilon=[args.epsilon_start, args.epsilon_end], feasibility_weight=args.feasibility_weight,
                          prior=args.prior, prior_weight=args.prior_weight, residual=args.residual, contact_pool=args.contact_pool,
-                         place_gate=args.place_gate,
+                         place_gate=args.place_gate, selection=args.selection, veto_margin=args.veto_margin,
+                         success_target=args.success_target,
                          registry_sha256=file_sha256(args.registry), source_sha256=source_fingerprint(),
                          init_311=None if args.init_311 is None else dict(path=str(args.init_311.resolve()), sha256=file_sha256(args.init_311)),
                          reward=f"success +/-1 -{args.cost_weight:g} delta raw_T/(raw_T+40)", screening="selector-side exact gates")
@@ -194,12 +200,12 @@ def main(argv=None):
             path = episodes_dir / f"e{index:06d}.json"
             if file_sha256(path) != state["committed_records"][index]:
                 raise ValueError("committed record is missing or modified")
-            replay.extend(learnable(json.loads(path.read_text()), args.cost_weight))
+            replay.extend(learnable(json.loads(path.read_text()), args.cost_weight, args.success_target))
     else:
         if episodes_dir.is_dir() and any(episodes_dir.glob("*.json")):
             raise ValueError("records exist without their initial checkpoint")
         kwargs = dict(feasibility_weight=args.feasibility_weight, seed=args.seed, prior=args.prior,
-                      prior_weight=args.prior_weight)
+                      prior_weight=args.prior_weight, selection=args.selection, veto_margin=args.veto_margin)
         if args.residual and args.init_311 is None:
             parser.error("--residual widens a MOTION-311 agent; pass --init-311")
         agent = (LookaheadAgent.from_311(DQNAgent.load(args.init_311), residual=args.residual, **kwargs)
@@ -235,7 +241,7 @@ def main(argv=None):
             atomic_json(path, record)
             if any(row["truncated"] for row in transitions):
                 env = None  # do not reuse a runtime after an infrastructure fault
-        state = commit(agent, replay, state, record, path, args.updates, checkpoint, args.cost_weight)
+        state = commit(agent, replay, state, record, path, args.updates, checkpoint, args.cost_weight, args.success_target)
         if index % 100 == 0:
             agent.save(args.output / f"checkpoint-{index:06d}.pt", state)
         final = record["transitions"][-1]["info"] if record["transitions"] else {}

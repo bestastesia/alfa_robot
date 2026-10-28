@@ -6,6 +6,8 @@ outcome of the executed action (BCE), Q on Double-DQN targets over the next stag
 `from_311` widens a MOTION-311 DQNAgent with zero weights on the new inputs, so the initial Q is identical.
 An optional fixed analytic prior makes Q = network + prior, prior = -weight * (the stage's analytic cost in s);
 with `residual=True` the widened network's Q output starts at a constant, so the initial ranking is the prior's.
+selection="veto" ranks by the prior's analytic cost alone and only demotes candidates whose predicted success
+probability (the logit head) is more than `veto_margin` below the pool's best; an untrained head vetoes nothing.
 """
 import copy
 from pathlib import Path
@@ -62,14 +64,18 @@ def _mlp(width):
 
 
 class LookaheadAgent:
-    def __init__(self, width=64, lr=3e-4, gamma=1., tau=.005, feasibility_weight=.5, seed=0, prior="none", prior_weight=0.):
+    def __init__(self, width=64, lr=3e-4, gamma=1., tau=.005, feasibility_weight=.5, seed=0, prior="none", prior_weight=0.,
+                 selection="q", veto_margin=.15):
         if prior != "none" and prior not in PRIOR_COLUMNS:
             raise ValueError("unknown prior")
+        if selection not in ("q", "veto") or (selection == "veto" and prior == "none"):
+            raise ValueError("selection is q or veto; veto needs an analytic prior")
         self.config = dict(width=int(width), lr=float(lr), gamma=float(gamma), tau=float(tau),
                            feasibility_weight=float(feasibility_weight), seed=int(seed), prior=prior,
-                           prior_weight=float(prior_weight))
+                           prior_weight=float(prior_weight), selection=selection, veto_margin=float(veto_margin))
         self.gamma, self.tau, self.feasibility_weight = float(gamma), float(tau), float(feasibility_weight)
         self.prior, self.prior_weight = prior, float(prior_weight)
+        self.selection, self.veto_margin = selection, float(veto_margin)
         self.rng = np.random.default_rng(seed)
         with torch.random.fork_rng(devices=[]):
             torch.random.default_generator.manual_seed(seed)
@@ -112,7 +118,12 @@ class LookaheadAgent:
         rng = self.rng if rng is None else rng
         if epsilon > 0 and rng.random() < epsilon:
             return rng.permutation(len(observation.candidates))
-        return np.argsort(-self.scores(observation)[0], kind="stable")
+        q, probability = self.scores(observation)
+        if self.selection == "q":
+            return np.argsort(-q, kind="stable")
+        cost = -prior_values(observation.stage, candidate_inputs(observation), self.prior, 1.).numpy()
+        vetoed = probability < probability.max() - self.veto_margin
+        return np.lexsort((cost, vetoed))  # cheapest first; vetoed rows keep their cost order at the end
 
     @torch.no_grad()
     def compute_targets(self, batch):

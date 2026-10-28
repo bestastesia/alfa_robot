@@ -125,6 +125,28 @@ class AgentTest(unittest.TestCase):
                 expected = -.01 * extra[:, list({'heuristic': ((0,), (0,), (0, 1)), 'lookahead': ((0, 1, 3), (0,), (0, 1))}[kind][stage])].sum(1)
                 np.testing.assert_allclose(prior_values(stage, candidate_inputs(obs), kind, .01).numpy(), expected, rtol=1e-5, atol=1e-6)
 
+    def test_veto_selection_keeps_the_prior_order_unless_a_candidate_is_clearly_riskier(self):
+        old = DQNAgent(STATE_DIM, 15, seed=6)
+        agent = LookaheadAgent.from_311(old, residual=True, prior='heuristic', prior_weight=.004, selection='veto', veto_margin=.2)
+        base = observation(2, 6, 1)
+        extra = np.zeros((6, EXTRA_DIM))
+        extra[:, 0] = [3., 1., 2., 5., 4., 0.5]
+        obs = LookaheadObservation(2, base.state, base.candidates, base.actions, base.physics, base.targets,
+                                   extra=extra, valid=base.valid, dims=base.dims)
+        self.assertEqual(agent.order(obs).tolist(), [5, 1, 2, 0, 4, 3])
+        with patch.object(LookaheadAgent, 'scores', return_value=(np.zeros(6), np.array([.9, .9, .9, .9, .9, .5]))):
+            self.assertEqual(agent.order(obs).tolist(), [1, 2, 0, 4, 3, 5])
+        with self.assertRaises(ValueError):
+            LookaheadAgent(selection='veto')
+
+    def test_episode_success_target_labels_every_transition(self):
+        rows = [dict(stage=s, state=[0.] * STATE_IN, action=[0.] * ACTION_IN, reward=0., terminated=s == 1, truncated=False,
+                     feasible=1., info=dict(cumulative_cost_s=1., success=False, class_='task_failure' if s else 'stage_success'),
+                     next_state=None, next_candidates=None) for s in (0, 1)]
+        record = dict(transitions=rows)
+        self.assertEqual([row['feasible'] for row in train.learnable(record, success_target='stage')], [1., 1.])
+        self.assertEqual([row['feasible'] for row in train.learnable(record, success_target='episode')], [0., 0.])
+
     def test_inputs_and_feasibility_labels(self):
         obs = observation(1, 4, valid=np.array([True, False, True, False]))
         self.assertEqual(state_input(obs).shape, (STATE_IN,))
