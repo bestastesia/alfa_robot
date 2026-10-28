@@ -2224,3 +2224,9 @@
 - 开发集75次全部成功；留出集300次（25ae159）正式判定：笛卡尔（现有时间化）规划耗时+12.8%✗、成功率94/100 vs 95✗、执行时长+420.8%✗、side额外旋转配对中位降100%✓（基线中位9.3°→0.03°）；TOPP-RA组时长+19.1%✓，但最大搜索2032ms超预算、3次时间化校验失败。结论：不优于现有方案（质量单项更优），原规划器保持默认。证据/home/astesia/Sevenova/motion312-acceptance/ab-holdout-20261020。
 - FCL网格审计：两组side搬运都有接触（基线≤33.5mm开发集/≤10.5mm留出集，笛卡尔≤34.2mm），属共用GPU球模型缺口→MOTION-326。TOPP-RA校验漏采样时刻已在324分支e86978a修复并复测→MOTION-324。
 - 留给下个AI：方法v2（状态空间shortcut、进度s单调、预算严格截止、左右臂开发样本、新独立测试集）→MOTION-327。作者审阅前不开PR，只推送fork。
+
+## 2026-10-28 运控 / Claude / MOTION-312 单臂转运笛卡尔搜索合入请求
+- 分支feature/motion-312-cartesian-transport：把MOTION-312全部研究提交（323/324/327/342/363转运搜索、326碰撞复核工具、回放工具，原在fork各分支，cherry-pick -x保留原hash）重新应用到alfa_v3_curobo 4356770；冲突两处：本LOG追加、v3_single_arm_planner.single_path同时保留scene_margin_m与seed（默认值与原硬编码一致）。
+- 推荐接入形态：B + 受控换腕（cartesian_options开route_branch_change、fallback_joint_rrt、wrist_flip，transport_timing=toppra），全部默认关闭，关闭时与上游行为相同。363独立测试450次：对基线成功144 vs 144、阶段配对+1.0%、side额外旋转−100%、执行时长+10.2%；"换腕停箱"一项按预注册未过（3/33次箱子移动约0.7 mm），负责人评估后接受。
+- 移植验证：core 76项+TOPP-RA 3项单测通过；开发集14场景×种子342001×3组GPU复跑，成功与层级42/42一致，换腕路径与移植前一致（差≤3e-8 rad）；关节RRT路径在7/14场景与旧基线不同，来自#66–#72对共用规划器的改动，不是本分支。
+- 留给下个AI：代码挂在旧零位单臂规划器（generated/v3_analytic_071cb95），未接入新零位/新Home/8210流程，新模型上启用前需适配与复测；评估结论只对PR65基线541fdbc成立。冻结碰撞模型补托架球（326建议）与底座长方体（334）待李昊洋确认。
