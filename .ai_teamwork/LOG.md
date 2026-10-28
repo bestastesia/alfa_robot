@@ -2205,3 +2205,9 @@
 - 开发集75次全部成功；留出集300次（25ae159）正式判定：笛卡尔（现有时间化）规划耗时+12.8%✗、成功率94/100 vs 95✗、执行时长+420.8%✗、side额外旋转配对中位降100%✓（基线中位9.3°→0.03°）；TOPP-RA组时长+19.1%✓，但最大搜索2032ms超预算、3次时间化校验失败。结论：不优于现有方案（质量单项更优），原规划器保持默认。证据/home/astesia/Sevenova/motion312-acceptance/ab-holdout-20261020。
 - FCL网格审计：两组side搬运都有接触（基线≤33.5mm开发集/≤10.5mm留出集，笛卡尔≤34.2mm），属共用GPU球模型缺口→MOTION-326。TOPP-RA校验漏采样时刻已在324分支e86978a修复并复测→MOTION-324。
 - 留给下个AI：方法v2（状态空间shortcut、进度s单调、预算严格截止、左右臂开发样本、新独立测试集）→MOTION-327。作者审阅前不开PR，只推送fork。
+
+## 2026-10-28 运控 / MOTION-334 非转运阶段碰撞模型漏检
+- 分支feature/base-gap-nontransport-motion-334（自326 ebeb413）新增tools/experiments/motion334：phase_audit（分阶段全对FCL+精确深度；接触前按抓取时刻位姿放回待抓箱体，与TargetContactValidity同口径）、patch_check（326 CPU复刻扩到conveyor两阶段；复刻不含待抓箱体检查，approach~transport以GPU核对为准）、patch_detect（检出/误拒）、ab_compare（A/B配对）。
+- 784周期结论：非转运漏检集中在top的approach——link7(含吸盘)↔待抓箱体77/99（最深18.8mm）、闲置臂link7↔底座36/99（最深约21mm，长方体与link7球两处缺口）、link7↔填充箱/前墙30/99（9.3mm）；conveyor_place箱体↔输送线≤6.2mm属负载内切球设计；side无漏检。
+- 研究副本runtime-334-full-p3（升降架+41、link7+37外凸≤3mm、底座长方体+18）：GPU检出approach三类全部，approach误拒9周期；v2独立测试集joint_rrt A/B成功144/144、执行时长+0.0%、整轮规划+19.8%（冻结漂移+0.1%）；补丁后执行帧非负载接触最深20.5→4.0mm。外凸10mm版误拒多，弃用。GPU/CPU逐帧对照一致（approach差异全部是待抓箱体检查）。
+- 留给下个AI：是否更新冻结模型待李昊洋确认；补丁与342/363推荐形态的组合未测；link7可改重拟合以降耗时。证据/home/astesia/Sevenova/motion312-acceptance/m334-20261028。作者审阅前不开PR，只推送fork。
