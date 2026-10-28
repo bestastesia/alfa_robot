@@ -9,6 +9,7 @@ from scipy.spatial.transform import Rotation
 from curobo_core.planner import CycleBlocked
 from curobo.types import JointState
 from v3_batched_loaded_search import GpuValidity, densify
+from v3_box_geometry import extraction_steps
 from v3_box_rotation_cost import BoxRotationCost
 from v3_conveyor_cycle_planner import ConveyorCyclePlanner
 from v3_lazy_extraction_planner import LazyExtractionPlanner
@@ -258,7 +259,7 @@ class SingleArmPlanner(LazyExtractionPlanner):
             contact=contacts[index]
             progress(f'单臂候选{index+1}/{len(contacts)}：抽离验收及Home到预接触')
             started = time.perf_counter()
-            extracted,detail = self.cartesian_single(contact,np.linspace(.01,.35,35))
+            extracted,detail = self.cartesian_single(contact,extraction_steps(self.box_fit['dimensions_m']))
             if extracted is None or not empty_valid.mask(torch.tensor(extracted,device='cuda',dtype=torch.float32)).all() or not loaded_valid.mask(torch.tensor(extracted[-1:],device='cuda',dtype=torch.float32)).all():
                 report['attempts'].append(dict(candidate=index+1,rejected='抽离运动学/机器人碰撞/携箱终点碰撞',detail=detail))
                 timing['extraction_and_approach_ms'] += (time.perf_counter()-started)*1000

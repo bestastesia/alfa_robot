@@ -17,6 +17,8 @@ import yaml
 from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
 from curobo.scene import Cuboid, Scene
 from curobo.types import GoalToolPose, JointState, Pose
+from v3_box_geometry import DEFAULT_BOX_DIMS, box_dims
+from v3_box_geometry import wall_center as box_wall_center
 
 
 ACTIVE_JOINTS = [
@@ -201,22 +203,18 @@ def canonical_side_suction_quaternion_wxyz(side: str) -> np.ndarray:
     return np.array([0.0, math.sqrt(0.5), 0.0, math.sqrt(0.5)])
 
 
-def canonical_side_tool_to_box(side: str) -> np.ndarray:
+def canonical_side_tool_to_box(side: str, dims=DEFAULT_BOX_DIMS) -> np.ndarray:
     transform = np.eye(4)
     contact_rotation = Rotation.from_quat(
         np.roll(canonical_side_suction_quaternion_wxyz(side), -1)
     ).as_matrix()
     transform[:3, :3] = contact_rotation.T
-    transform[2, 3] = 0.15
+    transform[2, 3] = box_dims(dims)[0] / 2
     return transform
 
 
-def wall_center(front_x: float, wall_distance: float, box_id: int) -> np.ndarray:
-    return np.array([
-        front_x + wall_distance + 0.15,
-        (box_id % 5 - 2) * 0.41,
-        0.20 + (box_id // 5) * 0.41,
-    ])
+def wall_center(front_x: float, wall_distance: float, box_id: int, dims=DEFAULT_BOX_DIMS) -> np.ndarray:
+    return box_wall_center(front_x, wall_distance, box_id, dims)
 
 
 def contact_position(
@@ -230,8 +228,9 @@ def contact_position(
     return center
 
 
-def make_scene(front_x: float, wall_distance: float, excluded: set[int]) -> Scene:
-    wall_back = front_x + wall_distance + 0.30 + 1e-6
+def make_scene(front_x: float, wall_distance: float, excluded: set[int], dims=DEFAULT_BOX_DIMS) -> Scene:
+    dims = box_dims(dims)
+    wall_back = front_x + wall_distance + dims[0] + 1e-6
     cuboids = [
         Cuboid(name="ground", pose=[wall_back - 2.0, 0.0, -0.05, 1, 0, 0, 0], dims=[4.2, 2.6, 0.1]),
         Cuboid(name="left_wall", pose=[wall_back - 2.0, -1.25, 1.2, 1, 0, 0, 0], dims=[4.0, 0.1, 2.4]),
@@ -242,11 +241,11 @@ def make_scene(front_x: float, wall_distance: float, excluded: set[int]) -> Scen
     for box_id in range(25):
         if box_id in excluded:
             continue
-        center = wall_center(front_x, wall_distance, box_id)
+        center = wall_center(front_x, wall_distance, box_id, dims)
         cuboids.append(Cuboid(
             name=f"wall_box_{box_id:02d}",
             pose=[*center.tolist(), 1, 0, 0, 0],
-            dims=[0.30, 0.40, 0.40],
+            dims=list(dims),
         ))
     return Scene(cuboid=cuboids)
 

@@ -15,6 +15,7 @@ from curobo.types import JointState
 from v3_batched_loaded_search import GpuValidity, densify
 from .backend import CuroboBackend, WORKSPACE_ROOT, goal
 from v3_wall_ik_benchmark import ACTIVE_JOINTS, canonical_side_suction_quaternion_wxyz
+from v3_box_geometry import extraction_steps
 from .adapter import task_attachments
 from .contracts import PlanRequest
 from .scene import Pose, SceneStore
@@ -179,7 +180,7 @@ class FullCyclePlanner(CuroboBackend):
         swivels = [self.analytic.swivel(side, contact[1 + side * 7:8 + side * 7])
                    for side in range(2)]
         rows = [np.asarray(contact, dtype=np.float64)]
-        for distance in np.linspace(0.01, 0.35, 35):
+        for distance in extraction_steps(self.box_fit["dimensions_m"]):
             next_row = rows[-1].copy()
             for side_index, side in enumerate(("left", "right")):
                 target = targets[side].copy()

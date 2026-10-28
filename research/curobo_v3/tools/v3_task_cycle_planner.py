@@ -17,6 +17,7 @@ from v3_contact_validity import TargetContactValidity
 from v3_batched_loaded_search import densify
 from scipy.spatial.transform import Rotation
 from v3_placement_target import placement_tool_poses
+from v3_box_geometry import box_sphere_model
 
 
 class TaskCyclePlanner(FullCyclePlanner):
@@ -28,6 +29,8 @@ class TaskCyclePlanner(FullCyclePlanner):
         self.base_advance = 0.0
         self.original_snapshot = self.snapshot
         self.original_targets = copy.deepcopy(self.target_poses)
+        self.legacy_box_fit = self.box_fit
+        self.box_dims = None  # None: legacy frozen 40-sphere model; MOTION-306 instances set (depth, width, height)
         self.planner_kind = 'informed_connect'
 
     def configure_task(self, boxes):
@@ -36,8 +39,10 @@ class TaskCyclePlanner(FullCyclePlanner):
         self.selected_task = boxes
         self.top_grasp = all(box_id // 5 <= 1 for box_id in boxes.values())
         self.base_advance = 0.3 if self.top_grasp else 0.0
-        centers, obstacles = row_obstacles(self.front, boxes)
-        original_scene = make_scene(self.front, 0.9, set())
+        self.box_fit = self.legacy_box_fit if self.box_dims is None else box_sphere_model(self.box_dims)
+        dims = tuple(self.box_fit['dimensions_m'])
+        centers, obstacles = row_obstacles(self.front, boxes, dims)
+        original_scene = make_scene(self.front, 0.9, set(), dims)
         objects = []
         for item in original_scene.cuboid:
             if item.name.startswith('wall_box_'):
@@ -71,7 +76,7 @@ class TaskCyclePlanner(FullCyclePlanner):
 
     def task_attachments(self, boxes):
         return tuple(AttachedObject(f'wall_box_{box_id:02d}', tuple(self.box_fit['dimensions_m']),
-                    side + '_tool0', matrix_pose(grasp_transform(side, self.top_grasp)),
+                    side + '_tool0', matrix_pose(grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m'])),
                     (side + '_link7', side + '_tool0')) for side, box_id in boxes.items())
 
     def target_validity(self, checker, allow_contact=False):
@@ -157,7 +162,7 @@ class TaskCyclePlanner(FullCyclePlanner):
                             phases=['base_advance_diagnostic'] * (first + 1), payload=[False] * (first + 1),
                             blocked_stage='底盘前进', blocked_details=f'碰撞或越限@frame{first+1}',
                             total_ms=(time.perf_counter()-started)*1000, top_grasp=True, base_advance_m=0.3,
-                            generated_obstacles=obstacles, tool_to_box={side:grasp_transform(side, True).tolist() for side in ['left','right']})
+                            generated_obstacles=obstacles, tool_to_box={side:grasp_transform(side, True, self.box_fit['dimensions_m']).tolist() for side in ['left','right']})
             advance_frames = rows
         result = super().full_cycle(boxes, progress)
         rejected = next((attempt for attempt in result.get('attempts',[]) if attempt.get('approach',{}).get('diagnostic_frames')),None)
@@ -181,7 +186,7 @@ class TaskCyclePlanner(FullCyclePlanner):
         else:
             result['frames'] = local_frames.tolist()
         result.update(top_grasp=self.top_grasp, base_advance_m=self.base_advance, generated_obstacles=obstacles,
-                      tool_to_box={side:grasp_transform(side, self.top_grasp).tolist() for side in ['left','right']},
+                      tool_to_box={side:grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m']).tolist() for side in ['left','right']},
                       total_ms=(time.perf_counter()-started)*1000,
                       coordinate_note='Internal snapshots and predicted events use the advanced-base local frame; output frames and generated obstacles use original map frame')
         result.setdefault('timing_ms', {})['base_advance_check'] = advance_ms

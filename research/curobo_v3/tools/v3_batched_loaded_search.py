@@ -45,7 +45,7 @@ def loaded_robot(robot, box_fit, active_sides=("left", "right"), attachments=Non
             origin.attrib.get("xyz") if origin is not None else None,
             origin.attrib.get("rpy") if origin is not None else None,
         )
-        tool_to_box = canonical_side_tool_to_box(side)
+        tool_to_box = canonical_side_tool_to_box(side, box_fit["dimensions_m"])
         if attachments is not None:
             from curobo_core.adapter import pose_matrix
 

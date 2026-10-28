@@ -2194,3 +2194,9 @@
 - 验证结果：94项CPU测试通过；最终L0 15/15帧差0；96个dev类别/帧结果与原显式Bx一致（91成功、2预算内未连通、3无接触IK场景）；严格单选80/93，最终成功91/93；90例线上/离线接触一致。单/双臂注入故障回退、弃权后完整帧与A一致。完整选择p95=21.34ms，未过15ms门槛。
 - 研究结论：显式网络对A路径时间中位约−7.1%、J_arc约+9.3%；对解析B0路径时间约+0.13%，网络额外收益未证实，N1种子离散仍大。不宣称全局最优、充分收敛或实机安全验收。
 - 留给下个AI：测试格仍封存；验收判定等待李昊洋确认；Linear草稿未获发布确认，父311不可提前Done；PR等待用户代码审阅。本轮是完整研究产物交付，正式验收结论为部分完成/暂不通过，别把负面结论改写成通过。
+
+## 2026-10-28 运控 / Claude Code / MOTION-364（306子Issue）M0a 箱体尺寸场景参数化
+- 做了什么：MOTION-311 R3 转入306子Issue MOTION-364；解析B1交接在313子Issue MOTION-365（2 s单次成形、允许前瞻、需尺寸泛化）。新增箱体尺寸场景参数：每场景统一尺寸，5×5箱位/任务号不变，间距=箱面+1 cm，抽离=max(35 cm, 箱深+5 cm)，携箱内接球按尺寸生成；306注册表=311的811实例×5档。歪斜挂起待讨论。
+- 改了哪里：新增 tools/v3_box_geometry.py、tools/motion306_registry.py、config/motion306_registry.json、tools/experiments/motion306/{size_smoke,contact_pool_diagnostic,size_envelope}.py、3个test_core测试；穿线 v3_task_scene、v3_wall_ik_benchmark、v3_task_cycle_planner、v3_conveyor_cycle_planner、curobo_core/planner、v3_single_arm_planner、v3_batched_loaded_search、motion311_learning/stage_env。缺省box_dims=None走冻结40球与旧几何。
+- 验证结果：CPU 225项通过；默认尺寸下与旧常量逐位一致，GPU重放311 dev 6例帧哈希一致。包络扫描：邻箱紧贴时41 cm吸盘排要求箱宽≥37 cm（侧吸、顶吸都受限，实测0.36全碰、0.37全通）；单臂候选受机器人自碰限制，箱高≤30 cm全碰、35 cm仅0–21/64无碰。5档最终都在包络内，20个R3零样本回合几何核验全过、15成功。
+- 留给下个AI：GPU一律在 ~/Sevenova/motion306-m0a/runtime（prepare_checkout重定位；改代码后只rsync tools/与config/），flock照旧。留出档35×38×42、40×37×45不得进训练；reserve组按311规则封存给313/306，解封需验收人确认。精确网格审计器MeshStateChecker尚未接入任何流程；携箱仍是内接球（研究边界）。

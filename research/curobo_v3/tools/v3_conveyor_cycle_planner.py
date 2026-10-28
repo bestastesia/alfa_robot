@@ -163,11 +163,11 @@ class ConveyorCyclePlanner(AnalyticContacts):
         """Tool targets (robot frame) that put each carried box 0.8 m further, yaw-only, at conveyor height; and those box poses."""
         targets, boxes = {}, {}
         for side, tool in self.tool_matrices(start).items():
-            box = tool @ grasp_transform(side, self.top_grasp)
+            box = tool @ grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m'])
             box[0, 3] += self.conveyor_push_m
             box[:3, :3] = Rotation.from_euler('z', math.atan2(box[1, 0], box[0, 0])).as_matrix()
             box[2, 3] = self.conveyor_height_m + self.box_fit['dimensions_m'][2] * .5 + self.placement_clearance_m
-            targets[side] = box @ np.linalg.inv(grasp_transform(side, self.top_grasp))
+            targets[side] = box @ np.linalg.inv(grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m']))
             boxes[side] = box
         return targets, boxes
 
@@ -202,7 +202,7 @@ class ConveyorCyclePlanner(AnalyticContacts):
         required_bases = []
         rotation = Rotation.from_euler('z', yaw).as_matrix()
         for side, tool in initial_tools.items():
-            box = tool @ grasp_transform(side, self.top_grasp)
+            box = tool @ grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m'])
             box[0, 3] += self.conveyor_push_m
             goal_position = np.asarray(reference_targets[side]['position']).copy()
             goal_position[0] -= self.base_advance
@@ -242,7 +242,7 @@ class ConveyorCyclePlanner(AnalyticContacts):
             gc.collect()
             torch.cuda.empty_cache()
             for side, tool in self.tool_matrices(placed).items():
-                pose = matrix_pose(base @ tool @ grasp_transform(side, self.top_grasp))
+                pose = matrix_pose(base @ tool @ grasp_transform(side, self.top_grasp, self.box_fit['dimensions_m']))
                 report['placed_boxes'][side] = {'object_id': f"wall_box_{boxes[side]:02d}",
                     'position': pose.position, 'quaternion_wxyz': pose.quaternion_wxyz,
                     'dimensions_m': self.box_fit['dimensions_m']}

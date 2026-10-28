@@ -17,6 +17,7 @@ from scipy.spatial.transform import Rotation
 from curobo_core.contracts import PlannerAssets
 from curobo_core.planner import CycleBlocked, FullCyclePlanner
 from v3_batched_loaded_search import GpuValidity, batched_rrt_connect_multi_goal, densify
+from v3_box_geometry import box_dims, extraction_steps
 from v3_box_rotation_cost import BoxRotationCost
 from v3_conveyor_cycle_planner import ConveyorCyclePlanner
 from v3_scene_variants import DockingOffsetMixin
@@ -103,6 +104,13 @@ class _Captured(Exception):
     pass
 
 
+def configure_planner(planner, item, boxes):
+    """Scene parameters of one registry instance (docking offset, optional MOTION-306 box dims), then the task."""
+    planner.scene_offset = tuple(item['offset_m'])
+    planner.box_dims = None if item.get('box_dims') is None else box_dims(item['box_dims'])
+    return planner.configure_task(boxes)
+
+
 class StageEnv:
     caps = (64, 512, 64)
 
@@ -126,8 +134,7 @@ class StageEnv:
         self.seed = self.seed if seed is None else int(seed)
         self.continuous = bool(continuous)
         p = self.planner
-        p.scene_offset = tuple(item['offset_m'])
-        p.configure_task(self.boxes)
+        configure_planner(p, item, self.boxes)
         if p.top_grasp:
             rows = np.array([[p.home.get(name, 0.) for name in self.names]] * 61, dtype=np.float32)
             rows[:, self.names.index('base_x')] = np.linspace(-.3, 0., 61)
@@ -218,7 +225,7 @@ class StageEnv:
             self.append(approach[max(0, split - 1):], 'contact_approach', False)
             cost = self._path_cost(approach) + self._path_cost(extracted)
         else:
-            extracted, detail = p.cartesian_single(row, np.linspace(.01, .35, 35))
+            extracted, detail = p.cartesian_single(row, extraction_steps(p.box_fit['dimensions_m']))
             if extracted is None:
                 raise EpisodeFailure('extraction_invalid:' + str(detail))
             if not bool(self.empty_valid.mask(torch.tensor(extracted, device='cuda', dtype=torch.float32)).all()) or not bool(self.loaded_valid.mask(torch.tensor(extracted[-1:], device='cuda', dtype=torch.float32)).all()):
@@ -387,8 +394,7 @@ class StageEnv:
         validate_checkpoint(state, self.names, self.timed)
         for name, value in copy.deepcopy(state).items():
             setattr(self, name, value)
-        self.planner.scene_offset = tuple(self.item['offset_m'])
-        self.planner.configure_task(self.boxes)
+        configure_planner(self.planner, self.item, self.boxes)
         self.empty = self.planner.checker(self.boxes)
         self.loaded = self.planner.checker(self.boxes, payload=True)
         self.empty_valid = GpuValidity(self.empty, check_ground=True)
