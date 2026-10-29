@@ -25,10 +25,10 @@ STAGES = {"round_total_ms": lambda result: result.get("total_ms"),
           "conveyor_suffix_ms": lambda result: result.get("conveyor_suffix_ms")}
 
 
-def load(directory):
-    """(task, seed, arm) -> (top grasp, stage times) of the successful runs."""
+def load(directory, arm=None):
+    """Run name -> (top grasp, stage times) of the successful runs (of one arm, if given)."""
     runs = {}
-    for path in sorted((Path(directory) / "full").glob("*.json")):
+    for path in sorted((Path(directory) / "full").glob(f"*-{arm}.json" if arm else "*.json")):
         result = json.loads(path.read_text())
         if result.get("success"):
             runs[path.stem] = (bool(result.get("top_grasp")), {stage: get(result) for stage, get in STAGES.items()})
@@ -59,16 +59,17 @@ def main():
     parser.add_argument("--frozen", nargs=2, required=True, metavar=("DIR_A", "DIR_B"), help="the frozen runs before and after")
     parser.add_argument("--part", nargs=4, action="append", required=True, metavar=("LABEL", "GROUP", "ELEMENTS", "DIR"))
     parser.add_argument("--full", required=True, help="the full patch (all parts)")
+    parser.add_argument("--arm", help="only this arm's runs (default: all)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    frozen = [load(directory) for directory in args.frozen]
+    frozen = [load(directory, args.arm) for directory in args.frozen]
     baseline = [np.mean([runs[name][1]["round_total_ms"] for runs in frozen]) for name in frozen[0] if all(name in runs for runs in frozen)]
     places = len(args.part) + 2  # frozen-a, the parts, full, frozen-b
     report = dict(source="", baseline_round_ms=float(np.median(baseline)), ms_per={}, parts={},
                   drift=paired(frozen[1], frozen[:1], 0.)["all"]["round_total_ms"],
-                  full=paired(load(args.full), frozen, (places - 1) / places))
+                  full=paired(load(args.full, args.arm), frozen, (places - 1) / places))
     for place, (label, group, elements, directory) in enumerate(args.part, 1):
-        result = paired(load(directory), frozen, place / places)
+        result = paired(load(directory, args.arm), frozen, place / places)
         report["parts"][label] = dict(group=group, elements=int(elements), **result)
         report["ms_per"][group] = round(max(0., result["all"]["round_total_ms"]["median_ms"]) / int(elements), 2)
     if "link7_sphere" in report["ms_per"]:

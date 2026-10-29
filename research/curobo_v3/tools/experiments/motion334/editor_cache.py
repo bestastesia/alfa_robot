@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """MOTION-334: frame cache for the patch editor (patch_editor.py).
 
-For every audited run of the given sets it stores, at every --stride-th frame, the poses of every
+For every audited run of the given sets (or every successful run with full results, as phase_audit.py takes
+A/B re-runs) it stores, at every --stride-th frame, the poses of every
 link with collision spheres (and base_link) in the attach snapshot's world (base joints minus the
 top-suction base advance, as patch_check.py evaluates them), with the phase and the frame index in
 the phase. Baseline runs (joint_rrt) keep all checked phases; Cartesian runs keep transport only,
@@ -29,6 +30,7 @@ from curobo_core.contracts import PlannerAssets
 from curobo_core.scene import SceneSnapshot
 from experiments.motion326.cpu_spheres import ChainFK, sphere_groups, world_cuboids
 from experiments.motion326.miss_inventory import task_kind
+from experiments.motion334.phase_audit import run_names
 
 PHASES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
 CARTESIAN_PHASES = ("transport",)
@@ -51,8 +53,7 @@ def main():
     locked = dict(mobile.get("lock_joints", {}))
     for label, directory in args.set:
         directory = Path(directory)
-        for run in json.loads((directory / "fcl-audit.json").read_text())["runs"]:
-            name = run["run"]
+        for name in run_names(directory):
             if zlib.crc32(f"{label}/{name}".encode()) % args.shards != args.shard:
                 continue
             target = args.output / label / f"{name}.npz"

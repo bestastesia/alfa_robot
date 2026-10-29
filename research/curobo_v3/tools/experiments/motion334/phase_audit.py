@@ -188,6 +188,7 @@ def summarize(args):
     extra = []
     for record in records:
         group = record["set"] if args.by_set else "baseline" if record["arm"] in BASELINE_ARMS else "cartesian"
+        group += f"/{record['arm']}" if args.by_arm else ""
         groups[(group, record["kind"])] += 1
         for phase, data in record["phases"].items():
             for pair, value in data["pairs"].items():
@@ -245,6 +246,7 @@ def main():
     merger.add_argument("--input", type=Path, nargs="+", required=True)
     merger.add_argument("--output", type=Path, required=True)
     merger.add_argument("--by-set", action="store_true", help="group by set label instead of baseline/Cartesian (A/B re-runs)")
+    merger.add_argument("--by-arm", action="store_true", help="split the groups by arm")
     args = parser.parse_args()
     {"run": run, "summarize": summarize}[args.command](args)
 

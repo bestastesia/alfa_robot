@@ -92,8 +92,8 @@ def editor_class(phase, pair, cls):
 class Frames:
     """The cached frames, what each run's frames are checked against, and the mesh contacts on them."""
 
-    def __init__(self, cache, sample):
-        paths = sorted(cache.glob("*/*.json"))
+    def __init__(self, caches, sample):
+        paths = sorted(path for cache in caches for path in cache.glob("*/*.json"))
         if sample > 1:
             paths = [path for path in paths if zlib.crc32(f"{path.parent.name}/{path.stem}".encode()) % sample == 0]
         self.meta = [json.loads(path.read_text()) for path in paths]
@@ -561,9 +561,9 @@ def validate(engine, paths):
         print(f"detected {key:20s} {GROUPS[group]} >{threshold:g} mm: {found}/{len(total)}")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--cache", type=Path, required=True, help="editor_cache.py output")
+def add_data_arguments(parser):
+    """The options that say what the editor works on (shared with lean_select.py)."""
+    parser.add_argument("--cache", type=Path, nargs="+", required=True, help="editor_cache.py outputs")
     parser.add_argument("--sample", type=int, default=1, help="keep every K-th run only (by name hash), for tests")
     parser.add_argument("--audit", type=Path, nargs="+", required=True, help="phase_audit.py records (a later file replaces phases)")
     parser.add_argument("--transport-depth", type=Path, required=True, help="MOTION-326 true-depth-records.jsonl")
@@ -572,14 +572,12 @@ def main():
     parser.add_argument("--patch", type=Path, required=True, help="initial patch.json (appended spheres)")
     parser.add_argument("--patched-cuboids", type=Path, required=True, help="initial cuboids.json (frozen + appended)")
     parser.add_argument("--costs", type=Path, required=True, help="planning time per element group (JSON)")
-    parser.add_argument("--state", type=Path, required=True, help="editor state (JSON): loaded if present, saved on every change")
-    parser.add_argument("--export", type=Path, required=True, help="directory for exported patches")
-    parser.add_argument("--run-dir", nargs=2, action="append", default=[], metavar=("LABEL", "DIR"), help="run directories, to open frames")
-    parser.add_argument("--pose", nargs=5, action="append", default=[], metavar=("LABEL", "RUN_JSON", "PHASE", "INDEX", "NOTE"))
-    parser.add_argument("--validate", type=Path, nargs="+", help="patched check JSONL files (GPU first): compare and exit")
-    parser.add_argument("--port", type=int, default=8336)
-    args = parser.parse_args()
+    parser.add_argument("--hits", type=Path, help="hit cache (default: next to --state)")
 
+
+def load_engine(args, state=None):
+    """Frames, frozen model and the engine with every element evaluated: those of the state file if given and
+    present, else the initial patch."""
     started = time.time()
     frames = Frames(args.cache, args.sample)
     frames.load_contacts(args.audit, args.transport_depth)
@@ -587,16 +585,32 @@ def main():
     signature = hashlib.sha1(json.dumps([[meta["set"], meta["run"], meta["frames"]] for meta in frames.meta]
                                         + [model.kinematics["collision_spheres"], sorted(map(sorted, model.ignored)),
                                            [[a.tolist(), b.tolist(), c.tolist()] for a, b, c in model.base_cuboids]]).encode()).hexdigest()
-    engine = Engine(frames, model, args.state.with_suffix(".hits.npz"), signature)
-    elements = ([Element(**item) for item in json.loads(args.state.read_text())["elements"]] if args.state.exists()
+    hits = args.hits or args.state.with_suffix(".hits.npz")
+    hits.parent.mkdir(parents=True, exist_ok=True)
+    engine = Engine(frames, model, hits, signature)
+    elements = ([Element(**item) for item in json.loads(state.read_text())["elements"]] if state is not None and state.exists()
                 else initial_elements(args.patch, args.patched_cuboids))
     print(f"{frames.count} frames of {len(frames.meta)} runs loaded in {time.time() - started:.0f} s", flush=True)
-    args.state.parent.mkdir(parents=True, exist_ok=True)
     for count, element in enumerate(elements, 1):
         engine.add(element)
         if count % 10 == 0 or count == len(elements):
             print(f"  {count}/{len(elements)} elements evaluated, {time.time() - started:.0f} s", flush=True)
             engine.save()
+    return frames, model, engine
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    add_data_arguments(parser)
+    parser.add_argument("--state", type=Path, required=True, help="editor state (JSON): loaded if present, saved on every change")
+    parser.add_argument("--export", type=Path, required=True, help="directory for exported patches")
+    parser.add_argument("--run-dir", nargs=2, action="append", default=[], metavar=("LABEL", "DIR"), help="run directories, to open frames")
+    parser.add_argument("--pose", nargs=5, action="append", default=[], metavar=("LABEL", "RUN_JSON", "PHASE", "INDEX", "NOTE"))
+    parser.add_argument("--validate", type=Path, nargs="+", help="patched check JSONL files (GPU first): compare and exit")
+    parser.add_argument("--port", type=int, default=8336)
+    args = parser.parse_args()
+    args.state.parent.mkdir(parents=True, exist_ok=True)
+    frames, model, engine = load_engine(args, args.state)
     if args.validate:
         validate(engine, args.validate)
         return
