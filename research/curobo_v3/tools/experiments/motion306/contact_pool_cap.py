@@ -2,7 +2,8 @@
 
 For each selected instance, the capped stage-0 pool (as the environment exposes it) and the full analytic grid
 (same generator, no cap) are gated with the environment's own contact checks: batched collision first, then the
-deterministic extraction / pre-approach gates for every collision-free row.
+deterministic extraction / pre-approach gates for every collision-free row. --instances selects named instances of
+the group instead of the first --per-mode instances of each mode.
 """
 import argparse
 import json
@@ -44,19 +45,33 @@ def main():
     parser.add_argument('--group', default='dev')
     parser.add_argument('--modes', default='single-left-top,single-right-top,single-left-side,single-right-side')
     parser.add_argument('--per-mode', type=int, default=6)
+    parser.add_argument('--instances', type=Path, help='file with one instance name per line')
     args = parser.parse_args()
+    names = set(args.instances.read_text().split()) if args.instances else None
     modes = args.modes.split(',')
-    chosen = {}
-    for item in sorted(json.loads(args.registry.read_text())['instances'], key=lambda row: row['instance']):
-        if item['split'] == args.group and item.get('group') == args.group and mode(item) in modes:
-            chosen.setdefault(mode(item), [])
-            if len(chosen[mode(item)]) < args.per_mode:
+    items = [item for item in json.loads(args.registry.read_text())['instances']
+             if item['split'] == args.group and item.get('group') == args.group]
+    if names is not None:
+        selected = sorted((item for item in items if item['instance'] in names),
+                          key=lambda row: (str(row.get('box_level')), row['instance']))
+        missing = names - {item['instance'] for item in selected}
+        if missing:
+            raise SystemExit(f'not in group {args.group}: {sorted(missing)}')
+    else:
+        chosen = {}
+        for item in sorted(items, key=lambda row: row['instance']):
+            if mode(item) in modes and len(chosen.setdefault(mode(item), [])) < args.per_mode:
                 chosen[mode(item)].append(item)
+        selected = [item for name in modes for item in chosen.get(name, [])]
     env = StageEnv(timed=True, physical=False)
-    rows = []
-    for item in [item for name in modes for item in chosen.get(name, [])]:
+    rows, level = [], None
+    for item in selected:
+        if item.get('box_level') != level:
+            env.planner.persistent_checkers.clear()  # one size at a time on the 8 GB card
+            torch.cuda.empty_cache()
+            level = item.get('box_level')
         began = time.perf_counter()
-        entry = dict(instance=item['instance'], mode=mode(item))
+        entry = dict(instance=item['instance'], mode=mode(item), box_level=item.get('box_level'))
         try:
             observation = env.reset(item, seed=101)
             capped = observation.candidates
