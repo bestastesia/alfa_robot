@@ -2196,7 +2196,13 @@
 - 留给下个AI：测试格仍封存；验收判定等待李昊洋确认；Linear草稿未获发布确认，父311不可提前Done；PR等待用户代码审阅。本轮是完整研究产物交付，正式验收结论为部分完成/暂不通过，别把负面结论改写成通过。
 
 ## 2026-10-28 运控 / Claude Code / MOTION-364（306子Issue）M0a 箱体尺寸场景参数化
-- 做了什么：MOTION-311 R3 转入306子Issue MOTION-364；解析B1交接在313子Issue MOTION-365（2 s单次成形、允许前瞻、需尺寸泛化）。新增箱体尺寸场景参数：每场景统一尺寸，5×5箱位/任务号不变，间距=箱面+1 cm，抽离=max(35 cm, 箱深+5 cm)，携箱内接球按尺寸生成；306注册表=311的811实例×5档。歪斜挂起待讨论。
+- 做了什么：MOTION-311 R3 转入306子Issue MOTION-364（2 s单次成形、允许前瞻、需尺寸泛化）；解析B1交接在313子Issue MOTION-365。新增箱体尺寸场景参数：每场景统一尺寸，5×5箱位/任务号不变，间距=箱面+1 cm，抽离=max(35 cm, 箱深+5 cm)，携箱内接球按尺寸生成；306注册表=311的811实例×5档。歪斜挂起待讨论。
 - 改了哪里：新增 tools/v3_box_geometry.py、tools/motion306_registry.py、config/motion306_registry.json、tools/experiments/motion306/{size_smoke,contact_pool_diagnostic,size_envelope}.py、3个test_core测试；穿线 v3_task_scene、v3_wall_ik_benchmark、v3_task_cycle_planner、v3_conveyor_cycle_planner、curobo_core/planner、v3_single_arm_planner、v3_batched_loaded_search、motion311_learning/stage_env。缺省box_dims=None走冻结40球与旧几何。
 - 验证结果：CPU 225项通过；默认尺寸下与旧常量逐位一致，GPU重放311 dev 6例帧哈希一致。包络扫描：邻箱紧贴时41 cm吸盘排要求箱宽≥37 cm（侧吸、顶吸都受限，实测0.36全碰、0.37全通）；单臂候选受机器人自碰限制，箱高≤30 cm全碰、35 cm仅0–21/64无碰。5档最终都在包络内，20个R3零样本回合几何核验全过、15成功。
 - 留给下个AI：GPU一律在 ~/Sevenova/motion306-m0a/runtime（prepare_checkout重定位；改代码后只rsync tools/与config/），flock照旧。留出档35×38×42、40×37×45不得进训练；reserve组按311规则封存给313/306，解封需验收人确认。精确网格审计器MeshStateChecker尚未接入任何流程；携箱仍是内接球（研究边界）。
+
+## 2026-10-29 运控 / Claude Code / MOTION-364 选择器精确预筛与学习路线对比
+- 做了什么：把环境自身确定性闸门（接触碰撞、解析抽离、单臂预接近、携箱碰撞、单臂包络、可选放箱停车位碰撞）放进选择器做惰性预筛，每阶段仍只执行一个动作；新增 motion306_learning（LookaheadEnv 前瞻特征、残差/否决式 LookaheadAgent、在线训练、分尺寸严格评估、同实例交替评估）。
+- 结果（dev，严格单选）：默认尺寸 dev-96 上 R3(311) 57 → 加预筛 70；启发式+预筛 78（可行上限 81），同成功路径下界短 12.8 s；随机+预筛 68；解析前瞻 75。5 档尺寸（每档 48）交替评估：启发式 130/240，残差 Q 131（更慢 1.6 s），否决式 126（留出档 +0/−7，p=0.016）。学习路线无可靠增益；36% 场景因吸盘/机器人几何不可行。
+- 改了哪里：stage_env 抽出 contact_checks/carry_checks/contact_collision_free/candidate_pool（311 dev-96 回放 96/96 逐帧一致）；tools/motion306_learning/*；tests/test_core_motion364_*。笔记与结果在 ~/Sevenova/motion364/（RESULTS.md、PLAN.md、figures/）。
+- 留给下个AI：评估受主机负载影响（墙钟 RRT/时间化预算），比较路线请用 interleave.py；另一会话（MOTION-334）会占 GPU 锁和 CPU。test 仍封存。下一步需用户决定：是否继续学习路线，或转向提高场景可行上限（顶吸接触方式、深箱回中位）。
