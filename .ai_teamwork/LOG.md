@@ -2201,3 +2201,9 @@
 - 运输侧吸旧2cm升降网格跳过合法窗口；原范围内加密到5mm，重求运输库并独立FK验收，保留碰撞/限位/1.05m包络。补齐16/64形状真实LM预热、长求解器共享及完整显示快照恢复。
 - 35项回归通过，侧吸L22/R17→顶吸L03/R02→单臂R02→侧吸四次GPU完整流程通过，Home误差约4.4e-8，显存峰值约1.7GiB；非117组全量验收。8210独立预览已通过浏览器实时计算，结果独立目录generated/forward_precontact_current_urdf。
 - 保留抽离途中空载/终点携箱验碰、导航瞬移、释放移除边界。polish录图/早停留后续；未对外宣称全流程携箱安全或实机完成。恢复服务与复测入口见原HANDOFF_8209_ALGORITHM_AND_WARMUP.md迁移补充。
+
+## 2026-10-29 运控 / Codex / MOTION-292接入PR #71固定路径RNEA
+- 做了什么：从`feature/motion-288-dynamic-trajopt@73f40c5`重建滚动重规划；接续点改为上游RNEA认证控制器采样，安全旧后缀复用动力学证书，阻断后新q仅在非零边界做RNEA audit，超限走平滑braking后再对rest-to-rest尾段固定q重定时；加入10kg/箱体尺寸/90%力矩合同、异步torque sidecar及三层路径/双影子可视化。
+- 改了哪里：`research/curobo_v3/tools/curobo_core/rolling*.py`、`torque.py`、`trajectory.py`，rolling prepare/replan/verifier/Viser/round工具及对应CPU/GPU合同测试；当前合同写入`docs/motion292_pr71_rnea_integration.md`。
+- 验证结果：CPU core 139/139、原生GPU场景更新1/1、round-0六阶段clear的CPU/GPU verifier、transport静态障碍换轨及sidecar均通过；空闲主机15/15轮25/25箱通过。障碍114项全部audit；空闲复跑deadline样本后50完成/64安全拒绝、45次成功换轨。clear/CPU压力360/360（含4×CPU burner soak）和fault 8/8通过，6个首次deadline失败尝试原样保留。最大q delta 0、最大持续力矩利用率0.676、安全旧路在线TrajOpt为0。Edge真实点击完成Viser整轮回放并保存三层轨迹/动力学界面截图。启动预热余量从`t2+1.5s`校准为`t2+3.5s`，执行期`t2_rolling`不变。
+- 留给下个 AI：仿真验收已收口，证据在`motion292-acceptance/rnea-integration-20261028/`。后续只剩提交/stacked PR及实机外部门禁；不得把本结果表述为真实执行层、感知时钟、保护停机或硬件安全验收。

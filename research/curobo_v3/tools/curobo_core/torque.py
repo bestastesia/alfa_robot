@@ -21,6 +21,21 @@ def write_dynamics_robot_config(source, urdf, asset_root, destination):
     Path(destination).write_text(yaml.safe_dump(document, sort_keys=False))
 
 
+def default_torque_model(assets, payload_mass_kg=10.0, payload_dimensions=(.3, .4, .4),
+                         torque_limit_scale=.9, dynamics_root=None):
+    """Build the frozen proxy RNEA model used by planning and rolling workers."""
+    import tempfile
+
+    root = (Path(dynamics_root) if dynamics_root is not None else
+            Path(__file__).resolve().parents[2] / "generated/v3_dynamics_20261019")
+    with tempfile.TemporaryDirectory() as directory:
+        config = Path(directory) / "robot.yml"
+        write_dynamics_robot_config(
+            assets.robot_config, root / "robot_dynamics_overlay.urdf", assets.urdf.parent, config)
+        return TorqueModel(config, payload_mass_kg, payload_dimensions,
+                           torque_limit_scale, root / "erob_joint_profiles.json")
+
+
 def load_joint_torque_profiles(path):
     """Expand one catalog profile per J number to left/right joint names."""
     document = json.loads(Path(path).read_text())
@@ -464,6 +479,7 @@ def constrain_timed_result(result, model, copy_result=True, retime_budget_s=.5,
         "geometry_hash_before": source_digest,
         "geometry_hash_after": final_digest,
         "payload_mass_kg": model.payload_mass_kg,
+        "payload_dimensions_m": model.payload_dimensions.tolist(),
         "torque_limit_scale": model.torque_limit_scale,
         "retimed_segments": sum(item["constraint"].get("time_scale", 1.0) > 1.000001
                                   for item in reports),
