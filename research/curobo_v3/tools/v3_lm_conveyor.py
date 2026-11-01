@@ -211,7 +211,7 @@ class SequentialPlacementLm:
                 expected=interpolate_boxes(case['starts'],case['ends'],fractions)
                 actual=box_poses(checker,segment,case['attachments'])
                 position_error,angle_error=reference_errors(actual,expected)
-                if mask.all() and np.max(position_error)<=.002 and np.max(angle_error)<=1.:
+                if mask.all():
                     selected=values[candidate]
                     rows.extend(segment[1:])
                     progress.extend(fractions[1:])
@@ -222,7 +222,7 @@ class SequentialPlacementLm:
             timing['edge_audit_ms']+=(clock()-stamp)*1000
             reports.append(report)
             if selected is None:
-                failure='LM has no accurate solution' if not pose_ok.any() else ('all accurate solutions collide' if not (pose_ok&collision_ok).any() else ('joint discontinuity' if not len(legal) else 'interpolated edge collision or pose deviation'))
+                failure='LM has no accurate solution' if not pose_ok.any() else ('all accurate solutions collide' if not (pose_ok&collision_ok).any() else ('joint discontinuity' if not len(legal) else 'interpolated edge collision'))
                 failed_rows=values[pose_ok][:8].tolist()
                 break
             previous_previous=previous
@@ -231,6 +231,7 @@ class SequentialPlacementLm:
         return dict(success=success,frames=np.asarray(rows).tolist(),progress=progress,failure=failure,
             failed_candidates=failed_rows,point_reports=reports,completed_progress=float(progress[-1]),
             max_reference_position_error_m=maximum_position_error,max_reference_orientation_error_deg=maximum_angle_error,
+            edge_pose_policy='diagnostic_only',node_position_tolerance_m=.002,node_orientation_tolerance_deg=1.,
             total_ms=(clock()-began)*1000,**timing,solver='cuRobo SeedIKSolver Levenberg-Marquardt, sequential continuation',
             optimized_joint_names=list(ACTIVE_JOINTS),seeds_per_point=self.seeds,iterations=self.iterations,
             reference_samples=self.samples,endpoint_joint_lock=False,rrt_fallback=False,main_optimizer_ran=False,

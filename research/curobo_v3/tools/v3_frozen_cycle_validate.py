@@ -2,6 +2,7 @@ import argparse
 from collections import Counter
 import contextlib
 import gzip
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -57,26 +58,35 @@ def check_cycle(result,home):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--indices',type=int,nargs='+')
+    parser.add_argument('--output',type=Path,default=OUTPUT)
     args=parser.parse_args()
     planner=FrozenCyclePlanner()
+    model_hashes={name:hashlib.sha256(Path(getattr(planner.args,name)).read_bytes()).hexdigest() for name in ('robot_config','mobile_robot_config','urdf')}
+    algorithm_hashes={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ('v3_lm_conveyor.py','v3_frozen_cycle.py')}
     records=[]
     for index,(label,task) in enumerate(planner.task_options):
         if args.indices and index not in args.indices:continue
-        path=OUTPUT/f'{index:03d}.json.gz'
+        path=args.output/f'{index:03d}.json.gz'
         if path.exists():
             result=json.loads(gzip.decompress(path.read_bytes()))
             if result.get('cycle_profile')!=PROFILE:raise RuntimeError('obsolete full-cycle recording')
+            if result.get('validation_model_hashes')!=model_hashes:raise RuntimeError('model changed; choose a new validation output directory')
+            if result.get('validation_algorithm_hashes')!=algorithm_hashes:raise RuntimeError('algorithm changed; choose a new validation output directory')
         else:
             np.random.seed(20261031)
             torch.manual_seed(20261031)
             with contextlib.redirect_stdout(io.StringIO()):result=planner.full_cycle(task)
             result['cycle_seams']=check_cycle(result,planner.home)
+            result['validation_model_hashes']=model_hashes
+            result['validation_algorithm_hashes']=algorithm_hashes
             save(path,result)
         records.append(dict(index=index,label=label,task=task,success=result['success'],blocked_stage=result.get('blocked_stage'),
             blocked_details=result.get('blocked_details'),wall_ms=result['wall_ms'],lm=result.get('conveyor_place_lm'),result_file=path.name))
         summary=dict(profile=PROFILE,total=len(planner.task_options),completed=len(records),success=sum(item['success'] for item in records),
             failures=dict(Counter(item['blocked_stage'] for item in records if not item['success'])),records=records)
-        save(OUTPUT/'summary.json',summary)
+        summary['model_hashes']=model_hashes
+        summary['algorithm_hashes']=algorithm_hashes
+        save(args.output/'summary.json',summary)
         print('RESULT',index,label,result['success'],result.get('blocked_stage'),round(result['wall_ms']),flush=True)
     print('COMPLETE',summary['success'],summary['completed'],summary['failures'],flush=True)
 
