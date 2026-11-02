@@ -7,12 +7,21 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from v3_rolling_interactive import (ACTIVE_JOINTS, STAGES, command_for, metrics_markdown,
-                                    round_command_for, stage_planning_rows)
+from v3_rolling_interactive import (ACTIVE_JOINTS, ROLL_COLORS, STAGES, command_for,
+                                    metrics_markdown, round_command_for, route_colors,
+                                    stage_planning_rows)
 from v3_rolling_replan import PROGRESS_PREFIX, progress_line
 
 
 class RollingInteractiveTest(unittest.TestCase):
+    def test_rolling_route_colors_cycle_by_sequence_and_keep_layers_distinct(self):
+        self.assertEqual(route_colors("installed", 0), ROLL_COLORS[0])
+        self.assertEqual(route_colors("installed", len(ROLL_COLORS)), ROLL_COLORS[0])
+        self.assertNotEqual(route_colors("installed", 0), route_colors("installed", 1))
+        self.assertNotEqual(route_colors("candidate", 0), route_colors("installed", 0))
+        with self.assertRaises(ValueError):
+            route_colors("unknown")
+
     def test_live_stream_and_full_round_commands_are_fresh_and_stage_specific(self):
         self.assertIn("left_joint1", ACTIVE_JOINTS)
         line = progress_line("solve_finished", stage="transport", compute_wall_s=.123)

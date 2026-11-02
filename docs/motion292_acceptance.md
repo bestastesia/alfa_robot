@@ -10,7 +10,7 @@
 - RNEA 前后 q hash 和逐点最大位置差进入强制门禁。
 - 10kg、0.3×0.4×0.4m、90% 持续力矩合同进入 worker、阶段输入和 verifier。
 - 完整 torque/gravity 进入异步 sidecar；Viser 已接入三层路径、双影子和动力学曲线。
-- CPU 合同测试当前为 139 项。
+- CPU 合同测试当前为 140 项。
 - 2026-10-29 GPU smoke：原生场景更新1/1、round-0六阶段clear CPU/GPU verifier全部通过；transport静态障碍成功换轨1次，RNEA前后q delta为0，持续力矩利用率0.632。
 - 空闲主机15/15轮、25/25箱通过：端到端median 2.306s、p95 3.431s、max 4.533s；所有轮`controller_ready`，最大q delta为0，最大持续力矩利用率0.671。
 - 障碍矩阵114/114均可独立audit；将14个deadline样本在空闲环境重跑后，9个转为成功、5个仍按预算安全拒绝，最终50项完成、64项安全拒绝、45次成功避障换轨，`NO_VALID_REPLACEMENT` 1项，安全旧路在线TrajOpt为0，最大q delta为0、最大持续力矩利用率0.676，达到当前门槛。

@@ -44,6 +44,17 @@ ROLL_COLORS = (
 )
 
 
+def route_colors(kind, sequence=0):
+    if kind == "upstream":
+        return ((95, 95, 95), (165, 165, 165))
+    colors = ROLL_COLORS[sequence % len(ROLL_COLORS)]
+    if kind == "installed":
+        return colors
+    if kind == "candidate":
+        return tuple(tuple((value + 255) // 2 for value in color) for color in colors)
+    raise ValueError(f"unknown route layer: {kind}")
+
+
 def command_for(args, cycle, controls, stage, output):
     t2, t3, t4 = STAGE_BUDGETS[stage]
     scenario = controls["scenario"] if stage == controls["obstacle_stage"] else "clear"
@@ -194,7 +205,7 @@ def main():
 
     server.gui.add_markdown(
         "## MOTION-292 · 一轮完整搬运实时诊断\n"
-        "**灰：上游认证轨迹；橙：RNEA前避障候选；红/蓝粗线：RNEA后实际安装轨迹；半透明红盒：障碍。**\n\n"
+        "**灰：上游认证轨迹；滚动颜色按接续次数循环；细浅线：RNEA前候选；同色粗线：RNEA后实际安装；半透明红盒：障碍。**\n\n"
         "界面启动时不加载任何预计算路线。点击后先从头规划本轮，再按六阶段实时追加滚动结果。仅仿真。")
     run_button = server.gui.add_button("▶ 从头规划并实时演示完整一轮", color="green")
     status = server.gui.add_markdown("**就绪。** 当前没有显示任何轨迹。")
@@ -272,15 +283,10 @@ def main():
                 for side, rows in points.items()}
 
     def add_route(stage, name, trajectory, kind="installed", sequence=0):
-        palettes = {
-            "upstream": ((95, 95, 95), (165, 165, 165)),
-            "candidate": ((245, 145, 35), (245, 190, 45)),
-            "installed": ((235, 55, 55), (35, 105, 225)),
-        }
         lines = trajectory_lines(trajectory, current["base_transform"])
         visible = {"upstream": show_upstream.value, "candidate": show_candidate.value,
                    "installed": show_installed.value}[kind]
-        for side, color in zip(("left", "right"), palettes[kind]):
+        for side, color in zip(("left", "right"), route_colors(kind, sequence)):
             node = server.scene.add_line_segments(
                 f"/paths/{stage}/{name}/{side}", points=lines[side], colors=color,
                 line_width=3. if kind == "upstream" else (4. if kind == "candidate" else 7.))
