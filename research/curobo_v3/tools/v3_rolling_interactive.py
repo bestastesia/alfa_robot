@@ -11,8 +11,10 @@ import sys
 import tempfile
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 import numpy as np
+import yaml
 import viser
 import yourdfpy
 from viser.extras import ViserUrdf
@@ -57,6 +59,91 @@ def route_colors(kind, sequence=0):
 
 def clear_shadow_state(current):
     current.update(pre_rnea=None, post_rnea=None, dynamics_detail=None, shadow_key=None)
+
+
+def derivative_limits(robot_config, urdf_path):
+    document = yaml.safe_load(Path(robot_config).read_text())
+    cspace = document.get("robot_cfg", document)["kinematics"]["cspace"]
+    names = list(cspace["joint_names"])
+    urdf = ET.parse(urdf_path).getroot()
+    velocity_by_name = {joint.attrib["name"]: float(joint.find("limit").attrib["velocity"])
+                        for joint in urdf.findall("joint") if joint.find("limit") is not None}
+
+    def configured(key, default=1.):
+        values = np.asarray(cspace.get(key, default), dtype=float)
+        if values.ndim == 0:
+            values = np.full(len(names), float(values))
+        if values.shape != (len(names),):
+            raise ValueError(f"{key} must contain one value per configured joint")
+        return values
+
+    velocity = np.asarray([velocity_by_name[name] for name in names]) * configured("velocity_scale")
+    acceleration = configured("max_acceleration") * configured("acceleration_scale")
+    jerk = configured("max_jerk") * configured("jerk_scale")
+    return {name: {"velocity": velocity[index], "acceleration": acceleration[index],
+                   "jerk": jerk[index]} for index, name in enumerate(names)}
+
+
+def update_axis_utilization(table, trajectory, limits, torque_limits=None,
+                            torques=None, gravity_torques=None, torque_names=None):
+    names = list(trajectory["joint_names"])
+    for field, metric in (("velocities", "velocity"), ("accelerations", "acceleration"),
+                          ("jerks", "jerk")):
+        values = np.asarray(trajectory[field], dtype=float)
+        for index, name in enumerate(names):
+            if name in limits:
+                table[name][metric] = max(table[name][metric],
+                    float(np.max(np.abs(values[:, index]))) / limits[name][metric])
+    torque_limits = torque_limits or {}
+    torque_names = names if torque_names is None else list(torque_names)
+    for values, metric in ((torques, "torque"), (gravity_torques, "gravity")):
+        if values is None:
+            continue
+        values = np.asarray(values, dtype=float)
+        for index, name in enumerate(torque_names):
+            if name in torque_limits:
+                ratio = float(np.max(np.abs(values[:, index]))) / torque_limits[name]
+                table[name][metric] = max(table[name][metric] or 0., ratio)
+
+
+def baseline_axis_utilization(result, limits):
+    table = {name: {"torque": None, "gravity": None, "velocity": 0.,
+                    "acceleration": 0., "jerk": 0.} for name in limits}
+    reports = {item["phase"]: item for item in result["torque_validation"]["segments"]}
+    torque_limits = {}
+    for segment in result["timed_segments"]:
+        report = reports[segment["name"]]
+        after = report["constraint"].get("after", report["before"])
+        torque_limits.update({name: float(limit) for name, limit in zip(
+            segment["torque_joint_names"], after["per_joint_average_limit_nm"]) if name != "updown"})
+        update_axis_utilization(table, segment, limits, torque_limits,
+                                segment.get("torques_nm"), segment.get("gravity_torques_nm"),
+                                segment["torque_joint_names"])
+    return table, torque_limits
+
+
+def utilization_markdown(table, payload_mass_kg, torque_limit_scale):
+    def cell(value):
+        if value is None:
+            return "未配置"
+        marker = " 🔴" if value > 1 else (" 🟠" if value > .9 else "")
+        return f"{value * 100:.1f}%{marker}"
+
+    rows = ["### 各轴全程峰值利用率",
+            f"单箱质量：**{payload_mass_kg:g} kg** · 持续力矩门限：**{torque_limit_scale*100:.0f}%**",
+            "| 轴 | 力矩 | 重力 | 速度 | 加速度 | Jerk |",
+            "|---|---:|---:|---:|---:|---:|"]
+    for name, values in table.items():
+        rows.append(f"| `{name}` | {cell(values['torque'])} | {cell(values['gravity'])} | "
+                    f"{cell(values['velocity'])} | {cell(values['acceleration'])} | {cell(values['jerk'])} |")
+    rows.append("力矩/重力以厂家平均允许输出力矩为100%；`updown`尚无额定推力合同，因此这两项不显示。其余值取本轮已生成和已安装轨迹的全程峰值。")
+    return "\n".join(rows)
+
+
+def prepare_command_for(args, cycle, controls):
+    return [sys.executable, str(args.preparer), "--output", str(cycle),
+            "--round", str(controls["round"]), "--payload-mass-kg",
+            str(controls["payload_mass"])]
 
 
 def command_for(args, cycle, controls, stage, output):
@@ -177,6 +264,7 @@ def main():
     parser.add_argument("--initial-cycle", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--initial-result", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    axis_limits = derivative_limits(PlannerAssets().robot_config, args.urdf)
 
     mesh_dir = args.urdf.parent / "meshes"
     urdf = yourdfpy.URDF.load(args.urdf, load_meshes=True, build_scene_graph=True,
@@ -203,6 +291,9 @@ def main():
                "pre_rnea": None, "post_rnea": None, "dynamics_detail": None,
                "shadow_key": None}
     baseline = [None]
+    utilization = [{}]
+    torque_limits = [{}]
+    payload_contract = [{"mass": 10., "scale": .9}]
     ledger = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
                       "timing_ms": 0., "timing_rows": [], "timing_diagnostics": [],
                       "solves": [], "motion_s": 0.,
@@ -246,9 +337,11 @@ def main():
                     viser.uplot.Series(label="gravity", stroke="#64748b")),
             mode=1, scales={"x": {"time": False}}, title="安装轨迹 torque / gravity", height=220,
             visible=False)
+        axis_utilization = server.gui.add_markdown("### 各轴全程峰值利用率\n等待本轮轨迹生成。")
 
     with server.gui.add_folder("本轮与障碍参数", expand_by_default=False):
         round_number = server.gui.add_number("轮次（1~15）", initial_value=args.round + 1, min=1, max=15, step=1)
+        payload_mass = server.gui.add_number("单箱质量 / kg", initial_value=10., min=.1, max=50., step=1.)
         obstacle_stage = server.gui.add_dropdown("加障碍阶段", options=STAGES, initial_value="transport")
         scenario = server.gui.add_dropdown("障碍模式", options=("static", "moving", "appear", "depart"), initial_value="static")
         center = server.gui.add_vector3("中心 XYZ / m", initial_value=(.7253190279006958, .6944118738174438, 1.164883017539978), step=.005)
@@ -259,7 +352,8 @@ def main():
         seed = server.gui.add_number("随机种子", initial_value=20261003, min=0, step=1)
 
     def controls():
-        values = {"round": int(round_number.value) - 1, "obstacle_stage": obstacle_stage.value,
+        values = {"round": int(round_number.value) - 1, "payload_mass": float(payload_mass.value),
+                  "obstacle_stage": obstacle_stage.value,
                   "scenario": scenario.value, "center": np.asarray(center.value, float),
                   "size": np.asarray(size.value, float), "velocity": np.asarray(velocity.value, float),
                   "link_delay": float(link_delay.value), "braking": float(braking.value), "seed": int(seed.value)}
@@ -267,8 +361,10 @@ def main():
             raise ValueError("轮次必须在1~15")
         if not all(np.isfinite(values[key]).all() for key in ("center", "size", "velocity")) or np.any(values["size"] <= 0):
             raise ValueError("位置/尺寸/速度必须是有限数，尺寸必须大于0")
-        if not 0 <= values["link_delay"] <= .1 or values["braking"] <= 0 or not 0 <= values["seed"] < 2**32:
-            raise ValueError("通信延迟需在0~0.1s，减速时长需大于0，种子需为32位无符号整数")
+        if (not .1 <= values["payload_mass"] <= 50 or
+                not 0 <= values["link_delay"] <= .1 or values["braking"] <= 0 or
+                not 0 <= values["seed"] < 2**32):
+            raise ValueError("箱体质量需在0.1~50kg；通信延迟需在0~0.1s；减速时长需大于0；种子需为32位无符号整数")
         return values
 
     def replace_obstacle(dimensions):
@@ -364,6 +460,17 @@ def main():
                 attachment.parent_link, urdf.base_link) @ pose_matrix(attachment.tool_to_object))
             node.position, node.wxyz = pose.position, pose.quaternion_wxyz
 
+    def install_axis_utilization(result):
+        if not result.get("timed_segments") or not result.get("torque_validation", {}).get("segments"):
+            return False
+        utilization[0], torque_limits[0] = baseline_axis_utilization(result, axis_limits)
+        validation = result["torque_validation"]
+        payload_contract[0] = {"mass": validation["payload_mass_kg"],
+                               "scale": validation["torque_limit_scale"]}
+        axis_utilization.content = utilization_markdown(
+            utilization[0], payload_contract[0]["mass"], payload_contract[0]["scale"])
+        return True
+
     def reset_view():
         for _, node in path_nodes:
             node.remove()
@@ -371,7 +478,9 @@ def main():
         if obstacle[0] is not None:
             obstacle[0].visible = False
         baseline[0] = None
-        current.update(pre_rnea=None, post_rnea=None, dynamics_detail=None)
+        utilization[0] = {}; torque_limits[0] = {}
+        axis_utilization.content = "### 各轴全程峰值利用率\n等待本轮轨迹生成。"
+        clear_shadow_state(current)
         pre_shadow_frame.visible = post_shadow_frame.visible = False
         for stage in STAGES:
             ledger[stage].update(core_ms=None, core_rows=[], diagnostics=[], notes=[],
@@ -399,8 +508,7 @@ def main():
         root = Path(tempfile.mkdtemp(prefix="motion292-live-"))
         cycle = root / "fresh-cycle.json"
         began = time.perf_counter()
-        code, log = run_process([sys.executable, str(args.preparer), "--output", str(cycle),
-                                 "--round", str(values["round"])], "baseline_log")
+        code, log = run_process(prepare_command_for(args, cycle, values), "baseline_log")
         if code or not cycle.exists():
             inbox.put({"event": "run_failed", "error": f"初始整轮规划失败\n{log[-1500:]}"})
             return
@@ -464,6 +572,9 @@ def main():
                 kind = event["event"]
                 if kind == "baseline_log":
                     status.content = f"**正在从头规划完整初始轨迹…**\n\n`{event['text'][-500:]}`"
+                elif kind == "baseline_rejected":
+                    result = event["result"]
+                    install_axis_utilization(result)
                 elif kind == "baseline_ready":
                     result = event["result"]
                     startup_ms = max(0., event["wall_s"] * 1000 -
@@ -493,9 +604,11 @@ def main():
                         "timing_rows": [(name, value) for name, value in timing_rows if value > 0.],
                         "rolling_service_ms": None, "rolling_warmup_ms": None,
                     }
+                    install_axis_utilization(result)
                     for stage in STAGES:
                         ledger[stage].update(stage_planning_rows(result, stage))
-                    status.content = "**初始整轮新轨迹已完成。** 现在逐阶段执行滚动优化；路线会在实际产出时追加。"
+                    status.content = (f"**初始整轮新轨迹已完成（单箱 {payload_contract[0]['mass']:g} kg）。** "
+                                      "现在逐阶段执行滚动优化；路线会在实际产出时追加。")
                 elif kind == "rolling_service_ready":
                     if baseline[0] is not None:
                         baseline[0]["rolling_service_ms"] = event["service_initialization_s"] * 1000
@@ -526,6 +639,14 @@ def main():
                             current["dynamics_detail"] = detail
                             current["pre_rnea"] = detail.get("pre_rnea_trajectory")
                             current["shadow_key"] = (event["stage"], event.get("sequence"))
+                            if utilization[0] and detail.get("post_rnea_trajectory"):
+                                update_axis_utilization(
+                                    utilization[0], detail["post_rnea_trajectory"], axis_limits,
+                                    torque_limits[0], detail.get("torques_nm"),
+                                    detail.get("gravity_torques_nm"))
+                                axis_utilization.content = utilization_markdown(
+                                    utilization[0], payload_contract[0]["mass"],
+                                    payload_contract[0]["scale"])
                             refresh_dynamics_curves()
                             if current["pre_rnea"]:
                                 add_route(event["stage"], f"candidate-{event['sequence']}",
@@ -544,6 +665,10 @@ def main():
                         current["post_rnea"] = event["trajectory"]
                     else:
                         clear_shadow_state(current)
+                    if utilization[0]:
+                        update_axis_utilization(utilization[0], event["trajectory"], axis_limits)
+                        axis_utilization.content = utilization_markdown(
+                            utilization[0], payload_contract[0]["mass"], payload_contract[0]["scale"])
                     add_route(event["stage"], f"installed-{event['sequence']}", event["trajectory"],
                               kind="installed", sequence=int(event["sequence"] or 0))
                     refresh_layer_visibility()

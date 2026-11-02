@@ -5,9 +5,10 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from v3_rolling_replan import (close_persistent_worker, persistent_stage_config,
+from v3_rolling_replan import (STARTUP_EXTRA_S, close_persistent_worker,
+                               dynamics_model_args, persistent_stage_config,
                                prime_persistent_worker, progress_line, run,
-                               stage_input, start_persistent_worker, STARTUP_EXTRA_S)
+                               stage_input, start_persistent_worker)
 
 
 STAGES = ("approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home")
@@ -56,7 +57,10 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
     record = json.loads(args.initial_cycle.read_text())
     stage_options = [stage_args(args, stage) for stage in STAGES]
-    shared = start_persistent_worker()
+    first_initial, _, _, _ = stage_input(record, STAGES[0])
+    mass, dimensions, scale = dynamics_model_args(first_initial)
+    shared = start_persistent_worker(payload_mass_kg=mass, payload_dimensions=dimensions,
+                                     torque_limit_scale=scale)
     reports = []
     try:
         configs = []

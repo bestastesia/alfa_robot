@@ -8,8 +8,10 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from v3_rolling_interactive import (ACTIVE_JOINTS, ROLL_COLORS, STAGES,
-                                    clear_shadow_state, command_for, metrics_markdown,
-                                    round_command_for, route_colors, stage_planning_rows)
+                                    baseline_axis_utilization, clear_shadow_state, command_for,
+                                    metrics_markdown, prepare_command_for, round_command_for,
+                                    route_colors, stage_planning_rows, update_axis_utilization,
+                                    utilization_markdown)
 from v3_rolling_replan import PROGRESS_PREFIX, progress_line
 
 
@@ -30,6 +32,31 @@ class RollingInteractiveTest(unittest.TestCase):
         self.assertEqual(current["stage"], "transport")
         self.assertTrue(all(current[key] is None for key in
                             ("pre_rnea", "post_rnea", "dynamics_detail", "shadow_key")))
+
+    def test_payload_mass_command_and_axis_utilization_table(self):
+        args = SimpleNamespace(preparer=Path("prepare.py"))
+        command = prepare_command_for(args, Path("cycle.json"), {"round": 2, "payload_mass": 15.})
+        self.assertEqual(command[command.index("--payload-mass-kg") + 1], "15.0")
+        segment = {"name": "transport", "joint_names": ["base", "joint"],
+                   "time_from_start_s": [0., 1.], "positions": [[0., 0.], [0., 1.]],
+                   "velocities": [[0., 0.], [0., 1.]], "accelerations": [[0., 0.], [0., 2.]],
+                   "jerks": [[0., 0.], [0., 3.]], "torque_joint_names": ["joint"],
+                   "torques_nm": [[0.], [5.]], "gravity_torques_nm": [[0.], [2.]]}
+        audit = {"per_joint_average_limit_nm": [10.]}
+        result = {"timed_segments": [segment], "torque_validation": {"segments": [{
+            "phase": "transport", "before": audit,
+            "constraint": {"success": False, "reason": "over limit"}}]}}
+        table, torque_limits = baseline_axis_utilization(
+            result, {"joint": {"velocity": 2., "acceleration": 4., "jerk": 6.}})
+        self.assertEqual(table["joint"], {"torque": .5, "gravity": .2,
+                         "velocity": .5, "acceleration": .5, "jerk": .5})
+        faster = dict(segment, accelerations=[[0., 0.], [0., 3.]])
+        update_axis_utilization(table, faster,
+            {"joint": {"velocity": 2., "acceleration": 4., "jerk": 6.}}, torque_limits)
+        self.assertEqual(table["joint"]["acceleration"], .75)
+        text = utilization_markdown(table, 15., .9)
+        self.assertIn("15 kg", text)
+        self.assertIn("75.0%", text)
 
     def test_live_stream_and_full_round_commands_are_fresh_and_stage_specific(self):
         self.assertIn("left_joint1", ACTIVE_JOINTS)

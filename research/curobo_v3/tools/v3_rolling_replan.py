@@ -49,6 +49,17 @@ def runtime_source_hashes(tools):
             for path in sorted(tools.rglob("*.py"))}
 
 
+def dynamics_model_args(initial):
+    context = initial.get("dynamics_context", {})
+    mass = float(context.get("payload_mass_kg", 10.0))
+    dimensions = tuple(float(value) for value in context.get("payload_dimensions_m", (.3, .4, .4)))
+    scale = float(context.get("torque_limit_scale", .9))
+    if (not np.isfinite((mass, scale, *dimensions)).all() or mass < 0 or
+            len(dimensions) != 3 or min(dimensions) <= 0 or not 0 < scale <= 1):
+        raise ValueError("invalid fixed-path dynamics model context")
+    return mass, dimensions, scale
+
+
 def stage_input(record, name, round_index=0):
     if record.get("sequence"):
         record = record["rounds"][round_index]
@@ -205,7 +216,8 @@ def record_reply_timing(result, requested_at, received_at):
 def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, random_seed=0,
            phase=None, braking_duration_s=.5, allow_braking_fallback=True,
            compute_bound_s=1., link_bound_s=.15, admission_bound_s=.05,
-           first_compute_bound_s=None):
+           first_compute_bound_s=None, payload_mass_kg=10.0,
+           payload_dimensions=(.3, .4, .4), torque_limit_scale=.9):
     """Own one CUDA backend; optional stage arguments preserve the legacy one-shot CLI."""
     from curobo_core.rolling_backend import RollingBackend
     from curobo_core.rolling_curobo import SegmentReplanner
@@ -217,7 +229,7 @@ def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, ra
     try:
         service_started = time.perf_counter()
         assets = PlannerAssets()
-        backend = RollingBackend(assets)
+        backend = RollingBackend(assets, payload_mass_kg, payload_dimensions, torque_limit_scale)
         warmed = set()
         warmed_dynamics = set()
         metadata = {
@@ -386,9 +398,12 @@ def worker(connection, snapshot=None, boxes=None, payload=None, initial=None, ra
         connection.close()
 
 
-def start_persistent_worker(timeout_s=180.):
+def start_persistent_worker(timeout_s=180., payload_mass_kg=10.0,
+                            payload_dimensions=(.3, .4, .4), torque_limit_scale=.9):
     parent, child = mp.get_context("spawn").Pipe()
-    process = mp.get_context("spawn").Process(target=worker, args=(child,))
+    process = mp.get_context("spawn").Process(
+        target=worker, args=(child,), kwargs={"payload_mass_kg": payload_mass_kg,
+        "payload_dimensions": payload_dimensions, "torque_limit_scale": torque_limit_scale})
     process.start(); child.close()
     commands, replies, stop_io = queue.Queue(maxsize=1), queue.Queue(maxsize=8), threading.Event()
     io_thread = threading.Thread(target=exchange_worker, args=(parent, commands, replies, stop_io),
@@ -486,7 +501,7 @@ def run(args, shared=None):
             child, snapshot, boxes, payload, initial, args.seed, args.stage,
             args.braking_duration_s, not args.disable_braking_fallback,
             args.compute_bound_s, args.link_bound_s, getattr(args, "admission_bound_s", .05),
-            configured_first_bound))
+            configured_first_bound, *dynamics_model_args(initial)))
     else:
         if not shared.get("primed"):
             raise ValueError("persistent worker must be primed before stage execution")

@@ -17,6 +17,7 @@ from v3_timed_single_arm_planner import TimedSingleArmPlanner
 from v3_batched_loaded_search import loaded_robot
 from v3_multiroot_search import batched_rrt_connect_multi_goal
 from .contracts import ACTIVE_JOINTS
+from .planner import CycleBlocked
 from .torque import default_torque_model, geometry_digest
 from .scene import Pose, digest
 from .trajectory import (deduplicate_timed_trajectory, joint_state_trajectory,
@@ -83,7 +84,12 @@ class RollingBackend(TimedSingleArmPlanner):
     def export_cycle(self, boxes, progress=lambda text: None):
         self.configure_task(boxes)
         request = {"snapshot": self.snapshot.to_dict(), "tasks": dict(boxes)}
-        result = self.full_cycle(boxes, progress)
+        try:
+            result = self.full_cycle(boxes, progress)
+        except CycleBlocked as error:
+            result = error.partial or self.last_partial or {"success": False}
+            result.update(success=False, blocked_stage=error.stage,
+                          blocked_details=str(error.details))
         if result.get("success"):
             if not (result.get("controller_ready") and result.get("dynamics_enabled") and
                     result.get("torque_constraints_enabled") and

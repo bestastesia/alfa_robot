@@ -35,6 +35,22 @@ class MentorRollingContractTest(unittest.TestCase):
                                "torque_limit_scale": .9, "segments": [dynamics]},
             rolling_stage_inputs={'return_home': {'snapshot': snapshot.to_dict()}}))
 
+    def test_failed_dynamics_cycle_is_exported_for_viser_diagnostics(self):
+        from curobo_core.planner import CycleBlocked
+        from curobo_core.rolling_backend import RollingBackend
+        backend = object.__new__(RollingBackend)
+        backend.configure_task = lambda boxes: None
+        backend.snapshot = types.SimpleNamespace(to_dict=lambda: {"scene": "snapshot"})
+        partial = {"success": False, "timed_segments": [{"name": "transport"}],
+                   "torque_validation": {"success": False}}
+        backend.last_partial = partial
+        backend.full_cycle = lambda *args: (_ for _ in ()).throw(
+            CycleBlocked("轨迹时间化与动力学验收", "torque validation failed", partial))
+        record = backend.export_cycle({"left": 1})
+        self.assertFalse(record["result"]["success"])
+        self.assertEqual(record["result"]["blocked_stage"], "轨迹时间化与动力学验收")
+        self.assertNotIn("rolling_stage_inputs", record["result"])
+
     def test_runtime_fingerprint_includes_inherited_mentor_files(self):
         import tempfile
         from v3_rolling_replan import runtime_source_hashes

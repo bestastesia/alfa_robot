@@ -6,9 +6,18 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 from v3_rolling_round import STAGES, stage_args
+from v3_rolling_replan import dynamics_model_args
 
 
 class RollingRoundTest(unittest.TestCase):
+    def test_worker_dynamics_follow_the_prepared_payload_contract(self):
+        initial = {"dynamics_context": {"payload_mass_kg": 15.,
+                   "payload_dimensions_m": [.3, .4, .4], "torque_limit_scale": .9}}
+        self.assertEqual(dynamics_model_args(initial), (15., (.3, .4, .4), .9))
+        initial["dynamics_context"]["payload_mass_kg"] = -1
+        with self.assertRaises(ValueError):
+            dynamics_model_args(initial)
+
     def test_stage_sessions_share_one_round_configuration(self):
         args = SimpleNamespace(
             initial_cycle=Path("cycle.json"), obstacle_stage="transport", scenario="static",
