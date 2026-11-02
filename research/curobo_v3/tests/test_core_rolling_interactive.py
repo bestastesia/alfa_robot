@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from v3_rolling_interactive import (ACTIVE_JOINTS, ROLL_COLORS, STAGES, command_for,
-                                    metrics_markdown, round_command_for, route_colors,
-                                    stage_planning_rows)
+from v3_rolling_interactive import (ACTIVE_JOINTS, ROLL_COLORS, STAGES,
+                                    clear_shadow_state, command_for, metrics_markdown,
+                                    round_command_for, route_colors, stage_planning_rows)
 from v3_rolling_replan import PROGRESS_PREFIX, progress_line
 
 
@@ -21,6 +21,15 @@ class RollingInteractiveTest(unittest.TestCase):
         self.assertNotEqual(route_colors("candidate", 0), route_colors("installed", 0))
         with self.assertRaises(ValueError):
             route_colors("unknown")
+
+    def test_shadow_state_is_cleared_between_stages_and_unpaired_results(self):
+        current = {"pre_rnea": object(), "post_rnea": object(),
+                   "dynamics_detail": object(), "shadow_key": ("transport", 2),
+                   "stage": "transport"}
+        clear_shadow_state(current)
+        self.assertEqual(current["stage"], "transport")
+        self.assertTrue(all(current[key] is None for key in
+                            ("pre_rnea", "post_rnea", "dynamics_detail", "shadow_key")))
 
     def test_live_stream_and_full_round_commands_are_fresh_and_stage_specific(self):
         self.assertIn("left_joint1", ACTIVE_JOINTS)

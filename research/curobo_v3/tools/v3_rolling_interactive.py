@@ -55,6 +55,10 @@ def route_colors(kind, sequence=0):
     raise ValueError(f"unknown route layer: {kind}")
 
 
+def clear_shadow_state(current):
+    current.update(pre_rnea=None, post_rnea=None, dynamics_detail=None, shadow_key=None)
+
+
 def command_for(args, cycle, controls, stage, output):
     t2, t3, t4 = STAGE_BUDGETS[stage]
     scenario = controls["scenario"] if stage == controls["obstacle_stage"] else "clear"
@@ -196,7 +200,8 @@ def main():
     inbox = queue.Queue()
     busy = threading.Event()
     current = {"snapshot": None, "base_transform": np.eye(4), "stage": None,
-               "pre_rnea": None, "post_rnea": None, "dynamics_detail": None}
+               "pre_rnea": None, "post_rnea": None, "dynamics_detail": None,
+               "shadow_key": None}
     baseline = [None]
     ledger = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
                       "timing_ms": 0., "timing_rows": [], "timing_diagnostics": [],
@@ -216,7 +221,7 @@ def main():
         show_upstream = server.gui.add_checkbox("上游认证轨迹", initial_value=True)
         show_candidate = server.gui.add_checkbox("避障候选（RNEA前）", initial_value=True)
         show_installed = server.gui.add_checkbox("实际安装（RNEA后）", initial_value=True)
-        show_shadows = server.gui.add_checkbox("RNEA前后双影子", initial_value=True)
+        show_shadows = server.gui.add_checkbox("RNEA前后双影子", initial_value=False)
         dynamics_status = server.gui.add_markdown("尚无在线动力学候选。")
         curve_joint = server.gui.add_dropdown(
             "曲线关节", options=tuple(ACTIVE_JOINTS), initial_value="left_joint1")
@@ -501,6 +506,8 @@ def main():
                     pass
                 elif kind == "stage_started":
                     stage = event["stage"]; current["stage"] = stage
+                    clear_shadow_state(current)
+                    pre_shadow_frame.visible = post_shadow_frame.visible = False
                     install_snapshot(event["initial_snapshot"])
                     add_route(stage, "upstream", event["initial_trajectory"], kind="upstream")
                     curve = TimedTrajectory(event["initial_trajectory"])
@@ -509,6 +516,8 @@ def main():
                     status.content = f"**{PHASE_LABELS[stage]}：原轨迹刚刚生成，开始实时滚动优化。**"
                 elif kind == "solve_finished":
                     ledger[event["stage"]]["solves"].append(event)
+                    clear_shadow_state(current)
+                    pre_shadow_frame.visible = post_shadow_frame.visible = False
                     detail_ref = event.get("dynamics_detail")
                     if detail_ref and Path(detail_ref["path"]).is_file():
                         encoded = Path(detail_ref["path"]).read_bytes()
@@ -516,6 +525,7 @@ def main():
                             detail = json.loads(encoded)
                             current["dynamics_detail"] = detail
                             current["pre_rnea"] = detail.get("pre_rnea_trajectory")
+                            current["shadow_key"] = (event["stage"], event.get("sequence"))
                             refresh_dynamics_curves()
                             if current["pre_rnea"]:
                                 add_route(event["stage"], f"candidate-{event['sequence']}",
@@ -529,7 +539,11 @@ def main():
                         f"RNEA模式：`{summary.get('retiming_mode', 'certificate_reuse')}` · "
                         f"time scale：**{summary.get('time_scale_peak', 1):.3f}**")
                 elif kind == "trajectory_activated":
-                    current["post_rnea"] = event["trajectory"]
+                    key = (event["stage"], event.get("sequence"))
+                    if current.get("shadow_key") == key:
+                        current["post_rnea"] = event["trajectory"]
+                    else:
+                        clear_shadow_state(current)
                     add_route(event["stage"], f"installed-{event['sequence']}", event["trajectory"],
                               kind="installed", sequence=int(event["sequence"] or 0))
                     refresh_layer_visibility()
