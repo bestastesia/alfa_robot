@@ -2207,3 +2207,9 @@
 - 改了哪里：`research/curobo_v3/tools/curobo_core/rolling*.py`、`torque.py`、`trajectory.py`，rolling prepare/replan/verifier/Viser/round工具及对应CPU/GPU合同测试；当前合同写入`docs/motion292_pr71_rnea_integration.md`。
 - 验证结果：CPU core 139/139、原生GPU场景更新1/1、round-0六阶段clear的CPU/GPU verifier、transport静态障碍换轨及sidecar均通过；空闲主机15/15轮25/25箱通过。障碍114项全部audit；空闲复跑deadline样本后50完成/64安全拒绝、45次成功换轨。clear/CPU压力360/360（含4×CPU burner soak）和fault 8/8通过，6个首次deadline失败尝试原样保留。最大q delta 0、最大持续力矩利用率0.676、安全旧路在线TrajOpt为0。Edge真实点击完成Viser整轮回放并保存三层轨迹/动力学界面截图；Viser现支持每轮切换单箱质量并显示各轴全程峰值利用率，5kg回归通过、15kg由力矩门禁拒绝。启动预热余量从`t2+1.5s`校准为`t2+3.5s`，执行期`t2_rolling`不变。
 - 留给下个 AI：仿真验收已收口，证据在`motion292-acceptance/rnea-integration-20261028/`。后续只剩提交/stacked PR及实机外部门禁；不得把本结果表述为真实执行层、感知时钟、保护停机或硬件安全验收。
+
+## 2026-11-02 运控 / Codex / MOTION-397固定路径RNEA依赖更新
+- 做了什么：将MOTION-292当前交付从旧动力学合同明确迁移到MOTION-288/PR71的固定路径RNEA版本；动力学阶段强制q hash一致和逐点delta=0，PR整理为fix类型。
+- 证据：stacked PR `bestastesia/alfa_robot#3`，base `feature/motion-288-dynamic-trajopt@73f40c5`，依赖实现`d5145f3`；Linear为MOTION-397（In Review）。
+- 验证：CPU144/144、15轮25箱、障碍114项、压力360项和fault8项；最大q delta为0。
+- 留给下个AI：先合并PR71，再review/merge PR3；本Issue不承担实机安全验收。
