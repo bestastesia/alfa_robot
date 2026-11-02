@@ -48,6 +48,7 @@ class TorqueHelpersTest(unittest.TestCase):
         class Model:
             names = ["joint"]
             payload_mass_kg = 2.0
+            payload_dimensions = np.array([.3, .4, .4])
             torque_limit_scale = .9
             base_kp = type("Kinematics", (), {"joint_limits": type("Limits", (), {
                 "velocity": [None, Values([2.])], "acceleration": [None, Values([4.])],
@@ -89,6 +90,38 @@ class TorqueHelpersTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             constrain_timed_result(result, Model())
 
+
+    def test_online_nonzero_candidate_is_audit_only_and_geometry_frozen(self):
+        from curobo_core.rolling_backend import RollingBackend
+        class Model:
+            names = ["q"]
+            payload_mass_kg = 10.
+            payload_dimensions = np.array([.3, .4, .4])
+            torque_limit_scale = .9
+            def audit(self, segment, *_):
+                return {"maximum_utilization": .5, "maximum_gravity_utilization": .2,
+                        "peak_joint": "q", "compute_ms": 1.}
+            def torque(self, q, qd, qdd, *_):
+                return np.zeros_like(q), 0.
+        backend = object.__new__(RollingBackend)
+        backend.online_torque_model = Model()
+        segment = {"joint_names": ["q"], "time_from_start_s": [0., 1.],
+                   "positions": [[0.], [1.]], "velocities": [[.2], [0.]],
+                   "accelerations": [[0.], [0.]], "jerks": [[0.], [0.]]}
+        output, report = backend.dynamics_gate(
+            segment, {"active_sides": [], "tool_to_box": {}}, allow_retime=False)
+        self.assertTrue(report["success"])
+        self.assertEqual(output["positions"], segment["positions"])
+        self.assertEqual(output["dynamics_context"]["maximum_position_delta"], 0.)
+        self.assertEqual(output["dynamics_context"]["geometry_hash_before_rnea"],
+                         output["dynamics_context"]["geometry_hash_after_rnea"])
+        backend.online_torque_model.audit = lambda segment, *_: {
+            "maximum_utilization": 1.1, "maximum_gravity_utilization": .2}
+        rejected, failure = backend.dynamics_gate(
+            segment, {"active_sides": [], "tool_to_box": {}}, allow_retime=False)
+        self.assertIsNone(rejected)
+        self.assertEqual(failure["constraint"]["reason"],
+                         "nonzero-boundary candidate exceeds torque limit")
 
     def test_nonuniform_time_warp_keeps_positions_and_scales_constant_profile(self):
         segment = {"duration_s": 2., "time_from_start_s": [0., 1., 2.],

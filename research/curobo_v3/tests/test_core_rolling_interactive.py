@@ -1,0 +1,123 @@
+"""CPU-only checks for the live Viser stream and fresh per-stage commands."""
+import json
+from pathlib import Path
+import sys
+import unittest
+from types import SimpleNamespace
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+
+from v3_rolling_interactive import (ACTIVE_JOINTS, ROLL_COLORS, STAGES,
+                                    baseline_axis_utilization, clear_shadow_state, command_for,
+                                    metrics_markdown, prepare_command_for, round_command_for,
+                                    route_colors, stage_planning_rows, update_axis_utilization,
+                                    utilization_markdown)
+from v3_rolling_replan import PROGRESS_PREFIX, progress_line
+
+
+class RollingInteractiveTest(unittest.TestCase):
+    def test_rolling_route_colors_cycle_by_sequence_and_keep_layers_distinct(self):
+        self.assertEqual(route_colors("installed", 0), ROLL_COLORS[0])
+        self.assertEqual(route_colors("installed", len(ROLL_COLORS)), ROLL_COLORS[0])
+        self.assertNotEqual(route_colors("installed", 0), route_colors("installed", 1))
+        self.assertNotEqual(route_colors("candidate", 0), route_colors("installed", 0))
+        with self.assertRaises(ValueError):
+            route_colors("unknown")
+
+    def test_shadow_state_is_cleared_between_stages_and_unpaired_results(self):
+        current = {"pre_rnea": object(), "post_rnea": object(),
+                   "dynamics_detail": object(), "shadow_key": ("transport", 2),
+                   "stage": "transport"}
+        clear_shadow_state(current)
+        self.assertEqual(current["stage"], "transport")
+        self.assertTrue(all(current[key] is None for key in
+                            ("pre_rnea", "post_rnea", "dynamics_detail", "shadow_key")))
+
+    def test_payload_mass_command_and_axis_utilization_table(self):
+        args = SimpleNamespace(preparer=Path("prepare.py"))
+        command = prepare_command_for(args, Path("cycle.json"), {"round": 2, "payload_mass": 15.})
+        self.assertEqual(command[command.index("--payload-mass-kg") + 1], "15.0")
+        segment = {"name": "transport", "joint_names": ["base", "joint"],
+                   "time_from_start_s": [0., 1.], "positions": [[0., 0.], [0., 1.]],
+                   "velocities": [[0., 0.], [0., 1.]], "accelerations": [[0., 0.], [0., 2.]],
+                   "jerks": [[0., 0.], [0., 3.]], "torque_joint_names": ["joint"],
+                   "torques_nm": [[0.], [5.]], "gravity_torques_nm": [[0.], [2.]]}
+        audit = {"per_joint_average_limit_nm": [10.]}
+        result = {"timed_segments": [segment], "torque_validation": {"segments": [{
+            "phase": "transport", "before": audit,
+            "constraint": {"success": False, "reason": "over limit"}}]}}
+        table, torque_limits = baseline_axis_utilization(
+            result, {"joint": {"velocity": 2., "acceleration": 4., "jerk": 6.}})
+        self.assertEqual(table["joint"], {"torque": .5, "gravity": .2,
+                         "velocity": .5, "acceleration": .5, "jerk": .5})
+        faster = dict(segment, accelerations=[[0., 0.], [0., 3.]])
+        update_axis_utilization(table, faster,
+            {"joint": {"velocity": 2., "acceleration": 4., "jerk": 6.}}, torque_limits)
+        self.assertEqual(table["joint"]["acceleration"], .75)
+        text = utilization_markdown(table, 15., .9)
+        self.assertIn("15 kg", text)
+        self.assertIn("75.0%", text)
+
+    def test_live_stream_and_full_round_commands_are_fresh_and_stage_specific(self):
+        self.assertIn("left_joint1", ACTIVE_JOINTS)
+        line = progress_line("solve_finished", stage="transport", compute_wall_s=.123)
+        self.assertTrue(line.startswith(PROGRESS_PREFIX))
+        self.assertEqual(json.loads(line[len(PROGRESS_PREFIX):])["compute_wall_s"], .123)
+
+        args = SimpleNamespace(runner=Path("runner.py"), round_runner=Path("round.py"),
+                               execution_timeout_s=120.)
+        controls = dict(obstacle_stage="transport", scenario="static", center=(1., 2., 3.),
+                        size=(.1, .2, .3), velocity=(0., 0., 0.), link_delay=.02,
+                        braking=.5, seed=7)
+        cycle, output = Path("fresh.json"), Path("result.json")
+        commands = {stage: command_for(args, cycle, controls, stage, output) for stage in STAGES}
+        self.assertTrue(all("--stream-progress" in command and str(cycle) in command
+                            for command in commands.values()))
+        self.assertTrue(all("--slices" not in command for command in commands.values()))
+        self.assertEqual(float(commands["contact_approach"][commands["contact_approach"].index("--compute-bound-s") + 1]), .1)
+        self.assertIn("static", commands["transport"])
+        self.assertIn("clear", commands["approach"])
+        self.assertNotIn("--obstacle-center", commands["approach"])
+
+        round_command = round_command_for(args, cycle, controls, Path("round-output"))
+        self.assertEqual(round_command[1], "round.py")
+        self.assertIn("--output-dir", round_command)
+        self.assertIn("--stream-progress", round_command)
+
+        detail = stage_planning_rows({
+            "pipeline_timing_ms": {"prepare_checkers": 2., "all_extract_and_validation": 3.,
+                                   "goal_matching": 4., "multiroot_search": 5.,
+                                   "selected_prefix_suffix_validation": 6.,
+                                   "assembly_and_repeat_validation": 7.},
+            "lazy_extraction": {"timings_ms": {"contact_generation_ms": 1.,
+                                                "endpoint_prediction_ms": 8.,
+                                                "prediction_ranking_ms": 9.}},
+            "transport_search_stats": {"first_solution_ms": 3.,
+                                       "first_verified_solution_ms": 4., "search_ms": 5.},
+            "trajectory_timing_breakdown_ms": {"phases": {"transport": {
+                "shortcut_ms": 10., "parameterization_ms": 20.,
+                "collision_validation_ms": 30., "assembly_ms": 1.,
+            }}},
+        }, "transport")
+        self.assertEqual(detail["core_ms"], 9.)
+        self.assertEqual(len(detail["core_rows"]), 2)
+        self.assertEqual(detail["diagnostics"], [])
+        self.assertEqual(detail["timing_ms"], 0.)
+
+        empty = {stage: {"core_ms": None, "core_rows": [], "diagnostics": [], "notes": [],
+                         "timing_ms": 0., "timing_rows": [], "timing_diagnostics": [],
+                         "solves": [], "motion_s": 0.,
+                         "running": False, "failure": None} for stage in STAGES}
+        text = metrics_markdown(empty, {
+            "wall_s": 13., "startup_ms": 3000., "initialization_ms": 4000.,
+            "planner_ms": 3000., "timing_ms": 2900., "residual_ms": 100.,
+            "core_rows": [("RRT与候选管线", 3000.)],
+            "timing_rows": [("整轮轨迹组装与最终约束验证", 2900.)],
+        })
+        self.assertIn("进程启动、模块导入与CUDA上下文", text)
+        self.assertIn("Mentor核心路径规划", text)
+        self.assertIn("标注“嵌套”的数字不能重复相加", text)
+
+
+if __name__ == "__main__":
+    unittest.main()
