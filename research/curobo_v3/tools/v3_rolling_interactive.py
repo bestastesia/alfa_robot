@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fresh, live Viser diagnosis for one complete MOTION-292 transport round; never hardware."""
 import argparse
+import fcntl
 import hashlib
 from collections import deque
 import json
@@ -545,7 +546,11 @@ def main():
 
     def work(values):
         try:
-            run_round(values)
+            inbox.put({"event": "waiting_gpu"})
+            with open("/tmp/sevenova-curobo-gpu.lock", "w") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                inbox.put({"event": "gpu_acquired"})
+                run_round(values)
         except Exception as error:
             inbox.put({"event": "run_failed", "error": f"{type(error).__name__}: {error}"})
 
@@ -570,7 +575,11 @@ def main():
             while True:
                 event = inbox.get_nowait(); changed = True
                 kind = event["event"]
-                if kind == "baseline_log":
+                if kind == "waiting_gpu":
+                    status.content = "**等待GPU资源锁…** 页面保持可用，拿到GPU后自动开始本轮规划。"
+                elif kind == "gpu_acquired":
+                    status.content = "**已获得GPU，正在从头规划完整初始轨迹…**"
+                elif kind == "baseline_log":
                     status.content = f"**正在从头规划完整初始轨迹…**\n\n`{event['text'][-500:]}`"
                 elif kind == "baseline_rejected":
                     result = event["result"]
