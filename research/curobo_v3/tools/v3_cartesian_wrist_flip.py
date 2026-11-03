@@ -22,7 +22,6 @@ import time
 import numpy as np
 from scipy.optimize import minimize
 
-from v3_batched_loaded_search import densify
 from v3_cartesian_math import branch, refine, wrap
 
 DEFAULTS = dict(wrist_flip_goals=3, wrist_flip_offset_m=.05, wrist_flip_swing_tolerance_deg=2., wrist_flip_budget_s=.6,
@@ -215,6 +214,7 @@ class WristFlip:
 
     def path(self, x, goal_row):
         """Dense joint path start -> X* (start branch) -> swing -> goal (flipped branch), or (None, reason)."""
+        from v3_batched_loaded_search import densify
         space, resolution = self.space, self.options["path_resolution"]
         x_star = self.state(x)
         x_a, x_b = x_star.copy(), x_star.copy()  # psi is periodic: write X* closest to each segment's other end

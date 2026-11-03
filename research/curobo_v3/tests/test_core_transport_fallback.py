@@ -1,11 +1,38 @@
+import importlib.util
+import os
 import sys
 from pathlib import Path
+import types
 import unittest
 from unittest import mock
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+
+# The core CI intentionally has no Torch/cuRobo. These routing tests exercise only the
+# planner's source selection, so keep GPU construction behind small import-time stubs.
+if os.environ.get('CUROBO_CORE_CPU_ONLY') or importlib.util.find_spec('torch') is None or importlib.util.find_spec('curobo') is None:
+    from v3_cartesian_math import branch
+
+    cartesian = types.ModuleType('v3_cartesian_transport')
+    cartesian.DEFAULTS = {}
+    cartesian._IK = None
+    cartesian.BatchAnalyticIk = type('BatchAnalyticIk', (), {})
+    cartesian.plan_cartesian_transport = lambda *args, **kwargs: (None, {'failure': 'stub'})
+    sys.modules['v3_cartesian_transport'] = cartesian
+
+    timed = types.ModuleType('v3_timed_single_arm_planner')
+    class TimedSingleArmPlanner:
+        @property
+        def active_side(self):
+            return next(iter(self.selected_task))
+
+        def _baseline_waypoints(self, result, phase, rows, names, boxes, snapshot):
+            return rows
+    timed.TimedSingleArmPlanner = TimedSingleArmPlanner
+    sys.modules['v3_timed_single_arm_planner'] = timed
+
 import v3_cartesian_transport_planner as planner_module
 from v3_cartesian_transport_planner import TRANSPORT_BUDGET_S, CartesianTransportPlanner
 
