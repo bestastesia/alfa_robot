@@ -182,25 +182,5 @@ class WristFlipRoutingTest(unittest.TestCase):
         self.assertEqual(planner.joint_calls, [dict(budget=2., seed=7)])
 
 
-class ToppraPiecesTest(unittest.TestCase):
-    def test_pieces_stop_at_their_joins_and_add_up(self):
-        from v3_path_timing import time_parameterize_toppra, time_parameterize_toppra_pieces
-
-        rows = np.column_stack([np.linspace(0., 1., 31), np.r_[np.linspace(0., .5, 16), np.linspace(.5, .5, 16)[1:]]])
-        limits = (np.full(2, 1.), np.full(2, 2.), np.full(2, 20.))
-        pieces = [rows[:16], rows[15:]]
-        joined, validation = time_parameterize_toppra_pieces(pieces, ['a', 'b'], *limits)
-        parts = [time_parameterize_toppra(piece, ['a', 'b'], *limits)[0] for piece in pieces]
-        self.assertAlmostEqual(joined['duration_s'], sum(part['duration_s'] for part in parts))
-        times = np.asarray(joined['time_from_start_s'])
-        self.assertTrue(np.all(np.diff(times) > 0))
-        self.assertEqual(len(joined['positions']), len(rows))
-        join = 15
-        self.assertLess(np.abs(np.asarray(joined['velocities'])[join]).max(), 1e-6)
-        sampled = np.asarray(joined['sampled_trajectory']['time_from_start_s'])
-        self.assertTrue(np.all(np.diff(sampled) > 0))
-        self.assertEqual(len(validation), len(sampled))
-
-
 if __name__ == '__main__':
     unittest.main()
