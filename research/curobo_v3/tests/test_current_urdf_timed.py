@@ -6,7 +6,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from v3_current_urdf_timed import TimedCurrentUrdfPlanner
 from v3_stage_playback import StagePlayback
-import v3_forward_precontact_demo
+from v3_new_warp import TimedNewWarpPlanner
 
 
 def test_current_timed_planner_keeps_current_model_and_conservative_arm_limits():
@@ -38,4 +38,5 @@ def test_timing_adapter_does_not_add_another_planning_stage():
     assert planner.forward_precontact_policy
     assert planner.lm_chained_cycle_policy
     assert planner.trajectory_optimization_enabled
-    assert issubclass(v3_forward_precontact_demo.TimedNewWarpPlanner, TimedCurrentUrdfPlanner)
+    assert not planner.use_trajopt
+    assert issubclass(TimedNewWarpPlanner, TimedCurrentUrdfPlanner)

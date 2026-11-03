@@ -1,29 +1,37 @@
 """Add q/qdot/qddot/jerk timing to the mentor planner without changing its planning interfaces."""
+import copy
+import gc
 import time
-import math
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 
 import numpy as np
 import torch
 
+from curobo_core.planner import CycleBlocked
 from curobo_core.scene import Pose
-from curobo_core.trajectory import (assemble_timed_cycle, time_parameterize_path,
-                                    time_parameterize_polyline, time_parameterize_stops,
-                                    validate_timed_cycle)
-from v3_batched_loaded_search import GpuValidity
+from curobo_core.torque import (constrain_timed_result, geometry_digest,
+                                trajectory_identity_digest)
+from curobo_core.trajectory import (assemble_timed_cycle, controller_segments,
+                                    joint_state_trajectory, resample_path,
+                                    time_parameterize_path, time_parameterize_stops,
+                                    trajectory_fallback_path, validate_timed_cycle)
+from v3_batched_loaded_search import GpuValidity, loaded_robot
 from v3_single_arm_planner import SingleArmPlanner
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
 
 
 EVENT_PHASES = {"home", "attach", "release", "base_advance", "base_reposition",
                 "base_return", "base_pick_reposition"}
+TRAJOPT_PHASES = {"approach", "transport", "conveyor_place", "return_home"}
 
 
 class TimedSingleArmPlanner(SingleArmPlanner):
-    def __init__(self, args, sample_dt=.025):
+    def __init__(self, args, sample_dt=.025, torque_model=None, use_trajopt=False):
         super().__init__(args)
         self.trajectory_sample_dt = float(sample_dt)
+        self.torque_model = torque_model
+        self.use_trajopt = bool(use_trajopt)
         if self.trajectory_sample_dt <= 0:
             raise ValueError("sample_dt must be positive")
         config = self.mobile_robot["kinematics"]
@@ -37,13 +45,66 @@ class TimedSingleArmPlanner(SingleArmPlanner):
             np.asarray(config["cspace"]["max_jerk"], dtype=float),
         )
 
+    def plan_geometric_cycle(self, boxes, progress):
+        return super().full_cycle(boxes, progress)
+
     def full_cycle(self, boxes, progress=lambda text: None):
-        result = super().full_cycle(boxes, progress)
-        if result.get("success"):
-            self.time_parameterize_result(result)
+        began = time.perf_counter()
+        result = self.plan_geometric_cycle(boxes, progress)
+        geometric_ms = (time.perf_counter() - began) * 1000.0
+        if not result.get("success"):
+            result["controller_ready"] = False
+            result["planning_timing_ms"] = {"geometric_planning_ms": geometric_ms,
+                                           "time_parameterization_ms": None,
+                                           "dynamics_audit_and_retiming_ms": None,
+                                           "controller_export_ms": None, "end_to_end_ms": geometric_ms}
+            return result
+        try:
+            result = self.time_parameterize_result(result)
+        except Exception as error:
+            result.update(success=False, blocked_stage="轨迹时间化与动力学验收",
+                          blocked_details=str(error))
+            result["controller_ready"] = False
+            result["planning_timing_ms"] = {
+                "geometric_planning_ms": geometric_ms,
+                "time_parameterization_ms": result.get("trajectory_timing_ms"),
+                "dynamics_audit_and_retiming_ms": result.get("torque_constraint_ms"),
+                "controller_export_ms": None,
+                "failed_postprocessing_ms": (time.perf_counter() - began) * 1000 - geometric_ms,
+                "end_to_end_ms": (time.perf_counter() - began) * 1000}
+            self.last_partial = result
+            raise CycleBlocked("轨迹时间化与动力学验收", str(error), result) from error
+        export_started = time.perf_counter()
+        try:
+            preview = controller_segments(
+                {"rounds": [{"result": result}]}, ACTIVE_JOINTS,
+                require_torque=self.torque_model is not None)
+            result["controller_ready"] = preview["controller_ready"]
+            result["controller_segment_count"] = len(preview["segments"])
+        except Exception as error:
+            result["controller_ready"] = False
+            result["controller_export_error"] = str(error)
+        controller_ms = (time.perf_counter() - export_started) * 1000.0
+        end_to_end_ms = (time.perf_counter() - began) * 1000.0
+        result["planning_timing_ms"] = {
+            "geometric_planning_ms": geometric_ms,
+            "time_parameterization_ms": result.get("trajectory_timing_ms", 0.0),
+            "dynamics_audit_and_retiming_ms": result.get("torque_constraint_ms"),
+            "controller_export_ms": controller_ms,
+            "end_to_end_ms": end_to_end_ms,
+        }
+        result["measured_wall_ms"] = end_to_end_ms
+        result["latency_validation"] = {
+            "success": end_to_end_ms <= 5000.0,
+            "budget_ms": 5000.0,
+            "end_to_end_ms": end_to_end_ms,
+        }
+        if not result["latency_validation"]["success"]:
+            result["controller_ready"] = False
         return result
 
-    def _timed_phase_validity(self, phase, boxes, original_snapshot, first_position):
+
+    def _set_timed_phase_snapshot(self, phase, original_snapshot, first_position):
         self.snapshot = original_snapshot
         if phase in ("conveyor_place", "return_home"):
             mapping = dict(zip(self._timed_joint_names, first_position))
@@ -52,6 +113,9 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                         (np.cos(yaw / 2), 0., 0., np.sin(yaw / 2)))
             self.snapshot = replace(original_snapshot,
                                     state=original_snapshot.state.with_positions(mapping, base))
+
+    def _timed_phase_validity(self, phase, boxes, original_snapshot, first_position):
+        self._set_timed_phase_snapshot(phase, original_snapshot, first_position)
         checker = self.checker(boxes, payload=phase in ("transport", "conveyor_place"))
         return (self.target_validity(checker) if phase == "approach" else
                 GpuValidity(checker, check_ground=True))
@@ -65,23 +129,186 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         self.snapshot = original_snapshot
         return bool(mask.all().item())
 
-    def _shortcut_phase(self, phase, rows, boxes, original_snapshot):
-        if phase not in ("approach", "transport", "conveyor_place", "return_home"):
-            return rows, {"raw_waypoints": len(rows), "shortcut_waypoints": len(rows)}
-        validity = self._timed_phase_validity(phase, boxes, original_snapshot, rows[0])
+
+    def _trajectory_optimizer(self, phase, rows, boxes, original_snapshot):
+        """Run cuRobo TrajectoryOptimizer on a shortcut RRT seed, with safe fallback metadata."""
+        if not self.use_trajopt or phase not in TRAJOPT_PHASES:
+            return None, {"trajopt_attempted": False}
         indices = [self._timed_joint_names.index(name) for name in ACTIVE_JOINTS]
-        active = torch.tensor(np.ascontiguousarray(rows[:, indices]), device="cuda", dtype=torch.float32)
+        fixed = [index for index in range(len(self._timed_joint_names)) if index not in indices]
+        if fixed and not np.allclose(rows[:, fixed], rows[0, fixed], atol=1e-7, rtol=0):
+            return None, {"trajopt_attempted": True,
+                          "trajopt_failure": "non-arm joints move inside the phase"}
+        started = time.perf_counter()
+        planner = result = plan = None
+        try:
+            from curobo.motion_planner import MotionPlanner, MotionPlannerCfg
+            from curobo.types import JointState
+
+            self._set_timed_phase_snapshot(phase, original_snapshot, rows[0])
+            loaded = phase in ("transport", "conveyor_place")
+            robot = (loaded_robot(self.robot, self.box_fit, attachments=self.task_attachments(boxes))
+                     if loaded else copy.deepcopy(self.robot))
+            planner = MotionPlanner(MotionPlannerCfg.create(
+                robot=robot, scene_model=self.scene(boxes),
+                collision_cache={"cuboid": max(40, len(self.snapshot.objects)),
+                                 "mesh": len(self.snapshot.meshes)},
+                num_ik_seeds=4, num_trajopt_seeds=1, self_collision_check=True,
+                use_cuda_graph=False, optimizer_collision_activation_distance=0.0,
+                interpolation_dt=self.trajectory_sample_dt,
+            ))
+            active = np.ascontiguousarray(rows[:, indices], dtype=np.float32)
+            horizon = planner.trajopt_solver.action_horizon
+            seed = resample_path(active, horizon)
+
+            def state(values):
+                return JointState.from_position(
+                    torch.tensor(values, device="cuda", dtype=torch.float32).reshape(1, -1),
+                    joint_names=ACTIVE_JOINTS)
+
+            result = planner.trajopt_solver.solve_cspace(
+                goal_state=state(active[-1]), current_state=state(active[0]),
+                seed_traj=torch.tensor(seed, device="cuda").view(1, 1, horizon, -1),
+                num_seeds=1, return_seeds=1, finetune_attempts=2)
+            torch.cuda.synchronize()
+            if not bool(result.success.reshape(-1)[0].item()):
+                raise RuntimeError("cuRobo TrajectoryOptimizer returned failure")
+            plan = result.get_interpolated_plan()
+            if plan is None:
+                raise RuntimeError("cuRobo TrajectoryOptimizer returned no interpolated plan")
+            active_trajectory = joint_state_trajectory(plan, ACTIVE_JOINTS)
+            active_positions = np.asarray(active_trajectory["positions"], dtype=np.float32)
+            if (np.max(np.abs(active_positions[0] - active[0])) > 1e-5 or
+                    np.max(np.abs(active_positions[-1] - active[-1])) > 1e-5):
+                raise RuntimeError("optimized endpoints differ from the accepted seed")
+            sampled = {"joint_names": list(self._timed_joint_names), "dt_s": active_trajectory["dt_s"],
+                       "time_from_start_s": active_trajectory["time_from_start_s"]}
+            for field in ("positions", "velocities", "accelerations", "jerks"):
+                source = np.asarray(active_trajectory[field], dtype=np.float32)
+                expanded = np.zeros((len(source), len(self._timed_joint_names)), dtype=np.float32)
+                expanded[:, indices] = source
+                if field == "positions":
+                    expanded[:, fixed] = rows[0, fixed]
+                sampled[field] = expanded.tolist()
+            ratios = [float(np.max(np.abs(np.asarray(sampled[field])) / limit))
+                      for field, limit in zip(("velocities", "accelerations", "jerks"),
+                                              self._timed_limits)]
+            if max(ratios) > 1.0001:
+                raise RuntimeError(f"optimized derivatives exceed limits: {ratios}")
+            positions = np.asarray(sampled["positions"], dtype=np.float32)
+            if not self._timed_phase_valid(phase, positions, boxes, original_snapshot):
+                raise RuntimeError(f"optimized samples failed collision gate: {self._last_timed_invalid[:5]}")
+            duration = float(sampled["time_from_start_s"][-1])
+            parameter = np.linspace(0.0, 1.0, len(rows))
+            sample_parameter = np.linspace(0.0, 1.0, len(positions))
+            linear = np.column_stack([np.interp(sample_parameter, parameter, rows[:, joint])
+                                      for joint in range(rows.shape[1])])
+            return ({"joint_names": list(self._timed_joint_names), "dt_s": sampled["dt_s"],
+                     "duration_s": duration,
+                     "maximum_linear_deviation": float(np.max(np.abs(positions - linear))),
+                     "sampled_trajectory": sampled},
+                    {"trajopt_attempted": True, "trajopt_accepted": True,
+                     "trajopt_action_horizon": int(horizon),
+                     "trajopt_solve_time_ms": float(result.solve_time) * 1000.0,
+                     "trajopt_wall_ms": (time.perf_counter() - started) * 1000.0,
+                     "trajopt_limit_ratios": ratios})
+        except Exception as error:
+            return None, {"trajopt_attempted": True, "trajopt_accepted": False,
+                          "trajopt_failure": str(error),
+                          "trajopt_wall_ms": (time.perf_counter() - started) * 1000.0}
+        finally:
+            self.snapshot = original_snapshot
+            del plan, result, planner
+            gc.collect()
+            torch.cuda.empty_cache()
+
+    def _phase_search_stats(self, result, phase):
+        if phase == "approach":
+            for attempt in reversed(result.get("attempts", ())):
+                if isinstance(attempt.get("approach"), dict):
+                    return attempt["approach"]
+            return result.get("approach_search_stats", {})
+        if phase == "conveyor_place":
+            return result.get("conveyor_search_stats") or result.get("conveyor_place_search_stats", {})
+        return result.get({
+            "transport": "transport_search_stats",
+            "return_home": "conveyor_home_search_stats",
+        }.get(phase, ""), {})
+
+    def _baseline_waypoints(self, result, phase, rows, names, boxes, original_snapshot):
+        stats = self._phase_search_stats(result, phase)
+        if phase not in TRAJOPT_PHASES:
+            return rows
+        sparse = np.asarray(stats.get("trajectory_fallback_waypoints", ()), dtype=float)
+        if sparse.ndim != 2 or len(sparse) < 2 or not np.isfinite(sparse).all():
+            raise RuntimeError(f"{phase} has no validated sparse baseline waypoints")
+        if sparse.shape[1] == len(ACTIVE_JOINTS):
+            active_indices = [names.index(name) for name in ACTIVE_JOINTS]
+            expanded = np.repeat(rows[:1], len(sparse), axis=0)
+            expanded[:, active_indices] = sparse
+            sparse = expanded
+        if sparse.shape[1:] != rows.shape[1:] or not np.allclose(
+                sparse[[0, -1]], rows[[0, -1]], atol=1e-6, rtol=0):
+            raise RuntimeError(f"{phase} sparse baseline endpoints or joint dimensions differ")
+        waypoints = sparse.copy()
+        waypoints[[0, -1]] = rows[[0, -1]]
+        if len(waypoints) < 3:
+            return waypoints
+        validity = self._timed_phase_validity(phase, boxes, original_snapshot, waypoints[0])
+        if phase == "conveyor_place":
+            validity.search_scene_margin_m = getattr(self, "conveyor_search_margin_m", 0.)
+        indices = [names.index(name) for name in ACTIVE_JOINTS]
+        active = torch.tensor(np.ascontiguousarray(waypoints[:, indices]), device="cuda", dtype=torch.float32)
         selected = [0]
-        source = 0
-        while source < len(rows) - 1:
-            candidates = active[source + 1:]
-            starts = active[source].reshape(1, -1).repeat(len(candidates), 1)
-            connectable = validity.edges(starts, candidates, resolution=math.radians(.05))
-            valid = torch.nonzero(connectable, as_tuple=False).reshape(-1)
-            source += int(valid[-1].item()) + 1 if len(valid) else 1
-            selected.append(source)
-        self.snapshot = original_snapshot
-        return rows[selected], {"raw_waypoints": len(rows), "shortcut_waypoints": len(selected)}
+        try:
+            while selected[-1] < len(waypoints) - 1:
+                source = selected[-1]
+                candidates = active[source + 1:]
+                starts = active[source].reshape(1, -1).expand(len(candidates), -1)
+                legal = validity.edges(starts, candidates, resolution=np.deg2rad(.5))
+                accepted = torch.nonzero(legal, as_tuple=False).reshape(-1)
+                selected.append(source + int(accepted[-1]) + 1 if len(accepted) else source + 1)
+        finally:
+            self.snapshot = original_snapshot
+        return waypoints[selected]
+
+    def _baseline_contract(self, result, geometric_positions):
+        result["timing_limits"] = [values.tolist() for values in self._timed_limits]
+        if self.torque_model is not None:
+            result["dynamics_binding"] = self.torque_model.certificate_identity
+        identity_hash = trajectory_identity_digest(result)
+        return {
+            "schema_version": 1,
+            "collision_validation_success": True,
+            "collision_policy": "upstream accepted geometry; runtime dynamics trusts matching hashes",
+            "identity_sha256": identity_hash,
+            "geometric_source_sha256": geometry_digest(geometric_positions),
+            "timed_geometry_sha256": geometry_digest(result["frames"]),
+            "geometry_policy": ("validated_trajopt_experiment" if self.use_trajopt
+                                else "validated_sparse_rrt_baseline"),
+            "joint_names": list(result["joint_names"]),
+        }
+
+    def _time_phase(self, result, phase, rows, names, boxes, original_snapshot):
+        trajectory = None
+        metadata = {"trajopt_attempted": False}
+        if self.use_trajopt:
+            trajectory, metadata = self._trajectory_optimizer(phase, rows, boxes, original_snapshot)
+        if trajectory is not None:
+            return trajectory, "curobo_v2_trajectory_optimizer_experiment", metadata
+        if phase in TRAJOPT_PHASES:
+            trajectory, _ = time_parameterize_stops(
+                rows, names, *self._timed_limits, sample_dt=self.trajectory_sample_dt)
+            parameterizer = "validated_sparse_baseline_stops"
+        else:
+            trajectory, validation = time_parameterize_path(
+                rows, names, *self._timed_limits, sample_dt=self.trajectory_sample_dt)
+            if trajectory["maximum_linear_deviation"] > .002:
+                raise RuntimeError(f"{phase} timing exceeds the 2mm path tolerance")
+            if not self._timed_phase_valid(phase, validation, boxes, original_snapshot):
+                raise RuntimeError(f"{phase} timed samples failed the baseline collision gate")
+            parameterizer = "analytic_path_cubic"
+        return trajectory, parameterizer, metadata
 
     def time_parameterize_result(self, result):
         started = time.perf_counter()
@@ -95,8 +322,8 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         self.configure_task(boxes)
         validation_snapshot = self.snapshot
         frames, phases, payload, segments = [], [], [], []
+        result["phase_postprocessing_attempts"] = []
         index = 0
-        sample_dt = self.trajectory_sample_dt
         while index < len(source_frames):
             end = index + 1
             while end < len(source_frames) and source_phases[end] == source_phases[index]:
@@ -108,37 +335,24 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                 phases.extend(source_phases[index:end])
                 payload.extend(source_payload[index:end])
             else:
-                timing_rows, shortcut = self._shortcut_phase(
-                    phase, rows, boxes, validation_snapshot)
-                candidates = []
-                cubic, cubic_validation = time_parameterize_path(
-                    timing_rows, names, *self._timed_limits, sample_dt=sample_dt)
-                cubic_valid = not (phase in ("contact_approach", "extract") and
-                                   cubic["maximum_linear_deviation"] > .002)
-                if cubic_valid and self._timed_phase_valid(
-                        phase, cubic_validation, boxes, validation_snapshot):
-                    candidates.append((cubic["duration_s"], "validated_shortcut_cubic",
-                                       cubic, cubic_validation))
-                if len(timing_rows) < len(rows):
-                    stopped, stopped_validation = time_parameterize_stops(
-                        timing_rows, names, *self._timed_limits, sample_dt=sample_dt)
-                    if self._timed_phase_valid(
-                            phase, stopped_validation, boxes, validation_snapshot):
-                        candidates.append((stopped["duration_s"], "validated_shortcut_stops",
-                                           stopped, stopped_validation))
-                if candidates:
-                    _, parameterizer, trajectory, validation = min(candidates, key=lambda item: item[0])
-                else:
-                    trajectory, validation = time_parameterize_path(
-                        rows, names, *self._timed_limits, sample_dt=sample_dt)
-                    parameterizer = "original_path_cubic_fallback"
-                    shortcut = {"raw_waypoints": len(rows), "shortcut_waypoints": len(rows)}
-                    if not self._timed_phase_valid(phase, validation, boxes, validation_snapshot):
-                        trajectory, validation = time_parameterize_polyline(
-                            rows, names, *self._timed_limits, sample_dt=sample_dt)
-                        parameterizer = "original_path_polyline_fallback"
-                        if not self._timed_phase_valid(phase, validation, boxes, validation_snapshot):
-                            raise RuntimeError(f"{phase} timed samples failed the mentor collision gate")
+                attempt = {"phase": phase, "success": False, "baseline_processing_ms": None,
+                           "phase_timing_ms": None}
+                result["phase_postprocessing_attempts"].append(attempt)
+                phase_started = time.perf_counter()
+                try:
+                    timing_rows = self._baseline_waypoints(result, phase, rows, names, boxes, validation_snapshot)
+                    baseline_ms = attempt["baseline_processing_ms"] = (time.perf_counter() - phase_started) * 1000
+                    timing_started = time.perf_counter()
+                    trajectory, parameterizer, trajopt = self._time_phase(
+                        result, phase, timing_rows, names, boxes, validation_snapshot)
+                    phase_timing_ms = attempt["phase_timing_ms"] = (time.perf_counter() - timing_started) * 1000
+                    attempt["success"] = True
+                    attempt["parameterizer"] = parameterizer
+                except Exception as error:
+                    attempt["error"] = str(error)
+                    raise
+                finally:
+                    attempt["wall_ms"] = (time.perf_counter() - phase_started) * 1000
                 sampled = trajectory["sampled_trajectory"]
                 constant = np.ptp(rows, axis=0) <= 1e-12
                 if np.any(constant):
@@ -149,18 +363,23 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                         values = np.asarray(sampled[field], dtype=float)
                         values[:, constant] = 0.0
                         sampled[field] = values.tolist()
-                start = len(frames)
+                if not np.allclose(np.asarray(sampled["positions"])[[0, -1]], rows[[0, -1]],
+                                   atol=1e-6, rtol=0):
+                    raise RuntimeError(f"{phase} timing changed phase endpoints")
+                frame_start = len(frames)
                 frames.extend(sampled["positions"])
                 phases.extend([phase] * len(sampled["positions"]))
                 payload.extend([source_payload[index]] * len(sampled["positions"]))
                 segments.append({
-                    "name": phase, "frame_start": start,
+                    "name": phase, "frame_start": frame_start,
                     "frame_end": len(frames) - 1,
                     "duration_s": trajectory["duration_s"],
                     "maximum_linear_deviation": trajectory["maximum_linear_deviation"],
                     "parameterizer": parameterizer,
-                    **shortcut,
-                    **sampled,
+                    "baseline_processing_ms": baseline_ms, "phase_timing_ms": phase_timing_ms,
+                    "raw_waypoints": len(rows), "baseline_waypoints": len(timing_rows),
+                    "shortcut_waypoints": len(timing_rows),
+                    **trajopt, **sampled,
                 })
             index = end
         result["frames"], result["phases"], result["payload"] = frames, phases, payload
@@ -168,12 +387,32 @@ class TimedSingleArmPlanner(SingleArmPlanner):
         result.update(assemble_timed_cycle(len(frames), segments))
         result["timed_validation"] = validate_timed_cycle(
             phases, result["time_from_start_s"], result["velocities"],
-            result["accelerations"], result["jerks"], *self._timed_limits, segments)
+            result["accelerations"], result["jerks"], *self._timed_limits, segments, frames, names)
         if not result["timed_validation"]["success"]:
             raise RuntimeError(f"timed trajectory validation failed: {result['timed_validation']}")
         for event in result.get("predicted_scene_events", ()):
             event["frame_index"] = phases.index(event["phase"])
-        result["trajectory_timing_ms"] = (time.perf_counter() - started) * 1000
-        result["dynamics_enabled"] = False
-        result["torque_constraints_enabled"] = False
+        certificate_started = time.perf_counter()
+        result["baseline_trajectory_contract"] = self._baseline_contract(result, source_frames)
+        result["baseline_certificate_ms"] = (time.perf_counter() - certificate_started) * 1000.0
+        result["geometric_frame_count"] = len(source_frames)
+        result["trajectory_postprocessing"] = {
+            "enabled": True,
+            "method": "validated sparse RRT baseline plus fixed-path timing",
+            "sample_dt_s": self.trajectory_sample_dt,
+            "trajectory_optimizer_enabled": self.use_trajopt,
+            "collision_revalidation": "sparse shortcut edges and analytic tolerance paths only",
+        }
+        result["trajectory_timing_ms"] = (time.perf_counter() - started) * 1000.0
+        result["trajectory_optimizer_enabled"] = self.use_trajopt
+        if self.torque_model is None:
+            result["dynamics_enabled"] = False
+            result["torque_constraints_enabled"] = False
+        else:
+            torque_started = time.perf_counter()
+            result = constrain_timed_result(
+                result, self.torque_model, copy_result=False, retime_budget_s=.5, require_contract=True)
+            result["torque_constraint_ms"] = (time.perf_counter() - torque_started) * 1000.0
+            if not result["torque_validation"]["success"]:
+                raise RuntimeError(f"torque validation failed: {result['torque_validation']}")
         return result

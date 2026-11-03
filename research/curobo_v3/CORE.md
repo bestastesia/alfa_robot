@@ -1,5 +1,16 @@
 # cuRobo 独立状态、场景与规划核心
 
+## 单臂笛卡尔 RRT 开发基线
+
+后续单臂笛卡尔 RRT 开发统一基于 `motion-312-cartesian-dynamics-baseline` 合入
+`alfa_v3_curobo` 后的版本：旧模型 `v3_analytic_071cb95`、笛卡尔直线/RRT、换分支
+joint 路由与失败回退、受控换腕、按实际路径来源选择时间化，以及 PR71 的 RNEA
+约束和控制器导出合同。TrajOpt 默认关闭。
+
+该基线只表示单臂链路已验证；不表示笛卡尔算法已迁移至当前零位/191 mm TCP 模型，
+也不表示双臂混合墙已通过。已知兼容边界、锁定来源 SHA 和复测命令见
+[`docs/SINGLE_ARM_DYNAMICS_INTEGRATION.md`](docs/SINGLE_ARM_DYNAMICS_INTEGRATION.md)。
+
 2026-10-31固定默认流程：`tools/v3_frozen_cycle.py::FrozenCyclePlanner`。
 旧64候选与8/16/32/64分批解析抽离35cm→多根多目标RRT运输→导航到位→
 128参考点、32局部种子、最多32轮的15轴连续LM放箱→释放→从LM实际末态RRT回Home。

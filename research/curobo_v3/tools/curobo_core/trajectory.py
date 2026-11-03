@@ -242,7 +242,7 @@ def assemble_timed_cycle(frame_count, timed_segments):
 
 
 def validate_timed_cycle(phases, time_values, velocities, accelerations, jerks,
-                         velocity_limits, acceleration_limits, jerk_limits, timed_segments):
+                         velocity_limits, acceleration_limits, jerk_limits, timed_segments, positions=None, joint_names=None):
     """Validate full-cycle timing coverage, finiteness and derivative limits."""
     time_values = np.asarray(time_values, dtype=np.float64)
     arrays = [np.asarray(item, dtype=np.float64) for item in
@@ -256,6 +256,17 @@ def validate_timed_cycle(phases, time_values, velocities, accelerations, jerks,
         raise ValueError("timed cycle contains non-finite values")
     if np.any(np.diff(time_values) < -1e-12):
         raise ValueError("timed cycle moves backwards in time")
+    if positions is not None:
+        positions = np.asarray(positions, dtype=np.float64)
+        if positions.shape != arrays[0].shape or not np.isfinite(positions).all():
+            raise ValueError("timed cycle has invalid positions")
+        # Navigation resets are external preconditions, never arm commands.
+        indices = list(range(positions.shape[1]))
+        if joint_names is not None:
+            indices = [i for i in indices if joint_names[i] not in ("base_x", "base_y", "base_yaw")]
+        zero_time = np.diff(time_values) <= 1e-12
+        if np.any(np.abs(np.diff(positions[:, indices], axis=0)[zero_time]) > 1e-6):
+            raise ValueError("zero-time seam changes arm positions")
     ratios = [float(np.max(np.abs(value) / limit)) for value, limit in zip(arrays, limits)]
     covered = np.zeros(frame_count, dtype=bool)
     for segment in timed_segments:
@@ -397,3 +408,92 @@ def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_lim
         "velocities": zeros.tolist(), "accelerations": zeros.tolist(), "jerks": jerk.tolist(),
         "sampled_trajectory": samples,
     }, validation)
+
+
+def controller_segments(document, joint_names, require_torque=True):
+    """Export strictly timed motion segments, excluding zero-time events/navigation resets."""
+    import hashlib
+
+    from .torque import geometry_digest, trajectory_identity_digest
+
+    output = []
+    ready = True
+    for round_number, record in enumerate(document["rounds"], 1):
+        result = record["result"]
+        if not result.get("success") or not result.get("timed_validation", {}).get("success"):
+            raise ValueError(f"round {round_number} has not passed planning/timing validation")
+        ready &= result.get("latency_validation", {}).get("success", True)
+        if require_torque:
+            contract = result.get("baseline_trajectory_contract", {})
+            audit = result.get("torque_validation", {})
+            if (not audit.get("success") or not audit.get("geometry_frozen") or
+                    not contract.get("collision_validation_success") or
+                    contract.get("timed_geometry_sha256") != geometry_digest(result["frames"]) or
+                    contract.get("identity_sha256") != trajectory_identity_digest(result)):
+                raise ValueError(f"round {round_number} has no matching validated dynamics certificate")
+        source_names = list(result["joint_names"])
+        indices = [source_names.index(name) for name in joint_names]
+        for segment in result["timed_segments"]:
+            times = np.asarray(segment["time_from_start_s"], dtype=np.float64)
+            if not np.isfinite(times).all() or len(times) < 2 or abs(times[0]) > 1e-12 or np.any(np.diff(times) <= 0):
+                raise ValueError(f"round {round_number} {segment['name']} has a non-executable clock")
+            arrays = {field: np.asarray(segment[field], dtype=np.float32)[:, indices]
+                      for field in ("positions", "velocities", "accelerations", "jerks")}
+            if any(values.shape != (len(times), len(indices)) or not np.isfinite(values).all()
+                   for values in arrays.values()):
+                raise ValueError(f"round {round_number} {segment['name']} has invalid state arrays")
+            expected = np.asarray(result["frames"])[segment["frame_start"]:segment["frame_end"] + 1, indices]
+            if not np.array_equal(np.asarray(segment["positions"])[:, indices], expected):
+                raise ValueError(f"round {round_number} segment geometry differs from certified frames")
+            if (np.max(np.abs(arrays["velocities"][[0, -1]])) > 1e-5 or
+                    np.max(np.abs(arrays["accelerations"][[0, -1]])) > 1e-4):
+                raise ValueError(f"round {round_number} {segment['name']} is not rest-to-rest")
+            torque_names = list(segment.get("torque_joint_names", ()))
+            torque = segment.get("torques_nm")
+            gravity = segment.get("gravity_torques_nm")
+            if require_torque and (not torque_names or torque is None or gravity is None):
+                raise ValueError(f"round {round_number} {segment['name']} has no RNEA output")
+            torque_indices = [torque_names.index(name) for name in joint_names] if torque_names else []
+            torque_values = (np.asarray(torque, dtype=np.float32)[:, torque_indices]
+                             if torque_indices else None)
+            gravity_values = (np.asarray(gravity, dtype=np.float32)[:, torque_indices]
+                              if torque_indices else None)
+            if any(values is not None and (values.shape != (len(times), len(indices)) or
+                                           not np.isfinite(values).all())
+                   for values in (torque_values, gravity_values)):
+                raise ValueError(f"round {round_number} has invalid RNEA samples")
+            frame = segment["frame_start"]
+            base = dict(zip(source_names, result["frames"][frame]))
+            geometry = np.ascontiguousarray(arrays["positions"], dtype=np.float32)
+            item = {
+                "id": f"round-{round_number:02d}-{segment['name']}",
+                "round": round_number, "task": result["task"], "phase": segment["name"],
+                "payload": bool(result["payload"][frame]),
+                "base_pose": {name: float(base[name]) for name in ("base_x", "base_y", "base_yaw")},
+                "joint_names": list(joint_names),
+                "units": {"position": "m for updown, rad otherwise",
+                          "velocity": "m/s for updown, rad/s otherwise",
+                          "acceleration": "m/s^2 for updown, rad/s^2 otherwise",
+                          "jerk": "m/s^3 for updown, rad/s^3 otherwise", "torque": "Nm"},
+                "time_from_start_s": times.tolist(),
+                **{field: values.tolist() for field, values in arrays.items()},
+                "duration_s": float(times[-1]),
+                "minimum_step_s": float(np.min(np.diff(times))),
+                "maximum_step_s": float(np.max(np.diff(times))),
+                "geometry_sha256": hashlib.sha256(geometry.tobytes()).hexdigest(),
+                "parameterizer": segment.get("parameterizer"),
+            }
+            if torque_values is not None:
+                item["rnea_required_torque_nm"] = torque_values.tolist()
+                item["gravity_torque_nm"] = gravity_values.tolist()
+            output.append(item)
+    return {
+        "schema_version": 1,
+        "controller_ready": bool(output) and ready,
+        "execution_policy": "send one rest-to-rest arm segment after its external scene/navigation precondition",
+        "navigation_resets_excluded": True,
+        "torque_command_ready": False,
+        "zero_duration_events_excluded": True,
+        "joint_names": list(joint_names),
+        "segments": output,
+    }
