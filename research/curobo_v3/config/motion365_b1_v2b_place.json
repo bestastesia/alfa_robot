@@ -1,0 +1,31 @@
+{
+  "schema": "motion365-b1-cost-v1",
+  "version": "b1-v2b-place-risk-preregistered",
+  "units": "seconds",
+  "selection_contract": {
+    "budget_ms": 2000.0,
+    "strict_single_action_per_stage": true,
+    "direct_path_samples": 9
+  },
+  "cost": {
+    "selection_budget_ms": 2000.0,
+    "contact_approach_weight": 1.0,
+    "contact_extraction_weight": 1.0,
+    "contact_nearest_carry_weight": 1.0,
+    "contact_carry_mean_excess_weight": 0.0,
+    "contact_scarcity_penalty_s": 0.0,
+    "carry_transport_weight": 1.0,
+    "carry_home_proxy_weight": 0.0,
+    "carry_updown_penalty_s_per_m": 0.0,
+    "place_motion_weight": 1.0,
+    "place_home_weight": 1.0,
+    "joint_limit_margin_fraction": 0.05,
+    "joint_limit_penalty_s": 0.0,
+    "direct_path_samples": 9,
+    "approach_direct_risk_penalty_s": 0.0,
+    "carry_direct_risk_penalty_s": 0.0,
+    "place_direct_risk_penalty_s": 2.0,
+    "home_direct_risk_penalty_s": 2.0
+  },
+  "rationale": "Placement and return-Home each receive at most one existing 2 s search-budget equivalent. Risks are soft and never replace RRT or timing validation."
+}

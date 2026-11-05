@@ -1,0 +1,42 @@
+{
+  "schema": "motion365-b1-cost-v1",
+  "version": "b1-v1-untuned",
+  "units": "seconds",
+  "selection_contract": {
+    "budget_ms": 2000.0,
+    "decisions": ["contact_ik", "carry_ik", "placement_ik"],
+    "strict_single_action_per_stage": true,
+    "fallback_counted_separately": true
+  },
+  "hard_constraints": [
+    "analytic_ik_solution_and_pose_tolerance",
+    "joint_position_limits",
+    "contact_collision",
+    "complete_extraction_and_preapproach",
+    "payload_collision_and_single_arm_envelope",
+    "placement_parking_collision",
+    "existing_rrt_dense_and_timing_validation"
+  ],
+  "cost": {
+    "selection_budget_ms": 2000.0,
+    "contact_approach_weight": 1.0,
+    "contact_extraction_weight": 1.0,
+    "contact_nearest_carry_weight": 1.0,
+    "contact_carry_mean_excess_weight": 0.0,
+    "contact_scarcity_penalty_s": 0.0,
+    "carry_transport_weight": 1.0,
+    "carry_home_proxy_weight": 0.0,
+    "carry_updown_penalty_s_per_m": 0.0,
+    "place_motion_weight": 1.0,
+    "place_home_weight": 1.0,
+    "joint_limit_margin_fraction": 0.05,
+    "joint_limit_penalty_s": 0.0
+  },
+  "tie_break": "stable original candidate index",
+  "notes": [
+    "Nonzero v1 terms exactly preserve the validated online lookahead heuristic.",
+    "Extension terms are explicit but zero until a dev-only ablation justifies them.",
+    "Collision clearance is not approximated as a soft term; exact existing gates remain authoritative.",
+    "Rotation is represented through joint-space T_lb and existing trajectory validation; MOTION-303 rotation rules are unchanged."
+  ]
+}

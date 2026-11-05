@@ -1,0 +1,72 @@
+{
+  "schema": "motion365-b1-selection-v1",
+  "selected": "b1-v2b-place-risk-preregistered",
+  "cost_config": "config/motion365_b1_v2b_place.json",
+  "cost_config_sha256": "c166064514d8985cb635e555f6490766efa6bff59a8cb7edb3dc5f033476b65e",
+  "source_sha256": "a9bfe1b8740ca9e9811c979c4fc6f814ee3f63fc196d77c9004b82c120c0e910",
+  "dev_evidence": "repro_results/b1-v2b-dev96/report.json",
+  "dev_evidence_sha256": "a9a7b463e2c11991414dd69c61194077e9bd3d59c129b81581421e1b4d0dba5e",
+  "ablation_report": "repro_results/b1-v2-ablation-report.json",
+  "ablation_report_sha256": "7a149f559fb9ccdc9da48aa57ff6456c794707c45ea5c778bc74bb3a5ed69f75",
+  "decision": {
+    "strict_success": "75/96",
+    "selection_p95_ms": 267.011521198583,
+    "selection_budget_exceeded": 0,
+    "relative_to_b1_v1": "two placement-RRT failures recovered; no strict-success regression",
+    "relative_to_b0": "same total success, different success set; paired-success median cost difference zero"
+  },
+  "rejected_arms": {
+    "b1-v2a-approach-risk-preregistered": "72/96; one strict-success regression and no recovered approach failure",
+    "b1-v2-approach-and-place-risk-preregistered": "74/96; placement gains retained but approach-risk regression retained",
+    "b1-v3-carry-risk-preregistered": "default 74/96 vs v2b 75/96; large size 43/96 vs 40/96, but transport timeouts unchanged at 9; violates default non-regression rule"
+  },
+  "carry_risk_ablation": {
+    "config": "config/motion365_b1_v3_carry.json",
+    "config_sha256": "4b3b8ee8d493b26d4f30a3a6be674877e060d982913d8c17da0742477dc642aa",
+    "paired_report": "repro_results/b1-v3-paired-report.json",
+    "paired_report_sha256": "b0930363ab1d497bebdc09b96f5b26c740d2f07247eccb5e4a1cde01c0a28be3",
+    "decision": "rejected; does not reduce the targeted transport timeout and regresses default strict success"
+  },
+  "motion386_cost_matrix": {
+    "matrix": "config/motion386_cost_matrix.json",
+    "default_size_report": "repro_results/motion386-cost-matrix-report.json",
+    "default_size_report_sha256": "c49db216c1ba34ad8b72f45db4961bda5d16141db813f6e5c848f1d2b0d7bc94",
+    "best_development_candidate": "config/motion386_b1_home_bias.json",
+    "candidate_sha256": "3e8470ce17b2a8948c96f1011dd00a30efdffec055ac42509e322e89548f1a69",
+    "default_size": "76/96 vs v2b 75/96; no lost successes",
+    "five_size_exploratory": "269/480 vs v2b 268/480; 6 recovered and 5 regressed",
+    "five_size_report": "repro_results/motion386-home-bias-five-size-exploratory-report.json",
+    "five_size_report_sha256": "577c87cb91180ce70d171b08887bf6e32f0e8991a7b8b31895c36acf1a05ccf2",
+    "decision": "keep v2b selected; home_bias is a provisional candidate because its +1/480 cross-size gain is unstable and comes from 11 outcome swaps"
+  },
+  "motion386_b2_group_evaluation": {
+    "candidate": "config/motion386_b2_time_beam8.json",
+    "candidate_sha256": "d0803df040dd29f849a699cb053957fa596b3a24b710110c255d37a148976e8e",
+    "current_source_v2b_report": "repro_results/motion386-v2b-current-source-dev96/report.json",
+    "current_source_v2b_report_sha256": "cda37ff1f9b8520355676eef3f9f84099f6ef3f062e5e8621879cab2addfb9d2",
+    "b2_report": "repro_results/motion386-b2-time-beam8-dev96/report.json",
+    "b2_report_sha256": "5bb70eda321ea6c4450c8b273a46338e62de600343a43e6d3d0a7d7343da15f3",
+    "paired_report": "repro_results/motion386-b2-time-beam8-dev96-paired/report.json",
+    "paired_report_sha256": "024672799981959322fe9071e44175cf5db8d85c4ea94847d879383234a8edcf",
+    "paired_csv": "repro_results/motion386-b2-time-beam8-dev96-paired/pairs.csv",
+    "paired_csv_sha256": "cf176d84e9e9f717cc55d09800f09cea274af1fc99584ce6fc7bb23bbb86e137",
+    "default_size": "76/96 vs current-source v2b 75/96; B2-only 3, v2b-only 2, both 73",
+    "selection": "p95 1059 ms; 0/96 over the 2 s contract",
+    "paired_success_metrics": "executed T_lb, motion duration and jerk median differences are zero; total selection+planning wall time median increases 691 ms",
+    "specific_scene": "dual-side 36/36 vs v2b 35/36; every other mode total is unchanged",
+    "representative_replay": "repro_results/motion386-b2-time-beam8-dev96-replay/L17-R21-dev-v2-B2-recovered.rrd",
+    "representative_replay_sha256": "4067f2cdb7e5b1f7237c9167c35fcff5ceb5f5be9cae826be589ff30d417e246",
+    "decision": "keep v2b selected; B2-time-beam8 shows a specific dual-side development gain but no stable overall or trajectory-cost improvement, so independent test remains sealed"
+  },
+  "size_evaluation": {
+    "evidence": "repro_results/b1-v2b-size-dev480/report.json",
+    "evidence_sha256": "77489c9451dd1af1a262526376ef37e240883b8da1c3cee7046aaf3605492770",
+    "instances": 480,
+    "strict_success": "268/480",
+    "seen_sizes": "173/288",
+    "heldout_sizes": "95/192",
+    "selection_budget_exceeded": 0,
+    "retuning_after_heldout": false
+  },
+  "test_split_opened": false
+}

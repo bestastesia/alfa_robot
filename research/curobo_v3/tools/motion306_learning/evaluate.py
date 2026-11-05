@@ -23,25 +23,48 @@ import torch
 from motion311_learning.contracts import config_digest, reward
 from motion311_learning.evaluate import _atomic_json, _jsonable, _numeric, _summary, compact_report, instance_seed, mode, sha256_file
 from motion311_learning.networks import DQNAgent
-from motion306_learning.rankers import dqn_order, heuristic_order, lookahead_heuristic_order, uniform_order
+from motion306_learning.rankers import (B1CostConfig, b1_cost_terms, b1_order, dqn_order, heuristic_order,
+                                        lookahead_heuristic_order, uniform_order)
 from motion306_learning.screening import screened_choice
 
-ROUTES = ("heuristic", "lookahead_heuristic", "uniform", "r3_311", "r3_plus")
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_B1_CONFIG = ROOT / "config/motion365_b1_v1.json"
+ROUTES = ("heuristic", "lookahead_heuristic", "b1", "uniform", "r3_311", "r3_plus")
 SCHEMA = "motion364-screened-evaluation-v1"
 
 
-def rank(route, policy, observation, velocity, rng):
+def rank(route, policy, observation, velocity, rng, lower=None, upper=None, risk=None):
     if route == "heuristic":
         return heuristic_order(observation, velocity)
     if route == "uniform":
         return uniform_order(observation, rng)
     if route == "lookahead_heuristic":
         return lookahead_heuristic_order(observation)
+    if route == "b1":
+        return b1_order(observation, velocity, lower, upper, policy, risk)
     if route == "r3_311":
         return dqn_order(policy, observation)
     if route == "r3_plus":
         return policy.order(observation)
     raise ValueError("unknown route")
+
+
+def _finite(value):
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _b1_audit(costs, order, selected, risk=None):
+    top = [int(index) for index in order[:min(5, len(order))]]
+    return dict(
+        units="seconds",
+        selected_total_s=_finite(costs["total_s"][selected]),
+        selected_terms_s={name: _finite(values[selected]) for name, values in costs["terms"].items()},
+        selected_joint_limit_margin_fraction=_finite(costs["joint_limit_margin_fraction"][selected]),
+        selected_prefilter_valid=bool(costs["valid"][selected]),
+        selected_direct_risk={} if risk is None else {name: _finite(values[selected]) for name, values in risk.items()},
+        ranked_top=[dict(index=index, total_s=_finite(costs["total_s"][index])) for index in top],
+    )
 
 
 def route_label(route, screen):
@@ -81,8 +104,23 @@ def evaluate_instance(env, item, route, policy=None, seed=0, screen=True):
                                  generation_ms=_numeric(getattr(env, "generation_ms", None)),
                                  feature_ms=_numeric(getattr(env, "feature_ms", None)),
                                  lookahead_ms=_numeric(getattr(env, "lookahead_ms", None)))
-                ranked = time.perf_counter()
-                order = np.asarray(rank(route, policy, observation, env.velocity, rng), dtype=int)
+                b1_cost = None
+                if route == "b1":
+                    risk = None
+                    selection["risk_ms"] = 0.
+                    if policy.direct_risk_enabled(current_stage):
+                        risk_began = time.perf_counter()
+                        risk = env.b1_direct_risk(observation, policy.direct_path_samples)
+                        selection["risk_ms"] = (time.perf_counter() - risk_began) * 1000
+                    ranked = time.perf_counter()
+                    b1_cost = b1_cost_terms(observation, env.velocity, env.decoder.lower, env.decoder.upper, policy, risk)
+                    order = np.argsort(b1_cost["total_s"], kind="stable")
+                else:
+                    risk = None
+                    ranked = time.perf_counter()
+                    order = np.asarray(rank(route, policy, observation, env.velocity, rng,
+                                            getattr(getattr(env, "decoder", None), "lower", None),
+                                            getattr(getattr(env, "decoder", None), "upper", None)), dtype=int)
                 selection["rank_ms"] = (time.perf_counter() - ranked) * 1000
                 if sorted(order.tolist()) != list(range(len(observation.candidates))):
                     raise ValueError("ranking is not a permutation of the current candidate pool")
@@ -93,6 +131,8 @@ def evaluate_instance(env, item, route, policy=None, seed=0, screen=True):
                     index = index if chosen is None else chosen
                 selection.update(action_index=index, action_rank=int(np.flatnonzero(order == index)[0]),
                                  action_params=observation.actions[index].tolist())
+                if b1_cost is not None:
+                    selection["b1_cost"] = _b1_audit(b1_cost, order, index, risk)
                 step_started = time.perf_counter()
                 result = env.step(index)
                 last_info = dict(result.info)
@@ -150,6 +190,15 @@ def evaluate_instance(env, item, route, policy=None, seed=0, screen=True):
     record["selection_overhead_ms"] = float(sum((outcome.get("generation_ms") or 0.) + (outcome.get("lookahead_ms") or 0.)
                                                 + (outcome.get("rank_ms") or 0.) + (outcome.get("screening") or {}).get("screen_ms", 0.)
                                                 for outcome in record["outcomes"]))
+    record["selection_total_ms"] = float(sum((outcome.get("generation_ms") or 0.) + (outcome.get("feature_ms") or 0.)
+                                             + (outcome.get("lookahead_ms") or 0.) + (outcome.get("rank_ms") or 0.)
+                                             + (outcome.get("risk_ms") or 0.)
+                                             + (outcome.get("screening") or {}).get("screen_ms", 0.)
+                                             for outcome in record["outcomes"]))
+    record["planning_wall_ms"] = float(sum(outcome.get("step_wall_ms") or 0. for outcome in record["outcomes"]))
+    if route == "b1":
+        record["selection_budget_ms"] = policy.selection_budget_ms
+        record["selection_budget_exceeded"] = record["selection_total_ms"] > policy.selection_budget_ms
     record["report"] = compact_report(report)
     record["wall_s"] = time.perf_counter() - began
     record["load_average_end"] = list(os.getloadavg())  # wall-clock RRT budgets and timings depend on host load
@@ -173,9 +222,18 @@ def _screening_summary(rows):
                                   exhausted=sum(bool(o.get("screening_exhausted")) for o in records),
                                   chosen_rank_mean=float(np.mean([o["action_rank"] for o in records])), rejected=rejected)
     overhead = [row["selection_overhead_ms"] for row in rows if row["outcomes"]]
+    total = [row.get("selection_total_ms") for row in rows if row["outcomes"] and row.get("selection_total_ms") is not None]
+    budgets = [row for row in rows if row.get("selection_budget_ms") is not None]
+    risk = [outcome.get("risk_ms") for row in rows for outcome in row["outcomes"] if outcome.get("risk_ms") is not None]
     return dict(stages=stages, selection_overhead_ms=dict(
         n=len(overhead), median=float(np.median(overhead)) if overhead else None,
-        p95=float(np.percentile(overhead, 95)) if overhead else None))
+        p95=float(np.percentile(overhead, 95)) if overhead else None), selection_total_ms=dict(
+        n=len(total), median=float(np.median(total)) if total else None,
+        p95=float(np.percentile(total, 95)) if total else None), selection_budget=dict(
+        n=len(budgets), budget_ms=(budgets[0]["selection_budget_ms"] if budgets else None),
+        exceeded=sum(bool(row.get("selection_budget_exceeded")) for row in budgets)), direct_risk_ms=dict(
+        n=len(risk), median=float(np.median(risk)) if risk else None,
+        p95=float(np.percentile(risk, 95)) if risk else None))
 
 
 def _keys(row):
@@ -213,6 +271,7 @@ def build_report(records):
                 differences[name] = dict(n_both_success=len(values), median_b_minus_a=float(np.median(values)) if values else None,
                                          mean_b_minus_a=float(np.mean(values)) if values else None)
             paired.setdefault(split, {}).setdefault("/".join(key), {})[a + "__" + b] = dict(
+                a_label=a, b_label=b,
                 n_paired=len(common), a_only_success=sum(left[k]["success"] and not right[k]["success"] for k in common),
                 b_only_success=sum(right[k]["success"] and not left[k]["success"] for k in common),
                 both_success=sum(left[k]["success"] and right[k]["success"] for k in common),
@@ -226,6 +285,10 @@ def build_report(records):
 def _load_policy(route, models):
     if route in ("heuristic", "lookahead_heuristic", "uniform"):
         return None, None
+    if route == "b1":
+        path = DEFAULT_B1_CONFIG if models is None else Path(models)
+        policy = B1CostConfig.load(path)
+        return policy, {"path": str(path.resolve()), "sha256": sha256_file(path), "cost": policy.to_dict()}
     path = Path(models)
     path = path / "agent.pt" if path.is_dir() else path
     if route == "r3_plus":
@@ -260,6 +323,10 @@ def run_evaluation(registry, output, route, models=None, group="dev", levels=(),
                    stride=1, contact_pool="capped", place_gate=False):
     if route not in ROUTES or group not in ("train", "dev", "test"):
         raise ValueError("unknown route/group")
+    if route == "b1" and not screen:
+        raise ValueError("B1 requires exact selector-side screening")
+    if route == "b1":
+        lookahead_env, place_gate = True, True
     if group == "test" and not allow_test:
         raise ValueError("test split requires explicit --allow-test; MOTION-364 keeps it sealed")
     registry, output = Path(registry), Path(output)
@@ -270,7 +337,7 @@ def run_evaluation(registry, output, route, models=None, group="dev", levels=(),
         policy, checkpoint = _load_policy(route, models)
     else:
         checkpoint = {"injected_policy": type(policy).__name__}
-    lookahead_env = lookahead_env or route in ("r3_plus", "lookahead_heuristic") or contact_pool != "capped" or place_gate
+    lookahead_env = lookahead_env or route in ("r3_plus", "lookahead_heuristic", "b1") or contact_pool != "capped" or place_gate
     configuration = {"schema": SCHEMA, "route": route, "screen": bool(screen), "group": group, "levels": sorted(levels),
                      "environment": "LookaheadEnv" if lookahead_env else "StageEnv", "limit_per_level": limit, "stride": stride, "contact_pool": contact_pool, "place_gate": bool(place_gate),
                      "seed": int(seed), "registry_sha256": sha256_file(registry), "checkpoint": checkpoint,
@@ -325,6 +392,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--registry", type=Path, required=True)
     parser.add_argument("--models", type=Path)
+    parser.add_argument("--b1-config", type=Path, default=DEFAULT_B1_CONFIG)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--route", choices=ROUTES, required=True)
     parser.add_argument("--group", choices=("train", "dev", "test"), default="dev")
@@ -340,12 +408,17 @@ def main(argv=None):
     parser.add_argument("--threads", type=int, default=4)
     parser.add_argument("--allow-test", action="store_true")
     args = parser.parse_args(argv)
+    if args.route != "b1" and args.b1_config != DEFAULT_B1_CONFIG:
+        parser.error("--b1-config is only valid with --route b1")
+    if args.route == "b1" and args.models is not None:
+        parser.error("B1 uses --b1-config, not --models")
     torch.set_num_threads(args.threads)
     stop = [False]
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__(0, True))
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__(0, True))
     levels = [level for level in args.levels.split(",") if level]
-    completed = run_evaluation(args.registry, args.output, args.route, args.models, args.group, levels, args.seed,
+    selector = args.b1_config if args.route == "b1" else args.models
+    completed = run_evaluation(args.registry, args.output, args.route, selector, args.group, levels, args.seed,
                                not args.no_screen, args.max_minutes, args.allow_test, stop_requested=lambda: stop[0],
                                lookahead_env=not args.stage_env, limit=args.max_instances, stride=args.stride,
                                contact_pool=args.contact_pool, place_gate=args.place_gate)
