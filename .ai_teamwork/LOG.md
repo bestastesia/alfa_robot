@@ -2,6 +2,12 @@
 
 这里仅保留当前分支仍需让新 AI 立刻看到的最新交接。长过程和已完成事项已归档。
 
+## 2026-11-03 运控 / Codex / MOTION-386 B2 三元组顺畅度评分原型
+- 做了什么：在既有 B1 逐阶段严格单选之上新增 B2 组级评分核心，完整链定义为 Home→接触→抽离→回中/携箱→放置→Home；等效秒代价包含运动时间、关节运动模式突变、反向、Updown/双臂旋转曲率、边碰撞比例和限位裕度，硬约束职责不变。
+- 改了哪里：`research/curobo_v3/tools/motion306_learning/group_score.py`、`config/motion386_b2_group_smooth.json`、`tests/test_core_motion386_group_score.py`、历史诊断/网页/Rerun 生成脚本与报告、`MOTION386_B2_GROUP_SCORE.md`；Linear MOTION-386 已补短评论和证据附件。
+- 验证结果：组评分/beam 10 项测试通过；已恢复 `/home/tim/.venvs/motion386-curobo-py311` 组合环境（本机实际 Torch2.7+cu128/Warp1.17/cuRobo78fd485），连接器GPU 3项通过。懒验证将首例选组3776ms降至约1260ms；四模式B2/v2b同源配对均成功，B2选择0.93～1.58s。B2执行T_lb/运动时长3/4改善，但jerk仅1/4改善、关节总变差仅1/4改善，选择+规划墙钟4/4更慢。真实双机器人配对RRD已生成并验证。
+- 留给下个 AI：B2-time-beam8 已完成同源默认尺寸 dev96：76/96 vs v2b 75/96，B2-only 3、v2b-only 2、双方成功73，精确配对p=1.0；唯一净模式增益是dual-side 36/36 vs35/36。选择p95=1059ms、0超2s，但双方成功任务执行T_lb/时长/jerk中位差均0，总墙钟中位+691ms。验收结论是特定场景轻微改善、非整体改善；保持v2b，不解封test，不在同一dev继续调权。代表恢复任务L17-R21-dev-v2真实RRD和逐任务配对已交付。若继续研究，应另立规划路径代理任务。
+
 ## 2026-10-04 运控 / Codex / 接手 V3 cuRobo 开发
 - 做了什么：按用户要求完整阅读远端/本地 HANDOFF 与 /tmp/handoff-x6TfV8.md（SHA256一致），读取 MOTION-238～243、275 正文及全部评论，核对当前周期入口、GPU有效性/搜索、附着变换、缓存、解析桥及版本化证据。
 - 当前落点：后续开发使用 /mnt/mydisk/ALFA/alfa_robot_v3_curobo 的 alfa_v3_curobo 分支；接手基线60ae10dd与远端一致。原 /mnt/mydisk/ALFA/curobo_v2_ws 保留第三方依赖、原实验及历史数据，不能只在那里改代码而漏同步正式分支。

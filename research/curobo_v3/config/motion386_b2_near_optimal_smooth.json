@@ -1,0 +1,39 @@
+{
+  "schema": "motion386-b2-group-score-v1",
+  "version": "motion386-b2-near-optimal-smooth-preregistered-v1",
+  "units": "seconds",
+  "status": "smoke_ablation_not_selected",
+  "selection_contract": {
+    "budget_ms": 2000.0,
+    "strict_single_group": true,
+    "selected_ik_count": 3,
+    "edge_collision_samples": 9,
+    "contact_beam": 4,
+    "pair_beam": 16,
+    "place_cap": 64,
+    "full_group_limit": 1024,
+    "selection_rule": "near_optimal_smooth",
+    "primary_cost_slack_s": 0.5
+  },
+  "sequence": ["Home", "contact", "extraction", "carry", "placement", "Home"],
+  "cost": {
+    "motion_weight": 1.0,
+    "turn_penalty_s": 0.75,
+    "reversal_penalty_s": 1.0,
+    "redundancy_penalty_s": 0.5,
+    "collision_penalty_s": 2.0,
+    "joint_limit_margin_fraction": 0.05,
+    "joint_limit_penalty_s": 1.0,
+    "score_temperature_s": 5.0,
+    "edge_collision_samples": 9,
+    "updown_curvature_scale_m": 0.1,
+    "swivel_curvature_scale_deg": 30.0
+  },
+  "selection_rule": {
+    "primary": "motion_s + collision_s + joint_limit_s",
+    "eligible": "primary <= best_primary + 0.5 seconds",
+    "secondary": "turn_s + reversal_s + redundancy_s",
+    "tie_break": "primary, then stable generated group index"
+  },
+  "note": "Frozen after the four-mode B2 weighted smoke showed inconsistent executed jerk. This is a smoke-only ablation and must not use independent test."
+}

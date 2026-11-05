@@ -1,0 +1,83 @@
+{
+  "schema": "motion386-b2-group-evaluation-v1",
+  "configuration": {
+    "schema": "motion386-b2-group-evaluation-v1",
+    "registry": "/home/tim/alfa_robot-motion365-b1-repro/research/curobo_v3/config/motion306_registry.json",
+    "registry_sha256": "daf86404282825544e577725d1477f1edeedcd27cfd538268d4e6928a7c12587",
+    "config": "/home/tim/alfa_robot-motion365-b1-repro/research/curobo_v3/config/motion386_b2_time_beam8.json",
+    "config_sha256": "d0803df040dd29f849a699cb053957fa596b3a24b710110c255d37a148976e8e",
+    "group": "dev",
+    "levels": [
+      "S30x40x40"
+    ],
+    "seed": 101,
+    "max_instances": null,
+    "stride": 1,
+    "strict_single_group": true,
+    "test_split_opened": false
+  },
+  "complete": true,
+  "instances": 96,
+  "strict_success": 76,
+  "selection_budget_exceeded": 0,
+  "status_counts": {
+    "success": 76,
+    "task_failure": 20
+  },
+  "failures": {
+    "stage0:no_valid_group": 15,
+    "stage0:approach_budget_or_validation": 3,
+    "stage2:timing_validation": 1,
+    "stage2:龙头车放置RRT": 1
+  },
+  "metrics": {
+    "selection_ms": {
+      "p50": 925.9863629999927,
+      "p95": 1059.2590392500085
+    },
+    "planning_wall_ms": {
+      "p50": 3157.55087499997,
+      "p95": 4683.887380249985
+    },
+    "total_selection_planning_ms": {
+      "p50": 4136.234849499999,
+      "p95": 5570.369242749934
+    },
+    "raw_t_path_s": {
+      "p50": 29.707205261233376,
+      "p95": 40.6551491696848
+    },
+    "executed_t_path_s": {
+      "p50": 28.640464779401874,
+      "p95": 36.77590392586303
+    },
+    "motion_duration_s": {
+      "p50": 57.50098269241174,
+      "p95": 73.51156776834672
+    }
+  },
+  "timed_validation": {
+    "velocity_limit_ratio": {
+      "p50": 0.9523809734625833,
+      "p95": 0.9523817133997434
+    },
+    "acceleration_limit_ratio": {
+      "p50": 0.9067076692374355,
+      "p95": 0.90702875927623
+    },
+    "jerk_limit_ratio": {
+      "p50": 0.03152435111999512,
+      "p95": 0.04151446056365967
+    }
+  },
+  "trajectory_metrics": {
+    "normalized_joint_variation": {
+      "p50": 11.239459568109641,
+      "p95": 13.81889031279073
+    },
+    "joint_direction_reversals": {
+      "p50": 58.0,
+      "p95": 78.5
+    }
+  }
+}

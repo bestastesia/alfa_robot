@@ -156,12 +156,36 @@ class LookaheadEnv(StageEnv):
             end[columns] = solutions[np.argmin(np.sum((solutions - row[columns]) ** 2, axis=1))]
         return end
 
-    def place_checks(self, rows):
-        """conveyor_suffix's placement gate for a batch: payload collision at the conveyor parking pose (same
-        parking computation as the suffix). The snapshot is restored; the suffix re-checks its executed row."""
+    @staticmethod
+    def _direct_collision_fraction(starts, goals, validity, samples):
+        """Fraction of sampled straight joint interpolation states rejected per edge; never a hard gate."""
+        goals = np.asarray(goals, dtype=np.float32).reshape(-1, 15)
+        starts = np.asarray(starts, dtype=np.float32)
+        if starts.shape == (15,):
+            starts = np.repeat(starts[None], len(goals), axis=0)
+        else:
+            starts = starts.reshape(-1, 15)
+        if len(starts) == 1 and len(goals) != 1:
+            starts = np.repeat(starts, len(goals), axis=0)
+        if len(goals) == 1 and len(starts) != 1:
+            goals = np.repeat(goals, len(starts), axis=0)
+        if len(starts) != len(goals):
+            raise ValueError("direct-risk edge endpoints do not broadcast")
+        alpha = np.linspace(1. / samples, 1., samples, dtype=np.float32)
+        frames = starts[:, None, :] + (goals - starts)[:, None, :] * alpha[None, :, None]
+        valid = validity.mask(torch.tensor(frames.reshape(-1, 15), device="cuda", dtype=torch.float32))
+        return 1. - valid.reshape(len(starts), samples).float().mean(dim=1).cpu().numpy()
+
+    def _placement_snapshot(self, active_start=None):
+        """The exact conveyor parking snapshot used by the suffix and placement endpoint gate."""
         p, names = self.planner, self.names
         endpoint = np.asarray(self.report['frames'][-1], dtype=np.float64).copy()
-        start = endpoint[[names.index(name) for name in ACTIVE_JOINTS]]
+        active_indices = [names.index(name) for name in ACTIVE_JOINTS]
+        if active_start is not None:
+            start = np.asarray(active_start, dtype=np.float64).reshape(15)
+            endpoint[active_indices] = start
+        else:
+            start = endpoint[active_indices]
         rotation = Rotation.from_euler('z', math.pi).as_matrix()
         reference = p.conveyor_reference_targets()
         required = []
@@ -173,20 +197,50 @@ class LookaheadEnv(StageEnv):
             required.append((goal - rotation @ box[:3, 3])[:2])
         parking = np.mean(required, axis=0)
         if np.max(np.linalg.norm(np.asarray(required) - parking, axis=1)) > .002:
-            return ['placement_parking'] * len(rows)
+            return None
         endpoint[[names.index('base_x'), names.index('base_y')]] = parking
         endpoint[names.index('base_yaw')] = math.pi
         base = np.eye(4)
         base[:3, :3] = rotation
         base[:2, 3] = parking
+        return replace(p.snapshot, state=p.snapshot.state.with_positions(dict(zip(names, endpoint)), matrix_pose(base)))
+
+    def place_checks(self, rows, active_start=None):
+        """conveyor_suffix's placement gate for a batch: payload collision at the conveyor parking pose (same
+        parking computation as the suffix). The snapshot is restored; the suffix re-checks its executed row."""
+        p = self.planner
+        parking_snapshot = self._placement_snapshot(active_start)
+        if parking_snapshot is None:
+            return ['placement_parking'] * len(rows)
         original = p.snapshot
-        p.snapshot = replace(original, state=original.state.with_positions(dict(zip(names, endpoint)), matrix_pose(base)))
+        p.snapshot = parking_snapshot
         try:
             validity = GpuValidity(p.checker(self.boxes, payload=True), check_ground=True)
             valid = validity.mask(torch.tensor(np.asarray(rows, dtype=np.float32).reshape(-1, 15), device='cuda')).cpu().numpy()
         finally:
             p.snapshot = original
         return [None if ok else 'place_collision' for ok in valid]
+
+    def b1_direct_risk(self, observation, samples):
+        """B1 soft direct-edge risks. Non-straight RRT may still succeed, so these values never reject."""
+        rows = np.asarray(observation.candidates, dtype=np.float32).reshape(-1, 15)
+        if observation.stage == 0:
+            return {"approach": self._direct_collision_fraction(self.previous, rows, self.empty_valid, samples)}
+        if observation.stage == 1:
+            return {"carry": self._direct_collision_fraction(self.previous, rows, self.loaded_valid, samples)}
+        parking_snapshot = self._placement_snapshot()
+        if parking_snapshot is None:
+            ones = np.ones(len(rows), dtype=np.float32)
+            return {"place": ones, "home": ones}
+        p, original = self.planner, self.planner.snapshot
+        p.snapshot = parking_snapshot
+        try:
+            loaded = GpuValidity(p.checker(self.boxes, payload=True), check_ground=True)
+            empty = GpuValidity(p.checker(self.boxes), check_ground=True)
+            return {"place": self._direct_collision_fraction(self.previous, rows, loaded, samples),
+                    "home": self._direct_collision_fraction(rows, self.home, empty, samples)}
+        finally:
+            p.snapshot = original
 
     def _carry_lookahead(self):
         if self.carry_lookahead is None:

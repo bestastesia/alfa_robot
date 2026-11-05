@@ -1,0 +1,53 @@
+{
+  "schema": "motion386-cost-matrix-v1",
+  "frozen_at": "2026-11-03",
+  "dataset": "S30x40x40 dev96, seed 101",
+  "selection_budget_ms": 2000.0,
+  "hard_constraints_unchanged": true,
+  "baseline": "config/motion365_b1_v2b_place.json",
+  "arms": [
+    {
+      "id": "limit_guard",
+      "config": "config/motion386_b1_limit_guard.json",
+      "hypothesis": "Prefer candidates with at least 5% normalized joint-limit margin",
+      "scale": "up to 2.0 s when any joint reaches a limit"
+    },
+    {
+      "id": "updown_stable",
+      "config": "config/motion386_b1_updown_stable.json",
+      "hypothesis": "Avoid large lift changes at the carry decision",
+      "scale": "0.1 m lift change adds 1.0 s"
+    },
+    {
+      "id": "pool_robust",
+      "config": "config/motion386_b1_pool_robust.json",
+      "hypothesis": "Prefer contact candidates with several similarly good downstream carry options",
+      "scale": "0.5 x mean-nearest excess plus up to 1.0 s scarcity"
+    },
+    {
+      "id": "home_bias",
+      "config": "config/motion386_b1_home_bias.json",
+      "hypothesis": "Prefer carry candidates closer to Home as a cheap downstream posture proxy",
+      "scale": "0.25 x carry-to-Home lower bound"
+    },
+    {
+      "id": "return_priority",
+      "config": "config/motion386_b1_return_priority.json",
+      "hypothesis": "Give return-Home motion 50% more weight at placement",
+      "scale": "place-to-Home coefficient 1.5 instead of 1.0"
+    },
+    {
+      "id": "balanced_combo",
+      "config": "config/motion386_b1_balanced_combo.json",
+      "hypothesis": "Use half-strength versions of the independent robustness preferences",
+      "scale": "pre-registered composite; no post-result tuning"
+    }
+  ],
+  "decision_order": [
+    "strict success count",
+    "no selection budget violations",
+    "paired successful executed T_lb",
+    "selection p95"
+  ],
+  "note": "This is a development comparison with multiple hypotheses, not an independent test. Test remains sealed."
+}

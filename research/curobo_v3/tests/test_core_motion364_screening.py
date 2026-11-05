@@ -166,6 +166,7 @@ class ScreeningTest(unittest.TestCase):
         self.assertEqual(summaries['size_split/heldout']['heuristic+screen']['success']['successes'], 0)
         self.assertEqual(summaries['all']['heuristic']['success']['successes'], 0)
         pair = report['paired']['dev']['all']['heuristic__heuristic+screen']
+        self.assertEqual((pair['a_label'], pair['b_label']), ('heuristic', 'heuristic+screen'))
         self.assertEqual((pair['n_paired'], pair['b_only_success']), (1, 1))
         with self.assertRaises(ValueError):
             build_report(rows + rows[:1])
