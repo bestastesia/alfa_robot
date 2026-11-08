@@ -49,6 +49,19 @@ def world_box_overlaps(position, rotation, half, world_position, world_rotation,
                        world_half[None], tolerance=tolerance).any(dim=-1)
 
 
+def box_mesh_obb(item):
+    """Exact OBB of a mesh whose vertices are the 8 corners of its local bounding box, else None."""
+    import numpy as np
+    vertices = np.asarray(item.vertices_m, dtype=float)
+    low, high = vertices.min(0), vertices.max(0)
+    corner = np.isclose(vertices, high, atol=1e-9, rtol=0)
+    if (len(vertices) != 8 or np.any(high-low <= 0) or
+            not np.all(corner | np.isclose(vertices, low, atol=1e-9, rtol=0)) or len({tuple(row) for row in corner}) != 8):
+        return None
+    matrix = pose_matrix(item.pose)
+    return matrix[:3, 3]+matrix[:3, :3]@((low+high)/2), matrix[:3, :3], (high-low)/2
+
+
 def material_self_overlap(spheres, pairs, padding, payload_pair, tolerance=1e-6):
     """Verify native self pairs in float64, tolerating only payload/payload tangency.
 
@@ -92,6 +105,8 @@ class SequentialValidity(GpuValidity):
         payload[self.payload_indices] = True
         self.payload_pairs = payload[self.self_pairs[:, 0]] & payload[self.self_pairs[:, 1]]
         self.robot_self_pairs=~(payload[self.self_pairs[:,0]]|payload[self.self_pairs[:,1]])
+        self.self_margin_m = 1e-5
+        self.self_band_rows = 0
         from .door_sequential import mesh_contact_proof
         import numpy as np
         for item in self.attachments:
@@ -103,17 +118,36 @@ class SequentialValidity(GpuValidity):
         if contact_pair is not None and any(item.parent_link == contact_pair[0]+"_tool0" for item in self.attachments):
             raise ValueError("a loaded tool cannot contact a second target")
 
-    def _self_collision_cost(self, spheres):
-        if not self.payload_indices:
-            return super()._self_collision_cost(spheres)
-        # Payload-vs-robot and payload-vs-payload are checked below with the
-        # exact attached-box OBB; keep native sphere checks only robot-vs-robot.
-        rows=spheres.reshape(-1,spheres.shape[-2],4)
+    def exact_robot_self_collision(self, rows):
+        """Float64 zero-tolerance robot-vs-robot pair check (the reference decision)."""
         pairs=self.self_pairs[self.robot_self_pairs]
         payload=torch.zeros(len(pairs),device=pairs.device,dtype=torch.bool)
         collision=torch.empty(len(rows),device=rows.device,dtype=torch.bool)
         for offset in range(0,len(rows),512):
             collision[offset:offset+512]=material_self_overlap(rows[offset:offset+512],pairs,self.self_padding,payload,0.)
+        return collision
+
+    def _self_collision_cost(self, spheres):
+        if not self.payload_indices:
+            return super()._self_collision_cost(spheres)
+        # Payload-vs-robot and payload-vs-payload are checked below with the
+        # exact attached-box OBB; keep native sphere checks only robot-vs-robot.
+        # The native float32 kernel ignores spheres with negative radius. Running it
+        # with robot radii widened and narrowed by a margin far above float32 error
+        # brackets the exact answer; only rows inside the bracket get the float64 check.
+        radius=spheres[...,3]
+        active=radius>0
+        active[...,self.payload_indices]=False
+        bounds=[]
+        for delta in (self.self_margin_m,-self.self_margin_m):
+            shifted=spheres.clone();shifted[...,3]=torch.where(active,radius+delta,-100.)
+            bounds.append(super()._self_collision_cost(shifted).reshape(-1)>0)
+        maybe,certain=bounds
+        collision=certain.clone()
+        band=torch.nonzero(maybe&~certain).reshape(-1)
+        if len(band):
+            self.self_band_rows+=len(band)
+            collision[band]=self.exact_robot_self_collision(spheres.reshape(-1,spheres.shape[-2],4)[band])
         return collision.to(spheres.dtype).reshape(*spheres.shape[:-2],1)
 
     def _world_collision_cost(self, state):
@@ -134,11 +168,18 @@ class SequentialValidity(GpuValidity):
         if self.attachments and not hasattr(self, "world_geometry"):
             import numpy as np
             objects = [item for item in self.snapshot.objects if item.object_id != "ground"]
-            matrices = torch.as_tensor(np.array([pose_matrix(item.pose) for item in objects]),
-                                       device=values.device, dtype=values.dtype)
-            half = torch.as_tensor([item.dimensions_m for item in objects],
-                                   device=values.device, dtype=values.dtype)/2
-            self.world_geometry = (matrices[:, :3, 3], matrices[:, :3, :3], half)
+            boxes = [(pose_matrix(item.pose)[:3, 3], pose_matrix(item.pose)[:3, :3], np.asarray(item.dimensions_m)/2)
+                     for item in objects]
+            # Payload spheres carry no world cost, so world meshes need the same exact
+            # payload OBB test as cuboids. Only box-shaped meshes have an exact OBB.
+            for item in self.snapshot.meshes:
+                box = box_mesh_obb(item)
+                if box is None:
+                    raise ValueError(f"payload exact world check requires box meshes: {item.object_id}")
+                boxes.append(box)
+            position, rotation, half = (torch.as_tensor(np.array([box[index] for box in boxes]),
+                                                        device=values.device, dtype=values.dtype) for index in range(3))
+            self.world_geometry = (position, rotation, half)
         costs = torch.zeros(len(values), device=values.device)
         # Bound temporary OBB/sphere tensors, including long RRT edge batches.
         for offset in range(0, len(values), 1024):

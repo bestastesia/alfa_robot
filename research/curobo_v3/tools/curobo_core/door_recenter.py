@@ -195,6 +195,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         snapshot = replace(self.snapshot, attachments=self.held if payload else (),
                            objects=tuple(replace(x, pose=relative_pose(x.pose, self.snapshot.state.base_pose))
                                          for x in self.snapshot.objects),
+                           meshes=tuple(replace(x, pose=relative_pose(x.pose, self.snapshot.state.base_pose))
+                                        for x in self.snapshot.meshes),
                            state=replace(self.snapshot.state, base_pose=Pose()))
         return SequentialValidity(checker, snapshot, self.robot,
             {side: tool_mesh_vertices(self, side) for side in ('left', 'right')}, geometry_tolerance=.0001)
