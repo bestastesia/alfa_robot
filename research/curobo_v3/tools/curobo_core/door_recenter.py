@@ -2201,6 +2201,7 @@ class DoorTask(_SequentialTask):
         segments = [(a,b,s,support,contact,None) for a,b,s,support,contact in self.motion_segments]
         segments += [(a,b,s,None,None,payload) for a,b,s,payload in getattr(self,'suffix_segments',[])]
         clock = 0.
+        caps = None
         try:
             for first,last,snapshot,support,contact,suffix_payload in segments:
                 rows = np.asarray(original['frames'][first:last+1], dtype=float)
@@ -2209,17 +2210,14 @@ class DoorTask(_SequentialTask):
                 self.store, self.support_pose, self.contact_pair = SceneStore(snapshot), support, contact
                 self.q = rows[0,-15:]
                 self.planner.snapshot = snapshot
-                limits_started = time.perf_counter()
-                if suffix_payload is None:
-                    validity = self.validity()
-                else:
-                    validity = self.planner.placement_validity(self.planner.checker(dict(self.request.tasks), payload=suffix_payload), suffix_payload)
-                breakdown = self.report.setdefault('stage_breakdown_ms', {}).setdefault(getattr(self, 'phase', 'time_parameterization'), {})
-                breakdown['limits_checker_setup'] = breakdown.get('limits_checker_setup', 0.)+(time.perf_counter()-limits_started)*1000
-                limits = validity.checker.kinematics.get_joint_limits()
-                caps = [np.abs(getattr(limits,k)[1].cpu().numpy()) for k in ('velocity','acceleration','jerk')]
-                if mobile:
-                    caps = [np.r_[np.ones(3), c] for c in caps]
+                # Polyline retiming reuses audited geometry; only cubic/stops fallbacks need a checker.
+                validity = None
+                if caps is None:
+                    # Joint limits belong to the robot model: identical for every loaded/empty checker.
+                    limits = self.validity().checker.kinematics.get_joint_limits()
+                    caps = [np.abs(getattr(limits,k)[1].cpu().numpy()) for k in ('velocity','acceleration','jerk')]
+                    if mobile:
+                        caps = [np.r_[np.ones(3), c] for c in caps]
                 navigation=phase in ('base_pick_reposition','base_reposition','base_return')
                 if navigation or len(rows)<2 or np.allclose(rows,rows[0],atol=1e-12,rtol=0):
                     sample = dict(positions=rows.tolist(), time_from_start_s=[0.]*len(rows),
@@ -2238,8 +2236,12 @@ class DoorTask(_SequentialTask):
                         geometry_reused = method=='validated_polyline'
                         # Polyline retiming changes timestamps only: every segment is the same
                         # previously validated dense geometry. Cubic/stops remain full fallbacks.
-                        if not geometry_reused and not bool(validity.mask(self.tensor(np.asarray(validation)[:,-15:])).all()):
-                            continue
+                        if not geometry_reused:
+                            if validity is None:
+                                validity = (self.validity() if suffix_payload is None else
+                                            self.planner.placement_validity(self.planner.checker(dict(self.request.tasks), payload=suffix_payload), suffix_payload))
+                            if not bool(validity.mask(self.tensor(np.asarray(validation)[:,-15:])).all()):
+                                continue
                         if suffix_payload is None:
                             active = np.flatnonzero(np.ptp(rows[:,-15:],axis=0)>1e-9).tolist()
                             line = None
