@@ -26,6 +26,7 @@ from .door_sequential import (_SequentialTask,check_frozen,corners,mesh_contact_
                               tool_mesh_vertices)
 from .door_sequential_validity import ReducedValidity, SequentialValidity
 from .resource_stats import record_build
+from .urdf_fk import BatchToolFk
 from .planner import CycleBlocked, FullCyclePlanner
 from .scene import AttachedObject, CollisionPolicy, Pose, SceneObject, SceneStore, digest
 from .torque import default_torque_model
@@ -123,6 +124,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
 
     def __init__(self, assets):
         super().__init__(assets)
+        self.batch_fk = BatchToolFk(self.fk_robot, ('left_tool0', 'right_tool0', 'arm_carriage'), ACTIVE_JOINTS)
         self.planner_kind = 'rrtconnect'
         self._door_ik_key = None
         self._door_ik = None
@@ -328,7 +330,7 @@ class DoorTask(_SequentialTask):
                     row=mapped[0].copy();row[RIGHT]=arm;endpoints.append(row)
         endpoints=np.unique(np.round(endpoints,7),axis=0) if endpoints else np.empty((0,15))
         if len(endpoints):endpoints=endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
-        return sum((lambda error:error[0]<=.001 and error[1]<=math.radians(.5))(pose_error(self.tool(row,'right'),target)) for row in endpoints)
+        return int(self.exact_pose_mask(endpoints,'right',target).sum())
 
     def find_right_upper_regrasp_base(self):
         search_started=time.perf_counter()
@@ -538,11 +540,7 @@ class DoorTask(_SequentialTask):
         self.contact_pair=('left',item.object_id)
         if len(rows):rows=rows[self.validity().mask(self.tensor(rows)).cpu().numpy()]
         self.contact_pair=None
-        exact=[]
-        for row in rows:
-            translation,angle=pose_error(self.tool(row,'left'),target)
-            if translation<=.001 and angle<=math.radians(.5):exact.append(row)
-        rows=np.asarray(exact).reshape(-1,15)
+        rows=rows[self.exact_pose_mask(rows,'left',target)]
         if len(rows):
             weights=np.array([5.]+[1.]*14);rows=rows[np.argsort(np.linalg.norm((rows-self.q)*weights,axis=1))]
         return rows
@@ -720,8 +718,53 @@ class DoorTask(_SequentialTask):
             kept.append(int(targets[np.argmax(good)]) if good.any() else source+1)
         return values[kept]
 
+    def tool_poses(self, rows, side):
+        """self.tool for many rows: the same URDF joint chain in batched float64.
+
+        Exact for every row. A per-row yourdfpy read can lag it by ~1e-8 per joint: trimesh keeps
+        an edge matrix when its replacement is within 1e-8 of the previous read.
+        """
+        rows = np.asarray(rows, dtype=float).reshape(-1, 15)
+        batch_fk = getattr(getattr(self, 'planner', None), 'batch_fk', None)
+        if batch_fk is None:
+            return np.asarray([self.tool(row, side) for row in rows]).reshape(-1, 4, 4)
+        return batch_fk.transforms(rows, side+'_tool0')
+
+    def pose_errors(self, rows, side, target):
+        poses = self.tool_poses(rows, side)
+        return (np.linalg.norm(poses[:, :3, 3]-target[:3, 3], axis=1),
+                Rotation.from_matrix(np.transpose(poses[:, :3, :3], (0, 2, 1))@target[:3, :3]).magnitude())
+
+    def exact_pose_mask(self, rows, side, target, translation_m=.001, angle_rad=math.radians(.5), margin=1e-9):
+        """pose_error(self.tool(row, side), target) within tolerance, per row.
+
+        Batched FK decides rows farther than `margin` from both limits; only rows inside that
+        band repeat the per-row URDF FK. Decisions equal the per-row ones unless a stale yourdfpy
+        read (see tool_poses) puts a row on the other side of a limit within ~1e-8.
+        """
+        rows = np.asarray(rows, dtype=float).reshape(-1, 15)
+        if not len(rows):
+            return np.zeros(0, dtype=bool)
+        translation, angle = self.pose_errors(rows, side, target)
+        result = (translation <= translation_m-margin) & (angle <= angle_rad-margin)
+        outside = (translation > translation_m+margin) | (angle > angle_rad+margin)
+        for index in np.flatnonzero(~result & ~outside):
+            exact_translation, exact_angle = pose_error(self.tool(rows[index], side), target)
+            result[index] = exact_translation <= translation_m and exact_angle <= angle_rad
+        return result
+
+    def max_pose_drift(self, rows, side, target, translation_m=.001, angle_rad=math.radians(.5), margin=1e-9):
+        """Largest tool pose error along rows; rows near or over a limit use the URDF FK."""
+        rows = np.asarray(rows, dtype=float).reshape(-1, 15)
+        if not len(rows):
+            return 0., 0.
+        translation, angle = self.pose_errors(rows, side, target)
+        for index in np.flatnonzero((translation > translation_m-margin) | (angle > angle_rad-margin)):
+            translation[index], angle[index] = pose_error(self.tool(rows[index], side), target)
+        return float(translation.max()), float(angle.max())
+
     def path_rotation_metrics(self, rows, side):
-        transforms = [self.tool(row, side) for row in np.asarray(rows)]
+        transforms = self.tool_poses(rows, side)
         rotations = Rotation.from_matrix(np.asarray([matrix[:3, :3] for matrix in transforms]))
         steps = ((rotations[:-1].inv()*rotations[1:]).magnitude()
                  if len(rotations) > 1 else np.zeros(0))
@@ -1044,12 +1087,7 @@ class DoorTask(_SequentialTask):
         mapped = mapped[found]
         if len(mapped):
             mapped = mapped[validity.mask(self.tensor(mapped)).cpu().numpy()]
-        pose_valid = []
-        for row in mapped:
-            translation, angle = pose_error(self.tool(row, 'left'), self.targets['left'])
-            if translation <= .001 and angle <= math.radians(.5):
-                pose_valid.append(row)
-        mapped = np.asarray(pose_valid).reshape(-1, 15)
+        mapped = mapped[self.exact_pose_mask(mapped, 'left', self.targets['left'])].reshape(-1, 15)
         before_sweep = len(mapped)
         self.future_lowering_paths = {}
         if len(mapped):
@@ -1256,11 +1294,10 @@ class DoorTask(_SequentialTask):
         if len(mapped):
             mapped = mapped[validity.mask(self.tensor(mapped)).cpu().numpy()]
         exact = []
-        for row in mapped:
-            translation, angle = pose_error(self.tool(row, 'right'), self.targets['right'])
-            held_translation, held_angle = pose_error(self.tool(row, 'left'), self.targets['left'])
-            if (translation <= .001 and angle <= math.radians(.5)
-                    and held_translation <= .001 and held_angle <= math.radians(.5)):
+        exact_mask = (self.exact_pose_mask(mapped, 'right', self.targets['right']) &
+                      self.exact_pose_mask(mapped, 'left', self.targets['left'])) if len(mapped) else np.zeros(0, dtype=bool)
+        for row, accepted in zip(mapped, exact_mask):
+            if accepted:
                 exact.append(row)
         mapped = np.asarray(exact).reshape(-1, 15)
         if len(mapped):
@@ -1418,9 +1455,8 @@ class DoorTask(_SequentialTask):
         else:
             candidates = self.ik(side, self.targets[side], active)
             initial_count = len(candidates)
-            candidates = np.asarray([q for q in candidates
-                if (lambda error: error[0] <= .001 and error[1] <= math.radians(.5))(
-                    pose_error(self.tool(q, side), self.targets[side]))]).reshape(-1, 15)
+            candidates = np.asarray(candidates).reshape(-1, 15)
+            candidates = candidates[self.exact_pose_mask(candidates, side, self.targets[side])]
             self.report.setdefault('recenter_candidates', []).append(dict(stage=self.phase,
                 ik_valid=initial_count, future_sweep_valid=len(candidates),
                 generation_ms=(time.perf_counter()-began)*1000))
@@ -1508,14 +1544,9 @@ class DoorTask(_SequentialTask):
         analytic_count = len(endpoints)
         if len(endpoints):
             endpoints = endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
-        exact = []
-        for row in endpoints:
-            translation, angle = pose_error(self.tool(row, 'right'), target)
-            held_translation, held_angle = pose_error(self.tool(row, 'left'), self.targets['left'])
-            if (translation <= .001 and angle <= math.radians(.5)
-                    and held_translation <= .001 and held_angle <= math.radians(.5)):
-                exact.append(row)
-        endpoints = np.asarray(exact).reshape(-1, 15)
+        endpoints = np.asarray(endpoints).reshape(-1, 15)
+        endpoints = endpoints[self.exact_pose_mask(endpoints, 'right', target) &
+                              self.exact_pose_mask(endpoints, 'left', self.targets['left'])]
         self.planner.active_side='right'
         extraction_tolerance=.05 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         path=direct_path;stats={'tier':'analytic_compensated','attempts':direct_attempts} if direct_path is not None else None
@@ -1544,17 +1575,13 @@ class DoorTask(_SequentialTask):
             self.fail('compensated Cartesian upper extraction found no fully validated path')
         path = np.asarray(path)
         progress=[];lateral=[];angles=[]
-        for row in path:
-            actual=self.tool(row,'right');delta=actual[:3,3]-origin[:3,3];along=float(np.dot(delta,self.wall_outward_direction));progress.append(along)
+        for actual in self.tool_poses(path,'right'):
+            delta=actual[:3,3]-origin[:3,3];along=float(np.dot(delta,self.wall_outward_direction));progress.append(along)
             lateral.append(float(np.linalg.norm(delta-self.wall_outward_direction*along)));angles.append(float(pose_error(actual,origin)[1]))
         self.report['upper_extraction_line_metrics']=dict(max_lateral_m=max(lateral),max_rotation_deg=math.degrees(max(angles)),
             final_distance_m=progress[-1],minimum_progress_step_m=min(np.diff(progress),default=0.),required_distance_m=distance)
         self.audit(path,list(range(15)),start,line=('right',origin,self.wall_outward_direction,distance,extraction_tolerance))
-        max_translation = max_angle = 0.
-        for row in path:
-            translation, angle = pose_error(self.tool(row, 'left'), self.targets['left'])
-            max_translation = max(max_translation, translation)
-            max_angle = max(max_angle, angle)
+        max_translation, max_angle = self.max_pose_drift(path, 'left', self.targets['left'])
         if max_translation > .001 or max_angle > math.radians(.5):
             self.fail('lower box drifted during compensated upper extraction')
         self.report['upper_extraction_compensation'].update(
@@ -1780,8 +1807,7 @@ class DoorTask(_SequentialTask):
         rows=np.unique(np.round(rows,7),axis=0) if rows else np.empty((0,15));rows,found=mapper(rows);rows=rows[found]
         self.contact_pair=('right',item.object_id)
         if len(rows):rows=rows[self.validity().mask(self.tensor(rows)).cpu().numpy()]
-        self.contact_pair=None;rows=np.asarray([row for row in rows if (lambda error:error[0]<=.001 and error[1]<=math.radians(.5))(
-            pose_error(self.tool(row,'right'),target))]).reshape(-1,15)
+        self.contact_pair=None;rows=np.asarray(rows).reshape(-1,15);rows=rows[self.exact_pose_mask(rows,'right',target)]
         if len(rows):rows=rows[np.argsort(np.linalg.norm((rows-self.q)*np.array([5.]+[1.]*14),axis=1))]
         return rows
 
@@ -1842,8 +1868,7 @@ class DoorTask(_SequentialTask):
                     row=self.q.copy();row[0],row[moving]=lift,arm;raw.append(row)
         raw=np.unique(np.round(raw,7),axis=0) if raw else np.empty((0,15));mapped,found=mapper(raw);mapped=mapped[found]
         if len(mapped):mapped=mapped[validity.mask(self.tensor(mapped)).cpu().numpy()]
-        mapped=np.asarray([row for row in mapped if (lambda error:error[0]<=.001 and error[1]<=math.radians(.5))(
-            pose_error(self.tool(row,moving_side),self.targets[moving_side]))]).reshape(-1,15)
+        mapped=np.asarray(mapped).reshape(-1,15);mapped=mapped[self.exact_pose_mask(mapped,moving_side,self.targets[moving_side])]
         return mapped,mapper,validity,dict(lifts=lifts,analytic_candidates=len(raw),support_ik_candidates=int(found.sum()),valid_candidates=len(mapped))
 
     def dual_support_bridge(self,goal,steps=32):
@@ -1962,7 +1987,7 @@ class DoorTask(_SequentialTask):
                     row=mapped[0].copy();row[RIGHT]=arm;endpoints.append(row)
         endpoints=np.unique(np.round(endpoints,7),axis=0) if endpoints else np.empty((0,15))
         if len(endpoints):endpoints=endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
-        endpoints=np.asarray([row for row in endpoints if (lambda error:error[0]<=.001 and error[1]<=math.radians(.5))(pose_error(self.tool(row,'right'),target))]).reshape(-1,15)
+        endpoints=np.asarray(endpoints).reshape(-1,15);endpoints=endpoints[self.exact_pose_mask(endpoints,'right',target)]
         self.planner.active_side='right';path=stats=None
         if len(endpoints):
             path,stats=plan_cartesian_transport(self.planner,start,endpoints,validity.checker,budget_s=4.,seed=self.request.seed+733,
@@ -1991,11 +2016,7 @@ class DoorTask(_SequentialTask):
         origin = self.tool(self.q, 'right')
         tolerance=.0012 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         self.audit(rows,list(range(15)),self.q,line=('right',origin,np.array((0.,0.,-1.)),self.lower_distance,tolerance))
-        max_translation = max_angle = 0.
-        for row in rows:
-            translation, angle = pose_error(self.tool(row, 'left'), self.targets['left'])
-            max_translation = max(max_translation, translation)
-            max_angle = max(max_angle, angle)
+        max_translation, max_angle = self.max_pose_drift(rows, 'left', self.targets['left'])
         if max_translation > .001 or max_angle > math.radians(.5):
             self.fail('recentered lower box drifted during compensated upper lowering')
         self.report['lowering_compensation'] = dict(

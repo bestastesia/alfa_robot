@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT/'tools'))
 from curobo_core.conveyor import conveyor_pair
 from curobo_core.door_sequential_validity import SequentialValidity, box_mesh_obb, material_self_overlap
 from curobo_core.resource_stats import record_build, resource_delta, resource_snapshot
+from curobo_core.urdf_fk import BatchToolFk
 from curobo_core.scene import MeshObject, Pose
 
 
@@ -102,6 +103,43 @@ class PayloadWorldMeshTests(unittest.TestCase):
         tetrahedron = MeshObject('tetra', ((0., 0., 0.), (1., 0., 0.), (0., 1., 0.), (0., 0., 1.)),
                                 ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)), Pose())
         self.assertIsNone(box_mesh_obb(tetrahedron))
+
+
+class BatchUrdfFkTests(unittest.TestCase):
+    def test_batched_tool_chain_equals_yourdfpy(self):
+        import yourdfpy
+        from curobo_core.contracts import ACTIVE_JOINTS, PlannerAssets
+        urdf = yourdfpy.URDF.load(PlannerAssets().urdf, load_meshes=False, build_scene_graph=True)
+        frames = ('left_tool0', 'right_tool0', 'arm_carriage')
+        fk = BatchToolFk(urdf, frames, ACTIVE_JOINTS)
+        rows = np.random.default_rng(5).uniform(-2.5, 2.5, (64, 15))
+        rows[:, 0] = np.random.default_rng(6).uniform(-.3, .1, 64)
+        batch = {frame: fk.transforms(rows, frame) for frame in frames}
+        for index, row in enumerate(rows):
+            mapping = dict(zip(ACTIVE_JOINTS, row))
+            urdf.update_cfg({name: mapping.get(name, 0.) for name in urdf.actuated_joint_names})
+            for frame in frames:
+                np.testing.assert_allclose(batch[frame][index], urdf.get_transform(frame, urdf.base_link), atol=1e-12, rtol=0)
+
+    def test_yourdfpy_reads_depend_on_history_and_batched_fk_does_not(self):
+        """trimesh keeps an edge matrix whose replacement is within 1e-8 of the previous read."""
+        import yourdfpy
+        from curobo_core.contracts import ACTIVE_JOINTS, PlannerAssets
+        urdf = yourdfpy.URDF.load(PlannerAssets().urdf, load_meshes=False, build_scene_graph=True)
+        fk = BatchToolFk(urdf, ('right_tool0',), ACTIVE_JOINTS)
+        read = lambda row: (urdf.update_cfg({name: dict(zip(ACTIVE_JOINTS, row)).get(name, 0.)
+                                             for name in urdf.actuated_joint_names}),
+                            urdf.get_transform('right_tool0', urdf.base_link).copy())[1]
+        row = np.random.default_rng(8).uniform(-1.5, 1.5, 15)
+        row[0] = -.1
+        moved = row.copy()
+        moved[9] += 5e-9
+        read(row)
+        stale = read(moved)
+        exact = fk.transforms(moved[None], 'right_tool0')[0]
+        self.assertGreater(np.abs(stale-exact).max(), 1e-10)
+        read(row+.1)
+        np.testing.assert_allclose(read(moved), exact, atol=1e-12, rtol=0)
 
 
 class ResourceStatsTests(unittest.TestCase):
