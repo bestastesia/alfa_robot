@@ -25,6 +25,7 @@ from .door_extract import DoorExtraction
 from .door_sequential import (_SequentialTask,check_frozen,corners,mesh_contact_proof,pose_error,
                               tool_mesh_vertices)
 from .door_sequential_validity import ReducedValidity, SequentialValidity
+from .resource_stats import record_build
 from .planner import CycleBlocked, FullCyclePlanner
 from .scene import AttachedObject, CollisionPolicy, Pose, SceneObject, SceneStore, digest
 from .torque import default_torque_model
@@ -142,6 +143,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.ik_cache_hit = self._door_ik is not None and key == self._door_ik_key
         if not self.ik_cache_hit:
             self._door_ik = None
+            build_started = time.perf_counter()
             self._door_ik = InverseKinematics(InverseKinematicsCfg.create(
                 robot=copy.deepcopy(robot), scene_model=to_curobo_scene(snapshot),
                 collision_cache={'cuboid': max(40, len(snapshot.objects)), 'mesh': len(snapshot.meshes)},
@@ -149,6 +151,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                 position_tolerance=.002, orientation_tolerance=math.radians(1),
                 override_iters_for_multi_link_ik=500, optimizer_collision_activation_distance=.005,
                 random_seed=random_seed))
+            record_build(self, 'door_ik', build_started)
             self._door_ik_key = key
         return self._door_ik
 
@@ -178,11 +181,14 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     def checker(self, boxes, payload=False, mobile=False):
         if mobile:
             raise ValueError('door suffix does not plan navigation')
+        build_started = time.perf_counter()
         robot = loaded_robot(self.robot, self.box_fit, attachments=self.held) if payload else self.robot
-        return RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
+        checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
             robot_config=robot, scene_model=to_curobo_scene(self.snapshot),
             n_cuboids=max(40, len(self.snapshot.objects)), n_meshes=len(self.snapshot.meshes),
             collision_activation_distance=0.))
+        record_build(self, 'placement_checker_loaded' if payload else 'placement_checker_empty', build_started)
+        return checker
 
     def placement_validity(self, checker, payload):
         # The ordinary suffix works in a fixed *arrived* base frame; retain the real world geometry.
@@ -323,6 +329,7 @@ class DoorTask(_SequentialTask):
         return sum((lambda error:error[0]<=.001 and error[1]<=math.radians(.5))(pose_error(self.tool(row,'right'),target)) for row in endpoints)
 
     def find_right_upper_regrasp_base(self):
+        search_started=time.perf_counter()
         old=self.pick_base_pose;world_store=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
         matrix=pose_matrix(old);world_outward=matrix[:3,:3]@self.wall_outward_direction;world_lateral=matrix[:3,1]
         old_yaw=2*math.atan2(old.quaternion_wxyz[3],old.quaternion_wxyz[0]);attempts=[]
@@ -360,9 +367,9 @@ class DoorTask(_SequentialTask):
                     attempts.append(dict(inward_m=inward,lateral_m=lateral,yaw_delta_deg=yaw_delta,state_valid=state_valid,precontact_candidates=count,selected_z_offset_m=selected_offset,certified_contact_path=contact_path))
                     if contact_path:
                         self.upper_right_regrasp_z_offset=float(selected_offset or 0.);self.world_request.snapshot=replace(world_request,state=replace(world_request.state,base_pose=candidate))
-                        self.enter('base_pick_reposition');self.append([self.q]);self.report['right_upper_regrasp_search']=dict(success=True,attempts=attempts,selected=attempts[-1]);return
+                        self.record_operation_time('regrasp_base_search',search_started);self.enter('base_pick_reposition');self.append([self.q]);self.report['right_upper_regrasp_search']=dict(success=True,attempts=attempts,selected=attempts[-1]);return
         self.pick_base_pose=old;self.store=SceneStore(snapshot_in_base(world_store));self.request.snapshot=snapshot_in_base(world_request);upper=self.request.snapshot.object(f'wall_box_{self.request.upper_box:02d}');self.wall_inward_direction=pose_matrix(upper.pose)[:3,0];self.wall_outward_direction=-self.wall_inward_direction;self.validity_cache={};self.cached_key=None
-        self.report['right_upper_regrasp_search']=dict(success=False,attempts=attempts);self.fail('no base arrival state can regrasp the upper box with the right arm')
+        self.report['right_upper_regrasp_search']=dict(success=False,attempts=attempts);self.record_operation_time('regrasp_base_search',search_started);self.fail('no base arrival state can regrasp the upper box with the right arm')
 
     def find_upper_regrasp_base(self):
         old=self.pick_base_pose;world_store=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
@@ -612,7 +619,9 @@ class DoorTask(_SequentialTask):
                     options.append((candidate,contact,escape))
                     if escape>=.1 or len(options)>=8:break
                     continue
+                gate_started=time.perf_counter()
                 reachable,downstream=self.upper_endpoint_lower_reachability(item,contact[-1])
+                self.record_operation_time('lower_reachability_gate',gate_started)
                 self.report['attempts'].append(dict(stage='right_contact',operation='lower_reachability_gate',
                                                     reachable=reachable,rolls=downstream))
                 if reachable:
@@ -1144,7 +1153,7 @@ class DoorTask(_SequentialTask):
         self.enter('right_recenter')
         began = time.perf_counter()
         candidates, details = self.latest_compact_candidates()
-        details['generation_ms'] = (time.perf_counter()-began)*1000
+        details['generation_ms'] = self.record_operation_time('atlas_candidates', began)
         self.report['latest_compact_atlas'] = details
         if not len(candidates):
             self.fail('door-conditioned latest compact atlas has no valid endpoint')
@@ -1158,10 +1167,13 @@ class DoorTask(_SequentialTask):
         stats = []
         seed_bank=(65,41,17,71,53,89)
         for search_seed in seed_bank:
+            seed_started = time.perf_counter()
             path = self.search(candidates,list(range(15)),budget_s=.75,seed_value=search_seed,
                                stop_at_first_valid=False)
+            self.record_operation_time('seed_bank_search', seed_started)
             search_stats = self.report['attempts'][-1].get('stats')
             stats.append(dict(seed=search_seed,stats=search_stats))
+            post_started = time.perf_counter()
             if path is not None:
                 validity = self.validity()
                 stride = max(1, len(path)//128)
@@ -1177,6 +1189,7 @@ class DoorTask(_SequentialTask):
                 extra_sum = left['extra_deg']+right['extra_deg']
                 score = max(left['extra_deg'],right['extra_deg'])+.1*extra_sum+.01*max(0.,backtrack)
                 alternatives.append((score,path,left,right,search_stats))
+                self.record_operation_time('seed_bank_postprocess', post_started)
                 if left['extra_deg'] <= 65. and right['extra_deg'] <= 65.:
                     break
         self.report['latest_compact_search'] = dict(
@@ -1578,7 +1591,9 @@ class DoorTask(_SequentialTask):
             self.report.setdefault('contact_geometry', []).append(entry)
             if not proof['valid']:
                 continue
+            rows_started=time.perf_counter()
             rows=self.supported_lower_contact_rows(item,target,support_mapper,lifts)
+            self.record_operation_time('lower_contact_rows',rows_started)
             entry['support_compensated_contact_candidates']=len(rows)
             entry['ranked_contact_candidates_tested']=min(8,len(rows))
             for contact_q in rows[:8]:
@@ -1985,9 +2000,9 @@ class DoorTask(_SequentialTask):
             if clearance<1e-6:self.fail('rack-supported lower recenter did not clear the wall')
             self.find_right_upper_regrasp_base();self.skip_upper_lower_reachability=True
             self.contact_upper_ranked(f'wall_box_{self.request.upper_box:02d}',[0]+RIGHT);self.skip_upper_lower_reachability=False
-            lowering,attempts=self.validate_future_lowering(self.q)
+            lowering_started=time.perf_counter();lowering,attempts=self.validate_future_lowering(self.q);self.record_operation_time('future_lowering_validation',lowering_started)
             self.report['post_regrasp_lowering_attempts']=attempts
-            if lowering is None:lowering=self.plan_compensated_upper_lowering()
+            if lowering is None:lowering_started=time.perf_counter();lowering=self.plan_compensated_upper_lowering();self.record_operation_time('compensated_lowering_search',lowering_started)
             if lowering is not None:
                 self.future_lowering_paths={tuple(np.round(self.q,6)):lowering};self.lower_upper_with_lower_hold()
             else:self.report['upper_lowering_skipped']='no certified compensated descent; extract upper at its current height'
@@ -2102,10 +2117,12 @@ class DoorTask(_SequentialTask):
         torque_cache=getattr(self.planner,'_torque_model_cache',{})
         model=torque_cache.get(model_key)
         if model is None:
+            build_started = time.perf_counter()
             model = default_torque_model(
                 self.planner.args, payload_mass_kg=payload_mass_kg,
                 payload_dimensions=self.planner.box_fit['dimensions_m'],
                 torque_limit_scale=torque_limit_scale)
+            record_build(self.planner, 'torque_model', build_started)
             torque_cache[model_key]=model
             self.planner._torque_model_cache=torque_cache
         names = list(self.report['joint_names'])
@@ -2190,10 +2207,13 @@ class DoorTask(_SequentialTask):
                 self.store, self.support_pose, self.contact_pair = SceneStore(snapshot), support, contact
                 self.q = rows[0,-15:]
                 self.planner.snapshot = snapshot
+                limits_started = time.perf_counter()
                 if suffix_payload is None:
                     validity = self.validity()
                 else:
                     validity = self.planner.placement_validity(self.planner.checker(dict(self.request.tasks), payload=suffix_payload), suffix_payload)
+                breakdown = self.report.setdefault('stage_breakdown_ms', {}).setdefault(getattr(self, 'phase', 'time_parameterization'), {})
+                breakdown['limits_checker_setup'] = breakdown.get('limits_checker_setup', 0.)+(time.perf_counter()-limits_started)*1000
                 limits = validity.checker.kinematics.get_joint_limits()
                 caps = [np.abs(getattr(limits,k)[1].cpu().numpy()) for k in ('velocity','acceleration','jerk')]
                 if mobile:

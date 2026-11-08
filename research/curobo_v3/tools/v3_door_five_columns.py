@@ -11,9 +11,11 @@ import subprocess
 import time
 
 import numpy as np
+import torch
 from curobo_core.adapter import matrix_pose,pose_matrix
 from curobo_core.contracts import ACTIVE_JOINTS,PlannerAssets
 from curobo_core.door_recenter import (DOOR_COLUMN_ORDER,DoorPlanner,DoorTask,ROOT,door_pair,door_request)
+from curobo_core.resource_stats import resource_delta,resource_snapshot
 from curobo_core.scene import AttachedObject,Pose
 
 
@@ -37,6 +39,124 @@ def mirror_round(source,source_path,planner,request):
     result['timed_segments']=[dict(segment,**{key:[_mirror(row).tolist() for row in segment[key]] for key in ('positions','velocities','accelerations','jerks') if key in segment}) for segment in source.get('timed_segments',())]
     release=phases.index('release');result['predicted_scene_events']=[dict(phase='release',object_id=f'wall_box_{value:02d}',frame_index=release) for value in (15,20)];final=frames[-1];yaw=final[2];base=Pose((final[0],final[1],0.),(math.cos(yaw/2),0.,0,math.sin(yaw/2)));objects=tuple(x for x in request.snapshot.objects if x.object_id not in {'wall_box_15','wall_box_20'});result['final_snapshot']=replace(request.snapshot,objects=objects,attachments=(),state=request.snapshot.state.with_positions(dict(zip(ACTIVE_JOINTS,final[3:])),base)).to_dict();task=DoorTask.__new__(DoorTask);task.planner=planner;task.report=result;task.phase='rnea_dynamics';task.fail=lambda message:(_ for _ in ()).throw(RuntimeError(message));task.apply_dynamics();result['symmetry_torque_recomputed']=True;result['source_planning_total_ms']=source.get('total_ms');result['source_stage_timing_ms']=source.get('stage_timing_ms',{});result['symmetry_generation_ms']=(time.perf_counter()-began)*1000;result['total_ms']=result['symmetry_generation_ms'];result['stage_timing_ms']={'symmetry_transform_and_rnea':result['total_ms']};result['stage_breakdown_ms']={'symmetry_transform_and_rnea':{'symmetry_and_dynamics':result['total_ms']}};result['stage_timing_spans']=[{'stage':'symmetry_transform_and_rnea','start_ms':0.,'wall_ms':result['total_ms']}];return result
 
+ASSET_NAMES=('robot_config','mobile_robot_config','urdf','named_poses','box_fit')
+
+def acquire_gpu(lock,wait_s):
+    """Hold the shared GPU lock and require no other compute process before timing."""
+    deadline=time.monotonic()+wait_s
+    while True:
+        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        except BlockingIOError:occupied='shared lock held'
+        else:
+            occupied=subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader'],text=True).strip()
+            if not occupied:return
+            fcntl.flock(lock,fcntl.LOCK_UN)
+        if time.monotonic()>=deadline:raise RuntimeError('GPU unavailable: '+occupied)
+        time.sleep(1)
+
+def load_assets(assets_root):
+    assets=PlannerAssets()
+    return replace(assets,**{name:assets_root/getattr(assets,name).relative_to(ROOT) for name in ASSET_NAMES})
+
+def asset_identity(assets):
+    return {name:dict(path=str(getattr(assets,name)),sha256=hashlib.sha256(getattr(assets,name).read_bytes()).hexdigest()) for name in ASSET_NAMES}
+
+def source_identity():
+    return {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((ROOT/'tools').rglob('*.py'))}
+
+def plan_round(planner,number,column,removed,seed,policy,context,rounds,progress=print):
+    """One door pair, timed end to end from the request to the RNEA-validated trajectory."""
+    torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats();resources=resource_snapshot(planner)
+    round_started=time.perf_counter();error=None
+    request=door_request(planner,seed,column,removed);planner.set_snapshot(request.snapshot)
+    if column==0:
+        source_path=Path(rounds[0]['path']);report=mirror_round(json.loads(source_path.read_text()),source_path,planner,request)
+        report.update(initial_snapshot=request.snapshot.to_dict(),column=column,round_index=number,removed_box_ids=sorted(removed),**context)
+    else:
+        task=DoorTask(planner,request,'joint_rrt',policy,progress=lambda text:progress(f'列{column} · {text}'))
+        task.left_grasp_rolls_deg=(0.,30.,45.);task.right_grasp_rolls_deg=(0.,30.,-30.,45.,-45.)
+        task.report['requested_left_grasp_rolls_deg']=list(task.left_grasp_rolls_deg);task.report['requested_right_grasp_rolls_deg']=list(task.right_grasp_rolls_deg)
+        try:task.run();task.enter('time_parameterization');task.finalize_timing();task.enter('rnea_dynamics');task.apply_dynamics()
+        except Exception as exc:
+            import traceback
+            error=dict(type=type(exc).__name__,stage=task.phase,message=str(exc),traceback=traceback.format_exc());task.report.update(success=False,error=error)
+        finally:
+            task.close_stage_timing();task.report.update(initial_snapshot=request.snapshot.to_dict(),final_snapshot=task.store.snapshot().to_dict(),
+                plan_cache=dict(enabled=False,hit=False),column=column,round_index=number,removed_box_ids=sorted(removed),**context)
+        report=task.report
+    torch.cuda.synchronize();report['total_ms']=(time.perf_counter()-round_started)*1000
+    report['resource_builds']=resource_delta(resources,resource_snapshot(planner));report['peak_gpu_memory_mb']=torch.cuda.max_memory_allocated()/2**20
+    return report,error
+
+def run_sequence(planner,seed,policy,policy_path,assets,output_dir,progress=print):
+    """Plan the five rounds on one resident planner; each round replans and removes the released pair."""
+    output_dir.mkdir(parents=True,exist_ok=True)
+    if any(output_dir.iterdir()):raise ValueError(f'output directory must be empty: {output_dir}')
+    removed=set();rounds=[];aggregate=dict(
+        success=False,sequence=True,sequence_kind='five_vertical_door_pairs',
+        column_order=list(DOOR_COLUMN_ORDER),frames=[],phases=[],payload=[],attachments_by_frame=[],
+        time_from_start_s=[],velocities=[],accelerations=[],jerks=[],frame_rounds=[],predicted_scene_events=[],
+        stage_timing_ms={},stage_breakdown_ms={},stage_timing_spans=[],timed_segments=[],
+        contact_geometry=[],round_frame_ranges=[],dual_recenter_verifications=[],torque_validations=[])
+    began=time.perf_counter();identity=source_identity()
+    context=dict(source_identity=identity,model_id=planner.model_id,assets=asset_identity(assets),
+                 policy_sha256=hashlib.sha256(policy_path.read_bytes()).hexdigest())
+    for number,column in enumerate(DOOR_COLUMN_ORDER):
+        lower,upper=door_pair(column)
+        report,error=plan_round(planner,number,column,removed,seed,policy,context,rounds,progress)
+        path=output_dir/f'round-{number+1:02d}-column-{column}.json';path.write_text(json.dumps(report,ensure_ascii=False)+'\n')
+        record=dict(round=number+1,column=column,lower_box=lower,upper_box=upper,path=str(path),
+                    success=report['success'],total_ms=report['total_ms'],motion_duration_s=report.get('motion_duration_s'),error=error,
+                    resource_builds=report['resource_builds'],peak_gpu_memory_mb=report['peak_gpu_memory_mb'])
+        rounds.append(record);progress(json.dumps(record,ensure_ascii=False))
+        if not report['success']:break
+        if report['final_snapshot']['attachments']:
+            raise RuntimeError('round ended with attached boxes')
+        offset=aggregate['time_from_start_s'][-1] if aggregate['time_from_start_s'] else 0.
+        frame_offset=len(aggregate['frames'])
+        for key in ('frames','phases','payload','attachments_by_frame','velocities','accelerations','jerks'):
+            aggregate[key].extend(report[key])
+        aggregate['time_from_start_s'].extend(offset+value for value in report['time_from_start_s'])
+        aggregate['frame_rounds'].extend([number]*len(report['frames']))
+        for stage,value in report.get('stage_timing_ms',{}).items():
+            aggregate['stage_timing_ms'][stage]=aggregate['stage_timing_ms'].get(stage,0.)+value
+        for stage,detail in report.get('stage_breakdown_ms',{}).items():
+            target=aggregate['stage_breakdown_ms'].setdefault(stage,{})
+            for key,value in detail.items():target[key]=target.get(key,0.)+value
+        round_start_ms=sum(item['total_ms'] for item in rounds[:-1])
+        aggregate['stage_timing_spans'].extend(dict(item,start_ms=item['start_ms']+round_start_ms,
+            round=number,column=column) for item in report.get('stage_timing_spans',()))
+        aggregate['timed_segments'].extend(dict(item,frame_start=item['frame_start']+frame_offset,
+            frame_end=item['frame_end']+frame_offset,round=number,column=column)
+            for item in report.get('timed_segments',()))
+        aggregate['contact_geometry'].extend(dict(item,round=number,column=column)
+            for item in report.get('contact_geometry',()))
+        aggregate['dual_recenter_verifications'].append(report.get('dual_recenter_verification'))
+        aggregate['torque_validations'].append(report.get('torque_validation'))
+        aggregate['round_frame_ranges'].append(dict(round=number,column=column,start=frame_offset,
+            end=len(aggregate['frames'])-1,lower_box=lower,upper_box=upper))
+        for event in report['predicted_scene_events']:
+            event=dict(event);event['frame_index']+=frame_offset;event['round']=number;event['column']=column
+            if 'geometric_frame_index' in event:event['geometric_frame_index']+=frame_offset
+            aggregate['predicted_scene_events'].append(event)
+        removed.update((lower,upper))
+    torque=[item for item in aggregate['torque_validations'] if item]
+    compact=[item for item in aggregate['dual_recenter_verifications'] if item]
+    aggregate.update(rounds=rounds,completed_box_ids=sorted(removed),remaining_box_ids=sorted(set(range(25))-removed),
+                     total_ms=(time.perf_counter()-began)*1000,success=len(rounds)==5 and all(item['success'] for item in rounds),
+                     motion_duration_s=aggregate['time_from_start_s'][-1] if aggregate['time_from_start_s'] else 0.,
+                     joint_names=rounds and json.loads(Path(rounds[0]['path']).read_text())['joint_names'],
+                     initial_snapshot=door_request(planner,seed,DOOR_COLUMN_ORDER[0],()).snapshot.to_dict(),
+                     final_snapshot=report['final_snapshot'],carry_policy=policy,plan_cache=dict(enabled=False,hit=False),source_identity=identity,
+                     torque_validation=dict(success=bool(torque) and all(item.get('success') for item in torque),
+                        maximum_utilization=max((item.get('maximum_utilization',0.) for item in torque),default=0.)),
+                     dual_recenter_verification=dict(actual_whole_robot_payload_radius_m=max(
+                        (item.get('actual_whole_robot_payload_radius_m',0.) for item in compact),default=0.)))
+    (output_dir/'five-columns.json').write_text(json.dumps(aggregate,ensure_ascii=False)+'\n')
+    (output_dir/'summary.json').write_text(json.dumps({k:aggregate.get(k) for k in
+        ('success','column_order','completed_box_ids','remaining_box_ids','total_ms','motion_duration_s')},ensure_ascii=False,indent=2)+'\n')
+    return aggregate
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--assets-root',type=Path,required=True)
@@ -46,98 +166,10 @@ def main():
     a=p.parse_args();a.output_dir.mkdir(parents=True,exist_ok=True)
     if any(a.output_dir.iterdir()):p.error('output directory must be empty')
     with open('/tmp/sevenova-curobo-gpu.lock','a') as lock:
-        deadline=time.monotonic()+a.wait_for_gpu_seconds
-        while True:
-            try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            except BlockingIOError:occupied='shared lock held'
-            else:
-                occupied=subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader'],text=True).strip()
-                if not occupied:break
-                fcntl.flock(lock,fcntl.LOCK_UN)
-            if time.monotonic()>=deadline:raise RuntimeError('GPU unavailable: '+occupied)
-            time.sleep(1)
-        assets=PlannerAssets();assets=replace(assets,**{name:a.assets_root/getattr(assets,name).relative_to(ROOT)
-            for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+        acquire_gpu(lock,a.wait_for_gpu_seconds)
+        assets=load_assets(a.assets_root)
         policy_path=ROOT/'config/placement_task_policy.json';policy=json.loads(policy_path.read_text())
-        planner=DoorPlanner(assets);removed=set();rounds=[];aggregate=dict(
-            success=False,sequence=True,sequence_kind='five_vertical_door_pairs',
-            column_order=list(DOOR_COLUMN_ORDER),frames=[],phases=[],payload=[],attachments_by_frame=[],
-            time_from_start_s=[],velocities=[],accelerations=[],jerks=[],frame_rounds=[],predicted_scene_events=[],
-            stage_timing_ms={},stage_breakdown_ms={},stage_timing_spans=[],timed_segments=[],
-            contact_geometry=[],round_frame_ranges=[],dual_recenter_verifications=[],torque_validations=[])
-        began=time.perf_counter();source_identity={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in sorted((ROOT/'tools').rglob('*.py'))}
-        for number,column in enumerate(DOOR_COLUMN_ORDER):
-            lower,upper=door_pair(column);request=door_request(planner,a.seed,column,removed);planner.set_snapshot(request.snapshot)
-            round_started=time.perf_counter();error=None
-            if column==0:
-                source_path=Path(rounds[0]['path']);report=mirror_round(json.loads(source_path.read_text()),source_path,planner,request)
-                report.update(initial_snapshot=request.snapshot.to_dict(),source_identity=source_identity,model_id=planner.model_id,
-                    assets={name:dict(path=str(getattr(assets,name)),sha256=hashlib.sha256(getattr(assets,name).read_bytes()).hexdigest()) for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')},
-                    policy_sha256=hashlib.sha256(policy_path.read_bytes()).hexdigest(),column=column,round_index=number,removed_box_ids=sorted(removed))
-            else:
-                task=DoorTask(planner,request,'joint_rrt',policy,progress=lambda text:print(f'列{column} · {text}',flush=True))
-                task.left_grasp_rolls_deg=(0.,30.,45.);task.right_grasp_rolls_deg=(0.,30.,-30.,45.,-45.)
-                task.report['requested_left_grasp_rolls_deg']=list(task.left_grasp_rolls_deg);task.report['requested_right_grasp_rolls_deg']=list(task.right_grasp_rolls_deg)
-                try:task.run();task.enter('time_parameterization');task.finalize_timing();task.enter('rnea_dynamics');task.apply_dynamics()
-                except Exception as exc:
-                    import traceback
-                    error=dict(type=type(exc).__name__,stage=task.phase,message=str(exc),traceback=traceback.format_exc());task.report.update(success=False,error=error)
-                finally:
-                    task.close_stage_timing();task.report.update(total_ms=(time.perf_counter()-round_started)*1000,initial_snapshot=request.snapshot.to_dict(),final_snapshot=task.store.snapshot().to_dict(),source_identity=source_identity,model_id=planner.model_id,
-                        assets={name:dict(path=str(getattr(assets,name)),sha256=hashlib.sha256(getattr(assets,name).read_bytes()).hexdigest()) for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')},
-                        policy_sha256=hashlib.sha256(policy_path.read_bytes()).hexdigest(),plan_cache=dict(enabled=False,hit=False),column=column,round_index=number,removed_box_ids=sorted(removed))
-                report=task.report
-            path=a.output_dir/f'round-{number+1:02d}-column-{column}.json';path.write_text(json.dumps(report,ensure_ascii=False)+'\n')
-            record=dict(round=number+1,column=column,lower_box=lower,upper_box=upper,path=str(path),
-                        success=report['success'],total_ms=report['total_ms'],motion_duration_s=report.get('motion_duration_s'),error=error)
-            rounds.append(record);print(json.dumps(record,ensure_ascii=False),flush=True)
-            if not report['success']:break
-            if report['final_snapshot']['attachments']:
-                raise RuntimeError('round ended with attached boxes')
-            offset=aggregate['time_from_start_s'][-1] if aggregate['time_from_start_s'] else 0.
-            frame_offset=len(aggregate['frames'])
-            for key in ('frames','phases','payload','attachments_by_frame','velocities','accelerations','jerks'):
-                aggregate[key].extend(report[key])
-            aggregate['time_from_start_s'].extend(offset+value for value in report['time_from_start_s'])
-            aggregate['frame_rounds'].extend([number]*len(report['frames']))
-            for stage,value in report.get('stage_timing_ms',{}).items():
-                aggregate['stage_timing_ms'][stage]=aggregate['stage_timing_ms'].get(stage,0.)+value
-            for stage,detail in report.get('stage_breakdown_ms',{}).items():
-                target=aggregate['stage_breakdown_ms'].setdefault(stage,{})
-                for key,value in detail.items():target[key]=target.get(key,0.)+value
-            round_start_ms=sum(item['total_ms'] for item in rounds[:-1])
-            aggregate['stage_timing_spans'].extend(dict(item,start_ms=item['start_ms']+round_start_ms,
-                round=number,column=column) for item in report.get('stage_timing_spans',()))
-            aggregate['timed_segments'].extend(dict(item,frame_start=item['frame_start']+frame_offset,
-                frame_end=item['frame_end']+frame_offset,round=number,column=column)
-                for item in report.get('timed_segments',()))
-            aggregate['contact_geometry'].extend(dict(item,round=number,column=column)
-                for item in report.get('contact_geometry',()))
-            aggregate['dual_recenter_verifications'].append(report.get('dual_recenter_verification'))
-            aggregate['torque_validations'].append(report.get('torque_validation'))
-            aggregate['round_frame_ranges'].append(dict(round=number,column=column,start=frame_offset,
-                end=len(aggregate['frames'])-1,lower_box=lower,upper_box=upper))
-            for event in report['predicted_scene_events']:
-                event=dict(event);event['frame_index']+=frame_offset;event['round']=number;event['column']=column
-                if 'geometric_frame_index' in event:event['geometric_frame_index']+=frame_offset
-                aggregate['predicted_scene_events'].append(event)
-            removed.update((lower,upper))
-        torque=[item for item in aggregate['torque_validations'] if item]
-        compact=[item for item in aggregate['dual_recenter_verifications'] if item]
-        aggregate.update(rounds=rounds,completed_box_ids=sorted(removed),remaining_box_ids=sorted(set(range(25))-removed),
-                         total_ms=(time.perf_counter()-began)*1000,success=len(rounds)==5 and all(item['success'] for item in rounds),
-                         motion_duration_s=aggregate['time_from_start_s'][-1] if aggregate['time_from_start_s'] else 0.,
-                         joint_names=rounds and json.loads(Path(rounds[0]['path']).read_text())['joint_names'],
-                         initial_snapshot=door_request(planner,a.seed,DOOR_COLUMN_ORDER[0],()).snapshot.to_dict(),
-                         final_snapshot=report['final_snapshot'],carry_policy=policy,plan_cache=dict(enabled=False,hit=False),source_identity=source_identity,
-                         torque_validation=dict(success=bool(torque) and all(item.get('success') for item in torque),
-                            maximum_utilization=max((item.get('maximum_utilization',0.) for item in torque),default=0.)),
-                         dual_recenter_verification=dict(actual_whole_robot_payload_radius_m=max(
-                            (item.get('actual_whole_robot_payload_radius_m',0.) for item in compact),default=0.)))
-        (a.output_dir/'five-columns.json').write_text(json.dumps(aggregate,ensure_ascii=False)+'\n')
-        (a.output_dir/'summary.json').write_text(json.dumps({k:aggregate.get(k) for k in
-            ('success','column_order','completed_box_ids','remaining_box_ids','total_ms','motion_duration_s')},ensure_ascii=False,indent=2)+'\n')
+        aggregate=run_sequence(DoorPlanner(assets),a.seed,policy,policy_path,assets,a.output_dir,progress=lambda text:print(text,flush=True))
         raise SystemExit(0 if aggregate['success'] else 1)
 
 if __name__=='__main__':main()

@@ -264,6 +264,7 @@ class _SequentialTask:
         from v3_batched_loaded_search import loaded_robot
         from .adapter import to_curobo_scene
         from .door_sequential_validity import SequentialValidity
+        from .resource_stats import record_build
         snapshot = self.store.snapshot()
         support_key = None if self.support_pose is None else tuple(self.support_pose.reshape(-1))
         key = (snapshot.geometry_key,self.contact_pair,support_key,self.support_side,self.request.cartesian_geometry_tolerance_m)
@@ -283,9 +284,11 @@ class _SequentialTask:
             checker_cache=getattr(self.planner,'_door_checker_cache',{})
             checker=checker_cache.get(checker_key)
             if checker is None:
+                build_started=time.perf_counter()
                 checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
                     robot_config=robot, scene_model=to_curobo_scene(native_snapshot),
                     n_cuboids=max(40, len(snapshot.objects)), n_meshes=len(snapshot.meshes), collision_activation_distance=0.))
+                record_build(self.planner,'door_checker',build_started)
                 checker_cache[checker_key]=checker
                 self.planner._door_checker_cache=checker_cache
             self.cached_validity = SequentialValidity(checker, snapshot, self.planner.robot,
