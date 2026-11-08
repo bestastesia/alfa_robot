@@ -284,13 +284,32 @@ def trajectory_fallback_path(rows, stats):
     return values
 
 
+def polyline_time_scaling(u, ramp=None):
+    """Progress s(u) on [0, 1] and its peak ds/du.
+
+    None is the quintic smoothstep (peak 1.875). A `ramp` in (0, .5) is a smooth trapezoid: the
+    speed rises along a quintic smoothstep over `ramp` of the duration, cruises, and falls back
+    symmetrically (peak 1/(1-ramp)); acceleration and jerk stay continuous and start/end at zero.
+    """
+    if ramp is None:
+        return 10*u**3 - 15*u**4 + 6*u**5, 1.875
+    if not 0. < ramp < .5:
+        raise ValueError("time-scaling ramp must lie in (0, 0.5)")
+    peak = 1.0 / (1.0 - ramp)
+    area = lambda tau: 2.5*tau**4 - 3*tau**5 + tau**6  # integral of the smoothstep speed ramp
+    head = peak * ramp * area(np.clip(u / ramp, 0.0, 1.0))
+    tail = 1.0 - peak * ramp * area(np.clip((1.0 - u) / ramp, 0.0, 1.0))
+    return np.where(u < ramp, head, np.where(u > 1.0 - ramp, tail, peak * (u - ramp / 2))), peak
+
+
 def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
-                               sample_dt=0.025, safety_factor=1.05, two_sided=False):
+                               sample_dt=0.025, safety_factor=1.05, two_sided=False, ramp=None):
     """Time a dense collision-checked polyline without cutting its geometric edges.
 
     The initial duration bounds the L2 joint speed; by default it is only ever lengthened.
     `two_sided` also shortens it until the binding sampled velocity/acceleration/jerk ratio lies
     in [1/safety_factor**2, 1], so the same safety factor applies from both directions.
+    `ramp` selects the time scaling along the path (see polyline_time_scaling).
     """
     values = np.asarray(path, dtype=np.float64)
     limits = [np.asarray(item, dtype=np.float64) for item in
@@ -310,11 +329,12 @@ def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_
     distance = np.linalg.norm(np.diff(values, axis=0) / velocity_limits, axis=1)
     parameter = np.concatenate(([0.0], np.cumsum(distance)))
     parameter /= parameter[-1]
-    duration = max(sample_dt, safety_factor * 1.875 * float(np.sum(distance)))
+    peak = polyline_time_scaling(np.zeros(1), ramp)[1]
+    duration = max(sample_dt, safety_factor * peak * float(np.sum(distance)))
     for _ in range(24 if two_sided else 12):
         sample_time = np.linspace(0.0, duration, max(3, int(np.ceil(duration / sample_dt)) + 1))
         u = sample_time / duration
-        progress = 10*u**3 - 15*u**4 + 6*u**5
+        progress = polyline_time_scaling(u, ramp)[0]
         positions = np.column_stack([
             np.interp(progress, parameter, values[:, joint]) for joint in range(values.shape[1])
         ])
@@ -340,12 +360,36 @@ def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_
     }
     return ({"joint_names": list(joint_names), "dt_s": None,
              "duration_s": float(duration), "maximum_linear_deviation": 0.0,
+             "time_scaling": "quintic" if ramp is None else f"cruise_ramp_{ramp:g}",
              "time_from_start_s": sample_time.tolist(),
              "positions": positions.astype(np.float32).tolist(),
              "velocities": velocity.astype(np.float32).tolist(),
              "accelerations": acceleration.astype(np.float32).tolist(),
              "jerks": jerk.astype(np.float32).tolist(),
              "sampled_trajectory": samples}, positions.astype(np.float32))
+
+
+POLYLINE_RAMPS = (None, .35, .25, .15, .08)
+
+
+def time_parameterize_polyline_shortest(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
+                                        sample_dt=0.025, safety_factor=1.05, ramps=POLYLINE_RAMPS):
+    """Two-sided polyline timing under each time scaling in `ramps`; the shortest wins.
+
+    Every candidate keeps the same geometry and meets the same sampled derivative limits, so
+    picking among them changes timestamps only.
+    """
+    candidates = []
+    for ramp in ramps:
+        try:
+            candidates.append(time_parameterize_polyline(
+                path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
+                sample_dt=sample_dt, safety_factor=safety_factor, two_sided=True, ramp=ramp))
+        except RuntimeError:
+            continue
+    if not candidates:
+        raise RuntimeError("polyline timing did not converge for any time scaling")
+    return min(candidates, key=lambda item: item[0]["duration_s"])
 
 
 def time_parameterize_stops(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,

@@ -4,7 +4,6 @@ Research-only; navigation is an arrival-state transition, never a checked base t
 """
 import copy
 from dataclasses import asdict, replace
-from functools import partial
 import json
 import math
 import hashlib
@@ -31,7 +30,7 @@ from .urdf_fk import BatchToolFk
 from .planner import CycleBlocked, FullCyclePlanner
 from .scene import AttachedObject, CollisionPolicy, Pose, SceneObject, SceneStore, digest
 from .torque import default_torque_model
-from .trajectory import assemble_timed_cycle, time_parameterize_path, time_parameterize_polyline, time_parameterize_stops
+from .trajectory import assemble_timed_cycle, time_parameterize_path, time_parameterize_polyline_shortest, time_parameterize_stops
 from v3_batched_loaded_search import batched_rrt_connect_multi_goal, densify, loaded_robot
 from v3_cartesian_transport import BatchAnalyticIk, plan_cartesian_transport
 from v3_cartesian_dual_transport import plan_dual_cartesian_transport
@@ -2287,6 +2286,7 @@ class DoorTask(_SequentialTask):
                     if mobile:
                         caps = [np.r_[np.ones(3), c] for c in caps]
                 navigation=phase in ('base_pick_reposition','base_reposition','base_return')
+                trajectory = {}
                 if navigation or len(rows)<2 or np.allclose(rows,rows[0],atol=1e-12,rtol=0):
                     sample = dict(positions=rows.tolist(), time_from_start_s=[0.]*len(rows),
                                   **{k:np.zeros_like(rows).tolist() for k in ('velocities','accelerations','jerks')})
@@ -2295,10 +2295,11 @@ class DoorTask(_SequentialTask):
                     selected = False
                     # Polyline has won every accepted door segment; validate it first and only
                     # pay for cubic/stops as safety fallbacks instead of evaluating all three.
-                    # Polyline is shortened as well as lengthened to the binding sampled limit; the
-                    # 1.05 safety factor and every derivative/RNEA gate below are unchanged.
+                    # Polyline is shortened as well as lengthened to the binding sampled limit, under
+                    # the quintic and smooth-trapezoid time scalings (shortest wins); the 1.05 safety
+                    # factor and every derivative/RNEA gate below are unchanged.
                     for method, parameterize in (
-                            ('validated_polyline',partial(time_parameterize_polyline,two_sided=True)),
+                            ('validated_polyline',time_parameterize_polyline_shortest),
                             ('validated_cubic',time_parameterize_path),
                             ('validated_stops',time_parameterize_stops)):
                         trajectory, validation = parameterize(rows, names, *caps, sample_dt=.025)
@@ -2337,7 +2338,8 @@ class DoorTask(_SequentialTask):
                         selected = True
                         if geometry_reused:
                             self.report.setdefault('retiming_geometry_reuse',[]).append(
-                                dict(phase=phase,method=method,raw_points=len(rows),sampled_points=len(sample['positions']),
+                                dict(phase=phase,method=method,time_scaling=trajectory.get('time_scaling'),
+                                     raw_points=len(rows),sampled_points=len(sample['positions']),
                                      proof='same piecewise-linear path; source geometry already stage-audited'))
                         break
                     if not selected:
@@ -2355,7 +2357,8 @@ class DoorTask(_SequentialTask):
                     out[k].extend(sample[k])
                 duration = float(sample['time_from_start_s'][-1])
                 out['timed_segments'].append(dict(name=phase, frame_start=start, frame_end=start+n-1,
-                                                 duration_s=duration, method=method))
+                                                 duration_s=duration, method=method,
+                                                 time_scaling=trajectory.get('time_scaling')))
                 remap[first], remap[last] = start, start+n-1
                 clock += duration
             for event in self.report['predicted_scene_events']:

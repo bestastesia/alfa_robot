@@ -15,7 +15,7 @@ from curobo_core.resource_stats import bounded_get, record_build, resource_delta
 from curobo_core.urdf_fk import BatchToolFk
 from curobo_core.planner import shortcut_waypoints, validated_shortcut
 from curobo_core.scene import MeshObject, Pose
-from curobo_core.trajectory import time_parameterize_polyline
+from curobo_core.trajectory import polyline_time_scaling, time_parameterize_polyline, time_parameterize_polyline_shortest
 
 
 class NativeLikeChecker:
@@ -123,6 +123,35 @@ class TwoSidedPolylineTests(unittest.TestCase):
         self.assertGreaterEqual(max(ratios), 1/1.05**2-1e-3)
         np.testing.assert_allclose(np.asarray(shortened['positions'])[[0, -1]], path[[0, -1]], atol=1e-6)
         self.assertEqual(times[0], 0.)
+
+    def test_cruise_scaling_is_a_smooth_monotonic_progress(self):
+        u = np.linspace(0., 1., 20001)
+        for ramp in (.35, .15, .08):
+            s, peak = polyline_time_scaling(u, ramp)
+            self.assertAlmostEqual(peak, 1/(1-ramp))
+            self.assertEqual((s[0], s[-1]), (0., 1.))
+            speed = np.gradient(s, u)
+            self.assertGreaterEqual(speed.min(), -1e-12)
+            self.assertAlmostEqual(speed.max(), peak, places=3)
+            # No jump where the ramps meet the cruise: neighbouring samples differ by at most the
+            # analytic slope bound (smoothstep' <= 1.875, |smoothstep''| <= 5.774).
+            du = u[1]-u[0]
+            acceleration = np.gradient(speed, u)
+            self.assertLessEqual(np.abs(np.diff(speed)).max(), 1.01*peak*1.875/ramp*du)
+            self.assertLessEqual(np.abs(np.diff(acceleration)).max(), 1.01*peak*5.774/ramp**2*du)
+        np.testing.assert_allclose(polyline_time_scaling(u)[0], 10*u**3-15*u**4+6*u**5)
+
+    def test_shortest_scaling_beats_the_quintic_on_a_velocity_bound_path_within_limits(self):
+        names = [f'j{i}' for i in range(3)]
+        velocity, acceleration, jerk = np.array([1., 2., 3.]), np.full(3, 50.), np.full(3, 5000.)
+        path = np.linspace([0., 0., 0.], [1., 2., 3.], 25)
+        quintic, _ = time_parameterize_polyline(path, names, velocity, acceleration, jerk, two_sided=True)
+        best, _ = time_parameterize_polyline_shortest(path, names, velocity, acceleration, jerk)
+        self.assertLess(best['duration_s'], .8*quintic['duration_s'])
+        self.assertTrue(best['time_scaling'].startswith('cruise_ramp_'))
+        for key, limit in (('velocities', velocity), ('accelerations', acceleration), ('jerks', jerk)):
+            self.assertLessEqual(np.max(np.abs(np.asarray(best[key]))/limit), 1.0001)
+        np.testing.assert_allclose(np.asarray(best['positions'])[[0, -1]], path[[0, -1]], atol=1e-6)
 
     def test_default_law_is_unchanged(self):
         names = ['a', 'b']
