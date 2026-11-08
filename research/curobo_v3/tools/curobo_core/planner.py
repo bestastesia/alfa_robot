@@ -218,12 +218,13 @@ class FullCyclePlanner(CuroboBackend):
                        "max_line_error_mm": maximum_line_error * 1000,
                        "max_orientation_error_deg": math.degrees(maximum_orientation_error)}
 
-    def joint_plan(self, start, target, checker, validity, seed):
+    def joint_plan(self, start, target, checker, validity, seed, stop_at_first_valid=None):
         lower, upper = checker.kinematics.get_joint_limits().position
         path, stats = self.search_path(
             torch.tensor(start, device="cuda", dtype=torch.float32),
             torch.tensor(np.asarray(target).reshape(1, -1), device="cuda", dtype=torch.float32),
             lower + 1e-5, upper - 1e-5, validity, 2.0, seed,
+            stop_at_first_valid=stop_at_first_valid,
         )
         if path is None:
             return None, stats

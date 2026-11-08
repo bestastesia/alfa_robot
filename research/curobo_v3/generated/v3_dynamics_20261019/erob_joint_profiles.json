@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "source": {
+    "file": "eRob机器人关节模组用户手册_V3.42.pdf",
+    "sha256": "aefffa32b1687c349ad7cace64487ff641e646f430dafec0aed0aba7e0781bc1",
+    "manual_version": "3.42",
+    "tables": [
+      "2-2",
+      "2-3",
+      "2-4"
+    ],
+    "pdf_pages": [
+      14,
+      15,
+      16
+    ],
+    "confirmed_by_user": "2026-10-20"
+  },
+  "semantics": {
+    "torques_are_output_side_nm": true,
+    "sustained_gate_field": "average_allowable_torque_nm",
+    "rated_torque_note": "continuous allowable load torque at 2000 rpm motor input",
+    "average_allowable_note": "manufacturer maximum average load torque; pointwise gating is conservative",
+    "start_stop_peak_note": "allowed peak during start/stop, not a sustained limit",
+    "instantaneous_max_note": "absolute external shock ceiling"
+  },
+  "joint_groups": {
+    "1": {
+      "model": "eRob170H160I",
+      "harmonic_drive_ratio": "40-160",
+      "ratio": 160,
+      "mass_without_brake_kg": 9.29,
+      "rated_torque_nm": 294,
+      "average_allowable_torque_nm": 451,
+      "start_stop_peak_torque_nm": 647,
+      "instantaneous_max_torque_nm": 1180,
+      "peak_output_speed_rpm": 12.5
+    },
+    "2": {
+      "model": "eRob170H160I",
+      "harmonic_drive_ratio": "40-160",
+      "ratio": 160,
+      "mass_without_brake_kg": 9.29,
+      "rated_torque_nm": 294,
+      "average_allowable_torque_nm": 451,
+      "start_stop_peak_torque_nm": 647,
+      "instantaneous_max_torque_nm": 1180,
+      "peak_output_speed_rpm": 12.5
+    },
+    "3": {
+      "model": "eRob142H120I",
+      "harmonic_drive_ratio": "32-120",
+      "ratio": 120,
+      "mass_without_brake_kg": 6.49,
+      "rated_torque_nm": 178,
+      "average_allowable_torque_nm": 281,
+      "start_stop_peak_torque_nm": 459,
+      "instantaneous_max_torque_nm": 892,
+      "peak_output_speed_rpm": 16.7
+    },
+    "4": {
+      "model": "eRob142H160I",
+      "harmonic_drive_ratio": "32-160",
+      "ratio": 160,
+      "mass_without_brake_kg": 6.49,
+      "rated_torque_nm": 178,
+      "average_allowable_torque_nm": 281,
+      "start_stop_peak_torque_nm": 484,
+      "instantaneous_max_torque_nm": 892,
+      "peak_output_speed_rpm": 12.5
+    },
+    "5": {
+      "model": "eRob110H120I (V6)",
+      "harmonic_drive_ratio": "25-120",
+      "ratio": 120,
+      "mass_without_brake_kg": 2.57,
+      "rated_torque_nm": 87,
+      "average_allowable_torque_nm": 140,
+      "start_stop_peak_torque_nm": 217,
+      "instantaneous_max_torque_nm": 395,
+      "peak_output_speed_rpm": 25.0
+    },
+    "6": {
+      "model": "eRob90H100I",
+      "harmonic_drive_ratio": "20-100",
+      "ratio": 100,
+      "mass_without_brake_kg": 1.75,
+      "rated_torque_nm": 52,
+      "average_allowable_torque_nm": 64,
+      "start_stop_peak_torque_nm": 107,
+      "instantaneous_max_torque_nm": 191,
+      "peak_output_speed_rpm": 30.0
+    },
+    "7": {
+      "model": "eRob70H100I",
+      "harmonic_drive_ratio": "14-100",
+      "ratio": 100,
+      "mass_without_brake_kg": 0.87,
+      "rated_torque_nm": 10,
+      "average_allowable_torque_nm": 14,
+      "start_stop_peak_torque_nm": 36,
+      "instantaneous_max_torque_nm": 70,
+      "peak_output_speed_rpm": 30.0
+    }
+  }
+}

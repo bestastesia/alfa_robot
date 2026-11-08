@@ -88,12 +88,13 @@ class CuroboBackend:
         self._cached_solver = None
         self._cached_checkers = {}
 
-    def search_path(self, start, goals, lower, upper, validity, budget, seed):
+    def search_path(self, start, goals, lower, upper, validity, budget, seed, stop_at_first_valid=None):
         if self.planner_kind in ("rrtconnect", "informed_connect"):
             return batched_rrt_connect_multi_goal(
                 start, goals, lower, upper, validity, budget, seed,
                 informed_sampling=self.planner_kind == "informed_connect",
-                stop_at_first_valid=self.planner_kind == 'informed_connect',
+                stop_at_first_valid=(self.planner_kind == 'informed_connect'
+                                     if stop_at_first_valid is None else stop_at_first_valid),
                 refinement_s=getattr(validity,'refinement_s',0.0),
             )
         if self.planner_kind == "bitstar":

@@ -34,7 +34,8 @@ def world_objects(snapshot, task_ids=(), mobile=False):
     output = []
     for item in snapshot.objects:
         if item.object_id == "ground":
-            if (item.pose.quaternion_wxyz != Pose().quaternion_wxyz or
+            rotation = Rotation.from_quat(np.roll(item.pose.quaternion_wxyz, -1)).as_matrix()
+            if (not np.allclose(rotation[:, 2], (0., 0., 1.), atol=1e-9, rtol=0) or
                     abs(item.pose.position[2] + item.dimensions_m[2] / 2 - snapshot.policy.ground_z_m) > 1e-9):
                 raise ValueError("ground object must match the configured horizontal ground plane")
             continue

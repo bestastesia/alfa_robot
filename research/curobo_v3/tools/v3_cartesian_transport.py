@@ -57,7 +57,8 @@ class CartesianTransportSpace:
     joint_names = STATE_NAMES
     stability_weight = 0.
 
-    def __init__(self, planner, start, goal_rows, checker, ik, options):
+    def __init__(self, planner, start, goal_rows, checker, ik, options, validity=None, active_indices=None,
+                 row_mapper=None, derived_indices=()):
         self.planner, self.ik, self.options = planner, ik, options
         side = planner.active_side
         self.side_index = 0 if side == "left" else 1
@@ -75,7 +76,17 @@ class CartesianTransportSpace:
         self.slerp = Slerp([0., 1.], rotations)
         self.turn = (rotations[0].inv() * rotations[1]).magnitude()
         self.psi_start = planner.analytic.swivel(self.side_index, self.start[self.arm])
-        self.validity = GpuValidity(checker, check_ground=True)
+        self.validity = validity if validity is not None else GpuValidity(checker, check_ground=True)
+        self.active_indices = active_indices
+        self.row_mapper = row_mapper
+        self.derived_indices = tuple(derived_indices)
+        if active_indices is not None:
+            arm_indices = list(range(self.arm.start, self.arm.stop))
+            if list(active_indices) not in (arm_indices, [0] + arm_indices):
+                raise ValueError("constrained Cartesian search requires a complete arm and optional lift")
+            frozen = sorted(set(range(15)) - set(active_indices) - set(self.derived_indices))
+            if not np.allclose(self.goal_rows[:, frozen], self.start[frozen], atol=1e-6, rtol=0):
+                raise ValueError("Cartesian goals change frozen joints")
         self.weights_np = np.array([METRE] * 3 + [max(self.turn, 1e-3), METRE, 1.])
         self.weights = torch.tensor(self.weights_np, device="cuda", dtype=torch.float32)
         self.max_jump = math.radians(options["max_jump_deg"])
@@ -85,6 +96,8 @@ class CartesianTransportSpace:
                                      for row in self.goal_rows])
 
     def bounds(self, lower_updown, upper_updown):
+        if self.active_indices is not None and 0 not in self.active_indices:
+            lower_updown = upper_updown = self.start[0]
         positions = np.stack([self.start_state[:3], self.goal_states[0, :3]])
         margin = self.options["workspace_margin_m"]
         lower = np.r_[positions.min(axis=0) - margin, 0., lower_updown, -math.pi]
@@ -94,6 +107,9 @@ class CartesianTransportSpace:
 
     def joints(self, states):
         states = np.asarray(states, dtype=np.float64).reshape(-1, 6)
+        states = states.copy()
+        if self.active_indices is not None and 0 not in self.active_indices:
+            states[:, 4] = self.start[0]
         progress = np.clip(states[:, 3], 0., 1.)
         targets = np.repeat(np.eye(4)[None], len(states), axis=0)
         targets[:, :3, :3] = self.slerp(progress).as_matrix()
@@ -105,6 +121,12 @@ class CartesianTransportSpace:
         rows[:, 0] = states[:, 4]
         rows[:, self.arm] = arms
         rows[:, self.idle] = self.start[self.idle] + progress[:, None] * (self.goal_rows[0][self.idle] - self.start[self.idle])
+        if self.active_indices is not None:
+            frozen = sorted(set(range(15)) - set(self.active_indices) - set(self.derived_indices))
+            rows[:, frozen] = self.start[frozen]
+        if self.row_mapper is not None:
+            rows, mapped = self.row_mapper(rows)
+            found &= mapped
         return rows, found
 
     def _collision_free(self, rows):
@@ -173,7 +195,7 @@ class CartesianTransportSpace:
 _IK = None
 
 
-def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., seed=20261015, options=None):
+def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., seed=20261015, options=None, *, validity=None, active_indices=None, row_mapper=None, derived_indices=()):
     """Return (dense joint path or None, stats) for the single-arm transport stage."""
     global _IK
     began = time.perf_counter()
@@ -200,7 +222,8 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
         return finish(None, failure="no_same_branch_goal")
     groups = {}
     for row in same:
-        groups.setdefault(tuple(np.round(row[planner.idle_indices], 6)), []).append(row)
+        key = () if row_mapper is not None else tuple(np.round(row[planner.idle_indices], 6))
+        groups.setdefault(key, []).append(row)
     ordered = sorted((np.asarray(group) for group in groups.values()),
                      key=lambda group: np.linalg.norm((group - start) * GOAL_WEIGHTS, axis=1).min())
     lower, upper = (values[0].item() for values in checker.kinematics.get_joint_limits().position)
@@ -210,7 +233,8 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
         if over_budget():
             break
         goals = group[np.argsort(np.linalg.norm((group - start) * GOAL_WEIGHTS, axis=1))][:options["goals_per_group"]]
-        space = CartesianTransportSpace(planner, start, goals, checker, _IK, options)
+        space = CartesianTransportSpace(planner, start, goals, checker, _IK, options, validity, active_indices,
+                                        row_mapper, derived_indices)
         stats["groups_tried"] += 1
         attempt = dict(idle_group=stats["groups_tried"], goals=len(goals))
         stats["attempts"].append(attempt)

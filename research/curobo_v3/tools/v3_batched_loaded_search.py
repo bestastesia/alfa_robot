@@ -103,6 +103,12 @@ class GpuValidity:
         worst_up_z = torch.stack(up_z_values).min(dim=0).values
         return 1.0 - torch.clamp(worst_up_z, -1.0, 1.0)
 
+    def _self_collision_cost(self, spheres):
+        return self.checker.get_self_collision(spheres)
+
+    def _world_collision_cost(self, state):
+        return self.checker.collision_constraint.forward(state)
+
     def evaluate(self, values):
         valid_output = []
         stability_output = []
@@ -119,8 +125,8 @@ class GpuValidity:
                 spheres.shape[2], batch_size=1, horizon=horizon
             )
             collision_cost = (
-                self.checker.get_self_collision(spheres).reshape(1, horizon, -1).sum(-1)
-                + self.checker.collision_constraint.forward(state).reshape(1, horizon, -1).sum(-1)
+                self._self_collision_cost(spheres).reshape(1, horizon, -1).sum(-1)
+                + self._world_collision_cost(state).reshape(1, horizon, -1).sum(-1)
                 + self.checker.get_bound(q).reshape(1, horizon, -1).sum(-1)
             ).reshape(-1)
             base_mesh=getattr(self.checker,'base_mesh_layer',None)
@@ -149,7 +155,7 @@ class GpuValidity:
 
     def edges(self, starts, goals, resolution=0.05, return_stability=False):
         weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
-        steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=1)
+        steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=getattr(self, "minimum_edge_steps", 1))
         horizon = int(steps.max().item()) + 1
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))

@@ -14,7 +14,7 @@ from curobo_core.adapter import matrix_pose
 from curobo_core.backend import goal
 from curobo_core.planner import CycleBlocked
 from curobo_core.conveyor import conveyor_pair, DEFAULT_CONVEYOR_MESH
-from curobo_core.scene import Pose
+from curobo_core.scene import Pose, digest
 from v3_batched_loaded_search import GpuValidity, densify, loaded_robot
 from v3_mixed_placement_planner import AnalyticContacts
 from v3_task_scene import grasp_transform
@@ -70,6 +70,22 @@ class ConveyorCyclePlanner(AnalyticContacts):
         result['turn_collision_validation'] = 'no turn trajectories; only navigation arrival states are planned'
         return result
 
+    def payload_transform(self, side):
+        return grasp_transform(side, self.top_grasp)
+
+    def placement_box_seed(self, side, tool):
+        return tool @ self.payload_transform(side)
+
+    def placement_validity(self, checker, payload):
+        return GpuValidity(checker, check_ground=True)
+
+    def shared_parking_pose(self, required_bases):
+        parking = np.mean(required_bases, axis=0)
+        residual = float(np.max(np.linalg.norm(np.asarray(required_bases)-parking, axis=1)))
+        if residual > .002:
+            raise CycleBlocked('反算放置底盘位', '左右手不能共享同一停车位')
+        return parking, residual
+
     def conveyor_reference_targets(self):
         targets = {}
         for side in ('left', 'right'):
@@ -85,13 +101,31 @@ class ConveyorCyclePlanner(AnalyticContacts):
         return {side: self.fk_robot.get_transform(side + '_tool0', self.fk_robot.base_link).copy()
                 for side in ('left', 'right')}
 
+    def conveyor_ik_solver(self,boxes):
+        robot=loaded_robot(self.robot,self.box_fit,attachments=self.task_attachments(boxes))
+        key=(self.snapshot.geometry_key,tuple(sorted(boxes.items())),digest(robot))
+        cache=getattr(self,'_conveyor_solver_cache',{})
+        solver=cache.get(key)
+        if solver is None:
+            config=InverseKinematicsCfg.create(robot=copy.deepcopy(robot),scene_model=self.scene(boxes),
+                collision_cache={'cuboid':max(40,len(self.snapshot.objects)),'mesh':len(self.snapshot.meshes)},
+                num_seeds=16,self_collision_check=True,use_cuda_graph=False,
+                position_tolerance=.002,orientation_tolerance=math.radians(1),
+                override_iters_for_multi_link_ik=160,optimizer_collision_activation_distance=.005)
+            solver=InverseKinematics(config);cache[key]=solver;self._conveyor_solver_cache=cache
+        return solver
+
     def plan_conveyor_target(self, start, targets, checker, validity, solver, report, append):
+        timing=report.setdefault('conveyor_pipeline_timing_ms',{})
+        began=time.perf_counter()
         poses = {side + '_tool0': {'position': matrix[:3, 3].tolist(),
                                   'quaternion': np.roll(Rotation.from_matrix(matrix[:3, :3]).as_quat(), 1).tolist()}
                  for side, matrix in targets.items()}
         current = JointState.from_position(torch.tensor(np.asarray(start)[None], device='cuda', dtype=torch.float32), joint_names=ACTIVE_JOINTS)
         with torch.enable_grad():
-            solved = solver.solve_pose(goal(poses), current_state=current, return_seeds=64)
+            solved = solver.solve_pose(goal(poses), current_state=current, return_seeds=16)
+        torch.cuda.synchronize();timing['placement_goal_ik']=(time.perf_counter()-began)*1000
+        filter_started=time.perf_counter()
         rows = solved.js_solution.position.reshape(-1, len(solved.js_solution.joint_names))
         rows = rows[:, [solved.js_solution.joint_names.index(name) for name in ACTIVE_JOINTS]].contiguous()
         numerical_success = solved.success.reshape(-1).bool()
@@ -108,15 +142,20 @@ class ConveyorCyclePlanner(AnalyticContacts):
             raise CycleBlocked('龙头车放置起点', '导航到位后的携箱起点碰撞', report)
         distances = torch.linalg.vector_norm((candidates - start_tensor) * validity.weights, dim=-1)
         candidates = candidates[torch.argsort(distances)].contiguous()
+        torch.cuda.synchronize();timing['placement_candidate_filter']=(time.perf_counter()-filter_started)*1000
         lower, upper = checker.kinematics.get_joint_limits().position
+        search_started=time.perf_counter()
         path, stats = self.search_path(start_tensor, candidates, lower + 1e-5, upper - 1e-5,
-                                       validity, 2.0, 20261013)
+                                       validity, 2.0, 20261013, stop_at_first_valid=True)
+        torch.cuda.synchronize();timing['placement_rrt']=(time.perf_counter()-search_started)*1000
         report['conveyor_search_stats'] = stats
         if path is None:
             raise CycleBlocked('龙头车放置RRT', '2秒预算内未找到无碰撞路径', report)
+        validation_started=time.perf_counter()
         dense = np.asarray(densify(path))
         if not bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all()):
             raise CycleBlocked('龙头车放置RRT细验', '密化后的路径未通过碰撞检查', report)
+        torch.cuda.synchronize();timing['placement_dense_validation']=(time.perf_counter()-validation_started)*1000
         names = report['joint_names']
         mobile = np.repeat(np.asarray(report['frames'][-1])[None], len(dense), axis=0)
         mobile[:, [names.index(name) for name in ACTIVE_JOINTS]] = dense
@@ -175,14 +214,15 @@ class ConveyorCyclePlanner(AnalyticContacts):
         required_bases = []
         rotation = Rotation.from_euler('z', yaw).as_matrix()
         for side, tool in initial_tools.items():
-            box = tool @ grasp_transform(side, self.top_grasp)
+            box = self.placement_box_seed(side, tool)
             box[0, 3] += self.conveyor_push_m
             goal_position = np.asarray(reference_targets[side]['position']).copy()
             goal_position[0] -= self.base_advance
             required_bases.append((goal_position - rotation @ box[:3, 3])[:2])
-        parking = np.mean(required_bases, axis=0)
-        if np.max(np.linalg.norm(np.asarray(required_bases) - parking, axis=1)) > .002:
-            raise CycleBlocked('反算放置底盘位', '左右手不能共享同一停车位', report)
+        parking, parking_residual = self.shared_parking_pose(required_bases)
+        report['placement_base_inverse'] = dict(required_bases_m=np.asarray(required_bases).tolist(),
+                                                selected_m=parking.tolist(),
+                                                maximum_residual_m=parking_residual)
         endpoint[[names.index('base_x'), names.index('base_y')]] = parking
         endpoint[names.index('base_yaw')] = yaw
         append([endpoint], 'base_reposition', True)
@@ -200,41 +240,46 @@ class ConveyorCyclePlanner(AnalyticContacts):
         report['placement_base_pose'] = {'position': [*parking.tolist(), 0.], 'yaw_rad': yaw}
         try:
             progress('导航到位瞬移完成；底盘冻结，求固定放箱目标IK并用RRT连接，启用双龙头车碰撞')
+            timing=report.setdefault('conveyor_pipeline_timing_ms',{})
+            setup_started=time.perf_counter()
             loaded_checker = self.checker(boxes, payload=True)
-            loaded_validity = GpuValidity(loaded_checker, check_ground=True)
-            robot = loaded_robot(self.robot, self.box_fit, attachments=self.task_attachments(boxes))
-            config = InverseKinematicsCfg.create(robot=copy.deepcopy(robot), scene_model=self.scene(boxes),
-                collision_cache={'cuboid': max(40, len(self.snapshot.objects)), 'mesh': len(self.snapshot.meshes)},
-                num_seeds=64, self_collision_check=True, use_cuda_graph=False,
-                position_tolerance=.002, orientation_tolerance=math.radians(1),
-                override_iters_for_multi_link_ik=160, optimizer_collision_activation_distance=.005)
-            solver = InverseKinematics(config)
+            loaded_validity = self.placement_validity(loaded_checker, True)
+            solver = self.conveyor_ik_solver(boxes)
+            torch.cuda.synchronize();timing['loaded_checker_and_solver_setup']=(time.perf_counter()-setup_started)*1000
+            targets_started=time.perf_counter()
             targets = {}
             for side, tool in self.tool_matrices(start).items():
-                box = tool @ grasp_transform(side, self.top_grasp)
+                box = self.placement_box_seed(side, tool)
                 box[0, 3] += self.conveyor_push_m
                 box[:3, :3] = Rotation.from_euler('z', math.atan2(box[1, 0], box[0, 0])).as_matrix()
                 box[2, 3] = self.conveyor_height_m + self.box_fit['dimensions_m'][2] * .5 + self.placement_clearance_m
-                targets[side] = box @ np.linalg.inv(grasp_transform(side, self.top_grasp))
+                targets[side] = box @ np.linalg.inv(self.payload_transform(side))
                 report['conveyor_box_targets'][side] = {'position': (base @ box)[:3, 3].tolist(),
                     'quaternion_wxyz': matrix_pose(base @ box).quaternion_wxyz,
                     'table_height_m': self.conveyor_height_m, 'box_height_m': self.box_fit['dimensions_m'][2],
                     'conveyor_position': reference_targets[side]['conveyor_position']}
+            timing['placement_target_build']=(time.perf_counter()-targets_started)*1000
             placed = self.plan_conveyor_target(start, targets, loaded_checker, loaded_validity, solver,
                                                 report, append)
-            del solver, config, robot, loaded_checker, loaded_validity
-            gc.collect()
-            torch.cuda.empty_cache()
+            cleanup_started=time.perf_counter()
+            del loaded_checker, loaded_validity
+            # Keep allocator/checker resources warm for time-parameterization and the next pair.
+            timing['loaded_cleanup']=(time.perf_counter()-cleanup_started)*1000
             for side, tool in self.tool_matrices(placed).items():
-                pose = matrix_pose(base @ tool @ grasp_transform(side, self.top_grasp))
+                pose = matrix_pose(base @ tool @ self.payload_transform(side))
                 report['placed_boxes'][side] = {'object_id': f"wall_box_{boxes[side]:02d}",
                     'position': pose.position, 'quaternion_wxyz': pose.quaternion_wxyz,
                     'dimensions_m': self.box_fit['dimensions_m']}
             append([report['frames'][-1]], 'release', False)
             progress('释放后箱子移出场景，直接用RRT回Home，底盘保持冻结')
+            home_setup_started=time.perf_counter()
             empty_checker = self.checker(boxes)
-            empty_validity = GpuValidity(empty_checker, check_ground=True)
-            path, stats = self.joint_plan(placed, self.home_values, empty_checker, empty_validity, 20261014)
+            empty_validity = self.placement_validity(empty_checker, False)
+            timing['empty_checker_setup']=(time.perf_counter()-home_setup_started)*1000
+            home_search_started=time.perf_counter()
+            path, stats = self.joint_plan(placed, self.home_values, empty_checker, empty_validity,
+                                          20261014, stop_at_first_valid=True)
+            torch.cuda.synchronize();timing['home_rrt_and_validation']=(time.perf_counter()-home_search_started)*1000
             report['conveyor_home_search_stats'] = stats
             if path is None:
                 raise CycleBlocked('保持转身姿态回Home', f'2秒内无路径：{stats}', report)
