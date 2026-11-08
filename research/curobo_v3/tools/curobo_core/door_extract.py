@@ -8,11 +8,12 @@ from v3_batched_loaded_search import densify
 class DoorExtraction:
     def analytic_extract(self, contact, empty_validity, loaded_validity, *,
                          sides=("left", "right"), direction=(-1., 0., 0.), distance_m=.35,
-                         lift_end=None, hold_sides=(), swivel_continuation=False):
+                         lift_end=None, hold_sides=(), swivel_continuation=False, step_m=.01):
         """Parameterization of f044bf1's fixed-swivel, 1cm Cartesian bridge.
 
         No reverse construction, per-point angle search, or globally forced
         1mm discretization. The original 35cm/two-arm defaults are unchanged.
+        `step_m` shortens the Cartesian step between exact IK points (default 1 cm).
         """
         self.last_cartesian_failure = None
         direction = np.asarray(direction, dtype=float)
@@ -24,7 +25,8 @@ class DoorExtraction:
                 or abs(np.linalg.norm(direction)-1.) > 1e-9
                 or not np.isfinite(distance_m) or distance_m <= 0
                 or (lift_end is not None and not np.isfinite(lift_end))
-                or (swivel_continuation and len(moving_sides) != 1)):
+                or (swivel_continuation and len(moving_sides) != 1)
+                or not (0. < step_m <= .01)):
             raise ValueError("invalid Cartesian sides, direction, distance or lift")
         self.fk(contact)
         world_to_carriage = np.linalg.inv(self.fk_robot.get_transform("arm_carriage", self.fk_robot.base_link))
@@ -42,8 +44,8 @@ class DoorExtraction:
                                      else loaded_validity)
             if callable(continuation_validity):
                 continuation_validity = continuation_validity()
-        distances = np.linspace(.01, .35, 35) if distance_m == .35 else np.linspace(
-            0., distance_m, math.ceil(distance_m/.01)+1)[1:]
+        distances = np.linspace(.01, .35, 35) if distance_m == .35 and step_m == .01 else np.linspace(
+            0., distance_m, math.ceil(distance_m/step_m)+1)[1:]
         deltas = (.005, -.005, .01, -.01, .02, -.02, .04, -.04, .08, -.08, .16, -.16, .32, -.32)
         batch_fk = getattr(self, "batch_fk", None)
         carriages = {}
@@ -208,7 +210,7 @@ class DoorExtraction:
         if line_error > .002 or orientation_error > math.radians(1.):
             return None, f"笛卡尔插值超出基线2mm/1deg门限: {line_error*1000:.3f}mm"
         self.last_extract_frames=dense
-        return dense, {"strategy": "f044_fixed_swivel", "cartesian_step_m": .01,
+        return dense, {"strategy": "f044_fixed_swivel", "cartesian_step_m": step_m,
                        "fixed_updown_m": float(contact[0]) if lift_end is None else None,
                        "start_updown_m": float(contact[0]), "end_updown_m": lift_end,
                        "fixed_psi_rad": swivels if not swivel_continuation else None,

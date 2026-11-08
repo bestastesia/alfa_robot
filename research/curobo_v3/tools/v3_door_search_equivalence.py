@@ -321,6 +321,11 @@ def main():
                 stats[name]['examples'].append(detail)
 
     def shadow_extract(self, contact, empty_validity, loaded_validity, **options):
+        if options.get('step_m', .01) != .01:
+            # Finer-step fallback for flush boxes postdates 405b4d5: no reference to compare with.
+            stats['analytic_extract']['finer_step_calls'] = stats['analytic_extract'].get('finer_step_calls', 0)+1
+            return current_extract(self, contact, empty_validity, loaded_validity, **options)
+        options.pop('step_m', None)
         state = fk_state(self.fk_robot)
         reference = reference_analytic_extract(self, contact, empty_validity, loaded_validity, **options)
         reference_effects = (np.asarray(self.last_extract_frames).copy(), json.dumps(self.last_cartesian_failure, sort_keys=True))

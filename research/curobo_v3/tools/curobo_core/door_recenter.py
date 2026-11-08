@@ -1565,7 +1565,13 @@ class DoorTask(_SequentialTask):
                     row_mapper=left_mapper, derived_indices=LEFT)
                 if path is None or self.line_gate_ok(path,'right',origin,self.wall_outward_direction,distance,extraction_tolerance):
                     break
-                line_rejections.append(dict(seed=self.request.seed+1+1000*attempt,stats=stats))
+                # Keep the endpoint the search chose, but replace its off-line connection by the
+                # compensated outward line plus a tool-fixed swivel self-motion onto that endpoint.
+                straight,straight_stats=self.straight_extraction_to(start,np.asarray(path)[-1],validity,distance,direct_limit_mm)
+                line_rejections.append(dict(seed=self.request.seed+1+1000*attempt,stats=stats,straightened=straight_stats))
+                if straight is not None:
+                    path,stats=straight,dict(stats,tier='rrt_endpoint_straightened',straightened=straight_stats)
+                    break
         self.report['upper_extraction_compensation'] = dict(
             method=('analytic compensated line' if direct_path is not None else 'single-arm Cartesian RRT with lower-box compensation'),
             held_side='left', moving_side='right', required_clearance_m=distance,
@@ -1593,6 +1599,43 @@ class DoorTask(_SequentialTask):
         self.report['stage_audits'][-1]['wall_clearance_m'] = clearance
         if clearance < 1e-6:
             self.fail('actual upper box has not cleared the wall front plane')
+
+    def straight_extraction_to(self, start, end, validity, distance, line_limit_mm):
+        """Compensated outward line from `start` to the extraction target, then a swivel self-motion
+        with the tool fixed onto the endpoint row `end`.
+
+        The box can rest flush against its neighbours (zero-gap wall) with the arm next to a joint
+        limit, where 1 cm joint-space steps sag ~0.1 mm into a neighbour; 2.5 mm steps sag ~6 um.
+        Returns (rows, details); rows is None unless every densified row validates and the
+        self-motion lands on `end`.
+        """
+        rows, details = self.planner.analytic_extract(start, validity, validity, sides=('right',),
+            direction=self.wall_outward_direction, distance_m=distance, lift_end=float(end[0]), hold_sides=('left',),
+            swivel_continuation=True, step_m=.0025)
+        if rows is None or details.get('max_line_error_mm', 0.) > line_limit_mm:
+            return None, dict(line=details)
+        rows, planner = np.asarray(rows), self.planner
+        planner.fk(rows[-1])
+        carriage = np.linalg.inv(planner.fk_robot.get_transform('arm_carriage', planner.fk_robot.base_link))
+        tool = planner.fk_robot.get_transform('right_tool0', planner.fk_robot.base_link).copy()
+        first, last = planner.analytic.swivel(1, rows[-1][8:15]), planner.analytic.swivel(1, end[8:15])
+        tail = [rows[-1]]
+        for swivel in np.linspace(first, last, max(2, math.ceil(abs(last-first)/math.radians(.5))+1))[1:]:
+            solutions = planner.analytic.solve(1, carriage@tool, float(swivel), tail[-1][8:15])
+            if not len(solutions):
+                return None, dict(line=details, self_motion_failure=f'no IK at swivel {swivel:.4f}')
+            row = tail[-1].copy()
+            row[8:15] = solutions[np.argmin(np.sum((solutions-tail[-1][8:15])**2, axis=1))]
+            tail.append(row)
+        gap = float(np.abs(tail[-1]-end).max())
+        if gap > 1e-3:
+            return None, dict(line=details, self_motion_failure=f'lands {gap:.2e} rad from the endpoint')
+        tail[-1] = np.asarray(end, dtype=float)
+        dense = np.asarray(densify(np.asarray(tail)))
+        if not bool(validity.mask(self.tensor(dense)).all()):
+            return None, dict(line=details, self_motion_failure='self-motion collision/stability')
+        return np.vstack([rows, dense[1:]]), dict(line=details, swivel_rad=[float(first), float(last)],
+                                                  self_motion_rows=len(dense), landing_gap_rad=gap)
 
     def line_gate_ok(self, rows, side, origin, direction, length, tolerance):
         """audit()'s GPU-FK line/orientation/order criteria, to retry a search before auditing."""
