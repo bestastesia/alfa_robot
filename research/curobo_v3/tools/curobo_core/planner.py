@@ -51,6 +51,33 @@ class AnalyticBridge:
         return output[:count]
 
 
+def shortcut_waypoints(points, validity, resolution=math.radians(.5)):
+    """Greedy shortcut: from each kept waypoint jump to the farthest one with a valid edge."""
+    values = np.asarray(points, dtype=np.float64)
+    if len(values) <= 2:
+        return values
+    device = validity.weights.device
+    kept = [0]
+    while kept[-1] < len(values)-1:
+        source = kept[-1]
+        targets = np.arange(len(values)-1, source, -1)
+        starts = torch.tensor(np.repeat(values[source][None], len(targets), axis=0), device=device, dtype=torch.float32)
+        good = validity.edges(starts, torch.tensor(values[targets], device=device, dtype=torch.float32),
+                              resolution=resolution).cpu().numpy()
+        kept.append(int(targets[np.argmax(good)]) if good.any() else source+1)
+    return values[kept]
+
+
+def validated_shortcut(points, validity):
+    """(waypoints, dense rows) of the greedy shortcut, or None when those dense rows fail the
+    validity; callers then validate and keep the original path exactly as before."""
+    short = shortcut_waypoints(points, validity)
+    dense = np.asarray(densify(short))
+    if bool(validity.mask(torch.tensor(dense, device=validity.weights.device, dtype=torch.float32)).all().item()):
+        return short, dense
+    return None
+
+
 class FullCyclePlanner(CuroboBackend):
     def __init__(self, args):
         super().__init__(args)
@@ -218,7 +245,7 @@ class FullCyclePlanner(CuroboBackend):
                        "max_line_error_mm": maximum_line_error * 1000,
                        "max_orientation_error_deg": math.degrees(maximum_orientation_error)}
 
-    def joint_plan(self, start, target, checker, validity, seed, stop_at_first_valid=None):
+    def joint_plan(self, start, target, checker, validity, seed, stop_at_first_valid=None, shortcut=False):
         lower, upper = checker.kinematics.get_joint_limits().position
         path, stats = self.search_path(
             torch.tensor(start, device="cuda", dtype=torch.float32),
@@ -228,6 +255,11 @@ class FullCyclePlanner(CuroboBackend):
         )
         if path is None:
             return None, stats
+        if shortcut:
+            shortened = validated_shortcut(path, validity)
+            stats = dict(stats, shortcut_waypoints=None if shortened is None else len(shortened[0]))
+            if shortened is not None:
+                return shortened[1], stats
         dense = np.asarray(densify(path))
         if not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
             return None, {"failure": "密化轨迹验收失败"}

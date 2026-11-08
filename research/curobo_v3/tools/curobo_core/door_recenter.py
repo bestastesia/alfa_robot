@@ -4,6 +4,7 @@ Research-only; navigation is an arrival-state transition, never a checked base t
 """
 import copy
 from dataclasses import asdict, replace
+from functools import partial
 import json
 import math
 import hashlib
@@ -121,6 +122,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     conveyor_suffix = ConveyorCyclePlanner.conveyor_suffix
     top_grasp = False
     base_advance = 0.
+    shortcut_suffix_paths = True  # placement/Home RRT paths are shortcut, then dense-validated as before
 
     def __init__(self, assets):
         super().__init__(assets)
@@ -2293,8 +2295,10 @@ class DoorTask(_SequentialTask):
                     selected = False
                     # Polyline has won every accepted door segment; validate it first and only
                     # pay for cubic/stops as safety fallbacks instead of evaluating all three.
+                    # Polyline is shortened as well as lengthened to the binding sampled limit; the
+                    # 1.05 safety factor and every derivative/RNEA gate below are unchanged.
                     for method, parameterize in (
-                            ('validated_polyline',time_parameterize_polyline),
+                            ('validated_polyline',partial(time_parameterize_polyline,two_sided=True)),
                             ('validated_cubic',time_parameterize_path),
                             ('validated_stops',time_parameterize_stops)):
                         trajectory, validation = parameterize(rows, names, *caps, sample_dt=.025)

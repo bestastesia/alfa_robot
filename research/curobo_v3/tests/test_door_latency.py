@@ -13,7 +13,9 @@ from curobo_core.conveyor import conveyor_pair
 from curobo_core.door_sequential_validity import SequentialValidity, box_mesh_obb, material_self_overlap
 from curobo_core.resource_stats import bounded_get, record_build, resource_delta, resource_snapshot
 from curobo_core.urdf_fk import BatchToolFk
+from curobo_core.planner import shortcut_waypoints, validated_shortcut
 from curobo_core.scene import MeshObject, Pose
+from curobo_core.trajectory import time_parameterize_polyline
 
 
 class NativeLikeChecker:
@@ -103,6 +105,62 @@ class PayloadWorldMeshTests(unittest.TestCase):
         tetrahedron = MeshObject('tetra', ((0., 0., 0.), (1., 0., 0.), (0., 1., 0.), (0., 0., 1.)),
                                 ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)), Pose())
         self.assertIsNone(box_mesh_obb(tetrahedron))
+
+
+class TwoSidedPolylineTests(unittest.TestCase):
+    def test_two_sided_law_shortens_to_the_binding_limit_without_exceeding_it(self):
+        names = [f'j{i}' for i in range(3)]
+        velocity, acceleration, jerk = np.array([1., 2., 3.]), np.full(3, 10.), np.full(3, 500.)
+        # Equal motion on three joints: the initial L2 bound leaves each joint at ~55% speed.
+        path = np.linspace([0., 0., 0.], [1., 2., 3.], 25)
+        reference, _ = time_parameterize_polyline(path, names, velocity, acceleration, jerk)
+        shortened, _ = time_parameterize_polyline(path, names, velocity, acceleration, jerk, two_sided=True)
+        self.assertLess(shortened['duration_s'], reference['duration_s'])
+        times = np.asarray(shortened['time_from_start_s'])
+        ratios = [np.max(np.abs(np.asarray(shortened[key]))/limit)**(1/order)
+                  for key, limit, order in (('velocities', velocity, 1), ('accelerations', acceleration, 2), ('jerks', jerk, 3))]
+        self.assertLessEqual(max(ratios), 1.0001)
+        self.assertGreaterEqual(max(ratios), 1/1.05**2-1e-3)
+        np.testing.assert_allclose(np.asarray(shortened['positions'])[[0, -1]], path[[0, -1]], atol=1e-6)
+        self.assertEqual(times[0], 0.)
+
+    def test_default_law_is_unchanged(self):
+        names = ['a', 'b']
+        path = np.array([[0., 0.], [.5, .2], [.7, .9]])
+        first, _ = time_parameterize_polyline(path, names, np.ones(2), np.full(2, 10.), np.full(2, 500.))
+        second, _ = time_parameterize_polyline(path, names, np.ones(2), np.full(2, 10.), np.full(2, 500.), two_sided=False)
+        self.assertEqual(first['duration_s'], second['duration_s'])
+
+
+class CorridorValidity:
+    """2-D free space y <= .2 or x >= .8; `coarse_edges` accepts every edge (a too-coarse check)."""
+    def __init__(self, coarse_edges=False):
+        self.weights, self.coarse_edges = torch.ones(2), coarse_edges
+
+    def mask(self, values):
+        return (values[:, 1] <= .2) | (values[:, 0] >= .8)
+
+    def edges(self, starts, goals, resolution=.01):
+        if self.coarse_edges:
+            return torch.ones(len(starts), dtype=torch.bool)
+        fractions = torch.linspace(0., 1., 201)[None, :, None]
+        points = starts[:, None]+fractions*(goals-starts)[:, None]
+        return self.mask(points.reshape(-1, 2)).reshape(len(starts), -1).all(1)
+
+
+class SuffixShortcutTests(unittest.TestCase):
+    path = np.array([[0., 0.], [.5, 0.], [1., 0.], [1., .5], [1., 1.]])
+
+    def test_shortcut_keeps_only_corners_with_valid_edges(self):
+        np.testing.assert_array_equal(shortcut_waypoints(self.path, CorridorValidity()), self.path[[0, 2, 4]])
+        short, dense = validated_shortcut(self.path, CorridorValidity())
+        np.testing.assert_array_equal(short, self.path[[0, 2, 4]])
+        self.assertTrue(bool(CorridorValidity().mask(torch.tensor(dense, dtype=torch.float32)).all()))
+
+    def test_shortcut_whose_dense_rows_fail_is_rejected(self):
+        # The coarse edge check jumps the corner; its dense rows cross the blocked square.
+        self.assertEqual(len(shortcut_waypoints(self.path, CorridorValidity(coarse_edges=True))), 2)
+        self.assertIsNone(validated_shortcut(self.path, CorridorValidity(coarse_edges=True)))
 
 
 class BatchUrdfFkTests(unittest.TestCase):

@@ -285,8 +285,13 @@ def trajectory_fallback_path(rows, stats):
 
 
 def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_limits, jerk_limits,
-                               sample_dt=0.025, safety_factor=1.05):
-    """Time a dense collision-checked polyline without cutting its geometric edges."""
+                               sample_dt=0.025, safety_factor=1.05, two_sided=False):
+    """Time a dense collision-checked polyline without cutting its geometric edges.
+
+    The initial duration bounds the L2 joint speed; by default it is only ever lengthened.
+    `two_sided` also shortens it until the binding sampled velocity/acceleration/jerk ratio lies
+    in [1/safety_factor**2, 1], so the same safety factor applies from both directions.
+    """
     values = np.asarray(path, dtype=np.float64)
     limits = [np.asarray(item, dtype=np.float64) for item in
               (velocity_limits, acceleration_limits, jerk_limits)]
@@ -306,7 +311,7 @@ def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_
     parameter = np.concatenate(([0.0], np.cumsum(distance)))
     parameter /= parameter[-1]
     duration = max(sample_dt, safety_factor * 1.875 * float(np.sum(distance)))
-    for _ in range(12):
+    for _ in range(24 if two_sided else 12):
         sample_time = np.linspace(0.0, duration, max(3, int(np.ceil(duration / sample_dt)) + 1))
         u = sample_time / duration
         progress = 10*u**3 - 15*u**4 + 6*u**5
@@ -320,9 +325,9 @@ def time_parameterize_polyline(path, joint_names, velocity_limits, acceleration_
         ratio = max(float(np.max(np.abs(velocity) / velocity_limits)),
                     float(np.sqrt(np.max(np.abs(acceleration) / acceleration_limits))),
                     float(np.cbrt(np.max(np.abs(jerk) / jerk_limits))))
-        if ratio <= 1.0:
+        if ratio <= 1.0 and (not two_sided or ratio >= 1.0 / safety_factor**2 or duration <= sample_dt):
             break
-        duration *= ratio * safety_factor
+        duration = max(sample_dt, duration * ratio * safety_factor)
     else:
         raise RuntimeError("polyline timing did not converge")
     samples = {

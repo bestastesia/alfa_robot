@@ -12,7 +12,7 @@ from curobo.types import JointState
 
 from curobo_core.adapter import matrix_pose
 from curobo_core.backend import goal
-from curobo_core.planner import CycleBlocked
+from curobo_core.planner import CycleBlocked, validated_shortcut
 from curobo_core.resource_stats import bounded_get, record_build
 from curobo_core.conveyor import conveyor_pair, DEFAULT_CONVEYOR_MESH
 from curobo_core.scene import Pose, digest
@@ -156,9 +156,14 @@ class ConveyorCyclePlanner(AnalyticContacts):
         if path is None:
             raise CycleBlocked('龙头车放置RRT', '2秒预算内未找到无碰撞路径', report)
         validation_started=time.perf_counter()
-        dense = np.asarray(densify(path))
-        if not bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all()):
-            raise CycleBlocked('龙头车放置RRT细验', '密化后的路径未通过碰撞检查', report)
+        shortened = validated_shortcut(path, validity) if getattr(self, 'shortcut_suffix_paths', False) else None
+        if shortened is not None:
+            stats['shortcut_waypoints'] = len(shortened[0])
+            dense = shortened[1]
+        else:
+            dense = np.asarray(densify(path))
+            if not bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all()):
+                raise CycleBlocked('龙头车放置RRT细验', '密化后的路径未通过碰撞检查', report)
         torch.cuda.synchronize();timing['placement_dense_validation']=(time.perf_counter()-validation_started)*1000
         names = report['joint_names']
         mobile = np.repeat(np.asarray(report['frames'][-1])[None], len(dense), axis=0)
@@ -282,7 +287,8 @@ class ConveyorCyclePlanner(AnalyticContacts):
             timing['empty_checker_setup']=(time.perf_counter()-home_setup_started)*1000
             home_search_started=time.perf_counter()
             path, stats = self.joint_plan(placed, self.home_values, empty_checker, empty_validity,
-                                          20261014, stop_at_first_valid=True)
+                                          20261014, stop_at_first_valid=True,
+                                          shortcut=getattr(self, 'shortcut_suffix_paths', False))
             torch.cuda.synchronize();timing['home_rrt_and_validation']=(time.perf_counter()-home_search_started)*1000
             report['conveyor_home_search_stats'] = stats
             if path is None:
