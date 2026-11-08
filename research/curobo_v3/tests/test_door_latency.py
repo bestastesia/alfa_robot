@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from curobo_core.conveyor import conveyor_pair
 from curobo_core.door_sequential_validity import SequentialValidity, box_mesh_obb, material_self_overlap
-from curobo_core.resource_stats import record_build, resource_delta, resource_snapshot
+from curobo_core.resource_stats import bounded_get, record_build, resource_delta, resource_snapshot
 from curobo_core.urdf_fk import BatchToolFk
 from curobo_core.scene import MeshObject, Pose
 
@@ -143,6 +143,18 @@ class BatchUrdfFkTests(unittest.TestCase):
 
 
 class ResourceStatsTests(unittest.TestCase):
+    def test_bounded_cache_keeps_the_most_recently_used_entries(self):
+        cache, builds = {}, []
+        get = lambda key: bounded_get(cache, key, lambda: builds.append(key) or f'resource-{key}', 2)
+        self.assertEqual(get('a'), 'resource-a')
+        get('b')
+        get('a')  # hit: 'a' becomes the most recent entry
+        get('c')  # evicts 'b', the least recently used
+        self.assertEqual(list(cache), ['a', 'c'])
+        get('b')
+        self.assertEqual(builds, ['a', 'b', 'c', 'b'])
+        self.assertEqual(list(cache), ['c', 'b'])
+
     def test_build_counters_report_per_round_deltas(self):
         import time
         owner = SimpleNamespace()

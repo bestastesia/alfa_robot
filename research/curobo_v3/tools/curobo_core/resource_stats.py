@@ -23,3 +23,15 @@ def resource_delta(before, after):
                    'ms': item['ms']-before.get(kind, {}).get('ms', 0.)}
             for kind, item in after.items()
             if item['builds'] != before.get(kind, {}).get('builds', 0)}
+
+
+def bounded_get(cache, key, build, limit):
+    """LRU lookup in a planner-resident resource cache: hits move to the end, and a build
+    beyond `limit` entries drops the least recently used one (live users keep their reference)."""
+    value = cache.pop(key, None)
+    if value is None:
+        value = build()
+    cache[key] = value
+    while len(cache) > limit:
+        cache.pop(next(iter(cache)))
+    return value

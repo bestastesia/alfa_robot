@@ -66,7 +66,7 @@ def source_identity():
 
 def plan_round(planner,number,column,removed,seed,policy,context,rounds,progress=print):
     """One door pair, timed end to end from the request to the RNEA-validated trajectory."""
-    torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats();resources=resource_snapshot(planner)
+    torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats();resources=resource_snapshot(planner);resident=torch.cuda.memory_allocated()/2**20
     round_started=time.perf_counter();error=None
     request=door_request(planner,seed,column,removed);planner.set_snapshot(request.snapshot)
     if column==0:
@@ -85,7 +85,7 @@ def plan_round(planner,number,column,removed,seed,policy,context,rounds,progress
                 plan_cache=dict(enabled=False,hit=False),column=column,round_index=number,removed_box_ids=sorted(removed),**context)
         report=task.report
     torch.cuda.synchronize();report['total_ms']=(time.perf_counter()-round_started)*1000
-    report['resource_builds']=resource_delta(resources,resource_snapshot(planner));report['peak_gpu_memory_mb']=torch.cuda.max_memory_allocated()/2**20
+    report['resource_builds']=resource_delta(resources,resource_snapshot(planner));report['peak_gpu_memory_mb']=torch.cuda.max_memory_allocated()/2**20;report['resident_gpu_memory_mb']=resident
     return report,error
 
 def run_sequence(planner,seed,policy,policy_path,assets,output_dir,progress=print):
@@ -107,7 +107,8 @@ def run_sequence(planner,seed,policy,policy_path,assets,output_dir,progress=prin
         path=output_dir/f'round-{number+1:02d}-column-{column}.json';path.write_text(json.dumps(report,ensure_ascii=False)+'\n')
         record=dict(round=number+1,column=column,lower_box=lower,upper_box=upper,path=str(path),
                     success=report['success'],total_ms=report['total_ms'],motion_duration_s=report.get('motion_duration_s'),error=error,
-                    resource_builds=report['resource_builds'],peak_gpu_memory_mb=report['peak_gpu_memory_mb'])
+                    resource_builds=report['resource_builds'],peak_gpu_memory_mb=report['peak_gpu_memory_mb'],
+                    resident_gpu_memory_mb=report['resident_gpu_memory_mb'])
         rounds.append(record);progress(json.dumps(record,ensure_ascii=False))
         if not report['success']:break
         if report['final_snapshot']['attachments']:

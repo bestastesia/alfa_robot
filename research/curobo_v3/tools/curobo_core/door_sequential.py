@@ -264,7 +264,7 @@ class _SequentialTask:
         from v3_batched_loaded_search import loaded_robot
         from .adapter import to_curobo_scene
         from .door_sequential_validity import SequentialValidity
-        from .resource_stats import record_build
+        from .resource_stats import bounded_get, record_build
         snapshot = self.store.snapshot()
         support_key = None if self.support_pose is None else tuple(self.support_pose.reshape(-1))
         key = (snapshot.geometry_key,self.contact_pair,support_key,self.support_side,self.request.cartesian_geometry_tolerance_m)
@@ -281,16 +281,17 @@ class _SequentialTask:
                 native_snapshot = replace(snapshot, objects=tuple(
                     item for item in snapshot.objects if item.object_id != self.contact_pair[1]))
             checker_key=(snapshot.geometry_key,self.contact_pair,self.request.cartesian_geometry_tolerance_m)
-            checker_cache=getattr(self.planner,'_door_checker_cache',{})
-            checker=checker_cache.get(checker_key)
-            if checker is None:
+            def build():
                 build_started=time.perf_counter()
                 checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
                     robot_config=robot, scene_model=to_curobo_scene(native_snapshot),
                     n_cuboids=max(40, len(snapshot.objects)), n_meshes=len(snapshot.meshes), collision_activation_distance=0.))
                 record_build(self.planner,'door_checker',build_started)
-                checker_cache[checker_key]=checker
-                self.planner._door_checker_cache=checker_cache
+                return checker
+            # One five-column pass builds ~50 geometries; the bound keeps GPU memory from growing.
+            checker_cache=getattr(self.planner,'_door_checker_cache',{})
+            checker=bounded_get(checker_cache,checker_key,build,getattr(self.planner,'door_checker_cache_limit',64))
+            self.planner._door_checker_cache=checker_cache
             self.cached_validity = SequentialValidity(checker, snapshot, self.planner.robot,
                 {side: tool_mesh_vertices(self.planner, side) for side in ("left", "right")}, self.contact_pair,
                 geometry_tolerance=self.request.cartesian_geometry_tolerance_m,support_pose=self.support_pose,support_side=self.support_side)

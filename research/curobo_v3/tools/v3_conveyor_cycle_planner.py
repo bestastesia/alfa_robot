@@ -13,7 +13,7 @@ from curobo.types import JointState
 from curobo_core.adapter import matrix_pose
 from curobo_core.backend import goal
 from curobo_core.planner import CycleBlocked
-from curobo_core.resource_stats import record_build
+from curobo_core.resource_stats import bounded_get, record_build
 from curobo_core.conveyor import conveyor_pair, DEFAULT_CONVEYOR_MESH
 from curobo_core.scene import Pose, digest
 from v3_batched_loaded_search import GpuValidity, densify, loaded_robot
@@ -105,16 +105,18 @@ class ConveyorCyclePlanner(AnalyticContacts):
     def conveyor_ik_solver(self,boxes):
         robot=loaded_robot(self.robot,self.box_fit,attachments=self.task_attachments(boxes))
         key=(self.snapshot.geometry_key,tuple(sorted(boxes.items())),digest(robot))
-        cache=getattr(self,'_conveyor_solver_cache',{})
-        solver=cache.get(key)
-        if solver is None:
+        def build():
             build_started=time.perf_counter()
             config=InverseKinematicsCfg.create(robot=copy.deepcopy(robot),scene_model=self.scene(boxes),
                 collision_cache={'cuboid':max(40,len(self.snapshot.objects)),'mesh':len(self.snapshot.meshes)},
                 num_seeds=16,self_collision_check=True,use_cuda_graph=False,
                 position_tolerance=.002,orientation_tolerance=math.radians(1),
                 override_iters_for_multi_link_ik=160,optimizer_collision_activation_distance=.005)
-            solver=InverseKinematics(config);record_build(self,'conveyor_ik',build_started);cache[key]=solver;self._conveyor_solver_cache=cache
+            solver=InverseKinematics(config);record_build(self,'conveyor_ik',build_started)
+            return solver
+        cache=getattr(self,'_conveyor_solver_cache',{})
+        solver=bounded_get(cache,key,build,getattr(self,'conveyor_solver_cache_limit',8))
+        self._conveyor_solver_cache=cache
         return solver
 
     def plan_conveyor_target(self, start, targets, checker, validity, solver, report, append):

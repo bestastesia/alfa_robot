@@ -24,7 +24,8 @@ def round_rows(aggregate):
                          symmetry_derived=bool(report.get('plan_cache', {}).get('symmetry_derived')),
                          plan_cache=report.get('plan_cache'), stage_timing_ms=report.get('stage_timing_ms', {}),
                          stage_breakdown_ms=report.get('stage_breakdown_ms', {}),
-                         resource_builds=record['resource_builds'], peak_gpu_memory_mb=record['peak_gpu_memory_mb']))
+                         resource_builds=record['resource_builds'], peak_gpu_memory_mb=record['peak_gpu_memory_mb'],
+                         resident_gpu_memory_mb=record['resident_gpu_memory_mb']))
     return rows
 
 
