@@ -619,7 +619,7 @@ class _SequentialTask:
         return candidates
 
 
-    def search(self, goals, active, budget_s=2., seed_value=None, stop_at_first_valid=False):
+    def search(self, goals, active, budget_s=2., seed_value=None, stop_at_first_valid=False, refinement_s=0.):
         from v3_batched_loaded_search import batched_rrt_connect_multi_goal, densify
         from .door_sequential_validity import ReducedValidity
         validity = self.validity()
@@ -635,7 +635,7 @@ class _SequentialTask:
         path, stats = batched_rrt_connect_multi_goal(
             self.tensor(self.q[active]), self.tensor(np.asarray(goals)[:, active]),
             lower[active]+1e-5, upper[active]-1e-5, reduced, budget_s, seed,
-            stop_at_first_valid=stop_at_first_valid)
+            stop_at_first_valid=stop_at_first_valid, refinement_s=refinement_s)
         self.torch.cuda.synchronize()
         self.report["timing_ms"]["search"] += (time.perf_counter()-started)*1000
         self.report["attempts"][-1]["stats"] = stats

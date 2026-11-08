@@ -872,8 +872,10 @@ class DoorTask(_SequentialTask):
             for joint_seed in joint_seeds:
                 if quality_good or remaining()<=.05:
                     break
+                # First densely verified path, then a bounded refinement window (the shortcut and
+                # rotation gate below are unchanged) instead of always spending the whole cap.
                 path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
-                                   seed_value=joint_seed,stop_at_first_valid=False)
+                                   seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25)
                 joint_attempts+=1
                 if path is None:
                     continue
@@ -941,6 +943,10 @@ class DoorTask(_SequentialTask):
                     sparse=self.shortcut_states(np.asarray(sparse),reduced)
                     dense=np.asarray(densify(sparse,reduced.weights.cpu().tolist()))
                     candidate=reduced.expand(self.tensor(dense)).cpu().numpy()
+                    # A repeated path cannot change the min-rotation choice below; stop retrying.
+                    if any(item[0]=='support_compensated_joint_rrt' and len(item[1])==len(candidate) and
+                           np.allclose(item[1],candidate,atol=1e-9,rtol=0) for item in alternatives):
+                        break
                     alternatives.append(('support_compensated_joint_rrt',candidate,
                                          self.path_rotation_metrics(candidate,side),joint_stats))
         if not alternatives:
@@ -1104,21 +1110,9 @@ class DoorTask(_SequentialTask):
         limits = validity.checker.kinematics.get_joint_limits().position
         low, high = limits[0].cpu().numpy()+1e-5, limits[1].cpu().numpy()-1e-5
         rows = np.clip(rows, low, high)
-        valid = []
-        for offset in range(0, len(rows), 4096):
-            valid.extend(validity.mask(self.tensor(rows[offset:offset+4096])).cpu().tolist())
-        rows = rows[np.asarray(valid)]
-        collision_valid = len(rows)
-        kept, radii = [], []
-        for offset in range(0, len(rows), 1024):
-            radius = self.envelope(rows[offset:offset+1024])
-            good = radius <= self.radius
-            kept.append(rows[offset:offset+1024][good])
-            radii.extend(radius[good].tolist())
-        rows = np.concatenate(kept) if kept and any(len(item) for item in kept) else np.empty((0, 15))
-        if not len(rows):
-            return rows, dict(atlas_rows=len(atlas), sampled_rows=33*len(atlas),
-                              collision_valid=collision_valid, envelope_valid=0)
+        # The selection is the first 64 rows in (pose score, distance) order that pass collision and
+        # the envelope. Rank all rows by FK first, then gate them in that order and stop at 64: the
+        # same rows in the same order as gating every row, without checking ~90k loaded states.
         target_poses = {side: matrix_pose(target) for side, target in self.targets.items()}
         scores, pose_errors = [], []
         for offset in range(0, len(rows), 1024):
@@ -1139,14 +1133,35 @@ class DoorTask(_SequentialTask):
                 batch_error = torch.maximum(batch_error, position+angle)
             scores.extend(batch_score.cpu().tolist())
             pose_errors.extend(batch_error.cpu().tolist())
-        order = np.lexsort((np.linalg.norm(rows-self.q, axis=1), np.asarray(scores)))[:64]
+        scores, pose_errors = np.asarray(scores), np.asarray(pose_errors)
+        ranked = np.lexsort((np.linalg.norm(rows-self.q, axis=1), scores))
+        order, radii, scanned, collision_valid = [], [], 0, 0
+        for offset in range(0, len(ranked), 4096):
+            batch = ranked[offset:offset+4096]
+            valid = validity.mask(self.tensor(rows[batch])).cpu().numpy()
+            scanned += len(batch)
+            collision_valid += int(valid.sum())
+            batch = batch[valid]
+            for start in range(0, len(batch), 1024):
+                radius = self.envelope(rows[batch[start:start+1024]])
+                good = radius <= self.radius
+                order.extend(batch[start:start+1024][good].tolist())
+                radii.extend(radius[good].tolist())
+            if len(order) >= 64:
+                break
+        envelope_valid = len(order)
+        order, radii = np.asarray(order[:64], dtype=int), np.asarray(radii[:64])
+        if not len(order):
+            return np.empty((0, 15)), dict(atlas_rows=len(atlas), sampled_rows=33*len(atlas), scanned_rows=scanned,
+                                           collision_valid=collision_valid, envelope_valid=0)
         selected = rows[order]
         details = dict(atlas_path=str(atlas_path), atlas_sha256=hashlib.sha256(atlas_path.read_bytes()).hexdigest(),
-                       atlas_rows=len(atlas), sampled_rows=33*len(atlas), collision_valid=collision_valid,
-                       envelope_valid=len(rows), selected=len(selected),
-                       selected_radius_max_m=float(np.max(np.asarray(radii)[order])),
-                       selected_pose_score_max=float(np.max(np.asarray(scores)[order])),
-                       selected_pose_error_proxy_max=float(np.max(np.asarray(pose_errors)[order])),
+                       atlas_rows=len(atlas), sampled_rows=33*len(atlas), scanned_rows=scanned,
+                       gate_order='pose score then distance; collision and envelope counts cover scanned rows only',
+                       collision_valid=collision_valid, envelope_valid=envelope_valid, selected=len(selected),
+                       selected_radius_max_m=float(np.max(radii)),
+                       selected_pose_score_max=float(np.max(scores[order])),
+                       selected_pose_error_proxy_max=float(np.max(pose_errors[order])),
                        policy_radius_m=self.radius, sampling_seed=20261104,
                        noise_updown_std_m=.015, noise_joint_std_deg=6.)
         return selected, details
@@ -1167,11 +1182,15 @@ class DoorTask(_SequentialTask):
         self.report['recenter_inputs'].append(fixture)
         alternatives = []
         stats = []
+        stop_reason = 'bank_exhausted_or_gate_met'
         seed_bank=(65,41,17,71,53,89)
         for search_seed in seed_bank:
             seed_started = time.perf_counter()
+            # Each seed contributes its first densely verified path, as when one 0.75 s iteration
+            # was all the loaded checker allowed: weighted-length refinement does not optimize
+            # the rotation score used below and measurably worsened it once checks became fast.
             path = self.search(candidates,list(range(15)),budget_s=.75,seed_value=search_seed,
-                               stop_at_first_valid=False)
+                               stop_at_first_valid=True)
             self.record_operation_time('seed_bank_search', seed_started)
             search_stats = self.report['attempts'][-1].get('stats')
             stats.append(dict(seed=search_seed,stats=search_stats))
@@ -1190,12 +1209,18 @@ class DoorTask(_SequentialTask):
                     np.abs(np.diff(joints, axis=0)).sum()-np.abs(joints[-1]-joints[0]).sum()))
                 extra_sum = left['extra_deg']+right['extra_deg']
                 score = max(left['extra_deg'],right['extra_deg'])+.1*extra_sum+.01*max(0.,backtrack)
+                # A repeated path adds nothing to the min-score choice; treat it as the bank converging.
+                duplicate = any(len(item[1]) == len(path) and np.allclose(item[1], path, atol=1e-9, rtol=0)
+                                for item in alternatives)
                 alternatives.append((score,path,left,right,search_stats))
                 self.record_operation_time('seed_bank_postprocess', post_started)
                 if left['extra_deg'] <= 65. and right['extra_deg'] <= 65.:
                     break
+                if duplicate:
+                    stop_reason = 'duplicate_path'
+                    break
         self.report['latest_compact_search'] = dict(
-            seed_bank=list(seed_bank),
+            seed_bank=list(seed_bank), stop_reason=stop_reason,
             attempts=stats, alternatives=[dict(score=item[0],left_rotation=item[2],
                                                 right_rotation=item[3],stats=item[4])
                                          for item in alternatives])
@@ -1492,20 +1517,28 @@ class DoorTask(_SequentialTask):
                 exact.append(row)
         endpoints = np.asarray(exact).reshape(-1, 15)
         self.planner.active_side='right'
+        extraction_tolerance=.05 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         path=direct_path;stats={'tier':'analytic_compensated','attempts':direct_attempts} if direct_path is not None else None
+        line_rejections=[]
         if path is None and len(endpoints):
-            path, stats = plan_cartesian_transport(
-                self.planner, start, endpoints, validity.checker,
-                budget_s=2., seed=self.request.seed+1,
-                options={'strict_budget': True, 'workspace_margin_m': .15,
-                         'batch': 256, 'connect_candidates': 64, 'step': .28},
-                validity=validity, active_indices=[0]+RIGHT,
-                row_mapper=left_mapper, derived_indices=LEFT)
+            # The task-space search does not constrain the line; retry another seed only when its
+            # path would fail the same line/orientation/order audit applied below.
+            for attempt in range(3):
+                path, stats = plan_cartesian_transport(
+                    self.planner, start, endpoints, validity.checker,
+                    budget_s=2., seed=self.request.seed+1+1000*attempt,
+                    options={'strict_budget': True, 'workspace_margin_m': .15,
+                             'batch': 256, 'connect_candidates': 64, 'step': .28},
+                    validity=validity, active_indices=[0]+RIGHT,
+                    row_mapper=left_mapper, derived_indices=LEFT)
+                if path is None or self.line_gate_ok(path,'right',origin,self.wall_outward_direction,distance,extraction_tolerance):
+                    break
+                line_rejections.append(dict(seed=self.request.seed+1+1000*attempt,stats=stats))
         self.report['upper_extraction_compensation'] = dict(
             method=('analytic compensated line' if direct_path is not None else 'single-arm Cartesian RRT with lower-box compensation'),
             held_side='left', moving_side='right', required_clearance_m=distance,
             lift_grid=lifts.tolist(),direct_attempts=direct_attempts,analytic_endpoint_candidates=analytic_count,
-            valid_endpoint_candidates=len(endpoints), search_stats=stats,
+            valid_endpoint_candidates=len(endpoints), search_stats=stats, line_gate_rejections=line_rejections,
             success=path is not None)
         if path is None:
             self.fail('compensated Cartesian upper extraction found no fully validated path')
@@ -1516,7 +1549,6 @@ class DoorTask(_SequentialTask):
             lateral.append(float(np.linalg.norm(delta-self.wall_outward_direction*along)));angles.append(float(pose_error(actual,origin)[1]))
         self.report['upper_extraction_line_metrics']=dict(max_lateral_m=max(lateral),max_rotation_deg=math.degrees(max(angles)),
             final_distance_m=progress[-1],minimum_progress_step_m=min(np.diff(progress),default=0.),required_distance_m=distance)
-        extraction_tolerance=.05 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         self.audit(path,list(range(15)),start,line=('right',origin,self.wall_outward_direction,distance,extraction_tolerance))
         max_translation = max_angle = 0.
         for row in path:
@@ -1533,6 +1565,19 @@ class DoorTask(_SequentialTask):
         self.report['stage_audits'][-1]['wall_clearance_m'] = clearance
         if clearance < 1e-6:
             self.fail('actual upper box has not cleared the wall front plane')
+
+    def line_gate_ok(self, rows, side, origin, direction, length, tolerance):
+        """audit()'s GPU-FK line/orientation/order criteria, to retry a search before auditing."""
+        state = self.validity().checker.kinematics.compute_kinematics(
+            JointState.from_position(self.tensor(rows)[None], joint_names=list(ACTIVE_JOINTS)))
+        pose = state.tool_poses.to_dict()[side+'_tool0']
+        positions, quaternions = pose.position.reshape(-1, 3).cpu().numpy(), pose.quaternion.reshape(-1, 4).cpu().numpy()
+        delta = positions-origin[:3, 3]
+        along = delta@direction
+        lateral = np.linalg.norm(delta-along[:, None]*direction, axis=1)
+        angles = (Rotation.from_matrix(origin[:3, :3]).inv()*Rotation.from_quat(np.roll(quaternions, -1, axis=1))).magnitude()
+        return bool(lateral.max() <= tolerance and angles.max() <= math.radians(.5) and not np.any(np.diff(along) < -1e-5)
+                    and along.min() >= -1e-5 and along.max() <= length+.001 and abs(along[-1]-length) <= .001)
 
     def contact_lower_ranked(self, object_id, active):
         item = self.store.snapshot().object(object_id)
