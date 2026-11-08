@@ -2333,3 +2333,12 @@
 
 - 修复列轮次切换仅跳帧、耗时面板仍读取五列聚合结果的问题；Viewer现在加载每轮结果并同步更新E2E、运动、阶段及子阶段耗时，轮次文件缺失时失败关闭。
 - 正式五列结果逐列显示51.506/0.089/55.633/57.324/24.891s；CPU 92 passed，`git diff --check`通过；Viser 8144已重启。
+
+## 2026-11-08 · 门扉五列：每列规划<10s（无轨迹缓存、常驻热启动）与运动时长压缩
+
+- 基线 `405b4d5`；口径：常驻 planner 先跑一遍丢弃的五列 warmup（s5），再测 s11/29/41，每轮从 `door_request` 计到 RNEA 完成，`plan_cache.enabled=false`。
+- 结果（s11/s41）：规划 列4 41.0→8.0/8.1 s、列3 48.2→5.1/5.0、列1 49.2→5.1/5.7、列2 21.1→4.0/3.9，列0 镜像 0.1–0.3 s；运动 列4 39.0→20.6/20.7、列3 33.1→17.9、列1 33.2→18.3、列2 27.5→15.1/16.6 s。首见（无 warmup）列4 17.6 s，仅作参考。
+- 分支 `perf/door-five-column-latency`：带箱自碰原生核+边界带 float64 复核、输送线网格 OBB；时间化只在回退时建 checker；seed bank 首解与 Atlas 懒惰门控；批量 URDF FK 与推测式抽离校验；缓存有界 LRU；折线双向缩放、放箱/回 Home shortcut、平滑梯形时间律；全帧 FCL 网格审计 `v3_verify_door_mesh_audit.py`。
+- 验证：各步影子等价 0 差异；Step 4 轨迹与 Step 3 逐帧逐位相同；五列结构与列0镜像 verifier 通过；中心列现代化门禁全过、外列门禁结果与基线相同；网格审计无新增重叠；CPU 98、GPU 8 passed；RNEA ≤0.9。证据 `~/Sevenova/door-five-column-latency-20261108/`，Viser 8144 显示最终 s11。
+- 遗留：seed 29 列4 上箱抽离横偏 >5 cm（基线既有）；网格审计发现基线既有的球模型覆盖缺口（预接触时工具 link7 网格进目标箱约 1 cm 等）；yourdfpy 位姿读数有 ~1e-8 历史依赖（trimesh 跳过 <1e-8 的边更新）。
+- Linear：MOTION-427（本项，In Review）；后续 MOTION-428（seed 29 列4 抽离）、MOTION-429（球模型覆盖缺口），均挂 MOTION-295。
