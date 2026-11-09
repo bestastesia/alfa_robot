@@ -113,6 +113,22 @@ class MultiRootFullCyclePlanner(BallFullCyclePlanner):
                 root_index=active_roots[int(torch.linalg.vector_norm(roots[active_roots]-torch.tensor(dense[0],device='cuda'),dim=-1).argmin())]
                 goal_index=active_goals[int(torch.linalg.vector_norm(goals[active_goals]-torch.tensor(dense[-1],device='cuda'),dim=-1).argmin())]
                 root=preparation['root_records'][root_index]
+                if hasattr(self,'validate_selected_extraction'):
+                    progress(f"仅验证选中候选{root['contact_index']+1}的完整15轴LM抽离")
+                    try:
+                        self.validate_selected_extraction(root,empty_validity,validity)
+                    except CycleBlocked as error:
+                        active_roots.remove(root_index)
+                        attempts.append({'root':root_index,'contact':root['contact_index'],'goal':goal_index,'rejected':'选中候选LM抽离','failure':str(error)})
+                        continue
+                    progress('从实际LM抽离终点连接已选运输构型')
+                    dense,stats=self.reconcile_selected_transport(root,dense,stats,validity,lower,upper)
+                    if dense is None:
+                        active_roots.remove(root_index)
+                        attempts.append({'root':root_index,'contact':root['contact_index'],'goal':goal_index,'rejected':'实际LM终点运输连接','search':stats})
+                        continue
+                    roots[root_index]=torch.tensor(root['start'],device='cuda',dtype=roots.dtype)
+                    next(item for item in preparation['attempts'] if item['contact_index']==root['contact_index'])['detail']=self.selected_lm_review['lm_detail']
                 progress(f"验证候选{root['contact_index']+1}的Home到位与携箱转身")
                 segment=time.perf_counter()
                 approach,approach_stats=super().plan_contact_approach(np.asarray(root['contact']),empty,empty_validity,20261003+root['contact_index'])

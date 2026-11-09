@@ -31,13 +31,15 @@
     1,
     1
   ],
-  "mapping": "q_legacy = offsets + signs * q_candidate; approved dual zero and J6 positive axes; tool0 J7+Z191mm",
+  "mapping": "q_legacy = offsets + signs * q_candidate; TCP J7+Z135mm",
   "limits": "left J2 [-90,120]; right J2 [-120,90]; both J4 +/-145; J3 +/-180; both J6 +/-110",
-  "status": "approved dual joint-coordinate redefinition; original installation retained, tool0 extended to J7+Z191mm",
+  "status": "user approved J6-axis to TCP 234.2mm, inferred J7 +Z135mm; joints, physical tool inertia and collision geometry preserved",
   "rights_source": "Only discrete 90/180-degree zero shifts, J2 +/-15deg and confirmed axis signs; no fitted small-angle zero offsets",
-  "tool_offset_m": 0.191,
+  "tool_offset_m": 0.135,
   "planning_assets_validated": false,
-  "coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
+  "coordinate_revision": "dual-zero-discrete-only-tool135-20261105",
   "random_reparameterization_trials": 100,
-  "maximum_all_link_fk_matrix_error": 1.889917963446286e-09
+  "maximum_all_link_fk_matrix_error": 1.889917963446286e-09,
+  "supersedes_tool_offset_m": 0.191,
+  "current_urdf_sha256": "2b4d861a79ff4a984b1e17a23a94e0e989ecc2f4499cbb0b2962ec07695d7f0b"
 }

@@ -231,7 +231,7 @@ class FullCyclePlanner(CuroboBackend):
         if path is None:
             return None, stats
         dense = np.asarray(densify(path))
-        if not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
+        if getattr(self, 'dense_path_rechecks', True) and not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
             return None, {"failure": "密化轨迹验收失败"}
         return dense, stats
 

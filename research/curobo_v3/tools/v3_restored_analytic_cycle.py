@@ -106,8 +106,13 @@ class RestoredAnalyticPlanner(CurrentUrdfForwardPlanner):
 
     def verified_rrt(self,*args,**kwargs):
         validity=args[4]
+        validity.validate_returned_path=getattr(self,'dense_path_rechecks',True)
         validity.scene_penetration_tolerance_m=.001
         validity.contact_penetration_tolerance_m=.001
+        if not getattr(self,'dense_path_rechecks',True):
+            path,stats=original_rrt(*args,**kwargs)
+            return path,dict(stats,quarter_degree_acceptance_checks=0,quarter_degree_rejections=0,
+                             extra_path_recheck=False)
         previous=getattr(validity,'path_quality_callback',None)
         checks=[]
         def accept(path):
@@ -124,10 +129,11 @@ class RestoredAnalyticPlanner(CurrentUrdfForwardPlanner):
             validity.path_quality_callback=previous
 
     def search_path(self,start,goals,lower,upper,validity,budget,seed):
+        validity.validate_returned_path=getattr(self,'dense_path_rechecks',True)
         validity.scene_penetration_tolerance_m=.001
         validity.contact_penetration_tolerance_m=.001
         path,stats=CuroboBackend.search_path(self,start,goals,lower,upper,validity,budget,seed)
-        if path is not None:
+        if path is not None and getattr(self,'dense_path_rechecks',True):
             audit=self.audit_path(validity.checker,path,target='contact' if getattr(validity,'allow_contact',False) else bool(hasattr(validity,'targets')))
             stats=dict(stats,restored_collision_audit=audit)
             if not audit['valid']:return None,dict(stats,failure='restored path exact collision acceptance failed')
@@ -138,7 +144,7 @@ class RestoredAnalyticPlanner(CurrentUrdfForwardPlanner):
         validity.scene_penetration_tolerance_m=.001
         validity.contact_penetration_tolerance_m=.001
         path,stats=self.verified_rrt(*args,**kwargs)
-        if path is not None:
+        if path is not None and getattr(self,'dense_path_rechecks',True):
             audit=self.audit_path(validity.checker,path,target=bool(hasattr(validity,'targets')))
             stats=dict(stats,restored_collision_audit=audit)
             if not audit['valid']:return None,dict(stats,failure='restored single-arm exact collision acceptance failed')
@@ -173,8 +179,14 @@ class RestoredAnalyticPlanner(CurrentUrdfForwardPlanner):
     def transport_and_turn(self,boxes,transport,stats):
         result=ConveyorCyclePlanner.transport_and_turn(self,boxes,transport,stats)
         checker=self.checker(boxes,payload=True)
-        audit=self.audit_path(checker,transport)
         radius=float(self.full_envelope_radius(checker,np.asarray(transport[-1:])).max())
+        if not getattr(self,'dense_path_rechecks',True):
+            result['transport_path_recheck']='disabled; search collision checks retained'
+            if radius>1.05:
+                result['success']=False
+                result['failure']=dict(stage='transport endpoint envelope',frame_index=0,yaw_deg=0.)
+            return result
+        audit=self.audit_path(checker,transport)
         audit['transport_endpoint_radius_m']=radius
         audit['valid'] &= radius<=1.05
         result['restored_collision_audit']=audit
@@ -184,6 +196,7 @@ class RestoredAnalyticPlanner(CurrentUrdfForwardPlanner):
         return result
 
     def _final_audit(self,result,pick_snapshot):
+        if not getattr(self,'dense_path_rechecks',True):return []
         frames=np.asarray(result.get('frames',[]),dtype=np.float32)
         if not len(frames):return []
         names=result['joint_names']

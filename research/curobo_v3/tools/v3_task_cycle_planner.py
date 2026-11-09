@@ -2,6 +2,7 @@ import copy
 from dataclasses import replace
 import math
 import time
+import xml.etree.ElementTree as ET
 
 import numpy as np
 import torch
@@ -79,16 +80,24 @@ class TaskCyclePlanner(FullCyclePlanner):
         contacts = self.contact_poses_for_task(self.selected_task)
         indices = {}
         config = checker.kinematics.config.kinematics_config
+        model_definition=ET.parse(self.robot['kinematics']['urdf_path']).getroot()
         for side, box_id in self.selected_task.items():
             item = self.snapshot.object(f'wall_box_{box_id:02d}')
             targets[side] = dict(center=item.pose.position, dimensions=item.dimensions_m,
                                  contact=contacts[side + '_tool0']['position'])
             sphere_ids = config.get_sphere_index_from_link_name(side + '_link7').cpu().tolist()
+            tool_origin=np.fromstring(model_definition.find(f"joint[@name='{side}_tool0_fixed']/origin").get('xyz'),sep=' ')
             indices[side] = []
             for sphere_id, sphere in zip(sphere_ids, self.robot['kinematics']['collision_spheres'][side + '_link7']):
-                center = np.asarray(sphere['center']) - [0,0,0.151]
+                center = np.asarray(sphere['center']) - tool_origin
                 if center[2] > -0.05 and center[2] + sphere['radius'] <= 0.005 and np.linalg.norm(center[:2]) + sphere['radius'] <= 0.16:
                     indices[side].append(sphere_id)
+            if model_definition.get('alfa_coordinate_revision')=='dual-zero-discrete-only-tool135-20261105' and np.allclose(tool_origin,[0,0,.135],atol=1e-9):
+                original=self.robot['kinematics']['collision_spheres'][side+'_link7']
+                caps=[(sphere_id,sphere) for sphere_id,sphere in zip(sphere_ids,original) if sphere['radius']>0 and sphere['center'][2]+sphere['radius']>tool_origin[2]]
+                targets[side]['tool_cap_sphere_ids']=[sphere_id for sphere_id,sphere in caps]
+                targets[side]['tool_cap_reach_m']=max((sphere['center'][2]+sphere['radius']-tool_origin[2] for _,sphere in caps),default=0.)
+                targets[side]['tool_cap_policy']='own target only; aligned approach; omit sphere intersection on forward side of TCP plane; original environment/self collision unchanged'
         return TargetContactValidity(checker, targets, indices, allow_contact)
 
     def plan_contact_approach(self, contact, checker, validity, seed):
@@ -109,7 +118,7 @@ class TaskCyclePlanner(FullCyclePlanner):
                     return None,dict(failure=f'{side}预抓取反向直线IK无解@{distance:.3f}m')
                 next_row[offset:offset+7] = solutions[np.argmin(np.sum((solutions-rows[-1][offset:offset+7])**2,axis=1))]
             rows.append(next_row)
-        straight = np.asarray(densify(np.asarray(rows[::-1])))
+        straight = np.asarray(densify(np.asarray(rows[::-1]))) if getattr(self,'dense_path_rechecks',True) else np.asarray(rows[::-1])
         for values in straight:
             self.fk(values)
             for side in ['left','right']:

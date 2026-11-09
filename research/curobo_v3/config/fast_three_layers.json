@@ -1,0 +1,23 @@
+{
+  "revision": "fast-inflated-world-boxes-trajopt-timeopt-20261109",
+  "curobo_commit": "76c2f4b6d325b4e76696939de1faa6c14d409e0a",
+  "planning": "original multi-candidate IK and multi-root RRT; sequential 15-axis LM extraction and placement; no RRT replacement for LM stages",
+  "candidate_selection": "predict extraction endpoints; multi-root multi-goal RRT selects contact and transport configuration; compute full LM only for selected contact; reconnect actual LM endpoint to selected transport goal",
+  "trajectory_optimization_phases": ["approach", "transport", "return_home"],
+  "planning_world_radius_scale": 1.1,
+  "collision_geometry": "base_link fixed chassis and column: four boxes for robot/internal and external world queries; base71 sphere slots disabled; arm_carriage20, arms, head and payload40 spheres retained",
+  "inflation_scope": "free RRT world queries only; sphere radii and fixed box half extents x1.10; IK, LM, self/base internal, ground and TrajOpt retain baseline geometry",
+  "trajectory_optimizer": "Fast geometric TrajOpt, 32 controls, CUDA Graph, 50 LBFGS iterations; only RRT free stages; existing base5mm and ground2mm margins retained, including their known effect on feasibility flags",
+  "trajopt_geometry_scale": 100.0,
+  "time_optimization_phases": ["approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"],
+  "time_optimizer": "Fast TrajectoryTimeOpt",
+  "lm_representation": "native cubic fit only; no TrajOpt; fit deviation reported separately",
+  "arm_velocity_deg_s": 60.0,
+  "arm_continuous_torque_nm": [294, 294, 178, 178, 87, 52, 10],
+  "arm_jerk_rad_s3": 500.0,
+  "planning_limit_scale": 0.995,
+  "updown_limits": "finite large bounds approximate unrestricted; not hardware limits",
+  "payload_kg_per_box": 10.0,
+  "collision_diagnostics": "RRT search node/edge and LM node checks only; no returned-path densification, final whole-cycle or post-TrajOpt collision recheck",
+  "execution_enabled": false
+}

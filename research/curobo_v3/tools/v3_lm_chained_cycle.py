@@ -79,7 +79,7 @@ class LmChainedCyclePlanner(SerialEndpointPlanner):
             stage=stage, stage_distance_m=distance, sample_count=16 if short else 128,
             payload=stage == 'extraction', tcp_start_local={side: poses[side] for side in self.selected_task},
             translation_local={side: (-np.asarray(poses[side])[:3, 2] * distance if stage == 'precontact_reverse'
-                else np.array([-distance, 0., 0.])).tolist() for side in self.selected_task}, fixed_swivels_rad=swivels)
+                else np.asarray(getattr(self, 'extraction_direction', [-1., 0., 0.])) * distance).tolist() for side in self.selected_task}, fixed_swivels_rad=swivels)
         if target_joints is not None:
             targets = self._tool_poses(checker, torch.tensor(target_joints, device='cuda', dtype=torch.float32))
             case['translation_local'] = {side: (np.asarray(targets[side])[:3, 3] - np.asarray(poses[side])[:3, 3]).tolist() for side in self.selected_task}
@@ -96,6 +96,9 @@ class LmChainedCyclePlanner(SerialEndpointPlanner):
             total_ms=result['inclusive_ms'], legal_nodes=details.get('legal_nodes', 0), covered_points=details.get('covered_points', 0),
             search_base_margin_m=.002, intermediate_deviation_is_observation_only=True,
             collision_scope='empty intermediate states; loaded endpoint' if case['payload'] else 'empty; grasp target excluded')
+        if 'lm_guidance' in details:
+            event['lm_guidance']=details['lm_guidance']
+            event['review_scene_objects']=details.get('review_scene_objects',[])
         if result['connected']:
             tracks = result['metrics']['tcp_tracks']
             if stage == 'precontact_reverse':

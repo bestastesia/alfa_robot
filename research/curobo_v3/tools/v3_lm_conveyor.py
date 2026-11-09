@@ -205,7 +205,12 @@ class SequentialPlacementLm:
             timing['candidate_filter_ms']+=(clock()-stamp)*1000
             selected=None
             stamp=clock()
+            if not getattr(self, 'validate_intermediate_edges', True) and len(order):
+                selected=values[order[0]]
+                rows.append(selected.copy())
+                progress.append(float(fraction))
             for candidate in order:
+                if selected is not None:break
                 segment,fractions=dense_segment(previous,values[candidate],progress[-1],fraction)
                 mask=validity.mask(torch.tensor(segment,device='cuda')).cpu().numpy()
                 expected=interpolate_boxes(case['starts'],case['ends'],fractions)
@@ -231,7 +236,8 @@ class SequentialPlacementLm:
         return dict(success=success,frames=np.asarray(rows).tolist(),progress=progress,failure=failure,
             failed_candidates=failed_rows,point_reports=reports,completed_progress=float(progress[-1]),
             max_reference_position_error_m=maximum_position_error,max_reference_orientation_error_deg=maximum_angle_error,
-            edge_pose_policy='diagnostic_only',node_position_tolerance_m=.002,node_orientation_tolerance_deg=1.,
+            edge_pose_policy='diagnostic_only' if getattr(self, 'validate_intermediate_edges', True) else 'not_evaluated',
+            intermediate_edge_checks=bool(getattr(self, 'validate_intermediate_edges', True)),node_position_tolerance_m=.002,node_orientation_tolerance_deg=1.,
             total_ms=(clock()-began)*1000,**timing,solver='cuRobo SeedIKSolver Levenberg-Marquardt, sequential continuation',
             optimized_joint_names=list(ACTIVE_JOINTS),seeds_per_point=self.seeds,iterations=self.iterations,
             reference_samples=self.samples,endpoint_joint_lock=False,rrt_fallback=False,main_optimizer_ran=False,

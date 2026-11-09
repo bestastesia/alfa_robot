@@ -13,8 +13,8 @@ ROOT=Path(__file__).resolve().parents[1]
 OLD=ROOT/'generated/v3_analytic_071cb95/model/robot_meter_meshes.urdf'
 COLLEAGUE=Path('/mnt/mydisk/ALFA/backpack/real2sim_v3.3.1/urdf/robot.urdf')
 OFFSETS_DEG={'left':[-90.,15.,0.,0.,90.,0.,90.], 'right':[90.,-15.,0.,0.,-90.,0.,-90.]}
-COORDINATE_REVISION='dual-zero-discrete-only-tool191-20261024'
-TOOL_OFFSET_M=.191
+COORDINATE_REVISION='dual-zero-discrete-only-tool135-20261105'
+TOOL_OFFSET_M=.135
 J2_LIMITS_DEG={'left':(-90.,120.),'right':(-120.,90.)}
 JOINT_SIGNS=np.array([1.,-1.,1.,1.,1.,1.,1.])
 
@@ -49,7 +49,7 @@ def build(output,source=OLD):
                 joint.find('limit').set('lower',str(np.deg2rad(J2_LIMITS_DEG[side][0])))
                 joint.find('limit').set('upper',str(np.deg2rad(J2_LIMITS_DEG[side][1])))
     for side in ('left','right'):
-        root.find(f"joint[@name='{side}_tool0_fixed']/origin").set('xyz','0 0 0.191')
+        root.find(f"joint[@name='{side}_tool0_fixed']/origin").set('xyz',f'0 0 {TOOL_OFFSET_M}')
     for mesh in root.findall('.//mesh'):
         filename=mesh.get('filename')
         if not Path(filename).is_absolute():mesh.set('filename',str((source.parent/filename).resolve()))
@@ -58,9 +58,9 @@ def build(output,source=OLD):
     ET.ElementTree(root).write(path,encoding='utf-8',xml_declaration=True)
     manifest=dict(source=str(source),source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
         reference_colleague_urdf=str(COLLEAGUE),offsets_deg=OFFSETS_DEG,
-        signs=JOINT_SIGNS.astype(int).tolist(),mapping='q_legacy = offsets + signs * q_candidate; approved dual zero and J6 positive axes; tool0 J7+Z191mm',
+        signs=JOINT_SIGNS.astype(int).tolist(),mapping=f'q_legacy = offsets + signs * q_candidate; approved dual zero and J6 positive axes; tool0 J7+Z{TOOL_OFFSET_M*1000:g}mm',
         limits='left J2 [-90,120]; right J2 [-120,90]; both J4 +/-145; J3 +/-180; both J6 +/-110',
-        status='approved dual joint-coordinate redefinition; original installation retained, tool0 extended to J7+Z191mm',
+        status=f'approved dual joint-coordinate redefinition; original installation retained, tool0 J7+Z{TOOL_OFFSET_M*1000:g}mm',
         rights_source='Only discrete 90/180-degree zero shifts, J2 +/-15deg and confirmed axis signs; no fitted small-angle zero offsets',
         tool_offset_m=TOOL_OFFSET_M,planning_assets_validated=False,
         coordinate_revision=COORDINATE_REVISION)
@@ -79,7 +79,7 @@ def build(output,source=OLD):
         for link in old.link_map:
             target=old.get_transform(link,old.base_link).copy()
             if link in ('left_tool0','right_tool0'):
-                target[:3,3]+=target[:3,:3]@np.array([0.,0.,.04])
+                target[:3,3]+=target[:3,:3]@np.array([0.,0.,TOOL_OFFSET_M-.151])
             error=np.max(np.abs(target-candidate.get_transform(link,candidate.base_link)))
             maximum=max(maximum,float(error))
     assert maximum<1e-6,maximum

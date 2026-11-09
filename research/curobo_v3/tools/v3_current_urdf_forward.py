@@ -59,7 +59,7 @@ def verify_current_model(assets):
         for side in ('left', 'right'):
             origin = tree.find(f"joint[@name='{side}_tool0_fixed']/origin")
             if not np.allclose(np.fromstring(origin.get('xyz'), sep=' '), [0., 0., TOOL_OFFSET_M], atol=1e-9):
-                raise ValueError('当前规划必须使用J7+Z191mm TCP')
+                raise ValueError(f'当前规划必须使用J7+Z{TOOL_OFFSET_M*1000:g}mm TCP')
     if Path(assets.urdf).resolve() != Path(yaml.safe_load(assets.robot_config.read_text())['kinematics']['urdf_path']).resolve():
         raise ValueError('前端URDF与固定根规划URDF不一致')
 

@@ -209,3 +209,7 @@ scripts/ik_benchmark/motion38/visualize_single_down_point_9_orients.py
 
 # Demo-local typed planning request (simulation only).
 !ros2_ws/src/alfa_robot_moveit_config/srv/PlanWallBoxDemo.srv
+
+research/curobo_v3/generated/fast_runtime_assets/
+research/curobo_v3/generated/fast_live_requests/
+research/curobo_v3/generated/fast_three_layers_20261107/
