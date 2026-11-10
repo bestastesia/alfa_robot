@@ -1,5 +1,5 @@
 {
-  "revision": "fast-inflated-world-boxes-trajopt-timeopt-20261109",
+  "revision": "fast-lm-joint-refinement-20261110",
   "curobo_commit": "76c2f4b6d325b4e76696939de1faa6c14d409e0a",
   "planning": "original multi-candidate IK and multi-root RRT; sequential 15-axis LM extraction and placement; no RRT replacement for LM stages",
   "candidate_selection": "predict extraction endpoints; multi-root multi-goal RRT selects contact and transport configuration; compute full LM only for selected contact; reconnect actual LM endpoint to selected transport goal",
@@ -11,7 +11,15 @@
   "trajopt_geometry_scale": 100.0,
   "time_optimization_phases": ["approach", "contact_approach", "extract", "transport", "conveyor_place", "return_home"],
   "time_optimizer": "Fast TrajectoryTimeOpt",
-  "lm_representation": "native cubic fit only; no TrajOpt; fit deviation reported separately",
+  "lm_representation": "64 native cubic controls with at most32 L-BFGS iterations after dual-arm LM and before Fast TimeOpt; endpoints fixed; contact approach remains128-control fit",
+  "lm_refinement": {
+    "enabled": true,
+    "phases": ["extract", "conveyor_place"],
+    "controls": 64,
+    "iterations": 32,
+    "scope": "dual-arm only; single-arm remains original128 fit and reports skipped",
+    "fallback": "none; report failure without changing selected endpoints or RRT strategy"
+  },
   "arm_velocity_deg_s": 60.0,
   "arm_continuous_torque_nm": [294, 294, 178, 178, 87, 52, 10],
   "arm_jerk_rad_s3": 500.0,

@@ -1,5 +1,9 @@
 # cuRobo 独立状态、场景与规划核心
 
+2026-11-10：当前默认配置启用双臂LM后64控制点、最多32轮L-BFGS，再做Fast TimeOpt。
+完整部署、冻结模型/碰撞、依赖校验、输入输出及边界以[FAST_DEPLOYMENT.md](FAST_DEPLOYMENT.md)为准。
+仅extract/conveyor_place新增后处理，原RRT选型/实际末态同目标重连和自由段TrajOpt不改。
+
 2026-11-09 Fast评审入口：`tools/v3_fast_three_layers.py::FastThreeLayerPlanner`，
 实时Viser入口为`tools/v3_fast_live_viewer.py`。本次方案为外部障碍查询膨胀10%的原多起终点RRT、
 仅自由段Fast TrajOpt、全六段Fast TimeOpt；候选先预测，选中后才做完整15轴LM抽离，放置也用LM。

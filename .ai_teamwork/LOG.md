@@ -1,5 +1,12 @@
 # AI 协作日志
 
+## 2026-11-10 cuRobo / PR80基线上的LM微调与可复现部署交付
+- 用户要求新PR保证模型/碰撞/算法/逻辑/可视化可准确运行。以最新origin/alfa_v3_curobo@92bd8cdb新建独立发布检出codex/lm-refinement-release，不夹带原研究分支脏改动、300箱/tmp录像脚本、其他同事开放PR。
+- 迁入双臂LM后64原生三次控制点最多32轮L-BFGS；抽离方向/距离与导航后放箱参考取本次任务，端点固定。Fast TrajOpt只自由段，TimeOpt仍全部六段；抽离后处理补loaded checker。原四盒/20球/40球、10%世界膨胀、1mm及自碰撞口径、选型与实际末态同目标重连源文件逐字节对照PR80不变。
+- 新增FAST_DEPLOYMENT、依赖/模型SHA锁、v3_fast_preflight，实际比对官方Fast提交_src434文件全一致；前端冻结包校验通过。prepare_checkout --fast-only仅编译解析库并生成忽略的运行配置，页面使用重定位URDF，旧README/CORE/HANDOFF错误默认入口加当前指引。输出附配置快照/摘要，冷/热与候选/通过分开。
+- 干净检出40测试通过1跳过，GPU preflight Home与box-world启用通过。两例CLI新规划候选运动11.706/11.865s、12段TimeOpt动力学采样通过、接缝0，后者原approach TrajOpt失败保留；墙钟53.574/5.772s，不当成全量/固定3秒。8293实际页面点击新计算：初始化5.854s另列，墙钟67.877s含冷资源，运动12.209s，全部求解标志及动力学通过，真实TimeOpt播放通过。紧凑证据generated/lm_refinement_release_20261110/validation.json。
+- 已知TrajOpt软间隙、冷/新拓扑、TimeOpt诊断Graph重捕获、球体覆盖及旧回放一致性问题保留；单臂新后处理未验证，300箱临时录制不是本PR生产调度。仅本地规划/可视化，不发送硬件、不自动合并PR。
+
 ## 2026-10-27 运控 / Codex / 同步新WARP至8210
 - feature/new-warp-sync迁入新WARP六段策略，参考/解析先验/联合代价抽到curobo_core，13个函数/类保持AST一致；不夹带模型路径、随机场景或其他实验修改。
 - 0.982m释放箱心改为绝对权威配置；8210保留PR65独立开关和后处理验碰，禁止旧高度/旧模型回放冒充新结果，8221原服务不动。

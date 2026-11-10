@@ -41,7 +41,7 @@ def stage_setup(planner, source, phase):
         base[:2, 3] = [full[0, names.index('base_x')] - source['visual_base_advance'], full[0, names.index('base_y')]]
         snapshot = replace(snapshot, state=snapshot.state.with_positions(dict(zip(names, full[0])), matrix_pose(base)))
     planner.snapshot = snapshot
-    checker = planner.checker(source['task'], payload=phase in ('transport', 'conveyor_place'))
+    checker = planner.checker(source['task'], payload=phase in ('extract', 'transport', 'conveyor_place'))
     validity = planner.target_validity(checker) if phase == 'approach' else GpuValidity(checker, check_ground=True)
     validity.scene_penetration_tolerance_m = .001
     validity.contact_penetration_tolerance_m = .001

@@ -213,3 +213,6 @@ scripts/ik_benchmark/motion38/visualize_single_down_point_9_orients.py
 research/curobo_v3/generated/fast_runtime_assets/
 research/curobo_v3/generated/fast_live_requests/
 research/curobo_v3/generated/fast_three_layers_20261107/
+research/curobo_v3/generated/lm_release_validation_20261110/
+research/curobo_v3/generated/local_fast_preflight.json
+research/curobo_v3/generated/local_lm_release_run/

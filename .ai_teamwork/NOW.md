@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 2026-11-10 LM后处理发布PR准备
+
+- 最新合入基线PR80：alfa_v3_curobo@92bd8cdb。当前独立分支codex/lm-refinement-release只迁入双臂LM后64控制点32轮L-BFGS、extract后处理loaded checker、部署核对与可视化路径适配；原碰撞/RRT/实际LM末态重连编排不改。
+- 当前唯一部署说明research/curobo_v3/FAST_DEPLOYMENT.md；冻结依赖与模型SHA在config/fast_release_manifest.json，prepare_checkout.py --fast-only不再重写历史跟踪模型，v3_fast_preflight.py --gpu核对前端、Fast源码、模型与Home。旧README/HANDOFF历史说明已加优先入口警示。
+- 独立检出40测试通过1跳过；两例全新规划候选运动11.706/11.865s、12段TimeOpt动力学采样通过、接缝0。L18/R11原接近TrajOpt失败保留。8293独立实时页面实际点击计算及播放通过，原8290/8291不变。已知冷/Graph重捕获等问题本次保留，不声称全任务/实机验收。
+
 ## 2026-10-31 固定解析抽离／RRT运输／LM放箱流程
 
 - 用户确认以 `FrozenCyclePlanner` 固定全流程：旧多候选解析35cm抽离、多根多目标RRT运输、导航瞬移、128点15轴连续LM放箱、释放后从LM实际末态RRT回Home。放箱不回退RRT，携箱仅用原40球模型。

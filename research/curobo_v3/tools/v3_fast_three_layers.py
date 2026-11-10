@@ -22,6 +22,7 @@ from v3_fixed_body_boxes import InflatedPlanningPlanner, FixedBodyWorld
 from v3_batched_loaded_search import loaded_robot,GpuValidity
 from v3_fast_geometry_cost import GeometricCostManager, GeometricCostConfig, ProjectCostManager
 from v3_fast_assets import prepare_fast_assets
+from v3_lm_refinement import optimize_lm_stage
 
 POLICY=read(ROOT/'config/fast_three_layers.json')
 RRT_PHASES=tuple(POLICY['trajectory_optimization_phases'])
@@ -149,22 +150,29 @@ class FastThreeLayerPlanner:
         progress('轨迹规划：新生成吸附候选、LM抽离、多起终点运输连接和LM放置')
         began=stamp();source=self.planner.full_cycle(self.planner.task_options[index][1],progress);planning_ms=(stamp()-began)*1000
         save(output/f'{index:03d}_source.json.gz',source)
-        record=dict(index=index,task=source['task'],planning_ms=planning_ms,planning_success=bool(source['success']),stages=[],curobo_path=str(curobo.__file__))
+        record=dict(index=index,task=source['task'],planning_ms=planning_ms,planning_success=bool(source['success']),stages=[],curobo_path=str(curobo.__file__),pipeline_revision=POLICY['revision'],policy_snapshot=copy.deepcopy(POLICY),policy_digest=digest(POLICY),robot_config_digest=digest(self.planner.robot))
         if not source['success']:
             record.update(success=False,complete_candidate=False,blocked_stage=source.get('blocked_stage'),blocked_details=source.get('blocked_details'))
             save(output/f'{index:03d}_report.json',record)
             return record
         for phase in PHASES:
-            progress(f'{phase}：'+('Fast TrajOpt → Fast TimeOpt' if phase in RRT_PHASES else '保持LM/贴近路径 → 表示适配 → Fast TimeOpt（无TrajOpt）'))
+            refinement=POLICY.get('lm_refinement',{})
+            refine_lm=refinement.get('enabled',False) and phase in refinement.get('phases',[]) and len(source['task'])==2
+            progress(f'{phase}：'+('Fast TrajOpt → Fast TimeOpt' if phase in RRT_PHASES else ('LM输出 → 64控制点32轮关节路径调整 → Fast TimeOpt' if refine_lm else '保持LM/贴近路径 → 表示适配 → Fast TimeOpt（无TrajOpt）')))
             stage_started=stamp();full,columns,validity,scene=stage_setup(self.planner,source,phase);active=np.ascontiguousarray(full[:,columns],dtype=np.float32)
-            stage=dict(phase=phase,trajopt_applied=phase in RRT_PHASES,rounding_applied=False,lm_source_unchanged=phase in ('extract','conveyor_place'),input_sha256=__import__('hashlib').sha256(active.tobytes()).hexdigest())
+            stage=dict(phase=phase,trajopt_applied=phase in RRT_PHASES,rounding_applied=False,lm_source_unchanged=phase in ('extract','conveyor_place'),lm_refinement_applied=refine_lm,input_sha256=__import__('hashlib').sha256(active.tobytes()).hexdigest())
             try:
                 if phase in RRT_PHASES:
                     controls,start,goal,knot_dt,details=self.optimize_path(source,phase,active,validity,scene);stage['trajectory_optimization']=details
+                elif refine_lm:
+                    controls,start,goal,knot_dt,details=optimize_lm_stage(self.planner,source,phase,active,validity,refinement)
+                    stage['lm_joint_refinement']=details
                 else:
                     fit_began=stamp();values,first,last,fit,_=fit_path(dict(positions=active),128)
                     controls,start,goal=[torch.tensor(value[None],device='cuda',dtype=torch.float32).contiguous() for value in (values,first,last)]
                     knot_dt=None;stage['representation_adaptation']=dict(fit_ms=(stamp()-fit_began)*1000,**fit)
+                    if phase in ('extract','conveyor_place'):
+                        stage['lm_refinement_skipped']='disabled by config' if not refinement.get('enabled',False) else 'single-arm adaptation not validated'
                 sides=tuple(source['task']) if phase in ('extract','transport','conveyor_place') else ()
                 arrays,timing=self.time_path(controls,start,goal,knot_dt,sides,source['visual_tool_to_box'],benchmark_recompute=benchmark_recompute);stage['time_optimization']=timing
                 if arrays is not None:
@@ -182,6 +190,7 @@ class FastThreeLayerPlanner:
         record['motion_s']=sum(s['time_optimization']['duration_s'] for s in record['stages']) if all(s.get('time_optimization',{}).get('success') for s in record['stages']) else None
         record['geometry_optimization_ms']=sum(s.get('trajectory_optimization',{}).get('solve_ms',0) for s in record['stages'])
         record['time_optimization_ms']=sum(s.get('time_optimization',{}).get('solve_ms',0) for s in record['stages'])
+        record['lm_refinement_ms']=sum(sum(s.get('lm_joint_refinement',{}).get(key,0) for key in ('prepare_ms','solve_ms','diagnostics_ms')) for s in record['stages'])
         record['time_warm_recompute_ms']=sum(s.get('time_optimization',{}).get('warm_recompute_ms',0) for s in record['stages'])
         record['complete_candidate']=record['motion_s'] is not None
         record['all_trajopt_success']=all(s.get('trajectory_optimization',{}).get('solver_success',True) for s in record['stages'])
@@ -193,11 +202,11 @@ class FastThreeLayerPlanner:
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--indices',type=int,nargs='+',default=[9,44,90]);args=parser.parse_args()
-    OUTPUT.mkdir(parents=True,exist_ok=True);began=stamp();planner=FastThreeLayerPlanner();initialization_ms=(stamp()-began)*1000;records=[]
+    parser=argparse.ArgumentParser();parser.add_argument('--indices',type=int,nargs='+',default=[0,38]);parser.add_argument('--output',type=Path,default=OUTPUT);args=parser.parse_args()
+    args.output.mkdir(parents=True,exist_ok=True);began=stamp();planner=FastThreeLayerPlanner();initialization_ms=(stamp()-began)*1000;records=[]
     for index in args.indices:
         np.random.seed(20261107+index);torch.manual_seed(20261107+index)
-        records.append(planner.full_cycle(index));save(OUTPUT/'summary.json',dict(initialization_ms=initialization_ms,records=records,policy='Inflated-world multi-candidate planning + LM extraction/placement; Fast TrajOpt only RRT phases; Fast TimeOpt all motion phases; no posthoc collision recheck; not hardware execution'))
+        records.append(planner.full_cycle(index,output_directory=args.output));save(args.output/'summary.json',dict(initialization_ms=initialization_ms,records=records,policy='Inflated-world multi-candidate planning + LM extraction/placement; Fast TrajOpt only RRT phases;64-control32-iteration LM refinement; Fast TimeOpt all motion phases; no posthoc collision recheck; not hardware execution'))
 
 
 if __name__=='__main__':main()

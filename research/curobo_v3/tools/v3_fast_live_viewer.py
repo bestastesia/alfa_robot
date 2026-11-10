@@ -16,6 +16,8 @@ import viser
 from alfa_motion_viser import ReadOnlyScene, default_visual_assets
 from curobo_core.fixtures import tasks
 from curobo_core.scene import SceneSnapshot
+from v3_fast_assets import prepare_fast_assets
+from v3_visualization_dependency import verify_frontend_package
 
 ROOT = Path(__file__).resolve().parents[1]
 JOINTS = ['updown'] + [f'{side}_joint{joint}' for side in ('left', 'right') for joint in range(1, 8)]
@@ -65,7 +67,9 @@ def main():
                 reviews[f'L4/R{1 if index==85 else 2} · {label}']=(folder,index)
         options=[(label,{}) for label in reviews]
     server = viser.ViserServer(host='127.0.0.1', port=args.port, label='半径预留实验 · 已记录全流程回放' if args.radius_review else 'Fast 三层链路 · 点击实时计算')
-    renderer = ReadOnlyScene(server, ROOT / 'generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf', default_visual_assets())
+    verify_frontend_package()
+    display_assets, _ = prepare_fast_assets()
+    renderer = ReadOnlyScene(server, display_assets.urdf, default_visual_assets())
     robot_layers = list(renderer.visual_layers)
     home = read_json(ROOT / 'config/rezero_home.json')
     initial = {'updown': home['updown_m'], 'base_x': 0., 'base_y': 0., 'base_yaw': 0., 'head_joint': 0., 'head_pitch_joint': 0.}
@@ -78,6 +82,7 @@ def main():
     else:
         server.gui.add_markdown('**点击才计算，不读取历史任务结果，不发送实机。** 每次重新生成候选、规划、优化与时间重映射。模型和求解器资源允许复用；首次初始化单独计时。每箱10kg。')
         server.gui.add_markdown('规划：多候选吸附 → 抽离终点预测 → 多起终点RRT选组合 → 选中后15轴LM抽离 → 同运输目标重连 → Home接近 → LM放置。**自由RRT世界查询膨胀10%，固定底盘/立柱为四盒，升降架20球保留。Fast TrajOpt只优化自由RRT段，Fast TimeOpt覆盖全部六运动段。每次点击实时计算，不复用任务答案。**')
+        server.gui.add_markdown('**LM微调已接入**：双臂抽离/放箱在原LM之后、TimeOpt之前，使用64控制点和最多32轮L-BFGS；起终关节固定，笛卡尔参考为软代价。贴近及自由RRT段不变，不新增后验验碰门。')
         server.gui.add_markdown('**已知问题保留：TrajOpt间隙代价可能触发失败标记，仍保存并展示候选。** 不新增后处理验碰门，全流程TimeOpt后按真实运动时间播放。本轮开放双臂任务。')
     task = server.gui.add_dropdown('任务', options=[label for label, _ in options])
     run = server.gui.add_button('加载所选实验结果' if args.radius_review else '重新计算当前任务')
@@ -188,7 +193,7 @@ def main():
         validation = f'动力学采样复核：{dynamic}；'+(f'后验碰撞/限位无效采样：{invalid}' if checked else '后验碰撞复检：关闭，沿用规划检查') if record['stages'] else '后处理动力学与碰撞复核：未执行'
         flags = '；'.join(f"{stage['phase']}：{'通过' if stage['trajectory_optimization']['solver_success'] else '失败候选（保留显示）'}" for stage in record['stages'] if 'trajectory_optimization' in stage)
         status.content = f"**请求 {directory.name} 完成**\n\n完整候选：{record.get('complete_candidate', False)}；{validation}。\n\nTrajOpt：{flags or '未执行'}。\n\n{record.get('blocked_stage', '')} {record.get('blocked_details', '')}\n\n仅查看本次返回数据，不代表实机验收。"
-        timing.content = f"资源初始化 **{init_seconds:.3f}s**；本次计算墙钟 **{compute_seconds:.3f}s**；轨迹规划 **{record['planning_ms']/1000:.3f}s**；TrajOpt纯求解 **{record.get('geometry_optimization_ms', 0)/1000:.3f}s**；TimeOpt纯求解 **{record.get('time_optimization_ms', 0)/1000:.3f}s**。\n\n运动时长 **{state['duration']:.3f}s**，不计入计算耗时。墙钟包含拟合、初始化求解器、采样、诊断及保存。"
+        timing.content = f"资源初始化 **{init_seconds:.3f}s**；本次计算墙钟 **{compute_seconds:.3f}s**；轨迹规划 **{record['planning_ms']/1000:.3f}s**；TrajOpt纯求解 **{record.get('geometry_optimization_ms', 0)/1000:.3f}s**；LM后处理（准备/调整/诊断） **{record.get('lm_refinement_ms', 0)/1000:.3f}s**；TimeOpt纯求解 **{record.get('time_optimization_ms', 0)/1000:.3f}s**。\n\n运动时长 **{state['duration']:.3f}s**，不计入计算耗时。墙钟包含拟合、初始化求解器、采样、诊断及保存。"
         if state['untimed_preview']:
             timing.content = f"资源初始化 **{init_seconds:.3f}s**；本次计算 **{compute_seconds:.3f}s**。\n\n当前仅显示选中候选的LM抽离诊断，共{len(positions)}帧；**未拼接运输段，未进行TimeOpt，无运动时长与动力学曲线。**"
         if not state['segments']:
