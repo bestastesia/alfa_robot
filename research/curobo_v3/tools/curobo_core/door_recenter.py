@@ -154,7 +154,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                 collision_cache={'cuboid': max(40, len(snapshot.objects)), 'mesh': len(snapshot.meshes)},
                 num_seeds=512, self_collision_check=True, use_cuda_graph=False,
                 position_tolerance=.002, orientation_tolerance=math.radians(1),
-                override_iters_for_multi_link_ik=500, optimizer_collision_activation_distance=.005,
+                # cuRobo-Fast runs L-BFGS in blocks of inner_iters=80 (0.8.0: 20); 500 is not a multiple.
+                override_iters_for_multi_link_ik=480, optimizer_collision_activation_distance=.005,
                 random_seed=random_seed))
             record_build(self, 'door_ik', build_started)
             self._door_ik_key = key
