@@ -102,20 +102,26 @@ class ConveyorCyclePlanner(AnalyticContacts):
         return {side: self.fk_robot.get_transform(side + '_tool0', self.fk_robot.base_link).copy()
                 for side in ('left', 'right')}
 
+    # Placement IK: a fresh 64-seed solver per call; the door planner keeps 16 seeds in a bounded resident cache.
+    conveyor_ik_num_seeds = 64
+    conveyor_solver_cache_limit = 0
+
     def conveyor_ik_solver(self,boxes):
         robot=loaded_robot(self.robot,self.box_fit,attachments=self.task_attachments(boxes))
-        key=(self.snapshot.geometry_key,tuple(sorted(boxes.items())),digest(robot))
         def build():
             build_started=time.perf_counter()
             config=InverseKinematicsCfg.create(robot=copy.deepcopy(robot),scene_model=self.scene(boxes),
                 collision_cache={'cuboid':max(40,len(self.snapshot.objects)),'mesh':len(self.snapshot.meshes)},
-                num_seeds=16,self_collision_check=True,use_cuda_graph=False,
+                num_seeds=self.conveyor_ik_num_seeds,self_collision_check=True,use_cuda_graph=False,
                 position_tolerance=.002,orientation_tolerance=math.radians(1),
                 override_iters_for_multi_link_ik=160,optimizer_collision_activation_distance=.005)
             solver=InverseKinematics(config);record_build(self,'conveyor_ik',build_started)
             return solver
+        if not self.conveyor_solver_cache_limit:
+            return build()
+        key=(self.snapshot.geometry_key,tuple(sorted(boxes.items())),digest(robot))
         cache=getattr(self,'_conveyor_solver_cache',{})
-        solver=bounded_get(cache,key,build,getattr(self,'conveyor_solver_cache_limit',8))
+        solver=bounded_get(cache,key,build,self.conveyor_solver_cache_limit)
         self._conveyor_solver_cache=cache
         return solver
 
@@ -136,6 +142,12 @@ class ConveyorCyclePlanner(AnalyticContacts):
         candidates = rows[numerical_success].contiguous()
         valid = validity.mask(candidates) if len(candidates) else torch.zeros(0, device='cuda', dtype=torch.bool)
         candidates = candidates[valid].contiguous()
+        margin_m = getattr(self, 'conveyor_search_margin_m', 0.)
+        validity.search_scene_margin_m = margin_m
+        validity.search_edge_resolution = getattr(self, 'conveyor_search_edge_resolution', .05)
+        if margin_m > 0 and len(candidates):
+            candidates = candidates[validity.scene_margin_mask(candidates, margin_m)].contiguous()
+        report['conveyor_search_margin'] = dict(margin_m=margin_m, edge_resolution=validity.search_edge_resolution, scope='external scene only during edge search; final collision acceptance uses original spheres', candidates_after_margin=len(candidates))
         report['conveyor_goal_ik'] = {'returned': len(rows), 'solver_success': int(numerical_success.sum()),
                                      'collision_valid': len(candidates), 'mode': 'cuRobo numerical IK, updown plus 14 arm joints'}
         report['conveyor_place_mode'] = 'fixed final box pose; multi-goal RRT; no Cartesian straight-line requirement'
@@ -144,6 +156,8 @@ class ConveyorCyclePlanner(AnalyticContacts):
         start_tensor = torch.tensor(start, device='cuda', dtype=torch.float32)
         if not bool(validity.mask(start_tensor[None]).all()):
             raise CycleBlocked('龙头车放置起点', '导航到位后的携箱起点碰撞', report)
+        if not bool(validity.scene_margin_mask(start_tensor[None], margin_m).all()):
+            raise CycleBlocked('龙头车放置起点余量', f'起点不足{margin_m*1000:.1f}mm外部场景间隙', report)
         distances = torch.linalg.vector_norm((candidates - start_tensor) * validity.weights, dim=-1)
         candidates = candidates[torch.argsort(distances)].contiguous()
         torch.cuda.synchronize();timing['placement_candidate_filter']=(time.perf_counter()-filter_started)*1000
@@ -248,7 +262,7 @@ class ConveyorCyclePlanner(AnalyticContacts):
         report['conveyor_push_m'] = self.conveyor_push_m
         report['placement_base_pose'] = {'position': [*parking.tolist(), 0.], 'yaw_rad': yaw}
         try:
-            progress('导航到位瞬移完成；底盘冻结，求固定放箱目标IK并用RRT连接，启用双龙头车碰撞')
+            progress(getattr(self,'conveyor_placement_description','导航到位瞬移完成；底盘冻结，求固定放箱目标IK并用RRT连接，启用双龙头车碰撞'))
             timing=report.setdefault('conveyor_pipeline_timing_ms',{})
             setup_started=time.perf_counter()
             loaded_checker = self.checker(boxes, payload=True)
@@ -285,6 +299,7 @@ class ConveyorCyclePlanner(AnalyticContacts):
             empty_checker = self.checker(boxes)
             empty_validity = self.placement_validity(empty_checker, False)
             timing['empty_checker_setup']=(time.perf_counter()-home_setup_started)*1000
+            report['conveyor_home_start_joints']=np.asarray(placed).tolist()
             home_search_started=time.perf_counter()
             path, stats = self.joint_plan(placed, self.home_values, empty_checker, empty_validity,
                                           20261014, stop_at_first_valid=True,

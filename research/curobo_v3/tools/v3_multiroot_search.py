@@ -71,6 +71,10 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
 
             samples = informed_samples(roots[0], goals, weights, lower, upper, batch,
                                        best_connections[0]["cost"], generator)
+        post_sampling_transform = getattr(validity, 'post_sampling_transform', None)
+        if post_sampling_transform is not None:
+            samples = post_sampling_transform(samples, generator, lower, upper,
+                best_cost=best_connections[0]['cost'] if best_connections else None)
         expand_start = iterations % 2 == 0
         tree = start_tree if expand_start else goal_tree
         tree_parents = start_parents if expand_start else goal_parents
@@ -173,10 +177,11 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                     if identity in fine_checked:
                         continue
                     fine_checked.add(identity)
-                    dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
+                    recheck=getattr(validity,'validate_returned_path',True)
+                    dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist()) if recheck else candidate_path.detach().cpu().numpy()
                     dense_tensor=torch.tensor(dense,device='cuda',dtype=torch.float32)
                     quality=getattr(validity,'path_quality_callback',None)
-                    if bool(validity.mask(dense_tensor).all().item()) and (quality is None or quality(dense_tensor)):
+                    if (not recheck or bool(validity.mask(dense_tensor).all().item())) and (quality is None or quality(dense_tensor)):
                         if first_verified_ms is None:first_verified_ms=(time.perf_counter()-started)*1000
                         if best_valid_connection is None or connection['cost']<best_valid_connection['cost']:
                             best_valid_path=candidate_path.detach().clone();best_valid_connection=dict(connection)
@@ -215,11 +220,12 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             right_indices.append(current)
             current = goal_parents[current]
         path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
-        dense_path = densify(path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
+        recheck=getattr(validity,'validate_returned_path',True)
+        dense_path = densify(path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist()) if recheck else path.detach().cpu().numpy()
         checked += 1
         dense_tensor=torch.tensor(dense_path,device='cuda',dtype=torch.float32)
         quality=getattr(validity,'path_quality_callback',None)
-        if bool(validity.mask(dense_tensor).all().item()) and (quality is None or quality(dense_tensor)):
+        if (not recheck or bool(validity.mask(dense_tensor).all().item())) and (quality is None or quality(dense_tensor)):
             selected_path = path
             selected = connection
             break

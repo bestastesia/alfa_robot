@@ -79,9 +79,11 @@ def validated_shortcut(points, validity):
 
 
 class FullCyclePlanner(CuroboBackend):
+    analytic_bridge_type = AnalyticBridge
+
     def __init__(self, args):
         super().__init__(args)
-        self.analytic = AnalyticBridge()
+        self.analytic = self.analytic_bridge_type()
         self.fk_robot = yourdfpy.URDF.load(args.urdf, load_meshes=False, build_scene_graph=True)
         self.last_partial = None
         self._planning_lock = threading.Lock()
@@ -223,7 +225,8 @@ class FullCyclePlanner(CuroboBackend):
             rows.append(next_row)
         dense = np.asarray(densify(np.asarray(rows)))
         self.last_extract_frames = dense
-        extraction_validity = empty_validity if self.snapshot.policy.defer_payload_until_extract_end else loaded_validity
+        extraction_validity = loaded_validity
+        extraction_validity.scene_penetration_tolerance_m = .001
         valid = extraction_validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32))
         if not bool(valid.all().item()):
             return None, f"抽离机器人碰撞/稳定性失败@frame{int((~valid).nonzero()[0])+1}"
@@ -261,7 +264,7 @@ class FullCyclePlanner(CuroboBackend):
             if shortened is not None:
                 return shortened[1], stats
         dense = np.asarray(densify(path))
-        if not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
+        if getattr(self, 'dense_path_rechecks', True) and not bool(validity.mask(torch.tensor(dense, device="cuda", dtype=torch.float32)).all().item()):
             return None, {"failure": "密化轨迹验收失败"}
         return dense, stats
 

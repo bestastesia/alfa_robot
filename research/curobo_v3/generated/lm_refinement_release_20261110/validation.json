@@ -1,0 +1,1240 @@
+{
+  "baseline": "alfa_v3_curobo@92bd8cdb (PR80)",
+  "test_date": "2026-11-10",
+  "isolated_checkout": true,
+  "preparation": "prepare_checkout.py --fast-only; compiled vendor analytical library; no tracked model rewrite",
+  "tests": {
+    "passed": 40,
+    "skipped": 1
+  },
+  "preflight": {
+    "ready": true,
+    "home_valid": true,
+    "fixed_body_box_world_enabled": true,
+    "version_differences": {}
+  },
+  "initialization_ms": 2173.2381750043714,
+  "records": [
+    {
+      "index": 0,
+      "task": {
+        "left": 24,
+        "right": 20
+      },
+      "planning_ms": 13779.333152007894,
+      "motion_s": 11.706195533275604,
+      "total_wall_ms": 53574.412692003534,
+      "lm_refinement_ms": 921.5925709868316,
+      "geometry_optimization_ms": 18454.045788996154,
+      "time_optimization_ms": 14955.53313397977,
+      "complete_candidate": true,
+      "dynamic_valid": true,
+      "all_trajopt_success": true,
+      "success": true,
+      "stages": [
+        {
+          "phase": "approach",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 936.925447997055,
+            "fit_ms": 6.443712001782842,
+            "solve_ms": 7495.751700000255,
+            "seed_fit": {
+              "arm_max_deviation_deg": 2.1001430770209697,
+              "updown_max_deviation_mm": 6.3386555804597675
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 25.651357995229773,
+            "solve_ms": 12373.270370997488,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.3389012813568115,
+            "peak_velocity_deg_s": 59.24480056762695,
+            "peak_jerk_rad_s3": 462.54345703125,
+            "peak_torque_ratio": 0.234037846326828,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 578.3616720000282,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "contact_approach",
+          "lm_refinement_applied": false,
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 20.151577002252452,
+            "solve_ms": 521.789534992422,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 0.8501878380775452,
+            "peak_velocity_deg_s": 9.270516395568848,
+            "peak_jerk_rad_s3": 498.7716979980469,
+            "peak_torque_ratio": 0.2494436800479889,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 493.6293310020119,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "extract",
+          "lm_refinement_applied": true,
+          "lm_joint_refinement": {
+            "method": "LM native cubic joint refinement",
+            "controls": 64,
+            "iterations": 32,
+            "actual_iterations": 32,
+            "evaluations": 34,
+            "prepare_ms": 10.31681899621617,
+            "solve_ms": 566.1996890121372,
+            "diagnostics_ms": 1.7798259941628203,
+            "seed_fit": {
+              "arm_max_deviation_deg": 0.4013317135853008,
+              "updown_max_deviation_mm": 3.2300851631054135
+            },
+            "quality": {
+              "left": {
+                "max_line_error_mm": 0.07426748424768448,
+                "max_orientation_error_deg": 0.05595291033387184,
+                "backtracking": 0.0
+              },
+              "right": {
+                "max_line_error_mm": 0.03022756241261959,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              }
+            },
+            "fixed_joint_endpoints": true,
+            "reference_frame": "current phase robot base",
+            "cost_constraints": "soft penalties, not feasibility certification",
+            "scene_cost_penetration_tolerance_m": 0.0,
+            "acceptance_scene_tolerance_m": 0.001,
+            "reference_kind": "task TCP translation and fixed orientation",
+            "references": {
+              "left": {
+                "start": [
+                  [
+                    -8.429369907636541e-08,
+                    5.570911340910179e-08,
+                    0.9999999999999947,
+                    1.4080520868301392
+                  ],
+                  [
+                    -1.534257611379876e-07,
+                    0.9999999999999865,
+                    -5.5709126341926276e-08,
+                    0.8199999332427979
+                  ],
+                  [
+                    -0.9999999999999845,
+                    -1.5342576583391514e-07,
+                    -8.429369063867043e-08,
+                    1.8410000801086426
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    -8.429369907636541e-08,
+                    5.570911340910179e-08,
+                    0.9999999999999947,
+                    1.058052086830139
+                  ],
+                  [
+                    -1.534257611379876e-07,
+                    0.9999999999999865,
+                    -5.5709126341926276e-08,
+                    0.8199999332427979
+                  ],
+                  [
+                    -0.9999999999999845,
+                    -1.5342576583391514e-07,
+                    -8.429369063867043e-08,
+                    1.8410000801086426
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "right": {
+                "start": [
+                  [
+                    9.43689570931383e-16,
+                    3.126663346967146e-08,
+                    0.9999999999999996,
+                    1.4080520868301392
+                  ],
+                  [
+                    6.079528745799203e-08,
+                    0.9999999999999978,
+                    -3.126663346967146e-08,
+                    -0.8200000524520874
+                  ],
+                  [
+                    -0.9999999999999982,
+                    6.079528745799203e-08,
+                    -9.992007221626409e-16,
+                    1.840999960899353
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    9.43689570931383e-16,
+                    3.126663346967146e-08,
+                    0.9999999999999996,
+                    1.058052086830139
+                  ],
+                  [
+                    6.079528745799203e-08,
+                    0.9999999999999978,
+                    -3.126663346967146e-08,
+                    -0.8200000524520874
+                  ],
+                  [
+                    -0.9999999999999982,
+                    6.079528745799203e-08,
+                    -9.992007221626409e-16,
+                    1.840999960899353
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              }
+            },
+            "robot_config_digest": "40883a5df07b39d4d3d319cde78380d75d0c42a98d8dbe3653bccbab5056e3d2",
+            "scene_digest": "d987939cb09f82db8caaba94e9f92cfa4d32d2966b4cb0a4653e9baeb40ce8d6",
+            "attachment_digest": "e6df7ae06fab54c07d29abb1bd9ef57ebc759c91741f867203243f0e5ba94d05"
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 23.30159601115156,
+            "solve_ms": 513.1159759912407,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.362304449081421,
+            "peak_velocity_deg_s": 39.82472610473633,
+            "peak_jerk_rad_s3": 491.16351318359375,
+            "peak_torque_ratio": 0.8319594264030457,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 493.9878800068982,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "transport",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 1101.9285520014819,
+            "fit_ms": 3.5762750048888847,
+            "solve_ms": 5438.503798999591,
+            "seed_fit": {
+              "arm_max_deviation_deg": 3.5924678015976794,
+              "updown_max_deviation_mm": 7.754691783081857
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 26.066909995279275,
+            "solve_ms": 508.40448899543844,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.5084028244018555,
+            "peak_velocity_deg_s": 59.67911911010742,
+            "peak_jerk_rad_s3": 326.09881591796875,
+            "peak_torque_ratio": 0.9933515787124634,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 500.7081279909471,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "conveyor_place",
+          "lm_refinement_applied": true,
+          "lm_joint_refinement": {
+            "method": "LM native cubic joint refinement",
+            "controls": 64,
+            "iterations": 32,
+            "actual_iterations": 32,
+            "evaluations": 35,
+            "prepare_ms": 9.602035992429592,
+            "solve_ms": 330.7875869941199,
+            "diagnostics_ms": 2.9066139977658167,
+            "seed_fit": {
+              "arm_max_deviation_deg": 0.8378264737112828,
+              "updown_max_deviation_mm": 1.949281866536784
+            },
+            "quality": {
+              "left": {
+                "max_line_error_mm": 0.03763734921813011,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              },
+              "right": {
+                "max_line_error_mm": 0.03740401566028595,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              }
+            },
+            "fixed_joint_endpoints": true,
+            "reference_frame": "current phase robot base",
+            "cost_constraints": "soft penalties, not feasibility certification",
+            "scene_cost_penetration_tolerance_m": 0.0,
+            "acceptance_scene_tolerance_m": 0.001,
+            "reference_kind": "box-center line and same-progress SLERP",
+            "references": {
+              "left": {
+                "start": [
+                  [
+                    0.7071067171788364,
+                    3.655405369363018e-08,
+                    -0.7071068451942526,
+                    0.5499999713524603
+                  ],
+                  [
+                    -6.147218541160393e-08,
+                    0.9999999999999987,
+                    -9.776940468846234e-09,
+                    0.42499997289777874
+                  ],
+                  [
+                    0.7071068451942509,
+                    5.038074337257416e-08,
+                    0.7071067171788373,
+                    1.200000324340783
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    0.9999999999999972,
+                    7.701384582240641e-08,
+                    0.0,
+                    1.3500000151942682
+                  ],
+                  [
+                    -7.701384582240641e-08,
+                    0.9999999999999972,
+                    0.0,
+                    0.42500002496159867
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0000000000000002,
+                    0.982
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    0.0,
+                    0.0,
+                    -1.0000000000000002,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0000000000000002,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    1.0000000000000002,
+                    0.0,
+                    0.0,
+                    0.15
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "right": {
+                "start": [
+                  [
+                    0.7071067171788376,
+                    1.2819447548245072e-09,
+                    -0.7071068451942525,
+                    0.5500000011547828
+                  ],
+                  [
+                    -4.477316611663684e-08,
+                    0.9999999999999987,
+                    -4.2960214516475505e-08,
+                    -0.4249999888345815
+                  ],
+                  [
+                    0.707106845194251,
+                    6.203686849813687e-08,
+                    0.7071067171788362,
+                    1.2000002051314935
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    0.9999999999999963,
+                    8.583110893602119e-08,
+                    0.0,
+                    1.350000013226572
+                  ],
+                  [
+                    -8.583110893602119e-08,
+                    0.9999999999999963,
+                    0.0,
+                    -0.42499999103687897
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.982
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    0.0,
+                    0.0,
+                    -1.0000000000000002,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0000000000000002,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    1.0000000000000002,
+                    0.0,
+                    0.0,
+                    0.15
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              }
+            },
+            "robot_config_digest": "40883a5df07b39d4d3d319cde78380d75d0c42a98d8dbe3653bccbab5056e3d2",
+            "scene_digest": "ebcc4990bbe6de582f146b092443a89856b7c88c633086e8033850f6ee30d8af",
+            "attachment_digest": "e6df7ae06fab54c07d29abb1bd9ef57ebc759c91741f867203243f0e5ba94d05"
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.014249002560973167,
+            "solve_ms": 531.6561880026711,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.884092926979065,
+            "peak_velocity_deg_s": 59.658233642578125,
+            "peak_jerk_rad_s3": 492.75897216796875,
+            "peak_torque_ratio": 0.9915381073951721,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.0412990086479113,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "return_home",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 891.2498590070754,
+            "fit_ms": 3.5121580003760755,
+            "solve_ms": 5519.790289996308,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.5277734627436388,
+              "updown_max_deviation_mm": 3.1846506233449423
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.020184001186862588,
+            "solve_ms": 507.2965750005096,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.7623062133789062,
+            "peak_velocity_deg_s": 59.65668869018555,
+            "peak_jerk_rad_s3": 491.14288330078125,
+            "peak_torque_ratio": 0.364423543214798,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.5732280007796362,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        }
+      ],
+      "max_stage_seam_error_rad_or_m": 0.0
+    },
+    {
+      "index": 38,
+      "task": {
+        "left": 18,
+        "right": 11
+      },
+      "planning_ms": 3345.051834010519,
+      "motion_s": 11.865463018417358,
+      "total_wall_ms": 5771.856045001186,
+      "lm_refinement_ms": 674.5466450083768,
+      "geometry_optimization_ms": 313.67550398863386,
+      "time_optimization_ms": 1031.2395440269029,
+      "complete_candidate": true,
+      "dynamic_valid": true,
+      "all_trajopt_success": false,
+      "success": false,
+      "stages": [
+        {
+          "phase": "approach",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 15.598108991980553,
+            "fit_ms": 3.4302310086786747,
+            "solve_ms": 75.22522599902004,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.976982360007841,
+              "updown_max_deviation_mm": 3.664153518293273
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01424799847882241,
+            "solve_ms": 0.6684739928459749,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.9109994173049927,
+            "peak_velocity_deg_s": 59.706302642822266,
+            "peak_jerk_rad_s3": 499.54962158203125,
+            "peak_torque_ratio": 0.2852145731449127,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.1754680017475039,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "contact_approach",
+          "lm_refinement_applied": false,
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.011873999028466642,
+            "solve_ms": 520.7395990000805,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.8733383417129517,
+            "peak_velocity_deg_s": 11.454781532287598,
+            "peak_jerk_rad_s3": 497.613525390625,
+            "peak_torque_ratio": 0.26216697692871094,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.0377370053902268,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "extract",
+          "lm_refinement_applied": true,
+          "lm_joint_refinement": {
+            "method": "LM native cubic joint refinement",
+            "controls": 64,
+            "iterations": 32,
+            "actual_iterations": 32,
+            "evaluations": 34,
+            "prepare_ms": 10.099528997670859,
+            "solve_ms": 349.2838829988614,
+            "diagnostics_ms": 1.6670270124450326,
+            "seed_fit": {
+              "arm_max_deviation_deg": 0.604521366343981,
+              "updown_max_deviation_mm": 4.312114902640412
+            },
+            "quality": {
+              "left": {
+                "max_line_error_mm": 0.1347675919532776,
+                "max_orientation_error_deg": 0.05595291033387184,
+                "backtracking": 0.0
+              },
+              "right": {
+                "max_line_error_mm": 0.07530463486909866,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              }
+            },
+            "fixed_joint_endpoints": true,
+            "reference_frame": "current phase robot base",
+            "cost_constraints": "soft penalties, not feasibility certification",
+            "scene_cost_penetration_tolerance_m": 0.0,
+            "acceptance_scene_tolerance_m": 0.001,
+            "reference_kind": "task TCP translation and fixed orientation",
+            "references": {
+              "left": {
+                "start": [
+                  [
+                    4.440892098500626e-16,
+                    2.361749456402822e-08,
+                    0.9999999999999997,
+                    1.4080519676208496
+                  ],
+                  [
+                    3.4633494232799675e-08,
+                    0.9999999999999991,
+                    -2.361749456402822e-08,
+                    0.4100000262260437
+                  ],
+                  [
+                    -0.9999999999999994,
+                    3.4633494232799675e-08,
+                    -4.440892098500626e-16,
+                    1.430999994277954
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    4.440892098500626e-16,
+                    2.361749456402822e-08,
+                    0.9999999999999997,
+                    1.0580519676208495
+                  ],
+                  [
+                    3.4633494232799675e-08,
+                    0.9999999999999991,
+                    -2.361749456402822e-08,
+                    0.4100000262260437
+                  ],
+                  [
+                    -0.9999999999999994,
+                    3.4633494232799675e-08,
+                    -4.440892098500626e-16,
+                    1.430999994277954
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "right": {
+                "start": [
+                  [
+                    6.661338147750939e-16,
+                    1.4664386202771365e-08,
+                    0.9999999999999998,
+                    1.4080520868301392
+                  ],
+                  [
+                    9.267594772437676e-08,
+                    0.9999999999999954,
+                    -1.4664386202771365e-08,
+                    -0.4100000262260437
+                  ],
+                  [
+                    -0.9999999999999956,
+                    9.267594772437676e-08,
+                    -6.106226635438361e-16,
+                    1.0210000276565552
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    6.661338147750939e-16,
+                    1.4664386202771365e-08,
+                    0.9999999999999998,
+                    1.058052086830139
+                  ],
+                  [
+                    9.267594772437676e-08,
+                    0.9999999999999954,
+                    -1.4664386202771365e-08,
+                    -0.4100000262260437
+                  ],
+                  [
+                    -0.9999999999999956,
+                    9.267594772437676e-08,
+                    -6.106226635438361e-16,
+                    1.0210000276565552
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              }
+            },
+            "robot_config_digest": "40883a5df07b39d4d3d319cde78380d75d0c42a98d8dbe3653bccbab5056e3d2",
+            "scene_digest": "0981b47b8a6d4f4918bcca58f90e78f7b605e741d64fe6b129eeca2272777472",
+            "attachment_digest": "e6df7ae06fab54c07d29abb1bd9ef57ebc759c91741f867203243f0e5ba94d05"
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.018996986909769475,
+            "solve_ms": 0.539053013199009,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.0955896377563477,
+            "peak_velocity_deg_s": 47.451629638671875,
+            "peak_jerk_rad_s3": 490.51123046875,
+            "peak_torque_ratio": 0.958873450756073,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 0.8988180052256212,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "transport",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 15.94837399898097,
+            "fit_ms": 3.335243003675714,
+            "solve_ms": 128.9251289999811,
+            "seed_fit": {
+              "arm_max_deviation_deg": 2.1225632760333717,
+              "updown_max_deviation_mm": 2.801740829690119
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01424799847882241,
+            "solve_ms": 508.18819100095425,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.3989131450653076,
+            "peak_velocity_deg_s": 59.72129821777344,
+            "peak_jerk_rad_s3": 496.7508544921875,
+            "peak_torque_ratio": 0.9946922659873962,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 0.9653079905547202,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "conveyor_place",
+          "lm_refinement_applied": true,
+          "lm_joint_refinement": {
+            "method": "LM native cubic joint refinement",
+            "controls": 64,
+            "iterations": 32,
+            "actual_iterations": 32,
+            "evaluations": 34,
+            "prepare_ms": 6.134994007879868,
+            "solve_ms": 305.31304799660575,
+            "diagnostics_ms": 2.0481639949139208,
+            "seed_fit": {
+              "arm_max_deviation_deg": 0.8500827974445513,
+              "updown_max_deviation_mm": 1.8517749378421655
+            },
+            "quality": {
+              "left": {
+                "max_line_error_mm": 0.023708973079919815,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              },
+              "right": {
+                "max_line_error_mm": 0.03864291310310364,
+                "max_orientation_error_deg": 0.03956468030810356,
+                "backtracking": 0.0
+              }
+            },
+            "fixed_joint_endpoints": true,
+            "reference_frame": "current phase robot base",
+            "cost_constraints": "soft penalties, not feasibility certification",
+            "scene_cost_penetration_tolerance_m": 0.0,
+            "acceptance_scene_tolerance_m": 0.001,
+            "reference_kind": "box-center line and same-progress SLERP",
+            "references": {
+              "left": {
+                "start": [
+                  [
+                    0.7071068206330551,
+                    -4.896867242189059e-08,
+                    -0.7071067417400362,
+                    0.5500000464752378
+                  ],
+                  [
+                    -1.418112499342663e-08,
+                    0.9999999999999966,
+                    -8.343329110936678e-08,
+                    0.4249999799914378
+                  ],
+                  [
+                    0.7071067417400377,
+                    6.902381829960658e-08,
+                    0.7071068206330517,
+                    1.1999999511947825
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    1.0,
+                    1.418898814499807e-08,
+                    0.0,
+                    1.349999999768165
+                  ],
+                  [
+                    -1.418898814499807e-08,
+                    1.0,
+                    0.0,
+                    0.425000002082485
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.982
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    0.0,
+                    0.0,
+                    -1.0000000000000002,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0000000000000002,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    1.0000000000000002,
+                    0.0,
+                    0.0,
+                    0.15
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              },
+              "right": {
+                "start": [
+                  [
+                    0.7071067171788377,
+                    5.793604442903215e-09,
+                    -0.7071068451942522,
+                    0.5499999713524604
+                  ],
+                  [
+                    4.7547998145799585e-08,
+                    0.9999999999999978,
+                    5.5741382774164945e-08,
+                    -0.4250000345910516
+                  ],
+                  [
+                    0.7071068451942506,
+                    -7.303662114862725e-08,
+                    0.7071067171788354,
+                    1.2000002051314935
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "end": [
+                  [
+                    0.999999999999999,
+                    -4.517964300302733e-08,
+                    0.0,
+                    1.3500000097909566
+                  ],
+                  [
+                    4.517964300302733e-08,
+                    0.999999999999999,
+                    0.0,
+                    -0.4249999875833911
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.982
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ],
+                "attachment": [
+                  [
+                    0.0,
+                    0.0,
+                    -1.0000000000000002,
+                    0.0
+                  ],
+                  [
+                    0.0,
+                    1.0000000000000002,
+                    0.0,
+                    0.0
+                  ],
+                  [
+                    1.0000000000000002,
+                    0.0,
+                    0.0,
+                    0.15
+                  ],
+                  [
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0
+                  ]
+                ]
+              }
+            },
+            "robot_config_digest": "40883a5df07b39d4d3d319cde78380d75d0c42a98d8dbe3653bccbab5056e3d2",
+            "scene_digest": "01da61a1f1049ce67946c063656c45271cb950879b928b20b1fccbc852cd0aa1",
+            "attachment_digest": "e6df7ae06fab54c07d29abb1bd9ef57ebc759c91741f867203243f0e5ba94d05"
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01781000173650682,
+            "solve_ms": 0.5711110134143382,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.9129059314727783,
+            "peak_velocity_deg_s": 59.6650276184082,
+            "peak_jerk_rad_s3": 493.0051574707031,
+            "peak_torque_ratio": 0.9916098117828369,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.080481000826694,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "return_home",
+          "lm_refinement_applied": false,
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 14.863143995171413,
+            "fit_ms": 3.676009990158491,
+            "solve_ms": 109.52514898963273,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.3485377809404924,
+              "updown_max_deviation_mm": 3.4106746490828455
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01424799847882241,
+            "solve_ms": 0.5331160064088181,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.6737165451049805,
+            "peak_velocity_deg_s": 59.68041229248047,
+            "peak_jerk_rad_s3": 494.1268005371094,
+            "peak_torque_ratio": 0.36085113883018494,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.1374729947419837,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        }
+      ],
+      "max_stage_seam_error_rad_or_m": 0.0
+    }
+  ],
+  "live_ui": {
+    "port": 8293,
+    "request": "20261110_144057_b6f16085",
+    "initialization_s": 5.8538710119901225,
+    "compute_s": 67.87651749099314,
+    "task": {
+      "left": 24,
+      "right": 20
+    },
+    "motion_s": 12.208579957485199,
+    "success": true,
+    "dynamic_valid": true,
+    "policy_digest": "78ca5713f4b7e711128a92f2afea89e35a0bb30447ce146b43b2b439f3748e01"
+  },
+  "scope": "Fresh full-cycle GPU and actual UI click; not all-task success rate or new container300 acceptance; no hardware execution; known TrajOpt flags retained"
+}

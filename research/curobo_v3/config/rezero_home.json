@@ -1,0 +1,28 @@
+{
+  "joint_coordinate_frame": "robot_rezero_candidate.urdf",
+  "source": "Discrete-only zero convention; accidental left J4 -1.3deg removed; no fitted zero offsets",
+  "left_deg": [
+    65.0,
+    -75.0,
+    20.0,
+    -90.0,
+    0.0,
+    -40.0,
+    90.0
+  ],
+  "coordinate_revision": "dual-zero-discrete-only-tool135-20261105",
+  "left_j5_policy": "Previous left J5=180deg now zero",
+  "right_deg": [
+    -65.0,
+    75.0,
+    -20.0,
+    90.0,
+    0.0,
+    40.0,
+    -90.0
+  ],
+  "j6_policy": "Both positive axes reversed relative to prior model",
+  "updown_m": -0.3,
+  "updown_policy": "Unspecified in screenshot; retains original configured Home height",
+  "right_policy": "Right arm unchanged; no longer a numerical mirror after left-only J5 zero change"
+}

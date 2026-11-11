@@ -52,9 +52,11 @@ class TimedSingleArmPlanner(SingleArmPlanner):
                         (np.cos(yaw / 2), 0., 0., np.sin(yaw / 2)))
             self.snapshot = replace(original_snapshot,
                                     state=original_snapshot.state.with_positions(mapping, base))
-        checker = self.checker(boxes, payload=phase in ("transport", "conveyor_place"))
-        return (self.target_validity(checker) if phase == "approach" else
-                GpuValidity(checker, check_ground=True))
+        checker = self.checker(boxes, payload=phase in ("extract", "transport", "conveyor_place"))
+        validity = self.target_validity(checker,allow_contact=phase=='contact_approach') if phase in ('approach','contact_approach') else GpuValidity(checker,check_ground=True)
+        validity.scene_penetration_tolerance_m=.001
+        validity.contact_penetration_tolerance_m=.001
+        return validity
 
     def _timed_phase_valid(self, phase, positions, boxes, original_snapshot):
         validity = self._timed_phase_validity(phase, boxes, original_snapshot, positions[0])

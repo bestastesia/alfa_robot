@@ -1,0 +1,14 @@
+{
+  "limits": {
+    "center_speed": 0.3,
+    "center_acceleration": 0.5,
+    "tcp_speed": 0.5,
+    "tcp_acceleration": 0.5,
+    "tcp_normal": 0.001,
+    "tcp_jerk": 5.0,
+    "angular_speed": 45,
+    "angular_acceleration": 90,
+    "angular_jerk": 500
+  },
+  "margin_m": 0.005
+}

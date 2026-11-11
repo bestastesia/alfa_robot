@@ -1,0 +1,80 @@
+[
+  {
+    "symbol": "smooth",
+    "source": "v3_polar_wrist_compare.py",
+    "target": "curobo_core/new_warp_reference.py",
+    "ast_sha256": "426d38fb83148a60a0ab67762039e9f5d4f7c57fd9a86afd8792b26ceca3f3a9"
+  },
+  {
+    "symbol": "motion_metrics",
+    "source": "v3_polar_wrist_compare.py",
+    "target": "curobo_core/new_warp_reference.py",
+    "ast_sha256": "e30590bf62cc3f1f0928c4bbd8eebe3b8b14f92f3d56535bd284d6dd340a8677"
+  },
+  {
+    "symbol": "PolarCurve",
+    "source": "v3_polar_wrist_compare.py",
+    "target": "curobo_core/new_warp_reference.py",
+    "ast_sha256": "17c5717bacaa4a72cb3fb7e04f0278eedf7796d706f15574558c1806e64441f3"
+  },
+  {
+    "symbol": "certify",
+    "source": "v3_polar_wrist_compare.py",
+    "target": "curobo_core/new_warp_reference.py",
+    "ast_sha256": "3793db6b33ddd161c4f8740105d46b39b7f0abc51b026ed431542780f98af3fd"
+  },
+  {
+    "symbol": "polar_plan",
+    "source": "v3_polar_wrist_compare.py",
+    "target": "curobo_core/new_warp_reference.py",
+    "ast_sha256": "b68fc7b6f77625d60c977cb5f23834765c2029e3cf7d6d7a9dce6b9b390704f4"
+  },
+  {
+    "symbol": "swivel_schedule",
+    "source": "v3_smooth_swivel_benchmark.py",
+    "target": "curobo_core/new_warp_prior.py",
+    "ast_sha256": "aa826bd35d52cf2fb07127153b1a54703f5cb33a0b90ddaac5c755db956a052e"
+  },
+  {
+    "symbol": "enumerate_smooth",
+    "source": "v3_smooth_swivel_benchmark.py",
+    "target": "curobo_core/new_warp_prior.py",
+    "ast_sha256": "e10ce704ee200d02a9bcea641a3e64eacc47dc95214c5713edc2d2219fc2750a"
+  },
+  {
+    "symbol": "nearest_chain",
+    "source": "v3_swivel_joint_refine.py",
+    "target": "curobo_core/new_warp_prior.py",
+    "ast_sha256": "f77fae3bf4673c15872987792e47bacf21d96a380645c3badc42fb425b2ec593"
+  },
+  {
+    "symbol": "FixedLiftObjective",
+    "source": "v3_swivel_joint_refine.py",
+    "target": "curobo_core/new_warp_objective.py",
+    "ast_sha256": "b2fa779f1d2c080cab42473a467311698e87ae94979365125e15daff63c23d90"
+  },
+  {
+    "symbol": "SelfCollisionGradient",
+    "source": "v3_joint_corridor_optimize.py",
+    "target": "curobo_core/new_warp_objective.py",
+    "ast_sha256": "ef76020536c40b6047e3dc2b6b4b15422815b1507584f9143965557b09efbb0a"
+  },
+  {
+    "symbol": "spline_basis",
+    "source": "v3_joint_corridor_optimize.py",
+    "target": "curobo_core/new_warp_objective.py",
+    "ast_sha256": "759f49f366d6efedb0801e1f95490ffa38a64ec54c3c66c42e1f5782cb1e9011"
+  },
+  {
+    "symbol": "CorridorObjective",
+    "source": "v3_joint_corridor_optimize.py",
+    "target": "curobo_core/new_warp_objective.py",
+    "ast_sha256": "4a7cfe8ddf52c6d09b25da7a5e58f0bf00d61d097dc7370356d2f6f5178a9de1"
+  },
+  {
+    "symbol": "path_metrics",
+    "source": "v3_joint_corridor_optimize.py",
+    "target": "curobo_core/new_warp_objective.py",
+    "ast_sha256": "a49238d29d4a3b3a31f5501f843e01c4e8af2d42838f148b0e90e475026e6340"
+  }
+]

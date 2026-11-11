@@ -118,6 +118,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     tool_matrices = ConveyorCyclePlanner.tool_matrices
     plan_conveyor_target = ConveyorCyclePlanner.plan_conveyor_target
     conveyor_ik_solver = ConveyorCyclePlanner.conveyor_ik_solver
+    conveyor_ik_num_seeds = 16  # MOTION-342 latency choice, resident across rounds
+    conveyor_solver_cache_limit = 8
     conveyor_suffix = ConveyorCyclePlanner.conveyor_suffix
     top_grasp = False
     base_advance = 0.

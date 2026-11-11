@@ -1,5 +1,10 @@
 # V3 cuRobo 规划研究
 
+**当前入口（2026-11-10）请先读[Fast部署合同](FAST_DEPLOYMENT.md)。**
+PR80基线＋双臂LM64控制点32轮微调，完整流程入口为`v3_fast_live_viewer.py`/
+`v3_fast_three_layers.py`，先运行`prepare_checkout.py --fast-only`和`v3_fast_preflight.py --gpu`。
+下方旧cuRobo版本、解析抽离、旧TCP与早期端口说明仅为历史，不得作为当前默认部署方案。
+
 新同事和后续AI先读[完整研究与工程交接](HANDOFF.md)，再阅读本运行说明和当前入口代码。
 
 MOTION-276 的[独立规划核心说明](CORE.md)提供SceneSnapshot/RobotState、版本化场景、

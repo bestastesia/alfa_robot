@@ -1,0 +1,7 @@
+{
+  "radius": 0.08,
+  "margin": 0.005,
+  "offset": 0.08,
+  "normal_limit_m_s2": 0.001,
+  "mode": "forward"
+}

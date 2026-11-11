@@ -1,0 +1,140 @@
+[
+  {
+    "task": "L18_R22",
+    "before": {
+      "left": {
+        "required_deg": 178.72921070988656,
+        "total_deg": 193.30636260017536
+      },
+      "right": {
+        "required_deg": 178.72920962491176,
+        "total_deg": 199.40739031371083
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 27.558655266514258,
+        "total_deg": 38.250064142187654
+      },
+      "right": {
+        "required_deg": 27.558656699616325,
+        "total_deg": 65.06568618144124
+      }
+    }
+  },
+  {
+    "task": "L7_R5",
+    "before": {
+      "left": {
+        "required_deg": 174.65872722457087,
+        "total_deg": 246.35446453825304
+      },
+      "right": {
+        "required_deg": 174.6587281331135,
+        "total_deg": 209.39965576450675
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 64.45346570210047,
+        "total_deg": 272.7252267796486
+      },
+      "right": {
+        "required_deg": 64.45346610007134,
+        "total_deg": 261.25240480549064
+      }
+    }
+  },
+  {
+    "task": "L9_R1",
+    "before": {
+      "left": {
+        "required_deg": 174.65872624679915,
+        "total_deg": 212.39877767995173
+      },
+      "right": {
+        "required_deg": 174.65873022626428,
+        "total_deg": 209.74187192984817
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 64.45346759151587,
+        "total_deg": 211.96887025345595
+      },
+      "right": {
+        "required_deg": 64.45346151673314,
+        "total_deg": 174.05641911415572
+      }
+    }
+  },
+  {
+    "task": "L4_R5",
+    "before": {
+      "left": {
+        "required_deg": 174.65872356343132,
+        "total_deg": 224.40016238910263
+      },
+      "right": {
+        "required_deg": 174.6587306246827,
+        "total_deg": 222.2771958773298
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 64.45346559084531,
+        "total_deg": 216.0664019969505
+      },
+      "right": {
+        "required_deg": 64.45346687900735,
+        "total_deg": 271.0371398914614
+      }
+    }
+  },
+  {
+    "task": "L8_R7",
+    "before": {
+      "left": {
+        "required_deg": 174.65872670605197,
+        "total_deg": 225.52888869189647
+      },
+      "right": {
+        "required_deg": 174.65873148593468,
+        "total_deg": 254.85821906382947
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 64.45346302341827,
+        "total_deg": 261.33183786448114
+      },
+      "right": {
+        "required_deg": 64.45346268038637,
+        "total_deg": 356.85664750219934
+      }
+    }
+  },
+  {
+    "task": "L4_R2",
+    "before": {
+      "left": {
+        "required_deg": 174.65872985443357,
+        "total_deg": 194.29734211716033
+      },
+      "right": {
+        "required_deg": 174.65873228464716,
+        "total_deg": 222.79662196609303
+      }
+    },
+    "after": {
+      "left": {
+        "required_deg": 64.45346942627863,
+        "total_deg": 147.75183528155355
+      },
+      "right": {
+        "required_deg": 64.45346783774112,
+        "total_deg": 200.34433238318493
+      }
+    }
+  }
+]

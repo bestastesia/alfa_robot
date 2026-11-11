@@ -62,10 +62,24 @@ def loaded_robot(robot, box_fit, active_sides=("left", "right"), attachments=Non
     return loaded
 
 
+def scene_query_spheres(spheres, tolerance_m):
+    if not math.isfinite(tolerance_m) or not 0.0 <= tolerance_m <= .001:
+        raise ValueError('scene penetration tolerance must be between0 and1mm')
+    if tolerance_m == 0:
+        return spheres
+    query = spheres.clone()
+    query[..., 3] = torch.where(spheres[..., 3] > 0,
+        (spheres[..., 3] - tolerance_m).clamp(min=torch.finfo(spheres.dtype).eps), spheres[..., 3])
+    return query
+
+
 class GpuValidity:
     def __init__(self, checker, active_sides=(), max_box_tilt_deg=30.0,
                  stability_weight=10.0, check_ground=False, ground_z=0.0,
-                 joint_names=None, weights=None):
+                 joint_names=None, weights=None, scene_penetration_tolerance_m=0.0):
+        if not math.isfinite(scene_penetration_tolerance_m) or not 0.0 <= scene_penetration_tolerance_m <= .001:
+            raise ValueError('scene penetration tolerance must be between0 and1mm')
+        self.scene_penetration_tolerance_m = scene_penetration_tolerance_m
         self.checker = checker
         self.states_checked = 0
         self.active_sides = tuple(active_sides)
@@ -107,9 +121,13 @@ class GpuValidity:
         return self.checker.get_self_collision(spheres)
 
     def _world_collision_cost(self, state):
+        if self.scene_penetration_tolerance_m:
+            spheres = state.robot_spheres
+            return self.checker.get_collision_constraint(scene_query_spheres(
+                spheres.view(1, -1, spheres.shape[-2], 4), self.scene_penetration_tolerance_m))
         return self.checker.collision_constraint.forward(state)
 
-    def evaluate(self, values):
+    def evaluate(self, values, base_margin_m=0.0):
         valid_output = []
         stability_output = []
         for start in range(0, len(values), 4096):
@@ -131,7 +149,8 @@ class GpuValidity:
             ).reshape(-1)
             base_mesh=getattr(self.checker,'base_mesh_layer',None)
             if base_mesh is not None:
-                collision_cost=collision_cost+base_mesh.cost(state,hard=True).reshape(1,horizon,-1).sum(-1).reshape(-1)
+                base_cost=base_mesh.cost(state,hard=True,margin_m=base_margin_m) if base_margin_m else base_mesh.cost(state,hard=True)
+                collision_cost=collision_cost+base_cost.reshape(1,horizon,-1).sum(-1).reshape(-1)
             if self.check_ground:
                 ground_indices = [
                     index for index in range(spheres.shape[2])
@@ -153,14 +172,39 @@ class GpuValidity:
     def mask(self, values):
         return self.evaluate(values)[0]
 
+    def scene_margin_mask(self, values, margin_m):
+        if margin_m < 0:
+            raise ValueError('scene margin must be nonnegative')
+        if margin_m == 0:
+            return torch.ones(len(values), device=values.device, dtype=torch.bool)
+        output = []
+        for offset in range(0, len(values), 4096):
+            chunk = values[offset:offset + 4096]
+            state = self.checker.kinematics.compute_kinematics(
+                JointState.from_position(chunk[None], joint_names=self.joint_names))
+            spheres = state.robot_spheres.reshape(1, len(chunk), -1, 4)
+            inflated = spheres.clone()
+            inflated[..., 3] = torch.where(spheres[..., 3] > 0, spheres[..., 3] + margin_m, spheres[..., 3])
+            cost = self.checker.get_collision_constraint(inflated).reshape(len(chunk), -1).sum(-1)
+            output.append(cost == 0)
+        return torch.cat(output)
+
     def edges(self, starts, goals, resolution=0.05, return_stability=False):
+        resolution = min(resolution, getattr(self, 'search_edge_resolution', resolution))
         weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
         steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=getattr(self, "minimum_edge_steps", 1))
         horizon = int(steps.max().item()) + 1
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
         points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
-        valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+        base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
+        if base_margin_m:
+            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]), base_margin_m=base_margin_m)
+        else:
+            valid, stability = self.evaluate(points.reshape(-1, starts.shape[1]))
+        margin_m = getattr(self, 'search_scene_margin_m', 0.)
+        if margin_m > 0:
+            valid = valid & self.scene_margin_mask(points.reshape(-1, starts.shape[1]), margin_m)
         valid = valid.reshape(len(starts), horizon)
         stability = stability.reshape(len(starts), horizon)
         edge_valid = valid.all(dim=1)

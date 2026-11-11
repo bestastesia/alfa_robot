@@ -38,7 +38,8 @@ class BoxRotationCost:
     def orientations(self,values):
         state=self.checker.kinematics.compute_kinematics(JointState.from_position(values.unsqueeze(0),joint_names=self.joint_names))
         poses=state.tool_poses.to_dict()
-        return {side:quaternion_multiply(poses[side+'_tool0'].quaternion.reshape(-1,4).clone(),self.attachments[side].expand(len(values),-1)) for side in self.attachments}
+        orientations={side:quaternion_multiply(poses[side+'_tool0'].quaternion.reshape(-1,4).clone(),self.attachments[side].expand(len(values),-1)) for side in self.attachments}
+        return {side:quaternion/torch.clamp(torch.linalg.vector_norm(quaternion,dim=-1,keepdim=True),min=1e-8) for side,quaternion in orientations.items()}
 
     def terms(self,quaternions):
         vector=rotation_vector(quaternion_multiply(self.conjugate(self.initial[self.current_side]).expand_as(quaternions),quaternions))
