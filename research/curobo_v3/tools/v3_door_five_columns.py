@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -42,15 +43,19 @@ def mirror_round(source,source_path,planner,request):
 ASSET_NAMES=('robot_config','mobile_robot_config','urdf','named_poses','box_fit')
 
 def acquire_gpu(lock,wait_s):
-    """Hold the shared GPU lock and require no other compute process before timing."""
+    """Hold the shared GPU lock and require no other compute process before timing.
+
+    Under the gpuq queue (SEVENOVA_GPU_LOCK_HELD=1) the queue holds this lock already; taking it
+    again from the child would never succeed, so only an idle GPU is required."""
+    external=os.environ.get('SEVENOVA_GPU_LOCK_HELD')=='1'
     deadline=time.monotonic()+wait_s
     while True:
-        try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        try:external or fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:occupied='shared lock held'
         else:
             occupied=subprocess.check_output(['nvidia-smi','--query-compute-apps=pid','--format=csv,noheader'],text=True).strip()
             if not occupied:return
-            fcntl.flock(lock,fcntl.LOCK_UN)
+            external or fcntl.flock(lock,fcntl.LOCK_UN)
         if time.monotonic()>=deadline:raise RuntimeError('GPU unavailable: '+occupied)
         time.sleep(1)
 
