@@ -42,6 +42,8 @@ def main():
                    help="override the model's free-space search geometry scale (0: no inflation)")
     p.add_argument('--free-space-stages', nargs='+', default=None,
                    help="override the stages whose free-space searches inflate (e.g. conveyor_suffix)")
+    p.add_argument('--no-coverage-margins', action='store_true',
+                   help="plan without the model's MOTION-429 sphere coverage margins")
     a = p.parse_args()
     a.output_dir.mkdir(parents=True, exist_ok=True)
     if any(a.output_dir.iterdir()):
@@ -59,6 +61,8 @@ def main():
             planner.free_space_inflation = a.free_space_inflation or None
         if a.free_space_stages is not None:
             planner.free_space_stages = tuple(a.free_space_stages)
+        if a.no_coverage_margins:
+            planner.sphere_margins = None
         warmups = []
         for index in range(a.warmup_passes):
             began = time.perf_counter()
@@ -88,6 +92,8 @@ def main():
                    warmup_passes=a.warmup_passes, planner_construction_ms=construction_ms,
                    model_revision=planner.model_revision, free_space_inflation=planner.free_space_inflation,
                    free_space_stages=planner.free_space_stages,
+                   coverage_margins=None if planner.sphere_margins is None else
+                   {link: round(float(max(values)), 4) for link, values in planner.sphere_margins.items()},
                    warmups=[{k: v for k, v in item.items() if k != 'rounds'} |
                             dict(rounds=[dict(column=r['column'], success=r['success'], total_ms=r['total_ms'])
                                          for r in item['rounds']]) for item in warmups],

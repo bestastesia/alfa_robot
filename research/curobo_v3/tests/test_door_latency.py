@@ -1,4 +1,5 @@
 """CPU contracts for the five-column door latency work: identical decisions, bounded resources."""
+from dataclasses import dataclass
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -227,6 +228,167 @@ class BatchUrdfFkTests(unittest.TestCase):
         self.assertGreater(np.abs(stale-exact).max(), 1e-10)
         read(row+.1)
         np.testing.assert_allclose(read(moved), exact, atol=1e-12, rtol=0)
+
+
+class BoxWorld:
+    """cuRobo-like world cost for one axis-aligned box: per-sphere penetration, radius <= 0 disabled."""
+    def __init__(self, low, high):
+        self.low, self.high = torch.tensor(low), torch.tensor(high)
+
+    def forward(self, state):
+        spheres = state.robot_spheres
+        distance = torch.linalg.vector_norm(spheres[..., :3]-torch.maximum(torch.minimum(spheres[..., :3], self.high), self.low), dim=-1)
+        return ((spheres[..., 3] > 0) & (distance < spheres[..., 3])).float()*(spheres[..., 3]-distance)
+
+
+def grown_validity(growth, side, exempt=()):
+    from curobo_core.door_sequential_validity import CollisionMargins
+    validity = SequentialValidity.__new__(SequentialValidity)
+    validity.checker = SimpleNamespace(collision_constraint=BoxWorld((1., -1., -1.), (2., 1., 1.)))
+    validity.margins = CollisionMargins(exempt_radius_m=.06)
+    validity.world_growth_indices = torch.tensor([0, 1])
+    validity.world_growth = torch.tensor(growth)
+    validity.world_growth_side = torch.tensor(side)
+    validity.world_exempt = [None, None]
+    for index, points in exempt:
+        validity.world_exempt[index] = torch.tensor(points).reshape(-1, 3)
+    return validity
+
+
+@dataclass
+class SphereState:
+    """The fields of a cuRobo kinematics state the world cost reads."""
+    robot_spheres: torch.Tensor
+    tool_poses: object
+
+
+def sphere_state(spheres, tools):
+    poses = {name: SimpleNamespace(position=torch.tensor(position)[None]) for name, position in tools.items()}
+    return SphereState(torch.tensor(spheres)[None, None], SimpleNamespace(to_dict=lambda: poses))
+
+
+class GrownWorldCostTests(unittest.TestCase):
+    tools = {'left_tool0': (0., 0., 0.), 'right_tool0': (0., .5, 0.)}
+
+    def test_only_grown_free_space_spheres_reach_the_world(self):
+        # 1 cm gaps; sphere 2 is not a free-space sphere and keeps its original radius.
+        state = sphere_state([[.89, 0., 0., .1], [.89, .5, 0., .1], [.89, -.5, 0., .1]], self.tools)
+        cost = grown_validity([.02, .005], [0, 1])._grown_world_cost(state)
+        self.assertGreater(float(cost[0, 0, 0]), 0.)
+        self.assertEqual(float(cost[0, 0, 1]), 0.)
+        self.assertEqual(float(cost[0, 0, 2]), 0.)
+
+    def test_disabled_spheres_stay_disabled(self):
+        state = sphere_state([[1.5, 0., 0., -100.], [1.5, .5, 0., 0.]], self.tools)
+        self.assertEqual(float(grown_validity([.02, .02], [0, 1])._grown_world_cost(state).abs().sum()), 0.)
+
+    def test_an_arm_near_its_contact_keeps_its_original_spheres(self):
+        state = sphere_state([[.89, 0., 0., .1], [.89, .5, 0., .1]], self.tools)
+        near = grown_validity([.02, .02], [0, 1], exempt=[(0, [(.05, 0., 0.)])])._grown_world_cost(state)
+        self.assertEqual(float(near[0, 0, 0]), 0.)  # left tool 5 cm from its exempt point
+        self.assertGreater(float(near[0, 0, 1]), 0.)  # the right arm is not exempt
+        far = grown_validity([.02, .02], [0, 1], exempt=[(0, [(.07, 0., 0.)])])._grown_world_cost(state)
+        self.assertGreater(float(far[0, 0, 0]), 0.)
+
+
+class CrossArmMarginTests(unittest.TestCase):
+    """A left and a right sphere 25 mm apart, coverage margins 20 mm (left) and 10 mm (right)."""
+
+    def clash(self, growth_sides=(True, True), exempt=(), radius=.1):
+        from curobo_core.door_sequential_validity import CollisionMargins
+        validity = SequentialValidity.__new__(SequentialValidity)
+        validity.margins = CollisionMargins(exempt_radius_m=.06)
+        validity.world_growth = torch.zeros(0)
+        validity.world_exempt = [None, None]
+        for index, points in exempt:
+            validity.world_exempt[index] = torch.tensor(points).reshape(-1, 3)
+        validity.growth_sides = torch.tensor(growth_sides)
+        validity.cross_pairs = torch.tensor([[0, 1]])
+        validity.cross_margins = torch.tensor([[.02, .01]])
+        spheres = torch.tensor([[[0., 0., 0., radius], [.225, 0., 0., .1]]])
+        tools = {'left_tool0': SimpleNamespace(position=torch.tensor([[[0., 0., .3]]])),
+                 'right_tool0': SimpleNamespace(position=torch.tensor([[[.225, 0., .3]]]))}
+        return bool(validity._cross_arm_clash(spheres, tools)[0])
+
+    def test_both_free_space_arms_need_the_sum_of_their_margins(self):
+        self.assertTrue(self.clash())
+
+    def test_a_static_or_exempt_arm_adds_no_margin(self):
+        self.assertFalse(self.clash(growth_sides=(True, False)))  # 25 mm clear of 20 mm
+        self.assertFalse(self.clash(growth_sides=(False, True), radius=.11))  # 15 mm clear of 10 mm
+        self.assertTrue(self.clash(growth_sides=(False, True), radius=.12))  # 5 mm clear of 10 mm
+        self.assertFalse(self.clash(exempt=[(0, [(0., 0., .32)])]))  # left tool0 2 cm from its contact: 10 mm
+
+    def test_disabled_spheres_never_clash(self):
+        self.assertFalse(self.clash(radius=-100.))
+
+
+class CoverageMarginTests(unittest.TestCase):
+    def test_margins_grow_each_sphere_to_cover_the_points_it_needs_least_growth_for(self):
+        from curobo_core.coverage_margins import sphere_margins
+        corners = np.array([[x, y, z] for x in (-.5, .5) for y in (-.5, .5) for z in (-.5, .5)])
+        spheres = np.array([[-.25, 0., 0., .3], [.25, 0., 0., .3]])
+        margins, need = sphere_margins(corners, spheres, .002)
+        # Each corner belongs to the sphere on its side: |(.25, .5, .5)| - .3 to reach it.
+        expected = np.linalg.norm([.25, .5, .5])-.3
+        np.testing.assert_allclose(margins, expected+.002)
+        np.testing.assert_allclose(need, expected)
+        grown = spheres.copy()
+        grown[:, 3] += margins
+        reach = np.linalg.norm(corners[:, None]-grown[None, :, :3], axis=-1)-grown[None, :, 3]
+        self.assertTrue((reach.min(1) <= 0).all())
+
+    def test_covered_points_need_no_growth(self):
+        from curobo_core.coverage_margins import sphere_margins
+        margins, need = sphere_margins(np.zeros((4, 3)), np.array([[0., 0., 0., .1]]), 0.)
+        np.testing.assert_array_equal(margins, [0.])
+        self.assertTrue((need < 0).all())
+
+
+class FreeSpaceScopeTests(unittest.TestCase):
+    """Which margins a door validity gets: none without coverage margins, world growth only in a scope."""
+
+    def task(self, sphere_margins):
+        from curobo_core.door_recenter import DoorPlanner
+        from curobo_core.door_sequential import _SequentialTask
+
+        def transforms(rows, frame):
+            # tool0 x = the side's first arm joint, so each row gives its own exempt point.
+            output = np.tile(np.eye(4), (len(rows), 1, 1))
+            output[:, 0, 3] = np.asarray(rows)[:, 1 if frame == 'left_tool0' else 8]
+            return output
+        task = _SequentialTask.__new__(_SequentialTask)
+        task.planner = SimpleNamespace(
+            sphere_margins=sphere_margins, coverage_margin_links=DoorPlanner.coverage_margin_links,
+            coverage_self_pairs=DoorPlanner.coverage_self_pairs, coverage_payload_links=DoorPlanner.coverage_payload_links,
+            coverage_cross_pairs=DoorPlanner.coverage_cross_pairs,
+            free_space_exempt_radius_m=DoorPlanner.free_space_exempt_radius_m, batch_fk=SimpleNamespace(transforms=transforms))
+        task.free_space_sides, task.free_space_exempt = (), ()
+        return task
+
+    def test_no_margins_without_coverage_margins(self):
+        task = self.task(None)
+        with task.free_space(('left', 'right'), np.zeros((1, 15))):
+            self.assertIsNone(task.collision_margins())
+
+    def test_world_growth_only_for_the_scoped_arms_and_restored_on_exit(self):
+        task = self.task({})
+        outside = task.collision_margins()
+        self.assertEqual((outside.world, outside.exempt, outside.cross_pairs), ((), (), ()))
+        self.assertEqual(outside.self_pairs, task.planner.coverage_self_pairs)
+        self.assertEqual(outside.payload, task.planner.coverage_payload_links)
+        rows = np.zeros((3, 15))
+        rows[:, 1] = (.1, .2, .1)
+        with task.free_space(('left',), rows):
+            inside = task.collision_margins()
+            self.assertEqual(inside.world, tuple(f'left_link{index}' for index in range(1, 8)))
+            self.assertEqual(inside.exempt, (('left', ((.1, 0., 0.), (.2, 0., 0.))),))
+            self.assertEqual(inside.cross_pairs, task.planner.coverage_cross_pairs)
+            with task.free_space(()):
+                self.assertEqual(task.collision_margins().world, ())
+            self.assertEqual(task.collision_margins(), inside)
+            hash(inside)  # part of the validity cache key
+        self.assertEqual(task.collision_margins(), outside)
 
 
 class ResourceStatsTests(unittest.TestCase):

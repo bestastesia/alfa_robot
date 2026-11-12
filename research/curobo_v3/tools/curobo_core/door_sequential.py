@@ -2,6 +2,9 @@
 """Sequential two-box mode inside FullCyclePlanner (simulation geometry only)."""
 
 
+from contextlib import contextmanager
+
+
 from dataclasses import asdict, replace
 
 
@@ -186,6 +189,7 @@ class _SequentialTask:
         self.support_side = None
         self.released_offsets = {}
         self.contact_pair = None
+        self.free_space_sides, self.free_space_exempt = (), ()
         self.pending_extract = None
         self.pending_rrt_job = None
         self.rrt_jobs = []
@@ -263,6 +267,42 @@ class _SequentialTask:
         self.progress(phase)
 
 
+    @contextmanager
+    def free_space(self, sides, rows=()):
+        """Plan these arms with coverage-grown spheres against the world (MOTION-429).
+
+        Within the exempt radius of their tool0 positions at `rows` (the start and the goals, i.e.
+        the contact being left or approached) the arms keep their original spheres.
+        """
+        saved = self.free_space_sides, self.free_space_exempt
+        rows = np.asarray(rows, dtype=float).reshape(-1, len(ACTIVE_JOINTS))
+        batch_fk = getattr(self.planner, "batch_fk", None)
+        exempt = []
+        for side in sides:
+            points = (batch_fk.transforms(rows, side+"_tool0")[:, :3, 3] if batch_fk is not None
+                      else np.asarray([self.tool(row, side)[:3, 3] for row in rows]).reshape(-1, 3))
+            exempt.append((side, tuple(sorted({tuple(float(x) for x in point) for point in np.round(points, 4)}))))
+        self.free_space_sides, self.free_space_exempt = tuple(sides), tuple(exempt)
+        try:
+            yield
+        finally:
+            self.free_space_sides, self.free_space_exempt = saved
+
+
+    def collision_margins(self):
+        """Planning margins of the current scope, or None if the planner defines no coverage margins."""
+        from .door_sequential_validity import CollisionMargins
+        planner = self.planner
+        if getattr(planner, "sphere_margins", None) is None:
+            return None
+        world = tuple(link for link in planner.coverage_margin_links
+                      if any(link.startswith(side+"_") for side in self.free_space_sides))
+        return CollisionMargins(world=world, exempt=self.free_space_exempt if world else (),
+                                exempt_radius_m=planner.free_space_exempt_radius_m,
+                                self_pairs=planner.coverage_self_pairs, payload=planner.coverage_payload_links,
+                                cross_pairs=planner.coverage_cross_pairs if world else ())
+
+
     def validity(self):
         from curobo.collision_checking import RobotCollisionChecker, RobotCollisionCheckerCfg
         from v3_batched_loaded_search import loaded_robot
@@ -271,7 +311,8 @@ class _SequentialTask:
         from .resource_stats import bounded_get, record_build
         snapshot = self.store.snapshot()
         support_key = None if self.support_pose is None else tuple(self.support_pose.reshape(-1))
-        key = (snapshot.geometry_key,self.contact_pair,support_key,self.support_side,self.request.cartesian_geometry_tolerance_m)
+        margins = self.collision_margins()
+        key = (snapshot.geometry_key,self.contact_pair,support_key,self.support_side,self.request.cartesian_geometry_tolerance_m,margins)
         if key in self.validity_cache:
             self.cached_key=key
             self.cached_validity=self.validity_cache[key]
@@ -299,7 +340,8 @@ class _SequentialTask:
             self.cached_validity = SequentialValidity(checker, snapshot, self.planner.robot,
                 {side: tool_mesh_vertices(self.planner, side) for side in ("left", "right")}, self.contact_pair,
                 geometry_tolerance=self.request.cartesian_geometry_tolerance_m,support_pose=self.support_pose,support_side=self.support_side,
-                fixed_body=getattr(self.planner, "fixed_body", None))
+                fixed_body=getattr(self.planner, "fixed_body", None),
+                margins=margins,sphere_margins=getattr(self.planner,"sphere_margins",None))
             self.cached_key = key
             self.validity_cache[key]=self.cached_validity
             self.validities.append(self.cached_validity)
@@ -643,7 +685,7 @@ class _SequentialTask:
         return order[np.argsort(self.limit_tight(rows)[order], kind="stable")]
 
 
-    def free_space(self, validity, start, goals):
+    def search_inflation(self, validity, start, goals):
         """The validity a free-space search uses: the model's search inflation anchored at its start and
         goals (none for the legacy model). Paths are accepted with the original geometry afterwards."""
         scale = getattr(self.planner, "free_space_inflation", None)
@@ -663,7 +705,7 @@ class _SequentialTask:
         from v3_batched_loaded_search import batched_rrt_connect_multi_goal, densify
         from .door_sequential_validity import ReducedValidity
         validity = self.validity()
-        reduced = ReducedValidity(self.free_space(validity, self.q, goals) if free_space else validity, self.q, active)
+        reduced = ReducedValidity(self.search_inflation(validity, self.q, goals) if free_space else validity, self.q, active)
         lower, upper = validity.checker.kinematics.get_joint_limits().position
         if seed_value is None:
             seed = self.seed("rrtconnect")

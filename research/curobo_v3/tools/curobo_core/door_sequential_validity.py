@@ -1,7 +1,7 @@
 # Reused from five-column-rear-trajopt sequential_validity.py, SHA256 646b8f73d6a05028e1b5277f1f1b07cd976b66c9ed3a409feaf3b8a53baebda1
 """Native validation plus exact, pair-scoped tool contact and payload geometry."""
 import copy
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import time
 import math
 
@@ -104,13 +104,33 @@ class SearchInflation:
         return torch.where(radius > 0, (radius+self.tolerance)*self.scale-self.tolerance, radius)
 
 
+@dataclass(frozen=True)
+class CollisionMargins:
+    """Planning margins on top of the frozen spheres (MOTION-429); the native checks are unchanged.
+
+    world: links whose spheres grow by their per-sphere coverage margins against world boxes, i.e.
+        arms moving in free space; exempt: (side, tool0 points) balls of exempt_radius_m where that
+        arm keeps its original spheres, next to a contact it approaches or leaves.
+    self_pairs: (link_a, link_b, margin_m) robot sphere pairs that must clear by margin_m.
+    payload: (link, margin_m) robot spheres that must clear the carried boxes by margin_m.
+    cross_pairs: (left link, right link) sphere pairs that must clear by the coverage margins of the
+        free-space arms among them, each counted while its tool0 is outside its exempt balls.
+    """
+    world: tuple = ()
+    exempt: tuple = ()
+    exempt_radius_m: float = .06
+    self_pairs: tuple = ()
+    payload: tuple = ()
+    cross_pairs: tuple = ()
+
+
 class SequentialValidity(GpuValidity):
     inflation = None  # SearchInflation of a free-space search view (see inflated)
     active_inflation = None  # rows of the native batch being checked with the inflated geometry
     shape_bucket = 256
 
     def __init__(self,checker,snapshot,robot,tool_meshes,contact_pair=None,geometry_tolerance=1e-6,support_pose=None,support_side=None,
-                 fixed_body=None):
+                 fixed_body=None,margins=None,sphere_margins=None):
         super().__init__(checker, check_ground=True, ground_z=snapshot.policy.ground_z_m,
                          joint_names=ACTIVE_JOINTS, max_box_tilt_deg=snapshot.policy.max_box_tilt_deg)
         self.snapshot = snapshot
@@ -159,6 +179,38 @@ class SequentialValidity(GpuValidity):
             self.fixed_body_query = [i for link, indices in self.link_indices.items()
                                      if link not in fixed_body.query_excluded_links for i in indices]
             self.fixed_body_world_clear = {}
+        self.margins = margins or CollisionMargins()
+        device = self.self_pairs.device
+        growth, side = [], []
+        for link in self.margins.world:
+            values = sphere_margins[link]
+            if len(values) != len(self.link_indices[link]):
+                raise ValueError(f"coverage margins do not match the sphere model of {link}")
+            growth.extend(float(value) for value in values)
+            side.extend([0 if link.startswith("left_") else 1]*len(values))
+        self.world_growth_indices = torch.tensor([i for link in self.margins.world for i in self.link_indices[link]],
+                                                 device=device, dtype=torch.long)
+        self.world_growth = torch.tensor(growth, device=device)
+        self.world_growth_side = torch.tensor(side, device=device, dtype=torch.long)
+        self.world_exempt = [None, None]
+        for name, points in self.margins.exempt:
+            self.world_exempt[0 if name == "left" else 1] = torch.tensor(points, device=device, dtype=torch.float32).reshape(-1, 3)
+        pairs = [(i, j, margin) for first, second, margin in self.margins.self_pairs
+                 for i in self.link_indices[first] for j in self.link_indices[second]]
+        self.margin_pairs = torch.tensor([pair[:2] for pair in pairs], device=device, dtype=torch.long).reshape(-1, 2)
+        self.margin_pair_values = torch.tensor([pair[2] for pair in pairs], device=device)
+        self.growth_sides = torch.tensor([any(link.startswith(name+"_") for link in self.margins.world)
+                                          for name in ("left", "right")], device=device)
+        if any(not (first.startswith("left_") and second.startswith("right_")) for first, second in self.margins.cross_pairs):
+            raise ValueError("cross-arm margin pairs are (left link, right link)")
+        cross = [(i, j, first_margin, second_margin) for first, second in self.margins.cross_pairs
+                 for i, first_margin in zip(self.link_indices[first], sphere_margins[first])
+                 for j, second_margin in zip(self.link_indices[second], sphere_margins[second])]
+        self.cross_pairs = torch.tensor([pair[:2] for pair in cross], device=device, dtype=torch.long).reshape(-1, 2)
+        self.cross_margins = torch.tensor([pair[2:] for pair in cross], device=device, dtype=torch.float32).reshape(-1, 2)
+        payload_growth = dict(self.margins.payload)
+        self.payload_growth = torch.tensor([payload_growth.get(link, 0.) for link, indices in self.link_indices.items()
+                                            for _ in indices], device=device)
 
     def inflated(self, inflation):
         """A free-space search view: the same checks with `inflation` (its time counts towards this validity)."""
@@ -239,6 +291,42 @@ class SequentialValidity(GpuValidity):
             collision[band]=self.exact_robot_self_collision(spheres.reshape(-1,spheres.shape[-2],4)[band])
         return collision.to(spheres.dtype).reshape(*spheres.shape[:-2],1)
 
+    def _near_exempt(self, tools, side, shape):
+        """Where that arm's tool0 is inside one of its exempt balls (rows of `shape`)."""
+        points = self.world_exempt[side]
+        if points is None or not len(points):
+            return torch.zeros(shape, device=self.world_growth.device, dtype=torch.bool)
+        tool = tools[("left", "right")[side]+"_tool0"].position.reshape(*shape, 3)
+        return (torch.linalg.vector_norm(tool[..., None, :]-points, dim=-1) <= self.margins.exempt_radius_m).any(-1)
+
+    def _cross_arm_clash(self, spheres, tools):
+        """Rows (spheres: rows x n x 4) whose arms' meshes may meet: a cross pair closer than the coverage
+        margins of its free-space arms whose tool0 is outside the exempt balls (MOTION-429)."""
+        grown = torch.stack([self.growth_sides[side] & ~self._near_exempt(tools, side, (len(spheres),))
+                             for side in range(2)], dim=-1)
+        first, second = spheres[:, self.cross_pairs[:, 0]], spheres[:, self.cross_pairs[:, 1]]
+        clearance = torch.linalg.vector_norm(first[..., :3]-second[..., :3], dim=-1)-first[..., 3]-second[..., 3]
+        margin = self.cross_margins[:, 0]*grown[:, :1]+self.cross_margins[:, 1]*grown[:, 1:]
+        return ((first[..., 3] > 0) & (second[..., 3] > 0) & (clearance < margin)).any(-1)
+
+    def _grown_world_cost(self, state):
+        """Native world cost of the free-space arms' coverage-grown spheres (others disabled),
+        zero where that arm's tool0 is inside an exempt ball."""
+        index = self.world_growth_indices
+        spheres = state.robot_spheres
+        grown = spheres.clone()
+        grown[..., 3] = -100.
+        radius = spheres[..., index, 3]
+        grown[..., index, 3] = torch.where(radius > 0, radius+self.world_growth, -100.)
+        extra = self.checker.collision_constraint.forward(replace(state, robot_spheres=grown))[..., index]
+        tools = state.tool_poses.to_dict()
+        for side in range(2):
+            near = self._near_exempt(tools, side, extra.shape[:-1])
+            extra = extra*~(near[..., None] & (self.world_growth_side == side))
+        output = torch.zeros(spheres.shape[:-1], device=spheres.device, dtype=extra.dtype)
+        output[..., index] = extra
+        return output
+
     def _world_collision_cost(self, state):
         inflate = self.active_inflation
         if inflate is None:
@@ -250,6 +338,9 @@ class SequentialValidity(GpuValidity):
             query[..., 3] = torch.where(inflate.reshape(*spheres.shape[:-2], 1), self.inflation.radii(spheres[..., 3]),
                                         spheres[..., 3])
             cost = self.checker.collision_constraint.forward(replace(state, robot_spheres=query))
+        if len(self.world_growth_indices):
+            # The native kernel reuses its output buffer: keep the original cost before the second query.
+            cost = cost.clone()+self._grown_world_cost(state)
         # Exact box/box tangency produces ~3e-8 m positive float32 SDF cost.
         # Only payload spheres get the SAME 1um tolerance as the independent
         # actual-box SAT gate; robot-world/self/bounds remain unchanged.
@@ -301,6 +392,14 @@ class SequentialValidity(GpuValidity):
             all_spheres = fk.robot_spheres.reshape(len(q), -1, 4)
             spheres = all_spheres[:, self.robot_indices]
             rows = None if scale is None else scale[offset:offset+len(q)]
+            if len(self.margin_pairs):
+                first, second = all_spheres[:, self.margin_pairs[:, 0]], all_spheres[:, self.margin_pairs[:, 1]]
+                clearance = (torch.linalg.vector_norm(first[..., :3]-second[..., :3], dim=-1)
+                             - first[..., 3]-second[..., 3])
+                valid[offset:offset+len(q)] &= ~((first[..., 3] > 0) & (second[..., 3] > 0)
+                                                 & (clearance < self.margin_pair_values)).any(-1)
+            if len(self.cross_pairs):
+                valid[offset:offset+len(q)] &= ~self._cross_arm_clash(all_spheres, tools)
             if self.fixed_body is not None:
                 valid[offset:offset+len(q)] &= ~self.fixed_body_collision(all_spheres, rows)
             if self.contact_pair is not None:
@@ -346,7 +445,7 @@ class SequentialValidity(GpuValidity):
                 # Every other robot sphere still checks the exact payload box.
                 local = matmul3(spheres[..., :3]-position[:, None], rotation)
                 distance = torch.linalg.vector_norm((local.abs()-half).clamp_min(0), dim=-1)
-                overlap = (spheres[..., 3] > 0) & (distance < spheres[..., 3]-1e-6)
+                overlap = (spheres[..., 3] > 0) & (distance < spheres[..., 3]+self.payload_growth-1e-6)
                 own_link = item.parent_link.removesuffix("_tool0")+"_link7"
                 own_indices = set(self.link_indices[own_link])
                 own_columns = [i for i, sphere_index in enumerate(self.robot_indices) if sphere_index in own_indices]

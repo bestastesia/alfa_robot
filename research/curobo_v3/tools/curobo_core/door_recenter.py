@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 from scipy.spatial.transform import Rotation
+import yourdfpy
 from curobo.collision_checking import RobotCollisionChecker, RobotCollisionCheckerCfg
 from curobo.inverse_kinematics import InverseKinematics, InverseKinematicsCfg
 from curobo.types import GoalToolPose, JointState, Pose as GpuPose
@@ -21,11 +22,12 @@ from curobo.types import GoalToolPose, JointState, Pose as GpuPose
 from .adapter import from_curobo_scene, matrix_pose, pose_matrix, relative_pose, to_curobo_scene
 from .contracts import ACTIVE_JOINTS
 from .conveyor import conveyor_pair
+from .coverage_margins import coverage_margins
 from .door_extract import DoorExtraction
 from .door_model import MODEL_FILES, REZERO_REVISION, FixedBodyBoxes, model_revision
 from .door_sequential import (_SequentialTask,check_frozen,corners,mesh_contact_proof,pose_error,
                               tool_mesh_vertices)
-from .door_sequential_validity import ReducedValidity, SequentialValidity
+from .door_sequential_validity import CollisionMargins, ReducedValidity, SequentialValidity
 from .resource_stats import record_build
 from .urdf_fk import BatchToolFk
 from .planner import CycleBlocked, FullCyclePlanner
@@ -117,7 +119,6 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     conveyor_marker_x_m = ConveyorCyclePlanner.conveyor_marker_x_m
     conveyor_reference_targets = ConveyorCyclePlanner.conveyor_reference_targets
     tool_matrices = ConveyorCyclePlanner.tool_matrices
-    plan_conveyor_target = ConveyorCyclePlanner.plan_conveyor_target
     conveyor_ik_solver = ConveyorCyclePlanner.conveyor_ik_solver
     conveyor_ik_num_seeds = 16  # MOTION-342 latency choice, resident across rounds
     conveyor_solver_cache_limit = 8
@@ -143,6 +144,28 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # The center column (2) takes the outer columns' rack-supported flow: in the re-zeroed model the
     # center flow's compensated upper extraction is out of the right arm's reach.
     center_column_outer_flow = False
+    # MOTION-429: the frozen spheres leave up to ~2.8 cm of each arm mesh uncovered (re-zeroed model;
+    # exact mesh audit: link7 and its suction cap up to 13 mm inside neighbouring boxes mid-approach).
+    # Arms moving in free space grow every sphere by its coverage margin against the world and, for
+    # the forearms and wrists (coverage_cross_pairs), against the other arm, keeping their original
+    # spheres within the exempt radius of the contact being approached or left (the cap reached 9 mm
+    # into the other forearm in the inner columns' upper precontact). Pairs the audit found penetrating
+    # keep fixed margins in every phase: the two wrists crossing there (15 mm), and a carried box at the
+    # arm carriage, whose spheres leave up to 5.5 cm uncovered (7 mm through a 1 cm margin). Per-sphere
+    # margins of coverage_margin_links (None: no margins, the legacy model).
+    sphere_margins = None
+    coverage_margin_links = tuple(f'{side}_link{index}' for side in ('left', 'right') for index in range(1, 8))
+    coverage_self_pairs = tuple(pair for side in ('left', 'right') for pair in
+                                (('arm_carriage', f'{side}_link5', .02), (f'{side}_link4', f'{side}_link7', .015)))+(
+                                    ('left_link7', 'right_link7', .02),)
+    coverage_payload_links = (('arm_carriage', .025), ('left_link4', .01), ('right_link4', .01))
+    coverage_cross_pairs = tuple((f'left_link{first}', f'right_link{second}') for first in range(4, 8) for second in range(4, 8))
+    free_space_exempt_radius_m = .06
+    # Budget (s) of one long latest-pair search after a seed bank without a path (None: none).
+    latest_pair_fallback_s = None
+    # Straight retreat (m) of both tools from the released boxes before the return to Home, whose
+    # search then keeps those boxes in the world (None: released boxes leave the scene at release).
+    release_retreat_m = None
 
     def __init__(self, assets):
         super().__init__(assets)
@@ -187,7 +210,12 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.robot = disable_fixed_body_spheres(self.robot)
         self.mobile_robot = disable_fixed_body_spheres(self.mobile_robot)
         self.fixed_body = FixedBodyBoxes(assets.fixed_body_boxes, self.fk_robot)
+        kinematics = self.robot['kinematics']
+        self.sphere_margins = coverage_margins(kinematics, yourdfpy.URDF.load(
+            kinematics['urdf_path'], load_meshes=False, build_scene_graph=False), self.coverage_margin_links)
         self.free_space_inflation = 1.1
+        self.latest_pair_fallback_s = 6.
+        self.release_retreat_m = .08
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05
         self.regrasp_lowering_prefilter = True
@@ -273,29 +301,107 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             raise CycleBlocked('反算放置底盘位', f'门扉回中位需要的双手修正过大: {residual}')
         return parking, residual
 
-    def checker(self, boxes, payload=False, mobile=False):
-        if mobile:
-            raise ValueError('door suffix does not plan navigation')
+    def checker(self, boxes, payload=False, mobile=False, objects=()):
+        """Placement/Home checker of the current scene plus `objects` (map frame; released boxes, no payload)."""
+        if mobile or (payload and objects):
+            raise ValueError('door suffix does not plan navigation, nor carry boxes it keeps in the world')
         build_started = time.perf_counter()
         robot = loaded_robot(self.robot, self.box_fit, attachments=self.held) if payload else self.robot
+        snapshot = (replace(self.snapshot, attachments=(), objects=self.snapshot.objects+tuple(objects)) if objects
+                    else self.snapshot)
         checker = RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(
-            robot_config=robot, scene_model=to_curobo_scene(self.snapshot),
-            n_cuboids=max(40, len(self.snapshot.objects)), n_meshes=len(self.snapshot.meshes),
+            robot_config=robot, scene_model=to_curobo_scene(snapshot),
+            n_cuboids=max(40, len(snapshot.objects)), n_meshes=len(snapshot.meshes),
             collision_activation_distance=0.))
         record_build(self, 'placement_checker_loaded' if payload else 'placement_checker_empty', build_started)
         return checker
 
-    def placement_validity(self, checker, payload):
+    def placement_validity(self, checker, payload, exempt_points=None, objects=()):
         # The ordinary suffix works in a fixed *arrived* base frame; retain the real world geometry.
         snapshot = replace(self.snapshot, attachments=self.held if payload else (),
                            objects=tuple(replace(x, pose=relative_pose(x.pose, self.snapshot.state.base_pose))
-                                         for x in self.snapshot.objects),
+                                         for x in self.snapshot.objects+tuple(objects)),
                            meshes=tuple(replace(x, pose=relative_pose(x.pose, self.snapshot.state.base_pose))
                                         for x in self.snapshot.meshes),
                            state=replace(self.snapshot.state, base_pose=Pose()))
+        margins = None
+        if self.sphere_margins is not None:
+            if exempt_points is None:
+                # Return to Home: original spheres next to the released start (consumed here) and Home.
+                rows = [row for row in (self.__dict__.pop('_released_q', None), self.home_values) if row is not None]
+                exempt_points = {side: [self.tool_matrices(row)[side][:3, 3] for row in rows] for side in ('left', 'right')}
+            # Both arms move in free space here (MOTION-429 margins, see coverage_margin_links).
+            margins = CollisionMargins(
+                world=self.coverage_margin_links, exempt_radius_m=self.free_space_exempt_radius_m,
+                exempt=tuple((side, tuple(sorted({tuple(float(x) for x in np.round(point, 4)) for point in points})))
+                             for side, points in exempt_points.items()),
+                self_pairs=self.coverage_self_pairs, payload=self.coverage_payload_links,
+                cross_pairs=self.coverage_cross_pairs)
         return SequentialValidity(checker, snapshot, self.robot,
             {side: tool_mesh_vertices(self, side) for side in ('left', 'right')}, geometry_tolerance=.0001,
-            fixed_body=self.fixed_body)
+            fixed_body=self.fixed_body, margins=margins, sphere_margins=self.sphere_margins)
+
+    def plan_conveyor_target(self, start, targets, checker, validity, solver, report, append):
+        """Placement RRT; with coverage margins the arms keep their original spheres only near the start
+        and the placement (MOTION-429)."""
+        if self.sphere_margins is not None:
+            tools = self.tool_matrices(start)
+            validity = self.placement_validity(checker, True, exempt_points={
+                side: [tools[side][:3, 3], target[:3, 3]] for side, target in targets.items()})
+        placed = ConveyorCyclePlanner.plan_conveyor_target(self, start, targets, checker, validity, solver, report, append)
+        self._released_q = placed
+        if self.release_retreat_m:
+            # Released boxes stay on the conveyor where they were let go: the return to Home avoids them.
+            base, tools = pose_matrix(self.snapshot.state.base_pose), self.tool_matrices(placed)
+            self._released_boxes = np.asarray(placed).copy(), tuple(SceneObject(item.object_id, item.dimensions_m, matrix_pose(
+                base@tools[item.parent_link.removesuffix('_tool0')]@pose_matrix(item.tool_to_object))) for item in self.held)
+        return placed
+
+    def joint_plan(self, start, target, checker, validity, seed, stop_at_first_valid=None, shortcut=False):
+        """Return to Home: with released boxes pending, both tools first retreat straight back from them,
+        then the search keeps them in the world (the retreat itself is checked without them)."""
+        placed, released = self.__dict__.pop('_released_boxes', (None, None))
+        if released is None or not np.allclose(start, placed, atol=1e-9, rtol=0):
+            return super().joint_plan(start, target, checker, validity, seed, stop_at_first_valid, shortcut)
+        retreat, details = self.release_retreat(start, validity)
+        if retreat is None:
+            return None, dict(failure='release_retreat', details=details)
+        boxed = self.checker(None, objects=released)
+        tools, home = self.tool_matrices(retreat[-1]), self.tool_matrices(target)
+        boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
+            side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
+        path, stats = super().joint_plan(retreat[-1], target, boxed, boxed_validity, seed, stop_at_first_valid, shortcut)
+        stats = dict(stats, release_retreat=details, released_boxes=[item.object_id for item in released])
+        if path is None:
+            return None, stats
+        return np.vstack([retreat, np.asarray(path)[1:]]), stats
+
+    def release_retreat(self, start, validity):
+        """Analytic straight lines of the tools back along their tool axes: both at once on a fixed
+        swivel when the axes are parallel, else one after the other with swivel continuation."""
+        tools = self.tool_matrices(start)
+        axes = {side: tools[side][:3, 2] for side in ('left', 'right')}
+        direction = -(axes['left']+axes['right'])/np.linalg.norm(axes['left']+axes['right'])
+        failures = []
+        if min(float(-axis@direction) for axis in axes.values()) >= math.cos(math.radians(2.)):
+            path, details = self.analytic_extract(start, validity, validity, sides=('left', 'right'), direction=direction,
+                                                  distance_m=self.release_retreat_m)
+            if path is not None:
+                return path, details
+            failures.append(dict(order='both', details=details))
+        for order in (('left', 'right'), ('right', 'left')):
+            path, details = np.asarray(start, dtype=float)[None], []
+            for side in order:
+                segment, record = self.analytic_extract(
+                    path[-1], validity, validity, sides=(side,), direction=-axes[side], distance_m=self.release_retreat_m,
+                    hold_sides=tuple(other for other in order if other != side), swivel_continuation=True)
+                if segment is None:
+                    failures.append(dict(order='+'.join(order), side=side, details=record))
+                    break
+                path, details = np.vstack([path, segment[1:]]), details+[record]
+            else:
+                return path, dict(order='+'.join(order), segments=details, earlier_failures=failures)
+        return None, failures
 
 
 class SupportCompensation:
@@ -954,7 +1060,7 @@ class DoorTask(_SequentialTask):
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .1,
                      'workspace_margin_m': .5},
-            validity=self.free_space(validity, self.q, left_goals), active_indices=LEFT)
+            validity=self.search_inflation(validity, self.q, left_goals), active_indices=LEFT)
         if left_path is None:
             joint_paths = []
             for _ in range(4):
@@ -986,7 +1092,7 @@ class DoorTask(_SequentialTask):
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .1,
                      'workspace_margin_m': .5},
-            validity=self.free_space(validity, start, right_goals), active_indices=active_right)
+            validity=self.search_inflation(validity, start, right_goals), active_indices=active_right)
         if right_path is None:
             return None, dict(left=left_stats, right=right_stats, failure='right_approach_failed')
         path = np.vstack([np.asarray(left_path), np.asarray(right_path)[1:]])
@@ -995,98 +1101,109 @@ class DoorTask(_SequentialTask):
                           active_right=list(active_right))
 
     def plan_precontact_path(self, side, goals, active):
-        """Free-space approach to the precontact goals (searches inflated per DoorPlanner.free_space_inflation)."""
+        """Free-space approach to the precontact goals: searches inflated per DoorPlanner.free_space_inflation,
+        coverage-grown spheres for the moving arms except next to the start and the goals (MOTION-429)."""
         self.planner.active_side = side
-        validity = self.validity()
         if side == 'right' and not self.store.snapshot().attachments:
             staged = self.upper_precontact_staging_goals(goals)
-            alternatives = []
-            budget_s = 6.
-            deadline = time.perf_counter()+budget_s
-            right_limit = float(getattr(self,'right_precontact_extra_rotation_max_deg',105.))
-            staging_limit = 65.
-            # Joint routes run until one passes both rotation limits or the budget ends; the Cartesian
-            # strategies stop early enough to leave at least three of them their 0.75 s each.
-            joint_seeds=(47,20,38,65,41,17)
-            cartesian_deadline = deadline-.75*3
+            with self.free_space(('left', 'right'), [self.q, *np.asarray(goals), *staged]):
+                return self.plan_upper_precontact_path(goals, staged)
+        with self.free_space((side,), [self.q, *np.asarray(goals)]):
+            return self.plan_side_precontact_path(side, goals, active)
 
-            def remaining(cap=None, until=None):
-                value=max(0.,(deadline if until is None else until)-time.perf_counter())
-                return value if cap is None else min(cap,value)
+    def plan_upper_precontact_path(self, goals, staged):
+        side = 'right'
+        validity = self.validity()
+        alternatives = []
+        budget_s = 6.
+        deadline = time.perf_counter()+budget_s
+        right_limit = float(getattr(self,'right_precontact_extra_rotation_max_deg',105.))
+        staging_limit = 65.
+        # Joint routes run until one passes both rotation limits or the budget ends; the Cartesian
+        # strategies stop early enough to leave at least three of them their 0.75 s each.
+        joint_seeds=(47,20,38,65,41,17)
+        cartesian_deadline = deadline-.75*3
 
-            def add(path, stats, source):
-                if path is None:
-                    return False
-                path=np.asarray(path,dtype=float).reshape(-1,15)
-                left=self.path_rotation_metrics(path,'left')
-                right=self.path_rotation_metrics(path,'right')
-                score=max(left['extra_deg'],right['extra_deg'])+.1*(left['extra_deg']+right['extra_deg'])
-                alternatives.append((score,path,left,right,stats,source))
-                return left['extra_deg']<=staging_limit and right['extra_deg']<=right_limit
+        def remaining(cap=None, until=None):
+            value=max(0.,(deadline if until is None else until)-time.perf_counter())
+            return value if cap is None else min(cap,value)
 
-            right_active = RIGHT if np.allclose(np.asarray(goals)[:, 0], self.q[0], atol=1e-6, rtol=0) else [0]+RIGHT
-            direct_budget=remaining(2.,cartesian_deadline)
-            right_path=right_stats=None
-            if direct_budget>.05:
-                right_path, right_stats = plan_cartesian_transport(
-                    self.planner, self.q, goals, validity.checker, budget_s=direct_budget,
-                    seed=self.request.seed+440,
-                    options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
-                             'shortcut': True, 'monotonic_progress': True,
-                             'strict_budget': True, 'budget_reserve_s': .1,
-                             'workspace_margin_m': .5},
-                    validity=self.free_space(validity, self.q, goals), active_indices=right_active)
-            quality_good=add(right_path,right_stats,'right_cartesian_precontact')
-            sequential_path=sequential_stats=None
-            if not quality_good and remaining(until=cartesian_deadline)>.05:
-                sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity, cartesian_deadline)
-                quality_good=add(sequential_path,sequential_stats,'sequential_cartesian_staging')
-            target_rows = staged if len(staged) else np.asarray(goals)
-            dual_stats=None
-            if not quality_good and remaining(until=cartesian_deadline)>.05:
-                dual_budget=remaining(2.,cartesian_deadline)
-                dual_path, dual_stats = plan_dual_cartesian_transport(
-                    self.planner, self.q[None], target_rows, validity.checker,
-                    budget_s=dual_budget, seed=self.request.seed+500,
-                    options={'shortcut': True, 'monotonic_progress': True,
-                             'strict_budget': True, 'batch': 128,
-                             'connect_candidates': 32, 'dual_direct_pairs': 64,
-                             'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05},
-                    validity=self.free_space(validity, self.q, target_rows))
-                quality_good=add(dual_path,dual_stats,'dual_cartesian_rrt')
-            joint_attempts=0
-            for joint_seed in joint_seeds:
-                if quality_good or remaining()<=.05:
-                    break
-                # First densely verified path, then a bounded refinement window (the shortcut and
-                # rotation gate below are unchanged) instead of always spending the whole cap.
-                path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
-                                   seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25,free_space=True)
-                joint_attempts+=1
-                if path is None:
-                    continue
-                stride=max(1,len(path)//128)
-                sparse=np.asarray(path)[::stride]
-                if not np.allclose(sparse[-1],np.asarray(path)[-1],atol=1e-12,rtol=0):
-                    sparse=np.vstack([sparse,np.asarray(path)[-1]])
-                path=np.asarray(densify(self.shortcut_states(sparse,validity)))
-                quality_good=add(path,self.report['attempts'][-1].get('stats'),'dual_joint_rrt_shortcut')
-            if alternatives:
-                _,path,left,right,stats,source=min(alternatives,key=lambda item:item[0])
-                self.precontact_audit_active=list(range(15))
-                self.report.setdefault('precontact_searches',[]).append(dict(
-                    stage=self.phase,side=side,roll_deg=math.degrees(getattr(self,'current_contact_roll_rad',0.)),
-                    source=source+'_with_lower_staging',budget_s=budget_s,joint_attempts=joint_attempts,
-                    success=True,selected_stats=stats,sequential_stats=sequential_stats,
-                    left_rotation=left,right_rotation=right,staging_goals=len(staged),
-                    alternatives=[dict(source=item[5],left_rotation=item[2],right_rotation=item[3])
-                                  for item in alternatives]))
-                return path
+        def add(path, stats, source):
+            if path is None:
+                return False
+            path=np.asarray(path,dtype=float).reshape(-1,15)
+            left=self.path_rotation_metrics(path,'left')
+            right=self.path_rotation_metrics(path,'right')
+            score=max(left['extra_deg'],right['extra_deg'])+.1*(left['extra_deg']+right['extra_deg'])
+            alternatives.append((score,path,left,right,stats,source))
+            return left['extra_deg']<=staging_limit and right['extra_deg']<=right_limit
+
+        right_active = RIGHT if np.allclose(np.asarray(goals)[:, 0], self.q[0], atol=1e-6, rtol=0) else [0]+RIGHT
+        direct_budget=remaining(2.,cartesian_deadline)
+        right_path=right_stats=None
+        if direct_budget>.05:
+            right_path, right_stats = plan_cartesian_transport(
+                self.planner, self.q, goals, validity.checker, budget_s=direct_budget,
+                seed=self.request.seed+440,
+                options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
+                         'shortcut': True, 'monotonic_progress': True,
+                         'strict_budget': True, 'budget_reserve_s': .1,
+                         'workspace_margin_m': .5},
+                validity=self.search_inflation(validity, self.q, goals), active_indices=right_active)
+        quality_good=add(right_path,right_stats,'right_cartesian_precontact')
+        sequential_path=sequential_stats=None
+        if not quality_good and remaining(until=cartesian_deadline)>.05:
+            sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity, cartesian_deadline)
+            quality_good=add(sequential_path,sequential_stats,'sequential_cartesian_staging')
+        target_rows = staged if len(staged) else np.asarray(goals)
+        dual_stats=None
+        if not quality_good and remaining(until=cartesian_deadline)>.05:
+            dual_budget=remaining(2.,cartesian_deadline)
+            dual_path, dual_stats = plan_dual_cartesian_transport(
+                self.planner, self.q[None], target_rows, validity.checker,
+                budget_s=dual_budget, seed=self.request.seed+500,
+                options={'shortcut': True, 'monotonic_progress': True,
+                         'strict_budget': True, 'batch': 128,
+                         'connect_candidates': 32, 'dual_direct_pairs': 64,
+                         'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05},
+                validity=self.search_inflation(validity, self.q, target_rows))
+            quality_good=add(dual_path,dual_stats,'dual_cartesian_rrt')
+        joint_attempts=0
+        for joint_seed in joint_seeds:
+            if quality_good or remaining()<=.05:
+                break
+            # First densely verified path, then a bounded refinement window (the shortcut and
+            # rotation gate below are unchanged) instead of always spending the whole cap.
+            path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
+                               seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25,free_space=True)
+            joint_attempts+=1
+            if path is None:
+                continue
+            stride=max(1,len(path)//128)
+            sparse=np.asarray(path)[::stride]
+            if not np.allclose(sparse[-1],np.asarray(path)[-1],atol=1e-12,rtol=0):
+                sparse=np.vstack([sparse,np.asarray(path)[-1]])
+            path=np.asarray(densify(self.shortcut_states(sparse,validity)))
+            quality_good=add(path,self.report['attempts'][-1].get('stats'),'dual_joint_rrt_shortcut')
+        if alternatives:
+            _,path,left,right,stats,source=min(alternatives,key=lambda item:item[0])
+            self.precontact_audit_active=list(range(15))
             self.report.setdefault('precontact_searches',[]).append(dict(
-                stage=self.phase,side=side,source=None,budget_s=budget_s,joint_attempts=joint_attempts,
-                success=False,sequential_stats=sequential_stats,staging_goals=len(staged),
-                right_cartesian_stats=right_stats,dual_cartesian_stats=dual_stats))
-            return None
+                stage=self.phase,side=side,roll_deg=math.degrees(getattr(self,'current_contact_roll_rad',0.)),
+                source=source+'_with_lower_staging',budget_s=budget_s,joint_attempts=joint_attempts,
+                success=True,selected_stats=stats,sequential_stats=sequential_stats,
+                left_rotation=left,right_rotation=right,staging_goals=len(staged),
+                alternatives=[dict(source=item[5],left_rotation=item[2],right_rotation=item[3])
+                              for item in alternatives]))
+            return path
+        self.report.setdefault('precontact_searches',[]).append(dict(
+            stage=self.phase,side=side,source=None,budget_s=budget_s,joint_attempts=joint_attempts,
+            success=False,sequential_stats=sequential_stats,staging_goals=len(staged),
+            right_cartesian_stats=right_stats,dual_cartesian_stats=dual_stats))
+        return None
+
+    def plan_side_precontact_path(self, side, goals, active):
+        validity = self.validity()
         mapper = None
         search_active = list(active)
         derived = []
@@ -1101,7 +1218,7 @@ class DoorTask(_SequentialTask):
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .25,
                      'workspace_margin_m': .5},
-            validity=self.free_space(validity, self.q, goals), active_indices=search_active,
+            validity=self.search_inflation(validity, self.q, goals), active_indices=search_active,
             row_mapper=mapper, derived_indices=derived)
         alternatives = []
         if path is not None:
@@ -1117,7 +1234,7 @@ class DoorTask(_SequentialTask):
                                              self.report['attempts'][-1].get('stats')))
             else:
                 reduced = SupportCompensatedValidity(validity,self.q,mapper,searched_indices=search_active)
-                searched = SupportCompensatedValidity(self.free_space(validity,self.q,goals),self.q,mapper,
+                searched = SupportCompensatedValidity(self.search_inflation(validity,self.q,goals),self.q,mapper,
                                                       searched_indices=search_active)
                 lower,upper = validity.checker.kinematics.get_joint_limits().position
                 for attempt in range(3):
@@ -1359,6 +1476,16 @@ class DoorTask(_SequentialTask):
 
     def recenter_latest_pair(self):
         self.enter('right_recenter')
+        # Both boxes are out of the wall: both arms plan with coverage-grown spheres (MOTION-429).
+        with self.free_space(('left', 'right'), [self.q]):
+            path = self.latest_pair_path()
+        self.audit(path, list(range(15)), self.q)
+        self.append(path)
+        radius = float(self.envelope(self.q[None])[0])
+        if radius > self.radius:
+            self.fail('selected latest compact endpoint exceeded the whole-robot payload envelope')
+
+    def latest_pair_path(self):
         began = time.perf_counter()
         candidates, details = self.latest_compact_candidates()
         details['generation_ms'] = self.record_operation_time('atlas_candidates', began)
@@ -1375,12 +1502,19 @@ class DoorTask(_SequentialTask):
         stats = []
         stop_reason = 'bank_exhausted_or_gate_met'
         seed_bank=(65,41,17,71,53,89)
-        for search_seed in seed_bank:
+        fallback_s=self.planner.latest_pair_fallback_s
+
+        def bank():
+            yield from ((seed, .75) for seed in seed_bank)
+            if not alternatives and fallback_s:
+                # Short trees can miss a far wrist branch under the coverage margins: one long search.
+                yield seed_bank[0]+1000, fallback_s
+        for search_seed, budget in bank():
             seed_started = time.perf_counter()
             # Each seed contributes its first densely verified path, as when one 0.75 s iteration
             # was all the loaded checker allowed: weighted-length refinement does not optimize
             # the rotation score used below and measurably worsened it once checks became fast.
-            path = self.search(candidates,list(range(15)),budget_s=.75,seed_value=search_seed,
+            path = self.search(candidates,list(range(15)),budget_s=budget,seed_value=search_seed,
                                stop_at_first_valid=True,free_space=True)
             self.record_operation_time('seed_bank_search', seed_started)
             search_stats = self.report['attempts'][-1].get('stats')
@@ -1411,18 +1545,14 @@ class DoorTask(_SequentialTask):
                     stop_reason = 'duplicate_path'
                     break
         self.report['latest_compact_search'] = dict(
-            seed_bank=list(seed_bank), stop_reason=stop_reason,
+            seed_bank=list(seed_bank), fallback_s=fallback_s, stop_reason=stop_reason,
             attempts=stats, alternatives=[dict(score=item[0],left_rotation=item[2],
                                                 right_rotation=item[3],stats=item[4])
                                          for item in alternatives])
         if not alternatives:
             self.fail('latest compact atlas multi-seed bank exhausted')
         _, path, _, _, _ = min(alternatives,key=lambda item:item[0])
-        self.audit(path, list(range(15)), self.q)
-        self.append(path)
-        radius = float(self.envelope(self.q[None])[0])
-        if radius > self.radius:
-            self.fail('selected latest compact endpoint exceeded the whole-robot payload envelope')
+        return path
 
     def coordinated_right_candidates(self):
         """Move the upper box to its carry target while the lower box stays recentered."""
@@ -1476,7 +1606,7 @@ class DoorTask(_SequentialTask):
         began = time.perf_counter()
         alternatives = []
         attempts_run = 0
-        searched = self.free_space(validity, start, candidates)
+        searched = self.search_inflation(validity, start, candidates)
         if self.algorithm == 'cartesian_rrt':
             attempts_run = 1
             path, stats = plan_cartesian_transport(
@@ -1585,6 +1715,13 @@ class DoorTask(_SequentialTask):
 
     def recenter(self, side, active, check_lowering=False):
         self.enter(side+'_recenter')
+        # The arm carries its box in free space: coverage-grown spheres except next to the start,
+        # where it has just left the wall (MOTION-429); the future lowering keeps original spheres.
+        with self.free_space((side,), [self.q]):
+            path = self.recenter_path(side, active, check_lowering)
+        self.append(path)
+
+    def recenter_path(self, side, active, check_lowering):
         began = time.perf_counter()
         mapper = full_validity = None
         if side == 'right' and self.support_pose is not None:
@@ -1631,7 +1768,8 @@ class DoorTask(_SequentialTask):
                 break
             if not lazy_lowering:
                 break
-            lowering,attempts=self.validate_future_lowering(path[-1])
+            with self.free_space(()):
+                lowering,attempts=self.validate_future_lowering(path[-1])
             lazy_attempts.extend(attempts)
             if lowering is not None:
                 self.future_lowering_paths[tuple(np.round(path[-1],6))]=lowering
@@ -1654,7 +1792,7 @@ class DoorTask(_SequentialTask):
                 self.report['recenter_candidates'][-1].update(future_lowering_valid=0,lowering_attempts=len(lazy_attempts),
                     lowering_successes=0,lowering_attempt_sample=lazy_attempts[:20])
             self.fail('recenter search/future lowering failed within the fixed budget; no implicit fallback')
-        self.append(path)
+        return path
 
     def extract_upper_with_lower_hold(self):
         self.enter('right_extract')
@@ -1943,7 +2081,7 @@ class DoorTask(_SequentialTask):
             seed=self.request.seed+452,options={'edge_resolution':.08,'batch':128,'connect_candidates':32,'shortcut':True,
             'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.1,'workspace_margin_m':.5,
             'route_branch_change':True,'fallback_joint_rrt':True,'wrist_flip':True},
-            validity=self.free_space(validity,self.q,right_goals),active_indices=RIGHT)
+            validity=self.search_inflation(validity,self.q,right_goals),active_indices=RIGHT)
         if right_path is None:
             joint=[]
             for _ in range(4):
@@ -1959,7 +2097,7 @@ class DoorTask(_SequentialTask):
             seed=self.request.seed+453,options={'edge_resolution':.08,'batch':128,'connect_candidates':32,'shortcut':True,
             'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.1,'workspace_margin_m':.5,
             'route_branch_change':True,'fallback_joint_rrt':True,'wrist_flip':True},
-            validity=self.free_space(validity,start,left_goals),active_indices=active_left)
+            validity=self.search_inflation(validity,start,left_goals),active_indices=active_left)
         if left_path is None:
             saved_q=self.q.copy();self.q=start.copy();joint=[]
             try:
