@@ -2392,3 +2392,13 @@
 - 验证：L4/R1、L4/R2顶吸及L18/R11侧吸都返回完整时序候选，18段TimeOpt成功且4001点动力学采样通过；各任务仍有TrajOpt失败阶段，整体success=false，候选运动16.036/15.069/14.521s。初始资源2.094s另列，计算墙钟54.730/5.953/14.454s，不能称全部稳态或3秒。紧凑证据generated/fast_release_20261109/validation.json。
 - 新增/迁入针对性回归26通过1跳过；扩展模型/历史回放检查合计32通过1跳过4失败，未修改历史记录/断言掩盖失败。按用户明确要求保留原软间隙代价兼作约束、迭代质量、冷启动、旧J6/Home/回放一致性等问题，未强制修复；列表及命令见FAST_PIPELINE.md。
 - 8290为本PR检出的点击实时计算页面，旧服务保持。此交付供用户审核，不自动合并；不含硬件发送或MuJoCo联调。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列迁移到新零位模型（MOTION-443）
+- 做了什么：门扉规划切到 alfa_v3_curobo@ee6dba3 的新零位模型（TCP 135 mm），列2改走外列托架流程；迁入 MOTION-429 逐球覆盖余量（自由空间对世界、两臂之间，固定自碰/载荷余量）；回 Home 前直线后撤，并避让已放下的箱子。
+- 改了哪里：research/curobo_v3/tools/curobo_core/{door_recenter,door_sequential,door_sequential_validity,coverage_margins}.py、tools/v3_sphere_coverage_margins.py、tools/v3_door_five_columns_benchmark.py、tests/test_door_latency.py；commit c6c4390、a96a5bc、8bab10b（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：种子 11/29/41 加 warmup 5，五列全部成功；全帧 FCL 网格审计 15 轮 0 穿透；结构 verifier、列0镜像 verifier 通过；RNEA ≤0.886，包络 ≤1.013 m；CPU 132 passed。证据在 ~/Sevenova/door-five-column-latency-20261108/migration/。
+- 留给下个 AI：
+  - 转动门禁和单列 <10 s 还没处理：右臂回中最大 329°，单列规划 23–42 s；
+  - 现代化 verifier 的 box_lifecycle 不适用于外列托架换手；
+  - arm_carriage 的球覆盖缺口最大 5.5 cm，只靠固定余量；
+  - 旧模型行为不变，新开关默认关闭。
