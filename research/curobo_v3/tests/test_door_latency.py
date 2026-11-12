@@ -533,6 +533,22 @@ class CompactEdgeTests(unittest.TestCase):
         self.assertTrue(padded[0].any() and not padded[0].all())
         self.assertLess(counts[True], counts[False])
 
+    def test_screened_edges_pass_the_same_edges(self):
+        rng = np.random.default_rng(13)
+        starts = torch.as_tensor(rng.uniform(-1., 1., (256, 15)), dtype=torch.float32)
+        goals = starts+torch.as_tensor(rng.uniform(-1., 1., (256, 15))*rng.uniform(.01, 1., (256, 1)), dtype=torch.float32)
+        self.states = 0
+        valid, stability = self.validity(True).edges(starts, goals, return_stability=True)
+        full = self.states
+        self.states = 0
+        screened, screened_stability = self.validity(True).edges(starts, goals, return_stability=True, screen=True)
+        self.assertTrue(torch.equal(screened, valid))
+        self.assertTrue(torch.equal(screened_stability[valid], stability[valid]))
+        self.assertTrue(valid.any() and not valid.all())
+        self.assertLess(self.states, full)
+        with self.assertRaises(ValueError):
+            self.validity(False).edges(starts, goals, screen=True)
+
 
 if __name__ == '__main__':
     unittest.main()

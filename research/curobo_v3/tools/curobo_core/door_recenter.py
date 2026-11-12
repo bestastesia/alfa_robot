@@ -165,6 +165,11 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # Budget (s) of the latest-pair seeds searching for their first path while the bank has none, up
     # to three of them; the rest refine in 0.75 s (None: 0.75 s seeds only).
     latest_pair_fallback_s = None
+    # The latest pair keeps the first path even when it misses the rotation gates (None/False: refining
+    # seeds follow). The re-zeroed column 4's gates are out of reach (the ~200 deg wrist flip): with the
+    # slower edge checks no refining seed found a path (v7-v12: 0 of 56); with screened checks they did,
+    # at a lower rotation score (243 against 282) but with 14.7 s instead of 9.0 s of motion.
+    latest_pair_first_path = False
     # Straight retreat (m) of both tools from the released boxes before the return to Home, whose
     # search then keeps those boxes in the world (None: released boxes leave the scene at release).
     release_retreat_m = None
@@ -234,6 +239,11 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # longest edge (GpuValidity.edges compact_edges: the same states and results). The latest pair's
     # RRT connections padded 73k sampled states to 107k per first path (False: padded grid).
     compact_edge_checks = False
+    # With those, the joint RRT's extension and connection checks screen each edge's last and every
+    # fourth sample first (screen_edges; the same edges pass). The latest pair's iterations spent
+    # ~105 ms checking 1024 extensions, ~90% of them invalid, and ~100 mostly invalid connections
+    # (False: every sample).
+    rrt_screened_edges = False
 
     def __init__(self, assets):
         install_fast_builds()
@@ -284,6 +294,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             kinematics['urdf_path'], load_meshes=False, build_scene_graph=False), self.coverage_margin_links)
         self.free_space_inflation = 1.1
         self.latest_pair_fallback_s = 6.
+        self.latest_pair_first_path = True
         self.release_retreat_m = .08
         self.rotation_gate_slack_deg = 30.
         self.latest_pair_settled_arm_deg = 45.
@@ -299,6 +310,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.recenter_line_goals = True
         self.recenter_rrt_refinement_s = .5
         self.compact_edge_checks = True
+        self.rrt_screened_edges = True
         self.deferred_extract_search = False
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05
@@ -1740,10 +1752,8 @@ class DoorTask(_SequentialTask):
                 if duplicate:
                     stop_reason = 'duplicate_path'
                     break
-                # A refining seed adds an alternative only if it finds a path within refine_s; after a
-                # first path that took longer, none did (re-zeroed column 4, v7-v12: 0 of 56 seeds).
-                if fallback_s and (search_stats or {}).get('first_verified_solution_ms', 0.) > refine_s*1000:
-                    stop_reason = 'first_path_slower_than_refinement'
+                if self.planner.latest_pair_first_path:
+                    stop_reason = 'first_path'
                     break
         self.report['latest_compact_search'] = dict(
             seed_bank=list(seed_bank), fallback_s=fallback_s, rotation_gates_deg=gates, stop_reason=stop_reason,
@@ -1862,7 +1872,8 @@ class DoorTask(_SequentialTask):
             search = constrained_rrt_connect if mapper is not None else batched_rrt_connect_multi_goal
             options = (dict(stop_at_first_valid=True, batch=256, connect_candidates=64, step=.28)
                        if mapper is not None else dict(edge_cache=self.planner.rrt_fine_edge_cache,
-                                                       prune_invalid_edges=self.planner.rrt_prune_invalid_edges))
+                                                       prune_invalid_edges=self.planner.rrt_prune_invalid_edges,
+                                                       screen_edges=self.planner.rrt_screened_edges))
             goals, line_goals = np.asarray(candidates), None
             if mapper is None and self.planner.recenter_line_goals:
                 line_goals = np.flatnonzero(self.line_rotation(start, goals, (side,))[side] <= limit)

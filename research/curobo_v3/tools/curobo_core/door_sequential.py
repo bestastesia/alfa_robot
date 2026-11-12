@@ -720,7 +720,8 @@ class _SequentialTask:
             lower[active]+1e-5, upper[active]-1e-5, reduced, budget_s, seed,
             stop_at_first_valid=stop_at_first_valid, refinement_s=refinement_s,
             edge_cache=getattr(self.planner, "rrt_fine_edge_cache", False),
-            prune_invalid_edges=getattr(self.planner, "rrt_prune_invalid_edges", False))
+            prune_invalid_edges=getattr(self.planner, "rrt_prune_invalid_edges", False),
+            screen_edges=getattr(self.planner, "rrt_screened_edges", False))
         self.torch.cuda.synchronize()
         self.report["timing_ms"]["search"] += (time.perf_counter()-started)*1000
         self.report["attempts"][-1]["stats"] = stats

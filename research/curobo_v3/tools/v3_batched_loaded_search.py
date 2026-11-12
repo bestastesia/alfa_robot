@@ -189,13 +189,15 @@ class GpuValidity:
             output.append(cost == 0)
         return torch.cat(output)
 
-    def edges(self, starts, goals, resolution=0.05, return_stability=False):
+    def edges(self, starts, goals, resolution=0.05, return_stability=False, screen=False):
         resolution = min(resolution, getattr(self, 'search_edge_resolution', resolution))
         weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
         steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=getattr(self, "minimum_edge_steps", 1))
         horizon = int(steps.max().item()) + 1
         if getattr(self, 'compact_edges', False):
-            return self._compact_edges(starts, goals, steps, horizon, return_stability)
+            return self._compact_edges(starts, goals, steps, horizon, return_stability, screen)
+        if screen:
+            raise ValueError('screened edges need compact_edges')
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
         points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
@@ -216,22 +218,42 @@ class GpuValidity:
         mean_stability = (stability * actual_steps).sum(dim=1) / (steps + 1)
         return edge_valid, mean_stability
 
-    def _compact_edges(self, starts, goals, steps, horizon, return_stability):
+    def _compact_edges(self, starts, goals, steps, horizon, return_stability, screen=False):
         """edges() over each edge's own samples: the padded grid above repeats every shorter edge's goal
         state up to the longest edge's horizon (the RRT's tree connections, 5-120 steps, padded about
-        1.5x). The same sample states, so the same validity per edge and the same mean stability."""
+        1.5x). The same sample states, so the same validity per edge and the same mean stability.
+
+        screen: each edge's last sample and every fourth first, the rest only for the edges those leave
+        valid. Validity and the mean stability of the valid edges are unchanged; an invalid edge's
+        stability covers only the samples checked (the RRT uses the stability of valid edges only)."""
         counts = steps + 1
         edge = torch.repeat_interleave(torch.arange(len(starts), device=starts.device), counts)
         index = torch.arange(len(edge), device=starts.device) - (torch.cumsum(counts, 0) - counts)[edge]
         points = starts[edge] + (index / steps[edge])[:, None] * (goals - starts)[edge]
-        base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
-        if base_margin_m:
-            valid, stability = self.evaluate(points, base_margin_m=base_margin_m)
+
+        def check(rows):
+            base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
+            if base_margin_m:
+                valid, stability = self.evaluate(rows, base_margin_m=base_margin_m)
+            else:
+                valid, stability = self.evaluate(rows)
+            margin_m = getattr(self, 'search_scene_margin_m', 0.)
+            if margin_m > 0:
+                valid = valid & self.scene_margin_mask(rows, margin_m)
+            return valid, stability
+        if not screen:
+            valid, stability = check(points)
         else:
-            valid, stability = self.evaluate(points)
-        margin_m = getattr(self, 'search_scene_margin_m', 0.)
-        if margin_m > 0:
-            valid = valid & self.scene_margin_mask(points, margin_m)
+            first = ((index % 4 == 0) & (index > 0)) | (index == steps[edge])
+            first_valid, first_stability = check(points[first])
+            failed = torch.zeros(len(starts), dtype=torch.bool, device=starts.device)
+            failed[edge[first][~first_valid]] = True
+            second = ~first & ~failed[edge]
+            valid = torch.ones(len(edge), dtype=torch.bool, device=starts.device)
+            stability = torch.zeros(len(edge), dtype=first_stability.dtype, device=starts.device)
+            valid[first], stability[first] = first_valid, first_stability
+            if second.any():
+                valid[second], stability[second] = check(points[second])
         grid = torch.ones((len(starts), horizon), dtype=torch.bool, device=starts.device)
         grid[edge, index] = valid
         edge_valid = grid.all(dim=1)
@@ -651,7 +673,7 @@ def _prune_stats(enabled, nodes):
 
 def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
                                   informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0,
-                                  edge_cache=False, prune_invalid_edges=False):
+                                  edge_cache=False, prune_invalid_edges=False, screen_edges=False):
     """Multi-goal RRT-Connect; a connection is accepted once its densified path is valid.
 
     edge_cache: dense checks one tree edge at a time, each edge's result kept (DenseEdgeCheck): the
@@ -660,6 +682,8 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     subtree from the search (no nearest node, no connection). The coarse edge checks can step over
     a thin obstacle; the subtrees grown across it otherwise keep offering the cheapest connections,
     all through that edge, and can crowd every valid one out of the best connections kept.
+    screen_edges (validities with compact_edges): the tree extension and connection checks screen each
+    edge's last and every fourth sample first (GpuValidity._compact_edges): the same edges pass.
     """
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
@@ -700,6 +724,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     fine_checked = set()
     fine_rejections = 0
     dense_check = DenseEdgeCheck(validity, weights, edge_cache or prune_invalid_edges)
+    screen = dict(screen=True) if screen_edges else {}
     dead = dict(start=np.zeros(0, dtype=bool), goal=np.zeros(0, dtype=bool))
     pruned_nodes = 0
 
@@ -759,7 +784,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         )
         steered = nearest_values + delta * scale[:, None]
         edge_valid, edge_stability = validity.edges(
-            nearest_values, steered, return_stability=True
+            nearest_values, steered, return_stability=True, **screen
         )
         if not edge_valid.any():
             iterations += 1
@@ -793,7 +818,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         pair_distance = torch.linalg.vector_norm((accepted - other_values) * weights, dim=1)
         candidate_indices = torch.argsort(pair_distance)[:min(256, len(accepted))]
         connect_valid, connect_stability = validity.edges(
-            accepted[candidate_indices], other_values[candidate_indices], return_stability=True
+            accepted[candidate_indices], other_values[candidate_indices], return_stability=True, **screen
         )
         if connect_valid.any():
             valid_local = torch.nonzero(connect_valid, as_tuple=False).reshape(-1)
