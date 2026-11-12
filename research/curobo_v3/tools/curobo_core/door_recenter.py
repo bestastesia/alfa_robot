@@ -213,8 +213,23 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     shortcut_screen_rad = None
     # Joint RRT dense checks one tree edge at a time with each edge's result kept (the
     # edge_cache of batched_rrt_connect_multi_goal: same decisions, fewer checks). The re-zeroed latest
-    # pair rejected up to 96 coarse-valid connections through shared edges, 2.7 s of rechecks.
+    # pair rejected up to 96 coarse-valid connections through shared edges (0.9 s of rechecks, 30 ms cached).
     rrt_fine_edge_cache = False
+    # ... and the subtree below a tree edge that fails that check leaves the search (prune_invalid_edges):
+    # the coarse checks step over thin obstacles, and the subtrees grown across them kept offering the
+    # cheapest connections. Re-zeroed column 4: the latest pair's first path 2.9 -> 1.8 s (seed 5), and
+    # the upper precontact's first seed, which found no path in 0.8 s, now finds one (False: kept).
+    rrt_prune_invalid_edges = False
+    # The single-arm recenter's joint RRT first searches toward the goals whose joint-space straight
+    # line turns the tool within its rotation gate, and toward all goals once those give no path: in
+    # the re-zeroed columns 1 and 2, 22 of the lower box's 30 carry goals need a further wrist turn
+    # (line rotation 297-416 deg against 44-72 deg), and the RRT to all goals mostly ended at one of
+    # them, about 300 deg of extra tool rotation (False: all goals).
+    recenter_line_goals = False
+    # Each of those RRT attempts takes its first densely verified path plus this refinement window
+    # (None: whole 2 s attempts). Those attempts settled on their path within 1 s (the 1 and 2 s budgets
+    # chose the same paths for column 1); with the line goals 0.7 s attempts came out alike.
+    recenter_rrt_refinement_s = None
 
     def __init__(self, assets):
         install_fast_builds()
@@ -276,6 +291,9 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.direct_line_first = True
         self.shortcut_screen_rad = .05
         self.rrt_fine_edge_cache = True
+        self.rrt_prune_invalid_edges = True
+        self.recenter_line_goals = True
+        self.recenter_rrt_refinement_s = .5
         self.deferred_extract_search = False
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05
@@ -1838,14 +1856,26 @@ class DoorTask(_SequentialTask):
             lo, hi = validity.checker.kinematics.get_joint_limits().position
             search = constrained_rrt_connect if mapper is not None else batched_rrt_connect_multi_goal
             options = (dict(stop_at_first_valid=True, batch=256, connect_candidates=64, step=.28)
-                       if mapper is not None else dict(edge_cache=self.planner.rrt_fine_edge_cache))
+                       if mapper is not None else dict(edge_cache=self.planner.rrt_fine_edge_cache,
+                                                       prune_invalid_edges=self.planner.rrt_prune_invalid_edges))
+            goals, line_goals = np.asarray(candidates), None
+            if mapper is None and self.planner.recenter_line_goals:
+                line_goals = np.flatnonzero(self.line_rotation(start, goals, (side,))[side] <= limit)
+                if not 0 < len(line_goals) < len(goals):
+                    line_goals = None
+            if mapper is None and self.planner.recenter_rrt_refinement_s is not None:
+                options.update(stop_at_first_valid=True, refinement_s=self.planner.recenter_rrt_refinement_s)
             for attempt in range(0 if quality_good else 4):
                 attempts_run += 1
+                rows = goals if line_goals is None else goals[line_goals]
                 sparse, stats = search(
-                    self.tensor(start[active]), self.tensor(np.asarray(candidates)[:, active]),
+                    self.tensor(start[active]), self.tensor(rows[:, active]),
                     lo[active]+1e-5, hi[active]-1e-5, reduced_search, 2., seed+attempt, **options)
                 if sparse is None:
+                    line_goals = None  # those goals gave no path: all goals from the next attempt
                     continue
+                if line_goals is not None:
+                    stats = dict(stats, line_goals=len(line_goals), selected_goal=int(line_goals[stats['selected_goal']]))
                 sparse = self.shortcut_states(np.asarray(sparse), reduced)
                 stats = dict(stats or {}, shortcut_waypoints=len(sparse))
                 if mapper is not None:

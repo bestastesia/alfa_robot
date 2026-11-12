@@ -574,6 +574,7 @@ class DenseEdgeCheck:
         self.weights = getattr(validity, 'collision_weights', weights).detach().cpu().tolist()
         self.known = {}
         self.seconds, self.states = 0., 0
+        self.invalid = dict(start=[], goal=[])  # children of the tree edges found invalid, not yet pruned
 
     def __call__(self, start_tree, goal_tree, start_path, goal_path):
         """start_path: start-tree nodes from the start node to the root; goal_path: goal-tree nodes from
@@ -595,6 +596,8 @@ class DenseEdgeCheck:
                         for index in unknown]
             for index, valid in zip(unknown, self.check(segments)):
                 self.known[keys[index]] = valid
+                if not valid and keys[index][0] in self.invalid:
+                    self.invalid[keys[index][0]].append(keys[index][1])
             return all(self.known[key] for key in keys)
         finally:
             self.seconds += time.perf_counter()-began
@@ -614,13 +617,21 @@ class DenseEdgeCheck:
         return dict(fine_check_ms=self.seconds*1000, fine_states_checked=self.states, fine_edge_cache=self.cache)
 
 
+def _prune_stats(enabled, nodes):
+    return dict(pruned_invalid_edges=enabled, pruned_nodes=nodes)
+
+
 def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
                                   informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0,
-                                  edge_cache=False):
+                                  edge_cache=False, prune_invalid_edges=False):
     """Multi-goal RRT-Connect; a connection is accepted once its densified path is valid.
 
     edge_cache: dense checks one tree edge at a time, each edge's result kept (DenseEdgeCheck): the
     same decisions in less time (and with it, what a time budget admits may differ).
+    prune_invalid_edges (with the cache): a tree edge found invalid by a dense check removes its child's
+    subtree from the search (no nearest node, no connection). The coarse edge checks can step over
+    a thin obstacle; the subtrees grown across it otherwise keep offering the cheapest connections,
+    all through that edge, and can crowd every valid one out of the best connections kept.
     """
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
@@ -660,7 +671,30 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     iterations = 0
     fine_checked = set()
     fine_rejections = 0
-    dense_check = DenseEdgeCheck(validity, weights, edge_cache)
+    dense_check = DenseEdgeCheck(validity, weights, edge_cache or prune_invalid_edges)
+    dead = dict(start=np.zeros(0, dtype=bool), goal=np.zeros(0, dtype=bool))
+    pruned_nodes = 0
+
+    def prune():
+        """Moves the subtrees below the invalid tree edges out of reach and drops their connections."""
+        nonlocal best_connections, pruned_nodes
+        for name, tree, parents in (('start', start_tree, start_parents), ('goal', goal_tree, goal_parents)):
+            children, dense_check.invalid[name] = dense_check.invalid[name], []
+            if not children:
+                continue
+            mask = np.zeros(len(parents), dtype=bool)
+            mask[:len(dead[name])] = dead[name]
+            previous = mask.copy()
+            mask[children] = True
+            for index in range(min(children)+1, len(parents)):
+                if parents[index] >= 0 and mask[parents[index]]:
+                    mask[index] = True
+            new = np.flatnonzero(mask & ~previous)
+            tree[torch.as_tensor(new, device=tree.device)] = 1e6
+            dead[name], pruned_nodes = mask, pruned_nodes+len(new)
+        best_connections = [item for item in best_connections
+                            if not (item['start_node'] < len(dead['start']) and dead['start'][item['start_node']])
+                            and not (item['goal_node'] < len(dead['goal']) and dead['goal'][item['goal_node']])]
 
     while time.perf_counter() - started < budget_s:
         if first_verified_ms is not None and (time.perf_counter()-started)*1000 >= first_verified_ms+refinement_s*1000:
@@ -803,10 +837,13 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                             search_ms=(time.perf_counter()-started)*1000, solutions_found=solutions_found,
                             best_weighted_length=connection['cost'], raw_waypoints=len(candidate_path),
                             shortcut_applied=False, fine_candidates_checked=len(fine_checked),
-                            fine_rejections=fine_rejections, **dense_check.stats())
+                            fine_rejections=fine_rejections, **dense_check.stats(),
+                            **_prune_stats(prune_invalid_edges, pruned_nodes))
                     fine_rejections += 1
                 if observer is not None and observer(candidate_path, connection['cost'], started):
                     break
+            if prune_invalid_edges and (dense_check.invalid['start'] or dense_check.invalid['goal']):
+                prune()
     selected_path = None
     selected = None
     checked = 0
@@ -840,7 +877,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             "goal_count": len(goals), "selected_goal": None,
             "first_solution_ms": first_solution_ms, "search_ms": elapsed_ms,
             "solutions_found": solutions_found, "fine_candidates_checked": checked,
-            **dense_check.stats(),
+            **dense_check.stats(), **_prune_stats(prune_invalid_edges, pruned_nodes),
         }
     return selected_path.detach().cpu().numpy(), {
         "informed_sampling": informed_sampling,
@@ -857,7 +894,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         "total_search_cap_ms": budget_s*1000,
         "refinement_requested_ms":refinement_s*1000,
         "box_rotation_cost_enabled":rotation_cost is not None,
-        **dense_check.stats(),
+        **dense_check.stats(), **_prune_stats(prune_invalid_edges, pruned_nodes),
     }
 
 
