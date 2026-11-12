@@ -7,7 +7,8 @@ import numpy as np,torch
 from curobo.collision_checking import RobotCollisionChecker,RobotCollisionCheckerCfg
 from v3_batched_loaded_search import loaded_robot
 from curobo_core.adapter import to_curobo_scene
-from curobo_core.contracts import ACTIVE_JOINTS,PlannerAssets
+from curobo_core.contracts import ACTIVE_JOINTS
+from curobo_core.door_model import load_assets
 from curobo_core.door_recenter import DoorPlanner,door_request,snapshot_in_base
 from curobo_core.door_sequential import tool_mesh_vertices
 from curobo_core.door_sequential_validity import SequentialValidity
@@ -15,7 +16,7 @@ from curobo_core.scene import AttachedObject,Pose
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--result',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--assets-root',type=Path,required=True);a=p.parse_args();d=json.loads(a.result.read_text());root=Path(__file__).resolve().parents[1]
- assets=PlannerAssets();assets=replace(assets,**{n:a.assets_root/getattr(assets,n).relative_to(root) for n in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')});planner=DoorPlanner(assets)
+ assets=load_assets(a.assets_root);planner=DoorPlanner(assets)
  column=int(d['column']);request=door_request(planner,d.get('seed',11),column,tuple(d.get('removed_box_ids',(19,24))));base_objects=request.snapshot.objects;names=d['joint_names'];frames=np.asarray(d['frames']);upper,lower=20+column,15+column;release=min((i for i,p in enumerate(d['phases']) if p=='release'),default=len(frames));door_end=min((i for i,p in enumerate(d['phases']) if p=='base_reposition'),default=len(frames));groups={};frame_snapshots={}
  for i in range(door_end):
   frame=frames[i];items=tuple(AttachedObject(x['object_id'],x['dimensions_m'],x['parent_link'],Pose(**x['tool_to_object']),x.get('touch_links',())) for x in d['attachments_by_frame'][i]);attached={x.object_id for x in items};objects=tuple(x for x in base_objects if x.object_id not in attached and not (i>=release and x.object_id in {f'wall_box_{lower:02d}',f'wall_box_{upper:02d}'}));phase=d['phases'][i];contact=None
@@ -32,7 +33,7 @@ def main():
  for snapshot,contact,indices,rows in groups.values():
   robot=loaded_robot(planner.robot,planner.box_fit,attachments=snapshot.attachments);native=snapshot
   if contact is not None:native=replace(snapshot,objects=tuple(x for x in snapshot.objects if x.object_id!=contact[1]))
-  checker=RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(robot_config=robot,scene_model=to_curobo_scene(native),n_cuboids=max(40,len(snapshot.objects)),n_meshes=len(snapshot.meshes),collision_activation_distance=0.));validity=SequentialValidity(checker,snapshot,planner.robot,{s:tool_mesh_vertices(planner,s) for s in ('left','right')},contact,geometry_tolerance=.0001);mask=validity.mask(torch.tensor(np.asarray(rows),device='cuda',dtype=torch.float32)).cpu().numpy();checked+=len(mask);failures.extend(dict(frame=indices[j],phase=d['phases'][indices[j]]) for j in np.flatnonzero(~mask)[:20]);del validity,checker;torch.cuda.empty_cache()
+  checker=RobotCollisionChecker(RobotCollisionCheckerCfg.load_from_config(robot_config=robot,scene_model=to_curobo_scene(native),n_cuboids=max(40,len(snapshot.objects)),n_meshes=len(snapshot.meshes),collision_activation_distance=0.));validity=SequentialValidity(checker,snapshot,planner.robot,{s:tool_mesh_vertices(planner,s) for s in ('left','right')},contact,geometry_tolerance=.0001,fixed_body=planner.fixed_body);mask=validity.mask(torch.tensor(np.asarray(rows),device='cuda',dtype=torch.float32)).cpu().numpy();checked+=len(mask);failures.extend(dict(frame=indices[j],phase=d['phases'][indices[j]]) for j in np.flatnonzero(~mask)[:20]);del validity,checker;torch.cuda.empty_cache()
  gpu_failures=list(failures);failures=[];mesh_repairs=[]
  from curobo_core.mesh_validation import MeshStateChecker
  for failure in gpu_failures:

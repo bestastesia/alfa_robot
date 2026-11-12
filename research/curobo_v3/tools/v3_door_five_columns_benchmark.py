@@ -38,6 +38,10 @@ def main():
     p.add_argument('--warmup-passes', type=int, default=1,
                    help='discarded full five-column passes before measuring; 0 measures first sight')
     p.add_argument('--wait-for-gpu-seconds', type=float, default=0.)
+    p.add_argument('--free-space-inflation', type=float, default=None,
+                   help="override the model's free-space search geometry scale (0: no inflation)")
+    p.add_argument('--free-space-stages', nargs='+', default=None,
+                   help="override the stages whose free-space searches inflate (e.g. conveyor_suffix)")
     a = p.parse_args()
     a.output_dir.mkdir(parents=True, exist_ok=True)
     if any(a.output_dir.iterdir()):
@@ -51,6 +55,10 @@ def main():
         started = time.perf_counter()
         planner = DoorPlanner(assets)
         construction_ms = (time.perf_counter()-started)*1000
+        if a.free_space_inflation is not None:
+            planner.free_space_inflation = a.free_space_inflation or None
+        if a.free_space_stages is not None:
+            planner.free_space_stages = tuple(a.free_space_stages)
         warmups = []
         for index in range(a.warmup_passes):
             began = time.perf_counter()
@@ -78,6 +86,8 @@ def main():
     planned = [columns.get(column) for column in DOOR_COLUMN_ORDER]
     summary = dict(trajectory_cache=False, limit_ms=LIMIT_MS, seeds=list(a.seeds), warmup_seed=a.warmup_seed,
                    warmup_passes=a.warmup_passes, planner_construction_ms=construction_ms,
+                   model_revision=planner.model_revision, free_space_inflation=planner.free_space_inflation,
+                   free_space_stages=planner.free_space_stages,
                    warmups=[{k: v for k, v in item.items() if k != 'rounds'} |
                             dict(rounds=[dict(column=r['column'], success=r['success'], total_ms=r['total_ms'])
                                          for r in item['rounds']]) for item in warmups],

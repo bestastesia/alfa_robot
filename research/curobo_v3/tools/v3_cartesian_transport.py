@@ -16,7 +16,7 @@ from scipy.spatial.transform import Rotation, Slerp
 
 from curobo_core.backend import WORKSPACE_ROOT
 from v3_batched_loaded_search import GpuValidity, densify
-from v3_cartesian_math import METRE, CarriageModel, branch, edge_points, refine, wrap
+from v3_cartesian_math import LEGACY_FRAME, METRE, CarriageModel, edge_points, refine, wrap
 from v3_multiroot_search import batched_rrt_connect_multi_goal
 
 STATE_NAMES = ["tool_x", "tool_y", "tool_z", "progress", "updown", "psi"]
@@ -51,6 +51,42 @@ class BatchAnalyticIk:
         return output, found.astype(bool)
 
 
+LIBRARY_TOOL_OFFSET_M = .151  # the library's tool0: J7+151 mm (071cb95)
+
+
+class RezeroBatchAnalyticIk(BatchAnalyticIk):
+    """BatchAnalyticIk in mapped joint coordinates with tool0 `tool_offset_m` past J7 (v3_rezero_analytic).
+
+    Seeds and solutions go through `frame`; targets move to the library's tool0; `arm_branch` is a
+    library branch (JointFrame.branch). Solutions outside the per-side `lower`/`upper` are not found."""
+
+    def __init__(self, frame, tool_offset_m, lower, upper):
+        super().__init__()
+        self.frame, self.shift = frame, LIBRARY_TOOL_OFFSET_M - tool_offset_m
+        self.lower, self.upper = np.asarray(lower, dtype=np.float64), np.asarray(upper, dtype=np.float64)
+
+    def solve(self, side, targets, swivels, seeds, arm_branch):
+        targets = np.array(targets, dtype=np.float64).reshape(-1, 4, 4)
+        targets[:, :3, 3] += targets[:, :3, :3] @ np.array([0., 0., self.shift])
+        output, found = super().solve(side, targets, swivels, self.frame.legacy(side, seeds), arm_branch)
+        output = self.frame.from_legacy(side, output)
+        found &= np.all((output >= self.lower[side] - 1e-9) & (output <= self.upper[side] + 1e-9), axis=1)
+        return output, found
+
+
+def batch_ik(planner):
+    """The planner's batch analytic IK, shared across searches (its call counters feed the stats)."""
+    ik = getattr(planner, "_batch_analytic_ik", None)
+    if ik is None:
+        ik = getattr(planner, "make_batch_analytic_ik", BatchAnalyticIk)()
+        planner._batch_analytic_ik = ik
+    return ik
+
+
+def joint_frame(planner):
+    return getattr(planner, "joint_frame", LEGACY_FRAME)
+
+
 class CartesianTransportSpace:
     """Validity adapter that lets the existing RRT-Connect search the Cartesian transport state."""
 
@@ -66,7 +102,7 @@ class CartesianTransportSpace:
         self.idle = planner.idle_indices
         self.start = np.asarray(start, dtype=np.float64)
         self.goal_rows = np.asarray(goal_rows, dtype=np.float64)
-        self.arm_branch = branch(self.start[self.arm])
+        self.arm_branch = joint_frame(planner).branch(self.side_index, self.start[self.arm])
         self.carriage = CarriageModel(planner, self.start)
         tools = []
         for row in (self.start, self.goal_rows[0]):
@@ -192,21 +228,19 @@ class CartesianTransportSpace:
         return dense, None
 
 
-_IK = None
-
-
 def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., seed=20261015, options=None, *, validity=None, active_indices=None, row_mapper=None, derived_indices=()):
     """Return (dense joint path or None, stats) for the single-arm transport stage."""
-    global _IK
     began = time.perf_counter()
     options = {**DEFAULTS, **(options or {})}
-    _IK = _IK or BatchAnalyticIk()
+    _IK = batch_ik(planner)
     calls, seconds = _IK.calls, _IK.seconds
     start = np.asarray(start, dtype=np.float64)
     rows = np.asarray(candidates, dtype=np.float64)
-    arm = slice(1, 8) if planner.active_side == "left" else slice(8, 15)
-    wanted = branch(start[arm])
-    same = rows[[branch(row[arm]) == wanted for row in rows]]
+    side = 0 if planner.active_side == "left" else 1
+    arm = slice(1 + 7 * side, 8 + 7 * side)
+    frame = joint_frame(planner)
+    wanted = frame.branch(side, start[arm])
+    same = rows[[frame.branch(side, row[arm]) == wanted for row in rows]]
     stats = dict(planner="cartesian", branch=list(wanted), candidate_count=len(rows), same_branch_goals=len(same),
                  search_seed=seed, groups_tried=0, iterations=0, tree_nodes=0, solutions_found=0,
                  first_solution_ms=None, first_verified_solution_ms=None, shortcut_applied=False, attempts=[])

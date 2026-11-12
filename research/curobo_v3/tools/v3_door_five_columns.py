@@ -14,7 +14,8 @@ import time
 import numpy as np
 import torch
 from curobo_core.adapter import matrix_pose,pose_matrix
-from curobo_core.contracts import ACTIVE_JOINTS,PlannerAssets
+from curobo_core.contracts import ACTIVE_JOINTS
+from curobo_core.door_model import asset_identity,load_assets
 from curobo_core.door_recenter import (DOOR_COLUMN_ORDER,DoorPlanner,DoorTask,ROOT,door_pair,door_request)
 from curobo_core.resource_stats import resource_delta,resource_snapshot
 from curobo_core.scene import AttachedObject,Pose
@@ -40,8 +41,6 @@ def mirror_round(source,source_path,planner,request):
     result['timed_segments']=[dict(segment,**{key:[_mirror(row).tolist() for row in segment[key]] for key in ('positions','velocities','accelerations','jerks') if key in segment}) for segment in source.get('timed_segments',())]
     release=phases.index('release');result['predicted_scene_events']=[dict(phase='release',object_id=f'wall_box_{value:02d}',frame_index=release) for value in (15,20)];final=frames[-1];yaw=final[2];base=Pose((final[0],final[1],0.),(math.cos(yaw/2),0.,0,math.sin(yaw/2)));objects=tuple(x for x in request.snapshot.objects if x.object_id not in {'wall_box_15','wall_box_20'});result['final_snapshot']=replace(request.snapshot,objects=objects,attachments=(),state=request.snapshot.state.with_positions(dict(zip(ACTIVE_JOINTS,final[3:])),base)).to_dict();task=DoorTask.__new__(DoorTask);task.planner=planner;task.report=result;task.phase='rnea_dynamics';task.fail=lambda message:(_ for _ in ()).throw(RuntimeError(message));task.apply_dynamics();result['symmetry_torque_recomputed']=True;result['source_planning_total_ms']=source.get('total_ms');result['source_stage_timing_ms']=source.get('stage_timing_ms',{});result['symmetry_generation_ms']=(time.perf_counter()-began)*1000;result['total_ms']=result['symmetry_generation_ms'];result['stage_timing_ms']={'symmetry_transform_and_rnea':result['total_ms']};result['stage_breakdown_ms']={'symmetry_transform_and_rnea':{'symmetry_and_dynamics':result['total_ms']}};result['stage_timing_spans']=[{'stage':'symmetry_transform_and_rnea','start_ms':0.,'wall_ms':result['total_ms']}];return result
 
-ASSET_NAMES=('robot_config','mobile_robot_config','urdf','named_poses','box_fit')
-
 def acquire_gpu(lock,wait_s):
     """Hold the shared GPU lock and require no other compute process before timing.
 
@@ -58,13 +57,6 @@ def acquire_gpu(lock,wait_s):
             external or fcntl.flock(lock,fcntl.LOCK_UN)
         if time.monotonic()>=deadline:raise RuntimeError('GPU unavailable: '+occupied)
         time.sleep(1)
-
-def load_assets(assets_root):
-    assets=PlannerAssets()
-    return replace(assets,**{name:assets_root/getattr(assets,name).relative_to(ROOT) for name in ASSET_NAMES})
-
-def asset_identity(assets):
-    return {name:dict(path=str(getattr(assets,name)),sha256=hashlib.sha256(getattr(assets,name).read_bytes()).hexdigest()) for name in ASSET_NAMES}
 
 def source_identity():
     return {str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted((ROOT/'tools').rglob('*.py'))}

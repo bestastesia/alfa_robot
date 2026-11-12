@@ -138,6 +138,10 @@ def tool_mesh_vertices(planner, side):
     vertices = np.unique(np.concatenate(output), axis=0)
     from scipy.spatial import ConvexHull
     vertices = vertices[ConvexHull(vertices).vertices]
+    if getattr(planner, "model_revision", None) is not None:
+        # Tool0 lies inside the frozen mesh (J7+135 of 151 mm): certify the hull behind it.
+        from .door_model import clip_at_tool_plane
+        vertices = clip_at_tool_plane(vertices)
     cache[side] = vertices
     planner._contact_mesh_vertices = cache
     return vertices
@@ -294,7 +298,8 @@ class _SequentialTask:
             self.planner._door_checker_cache=checker_cache
             self.cached_validity = SequentialValidity(checker, snapshot, self.planner.robot,
                 {side: tool_mesh_vertices(self.planner, side) for side in ("left", "right")}, self.contact_pair,
-                geometry_tolerance=self.request.cartesian_geometry_tolerance_m,support_pose=self.support_pose,support_side=self.support_side)
+                geometry_tolerance=self.request.cartesian_geometry_tolerance_m,support_pose=self.support_pose,support_side=self.support_side,
+                fixed_body=getattr(self.planner, "fixed_body", None))
             self.cached_key = key
             self.validity_cache[key]=self.cached_validity
             self.validities.append(self.cached_validity)
@@ -599,7 +604,7 @@ class _SequentialTask:
                 candidates = candidates[self.validity().mask(self.tensor(candidates)).cpu().numpy()]
         weights = np.array([5.]+[1.]*14)
         distance = np.sum(((candidates-self.q)*weights)**2, axis=1)
-        order = np.argsort(distance)
+        order = self.margin_order(candidates, distance)
         if side == "right" and self.phase == "right_precontact" and self.request.support_elbow_rise_m > 0 and len(candidates):
             heights = []
             for row in candidates:
@@ -607,7 +612,7 @@ class _SequentialTask:
                 heights.append(float(self.planner.fk_robot.get_transform("right_link4", self.planner.fk_robot.base_link)[2, 3]))
             heights = np.asarray(heights)
             target_height = heights[order[0]]+self.request.support_elbow_rise_m
-            order = np.lexsort((distance, np.maximum(0., target_height-heights)))
+            order = np.lexsort((distance, np.maximum(0., target_height-heights), self.limit_tight(candidates)))
             attempt["elbow_preference"] = {"target_height_m": float(target_height),
                 "requested_rise_m": self.request.support_elbow_rise_m, "first_candidate_height_m": float(heights[order[0]])}
         candidates = candidates[order]
@@ -620,11 +625,45 @@ class _SequentialTask:
         return candidates
 
 
-    def search(self, goals, active, budget_s=2., seed_value=None, stop_at_first_valid=False, refinement_s=0.):
+    def limit_tight(self, rows):
+        """Rows with an arm joint closer than the planner's ik_limit_margin_rad to its limit (none
+        without a margin). The re-zeroed model's +-180 deg J1/J5/J7 windows put the door's nearest
+        IK solutions next to their limits, from where later compensated motions cannot continue."""
+        rows = np.asarray(rows, dtype=float).reshape(-1, 15)
+        margin = getattr(self.planner, "ik_limit_margin_rad", None)
+        if margin is None:
+            return np.zeros(len(rows), dtype=bool)
+        lower, upper = self.planner.joint_limits
+        return np.minimum(rows[:, 1:]-lower[1:], upper[1:]-rows[:, 1:]).min(1) < margin
+
+
+    def margin_order(self, rows, distance):
+        """argsort(distance) with the rows that keep the limit margin first (stable)."""
+        order = np.argsort(distance)
+        return order[np.argsort(self.limit_tight(rows)[order], kind="stable")]
+
+
+    def free_space(self, validity, start, goals):
+        """The validity a free-space search uses: the model's search inflation anchored at its start and
+        goals (none for the legacy model). Paths are accepted with the original geometry afterwards."""
+        scale = getattr(self.planner, "free_space_inflation", None)
+        stages = getattr(self.planner, "free_space_stages", None)
+        if scale is None or (stages is not None and self.phase not in stages):
+            return validity
+        from .door_sequential_validity import SearchInflation
+        anchors = np.vstack([np.asarray(start, dtype=float).reshape(1, 15), np.asarray(goals, dtype=float).reshape(-1, 15)])
+        record = dict(stage=self.phase)
+        self.report.setdefault("free_space_inflation", []).append(record)
+        return validity.inflated(SearchInflation(anchors, validity.weights, scale=scale,
+                                                 radius=self.planner.free_space_anchor_radius, record=record))
+
+
+    def search(self, goals, active, budget_s=2., seed_value=None, stop_at_first_valid=False, refinement_s=0.,
+               free_space=False):
         from v3_batched_loaded_search import batched_rrt_connect_multi_goal, densify
         from .door_sequential_validity import ReducedValidity
         validity = self.validity()
-        reduced = ReducedValidity(validity, self.q, active)
+        reduced = ReducedValidity(self.free_space(validity, self.q, goals) if free_space else validity, self.q, active)
         lower, upper = validity.checker.kinematics.get_joint_limits().position
         if seed_value is None:
             seed = self.seed("rrtconnect")

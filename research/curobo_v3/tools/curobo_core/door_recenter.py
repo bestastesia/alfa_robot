@@ -22,6 +22,7 @@ from .adapter import from_curobo_scene, matrix_pose, pose_matrix, relative_pose,
 from .contracts import ACTIVE_JOINTS
 from .conveyor import conveyor_pair
 from .door_extract import DoorExtraction
+from .door_model import MODEL_FILES, REZERO_REVISION, FixedBodyBoxes, model_revision
 from .door_sequential import (_SequentialTask,check_frozen,corners,mesh_contact_proof,pose_error,
                               tool_mesh_vertices)
 from .door_sequential_validity import ReducedValidity, SequentialValidity
@@ -32,9 +33,9 @@ from .scene import AttachedObject, CollisionPolicy, Pose, SceneObject, SceneStor
 from .torque import default_torque_model
 from .trajectory import assemble_timed_cycle, time_parameterize_path, time_parameterize_polyline_shortest, time_parameterize_stops
 from v3_batched_loaded_search import batched_rrt_connect_multi_goal, densify, loaded_robot
-from v3_cartesian_transport import BatchAnalyticIk, plan_cartesian_transport
+from v3_cartesian_transport import BatchAnalyticIk, RezeroBatchAnalyticIk, batch_ik, joint_frame, plan_cartesian_transport
 from v3_cartesian_dual_transport import plan_dual_cartesian_transport
-from v3_cartesian_math import CarriageModel, branch
+from v3_cartesian_math import LEGACY_FRAME, CarriageModel, JointFrame
 from v3_multiroot_search import batched_rrt_connect_multi_goal as constrained_rrt_connect
 from v3_conveyor_cycle_planner import ConveyorCyclePlanner
 from v3_wall_ik_benchmark import make_scene
@@ -124,9 +125,25 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     top_grasp = False
     base_advance = 0.
     shortcut_suffix_paths = True  # placement/Home RRT paths are shortcut, then dense-validated as before
+    # Free-space RRT geometry scale of the PR #80 model (None: none), and the weighted joint distance
+    # from a search's start and goals within which states keep the original geometry.
+    free_space_inflation = None
+    free_space_anchor_radius = .1
+    free_space_stages = None  # stages whose searches inflate (None: every free-space search; suffix: 'conveyor_suffix')
+    # Arm-joint distance to a limit below which IK candidates rank last (None: plain distance order).
+    ik_limit_margin_rad = None
+    # Recenter atlas pose-score bucket (10*m+rad per side) within which nearer rows rank first (None: score).
+    pose_score_bucket = None
+    # Right-regrasp bases must let the right arm reach the upper box's lowered slot at a lift where the
+    # left arm still holds the lower box clear of the robot (analytic IK only; False: no such filter).
+    regrasp_lowering_prefilter = False
+    # Right precontact IK candidates also enumerate the analytic solutions of every branch, as the left
+    # precontact does (the numerical IK from the re-zeroed model's Home finds few, often unreachable ones).
+    right_precontact_analytic_ik = False
 
     def __init__(self, assets):
         super().__init__(assets)
+        self.adopt_model(assets)
         self.batch_fk = BatchToolFk(self.fk_robot, ('left_tool0', 'right_tool0', 'arm_carriage'), ACTIVE_JOINTS)
         self.planner_kind = 'rrtconnect'
         self._door_ik_key = None
@@ -136,6 +153,73 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self._torque_model_cache = {}
         self.held = ()
         self.active_side = 'left'
+        self.suffix_inflation = []
+
+    def adopt_model(self, assets):
+        """Joint coordinates, tool point, fixed body, dynamics and recenter atlas of the URDF's model."""
+        self.model_revision = model_revision(assets.urdf)
+        self.joint_frame = LEGACY_FRAME
+        self.fixed_body = None
+        self.dynamics_root = getattr(assets, 'dynamics_root', None)
+        self.recenter_atlas = getattr(assets, 'recenter_atlas', None)
+        if self.model_revision is None:
+            if any(getattr(assets, name, None) is not None for name in MODEL_FILES):
+                raise ValueError('the legacy door model takes no re-zeroed model files')
+            return
+        if any(getattr(assets, name, None) is None for name in MODEL_FILES):
+            raise ValueError(f'the re-zeroed door model requires {MODEL_FILES}')
+        from v3_fixed_body_boxes import disable_fixed_body_spheres
+        from v3_prepare_rezero_profiles import convert_row
+        from v3_rezero_analytic import RezeroAnalytic
+        from v3_zero_model_candidate import COORDINATE_REVISION, JOINT_SIGNS, OFFSETS_DEG, TOOL_OFFSET_M
+        if COORDINATE_REVISION != REZERO_REVISION:
+            raise ValueError('analytic adapter and door model disagree on the joint coordinates')
+        for side in ('left', 'right'):
+            origin = self.fk_robot.joint_map[side+'_tool0_fixed'].origin
+            if not np.allclose(origin, [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, TOOL_OFFSET_M], [0, 0, 0, 1]], atol=1e-12):
+                raise ValueError(f'the re-zeroed model requires tool0 at J7+Z{TOOL_OFFSET_M*1000:g} mm')
+        self.analytic = RezeroAnalytic()
+        self.joint_frame = JointFrame(np.deg2rad([OFFSETS_DEG['left'], OFFSETS_DEG['right']]), JOINT_SIGNS)
+        self.tool_offset_m = TOOL_OFFSET_M
+        self.robot = disable_fixed_body_spheres(self.robot)
+        self.mobile_robot = disable_fixed_body_spheres(self.mobile_robot)
+        self.fixed_body = FixedBodyBoxes(assets.fixed_body_boxes, self.fk_robot)
+        self.free_space_inflation = 1.1
+        self.ik_limit_margin_rad = math.radians(15.)
+        self.pose_score_bucket = .05
+        self.regrasp_lowering_prefilter = True
+        self.right_precontact_analytic_ik = True
+        self.target_values = convert_row(list(ACTIVE_JOINTS), self.target_values)
+        self.model_id = self._model_identity()
+        self.snapshot = replace(self.snapshot, model_id=self.model_id)
+
+    @property
+    def joint_limits(self):
+        """(lower, upper) of ACTIVE_JOINTS from the URDF."""
+        limits = [self.fk_robot.joint_map[name].limit for name in ACTIVE_JOINTS]
+        return np.array([item.lower for item in limits]), np.array([item.upper for item in limits])
+
+    def make_batch_analytic_ik(self):
+        if self.model_revision is None:
+            return BatchAnalyticIk()
+        return RezeroBatchAnalyticIk(self.joint_frame, self.tool_offset_m, self.analytic.lower, self.analytic.upper)
+
+    def _model_identity(self):
+        identity = super()._model_identity()
+        fixed_body = getattr(self, 'fixed_body', None)
+        return identity if fixed_body is None else digest(dict(robot=identity, fixed_body_boxes=fixed_body.sha256))
+
+    def search_path(self, start, goals, lower, upper, validity, budget, seed, stop_at_first_valid=None):
+        """Placement and return-Home RRT (the ordinary suffix): free-space inflation of the model."""
+        if self.free_space_inflation is not None and (self.free_space_stages is None or
+                                                      'conveyor_suffix' in self.free_space_stages):
+            from .door_sequential_validity import SearchInflation
+            record = dict(stage='conveyor_suffix')
+            self.suffix_inflation.append(record)
+            validity = validity.inflated(SearchInflation(
+                torch.vstack([start.reshape(1, -1), goals.reshape(-1, start.shape[-1])]), validity.weights,
+                scale=self.free_space_inflation, radius=self.free_space_anchor_radius, record=record))
+        return super().search_path(start, goals, lower, upper, validity, budget, seed, stop_at_first_valid)
 
     @property
     def idle_indices(self):
@@ -205,7 +289,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                                         for x in self.snapshot.meshes),
                            state=replace(self.snapshot.state, base_pose=Pose()))
         return SequentialValidity(checker, snapshot, self.robot,
-            {side: tool_mesh_vertices(self, side) for side in ('left', 'right')}, geometry_tolerance=.0001)
+            {side: tool_mesh_vertices(self, side) for side in ('left', 'right')}, geometry_tolerance=.0001,
+            fixed_body=self.fixed_body)
 
 
 class SupportCompensation:
@@ -219,10 +304,10 @@ class SupportCompensation:
         self.support_tool = (task.tool(self.reference, side) if tool_target is None
                              else np.asarray(tool_target, dtype=float).copy())
         self.carriage = CarriageModel(task.planner, self.reference)
-        self.ik = BatchAnalyticIk()
+        self.ik = batch_ik(task.planner)
         arm = self.reference[self.support_indices]
         self.swivel = task.planner.analytic.swivel(self.side_index, arm)
-        self.branch = branch(arm)
+        self.branch = joint_frame(task.planner).branch(self.side_index, arm)
         self.calls = 0
         self.failures = 0
 
@@ -336,8 +421,33 @@ class DoorTask(_SequentialTask):
         if len(endpoints):endpoints=endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
         return int(self.exact_pose_mask(endpoints,'right',target).sum())
 
+    def held_lowering_lifts(self):
+        """Lifts, from the current one down, at which the left arm holds the lower box in place collision-free.
+
+        The compensated upper lowering ends at a lift (validate_future_lowering, plan_compensated_upper_lowering);
+        while it descends, the held box closes on the robot. Checked with the right arm unmoved."""
+        validity=self.validity();limits=validity.checker.kinematics.get_joint_limits().position
+        low,high=(float(values[0].item()) for values in limits);current=float(self.q[0])
+        lifts=[current]+sorted((float(value) for value in self.lift_grid if low+1e-5<=value<current-1e-9),reverse=True)
+        templates=np.repeat(self.q[None],len(lifts),axis=0);templates[:,0]=lifts
+        rows,found=SupportCompensation(self,side='left',reference=self.q,tool_target=self.targets['left'])(templates)
+        valid=found&validity.mask(self.tensor(rows)).cpu().numpy()
+        return lifts[:len(valid) if valid.all() else max(1,int(np.argmin(valid)))]
+
+    def regrasp_lowering_reachable(self,upper,lifts):
+        """Whether the right arm reaches `upper`'s slot lower_distance below a regrasp contact (any z offset of
+        the base search) at one of `lifts`: analytic IK only, a necessary condition of the lowering."""
+        target,_=super().contact_target('right',upper,0.);carriages=CarriageModel(self.planner,self.q).inverse(np.asarray(lifts))
+        swivels=np.deg2rad(np.arange(-180.,180.,self.swivel_step_deg))
+        for z_offset in (0.,.03,.06):
+            lowered=target.copy();lowered[2,3]-=z_offset+self.lower_distance
+            if any(len(self.planner.analytic.solve(1,carriage@lowered,float(swivel),self.q[RIGHT])) for carriage in carriages for swivel in swivels):
+                return True
+        return False
+
     def find_right_upper_regrasp_base(self):
         search_started=time.perf_counter()
+        lowering_lifts=self.held_lowering_lifts() if getattr(self.planner,'regrasp_lowering_prefilter',False) else None
         old=self.pick_base_pose;world_store=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
         matrix=pose_matrix(old);world_outward=matrix[:3,:3]@self.wall_outward_direction;world_lateral=matrix[:3,1]
         old_yaw=2*math.atan2(old.quaternion_wxyz[3],old.quaternion_wxyz[0]);attempts=[]
@@ -353,6 +463,8 @@ class DoorTask(_SequentialTask):
                     self.store=SceneStore(snapshot_in_base(replace(world_store,state=replace(world_store.state,base_pose=candidate))))
                     self.request.snapshot=snapshot_in_base(replace(world_request,state=replace(world_request.state,base_pose=candidate)))
                     upper=self.store.snapshot().object(f'wall_box_{self.request.upper_box:02d}');self.wall_inward_direction=pose_matrix(upper.pose)[:3,0];self.wall_outward_direction=-self.wall_inward_direction
+                    if lowering_lifts is not None and not self.regrasp_lowering_reachable(upper,lowering_lifts):
+                        attempts.append(dict(inward_m=inward,lateral_m=lateral,yaw_delta_deg=yaw_delta,lowering_reachable=False));continue
                     self.validity_cache={};self.cached_key=None;validity=self.validity();state_valid=bool(validity.mask(self.tensor(self.q[None]))[0]);contact_path=False;selected_offset=None;count=0
                     if state_valid:
                         base_target,_=super().contact_target('right',upper,0.);self.planner.fk(self.q);carriage=np.linalg.inv(self.planner.fk_robot.get_transform('arm_carriage',self.planner.fk_robot.base_link))
@@ -375,9 +487,9 @@ class DoorTask(_SequentialTask):
                     attempts.append(dict(inward_m=inward,lateral_m=lateral,yaw_delta_deg=yaw_delta,state_valid=state_valid,precontact_candidates=count,selected_z_offset_m=selected_offset,certified_contact_path=contact_path))
                     if contact_path:
                         self.upper_right_regrasp_z_offset=float(selected_offset or 0.);self.world_request.snapshot=replace(world_request,state=replace(world_request.state,base_pose=candidate))
-                        self.record_operation_time('regrasp_base_search',search_started);self.enter('base_pick_reposition');self.append([self.q]);self.report['right_upper_regrasp_search']=dict(success=True,attempts=attempts,selected=attempts[-1]);return
+                        self.record_operation_time('regrasp_base_search',search_started);self.enter('base_pick_reposition');self.append([self.q]);self.report['right_upper_regrasp_search']=dict(success=True,attempts=attempts,selected=attempts[-1],held_lowering_lifts=lowering_lifts);return
         self.pick_base_pose=old;self.store=SceneStore(snapshot_in_base(world_store));self.request.snapshot=snapshot_in_base(world_request);upper=self.request.snapshot.object(f'wall_box_{self.request.upper_box:02d}');self.wall_inward_direction=pose_matrix(upper.pose)[:3,0];self.wall_outward_direction=-self.wall_inward_direction;self.validity_cache={};self.cached_key=None
-        self.report['right_upper_regrasp_search']=dict(success=False,attempts=attempts);self.record_operation_time('regrasp_base_search',search_started);self.fail('no base arrival state can regrasp the upper box with the right arm')
+        self.report['right_upper_regrasp_search']=dict(success=False,attempts=attempts,held_lowering_lifts=lowering_lifts);self.record_operation_time('regrasp_base_search',search_started);self.fail('no base arrival state can regrasp the upper box with the right arm')
 
     def find_upper_regrasp_base(self):
         old=self.pick_base_pose;world_store=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
@@ -546,7 +658,7 @@ class DoorTask(_SequentialTask):
         self.contact_pair=None
         rows=rows[self.exact_pose_mask(rows,'left',target)]
         if len(rows):
-            weights=np.array([5.]+[1.]*14);rows=rows[np.argsort(np.linalg.norm((rows-self.q)*weights,axis=1))]
+            weights=np.array([5.]+[1.]*14);rows=rows[self.margin_order(rows,np.linalg.norm((rows-self.q)*weights,axis=1))]
         return rows
 
     def upper_escape_distance(self,item,endpoint):
@@ -664,7 +776,8 @@ class DoorTask(_SequentialTask):
 
     def ik(self, side, target, active, support_target=None):
         candidates = super().ik(side, target, active, support_target)
-        eligible = side == 'left' and self.phase in ('left_extract_target','left_precontact')
+        eligible = ((side == 'left' and self.phase in ('left_extract_target','left_precontact')) or
+                    (side == 'right' and self.phase == 'right_precontact' and self.planner.right_precontact_analytic_ik))
         if not eligible or 0 in active:
             return candidates
         indices = LEFT if side == 'left' else RIGHT
@@ -683,11 +796,14 @@ class DoorTask(_SequentialTask):
         if len(merged):
             weights = np.array([5.] + [1.]*14)
             distance = np.linalg.norm((merged-self.q)*weights, axis=1)
-            same_branch = np.array([branch(row[indices]) == branch(self.q[indices]) for row in merged])
-            merged = merged[np.lexsort((distance, ~same_branch))]
+            frame = joint_frame(self.planner)
+            same_branch = np.array([frame.branch(side_index, row[indices]) == frame.branch(side_index, self.q[indices])
+                                    for row in merged])
+            merged = merged[np.lexsort((distance, ~same_branch, self.limit_tight(merged)))]
         self.report['attempts'].append(dict(stage=self.phase, operation='analytic_ik_enrichment',side=side,
             numerical_candidates=len(candidates), analytic_candidates=len(rows), merged_candidates=len(merged),
-            same_branch_candidates=int(sum(branch(row[indices]) == branch(self.q[indices]) for row in merged)),
+            same_branch_candidates=int(sum(joint_frame(self.planner).branch(side_index, row[indices]) ==
+                                           joint_frame(self.planner).branch(side_index, self.q[indices]) for row in merged)),
             swivel_step_deg=self.swivel_step_deg/2))
         return merged
 
@@ -795,19 +911,23 @@ class DoorTask(_SequentialTask):
                 if not arms:
                     continue
                 arms = np.unique(np.round(arms,7),axis=0)
-                order = np.argsort(np.linalg.norm(arms-self.q[1:8],axis=1))[:4]
+                rows = np.repeat(right_goal[None], len(arms), axis=0);rows[:,1:8] = arms
+                order = self.margin_order(rows, np.linalg.norm(arms-self.q[1:8],axis=1))[:4]
                 for arm in arms[order]:
                     row=right_goal.copy();row[1:8]=arm;variants.append(row)
         rows=np.unique(np.round(variants,7),axis=0) if variants else np.empty((0,15))
         if len(rows):rows=rows[self.validity().mask(self.tensor(rows)).cpu().numpy()]
         return rows
 
-    def sequential_upper_precontact(self, staged, validity):
-        """Stage the lower arm first, then approach the upper box in Cartesian space."""
+    def sequential_upper_precontact(self, staged, validity, deadline=None):
+        """Stage the lower arm first, then approach the upper box in Cartesian space (by `deadline`)."""
+        def budget(cap):
+            return cap if deadline is None else min(cap, max(0., deadline-time.perf_counter()))
         if not len(staged):
             return None, None
         staged = np.asarray(staged, dtype=float)
-        if not any(branch(row[RIGHT]) == branch(self.q[RIGHT]) for row in staged):
+        frame = joint_frame(self.planner)
+        if not any(frame.branch(1, row[RIGHT]) == frame.branch(1, self.q[RIGHT]) for row in staged):
             return None, dict(failure='right_branch_change_requires_joint_route')
         left_goals = staged.copy()
         left_goals[:, 0] = self.q[0]
@@ -818,17 +938,19 @@ class DoorTask(_SequentialTask):
             return None, dict(failure='no_valid_left_staging_goal')
         self.planner.active_side = 'left'
         left_path, left_stats = plan_cartesian_transport(
-            self.planner, self.q, left_goals, validity.checker, budget_s=2.,
+            self.planner, self.q, left_goals, validity.checker, budget_s=budget(2.),
             seed=self.request.seed+450,
             options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .1,
                      'workspace_margin_m': .5},
-            validity=validity, active_indices=LEFT)
+            validity=self.free_space(validity, self.q, left_goals), active_indices=LEFT)
         if left_path is None:
             joint_paths = []
             for _ in range(4):
-                candidate = self.search(left_goals, LEFT)
+                if budget(2.) <= .05:
+                    break
+                candidate = self.search(left_goals, LEFT, budget_s=budget(2.), free_space=True)
                 if candidate is not None:
                     joint_paths.append((self.path_rotation_metrics(candidate, 'left')['extra_deg'],
                                         np.asarray(candidate),
@@ -845,14 +967,16 @@ class DoorTask(_SequentialTask):
         start = np.asarray(left_path)[-1]
         active_right = RIGHT if np.allclose(right_goals[:, 0], start[0], atol=1e-6, rtol=0) else [0]+RIGHT
         self.planner.active_side = 'right'
+        if budget(2.) <= .05:
+            return None, dict(left=left_stats, failure='precontact_budget_exhausted')
         right_path, right_stats = plan_cartesian_transport(
-            self.planner, start, right_goals, validity.checker, budget_s=2.,
+            self.planner, start, right_goals, validity.checker, budget_s=budget(2.),
             seed=self.request.seed+451,
             options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .1,
                      'workspace_margin_m': .5},
-            validity=validity, active_indices=active_right)
+            validity=self.free_space(validity, start, right_goals), active_indices=active_right)
         if right_path is None:
             return None, dict(left=left_stats, right=right_stats, failure='right_approach_failed')
         path = np.vstack([np.asarray(left_path), np.asarray(right_path)[1:]])
@@ -861,6 +985,7 @@ class DoorTask(_SequentialTask):
                           active_right=list(active_right))
 
     def plan_precontact_path(self, side, goals, active):
+        """Free-space approach to the precontact goals (searches inflated per DoorPlanner.free_space_inflation)."""
         self.planner.active_side = side
         validity = self.validity()
         if side == 'right' and not self.store.snapshot().attachments:
@@ -870,9 +995,13 @@ class DoorTask(_SequentialTask):
             deadline = time.perf_counter()+budget_s
             right_limit = float(getattr(self,'right_precontact_extra_rotation_max_deg',105.))
             staging_limit = 65.
+            # Joint routes run until one passes both rotation limits or the budget ends; the Cartesian
+            # strategies stop early enough to leave at least three of them their 0.75 s each.
+            joint_seeds=(47,20,38,65,41,17)
+            cartesian_deadline = deadline-.75*3
 
-            def remaining(cap=None):
-                value=max(0.,deadline-time.perf_counter())
+            def remaining(cap=None, until=None):
+                value=max(0.,(deadline if until is None else until)-time.perf_counter())
                 return value if cap is None else min(cap,value)
 
             def add(path, stats, source):
@@ -886,7 +1015,7 @@ class DoorTask(_SequentialTask):
                 return left['extra_deg']<=staging_limit and right['extra_deg']<=right_limit
 
             right_active = RIGHT if np.allclose(np.asarray(goals)[:, 0], self.q[0], atol=1e-6, rtol=0) else [0]+RIGHT
-            direct_budget=remaining(2.)
+            direct_budget=remaining(2.,cartesian_deadline)
             right_path=right_stats=None
             if direct_budget>.05:
                 right_path, right_stats = plan_cartesian_transport(
@@ -896,33 +1025,33 @@ class DoorTask(_SequentialTask):
                              'shortcut': True, 'monotonic_progress': True,
                              'strict_budget': True, 'budget_reserve_s': .1,
                              'workspace_margin_m': .5},
-                    validity=validity, active_indices=right_active)
+                    validity=self.free_space(validity, self.q, goals), active_indices=right_active)
             quality_good=add(right_path,right_stats,'right_cartesian_precontact')
             sequential_path=sequential_stats=None
-            if not quality_good and remaining()>.05:
-                sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity)
+            if not quality_good and remaining(until=cartesian_deadline)>.05:
+                sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity, cartesian_deadline)
                 quality_good=add(sequential_path,sequential_stats,'sequential_cartesian_staging')
             target_rows = staged if len(staged) else np.asarray(goals)
             dual_stats=None
-            if not quality_good and remaining()>.05:
-                dual_budget=remaining(2.)
+            if not quality_good and remaining(until=cartesian_deadline)>.05:
+                dual_budget=remaining(2.,cartesian_deadline)
                 dual_path, dual_stats = plan_dual_cartesian_transport(
                     self.planner, self.q[None], target_rows, validity.checker,
                     budget_s=dual_budget, seed=self.request.seed+500,
                     options={'shortcut': True, 'monotonic_progress': True,
                              'strict_budget': True, 'batch': 128,
                              'connect_candidates': 32, 'dual_direct_pairs': 64,
-                             'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05})
+                             'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05},
+                    validity=self.free_space(validity, self.q, target_rows))
                 quality_good=add(dual_path,dual_stats,'dual_cartesian_rrt')
             joint_attempts=0
-            joint_seeds=(47,20,38)
             for joint_seed in joint_seeds:
                 if quality_good or remaining()<=.05:
                     break
                 # First densely verified path, then a bounded refinement window (the shortcut and
                 # rotation gate below are unchanged) instead of always spending the whole cap.
                 path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
-                                   seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25)
+                                   seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25,free_space=True)
                 joint_attempts+=1
                 if path is None:
                     continue
@@ -962,7 +1091,7 @@ class DoorTask(_SequentialTask):
                      'shortcut': True, 'monotonic_progress': True,
                      'strict_budget': True, 'budget_reserve_s': .25,
                      'workspace_margin_m': .5},
-            validity=validity, active_indices=search_active,
+            validity=self.free_space(validity, self.q, goals), active_indices=search_active,
             row_mapper=mapper, derived_indices=derived)
         alternatives = []
         if path is not None:
@@ -971,18 +1100,20 @@ class DoorTask(_SequentialTask):
         if path is None or alternatives[0][2]['extra_deg'] > 30.:
             if mapper is None:
                 for _ in range(3):
-                    candidate = self.search(goals, active)
+                    candidate = self.search(goals, active, free_space=True)
                     if candidate is not None:
                         alternatives.append(('joint_rrt', candidate,
                                              self.path_rotation_metrics(candidate, side),
                                              self.report['attempts'][-1].get('stats')))
             else:
                 reduced = SupportCompensatedValidity(validity,self.q,mapper,searched_indices=search_active)
+                searched = SupportCompensatedValidity(self.free_space(validity,self.q,goals),self.q,mapper,
+                                                      searched_indices=search_active)
                 lower,upper = validity.checker.kinematics.get_joint_limits().position
                 for attempt in range(3):
                     sparse,joint_stats=constrained_rrt_connect(
                         self.tensor(self.q[search_active]),self.tensor(np.asarray(goals)[:,search_active]),
-                        lower[search_active]+1e-5,upper[search_active]-1e-5,reduced,2.,
+                        lower[search_active]+1e-5,upper[search_active]-1e-5,searched,2.,
                         self.request.seed+200+attempt,stop_at_first_valid=True,
                         batch=256,connect_candidates=64,step=.28)
                     if sparse is None:
@@ -1096,7 +1227,7 @@ class DoorTask(_SequentialTask):
         self.future_lowering_paths = {}
         if len(mapped):
             weights = np.array([5.] + [1.]*14)
-            order = np.argsort(np.linalg.norm((mapped-self.q)*weights, axis=1))
+            order = self.margin_order(mapped, np.linalg.norm((mapped-self.q)*weights, axis=1))
             mapped = mapped[order[:64]]
         diagnostics = dict(lifts=lifts, analytic_candidates=len(raw), support_ik_candidates=int(found.sum()),
                            current_state_valid_candidates=before_sweep,
@@ -1140,7 +1271,8 @@ class DoorTask(_SequentialTask):
 
     def latest_compact_candidates(self):
         """Adapt the latest placement atlas to the exact door attachment transforms."""
-        atlas_path = ROOT / self.policy['side']['atlas_path']
+        # The re-zeroed model's atlas is the policy atlas re-solved for its tool point (DOOR_MODEL.json).
+        atlas_path = getattr(self.planner, 'recenter_atlas', None) or ROOT / self.policy['side']['atlas_path']
         atlas = np.load(atlas_path, allow_pickle=False)['joints'].astype(np.float32)
         # ponytail: fixed local cloud around the approved atlas; replace with an offline regenerated
         # attachment-conditioned atlas if this central door scenario becomes a production family.
@@ -1155,6 +1287,9 @@ class DoorTask(_SequentialTask):
         # The selection is the first 64 rows in (pose score, distance) order that pass collision and
         # the envelope. Rank all rows by FK first, then gate them in that order and stop at 64: the
         # same rows in the same order as gating every row, without checking ~90k loaded states.
+        # With planner.pose_score_bucket, scores within one bucket are equally good poses and the nearer
+        # row comes first (MOTION-429: the 64 lowest float32 scores can lie 9 rad away). No joint-limit
+        # margin here: the carry pose itself holds J5/J6 within 15 deg of their limits in every exact row.
         target_poses = {side: matrix_pose(target) for side, target in self.targets.items()}
         scores, pose_errors = [], []
         for offset in range(0, len(rows), 1024):
@@ -1176,7 +1311,9 @@ class DoorTask(_SequentialTask):
             scores.extend(batch_score.cpu().tolist())
             pose_errors.extend(batch_error.cpu().tolist())
         scores, pose_errors = np.asarray(scores), np.asarray(pose_errors)
-        ranked = np.lexsort((np.linalg.norm(rows-self.q, axis=1), scores))
+        bucket = getattr(self.planner, 'pose_score_bucket', None)
+        ranked = np.lexsort((np.linalg.norm(rows-self.q, axis=1),
+                             scores if bucket is None else np.floor(scores/bucket)))
         order, radii, scanned, collision_valid = [], [], 0, 0
         for offset in range(0, len(ranked), 4096):
             batch = ranked[offset:offset+4096]
@@ -1199,7 +1336,9 @@ class DoorTask(_SequentialTask):
         selected = rows[order]
         details = dict(atlas_path=str(atlas_path), atlas_sha256=hashlib.sha256(atlas_path.read_bytes()).hexdigest(),
                        atlas_rows=len(atlas), sampled_rows=33*len(atlas), scanned_rows=scanned,
-                       gate_order='pose score then distance; collision and envelope counts cover scanned rows only',
+                       gate_order=('pose score' if bucket is None else 'pose score bucket')
+                                  +' then distance; collision and envelope counts cover scanned rows only',
+                       pose_score_bucket=bucket,
                        collision_valid=collision_valid, envelope_valid=envelope_valid, selected=len(selected),
                        selected_radius_max_m=float(np.max(radii)),
                        selected_pose_score_max=float(np.max(scores[order])),
@@ -1232,7 +1371,7 @@ class DoorTask(_SequentialTask):
             # was all the loaded checker allowed: weighted-length refinement does not optimize
             # the rotation score used below and measurably worsened it once checks became fast.
             path = self.search(candidates,list(range(15)),budget_s=.75,seed_value=search_seed,
-                               stop_at_first_valid=True)
+                               stop_at_first_valid=True,free_space=True)
             self.record_operation_time('seed_bank_search', seed_started)
             search_stats = self.report['attempts'][-1].get('stats')
             stats.append(dict(seed=search_seed,stats=search_stats))
@@ -1306,7 +1445,7 @@ class DoorTask(_SequentialTask):
         mapped = np.asarray(exact).reshape(-1, 15)
         if len(mapped):
             weights = np.array([5.] + [1.]*14)
-            mapped = mapped[np.argsort(np.linalg.norm((mapped-self.q)*weights, axis=1))[:64]]
+            mapped = mapped[self.margin_order(mapped, np.linalg.norm((mapped-self.q)*weights, axis=1))[:64]]
         details = dict(stage=self.phase, lifts=lifts, analytic_candidates=len(raw),
                        compensation_ik_candidates=int(found.sum()), valid_candidates=len(mapped),
                        selected_goal_cap=64, constraint='lift + right arm searched; left arm compensates; lower box stays at carry target')
@@ -1327,6 +1466,7 @@ class DoorTask(_SequentialTask):
         began = time.perf_counter()
         alternatives = []
         attempts_run = 0
+        searched = self.free_space(validity, start, candidates)
         if self.algorithm == 'cartesian_rrt':
             attempts_run = 1
             path, stats = plan_cartesian_transport(
@@ -1334,7 +1474,7 @@ class DoorTask(_SequentialTask):
                 options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
                          'shortcut': True, 'monotonic_progress': True,
                          'strict_budget': True, 'budget_reserve_s': .25},
-                validity=validity, active_indices=active,
+                validity=searched, active_indices=active,
                 row_mapper=mapper, derived_indices=derived)
             if path is not None:
                 alternatives.append((path, stats, seed))
@@ -1345,7 +1485,7 @@ class DoorTask(_SequentialTask):
                 options={'edge_resolution': .08, 'batch': 256, 'connect_candidates': 64,
                          'shortcut': True, 'monotonic_progress': True,
                          'strict_budget': True, 'budget_reserve_s': .25},
-                validity=validity, active_indices=active,
+                validity=searched, active_indices=active,
                 row_mapper=mapper, derived_indices=derived)
             quality_good = False
             if quality_path is not None:
@@ -1354,8 +1494,9 @@ class DoorTask(_SequentialTask):
                 held_quality = (self.path_rotation_metrics(quality_path, mapper.support_side)['extra_deg']
                                 if mapper is not None else 0.)
                 quality_good = moving_quality <= 30. and held_quality <= 5.
-            reduced = (SupportCompensatedValidity(validity, start, mapper, searched_indices=active)
-                       if mapper is not None else ReducedValidity(validity, start, active))
+            reduced, reduced_search = ((SupportCompensatedValidity(item, start, mapper, searched_indices=active)
+                                        if mapper is not None else ReducedValidity(item, start, active))
+                                       for item in (validity, searched))
             lo, hi = validity.checker.kinematics.get_joint_limits().position
             search = constrained_rrt_connect if mapper is not None else batched_rrt_connect_multi_goal
             options = (dict(stop_at_first_valid=True, batch=256, connect_candidates=64, step=.28)
@@ -1364,7 +1505,7 @@ class DoorTask(_SequentialTask):
                 attempts_run += 1
                 sparse, stats = search(
                     self.tensor(start[active]), self.tensor(np.asarray(candidates)[:, active]),
-                    lo[active]+1e-5, hi[active]-1e-5, reduced, 2., seed+attempt, **options)
+                    lo[active]+1e-5, hi[active]-1e-5, reduced_search, 2., seed+attempt, **options)
                 if sparse is None:
                     continue
                 sparse = self.shortcut_states(np.asarray(sparse), reduced)
@@ -1744,7 +1885,8 @@ class DoorTask(_SequentialTask):
                 for swivel in np.deg2rad(np.arange(-180.,180.,self.swivel_step_deg)):
                     arms.extend(self.planner.analytic.solve(1,carriage@target,float(swivel),self.q[8:15]))
                 if not arms:continue
-                arms=np.unique(np.round(arms,7),axis=0);order=np.argsort(np.linalg.norm(arms-self.q[8:15],axis=1))[:4]
+                arms=np.unique(np.round(arms,7),axis=0);rows=np.repeat(left_goal[None],len(arms),axis=0);rows[:,8:15]=arms
+                order=self.margin_order(rows,np.linalg.norm(arms-self.q[8:15],axis=1))[:4]
                 for arm in arms[order]:row=left_goal.copy();row[8:15]=arm;variants.append(row)
         rows=np.unique(np.round(variants,7),axis=0) if variants else np.empty((0,15))
         if len(rows):rows=rows[self.validity().mask(self.tensor(rows)).cpu().numpy()]
@@ -1787,11 +1929,11 @@ class DoorTask(_SequentialTask):
             seed=self.request.seed+452,options={'edge_resolution':.08,'batch':128,'connect_candidates':32,'shortcut':True,
             'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.1,'workspace_margin_m':.5,
             'route_branch_change':True,'fallback_joint_rrt':True,'wrist_flip':True},
-            validity=validity,active_indices=RIGHT)
+            validity=self.free_space(validity,self.q,right_goals),active_indices=RIGHT)
         if right_path is None:
             joint=[]
             for _ in range(4):
-                candidate=self.search(right_goals,RIGHT)
+                candidate=self.search(right_goals,RIGHT,free_space=True)
                 if candidate is not None:joint.append((self.path_rotation_metrics(candidate,'right')['extra_deg'],np.asarray(candidate)))
             if not joint:return None
             _,right_path=min(joint,key=lambda item:item[0])
@@ -1803,12 +1945,12 @@ class DoorTask(_SequentialTask):
             seed=self.request.seed+453,options={'edge_resolution':.08,'batch':128,'connect_candidates':32,'shortcut':True,
             'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.1,'workspace_margin_m':.5,
             'route_branch_change':True,'fallback_joint_rrt':True,'wrist_flip':True},
-            validity=validity,active_indices=active_left)
+            validity=self.free_space(validity,start,left_goals),active_indices=active_left)
         if left_path is None:
             saved_q=self.q.copy();self.q=start.copy();joint=[]
             try:
                 for _ in range(4):
-                    candidate=self.search(left_goals,active_left)
+                    candidate=self.search(left_goals,active_left,free_space=True)
                     if candidate is not None:joint.append((self.path_rotation_metrics(candidate,'left')['extra_deg'],np.asarray(candidate)))
             finally:self.q=saved_q
             if not joint:return None
@@ -1855,7 +1997,7 @@ class DoorTask(_SequentialTask):
         self.contact_pair=('right',item.object_id)
         if len(rows):rows=rows[self.validity().mask(self.tensor(rows)).cpu().numpy()]
         self.contact_pair=None;rows=np.asarray(rows).reshape(-1,15);rows=rows[self.exact_pose_mask(rows,'right',target)]
-        if len(rows):rows=rows[np.argsort(np.linalg.norm((rows-self.q)*np.array([5.]+[1.]*14),axis=1))]
+        if len(rows):rows=rows[self.margin_order(rows,np.linalg.norm((rows-self.q)*np.array([5.]+[1.]*14),axis=1))]
         return rows
 
     def contact_lower_right_ranked(self,object_id,active):
@@ -2222,6 +2364,7 @@ class DoorTask(_SequentialTask):
             snapshot = self.store.snapshot()
             state = snapshot.state.with_positions(dict(zip(names, rows[-1])), self.planner.snapshot.state.base_pose)
             self.store.update_state(state, snapshot.revision)
+        self.planner.suffix_inflation = self.report.setdefault('free_space_inflation', [])
         self.planner.conveyor_suffix(dict(self.request.tasks), self.report, append, self.progress)
         self.report['final_snapshot'] = self.store.snapshot().to_dict()
 
@@ -2236,7 +2379,7 @@ class DoorTask(_SequentialTask):
             model = default_torque_model(
                 self.planner.args, payload_mass_kg=payload_mass_kg,
                 payload_dimensions=self.planner.box_fit['dimensions_m'],
-                torque_limit_scale=torque_limit_scale)
+                torque_limit_scale=torque_limit_scale, dynamics_root=getattr(self.planner, 'dynamics_root', None))
             record_build(self.planner, 'torque_model', build_started)
             torque_cache[model_key]=model
             self.planner._torque_model_cache=torque_cache

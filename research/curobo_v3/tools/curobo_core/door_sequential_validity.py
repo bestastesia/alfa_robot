@@ -1,5 +1,7 @@
 # Reused from five-column-rear-trajopt sequential_validity.py, SHA256 646b8f73d6a05028e1b5277f1f1b07cd976b66c9ed3a409feaf3b8a53baebda1
 """Native validation plus exact, pair-scoped tool contact and payload geometry."""
+import copy
+from dataclasses import replace
 import time
 import math
 
@@ -76,8 +78,39 @@ def material_self_overlap(spheres, pairs, padding, payload_pair, tolerance=1e-6)
     return ((first[..., 3] > 0.) & (second[..., 3] > 0.) & (clearance < threshold)).any(-1)
 
 
+class SearchInflation:
+    """PR #80 free-space search geometry (v3_fixed_body_boxes.WorldMarginChecker): robot sphere radii
+    against the world become (r+tolerance)*scale-tolerance and the fixed-body cuboids and exact payload
+    boxes scale their half extents; self, internal fixed-body, ground and bounds keep the original
+    geometry. States within `radius` (weighted joint distance) of an anchor, the search's start and
+    goals, keep the original geometry too: the moments next to a contact use the original volume."""
+
+    def __init__(self, anchors, weights, scale=1.1, tolerance=.001, radius=.1, record=None):
+        if not (math.isfinite(scale) and scale >= 1. and 0. <= tolerance <= .001 and radius >= 0.):
+            raise ValueError("invalid search inflation")
+        self.weights = torch.as_tensor(weights, device="cuda", dtype=torch.float32)
+        self.anchors = torch.as_tensor(anchors, device="cuda", dtype=torch.float32).reshape(-1, len(self.weights))
+        self.scale, self.tolerance, self.radius = float(scale), float(tolerance), float(radius)
+        # A JSON-safe statistics record, updated in place (e.g. one entry of a planner report).
+        self.record = {} if record is None else record
+        self.record.update(scale=self.scale, tolerance_m=self.tolerance, anchor_radius=self.radius,
+                           anchors=len(self.anchors), rows=0, anchor_exempt_rows=0)
+
+    def near(self, values):
+        distance = torch.cdist(values*self.weights, self.anchors*self.weights)
+        return (distance <= self.radius).any(-1)
+
+    def radii(self, radius):
+        return torch.where(radius > 0, (radius+self.tolerance)*self.scale-self.tolerance, radius)
+
+
 class SequentialValidity(GpuValidity):
-    def __init__(self,checker,snapshot,robot,tool_meshes,contact_pair=None,geometry_tolerance=1e-6,support_pose=None,support_side=None):
+    inflation = None  # SearchInflation of a free-space search view (see inflated)
+    active_inflation = None  # rows of the native batch being checked with the inflated geometry
+    shape_bucket = 256
+
+    def __init__(self,checker,snapshot,robot,tool_meshes,contact_pair=None,geometry_tolerance=1e-6,support_pose=None,support_side=None,
+                 fixed_body=None):
         super().__init__(checker, check_ground=True, ground_z=snapshot.policy.ground_z_m,
                          joint_names=ACTIVE_JOINTS, max_box_tilt_deg=snapshot.policy.max_box_tilt_deg)
         self.snapshot = snapshot
@@ -117,6 +150,62 @@ class SequentialValidity(GpuValidity):
                 raise ValueError("attachment lacks an exact own-tool contact certificate")
         if contact_pair is not None and any(item.parent_link == contact_pair[0]+"_tool0" for item in self.attachments):
             raise ValueError("a loaded tool cannot contact a second target")
+        # PR #80 fixed body (door_model.FixedBodyBoxes): the planner's robot has no base_link spheres.
+        self.fixed_body = fixed_body
+        if fixed_body is not None:
+            device = self.self_pairs.device
+            self.fixed_body_boxes = tuple(torch.as_tensor(value, device=device, dtype=torch.float32)
+                                          for value in (fixed_body.centers, fixed_body.rotations, fixed_body.halves))
+            self.fixed_body_query = [i for link, indices in self.link_indices.items()
+                                     if link not in fixed_body.query_excluded_links for i in indices]
+            self.fixed_body_world_clear = {}
+
+    def inflated(self, inflation):
+        """A free-space search view: the same checks with `inflation` (its time counts towards this validity)."""
+        view = copy.copy(self)
+        view.inflation, view.counter_owner = inflation, self
+        return view
+
+    def fixed_body_collision(self, spheres, scale=None):
+        """Rows whose robot spheres come within the activation distance of a fixed-body cuboid, or whose
+        cuboids overlap the world (static per scene; half extents scaled per row in free-space search)."""
+        centers, rotations, halves = self.fixed_body_boxes
+        query = spheres[:, self.fixed_body_query]
+        local = ((query[:, :, None, :3]-centers)[..., :, None]*rotations).sum(-2)
+        distance = torch.linalg.vector_norm((local.abs()-halves).clamp_min(0), dim=-1)
+        radius = query[..., 3:4]
+        collision = ((radius > 0) & (distance < radius+self.fixed_body.activation_m)).flatten(1).any(-1)
+        for value in {1.} if scale is None else {1., self.inflation.scale}:
+            if value not in self.fixed_body_world_clear:
+                position, rotation, half = self.world_geometry()
+                self.fixed_body_world_clear[value] = not bool(len(position)) or not bool(world_box_overlaps(
+                    centers, rotations, halves[:, None]*value, position, rotation, half,
+                    tolerance=self.fixed_body.world_tolerance_m).any())
+        if scale is None:
+            return collision | (not self.fixed_body_world_clear[1.])
+        grown = scale > 1.
+        return (collision | (grown & (not self.fixed_body_world_clear[self.inflation.scale]))
+                | (~grown & (not self.fixed_body_world_clear[1.])))
+
+    def world_geometry(self):
+        """Exact OBBs (position, rotation, half extents) of all non-ground world boxes and box meshes."""
+        if not hasattr(self, "_world_geometry"):
+            import numpy as np
+            objects = [item for item in self.snapshot.objects if item.object_id != "ground"]
+            boxes = [(pose_matrix(item.pose)[:3, 3], pose_matrix(item.pose)[:3, :3], np.asarray(item.dimensions_m)/2)
+                     for item in objects]
+            # Payload spheres carry no world cost, so world meshes need the same exact
+            # payload OBB test as cuboids. Only box-shaped meshes have an exact OBB.
+            for item in self.snapshot.meshes:
+                box = box_mesh_obb(item)
+                if box is None:
+                    raise ValueError(f"payload exact world check requires box meshes: {item.object_id}")
+                boxes.append(box)
+            shapes = ((-1, 3), (-1, 3, 3), (-1, 3))
+            self._world_geometry = tuple(torch.as_tensor(np.array([box[index] for box in boxes]).reshape(shapes[index]),
+                                                         device=self.self_pairs.device, dtype=torch.float32)
+                                         for index in range(3))
+        return self._world_geometry
 
     def exact_robot_self_collision(self, rows):
         """Float64 zero-tolerance robot-vs-robot pair check (the reference decision)."""
@@ -151,7 +240,16 @@ class SequentialValidity(GpuValidity):
         return collision.to(spheres.dtype).reshape(*spheres.shape[:-2],1)
 
     def _world_collision_cost(self, state):
-        cost = super()._world_collision_cost(state)
+        inflate = self.active_inflation
+        if inflate is None:
+            cost = super()._world_collision_cost(state)
+        else:
+            # Same native query as the baseline (already set up for this batch), inflated rows grown.
+            spheres = state.robot_spheres
+            query = spheres.clone()
+            query[..., 3] = torch.where(inflate.reshape(*spheres.shape[:-2], 1), self.inflation.radii(spheres[..., 3]),
+                                        spheres[..., 3])
+            cost = self.checker.collision_constraint.forward(replace(state, robot_spheres=query))
         # Exact box/box tangency produces ~3e-8 m positive float32 SDF cost.
         # Only payload spheres get the SAME 1um tolerance as the independent
         # actual-box SAT gate; robot-world/self/bounds remain unchanged.
@@ -164,22 +262,35 @@ class SequentialValidity(GpuValidity):
     def evaluate(self, values):
         torch.cuda.synchronize()
         started = time.perf_counter()
-        valid, _ = super().evaluate(values)
-        if self.attachments and not hasattr(self, "world_geometry"):
-            import numpy as np
-            objects = [item for item in self.snapshot.objects if item.object_id != "ground"]
-            boxes = [(pose_matrix(item.pose)[:3, 3], pose_matrix(item.pose)[:3, :3], np.asarray(item.dimensions_m)/2)
-                     for item in objects]
-            # Payload spheres carry no world cost, so world meshes need the same exact
-            # payload OBB test as cuboids. Only box-shaped meshes have an exact OBB.
-            for item in self.snapshot.meshes:
-                box = box_mesh_obb(item)
-                if box is None:
-                    raise ValueError(f"payload exact world check requires box meshes: {item.object_id}")
-                boxes.append(box)
-            position, rotation, half = (torch.as_tensor(np.array([box[index] for box in boxes]),
-                                                        device=values.device, dtype=values.dtype) for index in range(3))
-            self.world_geometry = (position, rotation, half)
+        count = len(values)
+        if not count:
+            return (torch.zeros(0, device=values.device, dtype=torch.bool),
+                    torch.zeros(0, device=values.device))
+        # cuRobo-Fast pays a one-time cost per new batch shape (about 15 ms, or a compile on first sight);
+        # padding to whole buckets bounds the shapes a search produces. Rows are checked independently.
+        padded = -(-count//self.shape_bucket)*self.shape_bucket
+        if padded != count:
+            values = torch.cat((values, values[-1:].expand(padded-count, -1)))
+        inflate = None
+        if self.inflation is not None:
+            inflate = ~self.inflation.near(values)
+            self.inflation.record["rows"] += count
+            self.inflation.record["anchor_exempt_rows"] += count-int(inflate[:count].sum())
+        valid, costs = self._evaluate(values, inflate)
+        torch.cuda.synchronize()
+        getattr(self, "counter_owner", self).collision_ms += (time.perf_counter()-started)*1000
+        return valid[:count], costs[:count]
+
+    def _evaluate(self, values, inflate):
+        """Validity of `values`; rows where `inflate` is set use the free-space search geometry."""
+        valid = torch.empty(len(values), device=values.device, dtype=torch.bool)
+        for offset in range(0, len(values), 4096):
+            self.active_inflation = None if inflate is None else inflate[offset:offset+4096]
+            try:
+                valid[offset:offset+4096] = super().evaluate(values[offset:offset+4096])[0]
+            finally:
+                self.active_inflation = None
+        scale = None if inflate is None else torch.where(inflate, self.inflation.scale, 1.)
         costs = torch.zeros(len(values), device=values.device)
         # Bound temporary OBB/sphere tensors, including long RRT edge batches.
         for offset in range(0, len(values), 1024):
@@ -189,6 +300,9 @@ class SequentialValidity(GpuValidity):
             tools = fk.tool_poses.to_dict()
             all_spheres = fk.robot_spheres.reshape(len(q), -1, 4)
             spheres = all_spheres[:, self.robot_indices]
+            rows = None if scale is None else scale[offset:offset+len(q)]
+            if self.fixed_body is not None:
+                valid[offset:offset+len(q)] &= ~self.fixed_body_collision(all_spheres, rows)
             if self.contact_pair is not None:
                 side, object_id = self.contact_pair
                 item = self.snapshot.object(object_id)
@@ -196,7 +310,10 @@ class SequentialValidity(GpuValidity):
                 half = torch.tensor(item.dimensions_m, device=q.device, dtype=q.dtype)/2
                 local = matmul3(all_spheres[..., :3]-matrix[:3, 3], matrix[:3, :3])
                 distance = torch.linalg.vector_norm((local.abs()-half).clamp_min(0), dim=-1)
-                hit = (all_spheres[..., 3] > 0) & (distance < all_spheres[..., 3]-self.geometry_tolerance)
+                radius = all_spheres[..., 3]
+                if rows is not None:
+                    radius = torch.where(rows[:, None] > 1., self.inflation.radii(radius), radius)
+                hit = (all_spheres[..., 3] > 0) & (distance < radius-self.geometry_tolerance)
                 # Only this tool/target pair is replaced by the mesh proof. Other
                 # links and attached boxes still collide with the complete target.
                 hit[:, self.link_indices[side+"_link7"]] = False
@@ -235,7 +352,12 @@ class SequentialValidity(GpuValidity):
                 own_columns = [i for i, sphere_index in enumerate(self.robot_indices) if sphere_index in own_indices]
                 overlap[:, own_columns] = False
                 good &= ~overlap.any(-1)
-                good &= ~world_box_overlaps(position, rotation, half, *self.world_geometry, tolerance=self.geometry_tolerance)
+                grown = half if rows is None else half*rows[:, None, None]
+                good &= ~world_box_overlaps(position, rotation, grown, *self.world_geometry(), tolerance=self.geometry_tolerance)
+                if self.fixed_body is not None:
+                    centers, rotations, halves = self.fixed_body_boxes
+                    good &= ~world_box_overlaps(position, rotation, half, centers, rotations,
+                                                halves+self.fixed_body.activation_m, tolerance=self.geometry_tolerance)
                 for other_position, other_rotation, other_half in boxes:
                     good &= ~obb_overlap(position, rotation, half, other_position, other_rotation, other_half, tolerance=self.geometry_tolerance)
                 if self.support_pose is not None and item.parent_link == self.support_side+"_tool0":
@@ -245,8 +367,6 @@ class SequentialValidity(GpuValidity):
                     good &= position_ok & (cosine >= math.cos(math.radians(.5)))
                 boxes.append((position, rotation, half))
                 valid[offset:offset+len(q)] &= good
-        torch.cuda.synchronize()
-        self.collision_ms += (time.perf_counter()-started)*1000
         return valid, costs
 
 

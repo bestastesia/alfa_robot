@@ -9,6 +9,11 @@ links) and attached-box/world pair is tested, plus the ground plane. A pair fail
 reports a penetration deeper than --tolerance-m: designed suction contacts and box-on-box
 tangency are certified by the planner within that tolerance. For non-convex (BVH) mesh pairs
 FCL's depth is only a triangle-contact estimate; compare failing pairs against a reference run.
+
+In the re-zeroed model (tool0 at J7+135 mm) the link7 mesh still reaches 16 mm past the TCP plane.
+That suction cap is audited as its own piece: like PR #80's tool_cap_policy it may enter only its
+side's own boxes (the box that side last held and the next one it holds), recorded as tolerated
+cap_contact; against everything else it is checked like the rest of the link.
 """
 import argparse
 from itertools import combinations
@@ -24,6 +29,7 @@ import yaml
 import yourdfpy
 
 from curobo_core.adapter import pose_matrix
+from curobo_core.door_model import REZERO_REVISION, model_revision
 from curobo_core.mesh_validation import _mesh_geometry
 from curobo_core.scene import Pose
 
@@ -36,6 +42,30 @@ def corners(half):
     return np.array([[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)])*half
 
 
+def split_at_tool_plane(mesh, tool):
+    """(body, cap): the parts of a link mesh behind and in front of the TCP plane (Tool0 z = 0).
+
+    `tool` is the Tool0 frame in the mesh's coordinates; cap is None when nothing lies in front."""
+    point, normal = tool[:3, 3], tool[:3, 2]
+    if float(((np.asarray(mesh.vertices)-point)@normal).max()) <= 0.:
+        return mesh, None
+    return mesh.slice_plane(point, -normal, cap=True), mesh.slice_plane(point, normal, cap=True)
+
+
+def cap_targets(attachments_by_frame):
+    """Per frame, the boxes each side's suction cap may touch: the one it last held and the next it holds."""
+    held = [{item['parent_link'].removesuffix('_tool0'): item['object_id'] for item in row} for row in attachments_by_frame]
+    targets = [dict(left=set(), right=set()) for _ in held]
+    for side in ('left', 'right'):
+        for order in (range(len(held)), range(len(held)-1, -1, -1)):
+            current = None
+            for index in order:
+                current = held[index].get(side, current)
+                if current is not None:
+                    targets[index][side].add(current)
+    return targets
+
+
 class FrameAudit:
     def __init__(self, robot_config, tolerance):
         self.robot = yourdfpy.URDF.load(robot_config['urdf_path'], load_meshes=False, build_scene_graph=True)
@@ -44,6 +74,10 @@ class FrameAudit:
         self.parents = {joint.child: joint.parent for joint in self.robot.joint_map.values()}
         self.tolerance = tolerance
         self.request = fcl.CollisionRequest(num_max_contacts=1, enable_contact=True)
+        tools = {}
+        if model_revision(robot_config['urdf_path']) == REZERO_REVISION:
+            tools = {joint.parent: (joint.child.removesuffix('_tool0'), np.asarray(joint.origin))
+                     for joint in self.robot.joint_map.values() if joint.child.endswith('_tool0')}
         self.links = []
         for link in self.robot.link_map.values():
             for index, collision in enumerate(link.collisions):
@@ -53,9 +87,17 @@ class FrameAudit:
                 mesh = trimesh.load(source.filename, force='mesh', process=False)
                 if source.scale is not None:
                     mesh.apply_scale(source.scale)
-                self.links.append(dict(name=f'{link.name}:{index}', link=link.name,
-                                       object=fcl.CollisionObject(_mesh_geometry(mesh)), vertices=np.asarray(mesh.vertices),
-                                       origin=np.eye(4) if collision.origin is None else np.asarray(collision.origin)))
+                origin = np.eye(4) if collision.origin is None else np.asarray(collision.origin)
+                pieces = [(f'{link.name}:{index}', mesh, None)]
+                if link.name in tools:
+                    side, tool = tools[link.name]
+                    body, cap = split_at_tool_plane(mesh, np.linalg.inv(origin)@tool)
+                    pieces = [(f'{link.name}:{index}', body, None)]+([] if cap is None else [(f'{link.name}:{index}:cap', cap, side)])
+                for name, piece, cap_side in pieces:
+                    self.links.append(dict(name=name, link=link.name, cap_side=cap_side,
+                                           object=fcl.CollisionObject(_mesh_geometry(piece)),
+                                           vertices=np.asarray(piece.vertices), origin=origin))
+        self.caps = [item['name'] for item in self.links if item['cap_side']]
         self.self_pairs = [(i, j) for i, j in combinations(range(len(self.links)), 2)
                            if self.links[i]['link'] != self.links[j]['link']
                            and frozenset((self.links[i]['link'], self.links[j]['link'])) not in self.ignored]
@@ -92,7 +134,8 @@ class FrameAudit:
             return None
         return max((float(contact.penetration_depth) for contact in result.contacts), default=0.)
 
-    def check(self, positions, world, attachments, base, ground_z, support_link):
+    def check(self, positions, world, attachments, base, ground_z, support_link, caps=None):
+        """Contacts and failures of one frame; `caps` maps a side to the boxes its suction cap may touch."""
         state = {**self.locked, **positions}
         self.robot.update_cfg({name: state.get(name, 0.) for name in self.robot.actuated_joint_names})
         poses = {name: self.robot.get_transform(name, self.robot.base_link)
@@ -113,11 +156,11 @@ class FrameAudit:
                                 touch=touch, effective=self.parents[item['parent_link']]))
         contacts, failures = [], []
 
-        def record(kind, first, second, value):
+        def record(kind, first, second, value, tolerated=False):
             if value is None:
                 return
             entry = dict(kind=kind, pair=[first, second], depth_m=value)
-            (failures if value > self.tolerance else contacts).append(entry)
+            (failures if value > self.tolerance and not tolerated else contacts).append(entry)
 
         # Ground is the policy plane (base frame z equals map z for a planar base).
         floor = ground_z-base[2, 3]
@@ -128,8 +171,12 @@ class FrameAudit:
             if item['low'][2] < floor-1e-6:
                 failures.append(dict(kind='payload_ground', pair=[item['name'], 'ground'], depth_m=float(floor-item['low'][2])))
         for item in robot:
+            own = (caps or {}).get(item['cap_side'], ()) if item['cap_side'] else ()
             for other in world:
-                record('robot_world', item['name'], other['name'], self.depth(item, other))
+                if other['name'] in own:
+                    record('cap_contact', item['name'], other['name'], self.depth(item, other), tolerated=True)
+                else:
+                    record('robot_world', item['name'], other['name'], self.depth(item, other))
         for i, j in self.self_pairs:
             record('robot_self', robot[i]['name'], robot[j]['name'], self.depth(robot[i], robot[j]))
         for box in payload:
@@ -180,6 +227,7 @@ def audit_round(audit, result, stride):
     names = result['joint_names']
     frames = np.asarray(result['frames'])
     checked, contacts, failures = 0, {}, []
+    caps = cap_targets(result['attachments_by_frame']) if audit.caps else None
     for index in range(0, len(frames), stride):
         frame = frames[index]
         attachments = result['attachments_by_frame'][index]
@@ -194,7 +242,8 @@ def audit_round(audit, result, stride):
         key = (tuple(np.round(frame[:3], 12)), tuple(sorted(attached)), tuple(sorted(released)))
         world = audit.world(key, present, meshes, base)
         positions = dict(zip(names[3:], frame[3:]))
-        found, bad = audit.check(positions, world, attachments, np.eye(4), policy['ground_z_m'], policy['ground_support_link'])
+        found, bad = audit.check(positions, world, attachments, np.eye(4), policy['ground_z_m'], policy['ground_support_link'],
+                                 None if caps is None else caps[index])
         checked += 1
         for item in found:
             label = (item['kind'], *item['pair'])
@@ -219,7 +268,7 @@ def main():
     p.add_argument('--stride', type=int, default=1, help='audit every n-th frame (1 = all frames)')
     a = p.parse_args()
     audit = FrameAudit(yaml.safe_load(a.robot_config.read_text())['kinematics'], a.tolerance_m)
-    output = dict(tolerance_m=a.tolerance_m, stride=a.stride, rounds=[])
+    output = dict(tolerance_m=a.tolerance_m, stride=a.stride, tool_caps=audit.caps, rounds=[])
     for path in a.rounds:
         began = time.perf_counter()
         result = json.loads(path.read_text())

@@ -17,10 +17,10 @@ import torch
 from scipy.spatial.transform import Rotation, Slerp
 
 from v3_batched_loaded_search import GpuValidity, densify
-from v3_cartesian_math import METRE, CarriageModel, branch, edge_points, refine, wrap
+from v3_cartesian_math import LEGACY_FRAME, METRE, CarriageModel, edge_points, refine, wrap
 from v3_cartesian_transport import (
-    BatchAnalyticIk, CartesianTransportSpace, DEFAULTS as SINGLE_DEFAULTS,
-    GOAL_WEIGHTS,
+    CartesianTransportSpace, DEFAULTS as SINGLE_DEFAULTS,
+    GOAL_WEIGHTS, batch_ik, joint_frame,
 )
 from v3_multiroot_search import batched_rrt_connect_multi_goal
 
@@ -37,7 +37,6 @@ DEFAULTS = {**SINGLE_DEFAULTS, "batch": 128, "connect_candidates": 32,
             "endpoint_updown_tolerance_m": 1e-6,
             "endpoint_state_tolerance": 2e-6}
 ARMS = (slice(1, 8), slice(8, 15))
-_IK = None
 
 
 class _Deadline(Exception):
@@ -84,24 +83,24 @@ def _json_safe(value):
     return value
 
 
-def dual_branch(row):
-    """The left and right (q2, q4, q6) sign triples, in that order."""
+def dual_branch(row, frame=LEGACY_FRAME):
+    """The left and right (q2, q4, q6) sign triples of the IK library's angles, in that order."""
     row = _numpy(row)
     if row.shape != (15,) or not np.isfinite(row).all():
         raise ValueError("dual_branch requires one finite 15-joint row")
-    return branch(row[ARMS[0]]), branch(row[ARMS[1]])
+    return frame.branch(0, row[ARMS[0]]), frame.branch(1, row[ARMS[1]])
 
 
-def group_dual_candidates(roots, goals):
+def group_dual_candidates(roots, goals, frame=LEGACY_FRAME):
     """Retain every root/goal of each matching branch pair, with original indices."""
     roots, goals = _rows(roots), _rows(goals)
     groups = {}
     for index, row in enumerate(roots):
-        signature = dual_branch(row)
+        signature = dual_branch(row, frame)
         groups.setdefault(signature, dict(branch=signature, root_indices=[], goal_indices=[]))[
             "root_indices"].append(index)
     for index, row in enumerate(goals):
-        signature = dual_branch(row)
+        signature = dual_branch(row, frame)
         if signature in groups:
             groups[signature]["goal_indices"].append(index)
     return [group for group in groups.values() if group["goal_indices"]]
@@ -111,14 +110,14 @@ def _pair_distances(roots, goals):
     return np.linalg.norm((roots[:, None] - goals[None]) * GOAL_WEIGHTS, axis=2)
 
 
-def nearest_branch_change(roots, goals):
+def nearest_branch_change(roots, goals, frame=LEGACY_FRAME):
     """Route iff the baseline-weighted nearest pair changes either arm's branch."""
     roots, goals = _rows(roots), _rows(goals)
     if not len(roots) or not len(goals):
         return dict(route=False, root_index=None, goal_index=None, reason="no_candidates")
     distances = _pair_distances(roots, goals)
     root, goal = np.unravel_index(np.argmin(distances), distances.shape)
-    first, last = dual_branch(roots[root]), dual_branch(goals[goal])
+    first, last = dual_branch(roots[root], frame), dual_branch(goals[goal], frame)
     return dict(route=first != last, root_index=int(root), goal_index=int(goal),
                 distance=float(distances[root, goal]),
                 root_branch=[list(item) for item in first], goal_branch=[list(item) for item in last])
@@ -134,7 +133,7 @@ class DualCartesianTransportSpace(CartesianTransportSpace):
     joint_names = STATE_NAMES
     stability_weight = 0.
 
-    def __init__(self, planner, roots, goals, checker, ik, options):
+    def __init__(self, planner, roots, goals, checker, ik, options, validity=None):
         self.options = {**DEFAULTS, **(options or {})}
         self.deadline = self.options.get("_deadline", math.inf)
         self._check()
@@ -142,8 +141,9 @@ class DualCartesianTransportSpace(CartesianTransportSpace):
         self.root_rows, self.goal_rows = _rows(roots).copy(), _rows(goals).copy()
         if not len(self.root_rows) or not len(self.goal_rows):
             raise _CandidateMismatch("no_candidates")
-        self.arm_branches = dual_branch(self.root_rows[0])
-        if any(dual_branch(row) != self.arm_branches for row in np.vstack([self.root_rows, self.goal_rows])):
+        frame = joint_frame(planner)
+        self.arm_branches = dual_branch(self.root_rows[0], frame)
+        if any(dual_branch(row, frame) != self.arm_branches for row in np.vstack([self.root_rows, self.goal_rows])):
             raise _CandidateMismatch("branch_mismatch")
         self.max_jump = math.radians(self.options["max_jump_deg"])
         self.max_updown_step = self.options["max_updown_step_m"]
@@ -205,7 +205,7 @@ class DualCartesianTransportSpace(CartesianTransportSpace):
         if not (found.all() and self._endpoint_close(reconstructed, endpoints).all()):
             raise _CandidateMismatch("endpoint_round_trip")
         self._check()
-        self.validity = GpuValidity(checker, check_ground=True)
+        self.validity = validity if validity is not None else GpuValidity(checker, check_ground=True)
         self.device = self.validity.weights.device
         self.weights = torch.tensor(self.weights_np, device=self.device, dtype=torch.float32)
         self._check()
@@ -385,15 +385,15 @@ class DualCartesianTransportSpace(CartesianTransportSpace):
 
 
 def plan_dual_cartesian_transport(planner, roots, goals, checker, budget_s=.175,
-                                  seed=20261015, options=None):
+                                  seed=20261015, options=None, validity=None):
     """Return (dense 15-axis path or None, JSON-safe stats), under one fixed deadline.
 
     Direct pairs are distance-sorted and checked in chunks, not a truncated
     candidate pool. Direct attempts get at most half the group's remaining
     time by default; the rest is available to multi-root/multi-goal RRT and
     final reconstruction. Joint-space fallback is the caller's responsibility.
+    Joint rows are checked with `validity` (default: a GpuValidity of `checker`).
     """
-    global _IK
     began = time.perf_counter()
     if not math.isfinite(budget_s) or budget_s < 0:
         raise ValueError("dual transport budget_s must be finite and nonnegative")
@@ -428,7 +428,7 @@ def plan_dual_cartesian_transport(planner, roots, goals, checker, budget_s=.175,
         _check_deadline(deadline)
         roots, goals = _rows(roots), _rows(goals)
         stats.update(root_count=len(roots), goal_count=len(goals), candidate_count=len(goals))
-        groups = group_dual_candidates(roots, goals)
+        groups = group_dual_candidates(roots, goals, joint_frame(planner))
         stats.update(group_count=len(groups),
                      same_branch_roots=sum(len(group["root_indices"]) for group in groups),
                      same_branch_goals=sum(len(group["goal_indices"]) for group in groups),
@@ -444,8 +444,7 @@ def plan_dual_cartesian_transport(planner, roots, goals, checker, budget_s=.175,
             ordered.append((float(distances.min()), group, np.argsort(distances, axis=None, kind="stable")))
         ordered.sort(key=lambda item: item[0])
         _check_deadline(deadline)
-        _IK = _IK or BatchAnalyticIk()
-        ik = _IK
+        ik = batch_ik(planner)
         calls, seconds = ik.calls, ik.seconds
         _check_deadline(deadline)
         for group_number, (_, group, pairs) in enumerate(ordered):
@@ -459,7 +458,7 @@ def plan_dual_cartesian_transport(planner, roots, goals, checker, budget_s=.175,
             stats["groups_tried"] += 1
             group_roots, group_goals = roots[group["root_indices"]], goals[group["goal_indices"]]
             try:
-                space = DualCartesianTransportSpace(planner, group_roots, group_goals, checker, ik, options)
+                space = DualCartesianTransportSpace(planner, group_roots, group_goals, checker, ik, options, validity)
             except _CandidateMismatch as error:
                 _check_deadline(deadline)
                 attempt["failure"] = str(error)
