@@ -140,6 +140,9 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # Right precontact IK candidates also enumerate the analytic solutions of every branch, as the left
     # precontact does (the numerical IK from the re-zeroed model's Home finds few, often unreachable ones).
     right_precontact_analytic_ik = False
+    # The center column (2) takes the outer columns' rack-supported flow: in the re-zeroed model the
+    # center flow's compensated upper extraction is out of the right arm's reach.
+    center_column_outer_flow = False
 
     def __init__(self, assets):
         super().__init__(assets)
@@ -189,6 +192,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.pose_score_bucket = .05
         self.regrasp_lowering_prefilter = True
         self.right_precontact_analytic_ik = True
+        self.center_column_outer_flow = True
+        self.free_space_stages = ('conveyor_suffix',)  # placement and Home searches only (user choice A)
         self.target_values = convert_row(list(ACTIVE_JOINTS), self.target_values)
         self.model_id = self._model_identity()
         self.snapshot = replace(self.snapshot, model_id=self.model_id)
@@ -391,7 +396,7 @@ class DoorTask(_SequentialTask):
 
     def contact_target(self, side, item, roll):
         target,proof=super().contact_target(side,item,roll)
-        offset=(float(getattr(self,'upper_right_regrasp_z_offset',.06)) if self.request.column!=2 and side=='right' and item.object_id==f'wall_box_{self.request.upper_box:02d}' else
+        offset=(float(getattr(self,'upper_right_regrasp_z_offset',.06)) if self.outer_flow() and side=='right' and item.object_id==f'wall_box_{self.request.upper_box:02d}' else
                 float(getattr(self,'upper_regrasp_z_offset',0.)) if side=='left' and item.object_id==f'wall_box_{self.request.upper_box:02d}' else 0.)
         if offset:
             target=target.copy();target[2,3]-=offset
@@ -420,6 +425,11 @@ class DoorTask(_SequentialTask):
         endpoints=np.unique(np.round(endpoints,7),axis=0) if endpoints else np.empty((0,15))
         if len(endpoints):endpoints=endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
         return int(self.exact_pose_mask(endpoints,'right',target).sum())
+
+    def outer_flow(self):
+        """Whether this pair takes the rack-supported outer-column flow (DoorPlanner.center_column_outer_flow)."""
+        column=getattr(self.request,'column',2)
+        return column in (0,1,3,4) or (column==2 and getattr(getattr(self,'planner',None),'center_column_outer_flow',False))
 
     def held_lowering_lifts(self):
         """Lifts, from the current one down, at which the left arm holds the lower box in place collision-free.
@@ -1665,7 +1675,11 @@ class DoorTask(_SequentialTask):
         low, high = (float(values[0].item()) for values in limits)
         lifts = np.asarray([value for value in self.lift_grid if low+1e-5 <= value <= high-1e-5])
         direct_path=None;direct_attempts=[];direct_limit_mm=2. if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else 1.
-        for lift_end in [float(start[0]),*lifts.tolist()]:
+        direct_lifts=[float(start[0]),*lifts.tolist()]
+        # Search endpoints at the current lift too: the held box may allow no lift change at all (a lower
+        # box recentered at its J6 limit cannot follow a rising carriage).
+        lifts=np.unique(np.r_[float(start[0]),lifts])
+        for lift_end in direct_lifts:
             rows,details=self.planner.analytic_extract(start,validity,validity,sides=('right',),direction=self.wall_outward_direction,
                 distance_m=distance,lift_end=lift_end,hold_sides=('left',),swivel_continuation=True)
             accepted=rows is not None and (not isinstance(details,dict) or details.get('max_line_error_mm',0.)<=direct_limit_mm)
@@ -2237,7 +2251,7 @@ class DoorTask(_SequentialTask):
                                - self.request.snapshot.object(f'wall_box_{self.request.lower_box:02d}').pose.position[2])
         self.audit([self.q], [], self.q)
         self.append([self.q])
-        if getattr(self.request,'column',2) in (0,1,3,4):
+        if self.outer_flow():
             self.report['pair_strategy']='outer_standard_rack_supported_lower_recenter'
             self.right_precontact_extra_rotation_max_deg=120.
             self.left_precontact_extra_rotation_max_deg=70.
@@ -2250,7 +2264,7 @@ class DoorTask(_SequentialTask):
             self.store.release(upper.object_id,self.store.snapshot().revision,original_upper.pose)
             self.support_pose=pose_matrix(original_upper.pose);self.support_side='right';self.contact_pair=('right',upper.object_id);self.validity_cache={};self.cached_key=None;self.append([self.q])
             self.allow_partial_extract=True;self.extract('left',[0]+LEFT);self.allow_partial_extract=False
-            extraction_shift={0:.35,1:.35,3:.35,4:.25}[self.request.column]
+            extraction_shift={0:.35,1:.35,2:.35,3:.35,4:.25}[self.request.column]
             self.switch_pick_base(extraction_shift);self.contact_pair=None;self.support_pose=None;self.support_side=None;self.validity_cache={};self.cached_key=None;self.audit([self.q],[],self.q)
             self.finish_wall_clearance('left',lower,[0]+LEFT);self.recenter('left',[0]+LEFT,check_lowering=False)
             clearance=self.wall_clearance(self.q,lower,self.request.snapshot.object(lower.object_id));self.report['lower_wait_clearance_m']=clearance
