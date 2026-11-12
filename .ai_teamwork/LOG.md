@@ -2402,3 +2402,21 @@
   - 现代化 verifier 的 box_lifecycle 不适用于外列托架换手；
   - arm_carriage 的球覆盖缺口最大 5.5 cm，只靠固定余量；
   - 旧模型行为不变，新开关默认关闭。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列新零位模型：转动门禁与规划时延（MOTION-443）
+- 做了什么：
+  - 转动门禁放宽为"到目标的关节直线转动 + 30°"；
+  - 回中先试关节直线，笛卡尔搜索在同构型分支目标 ≥2 时换种子重试，最多 3 次；
+  - 门禁达不到时，搜索拿到两条路径即停；
+  - 外列跳过从未成功的支撑补偿拔出搜索；
+  - cuRobo 自碰对构建改成张量计算，两臂交叉余量改成球块广播，两者判定都逐项一致。
+- 改了哪里：research/curobo_v3/tools/curobo_core/{door_recenter,door_sequential_validity,fast_builds}.py、tests/test_door_{latency,rezero}.py；commit 72a9d36、e170785（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：
+  - 种子 5/11/29/41（预热 7）五列全部成功；
+  - 每列规划：列4 11.3–16.0 s、列3 6.7–7.7 s、列1 10.0–12.4 s、列2 7.8–10.7 s（v6 为 19–24 s）；
+  - 全帧 mesh 审计 20 轮 0 穿透，结构与列0 镜像 verifier 通过，CPU 140 passed；
+  - 证据在 ~/Sevenova/door-five-column-latency-20261108/migration/step3-latency-v12/。
+- 留给下个 AI：
+  - 列4、列1 仍超 10 s。列4 最近对的右腕约 200° 翻转是固有的：所有直线都会扫到门框、机架或固定车体，与余量无关。列1 左臂回中的直线被右臂挡住。
+  - 现代化 verifier 用的是固定转动门禁，在列3/1/2 上仍不过：上箱预接触 100–127°、左臂回中 150–306°、最近对 180–252°。
+  - 方案 A（托架/Home 重设计）未做。
