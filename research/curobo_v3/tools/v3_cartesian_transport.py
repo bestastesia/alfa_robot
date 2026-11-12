@@ -24,7 +24,9 @@ GOAL_WEIGHTS = np.array([METRE] + [1.] * 14)
 DEFAULTS = dict(goals_per_group=32, max_jump_deg=8., edge_resolution=.05, path_resolution=.01,
                 workspace_margin_m=.35, batch=256, connect_candidates=64, step=.28,
                 # MOTION-327 v2 options; all off keeps the MOTION-323 (v1) behaviour.
-                shortcut=False, monotonic_progress=False, strict_budget=False, budget_reserve_s=.25)
+                shortcut=False, monotonic_progress=False, strict_budget=False, budget_reserve_s=.25,
+                # Fewer same-branch goals than this: straight lines only, no task-space RRT (0: always).
+                rrt_min_goals=0)
 
 
 class BatchAnalyticIk:
@@ -283,6 +285,9 @@ def plan_cartesian_transport(planner, start, candidates, checker, budget_s=2., s
             if path is not None and not (strict and over_budget()):
                 return finish(path, tier="direct_line", selected_goal=index, raw_waypoints=2)
             attempt.setdefault("direct_line_fine_failures", []).append(failure or "over_budget")
+        if len(same) < options["rrt_min_goals"]:
+            attempt["rrt"] = "skipped_below_rrt_min_goals"
+            continue
         remaining = budget_s - (time.perf_counter() - began) - (options["budget_reserve_s"] if strict else 0.)
         if remaining <= 0:
             break

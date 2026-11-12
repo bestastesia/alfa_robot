@@ -189,6 +189,12 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # re-zeroed column 4: 2 of 5 for one request); the RRT fallback may change the branch, from which
     # the later placement became unreachable.
     recenter_cartesian_attempts = 1
+    # The single-arm recenter's Cartesian quality search (no support compensation) runs its task-space
+    # RRT only with at least this many goals on the arm's IK branch, and otherwise tries their straight
+    # lines only: in the re-zeroed model a
+    # single same-branch goal is left where the other arm blocks the carry (columns 1 and 2), and none of
+    # those ten searches (v11-v12) found a path in its 0.76 s (0: always).
+    recenter_cartesian_rrt_min_goals = 0
     # Side precontact joint RRT attempts: first densely verified path plus this refinement window,
     # stopping at the first path within the 30 deg gate (None: three whole 2 s attempts).
     side_precontact_refinement_s = None
@@ -256,6 +262,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.latest_pair_settled_arm_deg = 45.
         self.recenter_cartesian_budget_s = 1.
         self.recenter_cartesian_attempts = 3
+        self.recenter_cartesian_rrt_min_goals = 2
         self.precontact_joint_first = True
         self.side_precontact_refinement_s = .25
         self.direct_line_first = True
@@ -1632,20 +1639,22 @@ class DoorTask(_SequentialTask):
             score = max(left['extra_deg'],right['extra_deg'])+.1*extra_sum+.01*max(0.,backtrack)
             return score, path, left, right, search_stats
 
+        refine_s = .75
+
         def bank():
             if not fallback_s:
-                yield from ((seed, .75) for seed in seed_bank)
+                yield from ((seed, refine_s) for seed in seed_bank)
                 return
             # Short trees miss the far wrist branches under the coverage margins: until a seed has a
             # path, up to three seeds search up to fallback_s each for their first path (a found one can
-            # still fail the dense check); the others refine the rotation in .75 s.
+            # still fail the dense check); the others refine the rotation in refine_s.
             long_attempts = 0
             for seed in seed_bank:
                 if not alternatives and long_attempts < 3:
                     long_attempts += 1
                     yield seed, fallback_s
                 else:
-                    yield seed, .75
+                    yield seed, refine_s
         misses = 0
         for search_seed, budget in bank():
             seed_started = time.perf_counter()
@@ -1681,6 +1690,11 @@ class DoorTask(_SequentialTask):
                     break
                 if duplicate:
                     stop_reason = 'duplicate_path'
+                    break
+                # A refining seed adds an alternative only if it finds a path within refine_s; after a
+                # first path that took longer, none did (re-zeroed column 4, v7-v12: 0 of 56 seeds).
+                if fallback_s and (search_stats or {}).get('first_verified_solution_ms', 0.) > refine_s*1000:
+                    stop_reason = 'first_path_slower_than_refinement'
                     break
         self.report['latest_compact_search'] = dict(
             seed_bank=list(seed_bank), fallback_s=fallback_s, rotation_gates_deg=gates, stop_reason=stop_reason,
@@ -1775,7 +1789,8 @@ class DoorTask(_SequentialTask):
                     seed=quality_seed,
                     options={'edge_resolution': .08, 'batch': 256, 'connect_candidates': 64,
                              'shortcut': True, 'monotonic_progress': True,
-                             'strict_budget': True, 'budget_reserve_s': .25},
+                             'strict_budget': True, 'budget_reserve_s': .25,
+                             'rrt_min_goals': self.planner.recenter_cartesian_rrt_min_goals if mapper is None else 0},
                     validity=searched, active_indices=active,
                     row_mapper=mapper, derived_indices=derived)
                 quality_stats = quality_stats or {}
