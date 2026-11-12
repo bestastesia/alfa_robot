@@ -207,6 +207,14 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # outer flow defers the extraction to the rack-supported partial line; in the re-zeroed model that
     # search found no path in any column and the partial line is what ran (False: skipped).
     deferred_extract_search = True
+    # Coarse resolution (rad) at which DoorTask.shortcut_states screens its candidate edges before the
+    # 0.5 deg check: the full check of every later point of a 129-point path took 0.5-1.9 s per call
+    # in the re-zeroed latest pair and upper precontacts (None: 0.5 deg check of every edge).
+    shortcut_screen_rad = None
+    # Joint RRT dense checks one tree edge at a time with each edge's result kept (the
+    # edge_cache of batched_rrt_connect_multi_goal: same decisions, fewer checks). The re-zeroed latest
+    # pair rejected up to 96 coarse-valid connections through shared edges, 2.7 s of rechecks.
+    rrt_fine_edge_cache = False
 
     def __init__(self, assets):
         install_fast_builds()
@@ -266,6 +274,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.precontact_joint_first = True
         self.side_precontact_refinement_s = .25
         self.direct_line_first = True
+        self.shortcut_screen_rad = .05
+        self.rrt_fine_edge_cache = True
         self.deferred_extract_search = False
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05
@@ -992,17 +1002,33 @@ class DoorTask(_SequentialTask):
         return accepted
 
     def shortcut_states(self, points, validity):
+        """Greedy shortcut: from each kept point, the farthest later point joined by an edge valid at
+        0.5 deg. With planner.shortcut_screen_rad, every candidate edge is first checked at that coarser
+        resolution and only the coarse-valid ones, farthest first, densely: an edge whose coarse sample
+        collides is not taken even where the 0.5 deg samples miss that collision."""
         values = np.asarray(points, dtype=np.float64)
         if len(values) <= 2:
             return values
+        screen = getattr(self.planner, 'shortcut_screen_rad', None)
         kept = [0]
         while kept[-1] < len(values)-1:
             source = kept[-1]
             targets = np.arange(len(values)-1, source, -1)
             starts = self.tensor(np.repeat(values[source][None], len(targets), axis=0))
-            good = validity.edges(starts, self.tensor(values[targets]),
-                                  resolution=math.radians(.5)).cpu().numpy()
-            kept.append(int(targets[np.argmax(good)]) if good.any() else source+1)
+            ends = self.tensor(values[targets])
+            if screen is None:
+                good = validity.edges(starts, ends, resolution=math.radians(.5)).cpu().numpy()
+                kept.append(int(targets[np.argmax(good)]) if good.any() else source+1)
+                continue
+            chosen = source+1
+            screened = np.flatnonzero(validity.edges(starts, ends, resolution=screen).cpu().numpy())
+            for offset in range(0, len(screened), 8):
+                batch = torch.as_tensor(screened[offset:offset+8], device=starts.device)
+                good = validity.edges(starts[batch], ends[batch], resolution=math.radians(.5)).cpu().numpy()
+                if good.any():
+                    chosen = int(targets[screened[offset+int(np.argmax(good))]])
+                    break
+            kept.append(chosen)
         return values[kept]
 
     def tool_poses(self, rows, side):
@@ -1812,7 +1838,7 @@ class DoorTask(_SequentialTask):
             lo, hi = validity.checker.kinematics.get_joint_limits().position
             search = constrained_rrt_connect if mapper is not None else batched_rrt_connect_multi_goal
             options = (dict(stop_at_first_valid=True, batch=256, connect_candidates=64, step=.28)
-                       if mapper is not None else {})
+                       if mapper is not None else dict(edge_cache=self.planner.rrt_fine_edge_cache))
             for attempt in range(0 if quality_good else 4):
                 attempts_run += 1
                 sparse, stats = search(

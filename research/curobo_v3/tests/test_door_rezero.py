@@ -271,5 +271,48 @@ class RotationGateTests(unittest.TestCase):
         self.assertEqual(task.straight_line_path(np.zeros(15), np.empty((0, 15)), task.validity, ('left',)), (None, None))
 
 
+class ShortcutScreenTests(unittest.TestCase):
+    """DoorTask.shortcut_states on rows that collide while left J1 lies in blocked (deg) intervals."""
+
+    def task(self, screen):
+        from types import SimpleNamespace
+        from curobo_core.door_recenter import DoorTask
+        task = DoorTask.__new__(DoorTask)
+        task.planner = SimpleNamespace(shortcut_screen_rad=screen)
+        task.tensor = lambda rows: torch.as_tensor(np.asarray(rows), dtype=torch.float64)
+        return task
+
+    def validity(self, blocked):
+        from types import SimpleNamespace
+        from v3_batched_loaded_search import GpuValidity
+
+        def evaluate(values):
+            angle = np.degrees(values[:, 1].numpy())
+            valid = ~np.any([(angle > low) & (angle < high) for low, high in blocked], axis=0)
+            return torch.as_tensor(valid), torch.zeros(len(values), dtype=values.dtype)
+        validity = SimpleNamespace(weights=torch.ones(15, dtype=torch.float64), evaluate=evaluate)
+        validity.edges = lambda *args, **kwargs: GpuValidity.edges(validity, *args, **kwargs)
+        return validity
+
+    def path(self, degrees):
+        rows = np.zeros((len(degrees), 15))
+        rows[:, 1] = np.radians(degrees)
+        return rows
+
+    def test_screened_shortcut_keeps_the_dense_choice(self):
+        rng = np.random.default_rng(3)
+        for _ in range(20):
+            points = self.path(np.cumsum(rng.uniform(-40., 40., 12)))
+            validity = self.validity([tuple(sorted(rng.uniform(-150., 150., 2))) for _ in range(3)])
+            np.testing.assert_array_equal(self.task(.05).shortcut_states(points, validity),
+                                          self.task(None).shortcut_states(points, validity))
+
+    def test_screen_rejects_an_edge_whose_coarse_sample_collides(self):
+        # 0 -> 9 deg: the 0.05 rad check samples 2.25 deg, the 0.5 deg check only 2.0 and 2.5.
+        points, validity = self.path([0., 4., 9.]), self.validity([(2.2, 2.3)])
+        np.testing.assert_array_equal(self.task(None).shortcut_states(points, validity), points[[0, 2]])
+        np.testing.assert_array_equal(self.task(.05).shortcut_states(points, validity), points)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -469,5 +469,36 @@ class SpherePairTests(unittest.TestCase):
         self.assertEqual(tuple(sphere_pairs(torch.full((3, 3), -torch.inf)).shape), (0, 2))
 
 
+class DenseEdgeCheckTests(unittest.TestCase):
+    """The RRT's per-edge cached dense check decides every path as the whole-path check."""
+
+    def test_cached_edges_decide_as_whole_paths(self):
+        from v3_batched_loaded_search import DenseEdgeCheck
+        rng = np.random.default_rng(5)
+
+        def tree(count, roots):
+            parents = [-1]*roots+[int(rng.integers(0, index)) for index in range(roots, count)]
+            return torch.as_tensor(rng.uniform(-1., 1., (count, 15)), dtype=torch.float32), parents
+
+        def walk(node, parents):
+            nodes = []
+            while node >= 0:
+                nodes.append(int(node))
+                node = parents[node]
+            return nodes
+        (start_tree, start_parents), (goal_tree, goal_parents) = tree(40, 1), tree(40, 3)
+        # A thin slab of joint 1 (2 cm), blocked only where joint 2 is above 0.2.
+        validity = SimpleNamespace(weights=torch.ones(15), mask=lambda rows: ~(
+            (rows[:, 1] > .3) & (rows[:, 1] < .32) & (rows[:, 2] > .2)))
+        whole, cached = (DenseEdgeCheck(validity, validity.weights, cache) for cache in (False, True))
+        decisions = []
+        for start_node, goal_node in rng.integers(0, 40, (60, 2)):
+            paths = (start_tree, goal_tree, walk(start_node, start_parents), walk(goal_node, goal_parents))
+            decisions.append(whole(*paths))
+            self.assertEqual(cached(*paths), decisions[-1])
+        self.assertTrue(any(decisions) and not all(decisions))
+        self.assertLess(cached.states, whole.states)
+
+
 if __name__ == '__main__':
     unittest.main()

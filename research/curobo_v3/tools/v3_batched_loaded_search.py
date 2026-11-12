@@ -559,8 +559,69 @@ def batched_rrt_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
     }
 
 
+class DenseEdgeCheck:
+    """Dense validity of RRT-Connect paths root -> start node -> goal node -> goal root.
+
+    Without the cache the whole path is densified and checked, as batched_rrt_connect_multi_goal
+    always did. With it, one tree edge at a time and each edge's result kept: paths sharing an edge
+    check it once, and a path through a known invalid edge is rejected without a check. Each edge is
+    densified from its exact waypoint, as densify does along the whole path, so the states and every
+    decision are the same.
+    """
+
+    def __init__(self, validity, weights, cache):
+        self.validity, self.cache = validity, cache
+        self.weights = getattr(validity, 'collision_weights', weights).detach().cpu().tolist()
+        self.known = {}
+        self.seconds, self.states = 0., 0
+
+    def __call__(self, start_tree, goal_tree, start_path, goal_path):
+        """start_path: start-tree nodes from the start node to the root; goal_path: goal-tree nodes from
+        the goal node to its goal (the orders of the parent walks)."""
+        began = time.perf_counter()
+        try:
+            nodes = start_path[::-1]
+            points = torch.cat((start_tree[nodes], goal_tree[goal_path]), dim=0).detach().cpu().numpy()
+            if not self.cache:
+                return self.check([densify(points, self.weights)])[0]
+            # keys[k] names the state points[0] (k = 0) or the edge points[k-1] -> points[k]: start-tree
+            # edges by their child, the connection by its ends, goal-tree edges by their child.
+            keys = ([('root',)] + [('start', node) for node in nodes[1:]] + [('connection', nodes[-1], goal_path[0])]
+                    + [('goal', node) for node in goal_path[:-1]])
+            if any(self.known.get(key) is False for key in keys):
+                return False
+            unknown = [index for index, key in enumerate(keys) if key not in self.known]
+            segments = [[points[0].tolist()] if index == 0 else densify(points[index-1:index+1], self.weights)[1:]
+                        for index in unknown]
+            for index, valid in zip(unknown, self.check(segments)):
+                self.known[keys[index]] = valid
+            return all(self.known[key] for key in keys)
+        finally:
+            self.seconds += time.perf_counter()-began
+
+    def check(self, segments):
+        """Per segment (a list of states), whether every state is valid, from one batched mask."""
+        rows = [row for segment in segments for row in segment]
+        if not rows:
+            return [True]*len(segments)
+        self.states += len(rows)
+        device = self.validity.weights.device
+        valid = self.validity.mask(torch.tensor(rows, device=device, dtype=torch.float32)).cpu().numpy()
+        bounds = np.cumsum([0]+[len(segment) for segment in segments])
+        return [bool(valid[low:high].all()) for low, high in zip(bounds[:-1], bounds[1:])]
+
+    def stats(self):
+        return dict(fine_check_ms=self.seconds*1000, fine_states_checked=self.states, fine_edge_cache=self.cache)
+
+
 def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_s, seed,
-                                  informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0):
+                                  informed_sampling=False, stop_at_first_valid=False, refinement_s=0.0,
+                                  edge_cache=False):
+    """Multi-goal RRT-Connect; a connection is accepted once its densified path is valid.
+
+    edge_cache: dense checks one tree edge at a time, each edge's result kept (DenseEdgeCheck): the
+    same decisions in less time (and with it, what a time budget admits may differ).
+    """
     generator = torch.Generator(device="cuda")
     generator.manual_seed(seed)
     weights = validity.weights
@@ -599,6 +660,8 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
     iterations = 0
     fine_checked = set()
     fine_rejections = 0
+    dense_check = DenseEdgeCheck(validity, weights, edge_cache)
+
     while time.perf_counter() - started < budget_s:
         if first_verified_ms is not None and (time.perf_counter()-started)*1000 >= first_verified_ms+refinement_s*1000:
             break
@@ -724,8 +787,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                     if identity in fine_checked:
                         continue
                     fine_checked.add(identity)
-                    dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
-                    if bool(validity.mask(torch.tensor(dense, device='cuda', dtype=torch.float32)).all().item()):
+                    if dense_check(start_tree, goal_tree, left_indices, right_indices):
                         if first_verified_ms is None:first_verified_ms=(time.perf_counter()-started)*1000
                         if best_valid_connection is None or connection['cost']<best_valid_connection['cost']:
                             best_valid_path=candidate_path.detach().clone();best_valid_connection=dict(connection)
@@ -741,7 +803,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                             search_ms=(time.perf_counter()-started)*1000, solutions_found=solutions_found,
                             best_weighted_length=connection['cost'], raw_waypoints=len(candidate_path),
                             shortcut_applied=False, fine_candidates_checked=len(fine_checked),
-                            fine_rejections=fine_rejections)
+                            fine_rejections=fine_rejections, **dense_check.stats())
                     fine_rejections += 1
                 if observer is not None and observer(candidate_path, connection['cost'], started):
                     break
@@ -764,9 +826,8 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             right_indices.append(current)
             current = goal_parents[current]
         path = torch.cat((start_tree[left_indices], goal_tree[right_indices]), dim=0)
-        dense_path = densify(path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist())
         checked += 1
-        if bool(validity.mask(torch.tensor(dense_path, device="cuda", dtype=torch.float32)).all().item()):
+        if dense_check(start_tree, goal_tree, left_indices[::-1], right_indices):
             selected_path = path
             selected = connection
             break
@@ -779,6 +840,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             "goal_count": len(goals), "selected_goal": None,
             "first_solution_ms": first_solution_ms, "search_ms": elapsed_ms,
             "solutions_found": solutions_found, "fine_candidates_checked": checked,
+            **dense_check.stats(),
         }
     return selected_path.detach().cpu().numpy(), {
         "informed_sampling": informed_sampling,
@@ -795,6 +857,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         "total_search_cap_ms": budget_s*1000,
         "refinement_requested_ms":refinement_s*1000,
         "box_rotation_cost_enabled":rotation_cost is not None,
+        **dense_check.stats(),
     }
 
 

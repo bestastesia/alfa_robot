@@ -717,7 +717,8 @@ class _SequentialTask:
         path, stats = batched_rrt_connect_multi_goal(
             self.tensor(self.q[active]), self.tensor(np.asarray(goals)[:, active]),
             lower[active]+1e-5, upper[active]-1e-5, reduced, budget_s, seed,
-            stop_at_first_valid=stop_at_first_valid, refinement_s=refinement_s)
+            stop_at_first_valid=stop_at_first_valid, refinement_s=refinement_s,
+            edge_cache=getattr(self.planner, "rrt_fine_edge_cache", False))
         self.torch.cuda.synchronize()
         self.report["timing_ms"]["search"] += (time.perf_counter()-started)*1000
         self.report["attempts"][-1]["stats"] = stats
