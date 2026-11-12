@@ -211,5 +211,65 @@ class MeshAuditCapTests(unittest.TestCase):
         self.assertEqual([(item['kind'], item['pair'][0]) for item in failures], [('robot_world', 'left_link7:0')])
 
 
+class RotationGateTests(unittest.TestCase):
+    """Each tool turns about z with its arm's first joint (left J1, right J1)."""
+
+    def task(self, slack):
+        from types import SimpleNamespace
+        from curobo_core.door_recenter import DoorTask
+
+        def tool_poses(rows, side):
+            angle = np.asarray(rows, dtype=float).reshape(-1, 15)[:, 1 if side == 'left' else 8]
+            poses = np.tile(np.eye(4), (len(angle), 1, 1))
+            poses[:, 0, 0], poses[:, 0, 1], poses[:, 1, 0], poses[:, 1, 1] = np.cos(angle), -np.sin(angle), np.sin(angle), np.cos(angle)
+            return poses
+        task = DoorTask.__new__(DoorTask)
+        task.planner = SimpleNamespace(rotation_gate_slack_deg=slack)
+        task.tool_poses = tool_poses
+        return task
+
+    def goal(self, left_deg, right_deg):
+        row = np.zeros(15)
+        row[1], row[8] = np.radians(left_deg), np.radians(right_deg)
+        return row
+
+    def test_line_rotation_counts_the_turn_beyond_the_net_rotation(self):
+        lines = self.task(30.).line_rotation(np.zeros(15), [self.goal(100., 270.)], ('left', 'right'))
+        np.testing.assert_allclose([lines['left'][0], lines['right'][0]], [0., 180.], atol=1e-6)
+
+    def test_gates_follow_the_goal_whose_line_exceeds_them_least(self):
+        goals = [self.goal(270., 0.), self.goal(0., 225.)]  # line rotations (180, 0) and (0, 90)
+        gates = self.task(30.).rotation_gates(np.zeros(15), goals, dict(left=65., right=65.))
+        self.assertAlmostEqual(gates['left'], 65.)
+        self.assertAlmostEqual(gates['right'], 120.)
+
+    def test_fixed_gates_without_slack(self):
+        self.assertEqual(self.task(None).rotation_gates(np.zeros(15), [self.goal(270., 0.)], dict(left=65.)), dict(left=65.))
+
+    def line_task(self, blocked):
+        """A task whose validity rejects rows with left J1 inside one of the `blocked` (deg) intervals."""
+        from types import SimpleNamespace
+        task = self.task(30.)
+        task.tensor = lambda rows: torch.as_tensor(np.asarray(rows), dtype=torch.float64)
+        left = lambda rows: np.degrees(rows[:, 1].numpy())
+        task.validity = SimpleNamespace(mask=lambda rows: torch.as_tensor(
+            ~np.any([(left(rows) > low) & (left(rows) < high) for low, high in blocked], axis=0)))
+        return task
+
+    def test_straight_line_takes_the_first_free_line_in_rotation_order(self):
+        # Line rotations (left) 180, 0, 20 and 0 deg; the line to goal 1 crosses a blocked band.
+        goals = [self.goal(270., 0.), self.goal(-100., 0.), self.goal(190., 0.), self.goal(30., 0.)]
+        task = self.line_task([(-50., -40.)])
+        path, goal = task.straight_line_path(np.zeros(15), goals, task.validity, ('left',))
+        self.assertEqual(goal, 3)  # order 1 (blocked), 3 (0-5 deg bucket), 2, 0
+        np.testing.assert_allclose(path[[0, -1]], [np.zeros(15), goals[3]])
+        self.assertLessEqual(np.degrees(np.abs(np.diff(path[:, 1])).max()), .5+1e-9)
+
+    def test_no_straight_line_when_every_checked_line_is_blocked(self):
+        task = self.line_task([(-200., 200.)])
+        self.assertEqual(task.straight_line_path(np.zeros(15), [self.goal(30., 0.)], task.validity, ('left',)), (None, None))
+        self.assertEqual(task.straight_line_path(np.zeros(15), np.empty((0, 15)), task.validity, ('left',)), (None, None))
+
+
 if __name__ == '__main__':
     unittest.main()

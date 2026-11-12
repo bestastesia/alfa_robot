@@ -162,11 +162,45 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     coverage_payload_links = (('arm_carriage', .025), ('left_link4', .01), ('right_link4', .01))
     coverage_cross_pairs = tuple((f'left_link{first}', f'right_link{second}') for first in range(4, 8) for second in range(4, 8))
     free_space_exempt_radius_m = .06
-    # Budget (s) of one long latest-pair search after a seed bank without a path (None: none).
+    # Budget (s) of the latest-pair seeds searching for their first path while the bank has none, up
+    # to three of them; the rest refine in 0.75 s (None: 0.75 s seeds only).
     latest_pair_fallback_s = None
     # Straight retreat (m) of both tools from the released boxes before the return to Home, whose
     # search then keeps those boxes in the world (None: released boxes leave the scene at release).
     release_retreat_m = None
+    # Rotation gates of the precontact/recenter searches are no stricter than their endpoints allow:
+    # at least the tool rotation of the joint-space straight line to the best goal plus this slack
+    # (deg). In the re-zeroed model Home holds J5 at 0 while every wall contact needs J5 near +-160,
+    # and the carry poses hold J6 at its 110 deg limit with the wrist crossed against the contact
+    # configuration, so the fixed gates are out of reach and every search spent its whole budget
+    # (None: the fixed gates).
+    rotation_gate_slack_deg = None
+    # Latest-pair atlas rows keep the already recentered left arm within this joint change (deg)
+    # first, within a pose-score bucket (None: pose score bucket, then distance).
+    latest_pair_settled_arm_deg = None
+    # Search budgets where the re-zeroed model's paths differ: the recenter's Cartesian quality search,
+    # and the upper precontact trying its joint routes before the Cartesian strategies. With
+    # rotation_gate_slack_deg, two paths that both miss a gate end that search: its straight-line
+    # reference was out of reach (obstacles), and further seeds came out alike.
+    recenter_cartesian_budget_s = 8.
+    precontact_joint_first = False
+    # Seeds of the recenter's Cartesian quality search while it finds no path and keeps at least two goals
+    # on the arm's IK branch: it keeps that branch, and its tree succeeds for some seeds only (the
+    # re-zeroed column 4: 2 of 5 for one request); the RRT fallback may change the branch, from which
+    # the later placement became unreachable.
+    recenter_cartesian_attempts = 1
+    # Side precontact joint RRT attempts: first densely verified path plus this refinement window,
+    # stopping at the first path within the 30 deg gate (None: three whole 2 s attempts).
+    side_precontact_refinement_s = None
+    # The single-arm recenter search first tries the joint-space straight lines to its goals
+    # (DoorTask.straight_line_path): the re-zeroed column 3 lower box's line is free and within its
+    # gate, where the Cartesian and RRT searches spent 4 s (False: searches only). The latest pair's and
+    # the precontacts' lines all cross the door, the rack or the other arm.
+    direct_line_first = False
+    # Whether the ranked lower contact still searches its support-compensated extraction (2 s) when the
+    # outer flow defers the extraction to the rack-supported partial line; in the re-zeroed model that
+    # search found no path in any column and the partial line is what ran (False: skipped).
+    deferred_extract_search = True
 
     def __init__(self, assets):
         install_fast_builds()
@@ -218,6 +252,14 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.free_space_inflation = 1.1
         self.latest_pair_fallback_s = 6.
         self.release_retreat_m = .08
+        self.rotation_gate_slack_deg = 30.
+        self.latest_pair_settled_arm_deg = 45.
+        self.recenter_cartesian_budget_s = 1.
+        self.recenter_cartesian_attempts = 3
+        self.precontact_joint_first = True
+        self.side_precontact_refinement_s = .25
+        self.direct_line_first = True
+        self.deferred_extract_search = False
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05
         self.regrasp_lowering_prefilter = True
@@ -1011,6 +1053,50 @@ class DoorTask(_SequentialTask):
         return dict(total_deg=math.degrees(float(steps.sum())), net_deg=math.degrees(float(net)),
                     extra_deg=math.degrees(float(max(0., steps.sum()-net))))
 
+    def line_rotation(self, start, goals, sides, samples=24):
+        """Per goal and side, the extra tool rotation (deg) of the joint-space straight line from start."""
+        goals = np.asarray(goals, dtype=float).reshape(-1, 15)
+        fractions = np.linspace(0., 1., samples)
+        rows = start[None, None]+fractions[None, :, None]*(goals[:, None]-start[None, None])
+        output = {}
+        for side in sides:
+            rotations = self.tool_poses(rows.reshape(-1, 15), side)[:, :3, :3].reshape(len(goals), samples, 3, 3)
+            relative = np.einsum('gsji,gsjk->gsik', rotations[:, :-1], rotations[:, 1:])
+            steps = np.arccos(np.clip((np.trace(relative, axis1=2, axis2=3)-1)/2, -1., 1.)).sum(1)
+            net = np.einsum('gji,gjk->gik', rotations[:, 0], rotations[:, -1])
+            net = np.arccos(np.clip((np.trace(net, axis1=1, axis2=2)-1)/2, -1., 1.))
+            output[side] = np.degrees(np.maximum(0., steps-net))
+        return output
+
+    def rotation_gates(self, start, goals, fixed):
+        """{side: gate deg}: the fixed gates, or for the goal whose straight line exceeds them least
+        its line rotation plus DoorPlanner.rotation_gate_slack_deg where that is larger."""
+        slack = getattr(self.planner, 'rotation_gate_slack_deg', None)
+        if slack is None or not len(goals):
+            return dict(fixed)
+        lines = self.line_rotation(start, goals, tuple(fixed))
+        best = int(np.argmin(np.max([lines[side]-limit for side, limit in fixed.items()], axis=0)))
+        return {side: max(limit, float(lines[side][best])+slack) for side, limit in fixed.items()}
+
+    def straight_line_path(self, start, goals, validity, sides, limit=16):
+        """(path, goal index) of the densified joint-space straight line from `start` to the first goal,
+        in order of line tool rotation (5 deg buckets of the worst of `sides`, then the given goal
+        order), whose rows all pass `validity`; (None, None) if none of the first `limit` lines does."""
+        goals = np.asarray(goals, dtype=float).reshape(-1, 15)
+        if not len(goals):
+            return None, None
+        lines = self.line_rotation(start, goals, sides)
+        worst = np.max([lines[side] for side in sides], axis=0)
+        order = np.lexsort((np.arange(len(goals)), np.floor(worst/5.)))[:limit]
+        paths = [np.asarray(densify([np.asarray(start, dtype=float), goals[index]])) for index in order]
+        valid = validity.mask(self.tensor(np.vstack(paths))).cpu().numpy()
+        end = 0
+        for index, path in zip(order, paths):
+            end += len(path)
+            if valid[end-len(path):end].all():
+                return path, int(index)
+        return None, None
+
     def upper_precontact_staging_goals(self, right_goals):
         lower = self.store.snapshot().object(f'wall_box_{self.request.lower_box:02d}')
         variants = []
@@ -1119,8 +1205,9 @@ class DoorTask(_SequentialTask):
         alternatives = []
         budget_s = 6.
         deadline = time.perf_counter()+budget_s
-        right_limit = float(getattr(self,'right_precontact_extra_rotation_max_deg',105.))
-        staging_limit = 65.
+        gates = self.rotation_gates(self.q, staged if len(staged) else np.asarray(goals), dict(
+            left=65., right=float(getattr(self,'right_precontact_extra_rotation_max_deg',105.))))
+        staging_limit, right_limit = gates['left'], gates['right']
         # Joint routes run until one passes both rotation limits or the budget ends; the Cartesian
         # strategies stop early enough to leave at least three of them their 0.75 s each.
         joint_seeds=(47,20,38,65,41,17)
@@ -1141,58 +1228,75 @@ class DoorTask(_SequentialTask):
             return left['extra_deg']<=staging_limit and right['extra_deg']<=right_limit
 
         right_active = RIGHT if np.allclose(np.asarray(goals)[:, 0], self.q[0], atol=1e-6, rtol=0) else [0]+RIGHT
-        direct_budget=remaining(2.,cartesian_deadline)
-        right_path=right_stats=None
-        if direct_budget>.05:
-            right_path, right_stats = plan_cartesian_transport(
-                self.planner, self.q, goals, validity.checker, budget_s=direct_budget,
-                seed=self.request.seed+440,
-                options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
-                         'shortcut': True, 'monotonic_progress': True,
-                         'strict_budget': True, 'budget_reserve_s': .1,
-                         'workspace_margin_m': .5},
-                validity=self.search_inflation(validity, self.q, goals), active_indices=right_active)
-        quality_good=add(right_path,right_stats,'right_cartesian_precontact')
-        sequential_path=sequential_stats=None
-        if not quality_good and remaining(until=cartesian_deadline)>.05:
-            sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity, cartesian_deadline)
-            quality_good=add(sequential_path,sequential_stats,'sequential_cartesian_staging')
         target_rows = staged if len(staged) else np.asarray(goals)
-        dual_stats=None
-        if not quality_good and remaining(until=cartesian_deadline)>.05:
-            dual_budget=remaining(2.,cartesian_deadline)
-            dual_path, dual_stats = plan_dual_cartesian_transport(
-                self.planner, self.q[None], target_rows, validity.checker,
-                budget_s=dual_budget, seed=self.request.seed+500,
-                options={'shortcut': True, 'monotonic_progress': True,
-                         'strict_budget': True, 'batch': 128,
-                         'connect_candidates': 32, 'dual_direct_pairs': 64,
-                         'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05},
-                validity=self.search_inflation(validity, self.q, target_rows))
-            quality_good=add(dual_path,dual_stats,'dual_cartesian_rrt')
+        quality_good=False
+        right_stats=sequential_stats=dual_stats=None
         joint_attempts=0
-        for joint_seed in joint_seeds:
-            if quality_good or remaining()<=.05:
-                break
-            # First densely verified path, then a bounded refinement window (the shortcut and
-            # rotation gate below are unchanged) instead of always spending the whole cap.
-            path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
-                               seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25,free_space=True)
-            joint_attempts+=1
-            if path is None:
-                continue
-            stride=max(1,len(path)//128)
-            sparse=np.asarray(path)[::stride]
-            if not np.allclose(sparse[-1],np.asarray(path)[-1],atol=1e-12,rtol=0):
-                sparse=np.vstack([sparse,np.asarray(path)[-1]])
-            path=np.asarray(densify(self.shortcut_states(sparse,validity)))
-            quality_good=add(path,self.report['attempts'][-1].get('stats'),'dual_joint_rrt_shortcut')
+
+        def cartesian_routes(until):
+            nonlocal quality_good, right_stats, sequential_stats, dual_stats
+            direct_budget=remaining(2.,until)
+            right_path=None
+            if direct_budget>.05:
+                right_path, right_stats = plan_cartesian_transport(
+                    self.planner, self.q, goals, validity.checker, budget_s=direct_budget,
+                    seed=self.request.seed+440,
+                    options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
+                             'shortcut': True, 'monotonic_progress': True,
+                             'strict_budget': True, 'budget_reserve_s': .1,
+                             'workspace_margin_m': .5},
+                    validity=self.search_inflation(validity, self.q, goals), active_indices=right_active)
+            quality_good=add(right_path,right_stats,'right_cartesian_precontact') or quality_good
+            if not quality_good and remaining(until=until)>.05:
+                sequential_path, sequential_stats = self.sequential_upper_precontact(staged, validity, until)
+                quality_good=add(sequential_path,sequential_stats,'sequential_cartesian_staging')
+            if not quality_good and remaining(until=until)>.05:
+                dual_budget=remaining(2.,until)
+                dual_path, dual_stats = plan_dual_cartesian_transport(
+                    self.planner, self.q[None], target_rows, validity.checker,
+                    budget_s=dual_budget, seed=self.request.seed+500,
+                    options={'shortcut': True, 'monotonic_progress': True,
+                             'strict_budget': True, 'batch': 128,
+                             'connect_candidates': 32, 'dual_direct_pairs': 64,
+                             'dual_direct_share': .5, 'dual_postprocess_reserve_s': .05},
+                    validity=self.search_inflation(validity, self.q, target_rows))
+                quality_good=add(dual_path,dual_stats,'dual_cartesian_rrt')
+
+        def joint_routes(enough=None):
+            nonlocal quality_good, joint_attempts
+            for joint_seed in joint_seeds:
+                if quality_good or remaining()<=.05 or (enough is not None and len(alternatives) >= enough):
+                    break
+                # First densely verified path, then a bounded refinement window (the shortcut and
+                # rotation gate below are unchanged) instead of always spending the whole cap.
+                path = self.search(target_rows,list(range(15)),budget_s=remaining(.75),
+                                   seed_value=joint_seed,stop_at_first_valid=True,refinement_s=.25,free_space=True)
+                joint_attempts+=1
+                if path is None:
+                    continue
+                stride=max(1,len(path)//128)
+                sparse=np.asarray(path)[::stride]
+                if not np.allclose(sparse[-1],np.asarray(path)[-1],atol=1e-12,rtol=0):
+                    sparse=np.vstack([sparse,np.asarray(path)[-1]])
+                path=np.asarray(densify(self.shortcut_states(sparse,validity)))
+                quality_good=add(path,self.report['attempts'][-1].get('stats'),'dual_joint_rrt_shortcut')
+
+        if getattr(self.planner, 'precontact_joint_first', False):
+            # The joint routes are what reach the re-zeroed model's contacts from Home; the
+            # Cartesian strategies stay as a fallback for the remaining budget.
+            joint_routes(enough=2)
+            if not alternatives:
+                cartesian_routes(deadline)
+        else:
+            cartesian_routes(cartesian_deadline)
+            joint_routes()
         if alternatives:
             _,path,left,right,stats,source=min(alternatives,key=lambda item:item[0])
             self.precontact_audit_active=list(range(15))
             self.report.setdefault('precontact_searches',[]).append(dict(
                 stage=self.phase,side=side,roll_deg=math.degrees(getattr(self,'current_contact_roll_rad',0.)),
                 source=source+'_with_lower_staging',budget_s=budget_s,joint_attempts=joint_attempts,
+                rotation_gates_deg=gates,
                 success=True,selected_stats=stats,sequential_stats=sequential_stats,
                 left_rotation=left,right_rotation=right,staging_goals=len(staged),
                 alternatives=[dict(source=item[5],left_rotation=item[2],right_rotation=item[3])
@@ -1228,12 +1332,16 @@ class DoorTask(_SequentialTask):
             alternatives.append(('cartesian_rrt', path, metrics, stats))
         if path is None or alternatives[0][2]['extra_deg'] > 30.:
             if mapper is None:
+                refinement = self.planner.side_precontact_refinement_s
+                options = {} if refinement is None else dict(stop_at_first_valid=True, refinement_s=refinement)
                 for _ in range(3):
-                    candidate = self.search(goals, active, free_space=True)
+                    candidate = self.search(goals, active, free_space=True, **options)
                     if candidate is not None:
-                        alternatives.append(('joint_rrt', candidate,
-                                             self.path_rotation_metrics(candidate, side),
+                        metrics = self.path_rotation_metrics(candidate, side)
+                        alternatives.append(('joint_rrt', candidate, metrics,
                                              self.report['attempts'][-1].get('stats')))
+                        if refinement is not None and metrics['extra_deg'] <= 30.:
+                            break
             else:
                 reduced = SupportCompensatedValidity(validity,self.q,mapper,searched_indices=search_active)
                 searched = SupportCompensatedValidity(self.search_inflation(validity,self.q,goals),self.q,mapper,
@@ -1441,8 +1549,14 @@ class DoorTask(_SequentialTask):
             pose_errors.extend(batch_error.cpu().tolist())
         scores, pose_errors = np.asarray(scores), np.asarray(pose_errors)
         bucket = getattr(self.planner, 'pose_score_bucket', None)
-        ranked = np.lexsort((np.linalg.norm(rows-self.q, axis=1),
-                             scores if bucket is None else np.floor(scores/bucket)))
+        settled = getattr(self.planner, 'latest_pair_settled_arm_deg', None)
+        keys = [np.linalg.norm(rows-self.q, axis=1)]
+        if settled is not None:
+            # The left arm recentered its box already: rows that leave it in place before rows that
+            # reach the same pose in another wrist configuration (up to 500 deg of joint travel).
+            keys.append(np.degrees(np.abs(rows[:, LEFT]-self.q[LEFT])).max(1) > settled)
+        keys.append(scores if bucket is None else np.floor(scores/bucket))
+        ranked = np.lexsort(tuple(keys))
         order, radii, scanned, collision_valid = [], [], 0, 0
         for offset in range(0, len(ranked), 4096):
             batch = ranked[offset:offset+4096]
@@ -1466,6 +1580,7 @@ class DoorTask(_SequentialTask):
         details = dict(atlas_path=str(atlas_path), atlas_sha256=hashlib.sha256(atlas_path.read_bytes()).hexdigest(),
                        atlas_rows=len(atlas), sampled_rows=33*len(atlas), scanned_rows=scanned,
                        gate_order=('pose score' if bucket is None else 'pose score bucket')
+                                  +('' if settled is None else f', left arm within {settled:g} deg')
                                   +' then distance; collision and envelope counts cover scanned rows only',
                        pose_score_bucket=bucket,
                        collision_valid=collision_valid, envelope_valid=envelope_valid, selected=len(selected),
@@ -1505,12 +1620,33 @@ class DoorTask(_SequentialTask):
         stop_reason = 'bank_exhausted_or_gate_met'
         seed_bank=(65,41,17,71,53,89)
         fallback_s=self.planner.latest_pair_fallback_s
+        gates=self.rotation_gates(self.q, candidates, dict(left=65., right=65.))
+
+        def scored(path, search_stats):
+            left = self.path_rotation_metrics(path, 'left')
+            right = self.path_rotation_metrics(path, 'right')
+            joints = np.asarray(path)[:, 1:]
+            backtrack = float(np.degrees(
+                np.abs(np.diff(joints, axis=0)).sum()-np.abs(joints[-1]-joints[0]).sum()))
+            extra_sum = left['extra_deg']+right['extra_deg']
+            score = max(left['extra_deg'],right['extra_deg'])+.1*extra_sum+.01*max(0.,backtrack)
+            return score, path, left, right, search_stats
 
         def bank():
-            yield from ((seed, .75) for seed in seed_bank)
-            if not alternatives and fallback_s:
-                # Short trees can miss a far wrist branch under the coverage margins: one long search.
-                yield seed_bank[0]+1000, fallback_s
+            if not fallback_s:
+                yield from ((seed, .75) for seed in seed_bank)
+                return
+            # Short trees miss the far wrist branches under the coverage margins: until a seed has a
+            # path, up to three seeds search up to fallback_s each for their first path (a found one can
+            # still fail the dense check); the others refine the rotation in .75 s.
+            long_attempts = 0
+            for seed in seed_bank:
+                if not alternatives and long_attempts < 3:
+                    long_attempts += 1
+                    yield seed, fallback_s
+                else:
+                    yield seed, .75
+        misses = 0
         for search_seed, budget in bank():
             seed_started = time.perf_counter()
             # Each seed contributes its first densely verified path, as when one 0.75 s iteration
@@ -1522,32 +1658,32 @@ class DoorTask(_SequentialTask):
             search_stats = self.report['attempts'][-1].get('stats')
             stats.append(dict(seed=search_seed,stats=search_stats))
             post_started = time.perf_counter()
+            if path is None and fallback_s and alternatives:
+                misses += 1
+                if misses == 2:
+                    stop_reason = 'consecutive_misses'
+                    break
             if path is not None:
+                misses = 0
                 validity = self.validity()
                 stride = max(1, len(path)//128)
                 sparse = np.asarray(path)[::stride]
                 if not np.allclose(sparse[-1], np.asarray(path)[-1], atol=1e-12, rtol=0):
                     sparse = np.vstack([sparse, np.asarray(path)[-1]])
                 path = np.asarray(densify(self.shortcut_states(sparse, validity)))
-                left = self.path_rotation_metrics(path, 'left')
-                right = self.path_rotation_metrics(path, 'right')
-                joints = np.asarray(path)[:, 1:]
-                backtrack = float(np.degrees(
-                    np.abs(np.diff(joints, axis=0)).sum()-np.abs(joints[-1]-joints[0]).sum()))
-                extra_sum = left['extra_deg']+right['extra_deg']
-                score = max(left['extra_deg'],right['extra_deg'])+.1*extra_sum+.01*max(0.,backtrack)
                 # A repeated path adds nothing to the min-score choice; treat it as the bank converging.
                 duplicate = any(len(item[1]) == len(path) and np.allclose(item[1], path, atol=1e-9, rtol=0)
                                 for item in alternatives)
-                alternatives.append((score,path,left,right,search_stats))
+                alternatives.append(scored(path, search_stats))
+                _, _, left, right, _ = alternatives[-1]
                 self.record_operation_time('seed_bank_postprocess', post_started)
-                if left['extra_deg'] <= 65. and right['extra_deg'] <= 65.:
+                if left['extra_deg'] <= gates['left'] and right['extra_deg'] <= gates['right']:
                     break
                 if duplicate:
                     stop_reason = 'duplicate_path'
                     break
         self.report['latest_compact_search'] = dict(
-            seed_bank=list(seed_bank), fallback_s=fallback_s, stop_reason=stop_reason,
+            seed_bank=list(seed_bank), fallback_s=fallback_s, rotation_gates_deg=gates, stop_reason=stop_reason,
             attempts=stats, alternatives=[dict(score=item[0],left_rotation=item[2],
                                                 right_rotation=item[3],stats=item[4])
                                          for item in alternatives])
@@ -1608,7 +1744,9 @@ class DoorTask(_SequentialTask):
         began = time.perf_counter()
         alternatives = []
         attempts_run = 0
+        cartesian_attempts = []
         searched = self.search_inflation(validity, start, candidates)
+        limit = self.rotation_gates(start, candidates, {side: 30.})[side] if mapper is None else 30.
         if self.algorithm == 'cartesian_rrt':
             attempts_run = 1
             path, stats = plan_cartesian_transport(
@@ -1621,21 +1759,38 @@ class DoorTask(_SequentialTask):
             if path is not None:
                 alternatives.append((path, stats, seed))
         else:
-            attempts_run = 1
-            quality_path, quality_stats = plan_cartesian_transport(
-                self.planner, start, candidates, validity.checker, budget_s=8., seed=seed+1000,
-                options={'edge_resolution': .08, 'batch': 256, 'connect_candidates': 64,
-                         'shortcut': True, 'monotonic_progress': True,
-                         'strict_budget': True, 'budget_reserve_s': .25},
-                validity=searched, active_indices=active,
-                row_mapper=mapper, derived_indices=derived)
             quality_good = False
-            if quality_path is not None:
-                alternatives.append((quality_path, quality_stats, seed+1000))
-                moving_quality = self.path_rotation_metrics(quality_path, side)['extra_deg']
-                held_quality = (self.path_rotation_metrics(quality_path, mapper.support_side)['extra_deg']
-                                if mapper is not None else 0.)
-                quality_good = moving_quality <= 30. and held_quality <= 5.
+            if mapper is None and self.planner.direct_line_first:
+                line_started = time.perf_counter()
+                line, goal = self.straight_line_path(start, candidates, searched, (side,))
+                self.record_operation_time('direct_line', line_started)
+                if line is not None:
+                    alternatives.append((line, dict(direct_line_goal=goal), None))
+                    quality_good = self.path_rotation_metrics(line, side)['extra_deg'] <= limit
+            for retry in range(0 if quality_good else self.planner.recenter_cartesian_attempts):
+                attempts_run += 1
+                quality_seed = seed+1000*(retry+1)
+                quality_path, quality_stats = plan_cartesian_transport(
+                    self.planner, start, candidates, validity.checker, budget_s=self.planner.recenter_cartesian_budget_s,
+                    seed=quality_seed,
+                    options={'edge_resolution': .08, 'batch': 256, 'connect_candidates': 64,
+                             'shortcut': True, 'monotonic_progress': True,
+                             'strict_budget': True, 'budget_reserve_s': .25},
+                    validity=searched, active_indices=active,
+                    row_mapper=mapper, derived_indices=derived)
+                quality_stats = quality_stats or {}
+                cartesian_attempts.append(dict(seed=quality_seed, success=quality_path is not None,
+                                               **{key: quality_stats.get(key) for key in
+                                                  ('failure', 'same_branch_goals', 'search_ms')}))
+                if quality_path is not None:
+                    alternatives.append((quality_path, quality_stats, quality_seed))
+                    moving_quality = self.path_rotation_metrics(quality_path, side)['extra_deg']
+                    held_quality = (self.path_rotation_metrics(quality_path, mapper.support_side)['extra_deg']
+                                    if mapper is not None else 0.)
+                    quality_good = moving_quality <= limit and held_quality <= 5.
+                    break
+                if (quality_stats.get('same_branch_goals') or 0) < 2:
+                    break
             reduced, reduced_search = ((SupportCompensatedValidity(item, start, mapper, searched_indices=active)
                                         if mapper is not None else ReducedValidity(item, start, active))
                                        for item in (validity, searched))
@@ -1660,7 +1815,8 @@ class DoorTask(_SequentialTask):
                     path = np.asarray(densify(reduced.expand(self.tensor(sparse)).cpu().numpy()))
                 alternatives.append((path, stats, seed+attempt))
                 quality = self.path_rotation_metrics(path, side)
-                if quality['extra_deg'] <= 30.:
+                if quality['extra_deg'] <= limit or (self.planner.rotation_gate_slack_deg is not None and
+                                                     len(alternatives) >= 2):
                     break
         if alternatives:
             def quality(item):
@@ -1678,7 +1834,8 @@ class DoorTask(_SequentialTask):
         torch.cuda.synchronize()
         elapsed = (time.perf_counter()-began)*1000
         record = dict(stage=self.phase, algorithm=self.algorithm, input_identity=fixture['identity'],
-                      per_attempt_budget_ms=2000., attempts_run=attempts_run,
+                      per_attempt_budget_ms=2000., attempts_run=attempts_run, rotation_gate_deg=limit,
+                      cartesian_attempts=cartesian_attempts,
                       actual_search_ms=elapsed,
                       success=path is not None, stats=stats, selected_seed=selected_seed,
                       support_compensated=mapper is not None,
@@ -1968,12 +2125,15 @@ class DoorTask(_SequentialTask):
                 selected=int(np.argmin(np.linalg.norm(goals-path[-1],axis=1)))
                 option=options.pop(selected)
                 if not self.accept_precontact_path('left',path):continue
-                saved=self.store
-                try:
-                    self.store=SceneStore(saved.snapshot());self.store.attach(
-                        option['attachment'],self.store.snapshot().revision)
-                    extracted,details=self.plan_supported_extract_candidate('left',option['contact_q'])
-                finally:self.store=saved
+                if getattr(self,'defer_supported_extract',False) and not self.planner.deferred_extract_search:
+                    extracted,details=None,dict(strategy='deferred_to_rack_supported_partial_line',success=False)
+                else:
+                    saved=self.store
+                    try:
+                        self.store=SceneStore(saved.snapshot());self.store.attach(
+                            option['attachment'],self.store.snapshot().revision)
+                        extracted,details=self.plan_supported_extract_candidate('left',option['contact_q'])
+                    finally:self.store=saved
                 self.report['attempts'].append(dict(stage='left_extract',operation='ranked_supported_extract',
                                                     roll_rad=option['entry']['roll_rad'],details=details))
                 if extracted is None and not getattr(self,'defer_supported_extract',False):continue
