@@ -1,0 +1,26 @@
+{
+  "tracked_baseline_runtime_unchanged": true,
+  "paired_trials": 21,
+  "audited_selected_loaded_stages": 42,
+  "copied_baseline_sha256_matches": 147,
+  "scene_checks": 42,
+  "seed_diversity": true,
+  "baseline_commit": "ee6dba3280437ea33002ea87a5f8afb8725eadfb",
+  "report_html_bytes": 88987,
+  "baseline_full_success": 18,
+  "candidate_full_success": 20,
+  "valid_speed_pairs": 18,
+  "default_pipeline_modified": false,
+  "native_contract_tests": "40 passed, 1 skipped",
+  "gpu_queue_policy": "All GPU preflight and candidate solves ran as foreground PATH gpuq entries; no nested queue/lock override",
+  "initial_measured_compute_s": 285.7474963680579,
+  "clearance_measured_compute_s": 71.91643912698783,
+  "source_and_data_reuse": "Clearance campaign reuses byte-identical baseline sources and six arrays; replacement candidates were newly computed",
+  "conclusion": "No demonstrated general significant practical speedup; top_outer modest gain, both upper cases slower",
+  "limitations": [
+    "bounded endpoint grid, not continuous XYZ global optimum",
+    "initial/clearance candidates are in-sample exploratory selection",
+    "4001-point dynamics and discrete 40-sphere collision diagnostics are not hardware or continuous safety certification",
+    "local tested package versions differ from PR82 historical release; baseline/candidate paired in the same environment"
+  ]
+}

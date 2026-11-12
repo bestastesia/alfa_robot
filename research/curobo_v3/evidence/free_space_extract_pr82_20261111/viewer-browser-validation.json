@@ -1,0 +1,87 @@
+{
+  "cpu_renderer": "ANGLE SwiftShader (verified live WebGL context)",
+  "real_browser_connected": true,
+  "all_three_cases_advance": true,
+  "samples": [
+    {
+      "case": "upper_outer",
+      "seed": 89,
+      "scope": "抽离＋运输",
+      "time_s": 4.100426727003651,
+      "max_s": 4.1748645305633545,
+      "clients": 1
+    },
+    {
+      "case": "upper_outer",
+      "seed": 89,
+      "scope": "抽离＋运输",
+      "time_s": 4.1748645305633545,
+      "max_s": 4.1748645305633545,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 0.31697865200112574,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 1.3178776360000484,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 2.3473612439993303,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 3.3787915510038147,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 4.410098505002679,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "top_outer",
+      "seed": 51,
+      "scope": "抽离＋运输",
+      "time_s": 4.752888202667236,
+      "max_s": 4.752888202667236,
+      "clients": 1
+    },
+    {
+      "case": "upper_inner",
+      "seed": 71,
+      "scope": "抽离＋运输",
+      "time_s": 0.06869549599650782,
+      "max_s": 4.611858129501343,
+      "clients": 1
+    },
+    {
+      "case": "upper_inner",
+      "seed": 71,
+      "scope": "抽离＋运输",
+      "time_s": 1.0708505299990065,
+      "max_s": 4.611858129501343,
+      "clients": 1
+    }
+  ]
+}

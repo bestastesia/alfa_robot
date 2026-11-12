@@ -1,0 +1,3245 @@
+{
+  "cases": [
+    {
+      "case": "top_outer",
+      "attempted": 7,
+      "baseline_success": 7,
+      "candidate_usable": 7,
+      "candidate_full_success": 7,
+      "paired": 7,
+      "baseline_loaded_median_s": 4.744927167892456,
+      "candidate_loaded_median_s": 3.9779950380325317,
+      "baseline_median_s": 11.34233957529068,
+      "candidate_median_s": 10.705302059650421,
+      "short_x_control_usable": 6,
+      "short_x_control_median_s": 10.8224475979805,
+      "improvement_median_pct": 5.316075283865611,
+      "improvement_min_pct": 2.188414719809576,
+      "improvement_max_pct": 13.186608742789977,
+      "sign_test_two_sided_p": 0.015625
+    },
+    {
+      "case": "upper_inner",
+      "attempted": 7,
+      "baseline_success": 5,
+      "candidate_usable": 7,
+      "candidate_full_success": 7,
+      "paired": 5,
+      "baseline_loaded_median_s": 3.7572492361068726,
+      "candidate_loaded_median_s": 4.611858129501343,
+      "baseline_median_s": 10.420424222946167,
+      "candidate_median_s": 11.22579288482666,
+      "short_x_control_usable": 0,
+      "short_x_control_median_s": null,
+      "improvement_median_pct": -8.480421137596675,
+      "improvement_min_pct": -8.854919889860124,
+      "improvement_max_pct": -6.346217023866313,
+      "sign_test_two_sided_p": 0.0625
+    },
+    {
+      "case": "upper_outer",
+      "attempted": 7,
+      "baseline_success": 6,
+      "candidate_usable": 7,
+      "candidate_full_success": 6,
+      "paired": 6,
+      "baseline_loaded_median_s": 3.8148993849754333,
+      "candidate_loaded_median_s": 4.3200294971466064,
+      "baseline_median_s": 10.63972795009613,
+      "candidate_median_s": 11.120652556419373,
+      "short_x_control_usable": 6,
+      "short_x_control_median_s": 11.18919426202774,
+      "improvement_median_pct": -4.182007219943398,
+      "improvement_min_pct": -7.553149136544969,
+      "improvement_max_pct": 1.5178631665986468,
+      "sign_test_two_sided_p": 0.21875
+    }
+  ],
+  "trials": [
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.192279279232025,
+      "case": "top_outer",
+      "seed": 11,
+      "baseline_success": true,
+      "baseline_motion_s": 12.331394851207733,
+      "baseline_loaded_s": 5.49219012260437,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.705302059650421,
+      "candidate_loaded_s": 3.866097331047058,
+      "improvement_pct": 13.186608742789977,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 7.2616076709964545,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.353074550628662,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 1.8238921919983113
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 3.866097331047058,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 3,
+          "wall_s": 1.4458228349976707
+        },
+        {
+          "rank": 2,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": 4.584838628768921,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 1.4635133000119822
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "top_outer",
+      "seed": 23,
+      "baseline_success": true,
+      "baseline_motion_s": 11.214875757694244,
+      "baseline_loaded_s": 4.653611183166504,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.891026318073273,
+      "candidate_loaded_s": 4.329761743545532,
+      "improvement_pct": 2.8876774617747034,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 9.980157237005187,
+      "selected_rank": 2,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.1,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.1,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 3.9064459800720215,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 3.0093636590027018
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.400630831718445,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 3.021767619997263
+        },
+        {
+          "rank": 2,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": 4.329761743545532,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 10,
+          "wall_s": 3.025518793001538
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.431260526180267,
+      "case": "top_outer",
+      "seed": 37,
+      "baseline_success": true,
+      "baseline_motion_s": 11.173666775226593,
+      "baseline_loaded_s": 4.5157588720321655,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.586407005786896,
+      "candidate_loaded_s": 3.9284991025924683,
+      "improvement_pct": 5.255748012297316,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 9.923935899991193,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 3.77335262298584,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 3.1541636109905085
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 3.9284991025924683,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 26,
+          "wall_s": 2.953623085995787
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.9475278870086186
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.847412765026093,
+      "case": "top_outer",
+      "seed": 51,
+      "baseline_success": true,
+      "baseline_motion_s": 11.465840518474579,
+      "baseline_loaded_s": 4.752888202667236,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.856307804584503,
+      "candidate_loaded_s": 4.143355488777161,
+      "improvement_pct": 5.316075283865611,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 9.98300947601092,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.13446044921875,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 8,
+          "wall_s": 3.0600778270018054
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.143355488777161,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.9744542989938054
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 3.0950038809969556
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.797482430934906,
+      "case": "top_outer",
+      "seed": 71,
+      "baseline_success": true,
+      "baseline_motion_s": 11.112890422344208,
+      "baseline_loaded_s": 4.448730945587158,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.869694292545319,
+      "candidate_loaded_s": 4.205534815788269,
+      "improvement_pct": 2.188414719809576,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 8.467664229989168,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.1333229541778564,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 7,
+          "wall_s": 3.162094734987477
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.205534815788269,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 1.7286400950106326
+        },
+        {
+          "rank": 2,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": 4.507998704910278,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.6665426369872876
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.27841192483902,
+      "case": "top_outer",
+      "seed": 89,
+      "baseline_success": true,
+      "baseline_motion_s": 11.679358899593353,
+      "baseline_loaded_s": 5.1518813371658325,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.505472600460052,
+      "candidate_loaded_s": 3.9779950380325317,
+      "improvement_pct": 10.050948080499287,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 8.75612942900625,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 3.750934362411499,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.5481226770061767
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 3.9779950380325317,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 3.030484945003991
+        },
+        {
+          "rank": 2,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": 4.895842552185059,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.2294445949955843
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.170276939868927,
+      "case": "top_outer",
+      "seed": 101,
+      "baseline_success": true,
+      "baseline_motion_s": 11.34233957529068,
+      "baseline_loaded_s": 4.744927167892456,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.517770946025848,
+      "candidate_loaded_s": 3.9203585386276245,
+      "improvement_pct": 7.269828449336473,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 8.533085274000769,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.1,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.1,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 36,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.572864532470703,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 3,
+          "wall_s": 2.1837675589922583
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 3.9203585386276245,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.2452781650063116
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.1,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.1,
+              0.12
+            ]
+          },
+          "duration_s": 4.372198820114136,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 22,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": false,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 3.189879060999374
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 11,
+      "baseline_success": true,
+      "baseline_motion_s": 10.420424222946167,
+      "baseline_loaded_s": 3.7572492361068726,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.206519484519958,
+      "candidate_loaded_s": 4.543344497680664,
+      "improvement_pct": -7.543793273241027,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 35.89931022001838,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.7377815000072587
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.852384368990897
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.05182322299515363
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.543344497680664,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 3,
+          "wall_s": 29.566963770994334
+        }
+      ]
+    },
+    {
+      "baseline_eligible": false,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 23,
+      "baseline_success": false,
+      "baseline_motion_s": 10.297149181365967,
+      "baseline_loaded_s": 3.7132920026779175,
+      "candidate_usable": true,
+      "paired": false,
+      "candidate_motion_s": 10.979152083396912,
+      "candidate_loaded_s": 4.395294904708862,
+      "improvement_pct": -6.623220563465448,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 8.913113143018563,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.730275352994795
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.738602017008816
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.06581476501014549
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.395294904708862,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.7068018970021512
+        }
+      ]
+    },
+    {
+      "baseline_eligible": false,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 37,
+      "baseline_success": false,
+      "baseline_motion_s": 10.289437294006348,
+      "baseline_loaded_s": 3.7077165842056274,
+      "candidate_usable": true,
+      "paired": false,
+      "candidate_motion_s": 10.985945343971252,
+      "candidate_loaded_s": 4.404224634170532,
+      "improvement_pct": -6.769155883486694,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 8.33291370999359,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.762741255995934
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.728532727996935
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.0697814300074242
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.404224634170532,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.0993473830021685
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 51,
+      "baseline_success": true,
+      "baseline_motion_s": 10.58349859714508,
+      "baseline_loaded_s": 3.865515351295471,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.506415605545044,
+      "candidate_loaded_s": 4.788432359695435,
+      "improvement_pct": -8.720339497648935,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 8.328343228015001,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.73724445400876
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.7366528409911552
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.05434970300120767
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.788432359695435,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 2.1501124010101194
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 71,
+      "baseline_success": true,
+      "baseline_motion_s": 10.348220229148865,
+      "baseline_loaded_s": 3.7342854738235474,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.22579288482666,
+      "candidate_loaded_s": 4.611858129501343,
+      "improvement_pct": -8.480421137596675,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 9.483778395006084,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.8408086369890952
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.783543056997587
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.07036950800102204
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.611858129501343,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 15,
+          "wall_s": 3.1068190849910025
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 89,
+      "baseline_success": true,
+      "baseline_motion_s": 10.47371792793274,
+      "baseline_loaded_s": 3.705363631248474,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.401157259941101,
+      "candidate_loaded_s": 4.632802963256836,
+      "improvement_pct": -8.854919889860124,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 8.43256768201536,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.7276141949987505
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.735939727004734
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.05670627499057446
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.632802963256836,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.2287292310065823
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_inner",
+      "seed": 101,
+      "baseline_success": true,
+      "baseline_motion_s": 10.355388402938843,
+      "baseline_loaded_s": 3.792551636695862,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.012563824653625,
+      "candidate_loaded_s": 4.4497270584106445,
+      "improvement_pct": -6.346217023866313,
+      "selected_campaign": "clearance",
+      "candidate_compute_s": 8.560643100994639,
+      "selected_rank": 0,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          0.0,
+          0.44
+        ],
+        "right": [
+          -0.04,
+          -0.0,
+          0.44
+        ]
+      },
+      "eligible_endpoint_count": 20,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              -0.0,
+              0.0
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.771518459005165
+        },
+        {
+          "rank": 1,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.12
+            ]
+          },
+          "duration_s": null,
+          "lm_success": true,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 0,
+          "wall_s": 2.7936892799916677
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              0.18,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              -0.18,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.05498330100090243
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              0.0,
+              0.44
+            ],
+            "right": [
+              -0.04,
+              -0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.4497270584106445,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 2.2186755879956763
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.486358642578125,
+      "case": "upper_outer",
+      "seed": 11,
+      "baseline_success": true,
+      "baseline_motion_s": 10.716051578521729,
+      "baseline_loaded_s": 3.8377878665924072,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.31621527671814,
+      "candidate_loaded_s": 4.437951564788818,
+      "improvement_pct": -5.600604791780997,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 6.33606736100046,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.608094930648804,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 1.3810686610086123
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.437951564788818,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 16,
+          "wall_s": 1.3798753630107967
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09165859599306714
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.18,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.18,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.842395305633545,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 6,
+          "wall_s": 2.630447927993373
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.868407845497131,
+      "case": "upper_outer",
+      "seed": 23,
+      "baseline_success": true,
+      "baseline_motion_s": 10.383008599281311,
+      "baseline_loaded_s": 3.9968857765197754,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.539681315422058,
+      "candidate_loaded_s": 4.1535584926605225,
+      "improvement_pct": -1.5089337030077352,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 6.513921361998655,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.482285022735596,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 3,
+          "wall_s": 2.5845369799935725
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.1535584926605225,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 3,
+          "wall_s": 2.233730539010139
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09137250400090124
+        },
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "clearance",
+          "failure": "joint discontinuity",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.8301467309938744
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.071253418922424,
+      "case": "upper_outer",
+      "seed": 37,
+      "baseline_success": true,
+      "baseline_motion_s": 10.202844977378845,
+      "baseline_loaded_s": 3.707997441291809,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.69695496559143,
+      "candidate_loaded_s": 4.2021074295043945,
+      "improvement_pct": -4.842864802004709,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 7.552206305001164,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.576405882835388,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 2.105404856003588
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.2021074295043945,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.723999627996818
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09340861000237055
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 5.0878636837005615,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 8,
+          "wall_s": 1.694689110998297
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 10.592728734016418,
+      "case": "upper_outer",
+      "seed": 51,
+      "baseline_success": true,
+      "baseline_motion_s": 11.154793620109558,
+      "baseline_loaded_s": 4.631586909294128,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 10.98547911643982,
+      "candidate_loaded_s": 4.46227240562439,
+      "improvement_pct": 1.5178631665986468,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 8.493023945993627,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.069522023200989,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.5898914260033052
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.46227240562439,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 18,
+          "wall_s": 3.1173094469995704
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09448301199881826
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 5.10594630241394,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 10,
+          "wall_s": 1.7858670380082913
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.307135105133057,
+      "case": "upper_outer",
+      "seed": 71,
+      "baseline_success": true,
+      "baseline_motion_s": 10.563404321670532,
+      "baseline_loaded_s": 3.7300479412078857,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.361274003982544,
+      "candidate_loaded_s": 4.5279176235198975,
+      "improvement_pct": -7.553149136544969,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 6.207632803998422,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.47377872467041,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 1.281374644007883
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.5279176235198975,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 1.839685554994503
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09100554400356486
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.18,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.18,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 5.023713111877441,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.1418541339953663
+        }
+      ]
+    },
+    {
+      "baseline_eligible": true,
+      "candidate_full_success": true,
+      "control_usable": true,
+      "control_motion_s": 11.90584921836853,
+      "case": "upper_outer",
+      "seed": 89,
+      "baseline_success": true,
+      "baseline_motion_s": 10.87297236919403,
+      "baseline_loaded_s": 3.7920109033584595,
+      "candidate_usable": true,
+      "paired": true,
+      "candidate_motion_s": 11.255825996398926,
+      "candidate_loaded_s": 4.1748645305633545,
+      "improvement_pct": -3.5211496378820875,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 7.849848034995375,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 4.824887752532959,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 3.0831521899963263
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.1748645305633545,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 1.6659236539999256
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09409909701207653
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.18,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.18,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 5.770021677017212,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.1505090419959743
+        }
+      ]
+    },
+    {
+      "baseline_eligible": false,
+      "candidate_full_success": false,
+      "control_usable": false,
+      "control_motion_s": null,
+      "case": "upper_outer",
+      "seed": 101,
+      "baseline_success": false,
+      "baseline_motion_s": 10.730644583702087,
+      "baseline_loaded_s": 3.7511603832244873,
+      "candidate_usable": true,
+      "paired": false,
+      "candidate_motion_s": 11.474409103393555,
+      "candidate_loaded_s": 4.494924902915955,
+      "improvement_pct": -6.931219405226703,
+      "selected_campaign": "initial",
+      "candidate_compute_s": 8.578707552005653,
+      "selected_rank": 1,
+      "displacement_m": {
+        "left": [
+          -0.04,
+          -0.0,
+          0.12
+        ],
+        "right": [
+          -0.04,
+          0.0,
+          0.12
+        ]
+      },
+      "eligible_endpoint_count": 24,
+      "error": null,
+      "attempts": [
+        {
+          "rank": 0,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.1,
+              -0.0,
+              0.0
+            ],
+            "right": [
+              -0.1,
+              0.0,
+              0.0
+            ]
+          },
+          "duration_s": 6.913899302482605,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 11,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": false,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 4,
+          "wall_s": 2.6501622259966098
+        },
+        {
+          "rank": 1,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.04,
+              -0.0,
+              0.12
+            ],
+            "right": [
+              -0.04,
+              0.0,
+              0.12
+            ]
+          },
+          "duration_s": 4.494924902915955,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "initial",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 2,
+          "wall_s": 2.2658499110111734
+        },
+        {
+          "rank": 2,
+          "usable": false,
+          "displacement_m": {
+            "left": [
+              -0.26,
+              -0.1,
+              0.44
+            ],
+            "right": [
+              -0.26,
+              0.1,
+              0.44
+            ]
+          },
+          "duration_s": null,
+          "lm_success": false,
+          "collision": null,
+          "native_geometry_success": null,
+          "campaign": "initial",
+          "failure": "all accurate solutions collide",
+          "search_start_valid": null,
+          "search_solutions": null,
+          "wall_s": 0.09425805900536943
+        },
+        {
+          "rank": 0,
+          "usable": true,
+          "displacement_m": {
+            "left": [
+              -0.18,
+              -0.0,
+              0.44
+            ],
+            "right": [
+              -0.18,
+              0.0,
+              0.44
+            ]
+          },
+          "duration_s": 4.917319297790527,
+          "lm_success": true,
+          "collision": {
+            "extract": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            },
+            "transport": {
+              "samples": 513,
+              "invalid": 0,
+              "continuous_certificate": false
+            }
+          },
+          "native_geometry_success": true,
+          "campaign": "clearance",
+          "failure": null,
+          "search_start_valid": true,
+          "search_solutions": 1,
+          "wall_s": 2.66060534499411
+        }
+      ]
+    }
+  ],
+  "attempted": 21,
+  "paired": 18,
+  "baseline_full_success": 18,
+  "candidate_full_success": 20,
+  "reliability_not_reduced": true,
+  "complete_seed_blocks": {
+    "11": 0.014070225922650911,
+    "51": -0.628800349061559,
+    "71": -4.615051851444022,
+    "89": -0.7750404824143081
+  },
+  "block_sign_test_two_sided_p": 0.625,
+  "median_improvement_pct": -2.5150416704449112,
+  "practical_threshold_pct": 10.0,
+  "significant_practical_gain": false,
+  "evidence_summaries": [
+    "research/curobo_v3/generated/free_space_extract/multiseed-20261111/summary.json",
+    "research/curobo_v3/generated/free_space_extract/clearance-20261111/summary.json"
+  ]
+}

@@ -1,5 +1,11 @@
 # 当前项目状态
 
+## 本实验分支交接（2026-11-12，非正式默认）
+
+- `experiment/motion-447-free-space-extract-pr82`只归档PR82空域抽离研究；结论为收益小、改造与决策代价大，暂不替换默认。
+- 入口与恢复命令：`research/curobo_v3/FREE_SPACE_EXTRACT.md`；21组精简证据：`research/curobo_v3/evidence/free_space_extract_pr82_20261111/`；大轨迹在MOTION-447的Resources，不提交Git。
+- 本轮8171回放已停止；默认核心/模型不改，不自动合并主线，不提PR。
+
 ## 2026-11-10 LM后处理发布PR准备
 
 - 最新合入基线PR80：alfa_v3_curobo@92bd8cdb。当前独立分支codex/lm-refinement-release只迁入双臂LM后64控制点32轮L-BFGS、extract后处理loaded checker、部署核对与可视化路径适配；原碰撞/RRT/实际LM末态重连编排不改。

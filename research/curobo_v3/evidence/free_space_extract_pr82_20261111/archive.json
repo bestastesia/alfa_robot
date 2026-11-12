@@ -1,0 +1,16 @@
+{
+  "size": 187566976,
+  "sha256": "dcdf74b932e23e066ff4b7f7a1970b90aae17567afe4573aab74ffa763329ce8",
+  "members": 280,
+  "filename": "MOTION-447-pr82-xyz-extraction-data.zip",
+  "issue": "MOTION-447",
+  "issue_url": "https://linear.app/sevenova/issue/MOTION-447",
+  "attachment_id": "65bee5b1-50e1-48ff-ab4d-39a534131406",
+  "document_id": "c3e78523-137d-4392-a2b8-ed409d17ff28",
+  "archive_scope": "21 baseline six-phase TimeOpt trajectories + chosen XYZ two phases + source scenes, campaign summaries, source snapshots, reports, diagnostics; excludes unselected temporary trajectories",
+  "verified_2026_11_12": {
+    "http_status": 200,
+    "content_length": 187566976,
+    "etag_md5": "870154149ff3a430c215c27dd1037a28"
+  }
+}

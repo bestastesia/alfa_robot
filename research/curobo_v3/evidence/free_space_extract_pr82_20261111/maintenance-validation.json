@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-12",
+  "maintenance_only": true,
+  "gpu_rerun": false,
+  "baseline_runtime_changed": false,
+  "original_contracts": "40 passed, 1 skipped in 4.04s",
+  "compact_evidence_check": true,
+  "archive_entries_sha256_checked": 279,
+  "restored_archive_check": true,
+  "selected_loaded_stages_checked": 42,
+  "scoped_timelines_checked": 126,
+  "viser_three_case_full_urdf_smoke_test": true,
+  "no_client_progress": false,
+  "idle_cpu_s_over_4s": 0.0,
+  "final_xyz_algorithm": "AST-equivalent to archived solver except removed unused escape_xyz diagnostics",
+  "removed_runtime_prototypes": [
+    "joined_only",
+    "free_xyz_seeded",
+    "free_xyz_rrt"
+  ],
+  "protections": [
+    "fresh output directory",
+    "scene/seed/task identity for baseline reuse",
+    "explicit reused source commit",
+    "manual case/seed/scope disables auto cycling"
+  ],
+  "cleanup_removed_bytes": 849574031,
+  "local_archive_retained_bytes": 187566976,
+  "temporary_replay_service": "stopped; 8171 released",
+  "remote_archive_integrity": "HTTP200/length/ETag MD5 matched; every local ZIP manifest payload SHA256 verified"
+}
