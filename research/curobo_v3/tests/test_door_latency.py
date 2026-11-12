@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tools'))
 from curobo_core.conveyor import conveyor_pair
 from curobo_core.door_sequential_validity import SequentialValidity, box_mesh_obb, material_self_overlap
+from curobo_core.fast_builds import sphere_pairs
 from curobo_core.resource_stats import bounded_get, record_build, resource_delta, resource_snapshot
 from curobo_core.urdf_fk import BatchToolFk
 from curobo_core.planner import shortcut_waypoints, validated_shortcut
@@ -294,7 +295,7 @@ class GrownWorldCostTests(unittest.TestCase):
 class CrossArmMarginTests(unittest.TestCase):
     """A left and a right sphere 25 mm apart, coverage margins 20 mm (left) and 10 mm (right)."""
 
-    def clash(self, growth_sides=(True, True), exempt=(), radius=.1):
+    def validity(self, growth_sides=(True, True), exempt=()):
         from curobo_core.door_sequential_validity import CollisionMargins
         validity = SequentialValidity.__new__(SequentialValidity)
         validity.margins = CollisionMargins(exempt_radius_m=.06)
@@ -305,10 +306,18 @@ class CrossArmMarginTests(unittest.TestCase):
         validity.growth_sides = torch.tensor(growth_sides)
         validity.cross_pairs = torch.tensor([[0, 1]])
         validity.cross_margins = torch.tensor([[.02, .01]])
+        validity.cross_block = None
+        return validity
+
+    def clash(self, growth_sides=(True, True), exempt=(), radius=.1):
         spheres = torch.tensor([[[0., 0., 0., radius], [.225, 0., 0., .1]]])
         tools = {'left_tool0': SimpleNamespace(position=torch.tensor([[[0., 0., .3]]])),
                  'right_tool0': SimpleNamespace(position=torch.tensor([[[.225, 0., .3]]]))}
-        return bool(validity._cross_arm_clash(spheres, tools)[0])
+        validity = self.validity(growth_sides, exempt)
+        pairwise = bool(validity._cross_arm_clash(spheres, tools)[0])
+        validity.cross_block = (torch.tensor([0]), torch.tensor([1]), torch.tensor([.02]), torch.tensor([.01]))
+        self.assertEqual(bool(validity._cross_arm_clash(spheres, tools)[0]), pairwise)
+        return pairwise
 
     def test_both_free_space_arms_need_the_sum_of_their_margins(self):
         self.assertTrue(self.clash())
@@ -321,6 +330,24 @@ class CrossArmMarginTests(unittest.TestCase):
 
     def test_disabled_spheres_never_clash(self):
         self.assertFalse(self.clash(radius=-100.))
+
+    def test_sphere_block_equals_the_pairwise_check(self):
+        generator = torch.Generator().manual_seed(7)
+        left, right = [0, 2, 3, 6], [1, 4, 5]
+        left_margin, right_margin = torch.rand(4, generator=generator)*.03, torch.rand(3, generator=generator)*.03
+        spheres = torch.rand((256, 7, 4), generator=generator)*torch.tensor([.6, .6, .6, .12])
+        spheres[torch.rand((256, 7), generator=generator) < .1, 3] = -100.
+        tools = {name: SimpleNamespace(position=torch.rand((1, 256, 3), generator=generator)*.6)
+                 for name in ('left_tool0', 'right_tool0')}
+        for growth_sides in ((True, True), (True, False), (False, False)):
+            validity = self.validity(growth_sides, exempt=[(1, [(.3, .3, .3)])])
+            validity.cross_pairs = torch.tensor([[i, j] for i in left for j in right])
+            validity.cross_margins = torch.stack([left_margin.repeat_interleave(3), right_margin.repeat(4)], dim=-1)
+            pairwise = validity._cross_arm_clash(spheres, tools)
+            validity.cross_block = (torch.tensor(left), torch.tensor(right), left_margin, right_margin)
+            block = validity._cross_arm_clash(spheres, tools)
+            self.assertTrue(torch.equal(block, pairwise), growth_sides)
+            self.assertTrue(0 < int(block.sum()) < len(block))
 
 
 class CoverageMarginTests(unittest.TestCase):
@@ -414,6 +441,32 @@ class ResourceStatsTests(unittest.TestCase):
             delta = resource_delta(before, resource_snapshot(owner))
             self.assertEqual(delta['door_checker']['builds'], 2)
             self.assertEqual(resource_delta(resource_snapshot(owner), resource_snapshot(owner)), {})
+
+
+def loop_sphere_pairs(distances):
+    """cuRobo's create_from_sphere_pair_distances pair loop (curobo/_src/robot/types/self_collision_params.py)."""
+    pairs = []
+    for i in range(len(distances)):
+        if torch.max(distances[i]) == -torch.inf:
+            continue
+        pairs.extend((i, j) for j in range(i+1, len(distances)) if distances[i, j] != -torch.inf)
+    return torch.tensor(pairs, dtype=torch.int16).reshape(-1, 2)
+
+
+class SpherePairTests(unittest.TestCase):
+    def test_tensor_pairs_equal_the_loop_in_order(self):
+        generator = torch.Generator().manual_seed(4)
+        for count in (1, 2, 7, 60):
+            distances = torch.rand((count, count), generator=generator)
+            distances[torch.rand((count, count), generator=generator) < .6] = -torch.inf
+            distances[count//2] = -torch.inf  # a sphere without any pair
+            distances[0, -1] = float('nan')   # the loop keeps NaN distances
+            pairs = sphere_pairs(distances)
+            self.assertEqual(pairs.dtype, torch.int16)
+            self.assertTrue(torch.equal(pairs, loop_sphere_pairs(distances)), count)
+
+    def test_no_pairs(self):
+        self.assertEqual(tuple(sphere_pairs(torch.full((3, 3), -torch.inf)).shape), (0, 2))
 
 
 if __name__ == '__main__':

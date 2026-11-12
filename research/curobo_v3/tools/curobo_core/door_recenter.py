@@ -28,6 +28,7 @@ from .door_model import MODEL_FILES, REZERO_REVISION, FixedBodyBoxes, model_revi
 from .door_sequential import (_SequentialTask,check_frozen,corners,mesh_contact_proof,pose_error,
                               tool_mesh_vertices)
 from .door_sequential_validity import CollisionMargins, ReducedValidity, SequentialValidity
+from .fast_builds import install as install_fast_builds
 from .resource_stats import record_build
 from .urdf_fk import BatchToolFk
 from .planner import CycleBlocked, FullCyclePlanner
@@ -168,6 +169,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     release_retreat_m = None
 
     def __init__(self, assets):
+        install_fast_builds()
         super().__init__(assets)
         self.adopt_model(assets)
         self.batch_fk = BatchToolFk(self.fk_robot, ('left_tool0', 'right_tool0', 'arm_carriage'), ACTIVE_JOINTS)

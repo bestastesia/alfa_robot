@@ -208,6 +208,15 @@ class SequentialValidity(GpuValidity):
                  for j, second_margin in zip(self.link_indices[second], sphere_margins[second])]
         self.cross_pairs = torch.tensor([pair[:2] for pair in cross], device=device, dtype=torch.long).reshape(-1, 2)
         self.cross_margins = torch.tensor([pair[2:] for pair in cross], device=device, dtype=torch.float32).reshape(-1, 2)
+        # Link-pair products give every left sphere against every right sphere: one broadcast block
+        # instead of gathering both spheres of each pair (the same per-pair arithmetic).
+        left_margin, right_margin = {pair[0]: pair[2] for pair in cross}, {pair[1]: pair[3] for pair in cross}
+        self.cross_block = None
+        if cross and len({pair[:2] for pair in cross}) == len(cross) == len(left_margin)*len(right_margin):
+            left_ids, right_ids = sorted(left_margin), sorted(right_margin)
+            self.cross_block = tuple(torch.tensor(values, device=device, dtype=dtype) for values, dtype in (
+                (left_ids, torch.long), (right_ids, torch.long), ([left_margin[i] for i in left_ids], torch.float32),
+                ([right_margin[j] for j in right_ids], torch.float32)))
         payload_growth = dict(self.margins.payload)
         self.payload_growth = torch.tensor([payload_growth.get(link, 0.) for link, indices in self.link_indices.items()
                                             for _ in indices], device=device)
@@ -304,6 +313,12 @@ class SequentialValidity(GpuValidity):
         margins of its free-space arms whose tool0 is outside the exempt balls (MOTION-429)."""
         grown = torch.stack([self.growth_sides[side] & ~self._near_exempt(tools, side, (len(spheres),))
                              for side in range(2)], dim=-1)
+        if self.cross_block is not None:
+            left_ids, right_ids, left_margin, right_margin = self.cross_block
+            first, second = spheres[:, left_ids, None], spheres[:, None, right_ids]
+            clearance = torch.linalg.vector_norm(first[..., :3]-second[..., :3], dim=-1)-first[..., 3]-second[..., 3]
+            margin = left_margin[:, None]*grown[:, :1, None]+right_margin*grown[:, 1:, None]
+            return ((first[..., 3] > 0) & (second[..., 3] > 0) & (clearance < margin)).flatten(1).any(-1)
         first, second = spheres[:, self.cross_pairs[:, 0]], spheres[:, self.cross_pairs[:, 1]]
         clearance = torch.linalg.vector_norm(first[..., :3]-second[..., :3], dim=-1)-first[..., 3]-second[..., 3]
         margin = self.cross_margins[:, 0]*grown[:, :1]+self.cross_margins[:, 1]*grown[:, 1:]
