@@ -194,6 +194,8 @@ class GpuValidity:
         weighted = torch.abs((goals - starts) * getattr(self, 'collision_weights', self.weights).to(starts.device))
         steps = torch.clamp(torch.ceil(weighted.max(dim=1).values / resolution).long(), min=getattr(self, "minimum_edge_steps", 1))
         horizon = int(steps.max().item()) + 1
+        if getattr(self, 'compact_edges', False):
+            return self._compact_edges(starts, goals, steps, horizon, return_stability)
         fractions = torch.arange(horizon, device=starts.device).reshape(1, -1)
         fractions = torch.minimum(fractions / steps.reshape(-1, 1), torch.ones_like(fractions))
         points = starts[:, None, :] + fractions[:, :, None] * (goals - starts)[:, None, :]
@@ -213,6 +215,32 @@ class GpuValidity:
         actual_steps = torch.arange(horizon, device=starts.device).reshape(1, -1) <= steps.reshape(-1, 1)
         mean_stability = (stability * actual_steps).sum(dim=1) / (steps + 1)
         return edge_valid, mean_stability
+
+    def _compact_edges(self, starts, goals, steps, horizon, return_stability):
+        """edges() over each edge's own samples: the padded grid above repeats every shorter edge's goal
+        state up to the longest edge's horizon (the RRT's tree connections, 5-120 steps, padded about
+        1.5x). The same sample states, so the same validity per edge and the same mean stability."""
+        counts = steps + 1
+        edge = torch.repeat_interleave(torch.arange(len(starts), device=starts.device), counts)
+        index = torch.arange(len(edge), device=starts.device) - (torch.cumsum(counts, 0) - counts)[edge]
+        points = starts[edge] + (index / steps[edge])[:, None] * (goals - starts)[edge]
+        base_margin_m = getattr(self, 'search_base_margin_m', 0.0)
+        if base_margin_m:
+            valid, stability = self.evaluate(points, base_margin_m=base_margin_m)
+        else:
+            valid, stability = self.evaluate(points)
+        margin_m = getattr(self, 'search_scene_margin_m', 0.)
+        if margin_m > 0:
+            valid = valid & self.scene_margin_mask(points, margin_m)
+        grid = torch.ones((len(starts), horizon), dtype=torch.bool, device=starts.device)
+        grid[edge, index] = valid
+        edge_valid = grid.all(dim=1)
+        if not return_stability:
+            return edge_valid
+        padded = torch.zeros((len(starts), horizon), dtype=stability.dtype, device=starts.device)
+        padded[edge, index] = stability
+        actual_steps = torch.arange(horizon, device=starts.device).reshape(1, -1) <= steps.reshape(-1, 1)
+        return edge_valid, (padded * actual_steps).sum(dim=1) / (steps + 1)
 
 
 def densify(path, weights=None, maximum_weighted_step=math.radians(0.5)):

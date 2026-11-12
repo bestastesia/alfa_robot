@@ -342,6 +342,7 @@ class _SequentialTask:
                 geometry_tolerance=self.request.cartesian_geometry_tolerance_m,support_pose=self.support_pose,support_side=self.support_side,
                 fixed_body=getattr(self.planner, "fixed_body", None),
                 margins=margins,sphere_margins=getattr(self.planner,"sphere_margins",None))
+            self.cached_validity.compact_edges = getattr(self.planner, "compact_edge_checks", False)
             self.cached_key = key
             self.validity_cache[key]=self.cached_validity
             self.validities.append(self.cached_validity)

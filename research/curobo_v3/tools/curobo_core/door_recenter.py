@@ -230,6 +230,10 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # (None: whole 2 s attempts). Those attempts settled on their path within 1 s (the 1 and 2 s budgets
     # chose the same paths for column 1); with the line goals 0.7 s attempts came out alike.
     recenter_rrt_refinement_s = None
+    # Door validities check edges over each edge's own samples instead of the grid padded to the
+    # longest edge (GpuValidity.edges compact_edges: the same states and results). The latest pair's
+    # RRT connections padded 73k sampled states to 107k per first path (False: padded grid).
+    compact_edge_checks = False
 
     def __init__(self, assets):
         install_fast_builds()
@@ -294,6 +298,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.rrt_prune_invalid_edges = True
         self.recenter_line_goals = True
         self.recenter_rrt_refinement_s = .5
+        self.compact_edge_checks = True
         self.deferred_extract_search = False
         self.ik_limit_margin_rad = math.radians(15.)
         self.pose_score_bucket = .05

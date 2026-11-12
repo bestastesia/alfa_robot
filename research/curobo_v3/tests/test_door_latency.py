@@ -500,5 +500,39 @@ class DenseEdgeCheckTests(unittest.TestCase):
         self.assertLess(cached.states, whole.states)
 
 
+class CompactEdgeTests(unittest.TestCase):
+    """GpuValidity.edges over each edge's own samples returns what the padded grid returns."""
+
+    def validity(self, compact):
+        from v3_batched_loaded_search import GpuValidity
+
+        def evaluate(values):
+            self.states += len(values)
+            stability = (values[:, 3]*7.).sin().abs()
+            return ~((values[:, 1] > .3) & (values[:, 1] < .32) & (values[:, 2] > 0.)), stability
+        validity = SimpleNamespace(weights=torch.ones(15), minimum_edge_steps=2, compact_edges=compact,
+                                   evaluate=evaluate)
+        validity._compact_edges = lambda *args: GpuValidity._compact_edges(validity, *args)
+        validity.edges = lambda *args, **kwargs: GpuValidity.edges(validity, *args, **kwargs)
+        return validity
+
+    def test_compact_edges_match_the_padded_grid(self):
+        rng = np.random.default_rng(11)
+        starts = torch.as_tensor(rng.uniform(-1., 1., (64, 15)), dtype=torch.float32)
+        goals = starts+torch.as_tensor(rng.uniform(-1., 1., (64, 15))*rng.uniform(.01, 1., (64, 1)), dtype=torch.float32)
+        counts = {}
+        for compact in (False, True):
+            self.states = 0
+            validity = self.validity(compact)
+            valid, stability = validity.edges(starts, goals, return_stability=True)
+            counts[compact] = self.states
+            if compact:
+                self.assertTrue(torch.equal(valid, padded[0]) and torch.equal(stability, padded[1]))
+                self.assertTrue(torch.equal(validity.edges(starts, goals), padded[0]))
+            padded = valid, stability
+        self.assertTrue(padded[0].any() and not padded[0].all())
+        self.assertLess(counts[True], counts[False])
+
+
 if __name__ == '__main__':
     unittest.main()

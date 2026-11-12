@@ -494,6 +494,7 @@ class ReducedValidity(GpuValidity):
         self.reference = torch.as_tensor(reference, device="cuda", dtype=torch.float32)
         self.weights = full.weights[self.indices]
         self.stability_weight = full.stability_weight
+        self.compact_edges = getattr(full, "compact_edges", False)
 
     def expand(self, values):
         output = self.reference.expand(len(values), -1).clone()
