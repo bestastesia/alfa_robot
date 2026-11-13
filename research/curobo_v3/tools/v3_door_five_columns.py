@@ -66,7 +66,12 @@ def plan_round(planner,number,column,removed,seed,policy,context,rounds,progress
     torch.cuda.synchronize();torch.cuda.reset_peak_memory_stats();resources=resource_snapshot(planner);resident=torch.cuda.memory_allocated()/2**20
     round_started=time.perf_counter();error=None
     request=door_request(planner,seed,column,removed);planner.set_snapshot(request.snapshot)
-    if column==0:
+    if column==0 and getattr(planner,'column0_mirrored_frame',False):
+        from curobo_core.door_mirror import plan_mirrored_round
+        report,error=plan_mirrored_round(planner,request,policy,progress=lambda text:progress(f'列{column} · 镜像帧 · {text}'),
+            grasp_rolls=dict(left_grasp_rolls_deg=(0.,30.,45.),right_grasp_rolls_deg=(0.,30.,-30.,45.,-45.)))
+        report.update(initial_snapshot=request.snapshot.to_dict(),column=column,round_index=number,removed_box_ids=sorted(removed),**context)
+    elif column==0:
         source_path=Path(rounds[0]['path']);report=mirror_round(json.loads(source_path.read_text()),source_path,planner,request)
         report.update(initial_snapshot=request.snapshot.to_dict(),column=column,round_index=number,removed_box_ids=sorted(removed),**context)
     else:

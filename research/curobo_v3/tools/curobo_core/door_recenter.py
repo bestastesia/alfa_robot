@@ -183,6 +183,10 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # Latest-pair atlas rows keep the already recentered left arm within this joint change (deg)
     # first, within a pose-score bucket (None: pose score bucket, then distance).
     latest_pair_settled_arm_deg = None
+    # Column 0 planned on its own in the mirrored frame (arms' roles swapped) instead of derived from
+    # column 4's trajectory by reflection: see door_mirror.plan_mirrored_round (None/False: the
+    # column-4 symmetry derivation of v3_door_five_columns.mirror_round, which needs a symmetric scene).
+    column0_mirrored_frame = False
     # Search budgets where the re-zeroed model's paths differ: the recenter's Cartesian quality search,
     # and the upper precontact trying its joint routes before the Cartesian strategies. With
     # rotation_gate_slack_deg, two paths that both miss a gate end that search: its straight-line
@@ -318,6 +322,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.right_precontact_analytic_ik = True
         self.center_column_outer_flow = True
         self.free_space_stages = ('conveyor_suffix',)  # placement and Home searches only (user choice A)
+        self.column0_mirrored_frame = True
         self.target_values = convert_row(list(ACTIVE_JOINTS), self.target_values)
         self.model_id = self._model_identity()
         self.snapshot = replace(self.snapshot, model_id=self.model_id)
