@@ -2420,3 +2420,19 @@
   - 列4、列1 仍超 10 s。列4 最近对的右腕约 200° 翻转是固有的：所有直线都会扫到门框、机架或固定车体，与余量无关。列1 左臂回中的直线被右臂挡住。
   - 现代化 verifier 用的是固定转动门禁，在列3/1/2 上仍不过：上箱预接触 100–127°、左臂回中 150–306°、最近对 180–252°。
   - 方案 A（托架/Home 重设计）未做。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列新零位模型：每列规划压到 8 s 以内（MOTION-443）
+- 做了什么：
+  - 最近对取首条路径；同构型分支只剩 1 个目标时，笛卡尔回中只试直线；
+  - 捷径化先粗筛再细检；RRT 细检逐边缓存，并剪掉细检失败的子树；
+  - 边检只采每条边自己的点，RRT 先筛终点和每四个采样点（判定不变）；
+  - 左臂回中 RRT 优先朝直线转动在门禁内的目标搜，取首条细检通过的路径再细化 0.5 s。
+- 改了哪里：research/curobo_v3/tools/{curobo_core/door_recenter,curobo_core/door_sequential,curobo_core/door_sequential_validity,v3_batched_loaded_search,v3_cartesian_transport}.py、tests/test_door_{latency,rezero}.py、tests/test_gpu_rrt_pruning.py；commit 17d0214、affdc43、a75aaa1、4f0f3bd、bddae7d（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：
+  - 种子 5/11/29/41/13/17/23/31（预热 7）五列全部成功；每列规划最慢：列4 7.6 s、列3 4.5 s、列1 4.8 s、列2 4.4 s，列0 镜像 ≤0.82 s（v12：列4 11.3–16.0 s、列1 10.0–12.4 s）；
+  - 全帧 mesh 审计 40 轮 0 穿透；结构 verifier 8/8 通过；列0 镜像 verifier 7/8 通过；RNEA ≤0.900，包络 ≤1.013 m；CPU 145 passed；
+  - 证据在 ~/Sevenova/door-five-column-latency-20261108/migration/step3-latency-v19/（消融 v16b、v18）。
+- 留给下个 AI：
+  - 种子 23 的列0 镜像时间与列4 差 2.7 ms：列4 最近对一段已按 RNEA 局部重定时（力矩 0.8999），镜像后又重定时一次，严格对称校验不过。
+  - 剪枝让列1/列2 预接触换了下箱暂存终点，左臂回中改走直线（多转 150°）；关掉剪枝时由目标筛选兜底（68–80°）。
+  - 列4 运动比 v12 长约 1.5 s（剪枝换了路径），列1 短 0.7–12.9 s；现代化 verifier 的固定转动门禁仍不过；方案 A 未做。
