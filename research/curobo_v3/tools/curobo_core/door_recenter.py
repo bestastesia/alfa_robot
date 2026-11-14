@@ -57,11 +57,11 @@ def door_pair(column):
     return 15+column,20+column  # lower, upper
 
 
-def door_pick_base_pose(column):
+def door_pick_base_pose(column,retreat_m=0.):
     door_pair(column)  # validate once, alongside the box mapping
     offsets={0:(-.2,-30.),1:(-.4,0.),2:(0.,0.),3:(.4,0.),4:(.2,30.)}
     y,yaw_deg=offsets[int(column)];yaw=math.radians(yaw_deg)
-    return Pose((0.,y,0.),(math.cos(yaw/2),0.,0.,math.sin(yaw/2)))
+    return Pose((-float(retreat_m),y,0.),(math.cos(yaw/2),0.,0.,math.sin(yaw/2)))
 
 
 def snapshot_in_base(snapshot):
@@ -101,7 +101,8 @@ def door_request(planner, seed, column=2, removed_box_ids=()):
                 for r in range(5) for c in range(5) if r*5+c not in removed]
     objects.append(SceneObject('warehouse_top_door_leaf', (.04, 2., .47), Pose((front-.035, 0., 2.115))))
     snapshot = replace(planner.snapshot, objects=tuple(objects), attachments=(), revision=0,
-                       state=planner.snapshot.state.with_positions(planner.home,door_pick_base_pose(column)),
+                       state=planner.snapshot.state.with_positions(planner.home,door_pick_base_pose(
+                           column,getattr(planner,'pick_base_retreat_m',0.) or 0.)),
                        meshes=conveyor_pair(pose=Pose((planner.conveyor_center_x_m, 0., 0.))).world_parts(),
                        policy=CollisionPolicy(False, False, max_box_tilt_deg=89.))
     return SimpleNamespace(snapshot=snapshot, mode='door_recenter',
@@ -148,6 +149,10 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # Outer columns take the center column's attached-upper flow (support, lower extract/recenter,
     # upper lower/extract with the upper kept attached) instead of the rack-supported outer flow.
     center_flow_for_all = False
+    # Arrival stance offset (m) along the wall's outward normal: the base starts this much further
+    # from the rack, which makes the fixed-base upper extraction reachable without any base motion
+    # during the pick (the wall faces -x for every column, so the world offset is -x).
+    pick_base_retreat_m = 0.
     # Pick-phase updown search grid (m). None keeps the placement policy grid ([-0.2, 0]); the pick can
     # use the full joint range, and the fixed-base upper extraction only completes at deep lifts.
     pick_updown_grid_m = None
@@ -496,8 +501,31 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                 if candidate is not None:
                     retreat = candidate
                     details = dict(shorter_details, shortened_from_m=self.release_retreat_m,
-                                   failed_full=details)
+                                   shortened_to_m=shorter, failed_full=details)
                     break
+        if retreat is None:
+            # The wrist cannot track the tool-axis line from this placement posture. Lift or lower the
+            # carriage by a few centimetres instead: one joint, nothing to track, and the tools leave
+            # the released boxes' top faces. The pose must already be clear of the boxes.
+            limits = validity.checker.kinematics.get_joint_limits().position
+            low, high = (float(values[0].item()) for values in limits)
+            boxed = self.checker(None, objects=released)
+            for delta in (.08, .06, .04, .02, -.02, -.04, -.06, -.08):
+                row = np.asarray(start, dtype=float).copy()
+                row[0] += delta
+                if not low+1e-5 <= row[0] <= high-1e-5:
+                    continue
+                tensor = torch.as_tensor(row[None], device='cuda', dtype=torch.float32)
+                if not bool(validity.mask(tensor).any()):
+                    continue
+                tools, home = self.tool_matrices(row), self.tool_matrices(target)
+                clear = self.placement_validity(boxed, False, objects=released, exempt_points={
+                    side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
+                if not bool(clear.mask(tensor).any()):
+                    continue
+                retreat = row[None].copy()
+                details = dict(strategy='carriage_lift', updown_delta_m=delta)
+                break
         if retreat is None:
             # Last resort: search in joint space from the placed pose with the released boxes in the
             # world (the checker decides whether the start contact is within its tolerance).
@@ -514,6 +542,24 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         tools, home = self.tool_matrices(retreat[-1]), self.tool_matrices(target)
         boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
             side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
+        # A shortened retreat can stop with the tools still inside the released boxes' margin: the
+        # search then cannot leave its start (one start node, no edges). Continue the retreat in 2 cm
+        # steps along the same tool directions up to the full distance.
+        extended = 0
+        shortened = details.get('shortened_to_m') if isinstance(details, dict) else None
+        if shortened is not None:
+            covered = float(shortened)
+            while covered < self.release_retreat_m - 1e-9 and extended < 4:
+                step, step_details = self.release_retreat(np.asarray(retreat)[-1], validity, distance_m=.02)
+                if step is None or len(step) < 2:
+                    break
+                retreat = np.vstack([np.asarray(retreat), np.asarray(step)[1:]])
+                covered += .02
+                extended += 1
+            tools, home = self.tool_matrices(retreat[-1]), self.tool_matrices(target)
+            boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
+                side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
+            details = dict(details, extended_steps=extended)
         path, stats = super().joint_plan(retreat[-1], target, boxed, boxed_validity, seed, stop_at_first_valid, shortcut)
         stats = dict(stats, release_retreat=details, released_boxes=[item.object_id for item in released])
         if path is None:
@@ -530,7 +576,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         failures = []
         if min(float(-axis@direction) for axis in axes.values()) >= math.cos(math.radians(2.)):
             path, details = self.analytic_extract(start, validity, validity, sides=('left', 'right'), direction=direction,
-                                                  distance_m=distance)
+                                                  distance_m=distance, line_tolerance_m=.01)
             if path is not None:
                 return path, details
             failures.append(dict(order='both', details=details))
@@ -539,7 +585,8 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             for side in order:
                 segment, record = self.analytic_extract(
                     path[-1], validity, validity, sides=(side,), direction=-axes[side], distance_m=distance,
-                    hold_sides=tuple(other for other in order if other != side), swivel_continuation=True)
+                    hold_sides=tuple(other for other in order if other != side), swivel_continuation=True,
+                    line_tolerance_m=.01)
                 if segment is None:
                     failures.append(dict(order='+'.join(order), side=side, details=record))
                     break
@@ -1937,6 +1984,7 @@ class DoorTask(_SequentialTask):
                 if line is not None:
                     alternatives.append((line, dict(direct_line_goal=goal), None))
                     quality_good = self.path_rotation_metrics(line, side)['extra_deg'] <= limit
+            previous_failure = None
             for retry in range(0 if quality_good else self.planner.recenter_cartesian_attempts):
                 attempts_run += 1
                 quality_seed = seed+1000*(retry+1)
@@ -1952,7 +2000,8 @@ class DoorTask(_SequentialTask):
                 quality_stats = quality_stats or {}
                 cartesian_attempts.append(dict(seed=quality_seed, success=quality_path is not None,
                                                **{key: quality_stats.get(key) for key in
-                                                  ('failure', 'same_branch_goals', 'search_ms')}))
+                                                  ('failure', 'same_branch_goals', 'search_ms',
+                                                   'direct_lines_coarse_valid', 'solutions_found')}))
                 if quality_path is not None:
                     alternatives.append((quality_path, quality_stats, quality_seed))
                     moving_quality = self.path_rotation_metrics(quality_path, side)['extra_deg']
@@ -1961,6 +2010,18 @@ class DoorTask(_SequentialTask):
                     quality_good = moving_quality <= limit and held_quality <= 5.
                     break
                 if (quality_stats.get('same_branch_goals') or 0) < 2:
+                    break
+                # Identical failures repeat: the remaining seeds would spend their budgets on the
+                # same tree (the re-zeroed left recenter: 3 x no_valid_path, 33 goals, 0.77 s each).
+                failure_signature = (quality_stats.get('failure'), quality_stats.get('same_branch_goals'))
+                if failure_signature == previous_failure:
+                    break
+                previous_failure = failure_signature
+                first_attempt_stats = (quality_stats.get('attempts') or [{}])[0]
+                if (first_attempt_stats.get('direct_lines_coarse_valid') == 0
+                        and quality_stats.get('solutions_found') == 0):
+                    # No goal had a straight line and the tree found nothing: a reseed restarts the
+                    # same search (the re-zeroed yaw-0 left recenter: 9 of 9 attempts, 0.77 s each).
                     break
             reduced, reduced_search = ((SupportCompensatedValidity(item, start, mapper, searched_indices=active)
                                         if mapper is not None else ReducedValidity(item, start, active))
@@ -2747,14 +2808,11 @@ class DoorTask(_SequentialTask):
         world_tool=matrix@self.tool(start,'right');world_left=matrix@self.tool(start,'left')
         world_scene=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
         world_outward=matrix[:3,:3]@self.wall_outward_direction
-        lift=float(start[0])
+        lift=float(start[0]);fallback_swivel={}
         for fraction in np.linspace(0.,1.,steps+1)[1:]:
             position=np.asarray(old.position)+world_outward*(float(retreat_m)*fraction)
             base=Pose(tuple(position),old.quaternion_wxyz)
-            self.pick_base_pose=base
-            self.store=SceneStore(snapshot_in_base(replace(world_scene,state=replace(world_scene.state,base_pose=base))))
-            self.request.snapshot=snapshot_in_base(replace(world_request,state=replace(world_request.state,base_pose=base)))
-            self.validity_cache={};self.cached_key=None
+            self.rebase_mobile_scene(world_scene, world_request, base)
             base_matrix=pose_matrix(base)
             tool=world_tool.copy();tool[:3,3]+=world_outward*(distance*fraction)
             row=start.copy();row[0]=lift
@@ -2764,9 +2822,18 @@ class DoorTask(_SequentialTask):
                 target=np.linalg.inv(base_matrix)@target_world
                 solutions=self.planner.analytic.solve(side_index,carriage@target,float(self.planner.analytic.swivel(side_index,self.q[indices])),self.q[indices])
                 if not len(solutions):
-                    for swivel in np.deg2rad(np.arange(-180.,180.,2.)):
-                        got=self.planner.analytic.solve(side_index,carriage@target,float(swivel),self.q[indices])
-                        if len(got):solutions=got;break
+                    # The swivel that rescued the previous step usually rescues this one too; only
+                    # then sweep (5 deg: the manifold is continuous, so the neighbouring branch is
+                    # 36 solves away instead of 180).
+                    cached=fallback_swivel.get(side)
+                    if cached is not None:
+                        got=self.planner.analytic.solve(side_index,carriage@target,float(cached),self.q[indices])
+                        if len(got):solutions=got
+                    if not len(solutions):
+                        for swivel in np.deg2rad(np.arange(-180.,180.,5.)):
+                            got=self.planner.analytic.solve(side_index,carriage@target,float(swivel),self.q[indices])
+                            if len(got):
+                                solutions=got;fallback_swivel[side]=float(swivel);break
                 if not len(solutions):self.fail(f'mobile extraction lost {side} IK at {fraction:.2f}')
                 row[indices]=solutions[int(np.argmin(np.linalg.norm(solutions-self.q[indices],axis=1)))]
             self.q=row.copy()
@@ -2779,6 +2846,34 @@ class DoorTask(_SequentialTask):
         clearance=self.wall_clearance(self.q,item,original)
         self.report['mobile_extraction']=dict(distance_m=distance,base_retreat_m=float(retreat_m),steps=steps,wall_clearance_m=clearance)
         if clearance<1e-6:self.fail('mobile extraction did not clear the wall front plane')
+
+    def rebase_mobile_scene(self, world_scene, world_request, base):
+        """Move the base while the world stays put: re-express the base-frame store/request and update
+        the resident checker's obstacle poses in place (rebuilding it costs ~58 ms per step)."""
+        import torch
+        from curobo.types import Pose as CuPose
+        from .adapter import world_meshes, world_objects
+        self.pick_base_pose = base
+        self.store = SceneStore(snapshot_in_base(replace(world_scene, state=replace(world_scene.state, base_pose=base))))
+        self.request.snapshot = snapshot_in_base(replace(world_request, state=replace(world_request.state, base_pose=base)))
+        validity = self.cached_validity
+        if self.contact_pair is not None or self.support_pose is not None:
+            self.fail('mobile rebase requires the plain scene validity')
+        snapshot = self.store.snapshot()
+        scene = validity.checker.scene_model
+        for item in (*world_objects(snapshot), *world_meshes(snapshot)):
+            pose = CuPose(position=torch.tensor(item.pose.position, device='cuda', dtype=torch.float32),
+                          quaternion=torch.tensor(item.pose.quaternion_wxyz, device='cuda', dtype=torch.float32))
+            scene.update_obstacle_pose(item.object_id, pose)
+        validity.snapshot = snapshot
+        if hasattr(validity, '_world_geometry'):
+            del validity._world_geometry
+        support_key = None
+        key = (snapshot.geometry_key, self.contact_pair, support_key, self.support_side,
+               self.request.cartesian_geometry_tolerance_m, self.collision_margins())
+        self.validity_cache = {key: validity}
+        self.cached_key = key
+        return validity
 
     def lower_upper_with_lower_hold(self):
         self.enter('right_lower')

@@ -8,7 +8,8 @@ from v3_batched_loaded_search import densify
 class DoorExtraction:
     def analytic_extract(self, contact, empty_validity, loaded_validity, *,
                          sides=("left", "right"), direction=(-1., 0., 0.), distance_m=.35,
-                         lift_end=None, hold_sides=(), swivel_continuation=False, step_m=.01):
+                         lift_end=None, hold_sides=(), swivel_continuation=False, step_m=.01,
+                         line_tolerance_m=.002):
         """Parameterization of f044bf1's fixed-swivel, 1cm Cartesian bridge.
 
         No reverse construction, per-point angle search, or globally forced
@@ -207,7 +208,7 @@ class DoorExtraction:
             line_error = max(line_error, float(np.linalg.norm(deviation, axis=1).max()))
             orientation_error = max(orientation_error, float(Rotation.from_matrix(
                 np.transpose(actual[:, :3, :3], (0, 2, 1))@targets[side][:3, :3]).magnitude().max()))
-        if line_error > .002 or orientation_error > math.radians(1.):
+        if line_error > line_tolerance_m or orientation_error > math.radians(1.):
             return None, f"笛卡尔插值超出基线2mm/1deg门限: {line_error*1000:.3f}mm"
         self.last_extract_frames=dense
         return dense, {"strategy": "f044_fixed_swivel", "cartesian_step_m": step_m,
