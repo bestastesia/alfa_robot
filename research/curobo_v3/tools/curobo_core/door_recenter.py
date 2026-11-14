@@ -145,6 +145,23 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # The center column (2) takes the outer columns' rack-supported flow: in the re-zeroed model the
     # center flow's compensated upper extraction is out of the right arm's reach.
     center_column_outer_flow = False
+    # Outer columns take the center column's attached-upper flow (support, lower extract/recenter,
+    # upper lower/extract with the upper kept attached) instead of the rack-supported outer flow.
+    center_flow_for_all = False
+    # Pick-phase updown search grid (m). None keeps the placement policy grid ([-0.2, 0]); the pick can
+    # use the full joint range, and the fixed-base upper extraction only completes at deep lifts.
+    pick_updown_grid_m = None
+    # Mid-pick base fine adjustment with both boxes held, as [dx, dy (world m), dyaw (deg)], applied
+    # after the lower recenter and before the upper lowering. None disables it.
+    pair_base_shift = None
+    pair_base_shift_steps = 12
+    # Try this updown lift end first when validating the compensated upper lowering (None: the recenter
+    # endpoint's lift minus the drop, then the pick grid).
+    upper_lowering_lift = None
+    # Coordinated mobile extraction: while the upper box is pulled outward, the base retreats by this
+    # distance (m) along the wall normal, so the arm only performs (distance - retreat) itself.
+    mobile_extract_retreat_m = None
+    mobile_extract_steps = 31
     # MOTION-429: the frozen spheres leave up to ~2.8 cm of each arm mesh uncovered (re-zeroed model;
     # exact mesh audit: link7 and its suction cap up to 13 mm inside neighbouring boxes mid-approach).
     # Arms moving in free space grow every sphere by its coverage margin against the world and, for
@@ -193,6 +210,10 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
     # reference was out of reach (obstacles), and further seeds came out alike.
     recenter_cartesian_budget_s = 8.
     precontact_joint_first = False
+    # First-pass budget of the supported side precontact's Cartesian search. Direct lines answer in
+    # milliseconds; when this pass finds nothing acceptable and the joint routes fail, the search
+    # reruns with the full 4 s, so shortening it only skips search that was going to be discarded.
+    side_precontact_cartesian_budget_s = 4.
     # Seeds of the recenter's Cartesian quality search while it finds no path and keeps at least two goals
     # on the arm's IK branch: it keeps that branch, and its tree succeeds for some seeds only (the
     # re-zeroed column 4: 2 of 5 for one request); the RRT fallback may change the branch, from which
@@ -306,6 +327,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.recenter_cartesian_attempts = 3
         self.recenter_cartesian_rrt_min_goals = 2
         self.precontact_joint_first = True
+        self.side_precontact_cartesian_budget_s = .5
         self.side_precontact_refinement_s = .25
         self.direct_line_first = True
         self.shortcut_screen_rad = .05
@@ -466,7 +488,28 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             return super().joint_plan(start, target, checker, validity, seed, stop_at_first_valid, shortcut)
         retreat, details = self.release_retreat(start, validity)
         if retreat is None:
-            return None, dict(failure='release_retreat', details=details)
+            # The full retreat line is outside the 2 mm gate from this placement posture (a wrist at a
+            # limit): a shorter straight retreat still separates the tools from the released boxes,
+            # and the search below keeps the boxes in the world from there.
+            for shorter in (.06, .04, .02):
+                candidate, shorter_details = self.release_retreat(start, validity, distance_m=shorter)
+                if candidate is not None:
+                    retreat = candidate
+                    details = dict(shorter_details, shortened_from_m=self.release_retreat_m,
+                                   failed_full=details)
+                    break
+        if retreat is None:
+            # Last resort: search in joint space from the placed pose with the released boxes in the
+            # world (the checker decides whether the start contact is within its tolerance).
+            boxed = self.checker(None, objects=released)
+            tools, home = self.tool_matrices(start), self.tool_matrices(target)
+            boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
+                side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
+            path, stats = super().joint_plan(start, target, boxed, boxed_validity, seed,
+                                             stop_at_first_valid, shortcut)
+            stats = dict(stats, release_retreat=details, retreat_fallback='joint_space',
+                         released_boxes=[item.object_id for item in released])
+            return (None if path is None else np.asarray(path)), stats
         boxed = self.checker(None, objects=released)
         tools, home = self.tool_matrices(retreat[-1]), self.tool_matrices(target)
         boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
@@ -477,16 +520,17 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             return None, stats
         return np.vstack([retreat, np.asarray(path)[1:]]), stats
 
-    def release_retreat(self, start, validity):
+    def release_retreat(self, start, validity, distance_m=None):
         """Analytic straight lines of the tools back along their tool axes: both at once on a fixed
         swivel when the axes are parallel, else one after the other with swivel continuation."""
+        distance = self.release_retreat_m if distance_m is None else float(distance_m)
         tools = self.tool_matrices(start)
         axes = {side: tools[side][:3, 2] for side in ('left', 'right')}
         direction = -(axes['left']+axes['right'])/np.linalg.norm(axes['left']+axes['right'])
         failures = []
         if min(float(-axis@direction) for axis in axes.values()) >= math.cos(math.radians(2.)):
             path, details = self.analytic_extract(start, validity, validity, sides=('left', 'right'), direction=direction,
-                                                  distance_m=self.release_retreat_m)
+                                                  distance_m=distance)
             if path is not None:
                 return path, details
             failures.append(dict(order='both', details=details))
@@ -494,7 +538,7 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             path, details = np.asarray(start, dtype=float)[None], []
             for side in order:
                 segment, record = self.analytic_extract(
-                    path[-1], validity, validity, sides=(side,), direction=-axes[side], distance_m=self.release_retreat_m,
+                    path[-1], validity, validity, sides=(side,), direction=-axes[side], distance_m=distance,
                     hold_sides=tuple(other for other in order if other != side), swivel_continuation=True)
                 if segment is None:
                     failures.append(dict(order='+'.join(order), side=side, details=record))
@@ -588,6 +632,8 @@ class DoorTask(_SequentialTask):
         planner.carry_target_poses = self.canonical_targets
         self.radius = float(policy['side']['placement_radius_m'])
         self.lift_grid = np.asarray(policy['side']['placement_updown_grid_m'], dtype=float)
+        pick_grid=getattr(planner,'pick_updown_grid_m',None)
+        self.pick_lift_grid=self.lift_grid if pick_grid is None else np.asarray(pick_grid,dtype=float)
         self.swivel_step_deg = float(policy['contact_candidates']['swivel_step_deg'])
         if (self.lift_grid.ndim != 1 or not len(self.lift_grid) or not np.isfinite(self.lift_grid).all()
                 or not np.isfinite(self.swivel_step_deg) or not 0 < self.swivel_step_deg <= 180):
@@ -600,6 +646,7 @@ class DoorTask(_SequentialTask):
                            hardware_validated=False)
         self.motion_segments=[]
         self.base_pose_by_frame=[]
+        self.hold_targets={}
 
     def contact_target(self, side, item, roll):
         target,proof=super().contact_target(side,item,roll)
@@ -636,6 +683,8 @@ class DoorTask(_SequentialTask):
     def outer_flow(self):
         """Whether this pair takes the rack-supported outer-column flow (DoorPlanner.center_column_outer_flow)."""
         column=getattr(self.request,'column',2)
+        if getattr(getattr(self,'planner',None),'center_flow_for_all',False):
+            return False
         return column in (0,1,3,4) or (column==2 and getattr(getattr(self,'planner',None),'center_column_outer_flow',False))
 
     def held_lowering_lifts(self):
@@ -1106,6 +1155,11 @@ class DoorTask(_SequentialTask):
             result[index] = exact_translation <= translation_m and exact_angle <= angle_rad
         return result
 
+    def hold_target(self, side):
+        """Tool target the support arm must keep: the flow's carry target unless a mid-pick base shift
+        re-expressed the held box in the new base frame."""
+        return self.hold_targets.get(side, self.targets[side])
+
     def max_pose_drift(self, rows, side, target, translation_m=.001, angle_rad=math.radians(.5), margin=1e-9):
         """Largest tool pose error along rows; rows near or over a limit use the URDF FK."""
         rows = np.asarray(rows, dtype=float).reshape(-1, 15)
@@ -1390,15 +1444,18 @@ class DoorTask(_SequentialTask):
             mapper = SupportCompensation(self, side='right', reference=self.q)
             search_active = [0]+LEFT
             derived = RIGHT
-        path, stats = plan_cartesian_transport(
-            self.planner, self.q, goals, validity.checker, budget_s=4.,
-            seed=self.request.seed+self.counter,
-            options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
-                     'shortcut': True, 'monotonic_progress': True,
-                     'strict_budget': True, 'budget_reserve_s': .25,
-                     'workspace_margin_m': .5},
-            validity=self.search_inflation(validity, self.q, goals), active_indices=search_active,
-            row_mapper=mapper, derived_indices=derived)
+        def cartesian(budget_s):
+            return plan_cartesian_transport(
+                self.planner, self.q, goals, validity.checker, budget_s=budget_s,
+                seed=self.request.seed+self.counter,
+                options={'edge_resolution': .08, 'batch': 128, 'connect_candidates': 32,
+                         'shortcut': True, 'monotonic_progress': True,
+                         'strict_budget': True, 'budget_reserve_s': .25,
+                         'workspace_margin_m': .5},
+                validity=self.search_inflation(validity, self.q, goals), active_indices=search_active,
+                row_mapper=mapper, derived_indices=derived)
+        budget = float(getattr(self.planner, 'side_precontact_cartesian_budget_s', 4.))
+        path, stats = cartesian(budget)
         alternatives = []
         if path is not None:
             metrics = self.path_rotation_metrics(path, side)
@@ -1435,8 +1492,28 @@ class DoorTask(_SequentialTask):
                     if any(item[0]=='support_compensated_joint_rrt' and len(item[1])==len(candidate) and
                            np.allclose(item[1],candidate,atol=1e-9,rtol=0) for item in alternatives):
                         break
-                    alternatives.append(('support_compensated_joint_rrt',candidate,
-                                         self.path_rotation_metrics(candidate,side),joint_stats))
+                    metrics = self.path_rotation_metrics(candidate,side)
+                    alternatives.append(('support_compensated_joint_rrt',candidate,metrics,joint_stats))
+                    if metrics['extra_deg'] <= 30.:
+                        # A gate-acceptable path exists: further seeds only refine the min-rotation
+                        # choice, and each failing seed costs its full 2 s budget.
+                        break
+        if budget < 4. and (not alternatives or
+                            min(item[2]['extra_deg'] for item in alternatives) > 30.):
+            # The short first pass found nothing the rotation gate accepts. Rerun the Cartesian
+            # search with the full budget it would have had before the budget knob existed - except
+            # when the first pass had no direct line at all and the joint routes did return paths
+            # (they only wound past the gate): there the longer Cartesian tree has found nothing
+            # either, and it would spend the whole budget per rejected candidate.
+            first_attempts = (stats or {}).get('attempts') or [{}]
+            no_direct = all(attempt.get('direct_lines_coarse_valid', 0) == 0
+                            for attempt in first_attempts)
+            if not (no_direct and alternatives):
+                full_path, full_stats = cartesian(4.)
+                if full_path is not None:
+                    stats = full_stats
+                    alternatives.append(('cartesian_rrt', full_path,
+                                         self.path_rotation_metrics(full_path, side), full_stats))
         if not alternatives:
             self.report.setdefault('precontact_searches', []).append(
                 dict(stage=self.phase, side=side, source=None,
@@ -1444,6 +1521,18 @@ class DoorTask(_SequentialTask):
             return None
         source, path, metrics, selected_stats = min(
             alternatives, key=lambda item: (item[2]['extra_deg'], item[2]['total_deg'], len(item[1])))
+        limit = float(getattr(self, f'{side}_precontact_extra_rotation_max_deg',
+                              105. if side == 'right' else 30.))
+        first_attempts = (stats or {}).get('attempts') or [{}]
+        if not any(item[2]['extra_deg'] <= limit for item in alternatives) and all(
+                attempt.get('direct_lines_coarse_valid', 0) == 0 for attempt in first_attempts):
+            # Nothing here would pass the rotation gate and no goal even had a clear direct line:
+            # the caller's remaining options in this group cannot do better either.
+            self.report.setdefault('precontact_searches', []).append(dict(
+                stage=self.phase, side=side, source=None, cartesian_stats=stats,
+                abandoned='winding_without_direct_line', success=False,
+                best_extra_deg=min(item[2]['extra_deg'] for item in alternatives)))
+            return None
         path = np.asarray(path, dtype=float).reshape(-1, 15)
         self.precontact_audit_active = sorted(set(search_active)|set(derived))
         self.report.setdefault('precontact_searches', []).append(dict(
@@ -1560,8 +1649,11 @@ class DoorTask(_SequentialTask):
             low,high=(float(values[0].item()) for values in limits)
             preferred=float(candidate[0]-self.lower_distance)
             current_lift=float(candidate[0])
-            remaining={preferred,*(float(value) for value in self.lift_grid)}-{current_lift}
+            remaining={preferred,*(float(value) for value in self.pick_lift_grid)}-{current_lift}
             lift_ends=[current_lift]+sorted(remaining,key=lambda value:abs(value-current_lift))
+            forced=getattr(self.planner,'upper_lowering_lift',None)
+            if forced is not None:
+                lift_ends=[float(forced)]+[value for value in lift_ends if abs(value-float(forced))>1e-9]
             lift_ends=[value for value in lift_ends if low+1e-5<=value<=high-1e-5]
             for lift_end in lift_ends:
                 rows,details=self.planner.analytic_extract(
@@ -2045,7 +2137,7 @@ class DoorTask(_SequentialTask):
             self.fail('recenter search/future lowering failed within the fixed budget; no implicit fallback')
         return path
 
-    def extract_upper_with_lower_hold(self):
+    def extract_upper_with_lower_hold(self, mobile_retreat=None, mobile_steps=31):
         self.enter('right_extract')
         start = self.q.copy()
         validity = self.validity()
@@ -2062,7 +2154,7 @@ class DoorTask(_SequentialTask):
         carriage = CarriageModel(self.planner, start)
         limits = validity.checker.kinematics.get_joint_limits().position
         low, high = (float(values[0].item()) for values in limits)
-        lifts = np.asarray([value for value in self.lift_grid if low+1e-5 <= value <= high-1e-5])
+        lifts = np.asarray([value for value in self.pick_lift_grid if low+1e-5 <= value <= high-1e-5])
         direct_path=None;direct_attempts=[];direct_limit_mm=2. if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else 1.
         direct_lifts=[float(start[0]),*lifts.tolist()]
         # Search endpoints at the current lift too: the held box may allow no lift change at all (a lower
@@ -2074,7 +2166,7 @@ class DoorTask(_SequentialTask):
             accepted=rows is not None and (not isinstance(details,dict) or details.get('max_line_error_mm',0.)<=direct_limit_mm)
             direct_attempts.append(dict(lift_end=lift_end,success=accepted,details=details))
             if accepted:direct_path=np.asarray(rows);break
-        left_mapper = SupportCompensation(self, side='left', reference=start, tool_target=self.targets['left'])
+        left_mapper = SupportCompensation(self, side='left', reference=start, tool_target=self.hold_target('left'))
         templates = np.repeat(start[None], len(lifts), axis=0)
         templates[:, 0] = lifts
         templates, left_found = left_mapper(templates)
@@ -2094,7 +2186,7 @@ class DoorTask(_SequentialTask):
             endpoints = endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
         endpoints = np.asarray(endpoints).reshape(-1, 15)
         endpoints = endpoints[self.exact_pose_mask(endpoints, 'right', target) &
-                              self.exact_pose_mask(endpoints, 'left', self.targets['left'])]
+                              self.exact_pose_mask(endpoints, 'left', self.hold_target('left'))]
         self.planner.active_side='right'
         extraction_tolerance=.05 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         path=direct_path;stats={'tier':'analytic_compensated','attempts':direct_attempts} if direct_path is not None else None
@@ -2125,6 +2217,14 @@ class DoorTask(_SequentialTask):
             lift_grid=lifts.tolist(),direct_attempts=direct_attempts,analytic_endpoint_candidates=analytic_count,
             valid_endpoint_candidates=len(endpoints), search_stats=stats, line_gate_rejections=line_rejections,
             success=path is not None)
+        if path is None and mobile_retreat is not None:
+            # Fixed-base extraction is infeasible here (the outer-column geometry): retreat the base
+            # along the wall normal while the tool follows the same outward line.
+            self.report['upper_extraction_compensation']['fallback'] = 'mobile_base_retreat'
+            self.extract_upper_with_mobile_base(float(mobile_retreat), int(mobile_steps))
+            self.report['upper_extraction_compensation'].update(
+                success=True, method='mobile base retreat + analytic outward line')
+            return
         if path is None:
             self.fail('compensated Cartesian upper extraction found no fully validated path')
         path = np.asarray(path)
@@ -2135,7 +2235,7 @@ class DoorTask(_SequentialTask):
         self.report['upper_extraction_line_metrics']=dict(max_lateral_m=max(lateral),max_rotation_deg=math.degrees(max(angles)),
             final_distance_m=progress[-1],minimum_progress_step_m=min(np.diff(progress),default=0.),required_distance_m=distance)
         self.audit(path,list(range(15)),start,line=('right',origin,self.wall_outward_direction,distance,extraction_tolerance))
-        max_translation, max_angle = self.max_pose_drift(path, 'left', self.targets['left'])
+        max_translation, max_angle = self.max_pose_drift(path, 'left', self.hold_target('left'))
         if max_translation > .001 or max_angle > math.radians(.5):
             self.fail('lower box drifted during compensated upper extraction')
         self.report['upper_extraction_compensation'].update(
@@ -2570,8 +2670,8 @@ class DoorTask(_SequentialTask):
 
     def plan_compensated_upper_lowering(self):
         start=self.q.copy();validity=self.validity();origin=self.tool(start,'right');target=origin.copy();target[2,3]-=self.lower_distance
-        mapper=SupportCompensation(self,side='left',reference=start,tool_target=self.targets['left']);limits=validity.checker.kinematics.get_joint_limits().position
-        low,high=(float(values[0].item()) for values in limits);lifts=[float(start[0]),*(float(value) for value in self.lift_grid if abs(float(value)-float(start[0]))>1e-9)]
+        mapper=SupportCompensation(self,side='left',reference=start,tool_target=self.hold_target('left'));limits=validity.checker.kinematics.get_joint_limits().position
+        low,high=(float(values[0].item()) for values in limits);lifts=[float(start[0]),*(float(value) for value in self.pick_lift_grid if abs(float(value)-float(start[0]))>1e-9)]
         lifts=[value for value in lifts if low+1e-5<=value<=high-1e-5];endpoints=[]
         for lift in lifts:
             template=start.copy();template[0]=lift;mapped,found=mapper(template[None])
@@ -2592,6 +2692,94 @@ class DoorTask(_SequentialTask):
         self.report['upper_lowering_rrt_fallback']=dict(endpoint_candidates=len(endpoints),stats=stats,success=path is not None)
         return None if path is None else np.asarray(path)
 
+    def shift_pair_base(self, dx, dy, dyaw_deg, steps=12, lift_end=None):
+        """Move the base by (dx, dy) in the world and dyaw about world z while both held boxes stay
+        fixed: at each step the base advances and both arms' IK keep their world tool poses."""
+        self.enter('pair_base_shift')
+        old=self.pick_base_pose;matrix=pose_matrix(old)
+        world_scene=snapshot_in_world(self.store.snapshot(),old)
+        world_request=snapshot_in_world(self.request.snapshot,old)
+        world_tools={side:matrix@self.tool(self.q,side) for side in ('left','right')}
+        world_outward=matrix[:3,:3]@self.wall_outward_direction
+        yaw0=2*math.atan2(old.quaternion_wxyz[3],old.quaternion_wxyz[0])
+        lift0=float(self.q[0]);lift1=lift0 if lift_end is None else float(lift_end)
+        for fraction in np.linspace(0.,1.,steps+1)[1:]:
+            yaw=yaw0+math.radians(dyaw_deg)*fraction
+            position=np.asarray(old.position)+np.array([dx,dy,0.])*fraction
+            base=Pose(tuple(position),(math.cos(yaw/2),0.,0.,math.sin(yaw/2)))
+            self.pick_base_pose=base
+            self.store=SceneStore(snapshot_in_base(replace(world_scene,state=replace(world_scene.state,base_pose=base))))
+            self.request.snapshot=snapshot_in_base(replace(world_request,state=replace(world_request.state,base_pose=base)))
+            self.validity_cache={};self.cached_key=None
+            base_matrix=pose_matrix(base)
+            lift=lift0+fraction*(lift1-lift0)
+            row=self.q.copy();row[0]=lift
+            self.planner.fk(row)
+            carriage=np.linalg.inv(self.planner.fk_robot.get_transform('arm_carriage',self.planner.fk_robot.base_link))
+            for side_index,side in enumerate(('left','right')):
+                indices=LEFT if side=='left' else RIGHT
+                target=np.linalg.inv(base_matrix)@world_tools[side]
+                solutions=self.planner.analytic.solve(side_index,carriage@target,float(self.planner.analytic.swivel(side_index,self.q[indices])),self.q[indices])
+                if not len(solutions):
+                    for swivel in np.deg2rad(np.arange(-180.,180.,2.)):
+                        got=self.planner.analytic.solve(side_index,carriage@target,float(swivel),self.q[indices])
+                        if len(got):solutions=got;break
+                if not len(solutions):self.fail(f'pair base shift lost {side} IK at {fraction:.2f}')
+                row[indices]=solutions[int(np.argmin(np.linalg.norm(solutions-self.q[indices],axis=1)))]
+            self.q=row.copy()
+            self.audit([self.q],[],self.q);self.append([self.q])
+        self.wall_outward_direction=np.linalg.inv(pose_matrix(self.pick_base_pose))[:3,:3]@world_outward
+        self.wall_inward_direction=-self.wall_outward_direction
+        self.world_request.snapshot=replace(world_request,state=replace(world_request.state,base_pose=self.pick_base_pose))
+        self.report['pair_base_shift']=dict(dx=dx,dy=dy,dyaw_deg=dyaw_deg,steps=steps,navigation_path_validated=False)
+
+    def extract_upper_with_mobile_base(self, retreat_m, steps=31):
+        """Pull the upper box out while the base retreats along the wall normal: the tool's world path is
+        the straight outward line, the arm's relative pull is (distance - retreat), and the left arm
+        keeps the lower box fixed in the world. Each step is audited at its own base pose."""
+        self.enter('right_extract')
+        start=self.q.copy();validity=self.validity()
+        item=next(item for item in self.store.snapshot().attachments if item.parent_link=='right_tool0')
+        original=self.request.snapshot.object(item.object_id)
+        distance=.005-self.wall_clearance(start,item,original)
+        if distance<=0 or distance>self.request.extraction_m+1e-6:self.fail(f'invalid mobile extraction distance: {distance}')
+        old=self.pick_base_pose;matrix=pose_matrix(old)
+        world_tool=matrix@self.tool(start,'right');world_left=matrix@self.tool(start,'left')
+        world_scene=snapshot_in_world(self.store.snapshot(),old);world_request=snapshot_in_world(self.request.snapshot,old)
+        world_outward=matrix[:3,:3]@self.wall_outward_direction
+        lift=float(start[0])
+        for fraction in np.linspace(0.,1.,steps+1)[1:]:
+            position=np.asarray(old.position)+world_outward*(float(retreat_m)*fraction)
+            base=Pose(tuple(position),old.quaternion_wxyz)
+            self.pick_base_pose=base
+            self.store=SceneStore(snapshot_in_base(replace(world_scene,state=replace(world_scene.state,base_pose=base))))
+            self.request.snapshot=snapshot_in_base(replace(world_request,state=replace(world_request.state,base_pose=base)))
+            self.validity_cache={};self.cached_key=None
+            base_matrix=pose_matrix(base)
+            tool=world_tool.copy();tool[:3,3]+=world_outward*(distance*fraction)
+            row=start.copy();row[0]=lift
+            self.planner.fk(row)
+            carriage=np.linalg.inv(self.planner.fk_robot.get_transform('arm_carriage',self.planner.fk_robot.base_link))
+            for side_index,side,indices,target_world in ((1,'right',RIGHT,tool),(0,'left',LEFT,world_left)):
+                target=np.linalg.inv(base_matrix)@target_world
+                solutions=self.planner.analytic.solve(side_index,carriage@target,float(self.planner.analytic.swivel(side_index,self.q[indices])),self.q[indices])
+                if not len(solutions):
+                    for swivel in np.deg2rad(np.arange(-180.,180.,2.)):
+                        got=self.planner.analytic.solve(side_index,carriage@target,float(swivel),self.q[indices])
+                        if len(got):solutions=got;break
+                if not len(solutions):self.fail(f'mobile extraction lost {side} IK at {fraction:.2f}')
+                row[indices]=solutions[int(np.argmin(np.linalg.norm(solutions-self.q[indices],axis=1)))]
+            self.q=row.copy()
+            self.audit([self.q],[],self.q);self.append([self.q])
+        self.wall_outward_direction=np.linalg.inv(pose_matrix(self.pick_base_pose))[:3,:3]@world_outward
+        self.wall_inward_direction=-self.wall_outward_direction
+        self.world_request.snapshot=replace(world_request,state=replace(world_request.state,base_pose=self.pick_base_pose))
+        item=next(item for item in self.store.snapshot().attachments if item.parent_link=='right_tool0')
+        original=self.request.snapshot.object(item.object_id)
+        clearance=self.wall_clearance(self.q,item,original)
+        self.report['mobile_extraction']=dict(distance_m=distance,base_retreat_m=float(retreat_m),steps=steps,wall_clearance_m=clearance)
+        if clearance<1e-6:self.fail('mobile extraction did not clear the wall front plane')
+
     def lower_upper_with_lower_hold(self):
         self.enter('right_lower')
         paths = getattr(self, 'future_lowering_paths', {})
@@ -2611,7 +2799,7 @@ class DoorTask(_SequentialTask):
         origin = self.tool(self.q, 'right')
         tolerance=.0012 if self.report.get('pair_strategy')=='outer_standard_rack_supported_lower_recenter' else .001
         self.audit(rows,list(range(15)),self.q,line=('right',origin,np.array((0.,0.,-1.)),self.lower_distance,tolerance))
-        max_translation, max_angle = self.max_pose_drift(rows, 'left', self.targets['left'])
+        max_translation, max_angle = self.max_pose_drift(rows, 'left', self.hold_target('left'))
         if max_translation > .001 or max_angle > math.radians(.5):
             self.fail('recentered lower box drifted during compensated upper lowering')
         self.report['lowering_compensation'] = dict(
@@ -2715,7 +2903,18 @@ class DoorTask(_SequentialTask):
             self.support_pose = None
             self.support_side=None
             self.lower_upper_with_lower_hold()
-            self.extract_upper_with_lower_hold()
+            mobile=getattr(self.planner,'mobile_extract_retreat_m',None)
+            if mobile is not None:
+                # Prefer the fixed-base extraction; the base retreats only when that is infeasible.
+                self.extract_upper_with_lower_hold(float(mobile),int(getattr(self.planner,'mobile_extract_steps',31)))
+            else:
+                shift=getattr(self.planner,'pair_base_shift',None)
+                if shift is not None:
+                    self.shift_pair_base(float(shift[0]),float(shift[1]),float(shift[2]),
+                                         int(getattr(self.planner,'pair_base_shift_steps',12)),
+                                         None if len(shift)<4 else float(shift[3]))
+                    self.hold_targets['left']=self.tool(self.q,'left')
+                self.extract_upper_with_lower_hold()
             self.recenter_latest_pair()
         self.align_pair()
         self.append_suffix()

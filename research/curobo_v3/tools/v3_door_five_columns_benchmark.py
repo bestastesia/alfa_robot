@@ -5,6 +5,7 @@ Every measured round builds a new request and task and replans IK/RRT/collision/
 only checker/solver/kinematics/torque resources may persist on the planner between rounds.
 """
 import argparse
+import ast
 import json
 from pathlib import Path
 import time
@@ -44,6 +45,8 @@ def main():
                    help="override the stages whose free-space searches inflate (e.g. conveyor_suffix)")
     p.add_argument('--no-coverage-margins', action='store_true',
                    help="plan without the model's MOTION-429 sphere coverage margins")
+    p.add_argument('--planner-attributes', nargs='+', default=None, metavar='NAME=VALUE',
+                   help='Python-literal DoorPlanner attribute overrides applied after construction')
     a = p.parse_args()
     a.output_dir.mkdir(parents=True, exist_ok=True)
     if any(a.output_dir.iterdir()):
@@ -57,6 +60,11 @@ def main():
         started = time.perf_counter()
         planner = DoorPlanner(assets)
         construction_ms = (time.perf_counter()-started)*1000
+        for override in a.planner_attributes or ():
+            name, value = override.split('=', 1)
+            if not hasattr(planner, name):
+                p.error(f'planner has no attribute {name}')
+            setattr(planner, name, ast.literal_eval(value))
         if a.free_space_inflation is not None:
             planner.free_space_inflation = a.free_space_inflation or None
         if a.free_space_stages is not None:
