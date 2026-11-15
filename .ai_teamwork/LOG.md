@@ -1,5 +1,18 @@
 # AI 协作日志
 
+## 2026-11-10 cuRobo / PR80基线上的LM微调与可复现部署交付
+- 用户要求新PR保证模型/碰撞/算法/逻辑/可视化可准确运行。以最新origin/alfa_v3_curobo@92bd8cdb新建独立发布检出codex/lm-refinement-release，不夹带原研究分支脏改动、300箱/tmp录像脚本、其他同事开放PR。
+- 迁入双臂LM后64原生三次控制点最多32轮L-BFGS；抽离方向/距离与导航后放箱参考取本次任务，端点固定。Fast TrajOpt只自由段，TimeOpt仍全部六段；抽离后处理补loaded checker。原四盒/20球/40球、10%世界膨胀、1mm及自碰撞口径、选型与实际末态同目标重连源文件逐字节对照PR80不变。
+- 新增FAST_DEPLOYMENT、依赖/模型SHA锁、v3_fast_preflight，实际比对官方Fast提交_src434文件全一致；前端冻结包校验通过。prepare_checkout --fast-only仅编译解析库并生成忽略的运行配置，页面使用重定位URDF，旧README/CORE/HANDOFF错误默认入口加当前指引。输出附配置快照/摘要，冷/热与候选/通过分开。
+- 干净检出40测试通过1跳过，GPU preflight Home与box-world启用通过。两例CLI新规划候选运动11.706/11.865s、12段TimeOpt动力学采样通过、接缝0，后者原approach TrajOpt失败保留；墙钟53.574/5.772s，不当成全量/固定3秒。8293实际页面点击新计算：初始化5.854s另列，墙钟67.877s含冷资源，运动12.209s，全部求解标志及动力学通过，真实TimeOpt播放通过。紧凑证据generated/lm_refinement_release_20261110/validation.json。
+- 已知TrajOpt软间隙、冷/新拓扑、TimeOpt诊断Graph重捕获、球体覆盖及旧回放一致性问题保留；单臂新后处理未验证，300箱临时录制不是本PR生产调度。仅本地规划/可视化，不发送硬件、不自动合并PR。
+
+## 2026-10-27 运控 / Codex / 同步新WARP至8210
+- feature/new-warp-sync迁入新WARP六段策略，参考/解析先验/联合代价抽到curobo_core，13个函数/类保持AST一致；不夹带模型路径、随机场景或其他实验修改。
+- 0.982m释放箱心改为绝对权威配置；8210保留PR65独立开关和后处理验碰，禁止旧高度/旧模型回放冒充新结果，8221原服务不动。
+- 1.082m复测117/117、702阶段且每段30轮，105个软参考阶段最终合法；平均3.892秒。0.982m三类任务几何3/3、后处理3/3；57core（1跳过）＋17流程/回放＋6交接研究回归通过。数据generated/new_warp_sync，不宣称当前高度全量或扰动成功率。
+- 保留抽离途中空载/终点携箱、导航瞬移、释放移除边界，未连接实机；新复测入口v3_new_warp_validate.py和NEW_WARP_HANDOFF.md迁移补充可复现。
+
 这里仅保留当前分支仍需让新 AI 立刻看到的最新交接。长过程和已完成事项已归档。
 
 ## 2026-10-04 运控 / Codex / 接手 V3 cuRobo 开发
@@ -2188,6 +2201,12 @@
 - 验证：四任务64集合与全枚举相同/完整FK通过；11场景11264状态与fresh一致且四完整周期不再创建拓扑；lazy三组成功包括L18/R22；25单臂24成功、右02接触264候选0合法保留失败。24成功27040帧碰撞重验、40附着球、独立FK包络最大1.003365m，原4违规终点现0.932856m；双臂回归成功。35core与语法检查通过。
 - 正式说明OPTIMIZED_CYCLE.md、CONVEYOR_DELIVERY.md；evidence为当前小型摘要，原实验轨迹/cache不入库。验证服务8152复用冻结前端包；原8150 PID161088、8151 PID1877730未停止，仍是各自启动时版本。119任务不等于119成功，不作导航路径、动力学、物理落稳/实机或生产并发验收。Linear由专门工程师维护，本轮不主动变更。
 
+## 2026-10-18 运控 / 新Home与J6反向完成模型全链路迁移
+- 用户最终Home：Updown-.3m，左[65,-75,-20,-90,0,40,90]°、右[-65,75,20,90,0,-40,-90]°；最新确认双侧J6仅反轴不改零位，角度换号保持实体姿态。新坐标signs=[1,-1,1,1,1,-1,1]，旧安装/tool及碰撞保留，J2左[-90,120]/右[-120,90]。
+- URDF固定/planar、解析映射、球配置、命名姿态、side/top候选库已同步；新入口v3_rezero_task_demo.py使用RezeroTaskPlanner，不依赖未提交AdaptiveRaised/闲臂优化，其他AI工作保留。8152改新模型全流程界面并预载六组成功结果，8151/8153和实机未动。
+- 两侧各100解析回归、两模型各100全link等价、4模型合同测试及39core测试通过；六组双臂完整6/6成功2.58～3.15s，9159帧独立碰撞/限位/.5°连续性/世界抽离35cm/最终6D/Home审计通过。保留原接近目标排除及抽离空载全段+载荷终点策略，不冒称抽离全段负载精检或119任务全覆盖。
+- 证据/tmp/rezero_j6_tasks_20261018及generated/zero_model_candidate_20261018/task_regression.json，完整命令REZERO_TASK_VALIDATION.md；旧J6符号结果不可配新URDF回放。PR67由旧阻塞草稿收口为该模型/新Home六组验收，不把同事原3.3.1或实机标定算作已适配。
+
 ## 2026-10-19 运控 / MOTION-323 单臂转运笛卡尔搜索预注册与基线冻结
 - 分支feature/cartesian-transport-search-motion-323基于PR65头a77abd5（规划代码同541fdbc，仅v3_task_full_cycle_demo.py一行回放差异），叠加在PR65上；上游alfa_v3_curobo已到0942d18（重零/新Home），本分支结论不外推。
 - 实现前预注册config/motion312_transport_ab.json：单臂transport、状态p+s+u+ψ与固定分支、解析IK、直线→RRT两层、同分支atlas终点吸附、同一loaded validity与2s预算、transport不shortcut；开发集WALL_SEQUENCE 5个单臂轮（全右臂），留出集其余20单臂任务（左右各10），每法5个配对种子；判定阈值待李昊洋确认。
@@ -2205,6 +2224,30 @@
 - 开发集75次全部成功；留出集300次（25ae159）正式判定：笛卡尔（现有时间化）规划耗时+12.8%✗、成功率94/100 vs 95✗、执行时长+420.8%✗、side额外旋转配对中位降100%✓（基线中位9.3°→0.03°）；TOPP-RA组时长+19.1%✓，但最大搜索2032ms超预算、3次时间化校验失败。结论：不优于现有方案（质量单项更优），原规划器保持默认。证据/home/astesia/Sevenova/motion312-acceptance/ab-holdout-20261020。
 - FCL网格审计：两组side搬运都有接触（基线≤33.5mm开发集/≤10.5mm留出集，笛卡尔≤34.2mm），属共用GPU球模型缺口→MOTION-326。TOPP-RA校验漏采样时刻已在324分支e86978a修复并复测→MOTION-324。
 - 留给下个AI：方法v2（状态空间shortcut、进度s单调、预算严格截止、左右臂开发样本、新独立测试集）→MOTION-327。作者审阅前不开PR，只推送fork。
+
+## 2026-10-24 运控 / Codex / 8209新算法适配当前URDF
+- 2026-10-26开启8210后处理：feature/curobo-8210-timed接PR65时间化器、显存有界Shortcut及0.5°补边验碰；保持191mm TCP和六段端点、原抽离验碰边界，J1～4限15°/s、J5～7限30°/s。三类任务均通过，运动约73～75秒，计算约8～11秒；12专项＋52core（1跳过）通过，浏览器已验25ms时间步播放和阶段耗时。证据generated/current_urdf_timed/acceptance/summary.json；部分段停点回退如实保留，未连接实机。
+- 2026-10-26集成：PR65由用户合入96c2c70c；40项开发提交已rebase，入口同时保留planner_class/default_assets并修复默认类绑定，52项core（1项跳过）＋17项当前合同测试通过，四次GPU六段流程通过。保留#65独立时间化入口，未自动替换8210算法；本地未提交随机误差/模型路径工作已备份并恢复，不夹带发布。
+- feature/curobo-8209-current-urdf保存六段前向预接触/LM/首合法Informed Connect研究依赖，新增CurrentUrdfForwardPlanner，统一确认零位、191mm TCP及Rezero解析网格；没有改工控机或联调分支提交。
+- 运输侧吸旧2cm升降网格跳过合法窗口；原范围内加密到5mm，重求运输库并独立FK验收，保留碰撞/限位/1.05m包络。补齐16/64形状真实LM预热、长求解器共享及完整显示快照恢复。
+- 35项回归通过，侧吸L22/R17→顶吸L03/R02→单臂R02→侧吸四次GPU完整流程通过，Home误差约4.4e-8，显存峰值约1.7GiB；非117组全量验收。8210独立预览已通过浏览器实时计算，结果独立目录generated/forward_precontact_current_urdf。
+- 保留抽离途中空载/终点携箱验碰、导航瞬移、释放移除边界。polish录图/早停留后续；未对外宣称全流程携箱安全或实机完成。恢复服务与复测入口见原HANDOFF_8209_ALGORITHM_AND_WARMUP.md迁移补充。
+
+## 2026-10-31 cuRobo / 固定全流程发布
+- 用户确认将放箱RRT替换为连续LM，其余流程冻结。新增FrozenCyclePlanner，接回释放后从实际LM末态RRT回Home；默认8210脚本转向固定流程，8243实时规划/回放，8242仍为对照。单臂空闲关节保持放箱起点，参数128点/32种子/最多32轮固定；原40球全程验碰，无放箱RRT回退，无实心盒复核。
+- 全117任务105成功：侧吸双臂60/60、顶吸双臂24/32、侧吸单臂15/15、顶吸单臂6/10。11项LM失败、1项原候选失败，均停止并保留前缀。所有成功项实际LM终点到Home规划起点一致；导出重复起点会去重，不能误将首运动帧当规划起点。
+- 5项回归通过，含独立URDF逐帧放箱参考与回Home接缝。待发布Git树直接加载运行模块验证三成功/一预期失败，最终发布树5项回归函数也通过；8243实际点击重新计算成功。仅整理必要运行依赖、说明和四条代表记录到feature/frozen-lm-cycle-release，避免带入累计1956项实验文件；目标alfa_v3_curobo。
+
+## 2026-11-01 cuRobo / 用户确认腕部拟合接入固定LM流程
+- 将15:39保存的双臂拟合球精确写入fixed/mobile：左5/6/7为16/4/15球，右为18/4/15球。仅球数组改变，限位、忽略对、自碰撞零容差、环境1mm、携箱40球及LM128/32/32均保留。批准参数与采样拟合指标保存wrist_collision_20261101.json。
+- 全117任务重跑116成功（旧105），10个腕部碰撞失败及旧L4/R6候选失败均恢复；仅L4/R5仍在LM10.24%之后插值误差3.194591mm>2mm，边无碰撞，未放宽门限。新结果在generated/wrist_refit_release_20261101；验证器新增输出目录及模型SHA隔离，禁止误用旧模型缓存。
+- 新模型契约与固定流程6测试通过；待发布Git树使用独立导入器复测60/76/92，分别成功/预期误差失败/成功。发布树基于origin/alfa_v3_curobo，仅选取本次文件，避免带入研究分支累积实验及其他工程师改动。
+- 8243已切到新模型与新结果目录，默认显示原失败现通过的L9/R5；失败菜单只读取同目录复核。本次拟合采样仍有覆盖缺口，仿真规划通过不代表实体包络无遗漏。因剩余一项失败，PR以草稿待讨论，不自动合并。
+
+## 2026-11-01 cuRobo / 按用户要求取消LM插值边跟线精度门限
+- 用户明确两次LM解之间只要求无碰撞且关节连续。仅去掉插值边2mm/1deg拒绝条件，保留误差统计；目标节点自身精度、15deg连续性、0.25deg密化携箱碰撞、环境1mm及自碰撞零容差保持。
+- 全117项重新规划117/117成功；L4/R5放箱到Home全程通过，插值最大偏差3.1946mm属于允许偏离。新回归实际重算LM并复核全部节点精度、携箱碰撞及连续性，连同原固定流程和模型契约共7测试通过；待发布Git树独立复测L4/R5通过。
+- 新结果generated/wrist_refit_lm_continuity_20261101；验证缓存同时校验算法与模型SHA。8243切到新L4/R5完整回放，误差仅统计的语义显示在页面。PR75继续更新，旧116/117与失败证据保留为历史对照。
 
 ## 2026-11-03 运控 / 门扉双箱依次回中实验（未通过完整任务验收）
 - 用户确认：中央单列上下双箱依次回中，真实双负载；普通搬运后半程复用现有导航到位切换，不做连续原地转身；先关节基线再单臂笛卡尔对照。
@@ -2333,3 +2376,79 @@
 
 - 修复列轮次切换仅跳帧、耗时面板仍读取五列聚合结果的问题；Viewer现在加载每轮结果并同步更新E2E、运动、阶段及子阶段耗时，轮次文件缺失时失败关闭。
 - 正式五列结果逐列显示51.506/0.089/55.633/57.324/24.891s；CPU 92 passed，`git diff --check`通过；Viser 8144已重启。
+
+## 2026-11-08 · 门扉五列：每列规划<10s（无轨迹缓存、常驻热启动）与运动时长压缩
+
+- 基线 `405b4d5`；口径：常驻 planner 先跑一遍丢弃的五列 warmup（s5），再测 s11/29/41，每轮从 `door_request` 计到 RNEA 完成，`plan_cache.enabled=false`。
+- 结果（s11/s41）：规划 列4 41.0→8.0/8.1 s、列3 48.2→5.1/5.0、列1 49.2→5.1/5.7、列2 21.1→4.0/3.9，列0 镜像 0.1–0.3 s；运动 列4 39.0→20.6/20.7、列3 33.1→17.9、列1 33.2→18.3、列2 27.5→15.1/16.6 s。首见（无 warmup）列4 17.6 s，仅作参考。
+- 分支 `perf/door-five-column-latency`：带箱自碰原生核+边界带 float64 复核、输送线网格 OBB；时间化只在回退时建 checker；seed bank 首解与 Atlas 懒惰门控；批量 URDF FK 与推测式抽离校验；缓存有界 LRU；折线双向缩放、放箱/回 Home shortcut、平滑梯形时间律；全帧 FCL 网格审计 `v3_verify_door_mesh_audit.py`。
+- 验证：各步影子等价 0 差异；Step 4 轨迹与 Step 3 逐帧逐位相同；五列结构与列0镜像 verifier 通过；中心列现代化门禁全过、外列门禁结果与基线相同；网格审计无新增重叠；CPU 98、GPU 8 passed；RNEA ≤0.9。证据 `~/Sevenova/door-five-column-latency-20261108/`，Viser 8144 显示最终 s11。
+- 遗留：seed 29 列4 上箱抽离横偏 >5 cm（基线既有）；网格审计发现基线既有的球模型覆盖缺口（预接触时工具 link7 网格进目标箱约 1 cm 等）；yourdfpy 位姿读数有 ~1e-8 历史依赖（trimesh 跳过 <1e-8 的边更新）。
+- Linear：MOTION-427（本项，In Review）；后续 MOTION-428（seed 29 列4 抽离）、MOTION-429（球模型覆盖缺口），均挂 MOTION-295。
+
+## 2026-11-09 cuRobo / Fast膨胀规划与固定结构盒体PR
+- 独立分支codex/curobo-fast-box-pipeline基于origin/alfa_v3_curobo整理运行依赖，不合并研究分支累积实验。保留先预测候选、联合RRT选型、选中完整15轴LM抽离及实际端点重连、LM放箱；自由RRT世界查询膨胀10%，三自由段Fast TrajOpt，全六段Fast TimeOpt。
+- 固定底盘/立柱四盒对内及对外验碰，原base71球槽位半径置负；arm_carriage20球、双臂和40球携箱保留。盒-世界支持固定/移动底盘，规划膨胀只作用于外部查询。沿用用户确认TCP135mm/J6轴距234.2mm，及对应吸附接触端帽处理。
+- 验证：L4/R1、L4/R2顶吸及L18/R11侧吸都返回完整时序候选，18段TimeOpt成功且4001点动力学采样通过；各任务仍有TrajOpt失败阶段，整体success=false，候选运动16.036/15.069/14.521s。初始资源2.094s另列，计算墙钟54.730/5.953/14.454s，不能称全部稳态或3秒。紧凑证据generated/fast_release_20261109/validation.json。
+- 新增/迁入针对性回归26通过1跳过；扩展模型/历史回放检查合计32通过1跳过4失败，未修改历史记录/断言掩盖失败。按用户明确要求保留原软间隙代价兼作约束、迭代质量、冷启动、旧J6/Home/回放一致性等问题，未强制修复；列表及命令见FAST_PIPELINE.md。
+- 8290为本PR检出的点击实时计算页面，旧服务保持。此交付供用户审核，不自动合并；不含硬件发送或MuJoCo联调。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列迁移到新零位模型（MOTION-443）
+- 做了什么：门扉规划切到 alfa_v3_curobo@ee6dba3 的新零位模型（TCP 135 mm），列2改走外列托架流程；迁入 MOTION-429 逐球覆盖余量（自由空间对世界、两臂之间，固定自碰/载荷余量）；回 Home 前直线后撤，并避让已放下的箱子。
+- 改了哪里：research/curobo_v3/tools/curobo_core/{door_recenter,door_sequential,door_sequential_validity,coverage_margins}.py、tools/v3_sphere_coverage_margins.py、tools/v3_door_five_columns_benchmark.py、tests/test_door_latency.py；commit c6c4390、a96a5bc、8bab10b（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：种子 11/29/41 加 warmup 5，五列全部成功；全帧 FCL 网格审计 15 轮 0 穿透；结构 verifier、列0镜像 verifier 通过；RNEA ≤0.886，包络 ≤1.013 m；CPU 132 passed。证据在 ~/Sevenova/door-five-column-latency-20261108/migration/。
+- 留给下个 AI：
+  - 转动门禁和单列 <10 s 还没处理：右臂回中最大 329°，单列规划 23–42 s；
+  - 现代化 verifier 的 box_lifecycle 不适用于外列托架换手；
+  - arm_carriage 的球覆盖缺口最大 5.5 cm，只靠固定余量；
+  - 旧模型行为不变，新开关默认关闭。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列新零位模型：转动门禁与规划时延（MOTION-443）
+- 做了什么：
+  - 转动门禁放宽为"到目标的关节直线转动 + 30°"；
+  - 回中先试关节直线，笛卡尔搜索在同构型分支目标 ≥2 时换种子重试，最多 3 次；
+  - 门禁达不到时，搜索拿到两条路径即停；
+  - 外列跳过从未成功的支撑补偿拔出搜索；
+  - cuRobo 自碰对构建改成张量计算，两臂交叉余量改成球块广播，两者判定都逐项一致。
+- 改了哪里：research/curobo_v3/tools/curobo_core/{door_recenter,door_sequential_validity,fast_builds}.py、tests/test_door_{latency,rezero}.py；commit 72a9d36、e170785（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：
+  - 种子 5/11/29/41（预热 7）五列全部成功；
+  - 每列规划：列4 11.3–16.0 s、列3 6.7–7.7 s、列1 10.0–12.4 s、列2 7.8–10.7 s（v6 为 19–24 s）；
+  - 全帧 mesh 审计 20 轮 0 穿透，结构与列0 镜像 verifier 通过，CPU 140 passed；
+  - 证据在 ~/Sevenova/door-five-column-latency-20261108/migration/step3-latency-v12/。
+- 留给下个 AI：
+  - 列4、列1 仍超 10 s。列4 最近对的右腕约 200° 翻转是固有的：所有直线都会扫到门框、机架或固定车体，与余量无关。列1 左臂回中的直线被右臂挡住。
+  - 现代化 verifier 用的是固定转动门禁，在列3/1/2 上仍不过：上箱预接触 100–127°、左臂回中 150–306°、最近对 180–252°。
+  - 方案 A（托架/Home 重设计）未做。
+
+## 2026-11-12 运动规划 / Claude / 门扉五列新零位模型：每列规划压到 8 s 以内（MOTION-443）
+- 做了什么：
+  - 最近对取首条路径；同构型分支只剩 1 个目标时，笛卡尔回中只试直线；
+  - 捷径化先粗筛再细检；RRT 细检逐边缓存，并剪掉细检失败的子树；
+  - 边检只采每条边自己的点，RRT 先筛终点和每四个采样点（判定不变）；
+  - 左臂回中 RRT 优先朝直线转动在门禁内的目标搜，取首条细检通过的路径再细化 0.5 s。
+- 改了哪里：research/curobo_v3/tools/{curobo_core/door_recenter,curobo_core/door_sequential,curobo_core/door_sequential_validity,v3_batched_loaded_search,v3_cartesian_transport}.py、tests/test_door_{latency,rezero}.py、tests/test_gpu_rrt_pruning.py；commit 17d0214、affdc43、a75aaa1、4f0f3bd、bddae7d（fork/feature/door-alfa-v3-fast-migration，未开 PR）。
+- 验证结果：
+  - 种子 5/11/29/41/13/17/23/31（预热 7）五列全部成功；每列规划最慢：列4 7.6 s、列3 4.5 s、列1 4.8 s、列2 4.4 s，列0 镜像 ≤0.82 s（v12：列4 11.3–16.0 s、列1 10.0–12.4 s）；
+  - 全帧 mesh 审计 40 轮 0 穿透；结构 verifier 8/8 通过；列0 镜像 verifier 7/8 通过；RNEA ≤0.900，包络 ≤1.013 m；CPU 145 passed；
+  - 证据在 ~/Sevenova/door-five-column-latency-20261108/migration/step3-latency-v19/（消融 v16b、v18）。
+- 留给下个 AI：
+  - 种子 23 的列0 镜像时间与列4 差 2.7 ms：列4 最近对一段已按 RNEA 局部重定时（力矩 0.8999），镜像后又重定时一次，严格对称校验不过。
+  - 剪枝让列1/列2 预接触换了下箱暂存终点，左臂回中改走直线（多转 150°）；关掉剪枝时由目标筛选兜底（68–80°）。
+  - 列4 运动比 v12 长约 1.5 s（剪枝换了路径），列1 短 0.7–12.9 s；现代化 verifier 的固定转动门禁仍不过；方案 A 未做。
+
+## 2026-11-13 运动规划 / Claude / 门扉列0 换臂镜像帧独立规划（MOTION-469）
+- 做了什么：
+  - 列0 不再由列4 轨迹反射派生：把列0 当前实际场景镜像成列4 视角（左右臂角色对换），用标准门扉流程在该虚拟帧里规划、时间化和 RNEA，再把帧、相位、挂载和释放事件镜像回实际帧；
+  - 实际臂上重算 RNEA（局部重定时兜底），并对 base_reposition 之前每一帧做实际场景检查：GPU 球检（不放松规划余量、零激活距离），球检失败的帧再用精确网格复核，>0.1 mm 判失败、整轮失败；
+  - 场景按（底盘位姿、挂载）记忆化，每场景只算一次 digest；验证检查器常驻并按场景复用，接触目标用 cuRobo obstacle enable 关闭（等价性探针逐帧核对）。
+- 改了哪里：新增 research/curobo_v3/tools/curobo_core/door_mirror.py、tests/test_door_mirror.py；research/curobo_v3/tools/curobo_core/door_recenter.py（column0_mirrored_frame）、v3_door_five_columns.py（plan_round 列0 分支）；commit 6010426（fork/feature/door-alfa-v3-fast-migration，未开 PR）。旧模型仍走列4 对称派生。
+- 验证结果：
+  - 种子 5/11/29/41/13/17/23/31（预热 7）五列全部成功；每列规划最慢：列4 7.7 s、列0 8.2 s、列1 5.3 s、列3 4.3 s、列2 4.3 s；
+  - 列0 实际帧检查 8 种子共 10517 帧 0 失败（种子 23 的 12 个球检误报由精确网格复核排除，接触深度 ≤0.1 mm）；
+  - 非对称场景（每箱独立入墙深度 0–6 mm，打破镜像对称）3/3 成功、0 失败；
+  - 全帧 mesh 审计 40 轮 51240 帧 0 穿透；结构 verifier 8/8；检查器等价性 1404 帧 0 差异；CPU 153 passed。
+- 留给下个 AI：
+  - 现代化 verifier 的 box_lifecycle 和 recenter 转动门禁仍按旧流程写，新零位外列托架流程下全部轮次不过（既有问题，与本改动无关；RNEA ≤0.9、包络 ≤1.013 m 通过）；
+  - 列0 与列4 的运动时长仍相等（镜像同一条路径），运动压缩另议；
+  - 完全参数化的双臂流程（不靠镜像）未做。

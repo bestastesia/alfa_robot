@@ -1,0 +1,16 @@
+{
+  "required_coordinate_revision": "dual-zero-discrete-only-tool191-20261024",
+  "motor_minus_model_deg": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "calibration_name": "User requested removal of all fitted small-angle offsets",
+  "calibration_source": "2026-10-24 user correction; former contact-fit candidate is historical only",
+  "legacy_replay_blocked": "新模型零位/J6/tool191与旧实机坐标策略未重新验收，禁止发送",
+  "execution_mapping_verified": false
+}

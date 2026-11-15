@@ -30,7 +30,7 @@ class MobileCuboidLayer:
             return original(values)
         mobile_checker.get_bound=bound
 
-    def cost(self,state,hard=False):
+    def cost(self,state,hard=False,margin_m=0.0):
         spheres=state.robot_spheres
         values=self.values
         center=torch.stack([values[...,self.names.index('base_x')],values[...,self.names.index('base_y')]],-1)
@@ -40,7 +40,7 @@ class MobileCuboidLayer:
         local_xy=torch.stack([cosine*xy[...,0]+sine*xy[...,1],-sine*xy[...,0]+cosine*xy[...,1]],-1)
         local=copy.copy(state)
         local.robot_spheres=torch.cat([local_xy,spheres[...,2:]],-1)
-        return self.local_layer.cost(local,hard)
+        return self.local_layer.cost(local,hard,margin_m=margin_m)
 
 
 class BallFullCyclePlanner(TaskCyclePlanner):

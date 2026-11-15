@@ -1,0 +1,956 @@
+{
+  "profile": "20261031-analytic-extraction-rrt-transport-lm-placement-frozen40-v1",
+  "total": 117,
+  "completed": 117,
+  "success": 117,
+  "failures": {},
+  "model_hashes": {
+    "robot_config": "6defc3469dfd54286e24051c8fb3f401acba0b79bd462a4371cfe3942cd1197d",
+    "mobile_robot_config": "640b09ac308e6e28bf7cb4255701dc3eb070c3194ae5a1a1ae40cde2b6c1feef",
+    "urdf": "d05c6abeef1c8362010d5f341ff918deef2e7f2e6cf9b32b9e5294003b6a2401"
+  },
+  "algorithm_hashes": {
+    "v3_lm_conveyor.py": "d1aaf359295752cb2befcc6e8c12cda83ba20d780fd5e57e27ad5d6a71da8342",
+    "v3_frozen_cycle.py": "7d74f8c148b1d0a5e52bbe73ffd0f14c8a719c08708e65e1472b2ec4002c5bbf"
+  },
+  "validation_scope": "117 complete planning tasks in research checkout; publish tree independently verified on L4/R5; no real robot execution",
+  "edge_policy": "Only loaded collision and joint continuity required between LM nodes; pose errors diagnostic only. Node accuracy remains 2mm/1deg.",
+  "records": [
+    {
+      "index": 0,
+      "label": "L24(排1/列1) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 6791.717105006683
+    },
+    {
+      "index": 1,
+      "label": "L24(排1/列1) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2659.9809400067898
+    },
+    {
+      "index": 2,
+      "label": "L24(排1/列1) · R22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2686.3262389961164
+    },
+    {
+      "index": 3,
+      "label": "L23(排1/列2) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2728.018723006244
+    },
+    {
+      "index": 4,
+      "label": "L23(排1/列2) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2635.0522939901566
+    },
+    {
+      "index": 5,
+      "label": "L23(排1/列2) · R22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2933.262212012778
+    },
+    {
+      "index": 6,
+      "label": "L22(排1/列3) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2682.527034005034
+    },
+    {
+      "index": 7,
+      "label": "L22(排1/列3) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2927.880235001794
+    },
+    {
+      "index": 8,
+      "label": "L24(排1/列1) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2589.916839002399
+    },
+    {
+      "index": 9,
+      "label": "L24(排1/列1) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2596.7605469923
+    },
+    {
+      "index": 10,
+      "label": "L24(排1/列1) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2624.864251993131
+    },
+    {
+      "index": 11,
+      "label": "L23(排1/列2) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2596.081490002689
+    },
+    {
+      "index": 12,
+      "label": "L23(排1/列2) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2754.2373629985377
+    },
+    {
+      "index": 13,
+      "label": "L23(排1/列2) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2699.731500004418
+    },
+    {
+      "index": 14,
+      "label": "L22(排1/列3) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2679.9248149909545
+    },
+    {
+      "index": 15,
+      "label": "L22(排1/列3) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2718.459055002313
+    },
+    {
+      "index": 16,
+      "label": "L22(排1/列3) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2687.1461310074665
+    },
+    {
+      "index": 17,
+      "label": "L19(排2/列1) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2638.1054560042685
+    },
+    {
+      "index": 18,
+      "label": "L19(排2/列1) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2846.4288230024977
+    },
+    {
+      "index": 19,
+      "label": "L19(排2/列1) · R22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2650.118764999206
+    },
+    {
+      "index": 20,
+      "label": "L18(排2/列2) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2671.518912000465
+    },
+    {
+      "index": 21,
+      "label": "L18(排2/列2) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2701.491450992762
+    },
+    {
+      "index": 22,
+      "label": "L18(排2/列2) · R22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2755.355077999411
+    },
+    {
+      "index": 23,
+      "label": "L17(排2/列3) · R20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2575.5248880013824
+    },
+    {
+      "index": 24,
+      "label": "L17(排2/列3) · R21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2602.780857007019
+    },
+    {
+      "index": 25,
+      "label": "L17(排2/列3) · R22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2592.4477219959954
+    },
+    {
+      "index": 26,
+      "label": "L19(排2/列1) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2523.2488559995545
+    },
+    {
+      "index": 27,
+      "label": "L19(排2/列1) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2589.2990470019868
+    },
+    {
+      "index": 28,
+      "label": "L19(排2/列1) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2571.143901994219
+    },
+    {
+      "index": 29,
+      "label": "L18(排2/列2) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2487.523941992549
+    },
+    {
+      "index": 30,
+      "label": "L18(排2/列2) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2632.0483239978785
+    },
+    {
+      "index": 31,
+      "label": "L18(排2/列2) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2551.49519200495
+    },
+    {
+      "index": 32,
+      "label": "L17(排2/列3) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2578.6680489982245
+    },
+    {
+      "index": 33,
+      "label": "L17(排2/列3) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2538.209245001781
+    },
+    {
+      "index": 34,
+      "label": "L19(排2/列1) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2593.9773229911225
+    },
+    {
+      "index": 35,
+      "label": "L19(排2/列1) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2685.7933800056344
+    },
+    {
+      "index": 36,
+      "label": "L19(排2/列1) · R12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2669.1876739932923
+    },
+    {
+      "index": 37,
+      "label": "L18(排2/列2) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2863.642106996849
+    },
+    {
+      "index": 38,
+      "label": "L18(排2/列2) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2940.4398659971775
+    },
+    {
+      "index": 39,
+      "label": "L18(排2/列2) · R12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2642.003102999297
+    },
+    {
+      "index": 40,
+      "label": "L17(排2/列3) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2630.222630003118
+    },
+    {
+      "index": 41,
+      "label": "L17(排2/列3) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2457.638551000855
+    },
+    {
+      "index": 42,
+      "label": "L17(排2/列3) · R12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2650.6587190087885
+    },
+    {
+      "index": 43,
+      "label": "L14(排3/列1) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2708.267138004885
+    },
+    {
+      "index": 44,
+      "label": "L14(排3/列1) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2598.8433069869643
+    },
+    {
+      "index": 45,
+      "label": "L14(排3/列1) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2561.675724995439
+    },
+    {
+      "index": 46,
+      "label": "L13(排3/列2) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2559.463797006174
+    },
+    {
+      "index": 47,
+      "label": "L13(排3/列2) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2489.90158700326
+    },
+    {
+      "index": 48,
+      "label": "L13(排3/列2) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2542.733448994113
+    },
+    {
+      "index": 49,
+      "label": "L12(排3/列3) · R15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2634.1612699907273
+    },
+    {
+      "index": 50,
+      "label": "L12(排3/列3) · R16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2691.0086259886157
+    },
+    {
+      "index": 51,
+      "label": "L12(排3/列3) · R17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2566.94997100567
+    },
+    {
+      "index": 52,
+      "label": "L14(排3/列1) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2552.2546419961145
+    },
+    {
+      "index": 53,
+      "label": "L14(排3/列1) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2647.934232998523
+    },
+    {
+      "index": 54,
+      "label": "L14(排3/列1) · R12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2628.533584997058
+    },
+    {
+      "index": 55,
+      "label": "L13(排3/列2) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2574.9810869892826
+    },
+    {
+      "index": 56,
+      "label": "L13(排3/列2) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2431.0717480111634
+    },
+    {
+      "index": 57,
+      "label": "L13(排3/列2) · R12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2634.6447819960304
+    },
+    {
+      "index": 58,
+      "label": "L12(排3/列3) · R10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2554.9488520045998
+    },
+    {
+      "index": 59,
+      "label": "L12(排3/列3) · R11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2621.0809929907555
+    },
+    {
+      "index": 60,
+      "label": "L09(排4/列1) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 5078.391342001851
+    },
+    {
+      "index": 61,
+      "label": "L09(排4/列1) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3097.9817250045016
+    },
+    {
+      "index": 62,
+      "label": "L09(排4/列1) · R07(排4/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3330.53471299354
+    },
+    {
+      "index": 63,
+      "label": "L08(排4/列2) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3113.3515810070094
+    },
+    {
+      "index": 64,
+      "label": "L08(排4/列2) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3166.172782002832
+    },
+    {
+      "index": 65,
+      "label": "L08(排4/列2) · R07(排4/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3375.855769991176
+    },
+    {
+      "index": 66,
+      "label": "L07(排4/列3) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3219.5271410018904
+    },
+    {
+      "index": 67,
+      "label": "L07(排4/列3) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3422.2180520009715
+    },
+    {
+      "index": 68,
+      "label": "L09(排4/列1) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3145.932861996698
+    },
+    {
+      "index": 69,
+      "label": "L09(排4/列1) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3146.191740001086
+    },
+    {
+      "index": 70,
+      "label": "L09(排4/列1) · R02(排5/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3085.507055002381
+    },
+    {
+      "index": 71,
+      "label": "L08(排4/列2) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3056.2802119966364
+    },
+    {
+      "index": 72,
+      "label": "L08(排4/列2) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2989.3205760017736
+    },
+    {
+      "index": 73,
+      "label": "L08(排4/列2) · R02(排5/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3155.970623003668
+    },
+    {
+      "index": 74,
+      "label": "L07(排4/列3) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3129.3879259901587
+    },
+    {
+      "index": 75,
+      "label": "L07(排4/列3) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2975.9479990025284
+    },
+    {
+      "index": 76,
+      "label": "L04(排5/列1) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 8217.646816992783
+    },
+    {
+      "index": 77,
+      "label": "L04(排5/列1) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3179.067546996521
+    },
+    {
+      "index": 78,
+      "label": "L04(排5/列1) · R07(排4/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3276.954396002111
+    },
+    {
+      "index": 79,
+      "label": "L03(排5/列2) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3067.2928349958966
+    },
+    {
+      "index": 80,
+      "label": "L03(排5/列2) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2990.1507970062084
+    },
+    {
+      "index": 81,
+      "label": "L03(排5/列2) · R07(排4/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3130.409272009274
+    },
+    {
+      "index": 82,
+      "label": "L02(排5/列3) · R05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3261.43995700113
+    },
+    {
+      "index": 83,
+      "label": "L02(排5/列3) · R06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2949.941383994883
+    },
+    {
+      "index": 84,
+      "label": "L04(排5/列1) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2889.762474995223
+    },
+    {
+      "index": 85,
+      "label": "L04(排5/列1) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2788.669952991768
+    },
+    {
+      "index": 86,
+      "label": "L04(排5/列1) · R02(排5/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2939.491951998207
+    },
+    {
+      "index": 87,
+      "label": "L03(排5/列2) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2816.098131996114
+    },
+    {
+      "index": 88,
+      "label": "L03(排5/列2) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 5376.49667300866
+    },
+    {
+      "index": 89,
+      "label": "L03(排5/列2) · R02(排5/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3060.223988999496
+    },
+    {
+      "index": 90,
+      "label": "L02(排5/列3) · R00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3064.1504710074514
+    },
+    {
+      "index": 91,
+      "label": "L02(排5/列3) · R01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2940.161802995135
+    },
+    {
+      "index": 92,
+      "label": "单臂 右手 00(排5/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 4871.234801001265
+    },
+    {
+      "index": 93,
+      "label": "单臂 右手 01(排5/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2247.895549997338
+    },
+    {
+      "index": 94,
+      "label": "单臂 右手 02(排5/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2261.492676989292
+    },
+    {
+      "index": 95,
+      "label": "单臂 左手 03(排5/列2)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 4360.486203993787
+    },
+    {
+      "index": 96,
+      "label": "单臂 左手 04(排5/列1)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2236.257584008854
+    },
+    {
+      "index": 97,
+      "label": "单臂 右手 05(排4/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3464.894970995374
+    },
+    {
+      "index": 98,
+      "label": "单臂 右手 06(排4/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2325.7370989886113
+    },
+    {
+      "index": 99,
+      "label": "单臂 右手 07(排4/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2332.912051992025
+    },
+    {
+      "index": 100,
+      "label": "单臂 左手 08(排4/列2)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3307.1474860043963
+    },
+    {
+      "index": 101,
+      "label": "单臂 左手 09(排4/列1)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2297.9077380005037
+    },
+    {
+      "index": 102,
+      "label": "单臂 右手 10(排3/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2936.6156620089896
+    },
+    {
+      "index": 103,
+      "label": "单臂 右手 11(排3/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1855.9922540007392
+    },
+    {
+      "index": 104,
+      "label": "单臂 右手 12(排3/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1736.9771969970316
+    },
+    {
+      "index": 105,
+      "label": "单臂 左手 13(排3/列2)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2903.3424719964387
+    },
+    {
+      "index": 106,
+      "label": "单臂 左手 14(排3/列1)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1968.7264840031276
+    },
+    {
+      "index": 107,
+      "label": "单臂 右手 15(排2/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3056.955897001899
+    },
+    {
+      "index": 108,
+      "label": "单臂 右手 16(排2/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1970.9361080022063
+    },
+    {
+      "index": 109,
+      "label": "单臂 右手 17(排2/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1827.3021109926049
+    },
+    {
+      "index": 110,
+      "label": "单臂 左手 18(排2/列2)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2929.6249549952336
+    },
+    {
+      "index": 111,
+      "label": "单臂 左手 19(排2/列1)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1883.034618003876
+    },
+    {
+      "index": 112,
+      "label": "单臂 右手 20(排1/列5)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2957.0353150047595
+    },
+    {
+      "index": 113,
+      "label": "单臂 右手 21(排1/列4)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 2132.173309000791
+    },
+    {
+      "index": 114,
+      "label": "单臂 右手 22(排1/列3)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1964.0877810015809
+    },
+    {
+      "index": 115,
+      "label": "单臂 左手 23(排1/列2)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 3014.266254991526
+    },
+    {
+      "index": 116,
+      "label": "单臂 左手 24(排1/列1)",
+      "success": true,
+      "blocked_stage": null,
+      "blocked_details": null,
+      "wall_ms": 1944.772604998434
+    }
+  ]
+}

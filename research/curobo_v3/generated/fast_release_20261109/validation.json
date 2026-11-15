@@ -1,0 +1,679 @@
+{
+  "environment": {
+    "gpu": "RTX4060 Laptop 8GB",
+    "cpu_threads": 2,
+    "configured_upstream_commit": "76c2f4b6d325b4e76696939de1faa6c14d409e0a",
+    "source_git_identity_verified": false,
+    "source_sha256": {
+      "curobo/trajectory_optimizer.py": "76a48793735d27445a875bca2d001b490d1d766b566498879f05a1b5be7d6f0a",
+      "curobo/trajectory_timeopt.py": "a1799cba264d6ba5dd5b8c4b69c95ba5c5a4071fcd2d00a70cdc45eb93c7b400",
+      "curobo/_src/solver/seed_ik/seed_ik_solver.py": "b6088b7d25c103195f5b1fb6f914e714f5bc3a8be660014ce3f8c1bac035c389"
+    }
+  },
+  "initialization_ms": 2093.6830190003093,
+  "records": [
+    {
+      "index": 85,
+      "task": {
+        "left": 4,
+        "right": 1
+      },
+      "success": false,
+      "planning_success": true,
+      "complete_candidate": true,
+      "all_trajopt_success": false,
+      "dynamic_valid": true,
+      "planning_ms": 14179.865229001734,
+      "total_wall_ms": 54729.99230300047,
+      "motion_s": 16.036238193511963,
+      "geometry_optimization_ms": 19606.7050260026,
+      "time_optimization_ms": 15257.727233998594,
+      "stages": [
+        {
+          "phase": "approach",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 905.3149459978158,
+            "fit_ms": 4.782394000358181,
+            "solve_ms": 8496.999031001906,
+            "seed_fit": {
+              "arm_max_deviation_deg": 3.8767830357236237,
+              "updown_max_deviation_mm": 17.48065215584782
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 17.789132001780672,
+            "solve_ms": 12725.792080000247,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.2599146366119385,
+            "peak_velocity_deg_s": 59.6752815246582,
+            "peak_jerk_rad_s3": 491.12408447265625,
+            "peak_torque_ratio": 0.3227032721042633,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 554.9859530001413,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "contact_approach",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 17.607482001039898,
+            "solve_ms": 491.90652600009344,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.2703015804290771,
+            "peak_velocity_deg_s": 5.260177135467529,
+            "peak_jerk_rad_s3": 496.3352966308594,
+            "peak_torque_ratio": 0.2805637717247009,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 506.22641899826704,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 16.112687000713777,
+            "arm_max_deviation_deg": 0.025711183580984596,
+            "updown_max_deviation_mm": 3.774758283725532e-12
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "extract",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 81.61062499857508,
+            "solve_ms": 493.5224430009839,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.470170259475708,
+            "peak_velocity_deg_s": 18.590055465698242,
+            "peak_jerk_rad_s3": 492.16864013671875,
+            "peak_torque_ratio": 0.6701100468635559,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 504.1522409992467,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 15.422872998897219,
+            "arm_max_deviation_deg": 0.1740647319439971,
+            "updown_max_deviation_mm": 1.9750839495505934
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "transport",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 1030.3239490021951,
+            "fit_ms": 3.4372000009170733,
+            "solve_ms": 5594.851546000427,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.6291422850588593,
+              "updown_max_deviation_mm": 8.228084820205261
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 17.666850999376038,
+            "solve_ms": 505.7599219981057,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.8643617630004883,
+            "peak_velocity_deg_s": 59.69797134399414,
+            "peak_jerk_rad_s3": 496.4096984863281,
+            "peak_torque_ratio": 0.4991779923439026,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 493.4358799982874,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "conveyor_place",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.014247001672629267,
+            "solve_ms": 527.1691210000427,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.4692740440368652,
+            "peak_velocity_deg_s": 38.972755432128906,
+            "peak_jerk_rad_s3": 492.87982177734375,
+            "peak_torque_ratio": 0.6495035290718079,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 2.322336000361247,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 16.98534800016205,
+            "arm_max_deviation_deg": 0.5320307558046975,
+            "updown_max_deviation_mm": 1.924629381095777
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "return_home",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 1124.326552999264,
+            "fit_ms": 3.4775680032907985,
+            "solve_ms": 5514.854449000268,
+            "seed_fit": {
+              "arm_max_deviation_deg": 3.1980675988480676,
+              "updown_max_deviation_mm": 4.0394347904142975
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.013060001947451383,
+            "solve_ms": 513.5771419991215,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.7022159099578857,
+            "peak_velocity_deg_s": 59.705204010009766,
+            "peak_jerk_rad_s3": 486.7149963378906,
+            "peak_torque_ratio": 0.426277756690979,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.5802810012246482,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        }
+      ]
+    },
+    {
+      "index": 86,
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "success": false,
+      "planning_success": true,
+      "complete_candidate": true,
+      "all_trajopt_success": false,
+      "dynamic_valid": true,
+      "planning_ms": 4187.375000001339,
+      "total_wall_ms": 5953.297332001966,
+      "motion_s": 15.068678259849548,
+      "geometry_optimization_ms": 240.5530269970768,
+      "time_optimization_ms": 1092.8340540012869,
+      "stages": [
+        {
+          "phase": "approach",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 8.964030999777606,
+            "fit_ms": 3.802885999903083,
+            "solve_ms": 77.21888900050544,
+            "seed_fit": {
+              "arm_max_deviation_deg": 3.2835754578974736,
+              "updown_max_deviation_mm": 12.17519351837737
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01780900129233487,
+            "solve_ms": 0.8987780020106584,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.3035829067230225,
+            "peak_velocity_deg_s": 59.71395492553711,
+            "peak_jerk_rad_s3": 486.2596740722656,
+            "peak_torque_ratio": 0.30196937918663025,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.495984000939643,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "contact_approach",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01424699803465046,
+            "solve_ms": 555.8684349998657,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 0.9291882514953613,
+            "peak_velocity_deg_s": 4.826986789703369,
+            "peak_jerk_rad_s3": 498.0336608886719,
+            "peak_torque_ratio": 0.3186519145965576,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.1029909983335529,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 14.746126002137316,
+            "arm_max_deviation_deg": 0.01697587748322785,
+            "updown_max_deviation_mm": 4.3298697960381105e-12
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "extract",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.014247001672629267,
+            "solve_ms": 0.6090790011512581,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.7487964630126953,
+            "peak_velocity_deg_s": 24.102571487426758,
+            "peak_jerk_rad_s3": 496.7187805175781,
+            "peak_torque_ratio": 0.5900493860244751,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.9008500021300279,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 13.30594600221957,
+            "arm_max_deviation_deg": 0.2462894006888476,
+            "updown_max_deviation_mm": 1.401447904447628
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "transport",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 10.564495998551138,
+            "fit_ms": 3.673471001093276,
+            "solve_ms": 91.1944669969671,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.4112067111446414,
+              "updown_max_deviation_mm": 12.017723662643347
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.018996001017512754,
+            "solve_ms": 534.137496000767,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.6124082803726196,
+            "peak_velocity_deg_s": 59.684993743896484,
+            "peak_jerk_rad_s3": 493.8013916015625,
+            "peak_torque_ratio": 0.8993674516677856,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.0151320020668209,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "conveyor_place",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.013059998309472576,
+            "solve_ms": 0.7812359981471673,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.9788293838500977,
+            "peak_velocity_deg_s": 45.42558288574219,
+            "peak_jerk_rad_s3": 498.041748046875,
+            "peak_torque_ratio": 0.6492592692375183,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.0305659998266492,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 13.049491997662699,
+            "arm_max_deviation_deg": 0.534582898442749,
+            "updown_max_deviation_mm": 1.8637140466962188
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "return_home",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 9.168243999738479,
+            "fit_ms": 3.5120009997626767,
+            "solve_ms": 72.13967099960428,
+            "seed_fit": {
+              "arm_max_deviation_deg": 3.130360032069814,
+              "updown_max_deviation_mm": 3.1350159738352534
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.014248002116801217,
+            "solve_ms": 0.5390299993450753,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.495872974395752,
+            "peak_velocity_deg_s": 59.67399215698242,
+            "peak_jerk_rad_s3": 446.0073547363281,
+            "peak_torque_ratio": 0.4196959137916565,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 0.9498309991613496,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        }
+      ]
+    },
+    {
+      "index": 38,
+      "task": {
+        "left": 18,
+        "right": 11
+      },
+      "success": false,
+      "planning_success": true,
+      "complete_candidate": true,
+      "all_trajopt_success": false,
+      "dynamic_valid": true,
+      "planning_ms": 3847.35032199751,
+      "total_wall_ms": 14453.874185001041,
+      "motion_s": 14.52091908454895,
+      "geometry_optimization_ms": 6074.614056997234,
+      "time_optimization_ms": 1660.8691179972084,
+      "stages": [
+        {
+          "phase": "approach",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 81.76621700113174,
+            "fit_ms": 8.793062002951046,
+            "solve_ms": 92.58716800104594,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.976982360007841,
+              "updown_max_deviation_mm": 3.664153518293273
+            },
+            "solver_success": false,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.014248002116801217,
+            "solve_ms": 2.1905479989072774,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.9109994173049927,
+            "peak_velocity_deg_s": 59.706302642822266,
+            "peak_jerk_rad_s3": 499.54962158203125,
+            "peak_torque_ratio": 0.2852145731449127,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 12.604259998624912,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "contact_approach",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.013059998309472576,
+            "solve_ms": 1.77262199940742,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.8733383417129517,
+            "peak_velocity_deg_s": 11.454781532287598,
+            "peak_jerk_rad_s3": 497.613525390625,
+            "peak_torque_ratio": 0.26216697692871094,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 12.392923003062606,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 18.053916002827464,
+            "arm_max_deviation_deg": 0.08270307777187486,
+            "updown_max_deviation_mm": 4.718447854656915e-13
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "extract",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 29.743962997599738,
+            "solve_ms": 545.9843360004015,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.6373424530029297,
+            "peak_velocity_deg_s": 28.905305862426758,
+            "peak_jerk_rad_s3": 490.8797302246094,
+            "peak_torque_ratio": 0.9173436760902405,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 520.5015630017442,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 16.289603998302482,
+            "arm_max_deviation_deg": 0.30674688597191085,
+            "updown_max_deviation_mm": 2.1905231133257375
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "transport",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 1160.5690859978495,
+            "fit_ms": 3.586799997719936,
+            "solve_ms": 5844.6777049975935,
+            "seed_fit": {
+              "arm_max_deviation_deg": 2.1225632760333717,
+              "updown_max_deviation_mm": 2.801740829690119
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": true,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 15.324341002269648,
+            "solve_ms": 569.5010859999456,
+            "new_solver": true,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 2.2437496185302734,
+            "peak_velocity_deg_s": 59.723297119140625,
+            "peak_jerk_rad_s3": 499.0050964355469,
+            "peak_torque_ratio": 0.9952524900436401,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 536.3116100015759,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "conveyor_place",
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.015434001397807151,
+            "solve_ms": 540.7924499995715,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 3.1817727088928223,
+            "peak_velocity_deg_s": 33.865150451660156,
+            "peak_jerk_rad_s3": 494.92156982421875,
+            "peak_torque_ratio": 0.9918685555458069,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 2.416133997030556,
+            "dynamic_valid": true
+          },
+          "representation_adaptation": {
+            "fit_ms": 14.102621000347426,
+            "arm_max_deviation_deg": 0.4315165481645672,
+            "updown_max_deviation_mm": 0.9432416798355325
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        },
+        {
+          "phase": "return_home",
+          "trajectory_optimization": {
+            "method": "Fast geometric TrajOpt",
+            "geometry_scale": 100.0,
+            "setup_ms": 12.516402999608545,
+            "fit_ms": 3.706716997839976,
+            "solve_ms": 137.34918399859453,
+            "seed_fit": {
+              "arm_max_deviation_deg": 1.3485377809404924,
+              "updown_max_deviation_mm": 3.4106746490828455
+            },
+            "solver_success": true,
+            "timeopt_inside": false,
+            "cuda_graph": true,
+            "new_solver": false,
+            "timing_input": "static path; geometric dt is not a physical time seed; remove only constant initial span",
+            "native_constraints_unavailable": true
+          },
+          "time_optimization": {
+            "method": "Fast TrajectoryTimeOpt",
+            "setup_ms": 0.01424699803465046,
+            "solve_ms": 0.628075998974964,
+            "new_solver": false,
+            "success": true,
+            "status": 0,
+            "cuda_graph": true,
+            "warm_recompute_ms": 0.0,
+            "duration_s": 1.6737165451049805,
+            "peak_velocity_deg_s": 59.68041229248047,
+            "peak_jerk_rad_s3": 494.1268005371094,
+            "peak_torque_ratio": 0.36085113883018494,
+            "endpoint_velocity": 0.0,
+            "endpoint_acceleration": 0.0,
+            "sample_and_diagnostics_ms": 1.5007330002845265,
+            "dynamic_valid": true
+          },
+          "endpoint_error": 1.1920928955078125e-07
+        }
+      ]
+    }
+  ],
+  "tests": {
+    "passed": 32,
+    "skipped": 1,
+    "failed": 4,
+    "failed_tests": [
+      "test_frozen_cycle.py::test_full_cycle_records_keep_payload_and_actual_terminal_state",
+      "test_frozen_cycle.py::test_lm_reference_with_independent_urdf",
+      "test_rezero_j2_limits.py::test_both_j6_axes_reverse_without_moving_joint_zero",
+      "test_rezero_j2_limits.py::test_selected_home_matches_user_numbers_and_preserved_height"
+    ]
+  },
+  "scope": "Representative candidates only; not full task acceptance or hardware execution; known issues deliberately retained"
+}

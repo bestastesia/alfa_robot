@@ -1,0 +1,84 @@
+{
+  "completed": 3,
+  "total": 3,
+  "success": 3,
+  "height": 0.982,
+  "timed": false,
+  "records": [
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2507,
+      "wall_ms": 4242.7184189873515,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 588,
+        "contact_approach": 24,
+        "extract": 181,
+        "transport": 640,
+        "conveyor_place": 338,
+        "return_home": 731
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4308.281833000365
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3253,
+      "wall_ms": 6090.123709000181,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 807,
+        "contact_approach": 60,
+        "extract": 232,
+        "transport": 861,
+        "conveyor_place": 576,
+        "return_home": 710
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 6134.818531994824
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "success": true,
+      "frames": 3071,
+      "wall_ms": 4663.003490000847,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 732,
+        "contact_approach": 60,
+        "extract": 233,
+        "transport": 976,
+        "conveyor_place": 478,
+        "return_home": 585
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4704.092376996414
+    }
+  ],
+  "peak_gpu_allocated_mib": 537.76611328125
+}

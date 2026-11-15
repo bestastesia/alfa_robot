@@ -9,7 +9,7 @@ from pathlib import Path
 import subprocess
 import time
 
-from curobo_core.contracts import PlannerAssets
+from curobo_core.door_model import load_assets
 from curobo_core.door_recenter import DoorPlanner,DoorTask,ROOT,door_request
 
 
@@ -31,8 +31,7 @@ def main():
                 fcntl.flock(lock,fcntl.LOCK_UN)
             if time.monotonic()>=deadline:raise RuntimeError('GPU unavailable: '+occupied)
             time.sleep(1)
-        assets=PlannerAssets();assets=replace(assets,**{name:a.assets_root/getattr(assets,name).relative_to(ROOT)
-            for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+        assets=load_assets(a.assets_root)
         policy_path=ROOT/'config/placement_task_policy.json';policy=json.loads(policy_path.read_text())
         planner=DoorPlanner(assets);records=[]
         source_identity={str(path.relative_to(ROOT)):hashlib.sha256(path.read_bytes()).hexdigest()

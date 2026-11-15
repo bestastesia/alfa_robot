@@ -10,6 +10,7 @@ import yaml
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--compiler", default="g++")
+    parser.add_argument("--fast-only", action="store_true", help="Prepare current Fast runtime without rewriting tracked historical assets")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     def relocate(value):
@@ -17,7 +18,7 @@ def main():
         if marker in value:
             return root / "generated" / value.split(marker, 1)[1]
         return Path(value)
-    for directory in (root / "generated").iterdir():
+    for directory in (() if args.fast_only else (root / "generated").iterdir()):
         if not directory.is_dir():
             continue
         for path in directory.rglob("*.urdf"):
@@ -30,7 +31,7 @@ def main():
                         raise FileNotFoundError(destination)
                     mesh.set("filename", str(destination))
             tree.write(path, encoding="utf-8", xml_declaration=True)
-        for path in directory.rglob("*.yml"):
+        for path in (*directory.rglob("*.yml"), *directory.rglob("*.yaml")):
             data = yaml.safe_load(path.read_text())
             kin = data.get("robot_cfg", data).get("kinematics")
             if kin is None:
@@ -49,6 +50,10 @@ def main():
         str(vendor / "src/v3_redundant_analytic_ik.cpp"),
         str(vendor / "src/analytic_ik.cpp"), "-o", str(binary),
     ], check=True)
+    if args.fast_only:
+        from v3_fast_assets import prepare_fast_assets
+        assets, dynamics = prepare_fast_assets()
+        print(json.dumps({"robot_config": str(assets.robot_config), "display_urdf": str(assets.urdf), "dynamics_config": str(dynamics)}))
     print(json.dumps({"workspace": str(root), "analytic_library": str(binary)}))
 
 

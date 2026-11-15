@@ -1,5 +1,27 @@
 # cuRobo 独立状态、场景与规划核心
 
+2026-11-10：当前默认配置启用双臂LM后64控制点、最多32轮L-BFGS，再做Fast TimeOpt。
+完整部署、冻结模型/碰撞、依赖校验、输入输出及边界以[FAST_DEPLOYMENT.md](FAST_DEPLOYMENT.md)为准。
+仅extract/conveyor_place新增后处理，原RRT选型/实际末态同目标重连和自由段TrajOpt不改。
+
+2026-11-09 Fast评审入口：`tools/v3_fast_three_layers.py::FastThreeLayerPlanner`，
+实时Viser入口为`tools/v3_fast_live_viewer.py`。本次方案为外部障碍查询膨胀10%的原多起终点RRT、
+仅自由段Fast TrajOpt、全六段Fast TimeOpt；候选先预测，选中后才做完整15轴LM抽离，放置也用LM。
+固定底盘/立柱四盒对内及对外验碰；`arm_carriage`20球、双臂及携箱40球保留。
+使用已确认的J7+Z135mm TCP（到J6旋转轴234.2mm）。
+三个代表任务已生成全流程候选，18段TimeOpt动力学采样通过，**各任务仍有TrajOpt失败标记**；
+候选保留供查看，不写成完整验收通过。已知间隙判定、耗时和历史测试问题本次保留，见
+[FAST_PIPELINE.md](FAST_PIPELINE.md)。以下2026-10-31及更早内容是历史基线，不是本次Fast入口。
+
+2026-10-31固定默认流程：`tools/v3_frozen_cycle.py::FrozenCyclePlanner`。
+旧64候选与8/16/32/64分批解析抽离35cm→多根多目标RRT运输→导航到位→
+128参考点、32局部种子、最多32轮的15轴连续LM放箱→释放→从LM实际末态RRT回Home。
+携箱仅用原40球模型，放箱失败停止，无RRT回退；单臂时空闲臂关节保持放箱起点值。
+当前零位URDF、191mm TCP、放箱箱心0.982m不变。默认界面入口
+`tools/v3_forward_precontact_demo.py`现指向该固定流程，旧名称为兼容已有启动命令保留。
+独立入口`tools/v3_frozen_cycle_demo.py --port 8243`，全117任务复测入口
+`tools/v3_frozen_cycle_validate.py`。均为离线几何规划，不连接实机；旧WARP实验不再是默认入口。
+
 MOTION-276 完成 MoveIt 替代的阶段1～3。当前核心位于 `tools/curobo_core`，提供
 独立场景/具名机器人状态及已有混合算法的调用入口，不需要 MoveIt、ROS 或 Viser。
 算法仍是 cuRobo 数值IK/FK/球碰撞、自研批量RRT及C++解析抽离。

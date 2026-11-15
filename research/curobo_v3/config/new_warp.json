@@ -1,0 +1,10 @@
+{
+  "strategy": "new_warp_v1",
+  "label": "新WARP",
+  "release_box_center_z_m": 0.982,
+  "historical_validation_release_box_center_z_m": 1.082,
+  "path_prior_lm_used": false,
+  "reference_points": 128,
+  "joint_adjustment_rounds": 30,
+  "final_joint_resolution_deg": 0.25
+}

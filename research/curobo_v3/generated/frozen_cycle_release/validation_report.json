@@ -1,0 +1,1407 @@
+{
+  "profile": "20261031-analytic-extraction-rrt-transport-lm-placement-frozen40-v1",
+  "total": 117,
+  "completed": 117,
+  "success": 105,
+  "failures": {
+    "龙头车放置LM": 11,
+    "全链路候选验证": 1
+  },
+  "records": [
+    {
+      "index": 0,
+      "label": "L24(排1/列1) · R20(排1/列5)",
+      "task": {
+        "left": 24,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 6195.934401999693
+    },
+    {
+      "index": 1,
+      "label": "L24(排1/列1) · R21(排1/列4)",
+      "task": {
+        "left": 24,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2908.8839450014348
+    },
+    {
+      "index": 2,
+      "label": "L24(排1/列1) · R22(排1/列3)",
+      "task": {
+        "left": 24,
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2487.9990740009816
+    },
+    {
+      "index": 3,
+      "label": "L23(排1/列2) · R20(排1/列5)",
+      "task": {
+        "left": 23,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2705.2347240023664
+    },
+    {
+      "index": 4,
+      "label": "L23(排1/列2) · R21(排1/列4)",
+      "task": {
+        "left": 23,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2819.2678859995794
+    },
+    {
+      "index": 5,
+      "label": "L23(排1/列2) · R22(排1/列3)",
+      "task": {
+        "left": 23,
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2550.3092930011917
+    },
+    {
+      "index": 6,
+      "label": "L22(排1/列3) · R20(排1/列5)",
+      "task": {
+        "left": 22,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2877.473561999068
+    },
+    {
+      "index": 7,
+      "label": "L22(排1/列3) · R21(排1/列4)",
+      "task": {
+        "left": 22,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3682.1326249992126
+    },
+    {
+      "index": 8,
+      "label": "L24(排1/列1) · R15(排2/列5)",
+      "task": {
+        "left": 24,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2713.4378720002132
+    },
+    {
+      "index": 9,
+      "label": "L24(排1/列1) · R16(排2/列4)",
+      "task": {
+        "left": 24,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2400.965423003072
+    },
+    {
+      "index": 10,
+      "label": "L24(排1/列1) · R17(排2/列3)",
+      "task": {
+        "left": 24,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2385.9411560006265
+    },
+    {
+      "index": 11,
+      "label": "L23(排1/列2) · R15(排2/列5)",
+      "task": {
+        "left": 23,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2563.920655000402
+    },
+    {
+      "index": 12,
+      "label": "L23(排1/列2) · R16(排2/列4)",
+      "task": {
+        "left": 23,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2544.9177009977575
+    },
+    {
+      "index": 13,
+      "label": "L23(排1/列2) · R17(排2/列3)",
+      "task": {
+        "left": 23,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2752.628719998029
+    },
+    {
+      "index": 14,
+      "label": "L22(排1/列3) · R15(排2/列5)",
+      "task": {
+        "left": 22,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2492.1736670003156
+    },
+    {
+      "index": 15,
+      "label": "L22(排1/列3) · R16(排2/列4)",
+      "task": {
+        "left": 22,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2657.3384900002566
+    },
+    {
+      "index": 16,
+      "label": "L22(排1/列3) · R17(排2/列3)",
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2504.2771419975907
+    },
+    {
+      "index": 17,
+      "label": "L19(排2/列1) · R20(排1/列5)",
+      "task": {
+        "left": 19,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2420.4575490002753
+    },
+    {
+      "index": 18,
+      "label": "L19(排2/列1) · R21(排1/列4)",
+      "task": {
+        "left": 19,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2627.3968149980647
+    },
+    {
+      "index": 19,
+      "label": "L19(排2/列1) · R22(排1/列3)",
+      "task": {
+        "left": 19,
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2850.8694219999597
+    },
+    {
+      "index": 20,
+      "label": "L18(排2/列2) · R20(排1/列5)",
+      "task": {
+        "left": 18,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2502.6469600015844
+    },
+    {
+      "index": 21,
+      "label": "L18(排2/列2) · R21(排1/列4)",
+      "task": {
+        "left": 18,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2596.419802001037
+    },
+    {
+      "index": 22,
+      "label": "L18(排2/列2) · R22(排1/列3)",
+      "task": {
+        "left": 18,
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2598.5403439990478
+    },
+    {
+      "index": 23,
+      "label": "L17(排2/列3) · R20(排1/列5)",
+      "task": {
+        "left": 17,
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2441.305588999967
+    },
+    {
+      "index": 24,
+      "label": "L17(排2/列3) · R21(排1/列4)",
+      "task": {
+        "left": 17,
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2568.681780998304
+    },
+    {
+      "index": 25,
+      "label": "L17(排2/列3) · R22(排1/列3)",
+      "task": {
+        "left": 17,
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2492.147543998726
+    },
+    {
+      "index": 26,
+      "label": "L19(排2/列1) · R15(排2/列5)",
+      "task": {
+        "left": 19,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2660.2687790000346
+    },
+    {
+      "index": 27,
+      "label": "L19(排2/列1) · R16(排2/列4)",
+      "task": {
+        "left": 19,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2415.112261998729
+    },
+    {
+      "index": 28,
+      "label": "L19(排2/列1) · R17(排2/列3)",
+      "task": {
+        "left": 19,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2495.4755839971767
+    },
+    {
+      "index": 29,
+      "label": "L18(排2/列2) · R15(排2/列5)",
+      "task": {
+        "left": 18,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2466.197617999569
+    },
+    {
+      "index": 30,
+      "label": "L18(排2/列2) · R16(排2/列4)",
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2662.7265169991006
+    },
+    {
+      "index": 31,
+      "label": "L18(排2/列2) · R17(排2/列3)",
+      "task": {
+        "left": 18,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2661.4050369971665
+    },
+    {
+      "index": 32,
+      "label": "L17(排2/列3) · R15(排2/列5)",
+      "task": {
+        "left": 17,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2427.745277997019
+    },
+    {
+      "index": 33,
+      "label": "L17(排2/列3) · R16(排2/列4)",
+      "task": {
+        "left": 17,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2421.166372998414
+    },
+    {
+      "index": 34,
+      "label": "L19(排2/列1) · R10(排3/列5)",
+      "task": {
+        "left": 19,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2510.2564500011795
+    },
+    {
+      "index": 35,
+      "label": "L19(排2/列1) · R11(排3/列4)",
+      "task": {
+        "left": 19,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2388.12106000114
+    },
+    {
+      "index": 36,
+      "label": "L19(排2/列1) · R12(排3/列3)",
+      "task": {
+        "left": 19,
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2524.5896999986144
+    },
+    {
+      "index": 37,
+      "label": "L18(排2/列2) · R10(排3/列5)",
+      "task": {
+        "left": 18,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2588.8577990008343
+    },
+    {
+      "index": 38,
+      "label": "L18(排2/列2) · R11(排3/列4)",
+      "task": {
+        "left": 18,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2363.9129220027826
+    },
+    {
+      "index": 39,
+      "label": "L18(排2/列2) · R12(排3/列3)",
+      "task": {
+        "left": 18,
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2409.173316998931
+    },
+    {
+      "index": 40,
+      "label": "L17(排2/列3) · R10(排3/列5)",
+      "task": {
+        "left": 17,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2429.595112000243
+    },
+    {
+      "index": 41,
+      "label": "L17(排2/列3) · R11(排3/列4)",
+      "task": {
+        "left": 17,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2443.7526389992854
+    },
+    {
+      "index": 42,
+      "label": "L17(排2/列3) · R12(排3/列3)",
+      "task": {
+        "left": 17,
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2364.9506340007065
+    },
+    {
+      "index": 43,
+      "label": "L14(排3/列1) · R15(排2/列5)",
+      "task": {
+        "left": 14,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2470.276037001895
+    },
+    {
+      "index": 44,
+      "label": "L14(排3/列1) · R16(排2/列4)",
+      "task": {
+        "left": 14,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2423.9102539977466
+    },
+    {
+      "index": 45,
+      "label": "L14(排3/列1) · R17(排2/列3)",
+      "task": {
+        "left": 14,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2444.7309850002057
+    },
+    {
+      "index": 46,
+      "label": "L13(排3/列2) · R15(排2/列5)",
+      "task": {
+        "left": 13,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2537.346196000726
+    },
+    {
+      "index": 47,
+      "label": "L13(排3/列2) · R16(排2/列4)",
+      "task": {
+        "left": 13,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2525.6392839983164
+    },
+    {
+      "index": 48,
+      "label": "L13(排3/列2) · R17(排2/列3)",
+      "task": {
+        "left": 13,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2391.586826997809
+    },
+    {
+      "index": 49,
+      "label": "L12(排3/列3) · R15(排2/列5)",
+      "task": {
+        "left": 12,
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2462.598867001361
+    },
+    {
+      "index": 50,
+      "label": "L12(排3/列3) · R16(排2/列4)",
+      "task": {
+        "left": 12,
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2485.201756000606
+    },
+    {
+      "index": 51,
+      "label": "L12(排3/列3) · R17(排2/列3)",
+      "task": {
+        "left": 12,
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2403.382786997099
+    },
+    {
+      "index": 52,
+      "label": "L14(排3/列1) · R10(排3/列5)",
+      "task": {
+        "left": 14,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2462.8173320015776
+    },
+    {
+      "index": 53,
+      "label": "L14(排3/列1) · R11(排3/列4)",
+      "task": {
+        "left": 14,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2591.7904620000627
+    },
+    {
+      "index": 54,
+      "label": "L14(排3/列1) · R12(排3/列3)",
+      "task": {
+        "left": 14,
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2365.3780649983673
+    },
+    {
+      "index": 55,
+      "label": "L13(排3/列2) · R10(排3/列5)",
+      "task": {
+        "left": 13,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2420.6213930010563
+    },
+    {
+      "index": 56,
+      "label": "L13(排3/列2) · R11(排3/列4)",
+      "task": {
+        "left": 13,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2579.8769560024084
+    },
+    {
+      "index": 57,
+      "label": "L13(排3/列2) · R12(排3/列3)",
+      "task": {
+        "left": 13,
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2469.809422000253
+    },
+    {
+      "index": 58,
+      "label": "L12(排3/列3) · R10(排3/列5)",
+      "task": {
+        "left": 12,
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2457.9054150017328
+    },
+    {
+      "index": 59,
+      "label": "L12(排3/列3) · R11(排3/列4)",
+      "task": {
+        "left": 12,
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2630.5633740012127
+    },
+    {
+      "index": 60,
+      "label": "L09(排4/列1) · R05(排4/列5)",
+      "task": {
+        "left": 9,
+        "right": 5
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 3363.1228159974853
+    },
+    {
+      "index": 61,
+      "label": "L09(排4/列1) · R06(排4/列4)",
+      "task": {
+        "left": 9,
+        "right": 6
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3168.34757900142
+    },
+    {
+      "index": 62,
+      "label": "L09(排4/列1) · R07(排4/列3)",
+      "task": {
+        "left": 9,
+        "right": 7
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3331.066535996797
+    },
+    {
+      "index": 63,
+      "label": "L08(排4/列2) · R05(排4/列5)",
+      "task": {
+        "left": 8,
+        "right": 5
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1797.446778997255
+    },
+    {
+      "index": 64,
+      "label": "L08(排4/列2) · R06(排4/列4)",
+      "task": {
+        "left": 8,
+        "right": 6
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1487.864251001156
+    },
+    {
+      "index": 65,
+      "label": "L08(排4/列2) · R07(排4/列3)",
+      "task": {
+        "left": 8,
+        "right": 7
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3592.1069319992966
+    },
+    {
+      "index": 66,
+      "label": "L07(排4/列3) · R05(排4/列5)",
+      "task": {
+        "left": 7,
+        "right": 5
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3495.216203999007
+    },
+    {
+      "index": 67,
+      "label": "L07(排4/列3) · R06(排4/列4)",
+      "task": {
+        "left": 7,
+        "right": 6
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3373.5331809984928
+    },
+    {
+      "index": 68,
+      "label": "L09(排4/列1) · R00(排5/列5)",
+      "task": {
+        "left": 9,
+        "right": 0
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1259.7563710005488
+    },
+    {
+      "index": 69,
+      "label": "L09(排4/列1) · R01(排5/列4)",
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3012.531661999674
+    },
+    {
+      "index": 70,
+      "label": "L09(排4/列1) · R02(排5/列3)",
+      "task": {
+        "left": 9,
+        "right": 2
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3152.179928001715
+    },
+    {
+      "index": 71,
+      "label": "L08(排4/列2) · R00(排5/列5)",
+      "task": {
+        "left": 8,
+        "right": 0
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3054.2372400013846
+    },
+    {
+      "index": 72,
+      "label": "L08(排4/列2) · R01(排5/列4)",
+      "task": {
+        "left": 8,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2950.746234997496
+    },
+    {
+      "index": 73,
+      "label": "L08(排4/列2) · R02(排5/列3)",
+      "task": {
+        "left": 8,
+        "right": 2
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3241.556146997027
+    },
+    {
+      "index": 74,
+      "label": "L07(排4/列3) · R00(排5/列5)",
+      "task": {
+        "left": 7,
+        "right": 0
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1457.1282629985944
+    },
+    {
+      "index": 75,
+      "label": "L07(排4/列3) · R01(排5/列4)",
+      "task": {
+        "left": 7,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3002.777879999485
+    },
+    {
+      "index": 76,
+      "label": "L04(排5/列1) · R05(排4/列5)",
+      "task": {
+        "left": 4,
+        "right": 5
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1400.4447240004083
+    },
+    {
+      "index": 77,
+      "label": "L04(排5/列1) · R06(排4/列4)",
+      "task": {
+        "left": 4,
+        "right": 6
+      },
+      "success": false,
+      "blocked_stage": "全链路候选验证",
+      "wall_ms": 5600.848039000994
+    },
+    {
+      "index": 78,
+      "label": "L04(排5/列1) · R07(排4/列3)",
+      "task": {
+        "left": 4,
+        "right": 7
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3405.560962997697
+    },
+    {
+      "index": 79,
+      "label": "L03(排5/列2) · R05(排4/列5)",
+      "task": {
+        "left": 3,
+        "right": 5
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3056.024145000265
+    },
+    {
+      "index": 80,
+      "label": "L03(排5/列2) · R06(排4/列4)",
+      "task": {
+        "left": 3,
+        "right": 6
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3104.9533400000655
+    },
+    {
+      "index": 81,
+      "label": "L03(排5/列2) · R07(排4/列3)",
+      "task": {
+        "left": 3,
+        "right": 7
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3309.8622979996435
+    },
+    {
+      "index": 82,
+      "label": "L02(排5/列3) · R05(排4/列5)",
+      "task": {
+        "left": 2,
+        "right": 5
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3088.9329170022393
+    },
+    {
+      "index": 83,
+      "label": "L02(排5/列3) · R06(排4/列4)",
+      "task": {
+        "left": 2,
+        "right": 6
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3340.2254690008704
+    },
+    {
+      "index": 84,
+      "label": "L04(排5/列1) · R00(排5/列5)",
+      "task": {
+        "left": 4,
+        "right": 0
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2913.981066998531
+    },
+    {
+      "index": 85,
+      "label": "L04(排5/列1) · R01(排5/列4)",
+      "task": {
+        "left": 4,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3011.99024500238
+    },
+    {
+      "index": 86,
+      "label": "L04(排5/列1) · R02(排5/列3)",
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2968.65923400037
+    },
+    {
+      "index": 87,
+      "label": "L03(排5/列2) · R00(排5/列5)",
+      "task": {
+        "left": 3,
+        "right": 0
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1222.9199659996084
+    },
+    {
+      "index": 88,
+      "label": "L03(排5/列2) · R01(排5/列4)",
+      "task": {
+        "left": 3,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2911.53045199826
+    },
+    {
+      "index": 89,
+      "label": "L03(排5/列2) · R02(排5/列3)",
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3145.59033399928
+    },
+    {
+      "index": 90,
+      "label": "L02(排5/列3) · R00(排5/列5)",
+      "task": {
+        "left": 2,
+        "right": 0
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3438.517225000396
+    },
+    {
+      "index": 91,
+      "label": "L02(排5/列3) · R01(排5/列4)",
+      "task": {
+        "left": 2,
+        "right": 1
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3085.114515000896
+    },
+    {
+      "index": 92,
+      "label": "单臂 右手 00(排5/列5)",
+      "task": {
+        "right": 0
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 3006.162908000988
+    },
+    {
+      "index": 93,
+      "label": "单臂 右手 01(排5/列4)",
+      "task": {
+        "right": 1
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 760.1395489982679
+    },
+    {
+      "index": 94,
+      "label": "单臂 右手 02(排5/列3)",
+      "task": {
+        "right": 2
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2315.919324002607
+    },
+    {
+      "index": 95,
+      "label": "单臂 左手 03(排5/列2)",
+      "task": {
+        "left": 3
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 4125.407834999351
+    },
+    {
+      "index": 96,
+      "label": "单臂 左手 04(排5/列1)",
+      "task": {
+        "left": 4
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2393.113705998985
+    },
+    {
+      "index": 97,
+      "label": "单臂 右手 05(排4/列5)",
+      "task": {
+        "right": 5
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 1865.397920999385
+    },
+    {
+      "index": 98,
+      "label": "单臂 右手 06(排4/列4)",
+      "task": {
+        "right": 6
+      },
+      "success": false,
+      "blocked_stage": "龙头车放置LM",
+      "wall_ms": 850.9369829989737
+    },
+    {
+      "index": 99,
+      "label": "单臂 右手 07(排4/列3)",
+      "task": {
+        "right": 7
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2411.3152230020205
+    },
+    {
+      "index": 100,
+      "label": "单臂 左手 08(排4/列2)",
+      "task": {
+        "left": 8
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3093.707102998451
+    },
+    {
+      "index": 101,
+      "label": "单臂 左手 09(排4/列1)",
+      "task": {
+        "left": 9
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2253.7397100022645
+    },
+    {
+      "index": 102,
+      "label": "单臂 右手 10(排3/列5)",
+      "task": {
+        "right": 10
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2947.0073800002865
+    },
+    {
+      "index": 103,
+      "label": "单臂 右手 11(排3/列4)",
+      "task": {
+        "right": 11
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1812.302443999215
+    },
+    {
+      "index": 104,
+      "label": "单臂 右手 12(排3/列3)",
+      "task": {
+        "right": 12
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1797.4633980011276
+    },
+    {
+      "index": 105,
+      "label": "单臂 左手 13(排3/列2)",
+      "task": {
+        "left": 13
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2674.6376369992504
+    },
+    {
+      "index": 106,
+      "label": "单臂 左手 14(排3/列1)",
+      "task": {
+        "left": 14
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1901.3889580019168
+    },
+    {
+      "index": 107,
+      "label": "单臂 右手 15(排2/列5)",
+      "task": {
+        "right": 15
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2797.0081150015176
+    },
+    {
+      "index": 108,
+      "label": "单臂 右手 16(排2/列4)",
+      "task": {
+        "right": 16
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1945.2685079995717
+    },
+    {
+      "index": 109,
+      "label": "单臂 右手 17(排2/列3)",
+      "task": {
+        "right": 17
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1943.4756640002888
+    },
+    {
+      "index": 110,
+      "label": "单臂 左手 18(排2/列2)",
+      "task": {
+        "left": 18
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2705.106478999369
+    },
+    {
+      "index": 111,
+      "label": "单臂 左手 19(排2/列1)",
+      "task": {
+        "left": 19
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1844.6009360013704
+    },
+    {
+      "index": 112,
+      "label": "单臂 右手 20(排1/列5)",
+      "task": {
+        "right": 20
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2991.5185799982282
+    },
+    {
+      "index": 113,
+      "label": "单臂 右手 21(排1/列4)",
+      "task": {
+        "right": 21
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 2191.2715769976785
+    },
+    {
+      "index": 114,
+      "label": "单臂 右手 22(排1/列3)",
+      "task": {
+        "right": 22
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1936.2247390017728
+    },
+    {
+      "index": 115,
+      "label": "单臂 左手 23(排1/列2)",
+      "task": {
+        "left": 23
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 3141.3753680026275
+    },
+    {
+      "index": 116,
+      "label": "单臂 左手 24(排1/列1)",
+      "task": {
+        "left": 24
+      },
+      "success": true,
+      "blocked_stage": null,
+      "wall_ms": 1866.2527860033151
+    }
+  ],
+  "sample_files": {
+    "000.json.gz": "4bfa3a7cbb33e7bbd762351772c0975a0a0bb4c3631478f4a58f1c3e6a240edc",
+    "064.json.gz": "71ffc670cae5e6b3fd5eafcbb77ab8731aa254f515e80c6816c9468357daa4fd",
+    "075.json.gz": "588ca8dd747eaec9dde9581e15ca99e0197dccdec761897f4c3bd425d8da253c",
+    "116.json.gz": "9f9412379039541a7961dc21a00d3109396c1e3e08f92d53fd5ab3f5c14181f4"
+  },
+  "source_tree_smoke": {
+    "source_revision": "bec211dd9087f8c70d25acadae688b18bfeb1e58",
+    "records": [
+      {
+        "task": {
+          "left": 24,
+          "right": 20
+        },
+        "success": true,
+        "blocked_stage": null,
+        "seams": {
+          "actual_lm_to_home_join": 0.0,
+          "home_error": 4.371139006309477e-08,
+          "first_return_step": 0.008484847843647003
+        }
+      },
+      {
+        "task": {
+          "left": 7,
+          "right": 1
+        },
+        "success": true,
+        "blocked_stage": null,
+        "seams": {
+          "actual_lm_to_home_join": 0.0,
+          "home_error": 4.371139006309477e-08,
+          "first_return_step": 0.008484847617871827
+        }
+      },
+      {
+        "task": {
+          "left": 24
+        },
+        "success": true,
+        "blocked_stage": null,
+        "seams": {
+          "actual_lm_to_home_join": 0.0,
+          "home_error": 4.371139006309477e-08,
+          "first_return_step": 0.0
+        }
+      },
+      {
+        "task": {
+          "left": 8,
+          "right": 6
+        },
+        "success": false,
+        "blocked_stage": "龙头车放置LM",
+        "seams": {
+          "actual_lm_to_home_join": null,
+          "home_error": null
+        }
+      }
+    ],
+    "loaded_git_modules": [
+      "research/curobo_v3/tools/v3_frozen_cycle.py",
+      "research/curobo_v3/tools/curobo_core/__init__.py",
+      "research/curobo_v3/tools/curobo_core/scene.py",
+      "research/curobo_v3/tools/curobo_core/planner.py",
+      "research/curobo_v3/tools/v3_batched_loaded_search.py",
+      "research/curobo_v3/tools/curobo_core/distance_metric.py",
+      "research/curobo_v3/tools/v3_search_helpers.py",
+      "research/curobo_v3/tools/v3_wall_ik_benchmark.py",
+      "research/curobo_v3/tools/curobo_core/backend.py",
+      "research/curobo_v3/tools/curobo_core/fixtures.py",
+      "research/curobo_v3/tools/curobo_core/adapter.py",
+      "research/curobo_v3/tools/curobo_core/cache.py",
+      "research/curobo_v3/tools/curobo_core/contracts.py",
+      "research/curobo_v3/tools/v3_lm_conveyor.py",
+      "research/curobo_v3/tools/v3_payload_safety.py",
+      "research/curobo_v3/tools/v3_restored_analytic_cycle.py",
+      "research/curobo_v3/tools/v3_current_urdf_forward.py",
+      "research/curobo_v3/tools/v3_contact_roll_policy.py",
+      "research/curobo_v3/tools/v3_task_scene.py",
+      "research/curobo_v3/tools/v3_forward_precontact_cycle.py",
+      "research/curobo_v3/tools/v3_lm_chained_cycle.py",
+      "research/curobo_v3/tools/v3_box_rotation_cost.py",
+      "research/curobo_v3/tools/v3_cartesian_cases.py",
+      "research/curobo_v3/tools/v3_serial_endpoint_demo.py",
+      "research/curobo_v3/tools/v3_serial_endpoint_planner.py",
+      "research/curobo_v3/tools/v3_conveyor_cycle_planner.py",
+      "research/curobo_v3/tools/curobo_core/conveyor.py",
+      "research/curobo_v3/tools/curobo_core/instances.py",
+      "research/curobo_v3/tools/v3_mixed_placement_planner.py",
+      "research/curobo_v3/tools/v3_multiroot_full_cycle_planner.py",
+      "research/curobo_v3/tools/v3_cuboid_full_cycle_planner.py",
+      "research/curobo_v3/tools/v3_task_cycle_planner.py",
+      "research/curobo_v3/tools/v3_contact_validity.py",
+      "research/curobo_v3/tools/v3_placement_target.py",
+      "research/curobo_v3/tools/v3_endpoint_optimizer_compare.py",
+      "research/curobo_v3/tools/v3_base_mesh_layer.py",
+      "research/curobo_v3/tools/v3_interactive_60_tasks.py",
+      "research/curobo_v3/tools/v3_base_geometry_compare.py",
+      "research/curobo_v3/tools/v3_base_cuboid_layer.py",
+      "research/curobo_v3/tools/v3_all_extraction_roots_test.py",
+      "research/curobo_v3/tools/v3_multiroot_search.py",
+      "research/curobo_v3/tools/v3_research_assets.py",
+      "research/curobo_v3/tools/v3_side_upward_prepare.py",
+      "research/curobo_v3/tools/v3_endpoint_guided_ik.py",
+      "research/curobo_v3/tools/v3_guidance_continuity_report.py",
+      "research/curobo_v3/tools/v3_guided_cycle_planner.py",
+      "research/curobo_v3/tools/v3_adaptive_raised_cycle_planner.py",
+      "research/curobo_v3/tools/v3_fine_collision_retry.py",
+      "research/curobo_v3/tools/v3_single_arm_planner.py",
+      "research/curobo_v3/tools/v3_lazy_extraction_planner.py",
+      "research/curobo_v3/tools/v3_persistent_collision_planner.py",
+      "research/curobo_v3/tools/v3_priority_contact_planner.py",
+      "research/curobo_v3/tools/v3_idle_arm_candidates.py",
+      "research/curobo_v3/tools/v3_route_guided_compare.py",
+      "research/curobo_v3/tools/v3_tcp_navigation.py",
+      "research/curobo_v3/tools/v3_route_ik_benchmark.py",
+      "research/curobo_v3/tools/v3_tangent_sphere_demo.py",
+      "research/curobo_v3/tools/v3_wrist_guided_cycle_planner.py",
+      "research/curobo_v3/tools/v3_spherical_wrist_route.py",
+      "research/curobo_v3/tools/v3_suction_cluster_navigation.py",
+      "research/curobo_v3/tools/v3_visualized_task_demo.py",
+      "research/curobo_v3/tools/v3_playback.py",
+      "research/curobo_v3/tools/v3_stage_playback.py",
+      "research/curobo_v3/tools/v3_cartesian_compare.py",
+      "research/curobo_v3/tools/v3_prepare_rezero_profiles.py",
+      "research/curobo_v3/tools/v3_zero_model_candidate.py",
+      "research/curobo_v3/tools/v3_rezero_analytic.py",
+      "research/curobo_v3/tools/v3_strict_cartesian_extraction.py",
+      "research/curobo_v3/tools/v3_frozen_cycle_validate.py"
+    ]
+  },
+  "scope": "117 full cycles, one seeded run/task; all loaded stages frozen40; LM failures stop, no fallback; actual LM terminal to newly planned Home seam checked. Offline geometry only."
+}

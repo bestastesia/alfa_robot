@@ -1,0 +1,50 @@
+{
+  "release": "fast-lm-refinement-20261110",
+  "baseline": {
+    "pr": 80,
+    "commit": "92bd8cdb",
+    "target": "alfa_v3_curobo"
+  },
+  "curobo_commit": "76c2f4b6d325b4e76696939de1faa6c14d409e0a",
+  "upstream_src_comparison": {
+    "verified_files": 434,
+    "mismatch": [],
+    "upstream_commit": "76c2f4b6d325b4e76696939de1faa6c14d409e0a",
+    "scope": "upstream _src subtree extracted before model assets; downloaded archive intentionally stopped during model assets"
+  },
+  "assets_sha256": {
+    "config/fast_three_layers.json": "9628b82340fca20b99f0339e1961464e892de93f7d3457162ef45877f043cb2a",
+    "config/fast_trajopt.json": "3883491831b04244164946a26b5e7a557c689f877bcf875e0dfa54838958aec0",
+    "config/rezero_home.json": "a92f213f93f4114fac7b79c472fc22a394a9ae6ea67b2f89db3b0260c141ba98",
+    "config/placement_task_policy.json": "db825564b9f93b6138a32fffa455bb37600bad2c2ace2a0bdfdf00133bec9a8c",
+    "config/visualization_dependency.json": "08dcb2f257b34be122ff6f4880bf9e203a1f0e44847b6c10123423a4248b0f75",
+    "generated/zero_model_candidate_20261018/fixed.yaml": "6defc3469dfd54286e24051c8fb3f401acba0b79bd462a4371cfe3942cd1197d",
+    "generated/zero_model_candidate_20261018/mobile.yaml": "640b09ac308e6e28bf7cb4255701dc3eb070c3194ae5a1a1ae40cde2b6c1feef",
+    "generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf": "2b4d861a79ff4a984b1e17a23a94e0e989ecc2f4499cbb0b2962ec07695d7f0b",
+    "generated/zero_model_candidate_20261018/mobile/robot_rezero_candidate.urdf": "317d22c4fed9e095e480d265cbd20b329b0163f3be9386a3d6acb04ec85867ee",
+    "generated/zero_model_candidate_20261018/named_poses.yaml": "dc4b46afa6bd95bc54ff220fcc811ef96ac197646d790fbe60f1a6175e80f72c",
+    "generated/pr71_current_dynamics/robot.yaml": "7d89077d536e751b327bea7135109ca328ec15af669d5ae9f85cd5ddd5494c1a",
+    "generated/pr71_current_dynamics/robot.urdf": "9878fd132349c67b20a634aad13d8d338f259aad0243f3bcccce98096730ebda",
+    "generated/v3_suction_v322_6bb184b/frozen_collision_model/box_voxel_edge_corner_final.json": "76b7636a19b3f9fe0567298513e26014cae89dcf7d1f9e5ed48009c49ad20490",
+    "generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json": "9892bf6e3712a85c5bf724d4d734b1faf533cf9b153321bbddcdce8ab494f4fd"
+  },
+  "runtime_sha256": {
+    "curobo/trajectory_optimizer.py": "76a48793735d27445a875bca2d001b490d1d766b566498879f05a1b5be7d6f0a",
+    "curobo/trajectory_timeopt.py": "a1799cba264d6ba5dd5b8c4b69c95ba5c5a4071fcd2d00a70cdc45eb93c7b400",
+    "curobo/_src/motion/motion_trajectory_timeopt.py": "44188feb32b96095ec444f25ff24a976dadfd6463a042d3620ba9e41beaa2ddc",
+    "curobo/_src/solver/seed_ik/seed_ik_solver.py": "b6088b7d25c103195f5b1fb6f914e714f5bc3a8be660014ce3f8c1bac035c389",
+    "curobo/_src/rollout/cost_manager/cost_manager_robot.py": "1fc1348e51bb940a10e3e7fb53f8be8ab8e0d03b827c3bb47e495ea4a3228ebf",
+    "curobo/_src/util/cuda_graph_util.py": "60369adfd1f6d637e597ff5bb2761cc51b1218f1128e868d8e756c5be6e37f18"
+  },
+  "tested_versions": {
+    "torch": "2.8.0",
+    "warp-lang": "1.17.0",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "viser": "1.1.1",
+    "yourdfpy": "0.0.60",
+    "alfa-motion-viser": "0.1.0",
+    "plotly": "6.2.0",
+    "cuda-core": "1.2.0"
+  }
+}

@@ -13,6 +13,7 @@ import traceback
 
 import numpy as np
 from curobo_core.contracts import PlannerAssets
+from curobo_core.door_model import load_assets
 from curobo_core.door_recenter import DoorPlanner, DoorTask, SupportCompensation, ROOT, door_request
 from curobo_core.scene import SceneSnapshot, SceneStore, digest
 
@@ -70,10 +71,7 @@ def main():
     a = p.parse_args()
     if a.output.exists():
         p.error('output already exists; choose a new path to preserve evidence')
-    assets = PlannerAssets()
-    if a.assets_root:
-        assets = replace(assets, **{name: a.assets_root / getattr(assets,name).relative_to(ROOT)
-                                    for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+    assets = load_assets(a.assets_root) if a.assets_root else PlannerAssets()
     policy = json.loads(a.policy.read_text())
     critical_sources=file_hashes(ROOT/relative for relative in CACHE_SOURCES)
     asset_hashes={name:hashlib.sha256(getattr(assets,name).read_bytes()).hexdigest()

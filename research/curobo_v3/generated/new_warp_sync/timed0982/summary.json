@@ -1,0 +1,111 @@
+{
+  "completed": 3,
+  "total": 3,
+  "success": 3,
+  "height": 0.982,
+  "timed": true,
+  "records": [
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2665,
+      "wall_ms": 9518.836709001334,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 769,
+        "contact_approach": 62,
+        "extract": 366,
+        "transport": 697,
+        "conveyor_place": 305,
+        "return_home": 461
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 9651.865574996918,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9068868478666625,
+        "jerk_limit_ratio": 0.07312548828125,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "motion_duration_s": 66.23142502240951
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3744,
+      "wall_ms": 13543.27353699773,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 797,
+        "contact_approach": 66,
+        "extract": 1086,
+        "transport": 411,
+        "conveyor_place": 661,
+        "return_home": 716
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 13733.573424004135,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9051150398777181,
+        "jerk_limit_ratio": 0.05537175369262695,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "motion_duration_s": 93.16157488830618
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "success": true,
+      "frames": 3691,
+      "wall_ms": 12241.004854993662,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 967,
+        "contact_approach": 39,
+        "extract": 962,
+        "transport": 434,
+        "conveyor_place": 598,
+        "return_home": 684
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 0.982,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 12429.101034998894,
+      "timed_validation": {
+        "success": true,
+        "velocity_limit_ratio": 0.9523809734625819,
+        "acceleration_limit_ratio": 0.9061370638505244,
+        "jerk_limit_ratio": 0.07228083038330078,
+        "uncovered_motion_frames": [],
+        "time_monotonic": true
+      },
+      "motion_duration_s": 91.81195262308894
+    }
+  ],
+  "peak_gpu_allocated_mib": 537.76611328125
+}

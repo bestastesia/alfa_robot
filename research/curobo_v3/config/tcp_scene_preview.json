@@ -1,0 +1,299 @@
+{
+  "snapshot": {
+    "model_id": "f8c2f51c2c8d5da88dca456e349b7903a966944e8614882b6bcc95fb1fb02be5",
+    "state": {
+      "joint_names": [
+        "updown",
+        "head_joint",
+        "head_pitch_joint",
+        "left_joint1",
+        "left_joint2",
+        "left_joint3",
+        "left_joint4",
+        "left_joint5",
+        "left_joint6",
+        "left_joint7",
+        "right_joint1",
+        "right_joint2",
+        "right_joint3",
+        "right_joint4",
+        "right_joint5",
+        "right_joint6",
+        "right_joint7",
+        "base_x",
+        "base_y",
+        "base_yaw"
+      ],
+      "positions": [
+        0.0,
+        0.0,
+        0.0,
+        1.0280606746673584,
+        -1.7632954120635986,
+        -0.029247703030705452,
+        1.2573305368423462,
+        -1.2438617944717407,
+        0.2316398322582245,
+        -0.40027084946632385,
+        -0.1900092214345932,
+        1.758867621421814,
+        -0.7045242190361023,
+        -1.0705366134643555,
+        1.2663445472717285,
+        -1.064841628074646,
+        1.0960170030593872,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "stamp_ns": 1792138605662945729,
+      "base_pose": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    "objects": [
+      {
+        "object_id": "ground",
+        "dimensions_m": [
+          4.2,
+          2.6,
+          0.1
+        ],
+        "pose": {
+          "position": [
+            -0.29194694893264783,
+            0.0,
+            -0.05
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "left_wall",
+        "dimensions_m": [
+          4.0,
+          0.1,
+          2.4
+        ],
+        "pose": {
+          "position": [
+            -0.29194694893264783,
+            -1.25,
+            1.2
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "right_wall",
+        "dimensions_m": [
+          4.0,
+          0.1,
+          2.4
+        ],
+        "pose": {
+          "position": [
+            -0.29194694893264783,
+            1.25,
+            1.2
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "front_wall",
+        "dimensions_m": [
+          0.1,
+          2.6,
+          2.4
+        ],
+        "pose": {
+          "position": [
+            1.7580530510673522,
+            0.0,
+            1.2
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "ceiling",
+        "dimensions_m": [
+          4.2,
+          2.6,
+          0.1
+        ],
+        "pose": {
+          "position": [
+            -0.29194694893264783,
+            0.0,
+            2.45
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "conveyor_pair/left",
+        "dimensions_m": [
+          2.4000000953674316,
+          0.9399999976158142,
+          0.7319999933242798
+        ],
+        "pose": {
+          "position": [
+            -2.3,
+            0.4949999988079071,
+            0.3659999966621399
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "object_id": "conveyor_pair/right",
+        "dimensions_m": [
+          2.4000000953674316,
+          0.9399999976158142,
+          0.7319999933242798
+        ],
+        "pose": {
+          "position": [
+            -2.3,
+            -0.4949999988079071,
+            0.3659999966621399
+          ],
+          "quaternion_wxyz": [
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ],
+    "attachments": [
+      {
+        "object_id": "wall_box_18",
+        "dimensions_m": [
+          0.3,
+          0.4,
+          0.4
+        ],
+        "parent_link": "left_tool0",
+        "tool_to_object": {
+          "position": [
+            0.0,
+            0.0,
+            0.15
+          ],
+          "quaternion_wxyz": [
+            0.0,
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ]
+        },
+        "touch_links": [
+          "left_link7",
+          "left_tool0"
+        ]
+      },
+      {
+        "object_id": "wall_box_22",
+        "dimensions_m": [
+          0.3,
+          0.4,
+          0.4
+        ],
+        "parent_link": "right_tool0",
+        "tool_to_object": {
+          "position": [
+            0.0,
+            0.0,
+            0.15
+          ],
+          "quaternion_wxyz": [
+            0.0,
+            0.7071067811865475,
+            0.0,
+            0.7071067811865475
+          ]
+        },
+        "touch_links": [
+          "right_link7",
+          "right_tool0"
+        ]
+      }
+    ],
+    "frame_id": "map",
+    "revision": 3,
+    "policy": {
+      "exclude_task_objects_before_contact": true,
+      "defer_payload_until_extract_end": true,
+      "ground_z_m": 0.0,
+      "max_box_tilt_deg": 89.0,
+      "ground_support_link": "base_link"
+    },
+    "meshes": []
+  },
+  "home": {
+    "base_x": 0.0,
+    "base_y": 0.0,
+    "base_yaw": 0.0,
+    "updown": -0.30000001192092896,
+    "left_joint1": 2.7052602767944336,
+    "left_joint2": -1.5707963705062866,
+    "left_joint3": 0.3490658402442932,
+    "left_joint4": 1.5707963705062866,
+    "left_joint5": -1.5707963705062866,
+    "left_joint6": -0.6981316804885864,
+    "left_joint7": 0.0,
+    "right_joint1": -2.7052602767944336,
+    "right_joint2": 1.5707963705062866,
+    "right_joint3": -0.3490658402442932,
+    "right_joint4": -1.5707963705062866,
+    "right_joint5": 1.5707963705062866,
+    "right_joint6": 0.6981316804885864,
+    "right_joint7": 0.0
+  },
+  "purpose": "Frozen world container and initial robot state for input-contract preview; no task targets or box IDs"
+}

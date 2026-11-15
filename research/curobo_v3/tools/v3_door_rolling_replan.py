@@ -12,7 +12,8 @@ import time
 import numpy as np
 import torch
 
-from curobo_core.contracts import ACTIVE_JOINTS, PlannerAssets
+from curobo_core.contracts import ACTIVE_JOINTS
+from curobo_core.door_model import load_assets
 from curobo_core.adapter import pose_matrix
 from curobo_core.door_recenter import (DoorPlanner, DoorTask, ROOT, SupportCompensation,
                                        SupportCompensatedValidity, door_request)
@@ -61,8 +62,7 @@ def main():
         if not len(indices):raise ValueError('phase absent from result')
         frame=int(indices[min(len(indices)-1,math.floor(a.fraction*len(indices)))])
         names=result['joint_names'];mapping=dict(zip(names,result['frames'][frame]));current=np.asarray([mapping[n] for n in ACTIVE_JOINTS])
-        assets=PlannerAssets();assets=replace(assets,**{name:a.assets_root/getattr(assets,name).relative_to(ROOT)
-            for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+        assets=load_assets(a.assets_root)
         planner=DoorPlanner(assets);request=door_request(planner,int(fixture['seed']));planner.set_snapshot(request.snapshot)
         policy=json.loads((ROOT/'config/placement_task_policy.json').read_text());task=DoorTask(planner,request,'joint_rrt',policy)
         snapshot=SceneSnapshot.from_dict(fixture['snapshot'])

@@ -14,7 +14,7 @@ from v3_interactive_60_tasks import DEFAULT_ROBOT_CONFIG,DEFAULT_URDF,DEFAULT_NA
 from curobo_core.planner import CycleBlocked
 
 
-from v3_research_assets import ROOT, planner_identity
+from v3_research_assets import ROOT, planner_identity, atlas_path
 
 def main(planner=None,task=None,prepare_only=False):
     folder=(ROOT/'generated/all_extraction_roots_20261009');folder.mkdir(parents=True,exist_ok=True)
@@ -36,6 +36,11 @@ def main(planner=None,task=None,prepare_only=False):
     if not prepare_only:torch.set_grad_enabled(False)
     rows=[];attempts=[];began=time.perf_counter()
     for index,contact in enumerate(contacts):
+        if hasattr(p,'prepare_predicted_root'):
+            root,detail=p.prepare_predicted_root(index,contact,loaded_validity)
+            attempts.append({'contact_index':index,'success':root is not None,'detail':detail,'prediction_only':True})
+            if root is not None:rows.append(root)
+            continue
         path,detail=p.analytic_extract(contact,empty_validity,loaded_validity)
         attempts.append({'contact_index':index,'success':path is not None,'detail':detail})
         if path is not None:
@@ -49,7 +54,7 @@ def main(planner=None,task=None,prepare_only=False):
     signature=planner_identity(p, boxes)[:16]
     cache=(ROOT/'generated/placement_analytic_atlas_collision_free/tasks')/f"{mode}_L{boxes['left']}_R{boxes['right']}_{signature}.npz"
     if not cache.exists():
-        raw=dict(np.load((ROOT/'generated/placement_analytic_atlas')/(mode+'.npz')))
+        raw=dict(np.load(atlas_path(p), allow_pickle=False))
         masks=[]
         for offset in range(0,len(raw['joints']),1024):
             masks.append(loaded_validity.mask(torch.tensor(raw['joints'][offset:offset+1024],device='cuda',dtype=torch.float32)).cpu().numpy())

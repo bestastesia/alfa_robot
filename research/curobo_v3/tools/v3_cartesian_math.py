@@ -15,6 +15,39 @@ def wrap(angle):
     return (angle + math.pi) % (2 * math.pi) - math.pi
 
 
+class JointFrame:
+    """Planner joint coordinates relative to the analytic IK library's own (071cb95) ones:
+    q_library = wrap(offsets[side] + signs*q) as in v3_zero_model_candidate; no offsets is the identity.
+
+    Branches are the signs of the library's q2, q4 and q6. Taken on the library angles they keep
+    naming the same continuous solution family whatever the planner's joint coordinates."""
+
+    def __init__(self, offsets=None, signs=None):
+        self.identity = offsets is None
+        if not self.identity:
+            self.offsets = np.asarray(offsets, dtype=np.float64).reshape(2, 7)
+            self.signs = np.asarray(signs, dtype=np.float64).reshape(7)
+            if not np.all(np.abs(self.signs) == 1.):
+                raise ValueError("joint signs must be +1 or -1")
+
+    def legacy(self, side, arm):
+        """Library angles of 7-joint arm values of side 0 (left) or 1 (right)."""
+        if self.identity:
+            return np.asarray(arm, dtype=np.float64)
+        return wrap(self.offsets[side] + self.signs * np.asarray(arm, dtype=np.float64))
+
+    def from_legacy(self, side, arm):
+        if self.identity:
+            return np.asarray(arm, dtype=np.float64)
+        return wrap((np.asarray(arm, dtype=np.float64) - self.offsets[side]) * self.signs)
+
+    def branch(self, side, arm):
+        return branch(arm if self.identity else self.legacy(side, arm))
+
+
+LEGACY_FRAME = JointFrame()
+
+
 def edge_points(first, last, weights, resolution):
     """Points along straight state edges; every edge gets the same horizon, padded with its end."""
     first, last = np.asarray(first, dtype=np.float64), np.asarray(last, dtype=np.float64)

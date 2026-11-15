@@ -81,7 +81,16 @@ class BaseMeshLayer:
 
     def prepare_query(self,batch,horizon,hard=False):
         key=(hard,batch,horizon)
+        limit=getattr(self,'query_cache_limit',None)
+        if limit is not None and key in self.query_cache:
+            operation=self.query_cache.pop(key)
+            self.query_cache[key]=operation
+            return operation
         if key not in self.query_cache:
+            if limit is not None:
+                if limit < 1:raise ValueError('query cache limit must be positive')
+                while len(self.query_cache)>=limit:
+                    self.query_cache.pop(next(iter(self.query_cache)))
             source=self.mesh_checker.collision_constraint if hard else self.mesh_checker.collision_cost
             operation=copy.copy(source)
             operation.config=copy.copy(source.config)
@@ -94,13 +103,16 @@ class BaseMeshLayer:
             self.prepare_query(batch,horizon)
             self.prepare_query(batch,horizon,hard=True)
 
-    def cost(self,state,hard=False):
+    def cost(self,state,hard=False,margin_m=0.0):
+        if margin_m < 0:
+            raise ValueError('collision margin must be nonnegative')
         spheres=state.robot_spheres
         selected=self.selected
         operation=self.prepare_query(spheres.shape[0],spheres.shape[1],hard)
         if self.broadphase_enabled:
             outside=torch.relu(self.bounds_lower-spheres[...,:3])+torch.relu(spheres[...,:3]-self.bounds_upper)
             activation=operation.config.activation_distance.max()
-            selected=selected & (outside.square().sum(-1)<=(torch.clamp(spheres[...,3],min=0)+activation+1e-5).square())
-        masked=torch.cat([spheres[...,:3],torch.where(selected,spheres[...,3],torch.full_like(spheres[...,3],-1)).unsqueeze(-1)],dim=-1)
+            selected=selected & (outside.square().sum(-1)<=(torch.clamp(spheres[...,3],min=0)+activation+margin_m+1e-5).square())
+        radius=torch.where(spheres[...,3]>0,spheres[...,3]+margin_m,spheres[...,3]) if margin_m else spheres[...,3]
+        masked=torch.cat([spheres[...,:3],torch.where(selected,radius,torch.full_like(radius,-1)).unsqueeze(-1)],dim=-1)
         return CachedMeshQuery.apply(masked,state,operation)

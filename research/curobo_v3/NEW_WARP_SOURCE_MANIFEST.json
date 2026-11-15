@@ -1,0 +1,750 @@
+{
+  "created_date": "2026-10-27",
+  "workspace": "/mnt/mydisk/ALFA/alfa_robot_v3",
+  "branch": "feature/curobo-8210-timed",
+  "head": "f8463abf6248b0734167b77cc97282bd02264a5d",
+  "entry": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_refined_cycle_demo.py",
+  "note": "Static local Python import closure, includes optional imports, not complete runtime asset closure. Not a clean Git checkout snapshot. current release Z=.982m; 117-task evidence Z=1.082m.",
+  "dependencies": [
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/adapter.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/adapter.py",
+      "sha256": "80736697813b6480a57982cfe9620c0865d779e263e3594065facec49b24d989",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 3178
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/backend.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/backend.py",
+      "sha256": "35e9fa8f54cd4653e4d5ab6bfcbe54bae0374b96d1b06af2064609d7f00c9161",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 19198
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/cache.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/cache.py",
+      "sha256": "bed6a5c75381fe3e038c1a4ac587c2f0aada21a37051fe6f9ab137b29237bc1a",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 152
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/contracts.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/contracts.py",
+      "sha256": "49d932b1ca61167529f3fc31d3ed2c30f4b79fc7f09b0d91c337588e422fb659",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 2775
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/conveyor.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/conveyor.py",
+      "sha256": "032cb8efb3c31d5e4d4768af6f94a5ecf9addef86e8a08c12558e8287df14132",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1090
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/distance_metric.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/distance_metric.py",
+      "sha256": "8c9a781b6554a775c49798008d85237d45bf02d2b32819c7054166cdde8b4af1",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 467
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/fixtures.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/fixtures.py",
+      "sha256": "c5945616ec105fc11f41a925b142f89f9ba613002bc0bde39431f7a18b27d2d7",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1013
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/instances.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/instances.py",
+      "sha256": "eb093b6e31491b983f2ccd45fe5727b47288b54f57dbda812f92fd7e23c9c6b7",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 3351
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/planner.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/planner.py",
+      "sha256": "d34de189ddac2a8f0f972e039dea435cf8d9a0801733699c72ba8ceff25d4900",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 22797
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/curobo_core/scene.py",
+      "repository_path": "research/curobo_v3/tools/curobo_core/scene.py",
+      "sha256": "d272f3fb870d9f8bf34ba6d4020dc2a6d70d91d80f3a4a01ee36968b66c1eef1",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 9950
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/experiments/round1_full_plan/v3_round1_full_plan.py",
+      "repository_path": "research/curobo_v3/tools/experiments/round1_full_plan/v3_round1_full_plan.py",
+      "sha256": "9e4fef454ee07ad6aa07b6bfdfdab82d7e23c0293b5668b24dfa2989f8efd7d9",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 28183
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_adaptive_raised_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_adaptive_raised_cycle_planner.py",
+      "sha256": "b0aefcd3c79b2981d52f6463e6748ea42034713c99f151da35b7eda72d84d134",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 2887
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_all_extraction_roots_test.py",
+      "repository_path": "research/curobo_v3/tools/v3_all_extraction_roots_test.py",
+      "sha256": "f260f90c72672a4a2700f282e5c42b418399c42ac96ededb76cc733d4fb55341",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 9340
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_base_cuboid_layer.py",
+      "repository_path": "research/curobo_v3/tools/v3_base_cuboid_layer.py",
+      "sha256": "807f4f14a0e9296b54212566f47eebbedda850c596614be87e098d3b2a63e042",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1945
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_base_geometry_compare.py",
+      "repository_path": "research/curobo_v3/tools/v3_base_geometry_compare.py",
+      "sha256": "5f307868763d5f37f069720e45b4234215fc50eff9711dcba3046d5f47c0e208",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 5413
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_base_mesh_layer.py",
+      "repository_path": "research/curobo_v3/tools/v3_base_mesh_layer.py",
+      "sha256": "bbb47f9ad37c9acc4b4729f5584dd3794e6e1660e075ff89580d1cf73c6ce13d",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 6007
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_batched_loaded_search.py",
+      "repository_path": "research/curobo_v3/tools/v3_batched_loaded_search.py",
+      "sha256": "58df5d84949906808d657645b02ba25b933f0083ee01c7183ac6e4c7b28c60c0",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 49403
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_box_rotation_cost.py",
+      "repository_path": "research/curobo_v3/tools/v3_box_rotation_cost.py",
+      "sha256": "53fb547788c380fa39bf097f8020350c478af0bf57c5ecea1c495990520ba057",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 4702
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_cartesian_cases.py",
+      "repository_path": "research/curobo_v3/tools/v3_cartesian_cases.py",
+      "sha256": "3b51837d8cc90e15b9b3313f50d4cc0377d7e6ef0d1c73d0bccef8de5a9b59bc",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 5722
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_cartesian_compare.py",
+      "repository_path": "research/curobo_v3/tools/v3_cartesian_compare.py",
+      "sha256": "750195103f2e41b7dc37c4323c014e9003c8ed52a359d5d50b38d61d02a8216f",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 28102
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_collision_edge_diagnostic.py",
+      "repository_path": "research/curobo_v3/tools/v3_collision_edge_diagnostic.py",
+      "sha256": "5793fa9a49ff49a54bc91429522e8ec1932674f6bf71fb9ba3cbe189516aaa5e",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 5887
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_contact_roll_policy.py",
+      "repository_path": "research/curobo_v3/tools/v3_contact_roll_policy.py",
+      "sha256": "66b9f55cd73e8e23f56926810386db2b35faa5966a3a22f744fd181d028f4b6a",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1226
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_contact_validity.py",
+      "repository_path": "research/curobo_v3/tools/v3_contact_validity.py",
+      "sha256": "5bc5b98badcf07bc00bb67069829d10979d94a3b50c6ad7f941ef0a395117fb8",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 2236
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_conveyor_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_conveyor_cycle_planner.py",
+      "sha256": "41ebb01de8c0c3f0b3913251cd2fba9aa80f40c2422c5ad37c8384d8dc563fd6",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 16901
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_cuboid_full_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_cuboid_full_cycle_planner.py",
+      "sha256": "90cb231571f4afdb0c35512c046e3c0e6779633754caca294c1002fd37d9c368",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 8430
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_current_urdf_forward.py",
+      "repository_path": "research/curobo_v3/tools/v3_current_urdf_forward.py",
+      "sha256": "1f541dfe6073d6dacafda363d7a1acb532e6b798a469daaa76aeda3c0c1003f8",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 11957
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_endpoint_guided_ik.py",
+      "repository_path": "research/curobo_v3/tools/v3_endpoint_guided_ik.py",
+      "sha256": "675f2caa7eb903faf5b9acf938b710cdddaf019ca27034f86fac8eb6455d3292",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 15852
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_endpoint_optimizer_compare.py",
+      "repository_path": "research/curobo_v3/tools/v3_endpoint_optimizer_compare.py",
+      "sha256": "25aa4f841b8aeb7acd45cc720ee1a8ef47700833536c796ea367b44588a1ffae",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 13597
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_fine_collision_retry.py",
+      "repository_path": "research/curobo_v3/tools/v3_fine_collision_retry.py",
+      "sha256": "d4c6685958d1a0b439c84e04b453ba5b1bc697cd450a05fad51fc495f431aa31",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 2937
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_forward_precontact_cycle.py",
+      "repository_path": "research/curobo_v3/tools/v3_forward_precontact_cycle.py",
+      "sha256": "db1ec8a80cdac9884c85c84f5ae84f60f71d0cc594061be3c7532f648b776d3f",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 5741
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_gpu_bitstar.py",
+      "repository_path": "research/curobo_v3/tools/v3_gpu_bitstar.py",
+      "sha256": "7624da40994d2a47815f9a9d01fb74b73eef7fb4b4e0ac94d115959e71680183",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 10630
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_guidance_continuity_report.py",
+      "repository_path": "research/curobo_v3/tools/v3_guidance_continuity_report.py",
+      "sha256": "a52b913ef54b2c9c52c92b29686a9b996db18ea269149707b07ce58fdb221566",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 6283
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_guided_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_guided_cycle_planner.py",
+      "sha256": "f94e007e595415f41799f195ce4f5341acae952494c280b2685898c81f4b3312",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 13717
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_idle_arm_candidates.py",
+      "repository_path": "research/curobo_v3/tools/v3_idle_arm_candidates.py",
+      "sha256": "7e3811924cb7c0ccb8a84a5b3b83a0d3737018ac6f8ac5d4c913e80288bbdd93",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 6567
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_interactive_60_tasks.py",
+      "repository_path": "research/curobo_v3/tools/v3_interactive_60_tasks.py",
+      "sha256": "af4e46c640c60ee1b0f3f8b20f7d957e53dcae5dafe180a117a21210ecb35d80",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 15147
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_joint_corridor_optimize.py",
+      "repository_path": "research/curobo_v3/tools/v3_joint_corridor_optimize.py",
+      "sha256": "2ebbc8a68ee7bbe11af6861828f638724e00137611313e13aeac09f62ca5617a",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 19144
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_lazy_extraction_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_lazy_extraction_planner.py",
+      "sha256": "889d2506d52ae2dde4218262fa762817139d63a3dd4d5112294e35295cfb3289",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 9368
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_lift_wrist_lab.py",
+      "repository_path": "research/curobo_v3/tools/v3_lift_wrist_lab.py",
+      "sha256": "a42f9a4ca4a50cfa4a1c9643e228659ab957366db4dfe225cd5cc0e901f21ba7",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 21581
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_lm_chained_cycle.py",
+      "repository_path": "research/curobo_v3/tools/v3_lm_chained_cycle.py",
+      "sha256": "6fbbf70ff4055dffcb52b01cf185ba6f625634d5fcfd26c1d005d9ebf52a27ef",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 15223
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_lm_parameter_engine.py",
+      "repository_path": "research/curobo_v3/tools/v3_lm_parameter_engine.py",
+      "sha256": "59f2d7e184cf450bcbe42cc398b1f90d767781093b931974c9a71322b1a8f89d",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 13654
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_lm_review_data.py",
+      "repository_path": "research/curobo_v3/tools/v3_lm_review_data.py",
+      "sha256": "5cdb130f60a74c307130a92540394cb0454b946da328aa622e85ecd6dab6564a",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 829
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_mixed_placement_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_mixed_placement_planner.py",
+      "sha256": "f1f47ad28795414b7b656118284e9ae2b763e0c12854b1c73971876a8b173681",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 7685
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_multiroot_full_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_multiroot_full_cycle_planner.py",
+      "sha256": "f9517d118959d3ff6bce356af21310d7b791ef531c228dddf657908607b4bb08",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 12958
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_multiroot_search.py",
+      "repository_path": "research/curobo_v3/tools/v3_multiroot_search.py",
+      "sha256": "ebd9b03c0f9adcd140cd137d259046741846713b33ae52e83422a1f37f933b6b",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 13947
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_persistent_collision_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_persistent_collision_planner.py",
+      "sha256": "1e620713f92cb765970c8bdf882b472eaa426706fc58844c5756d23ae90cc897",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 5307
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_placement_target.py",
+      "repository_path": "research/curobo_v3/tools/v3_placement_target.py",
+      "sha256": "3ab69141970dbd78a372ae57efd028d56594f9cd7111ad4141b3d14b4f6097de",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 192
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_playback.py",
+      "repository_path": "research/curobo_v3/tools/v3_playback.py",
+      "sha256": "72b6cb460977b430a5cc6097e3b73429576e4a99dc94c20532a455609dd85ff7",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 812
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_analytic_benchmark.py",
+      "repository_path": "research/curobo_v3/tools/v3_polar_analytic_benchmark.py",
+      "sha256": "04a867e0bd0aeee285e9cad64be42c2a87ccef029695ebcdd00973bef789d5de",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 8331
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_refined_cycle.py",
+      "repository_path": "research/curobo_v3/tools/v3_polar_refined_cycle.py",
+      "sha256": "6d4da4e8f6caa1343ad859a2d5236a19865f5358f41eaef0eda63905079e31c7",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 19439
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_refined_cycle_demo.py",
+      "repository_path": "research/curobo_v3/tools/v3_polar_refined_cycle_demo.py",
+      "sha256": "77aaae89c065cb33007b654be70068c53552e8bed0db3838c2c1f3856e201329",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 1064
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_polar_wrist_compare.py",
+      "repository_path": "research/curobo_v3/tools/v3_polar_wrist_compare.py",
+      "sha256": "14d01af9592ae93118a9f74550679a5ed80bd72a3d7be14d49ce676d5f2a620e",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 17728
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_prepare_rezero_profiles.py",
+      "repository_path": "research/curobo_v3/tools/v3_prepare_rezero_profiles.py",
+      "sha256": "451e768610773e95c07fc29d7d02dbab6d26cf5ececa3aa44039b42c95fb334c",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 7183
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_priority_contact_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_priority_contact_planner.py",
+      "sha256": "dee44efde3dcec030029917fa07da656c7a0869b925db2e507c4185a62248e0f",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 9026
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_research_assets.py",
+      "repository_path": "research/curobo_v3/tools/v3_research_assets.py",
+      "sha256": "52954f5ac6cae822338ef3d13c8cbff7766916ec290ab7d7b038526987fa4eb8",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 4082
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_rezero_analytic.py",
+      "repository_path": "research/curobo_v3/tools/v3_rezero_analytic.py",
+      "sha256": "ebf0e6a8e73bc12706b6a5cb3e5cdd94b7d4b458d45bd6eefbd7b36a9b8121d5",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 2667
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_route_guided_compare.py",
+      "repository_path": "research/curobo_v3/tools/v3_route_guided_compare.py",
+      "sha256": "7aa27daadc5aa545c7609f4ecf2447e81f1b0731e15dc15dfc45012eccc0af23",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 15458
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_route_ik_benchmark.py",
+      "repository_path": "research/curobo_v3/tools/v3_route_ik_benchmark.py",
+      "sha256": "4cc8043fbf1643a9d9653dd7ccbb844c3523b7dc49deb527508433e79dadf828",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 15907
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_search_helpers.py",
+      "repository_path": "research/curobo_v3/tools/v3_search_helpers.py",
+      "sha256": "9de14afb4134a56d2233739027cca27b206436b68dc32555843539e18deabf8d",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 4863
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_serial_endpoint_demo.py",
+      "repository_path": "research/curobo_v3/tools/v3_serial_endpoint_demo.py",
+      "sha256": "740a344056807948ec4e688b8231854fe3e5e6f89866d26cc09dfb2791685171",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1487
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_serial_endpoint_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_serial_endpoint_planner.py",
+      "sha256": "67494c56e44f2d69ec9b8ca2e32ecf9a0556b4b2140fa1951707c2e9b309c64c",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 23795
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_shoulder_wrist_reference.py",
+      "repository_path": "research/curobo_v3/tools/v3_shoulder_wrist_reference.py",
+      "sha256": "d6f3c8bcada1ccbdd9050041cff7a082459d841b2634f668d691772a6d232826",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 4824
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_side_upward_prepare.py",
+      "repository_path": "research/curobo_v3/tools/v3_side_upward_prepare.py",
+      "sha256": "426dc7a7203ae8c0ffaae29863807369b70e05b7aa1ae29480f784dfa101ccf6",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 9335
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_single_arm_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_single_arm_planner.py",
+      "sha256": "99788222d25291c58e5f5b5688d9c70b9916845c0cf7f7affb84384fbe4f9881",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 19263
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_smooth_swivel_benchmark.py",
+      "repository_path": "research/curobo_v3/tools/v3_smooth_swivel_benchmark.py",
+      "sha256": "fe0468cc834d65bbc59983fcfa245040cd52ce01083e481f5bb54eceb8cc8a54",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 6866
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_spherical_wrist_route.py",
+      "repository_path": "research/curobo_v3/tools/v3_spherical_wrist_route.py",
+      "sha256": "ea204948d0f012145cccd7eb210bfba9b22b64d6a9d5ddead799b3f4b012fe79",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 16425
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_stage_playback.py",
+      "repository_path": "research/curobo_v3/tools/v3_stage_playback.py",
+      "sha256": "32b03f9f2847a81760c27fd724a320af614aaf35137bf58b9202384c148005e7",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 8524
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_suction_cluster_navigation.py",
+      "repository_path": "research/curobo_v3/tools/v3_suction_cluster_navigation.py",
+      "sha256": "9ee2558ea46332af06872723f07cae9271db848ebf75791399fc9b7f239d3ce8",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 16802
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_swivel_joint_refine.py",
+      "repository_path": "research/curobo_v3/tools/v3_swivel_joint_refine.py",
+      "sha256": "e1bc5cbfa20f7d93e7c95f7db7e97e6d96e7d87c04ea091bedcb8e4c5c0b319f",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 9690
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_tangent_sphere_demo.py",
+      "repository_path": "research/curobo_v3/tools/v3_tangent_sphere_demo.py",
+      "sha256": "9b0d2719f8720ab9d65ce3919ca418e62eaade39a3910e1fffac071a8c1dcae9",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 13922
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_task_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_task_cycle_planner.py",
+      "sha256": "e87197cd01f8c1352fc8498094e9a163a76b4bffd950a92ee538d5ea8c1ed0e0",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 11853
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_task_scene.py",
+      "repository_path": "research/curobo_v3/tools/v3_task_scene.py",
+      "sha256": "8ea2a41608390c3ee6a36948b04b87cf533a3e70b5c48bc745eb838ff7b99f32",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1764
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_tcp_navigation.py",
+      "repository_path": "research/curobo_v3/tools/v3_tcp_navigation.py",
+      "sha256": "3dbd47423c4f5fca99ded25b6993897edf9872f379e0cd7f79b0a2c978fb4c9d",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 13496
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_visualization_dependency.py",
+      "repository_path": "research/curobo_v3/tools/v3_visualization_dependency.py",
+      "sha256": "9673d4d8205d78b727d1211f026c148b96b426b1190b28c4e73c678623990da8",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 646
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_visualized_task_demo.py",
+      "repository_path": "research/curobo_v3/tools/v3_visualized_task_demo.py",
+      "sha256": "be8e1936a9d93d8874975335b126ee622d96c81a77d7839509ce3544b0e253d6",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 42794
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_wall_ik_benchmark.py",
+      "repository_path": "research/curobo_v3/tools/v3_wall_ik_benchmark.py",
+      "sha256": "3f0f9c5736ecd5b5a26a52e5224db5e69153bc857b49f687f0397bd4fc31a7e5",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 17909
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_wrist_guided_cycle_planner.py",
+      "repository_path": "research/curobo_v3/tools/v3_wrist_guided_cycle_planner.py",
+      "sha256": "0284fd913933c8e57061804bb49e5eba807fadf6677534dbd7a172577a2c59e2",
+      "tracked": true,
+      "modified": true,
+      "size_bytes": 6757
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/tools/v3_zero_model_candidate.py",
+      "repository_path": "research/curobo_v3/tools/v3_zero_model_candidate.py",
+      "sha256": "304eef730ae5e2505dfa535f2b77385238c7280238aadda856b243c7e70a1967",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 4975
+    }
+  ],
+  "assets": [
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/fixed.yaml",
+      "repository_path": "research/curobo_v3/generated/zero_model_candidate_20261018/fixed.yaml",
+      "sha256": "10825106b456264a2e3d4e7079e1c7f3d7156986c3bdebd5030ab37f1e0f7863",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 44847
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/mobile.yaml",
+      "repository_path": "research/curobo_v3/generated/zero_model_candidate_20261018/mobile.yaml",
+      "sha256": "6b15dfc2a275fd0866d41b632fa5682c6b3f19d3c98cbe48834d47904b6135fb",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 45182
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/named_poses.yaml",
+      "repository_path": "research/curobo_v3/generated/zero_model_candidate_20261018/named_poses.yaml",
+      "sha256": "dc4b46afa6bd95bc54ff220fcc811ef96ac197646d790fbe60f1a6175e80f72c",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 3157
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf",
+      "repository_path": "research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf",
+      "sha256": "d05c6abeef1c8362010d5f341ff918deef2e7f2e6cf9b32b9e5294003b6a2401",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 41443
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/manifest.json",
+      "repository_path": "research/curobo_v3/generated/zero_model_candidate_20261018/manifest.json",
+      "sha256": "78d0515284814c7259f08baf89796ed5c73ba8a465b5c0509865b52a5c07d7db",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1306
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/config/rezero_home.json",
+      "repository_path": "research/curobo_v3/config/rezero_home.json",
+      "sha256": "272f4ecb657757e52cee56a279d2c2689d0ad44eb257a54594747fd0fb30112c",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 757
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/config/placement_task_policy.json",
+      "repository_path": "research/curobo_v3/config/placement_task_policy.json",
+      "sha256": "db825564b9f93b6138a32fffa455bb37600bad2c2ace2a0bdfdf00133bec9a8c",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1097
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/config/adaptive_raised_cycle.json",
+      "repository_path": "research/curobo_v3/config/adaptive_raised_cycle.json",
+      "sha256": "d90a990d7d649fb3b234a032bd105416c6ea9faabeb47c6902bd2cd1bfa804c9",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 402
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/config/forward_precontact_wrist.json",
+      "repository_path": "research/curobo_v3/config/forward_precontact_wrist.json",
+      "sha256": "4feabcef6ad6ca384ea86a05b040b9673921f965bbb6003bcc2680b9751e36a3",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 278
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_analytic_071cb95/libv3_analytic_bridge.so",
+      "repository_path": "research/curobo_v3/generated/v3_analytic_071cb95/libv3_analytic_bridge.so",
+      "sha256": "4cbf2d639a94df095806f49f33c617e6b6e1c1bb86c404503f9088c665ff82c9",
+      "tracked": false,
+      "modified": false,
+      "size_bytes": 118304
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/v3_suction_v322_6bb184b/frozen_collision_model/box_voxel_edge_corner_final.json",
+      "repository_path": "research/curobo_v3/generated/v3_suction_v322_6bb184b/frozen_collision_model/box_voxel_edge_corner_final.json",
+      "sha256": "76b7636a19b3f9fe0567298513e26014cae89dcf7d1f9e5ed48009c49ad20490",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 4777
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json",
+      "repository_path": "research/curobo_v3/generated/endpoint_optimizer_compare/base_cuboids_20261009/frozen_cuboids.json",
+      "sha256": "9892bf6e3712a85c5bf724d4d734b1faf533cf9b153321bbddcdce8ab494f4fd",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 1980
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/selected_placement_20261013/all_solutions.npz",
+      "repository_path": "research/curobo_v3/generated/selected_placement_20261013/all_solutions.npz",
+      "sha256": "60625ada1ffb6e766dc946921185da536c650ee123db1d796ac4881d4d33fbc9",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 21299
+    },
+    {
+      "path": "/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/adaptive_raised_cycle_20261016/top_raised20.npz",
+      "repository_path": "research/curobo_v3/generated/adaptive_raised_cycle_20261016/top_raised20.npz",
+      "sha256": "7836af57c67a636b9ab7ae082b0591c009524df16740f9317a0c190599ac4fb6",
+      "tracked": true,
+      "modified": false,
+      "size_bytes": 22661
+    }
+  ],
+  "missing_assets": [],
+  "versions": {
+    "torch": "2.8.0",
+    "numpy": "2.2.6",
+    "scipy": "1.15.3",
+    "viser": "1.1.1",
+    "yourdfpy": "0.0.60",
+    "curobo": "not exposed as this distribution name",
+    "warp-lang": "1.17.0"
+  }
+}

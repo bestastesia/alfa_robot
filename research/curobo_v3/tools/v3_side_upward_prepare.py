@@ -36,6 +36,11 @@ def main(planner=None,task=None,prepare_only=False):
     if not prepare_only:torch.set_grad_enabled(False)
     rows=[];attempts=[];began=time.perf_counter()
     for index,contact in enumerate(contacts):
+        if hasattr(p,'prepare_predicted_root'):
+            root,detail=p.prepare_predicted_root(index,contact,loaded_validity)
+            attempts.append({'contact_index':index,'success':root is not None,'detail':detail,'prediction_only':True})
+            if root is not None:rows.append(root)
+            continue
         path,detail=p.analytic_extract(contact,empty_validity,loaded_validity)
         attempts.append({'contact_index':index,'success':path is not None,'detail':detail})
         if path is not None:

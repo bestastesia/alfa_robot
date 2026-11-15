@@ -86,13 +86,14 @@ def scale_derivatives(trajectory, factor):
     return result
 
 
-def _time_warp(segment, slowdown):
+def _time_warp(segment, slowdown, allow_speedup=False):
     """Retain q samples while applying a smooth, non-uniform time dilation."""
     result = copy.deepcopy(segment)
     time_values = np.asarray(segment["time_from_start_s"], dtype=np.float64)
     slowdown = np.asarray(slowdown, dtype=np.float64)
     if (time_values.ndim != 1 or len(time_values) < 3 or slowdown.shape != time_values.shape or
-            np.any(np.diff(time_values) <= 0) or np.any(slowdown < 1) or
+            np.any(np.diff(time_values) <= 0) or np.any(slowdown <= 0) or
+            (not allow_speedup and np.any(slowdown < 1)) or
             not np.isfinite(slowdown).all()):
         raise ValueError("local retiming requires finite increasing samples and slowdown >= 1")
     dt = np.diff(time_values)
@@ -148,8 +149,70 @@ def _slowdown_profile(times, windows, factor):
             mask = (times > core_end) & (times <= right)
             x = (right - times[mask]) / (right - core_end)
             bump[mask] = 6*x**5 - 15*x**4 + 10*x**3
-        profile = np.maximum(profile, 1.0 + (factor - 1.0) * bump)
+        candidate = 1.0 + (factor - 1.0) * bump
+        profile = np.maximum(profile, candidate) if factor >= 1 else np.minimum(profile, candidate)
     return profile
+
+
+def speedup_segment(segment, model, limits, active_sides=(), tool_to_box=None, rounds=8):
+    """Try bounded local speedups with the PR71 time warp and full sampled audits."""
+    started = time.perf_counter()
+    original_digest = geometry_digest(segment['positions'])
+    current = copy.deepcopy(segment)
+    limits = [np.asarray(limit, dtype=float) for limit in limits]
+    def utilization(candidate):
+        return np.maximum.reduce([np.max(np.abs(np.asarray(candidate[field])) / limit, axis=1)
+            for field, limit in zip(('velocities', 'accelerations', 'jerks'), limits)])
+    before = model.audit(current, active_sides, tool_to_box)
+    if utilization(current).max() > 1.0001 or before['maximum_utilization'] > model.torque_limit_scale:
+        raise ValueError('speedup requires an already accepted kinematic/dynamic segment')
+    attempts = 0
+    accepted = []
+    rejected = dict(kinematic=0, torque=0)
+    final_audit = before
+    for iteration in range(rounds):
+        times = np.asarray(current['time_from_start_s'])
+        if len(times) < 5:break
+        ratios = utilization(current)
+        windows = []
+        for left, right in zip(np.linspace(times[0], times[-1], 9)[:-1], np.linspace(times[0], times[-1], 9)[1:]):
+            mask = (times >= left) & (times <= right)
+            if mask.sum() >= 5 and np.quantile(ratios[mask], .9) < .8:
+                trim = (right-left)*.3
+                windows.append([left,left+trim,right-trim,right])
+        changed = False
+        for window in windows:
+            times = np.asarray(current['time_from_start_s'])
+            for factor in (.55, .7, .85, .95):
+                attempts += 1
+                candidate = _time_warp(current, _slowdown_profile(times, [window], factor), allow_speedup=True)
+                if utilization(candidate).max() > .99:
+                    rejected['kinematic'] += 1
+                    continue
+                audit = model.audit(candidate, active_sides, tool_to_box)
+                if audit['maximum_utilization'] > model.torque_limit_scale:
+                    rejected['torque'] += 1
+                    continue
+                if candidate['duration_s'] >= current['duration_s']-1e-6:continue
+                accepted.append(dict(round=iteration,window=window,factor=factor,saved_s=current['duration_s']-candidate['duration_s']))
+                current = candidate
+                final_audit = audit
+                changed = True
+                break
+            if changed:break
+        if not changed:break
+    if geometry_digest(current['positions']) != original_digest:
+        raise ValueError('local speedup changed geometry')
+    if accepted and 'torques_nm' in current:
+        indices=[current['joint_names'].index(name) for name in model.names]
+        arrays=[np.asarray(current[field])[:,indices] for field in ('positions','velocities','accelerations')]
+        torques,_=model.torque(*arrays,active_sides,tool_to_box)
+        current['torques_nm']=torques.tolist()
+    return current, dict(enabled=True,attempts=attempts,accepted=accepted,rejected=rejected,
+        duration_before_s=float(segment['time_from_start_s'][-1]),duration_after_s=float(current['time_from_start_s'][-1]),
+        geometry_hash_before=original_digest,geometry_hash_after=geometry_digest(current['positions']),
+        maximum_limit_ratio=float(utilization(current).max()),maximum_torque_utilization=final_audit['maximum_utilization'],
+        compute_ms=(time.perf_counter()-started)*1000,validation='all stored samples; not continuous-time certification')
 
 
 class TorqueModel:

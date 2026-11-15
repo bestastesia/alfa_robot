@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Independent acceptance gate for the modernized central door pair flow."""
 import argparse
-from dataclasses import replace
 import hashlib
 import json
 import math
@@ -10,7 +9,7 @@ from pathlib import Path
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from curobo_core.contracts import PlannerAssets
+from curobo_core.door_model import load_assets
 from curobo_core.door_recenter import ROOT
 import yourdfpy
 
@@ -21,9 +20,11 @@ EXECUTION_SOURCES = (
     'tools/curobo_core/door_sequential.py',
     'tools/curobo_core/door_sequential_validity.py',
     'tools/curobo_core/door_extract.py',
+    'tools/curobo_core/door_model.py',
     'tools/curobo_core/torque.py',
     'tools/v3_cartesian_dual_transport.py',
     'tools/v3_cartesian_transport.py',
+    'tools/v3_cartesian_math.py',
     'tools/v3_conveyor_cycle_planner.py',
     'tools/v3_batched_loaded_search.py',
 )
@@ -87,9 +88,7 @@ def main():
     p.add_argument('--right-precontact-extra-max-deg',type=float,default=105.)
     p.add_argument('--recenter-extra-max-deg',type=float,default=65.)
     p.add_argument('--motion-max-s',type=float,default=60.)
-    a=p.parse_args();result=json.loads(a.result.read_text());assets=PlannerAssets();assets=replace(
-        assets,**{name:a.assets_root/getattr(assets,name).relative_to(ROOT)
-                  for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+    a=p.parse_args();result=json.loads(a.result.read_text());assets=load_assets(a.assets_root)
     model=yourdfpy.URDF.load(assets.urdf,load_meshes=False,build_scene_graph=True)
     metrics={phase+'_'+side:phase_rotation(model,result,phase,side)
              for phase,side in [('right_precontact','right'),('left_precontact','left'),
@@ -100,9 +99,11 @@ def main():
     expected_boxes={f"wall_box_{int(value):02d}" for value in result.get('task',{}).values()}
     source=source_audit(result);lifecycle=lifecycle_audit(result,expected_boxes)
     atlas=result.get('latest_compact_atlas',{});torque=result.get('torque_validation',{})
+    # The re-zeroed model's atlas is the policy atlas re-solved for its tool point (door_model.DoorAssets).
+    atlas_file=(Path(atlas.get('atlas_path','')).resolve()==Path(assets.recenter_atlas).resolve()
+                if getattr(assets,'recenter_atlas',None) else Path(atlas.get('atlas_path','')).name=='all_solutions.npz')
     atlas_ok=(atlas.get('atlas_rows')==2816 and atlas.get('selected')==64 and
-              atlas.get('policy_radius_m')==1.05 and atlas.get('selected_radius_max_m',float('inf'))<=1.05 and
-              Path(atlas.get('atlas_path','')).name=='all_solutions.npz')
+              atlas.get('policy_radius_m')==1.05 and atlas.get('selected_radius_max_m',float('inf'))<=1.05 and atlas_file)
     torque_ok=(bool(torque.get('success')) and bool(torque.get('geometry_frozen')) and
                torque.get('maximum_position_delta',float('inf'))<=1e-12 and
                torque.get('payload_mass_kg')==10. and torque.get('torque_limit_scale')==.9 and

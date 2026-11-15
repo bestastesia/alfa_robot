@@ -1,0 +1,2910 @@
+{
+  "completed": 117,
+  "total": 117,
+  "success": 117,
+  "height": 1.082,
+  "timed": false,
+  "records": [
+    {
+      "task": {
+        "left": 24,
+        "right": 20
+      },
+      "success": true,
+      "frames": 2234,
+      "wall_ms": 4926.379837997956,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 450,
+        "contact_approach": 22,
+        "extract": 346,
+        "transport": 719,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4960.547989001498
+    },
+    {
+      "task": {
+        "left": 24,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2305,
+      "wall_ms": 3780.201042012777,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 22,
+        "extract": 207,
+        "transport": 898,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3812.8113970014965
+    },
+    {
+      "task": {
+        "left": 24,
+        "right": 22
+      },
+      "success": true,
+      "frames": 3431,
+      "wall_ms": 4597.944638997433,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 573,
+        "contact_approach": 23,
+        "extract": 403,
+        "transport": 872,
+        "conveyor_place": 1194,
+        "return_home": 361
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4642.15057399997
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 20
+      },
+      "success": true,
+      "frames": 2367,
+      "wall_ms": 3689.8946830042405,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 22,
+        "extract": 258,
+        "transport": 909,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3724.5199519966263
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2249,
+      "wall_ms": 4132.146021001972,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 489,
+        "contact_approach": 22,
+        "extract": 193,
+        "transport": 852,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4165.598191990284
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 22
+      },
+      "success": true,
+      "frames": 3271,
+      "wall_ms": 5696.938679000596,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 589,
+        "contact_approach": 23,
+        "extract": 212,
+        "transport": 916,
+        "conveyor_place": 1165,
+        "return_home": 361
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5742.815190998954
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 20
+      },
+      "success": true,
+      "frames": 3195,
+      "wall_ms": 4556.446464994224,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 582,
+        "contact_approach": 23,
+        "extract": 346,
+        "transport": 1212,
+        "conveyor_place": 355,
+        "return_home": 672
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4601.570197002729
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2724,
+      "wall_ms": 3865.372867003316,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 586,
+        "contact_approach": 23,
+        "extract": 231,
+        "transport": 849,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3905.425461009145
+    },
+    {
+      "task": {
+        "left": 24,
+        "right": 15
+      },
+      "success": true,
+      "frames": 2060,
+      "wall_ms": 3244.084246995044,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 448,
+        "contact_approach": 23,
+        "extract": 206,
+        "transport": 689,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3275.348136012326
+    },
+    {
+      "task": {
+        "left": 24,
+        "right": 16
+      },
+      "success": true,
+      "frames": 2076,
+      "wall_ms": 3730.8821409969823,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 448,
+        "contact_approach": 22,
+        "extract": 203,
+        "transport": 709,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3763.8985439989483
+    },
+    {
+      "task": {
+        "left": 24,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2578,
+      "wall_ms": 3352.3135099967476,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 479,
+        "contact_approach": 24,
+        "extract": 194,
+        "transport": 840,
+        "conveyor_place": 354,
+        "return_home": 682
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3390.171888997429
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 15
+      },
+      "success": true,
+      "frames": 2248,
+      "wall_ms": 3505.8638170012273,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 23,
+        "extract": 217,
+        "transport": 831,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3541.6395960055524
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 16
+      },
+      "success": true,
+      "frames": 2224,
+      "wall_ms": 3968.38756899524,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 22,
+        "extract": 192,
+        "transport": 833,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4003.2360309996875
+    },
+    {
+      "task": {
+        "left": 23,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2617,
+      "wall_ms": 3556.698112995946,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 506,
+        "contact_approach": 24,
+        "extract": 213,
+        "transport": 839,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3595.1691509981174
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 15
+      },
+      "success": true,
+      "frames": 2489,
+      "wall_ms": 3052.3462800047128,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 583,
+        "contact_approach": 23,
+        "extract": 209,
+        "transport": 639,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3092.751495001721
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 16
+      },
+      "success": true,
+      "frames": 2466,
+      "wall_ms": 3641.6791990050115,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 584,
+        "contact_approach": 23,
+        "extract": 185,
+        "transport": 639,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3678.770540995174
+    },
+    {
+      "task": {
+        "left": 22,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2468,
+      "wall_ms": 3057.0881180028664,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 588,
+        "contact_approach": 24,
+        "extract": 181,
+        "transport": 640,
+        "conveyor_place": 353,
+        "return_home": 677
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3094.7576939943247
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 20
+      },
+      "success": true,
+      "frames": 2052,
+      "wall_ms": 3465.112842997769,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 448,
+        "contact_approach": 23,
+        "extract": 205,
+        "transport": 682,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3497.838328999933
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2239,
+      "wall_ms": 3511.8629630014766,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 23,
+        "extract": 214,
+        "transport": 825,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3547.7325249958085
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 22
+      },
+      "success": true,
+      "frames": 3116,
+      "wall_ms": 4282.224744005362,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 574,
+        "contact_approach": 23,
+        "extract": 210,
+        "transport": 778,
+        "conveyor_place": 1165,
+        "return_home": 361
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4326.48167599109
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 20
+      },
+      "success": true,
+      "frames": 2111,
+      "wall_ms": 3681.849232001696,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 448,
+        "contact_approach": 22,
+        "extract": 203,
+        "transport": 744,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3716.6668040008517
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2220,
+      "wall_ms": 3912.4126759998035,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 22,
+        "extract": 193,
+        "transport": 828,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3946.407419993193
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 22
+      },
+      "success": true,
+      "frames": 3180,
+      "wall_ms": 4756.708721994073,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 573,
+        "contact_approach": 23,
+        "extract": 222,
+        "transport": 831,
+        "conveyor_place": 1165,
+        "return_home": 361
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4800.014585009194
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 20
+      },
+      "success": true,
+      "frames": 2490,
+      "wall_ms": 3421.8588690127945,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 24,
+        "extract": 194,
+        "transport": 753,
+        "conveyor_place": 356,
+        "return_home": 674
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3459.813388006296
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 21
+      },
+      "success": true,
+      "frames": 2614,
+      "wall_ms": 3522.957103996305,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 507,
+        "contact_approach": 24,
+        "extract": 214,
+        "transport": 834,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3561.109903996112
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 22
+      },
+      "success": true,
+      "frames": 3655,
+      "wall_ms": 4184.53564599622,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 584,
+        "contact_approach": 24,
+        "extract": 186,
+        "transport": 726,
+        "conveyor_place": 965,
+        "return_home": 1165
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4234.367122000549
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 15
+      },
+      "success": true,
+      "frames": 1787,
+      "wall_ms": 2926.8846199993277,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 372,
+        "contact_approach": 30,
+        "extract": 206,
+        "transport": 482,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2959.5815899956506
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 16
+      },
+      "success": true,
+      "frames": 1844,
+      "wall_ms": 3356.6445339965867,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 365,
+        "contact_approach": 23,
+        "extract": 204,
+        "transport": 559,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3394.4850569969276
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2326,
+      "wall_ms": 2978.638060987578,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 502,
+        "contact_approach": 31,
+        "extract": 230,
+        "transport": 522,
+        "conveyor_place": 354,
+        "return_home": 682
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3014.374616002897
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 15
+      },
+      "success": true,
+      "frames": 1833,
+      "wall_ms": 3341.041320003569,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 365,
+        "contact_approach": 23,
+        "extract": 204,
+        "transport": 548,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3370.3211190004367
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 16
+      },
+      "success": true,
+      "frames": 1807,
+      "wall_ms": 3747.035321997828,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 362,
+        "contact_approach": 22,
+        "extract": 181,
+        "transport": 549,
+        "conveyor_place": 359,
+        "return_home": 329
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3782.376489005401
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2275,
+      "wall_ms": 3331.285720996675,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 479,
+        "contact_approach": 24,
+        "extract": 188,
+        "transport": 549,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3364.5941610011505
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 15
+      },
+      "success": true,
+      "frames": 2322,
+      "wall_ms": 2984.361522991094,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 504,
+        "contact_approach": 31,
+        "extract": 230,
+        "transport": 522,
+        "conveyor_place": 356,
+        "return_home": 674
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3019.505588003085
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 16
+      },
+      "success": true,
+      "frames": 2264,
+      "wall_ms": 3351.7752759944415,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 479,
+        "contact_approach": 24,
+        "extract": 177,
+        "transport": 549,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3384.3998039956205
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 10
+      },
+      "success": true,
+      "frames": 1820,
+      "wall_ms": 2951.0681990068406,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 390,
+        "contact_approach": 31,
+        "extract": 225,
+        "transport": 477,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2981.074640993029
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 11
+      },
+      "success": true,
+      "frames": 1781,
+      "wall_ms": 2925.04750599619,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 371,
+        "contact_approach": 30,
+        "extract": 206,
+        "transport": 477,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2953.299059998244
+    },
+    {
+      "task": {
+        "left": 19,
+        "right": 12
+      },
+      "success": true,
+      "frames": 2383,
+      "wall_ms": 3168.4970439964673,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 500,
+        "contact_approach": 25,
+        "extract": 206,
+        "transport": 611,
+        "conveyor_place": 354,
+        "return_home": 682
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3202.0738129940582
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 10
+      },
+      "success": true,
+      "frames": 1868,
+      "wall_ms": 3210.4693180008326,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 396,
+        "contact_approach": 38,
+        "extract": 191,
+        "transport": 549,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3240.6847270030994
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 11
+      },
+      "success": true,
+      "frames": 1835,
+      "wall_ms": 3335.9946480049985,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 372,
+        "contact_approach": 33,
+        "extract": 187,
+        "transport": 549,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3369.215212005656
+    },
+    {
+      "task": {
+        "left": 18,
+        "right": 12
+      },
+      "success": true,
+      "frames": 2501,
+      "wall_ms": 3520.331236999482,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 510,
+        "contact_approach": 25,
+        "extract": 197,
+        "transport": 734,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3560.326756996801
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 10
+      },
+      "success": true,
+      "frames": 2291,
+      "wall_ms": 2963.009504994261,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 502,
+        "contact_approach": 60,
+        "extract": 175,
+        "transport": 522,
+        "conveyor_place": 355,
+        "return_home": 672
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3004.9000150029315
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 11
+      },
+      "success": true,
+      "frames": 2223,
+      "wall_ms": 2905.2132579963654,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 500,
+        "contact_approach": 25,
+        "extract": 174,
+        "transport": 492,
+        "conveyor_place": 355,
+        "return_home": 672
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2940.9711600019364
+    },
+    {
+      "task": {
+        "left": 17,
+        "right": 12
+      },
+      "success": true,
+      "frames": 2463,
+      "wall_ms": 3055.4542429890716,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 581,
+        "contact_approach": 24,
+        "extract": 176,
+        "transport": 647,
+        "conveyor_place": 353,
+        "return_home": 677
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3091.0815359966364
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 15
+      },
+      "success": true,
+      "frames": 1820,
+      "wall_ms": 2945.7309159915894,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 390,
+        "contact_approach": 31,
+        "extract": 225,
+        "transport": 477,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2975.807397000608
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 16
+      },
+      "success": true,
+      "frames": 1867,
+      "wall_ms": 3216.1103909893427,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 396,
+        "contact_approach": 38,
+        "extract": 190,
+        "transport": 549,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3247.3480879998533
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2308,
+      "wall_ms": 2879.8903110000538,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 502,
+        "contact_approach": 60,
+        "extract": 194,
+        "transport": 522,
+        "conveyor_place": 353,
+        "return_home": 672
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2914.7695760038914
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 15
+      },
+      "success": true,
+      "frames": 1781,
+      "wall_ms": 2882.427521995851,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 371,
+        "contact_approach": 30,
+        "extract": 206,
+        "transport": 477,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2911.4579540037084
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 16
+      },
+      "success": true,
+      "frames": 1837,
+      "wall_ms": 3308.5276229976444,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 372,
+        "contact_approach": 33,
+        "extract": 189,
+        "transport": 549,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3340.2046309929574
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2237,
+      "wall_ms": 2910.1599069981603,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 498,
+        "contact_approach": 25,
+        "extract": 192,
+        "transport": 492,
+        "conveyor_place": 353,
+        "return_home": 672
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2945.9415430028457
+    },
+    {
+      "task": {
+        "left": 12,
+        "right": 15
+      },
+      "success": true,
+      "frames": 2361,
+      "wall_ms": 3122.879789007129,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 496,
+        "contact_approach": 25,
+        "extract": 194,
+        "transport": 611,
+        "conveyor_place": 356,
+        "return_home": 674
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3160.4638040007558
+    },
+    {
+      "task": {
+        "left": 12,
+        "right": 16
+      },
+      "success": true,
+      "frames": 2498,
+      "wall_ms": 3397.334117005812,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 517,
+        "contact_approach": 25,
+        "extract": 197,
+        "transport": 724,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3434.040685999207
+    },
+    {
+      "task": {
+        "left": 12,
+        "right": 17
+      },
+      "success": true,
+      "frames": 2431,
+      "wall_ms": 2992.3731659946498,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 581,
+        "contact_approach": 24,
+        "extract": 186,
+        "transport": 605,
+        "conveyor_place": 353,
+        "return_home": 677
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3027.995693992125
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 10
+      },
+      "success": true,
+      "frames": 1672,
+      "wall_ms": 2988.617476003128,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 363,
+        "contact_approach": 27,
+        "extract": 288,
+        "transport": 292,
+        "conveyor_place": 353,
+        "return_home": 344
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3016.5555480052717
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 11
+      },
+      "success": true,
+      "frames": 1748,
+      "wall_ms": 2927.249757005484,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 362,
+        "contact_approach": 25,
+        "extract": 191,
+        "transport": 476,
+        "conveyor_place": 356,
+        "return_home": 333
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2985.6917379947845
+    },
+    {
+      "task": {
+        "left": 14,
+        "right": 12
+      },
+      "success": true,
+      "frames": 2282,
+      "wall_ms": 2957.869892998133,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 495,
+        "contact_approach": 33,
+        "extract": 231,
+        "transport": 482,
+        "conveyor_place": 354,
+        "return_home": 682
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2993.2965049956692
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 10
+      },
+      "success": true,
+      "frames": 1754,
+      "wall_ms": 2925.4957960074535,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 362,
+        "contact_approach": 25,
+        "extract": 198,
+        "transport": 475,
+        "conveyor_place": 357,
+        "return_home": 332
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2956.408145997557
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 11
+      },
+      "success": true,
+      "frames": 1587,
+      "wall_ms": 2882.731306992355,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 355,
+        "contact_approach": 28,
+        "extract": 171,
+        "transport": 336,
+        "conveyor_place": 354,
+        "return_home": 338
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2912.2580339899287
+    },
+    {
+      "task": {
+        "left": 13,
+        "right": 12
+      },
+      "success": true,
+      "frames": 2274,
+      "wall_ms": 3491.344082998694,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 504,
+        "contact_approach": 24,
+        "extract": 168,
+        "transport": 543,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3527.9746519954642
+    },
+    {
+      "task": {
+        "left": 12,
+        "right": 10
+      },
+      "success": true,
+      "frames": 2265,
+      "wall_ms": 3046.215612004744,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 484,
+        "contact_approach": 33,
+        "extract": 231,
+        "transport": 482,
+        "conveyor_place": 356,
+        "return_home": 674
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3081.9461770006455
+    },
+    {
+      "task": {
+        "left": 12,
+        "right": 11
+      },
+      "success": true,
+      "frames": 2256,
+      "wall_ms": 3350.012525988859,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 483,
+        "contact_approach": 24,
+        "extract": 169,
+        "transport": 545,
+        "conveyor_place": 357,
+        "return_home": 673
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3385.7193419971736
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 5
+      },
+      "success": true,
+      "frames": 2943,
+      "wall_ms": 6570.908690991928,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 781,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 356,
+        "conveyor_place": 536,
+        "return_home": 857
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 6612.976073010941
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 6
+      },
+      "success": true,
+      "frames": 2881,
+      "wall_ms": 5306.2615240050945,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 795,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 356,
+        "conveyor_place": 533,
+        "return_home": 784
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5348.527187001309
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 7
+      },
+      "success": true,
+      "frames": 2679,
+      "wall_ms": 4308.624347002478,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 807,
+        "contact_approach": 60,
+        "extract": 289,
+        "transport": 346,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4348.2042490068125
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 5
+      },
+      "success": true,
+      "frames": 2920,
+      "wall_ms": 5201.113738003187,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 776,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 356,
+        "conveyor_place": 528,
+        "return_home": 847
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5243.534937006189
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 6
+      },
+      "success": true,
+      "frames": 2613,
+      "wall_ms": 5106.24864800775,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 685,
+        "contact_approach": 60,
+        "extract": 190,
+        "transport": 278,
+        "conveyor_place": 536,
+        "return_home": 857
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5145.822609993047
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 7
+      },
+      "success": true,
+      "frames": 3083,
+      "wall_ms": 5529.485410996131,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1142,
+        "contact_approach": 60,
+        "extract": 238,
+        "transport": 403,
+        "conveyor_place": 564,
+        "return_home": 669
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5572.383913997328
+    },
+    {
+      "task": {
+        "left": 7,
+        "right": 5
+      },
+      "success": true,
+      "frames": 2724,
+      "wall_ms": 4323.292688000947,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 814,
+        "contact_approach": 60,
+        "extract": 289,
+        "transport": 345,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4365.79699300637
+    },
+    {
+      "task": {
+        "left": 7,
+        "right": 6
+      },
+      "success": true,
+      "frames": 3117,
+      "wall_ms": 5891.123863009852,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1265,
+        "contact_approach": 60,
+        "extract": 232,
+        "transport": 403,
+        "conveyor_place": 486,
+        "return_home": 664
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5939.904427999863
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 0
+      },
+      "success": true,
+      "frames": 3168,
+      "wall_ms": 4685.507119997055,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1007,
+        "contact_approach": 60,
+        "extract": 403,
+        "transport": 460,
+        "conveyor_place": 553,
+        "return_home": 678
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4729.53358500672
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 1
+      },
+      "success": true,
+      "frames": 2972,
+      "wall_ms": 4263.448837999022,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 782,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 402,
+        "conveyor_place": 528,
+        "return_home": 847
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4306.191789000877
+    },
+    {
+      "task": {
+        "left": 9,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3517,
+      "wall_ms": 4502.743325007032,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 894,
+        "contact_approach": 60,
+        "extract": 258,
+        "transport": 1148,
+        "conveyor_place": 486,
+        "return_home": 664
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4551.450266997563
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 0
+      },
+      "success": true,
+      "frames": 2942,
+      "wall_ms": 4649.021794000873,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 802,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 518,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4691.358669006149
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 1
+      },
+      "success": true,
+      "frames": 2826,
+      "wall_ms": 4578.207548998762,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 859,
+        "contact_approach": 60,
+        "extract": 288,
+        "transport": 403,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4619.506689006812
+    },
+    {
+      "task": {
+        "left": 8,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3680,
+      "wall_ms": 5126.120502012782,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1122,
+        "contact_approach": 60,
+        "extract": 250,
+        "transport": 1091,
+        "conveyor_place": 486,
+        "return_home": 664
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5177.598677997594
+    },
+    {
+      "task": {
+        "left": 7,
+        "right": 0
+      },
+      "success": true,
+      "frames": 3129,
+      "wall_ms": 4635.949539995636,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 990,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 517,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4680.667018998065
+    },
+    {
+      "task": {
+        "left": 7,
+        "right": 1
+      },
+      "success": true,
+      "frames": 2994,
+      "wall_ms": 4404.9291620031,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 951,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 421,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4448.592283006292
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 5
+      },
+      "success": true,
+      "frames": 3129,
+      "wall_ms": 4507.418630004395,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1025,
+        "contact_approach": 60,
+        "extract": 403,
+        "transport": 460,
+        "conveyor_place": 517,
+        "return_home": 657
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4552.513677001116
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 6
+      },
+      "success": true,
+      "frames": 3221,
+      "wall_ms": 5251.112591999117,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1120,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 518,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5300.157903999207
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 7
+      },
+      "success": true,
+      "frames": 3136,
+      "wall_ms": 4567.54005800758,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1035,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 518,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4613.275072988472
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 5
+      },
+      "success": true,
+      "frames": 2957,
+      "wall_ms": 4402.997532000882,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 823,
+        "contact_approach": 60,
+        "extract": 345,
+        "transport": 405,
+        "conveyor_place": 533,
+        "return_home": 784
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4445.59916399885
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 6
+      },
+      "success": true,
+      "frames": 2846,
+      "wall_ms": 4663.665126994601,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 917,
+        "contact_approach": 60,
+        "extract": 289,
+        "transport": 403,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4707.0266520022415
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 7
+      },
+      "success": true,
+      "frames": 2843,
+      "wall_ms": 4425.823591998778,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 856,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 404,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4468.0618940037675
+    },
+    {
+      "task": {
+        "left": 2,
+        "right": 5
+      },
+      "success": true,
+      "frames": 3805,
+      "wall_ms": 4739.2385760031175,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 1181,
+        "contact_approach": 60,
+        "extract": 259,
+        "transport": 1148,
+        "conveyor_place": 486,
+        "return_home": 664
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4791.210659997887
+    },
+    {
+      "task": {
+        "left": 2,
+        "right": 6
+      },
+      "success": true,
+      "frames": 4102,
+      "wall_ms": 4941.153142004623,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 833,
+        "contact_approach": 60,
+        "extract": 255,
+        "transport": 1148,
+        "conveyor_place": 636,
+        "return_home": 1163
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5003.4823550086
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 0
+      },
+      "success": true,
+      "frames": 2986,
+      "wall_ms": 4253.115315004834,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 651,
+        "contact_approach": 60,
+        "extract": 403,
+        "transport": 472,
+        "conveyor_place": 536,
+        "return_home": 857
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4296.774852002272
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 1
+      },
+      "success": true,
+      "frames": 2910,
+      "wall_ms": 4199.684983002953,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 663,
+        "contact_approach": 60,
+        "extract": 403,
+        "transport": 460,
+        "conveyor_place": 533,
+        "return_home": 784
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4242.861271995935
+    },
+    {
+      "task": {
+        "left": 4,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3201,
+      "wall_ms": 4024.327124003321,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 871,
+        "contact_approach": 60,
+        "extract": 288,
+        "transport": 805,
+        "conveyor_place": 530,
+        "return_home": 640
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4069.844837009441
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 0
+      },
+      "success": true,
+      "frames": 2926,
+      "wall_ms": 4184.4213849981315,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 621,
+        "contact_approach": 60,
+        "extract": 403,
+        "transport": 460,
+        "conveyor_place": 528,
+        "return_home": 847
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4226.678671999252
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 1
+      },
+      "success": true,
+      "frames": 2774,
+      "wall_ms": 4233.234942003037,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 555,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 413,
+        "conveyor_place": 536,
+        "return_home": 857
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4280.665449012304
+    },
+    {
+      "task": {
+        "left": 3,
+        "right": 2
+      },
+      "success": true,
+      "frames": 3167,
+      "wall_ms": 4181.133254998713,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 807,
+        "contact_approach": 60,
+        "extract": 232,
+        "transport": 861,
+        "conveyor_place": 533,
+        "return_home": 667
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4226.286449993495
+    },
+    {
+      "task": {
+        "left": 2,
+        "right": 0
+      },
+      "success": true,
+      "frames": 3266,
+      "wall_ms": 4044.451713009039,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 897,
+        "contact_approach": 60,
+        "extract": 289,
+        "transport": 804,
+        "conveyor_place": 535,
+        "return_home": 674
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4091.450025996892
+    },
+    {
+      "task": {
+        "left": 2,
+        "right": 1
+      },
+      "success": true,
+      "frames": 3142,
+      "wall_ms": 4222.285931988154,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 818,
+        "contact_approach": 60,
+        "extract": 246,
+        "transport": 861,
+        "conveyor_place": 486,
+        "return_home": 664
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4265.033581003081
+    },
+    {
+      "task": {
+        "right": 0
+      },
+      "success": true,
+      "frames": 2588,
+      "wall_ms": 4775.824009993812,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 592,
+        "contact_approach": 60,
+        "extract": 346,
+        "transport": 518,
+        "conveyor_place": 481,
+        "return_home": 584
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4815.944082001806
+    },
+    {
+      "task": {
+        "right": 1
+      },
+      "success": true,
+      "frames": 2445,
+      "wall_ms": 4231.114547001198,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 528,
+        "contact_approach": 46,
+        "extract": 346,
+        "transport": 466,
+        "conveyor_place": 465,
+        "return_home": 587
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4272.605991005548
+    },
+    {
+      "task": {
+        "right": 2
+      },
+      "success": true,
+      "frames": 2996,
+      "wall_ms": 3863.55206699227,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 732,
+        "contact_approach": 60,
+        "extract": 233,
+        "transport": 976,
+        "conveyor_place": 433,
+        "return_home": 555
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3905.6241159996716
+    },
+    {
+      "task": {
+        "left": 3
+      },
+      "success": true,
+      "frames": 2477,
+      "wall_ms": 4926.124593010172,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 506,
+        "contact_approach": 46,
+        "extract": 346,
+        "transport": 466,
+        "conveyor_place": 503,
+        "return_home": 603
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4964.8139199998695
+    },
+    {
+      "task": {
+        "left": 4
+      },
+      "success": true,
+      "frames": 2827,
+      "wall_ms": 3932.292495010188,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 664,
+        "contact_approach": 60,
+        "extract": 345,
+        "transport": 517,
+        "conveyor_place": 624,
+        "return_home": 610
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3971.341583994217
+    },
+    {
+      "task": {
+        "right": 5
+      },
+      "success": true,
+      "frames": 2595,
+      "wall_ms": 5179.985944996588,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 765,
+        "contact_approach": 38,
+        "extract": 299,
+        "transport": 356,
+        "conveyor_place": 536,
+        "return_home": 594
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5217.778830003226
+    },
+    {
+      "task": {
+        "right": 6
+      },
+      "success": true,
+      "frames": 2263,
+      "wall_ms": 4331.324665006832,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 633,
+        "contact_approach": 25,
+        "extract": 190,
+        "transport": 278,
+        "conveyor_place": 536,
+        "return_home": 594
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4367.251057992689
+    },
+    {
+      "task": {
+        "right": 7
+      },
+      "success": true,
+      "frames": 2582,
+      "wall_ms": 4342.322759999661,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 749,
+        "contact_approach": 60,
+        "extract": 233,
+        "transport": 518,
+        "conveyor_place": 459,
+        "return_home": 556
+      },
+      "soft_reference_stages": 2,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4383.3618170028785
+    },
+    {
+      "task": {
+        "left": 8
+      },
+      "success": true,
+      "frames": 2332,
+      "wall_ms": 5292.247755001881,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 594,
+        "contact_approach": 25,
+        "extract": 194,
+        "transport": 278,
+        "conveyor_place": 624,
+        "return_home": 610
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 5333.713064988842
+    },
+    {
+      "task": {
+        "left": 9
+      },
+      "success": true,
+      "frames": 2696,
+      "wall_ms": 4563.836337008979,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 773,
+        "contact_approach": 38,
+        "extract": 288,
+        "transport": 356,
+        "conveyor_place": 624,
+        "return_home": 610
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4603.971828997601
+    },
+    {
+      "task": {
+        "right": 10
+      },
+      "success": true,
+      "frames": 1632,
+      "wall_ms": 3938.1045779882697,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 364,
+        "contact_approach": 27,
+        "extract": 231,
+        "transport": 311,
+        "conveyor_place": 349,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3966.025952002383
+    },
+    {
+      "task": {
+        "right": 11
+      },
+      "success": true,
+      "frames": 1575,
+      "wall_ms": 2891.0909639962483,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 354,
+        "contact_approach": 28,
+        "extract": 157,
+        "transport": 337,
+        "conveyor_place": 349,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2918.9031019923277
+    },
+    {
+      "task": {
+        "right": 12
+      },
+      "success": true,
+      "frames": 2166,
+      "wall_ms": 3439.227679002215,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 479,
+        "contact_approach": 30,
+        "extract": 151,
+        "transport": 491,
+        "conveyor_place": 347,
+        "return_home": 663
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3475.8783370052697
+    },
+    {
+      "task": {
+        "left": 13
+      },
+      "success": true,
+      "frames": 1575,
+      "wall_ms": 3746.449311001925,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 354,
+        "contact_approach": 28,
+        "extract": 157,
+        "transport": 337,
+        "conveyor_place": 349,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3774.5998369937297
+    },
+    {
+      "task": {
+        "left": 14
+      },
+      "success": true,
+      "frames": 1632,
+      "wall_ms": 3111.255832001916,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 364,
+        "contact_approach": 27,
+        "extract": 231,
+        "transport": 311,
+        "conveyor_place": 349,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3138.596595003037
+    },
+    {
+      "task": {
+        "right": 15
+      },
+      "success": true,
+      "frames": 1781,
+      "wall_ms": 3822.545358998468,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 371,
+        "contact_approach": 30,
+        "extract": 206,
+        "transport": 477,
+        "conveyor_place": 347,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3858.537044012337
+    },
+    {
+      "task": {
+        "right": 16
+      },
+      "success": true,
+      "frames": 1773,
+      "wall_ms": 3414.1756299941335,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 355,
+        "contact_approach": 22,
+        "extract": 178,
+        "transport": 522,
+        "conveyor_place": 346,
+        "return_home": 345
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3442.8165220015217
+    },
+    {
+      "task": {
+        "right": 17
+      },
+      "success": true,
+      "frames": 2303,
+      "wall_ms": 2856.4237779937685,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 502,
+        "contact_approach": 60,
+        "extract": 171,
+        "transport": 552,
+        "conveyor_place": 349,
+        "return_home": 664
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 2892.2919769975124
+    },
+    {
+      "task": {
+        "left": 18
+      },
+      "success": true,
+      "frames": 1749,
+      "wall_ms": 4015.6780619872734,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 355,
+        "contact_approach": 22,
+        "extract": 178,
+        "transport": 510,
+        "conveyor_place": 334,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4042.997448996175
+    },
+    {
+      "task": {
+        "left": 19
+      },
+      "success": true,
+      "frames": 1761,
+      "wall_ms": 2992.2273839911213,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 371,
+        "contact_approach": 30,
+        "extract": 206,
+        "transport": 467,
+        "conveyor_place": 337,
+        "return_home": 345
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3022.3619410098763
+    },
+    {
+      "task": {
+        "right": 20
+      },
+      "success": true,
+      "frames": 2085,
+      "wall_ms": 4129.184627003269,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 431,
+        "contact_approach": 22,
+        "extract": 232,
+        "transport": 703,
+        "conveyor_place": 347,
+        "return_home": 345
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4161.905196990119
+    },
+    {
+      "task": {
+        "right": 21
+      },
+      "success": true,
+      "frames": 2176,
+      "wall_ms": 3596.8132709967904,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 466,
+        "contact_approach": 22,
+        "extract": 195,
+        "transport": 797,
+        "conveyor_place": 346,
+        "return_home": 345
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3632.3371389880776
+    },
+    {
+      "task": {
+        "right": 22
+      },
+      "success": true,
+      "frames": 2374,
+      "wall_ms": 3092.1864199917763,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 550,
+        "contact_approach": 23,
+        "extract": 175,
+        "transport": 608,
+        "conveyor_place": 349,
+        "return_home": 664
+      },
+      "soft_reference_stages": 0,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3127.6984120049747
+    },
+    {
+      "task": {
+        "left": 23
+      },
+      "success": true,
+      "frames": 2154,
+      "wall_ms": 4367.435968990321,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 466,
+        "contact_approach": 22,
+        "extract": 195,
+        "transport": 788,
+        "conveyor_place": 333,
+        "return_home": 345
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 4402.266429999145
+    },
+    {
+      "task": {
+        "left": 24
+      },
+      "success": true,
+      "frames": 2068,
+      "wall_ms": 3207.799354000599,
+      "final_home_error": 4.371139006309477e-08,
+      "seams_passed": true,
+      "payload_path_validated": false,
+      "stages": {
+        "approach": 431,
+        "contact_approach": 22,
+        "extract": 231,
+        "transport": 697,
+        "conveyor_place": 337,
+        "return_home": 345
+      },
+      "soft_reference_stages": 1,
+      "release_box_center_z_m": 1.082,
+      "path_prior_lm_used": false,
+      "rounds_per_stage": 30,
+      "inclusive_wall_ms": 3240.2373350050766
+    }
+  ],
+  "peak_gpu_allocated_mib": 848.34619140625
+}

@@ -116,6 +116,7 @@ class RecenterTests(unittest.TestCase):
     def test_future_lowering_is_lazy_and_stops_after_selected_endpoint_succeeds(self):
         task=DoorTask.__new__(DoorTask)
         task.support_pose=np.eye(4);task.lower_distance=.4;task.lift_grid=np.array([-.5,-.3])
+        task.pick_lift_grid=task.lift_grid
         limits=SimpleNamespace(position=(torch.tensor([-1.]),torch.tensor([0.])))
         task.validity=lambda:SimpleNamespace(checker=SimpleNamespace(
             kinematics=SimpleNamespace(get_joint_limits=lambda:limits)))
@@ -271,6 +272,7 @@ class RecenterTests(unittest.TestCase):
         class Flow(DoorTask):
             def __init__(self, fail=False):
                 self.log=[]; self.fail_recenter=fail; self.q=np.zeros(15); self.report={}
+                self.planner=SimpleNamespace(mobile_extract_retreat_m=None)
                 self.request=SimpleNamespace(upper_box=22,lower_box=17,snapshot=SimpleNamespace(object=lambda key:SimpleNamespace(pose=Pose((0,0,1.8 if key.endswith('22') else 1.4)))))
                 self.store=SimpleNamespace(snapshot=lambda:SimpleNamespace(attachments=[SimpleNamespace(object_id='wall_box_22')]))
             def enter(self, phase): self.log.append(phase)

@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 
 from curobo_core.adapter import matrix_pose,pose_matrix
-from curobo_core.contracts import ACTIVE_JOINTS,PlannerAssets
+from curobo_core.contracts import ACTIVE_JOINTS
+from curobo_core.door_model import load_assets
 from curobo_core.door_recenter import DoorPlanner,DoorTask,door_request
 from curobo_core.scene import AttachedObject,Pose
 
@@ -29,8 +30,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--input',type=Path,required=True);p.add_argument('--output',type=Path,required=True)
     p.add_argument('--assets-root',type=Path,required=True);p.add_argument('--removed-box',type=int,action='append',default=[]);a=p.parse_args()
     began=time.perf_counter();source=json.loads(a.input.read_text());column=int(source['column']);target_column=4-column;source_lower,source_upper=15+column,20+column
-    assets=PlannerAssets();root=Path(__file__).resolve().parents[1]
-    assets=replace(assets,**{name:a.assets_root/getattr(assets,name).relative_to(root) for name in ('robot_config','mobile_robot_config','urdf','named_poses','box_fit')})
+    assets=load_assets(a.assets_root)
     planner=DoorPlanner(assets);request=door_request(planner,source.get('seed',11),target_column,a.removed_box)
     frames=np.asarray([mirror_row(row) for row in source['frames']]);phases=[side_name(value) for value in source['phases']]
     mapped_ids={f'wall_box_{value:02d}':f'wall_box_{box_id(value):02d}' for value in range(25)}
