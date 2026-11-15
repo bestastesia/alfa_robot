@@ -2392,3 +2392,10 @@
 - 验证：L4/R1、L4/R2顶吸及L18/R11侧吸都返回完整时序候选，18段TimeOpt成功且4001点动力学采样通过；各任务仍有TrajOpt失败阶段，整体success=false，候选运动16.036/15.069/14.521s。初始资源2.094s另列，计算墙钟54.730/5.953/14.454s，不能称全部稳态或3秒。紧凑证据generated/fast_release_20261109/validation.json。
 - 新增/迁入针对性回归26通过1跳过；扩展模型/历史回放检查合计32通过1跳过4失败，未修改历史记录/断言掩盖失败。按用户明确要求保留原软间隙代价兼作约束、迭代质量、冷启动、旧J6/Home/回放一致性等问题，未强制修复；列表及命令见FAST_PIPELINE.md。
 - 8290为本PR检出的点击实时计算页面，旧服务保持。此交付供用户审核，不自动合并；不含硬件发送或MuJoCo联调。
+
+## 2026-11-15 运动规划 / Claude / 门扉五列：旧模型 <10 s 版本冻结为开发基线（MOTION-443）
+
+- 做了什么：用户确认以合并上游 PR #80/#82 时的旧模型版本 `284cfa4` 作为后续开发基线，放弃新零位模型迁移线。该版本保持 PR 基线的五列动作结构与旧模型资产（`alfa_v322_suction_mobile18`），规划每列 <10 s；2026-11-15 的中心流程 + 抽离时底盘后退尝试已全部回退，不进入基线。
+- 改了哪里：无代码改动；新分支 `motion-443-door-old-model-baseline`（= `284cfa4`，fork 同名分支），本交接条目提交在其上。
+- 验证结果：`step1-merge-old-model-s11`（seed 11，预热 5）五列全成功，规划 列4 7.92、列0 0.09、列3 4.90、列1 5.22、列2 4.03 s，运动总时长 92.4 s；三种子版 `step1-merge-old-model` 的 seed 29/41 五列全成功（列4 最慢 9.56 s），seed 11 列2 为一次 CUDA OOM（失败轮，已由 s11 重跑覆盖）。证据 `~/Sevenova/door-five-column-latency-20261108/migration/step1-merge-old-model*/`。
+- 留给下个 AI：运行副本 `runtime-migration` 已同步到本基线（`door_recenter.py` 8ad08523…）；资产根 `door-recenter-20261103/runtime/door-assets`。新零位模型与原中心流程代码保留在 fork 历史（`feature/door-alfa-v3-fast-migration`，11e6b86 及更早）。
