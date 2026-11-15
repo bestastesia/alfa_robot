@@ -489,6 +489,76 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                 base@tools[item.parent_link.removesuffix('_tool0')]@pose_matrix(item.tool_to_object))) for item in self.held)
         return placed
 
+    def release_branch_rows(self, start, per_arm=4):
+        """Rows at the same placement tool poses on the arm's other IK branches (nearest per arm)."""
+        start = np.asarray(start, dtype=float)
+        carriage = CarriageModel(self, start)
+        self.fk(start)
+        rows = []
+        for side_index, side, indices in ((0, 'left', LEFT), (1, 'right', RIGHT)):
+            tool = self.fk_robot.get_transform(side+'_tool0', self.fk_robot.base_link).copy()
+            local = carriage.inverse(np.asarray([start[0]]))[0] @ tool
+            options = []
+            for swivel in np.deg2rad(np.arange(-180., 180., 5.)):
+                for arm in self.analytic.solve(side_index, local, float(swivel), start[indices]):
+                    row = start.copy()
+                    row[indices] = arm
+                    options.append((float(np.linalg.norm(arm-start[indices])), row))
+            options.sort(key=lambda item: item[0])
+            rows.extend(row for _, row in options[:per_arm])
+        return rows
+
+    def self_motion_ok(self, first, second, validity, samples=16):
+        """Joint-space line between two rows with the same tool poses: its states must be valid."""
+        fractions = np.linspace(0., 1., samples)[1:-1, None]
+        rows = np.asarray(first)[None] + fractions*(np.asarray(second)-np.asarray(first))[None]
+        if not len(rows):
+            return True
+        mask = validity.mask(torch.as_tensor(rows, device='cuda', dtype=torch.float32))
+        return bool(np.asarray(mask.cpu()).all())
+
+    def retreat_candidates(self, start, validity, target, released, reference=None):
+        """Nearby postures whose tools have left both release poses (>=6 cm) and that the released-box
+        world accepts: small carriage lifts/lowers and symmetric arm-joint nudges. The boxes stay
+        where they were let go, so displacement from the release pose (reference) is separation."""
+        limits = validity.checker.kinematics.get_joint_limits().position
+        low, high = (float(values[0].item()) for values in limits)
+        start_tools = self.tool_matrices(start if reference is None else reference)
+        home_tools = self.tool_matrices(target)
+        boxed = self.checker(None, objects=released)
+        rows = []
+        for delta in (.04, .08, -.04, -.08, .12):
+            row = np.asarray(start, dtype=float).copy()
+            row[0] += delta
+            if low+1e-5 <= row[0] <= high-1e-5:
+                rows.append(row)
+        for joint in range(7):
+            for delta in (.08, -.08, .16, -.16):
+                row = np.asarray(start, dtype=float).copy()
+                row[LEFT[joint]] += delta
+                row[RIGHT[joint]] += delta
+                rows.append(row)
+        output = []
+        if not rows:
+            return output
+        valid = np.asarray(validity.mask(torch.as_tensor(np.asarray(rows), device='cuda',
+                                                         dtype=torch.float32)).cpu())
+        for ok, row in zip(valid, rows):
+            if not ok:
+                continue
+            moved = self.tool_matrices(row)
+            separation = min(float(np.linalg.norm(moved[side][:3, 3]-start_tools[side][:3, 3]))
+                             for side in ('left', 'right'))
+            if separation < .06:
+                continue
+            clear = self.placement_validity(boxed, False, objects=released, exempt_points={
+                side: [moved[side][:3, 3], home_tools[side][:3, 3]] for side in ('left', 'right')})
+            if not bool(clear.mask(torch.as_tensor(row[None], device='cuda',
+                                                   dtype=torch.float32)).any()):
+                continue
+            output.append(row)
+        return output
+
     def joint_plan(self, start, target, checker, validity, seed, stop_at_first_valid=None, shortcut=False):
         """Return to Home: with released boxes pending, both tools first retreat straight back from them,
         then the search keeps them in the world (the retreat itself is checked without them)."""
@@ -507,63 +577,26 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                     details = dict(shorter_details, shortened_from_m=self.release_retreat_m,
                                    shortened_to_m=shorter, failed_full=details)
                     break
+        prefix = np.empty((0, 15))
         if retreat is None:
-            # The wrist cannot track the tool-axis line from this placement posture. Lift or lower the
-            # carriage by a few centimetres instead: one joint, nothing to track, and the tools leave
-            # the released boxes' top faces. The pose must already be clear of the boxes.
-            limits = validity.checker.kinematics.get_joint_limits().position
-            low, high = (float(values[0].item()) for values in limits)
-            boxed = self.checker(None, objects=released)
-            for delta in (.08, .06, .04, .02, -.02, -.04, -.06, -.08):
-                row = np.asarray(start, dtype=float).copy()
-                row[0] += delta
-                if not low+1e-5 <= row[0] <= high-1e-5:
+            # The same placement poses on another wrist branch usually track the retreat line: reach
+            # that branch through a joint-space self-motion (the tool poses stay fixed), then retreat.
+            for row in self.release_branch_rows(start):
+                if not self.self_motion_ok(start, row, validity):
                     continue
-                tensor = torch.as_tensor(row[None], device='cuda', dtype=torch.float32)
-                if not bool(validity.mask(tensor).any()):
-                    continue
-                tools, home = self.tool_matrices(row), self.tool_matrices(target)
-                clear = self.placement_validity(boxed, False, objects=released, exempt_points={
-                    side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
-                if not bool(clear.mask(tensor).any()):
-                    continue
-                retreat = row[None].copy()
-                details = dict(strategy='carriage_lift', updown_delta_m=delta)
-                break
-        if retreat is None:
-            # The straight lines and the carriage lift all failed. Search small symmetric joint
-            # offsets for a posture whose tools have left both release poses: the boxes stay where
-            # they were let go, so tool displacement is separation.
-            start_tools = self.tool_matrices(start)
-            home_tools = self.tool_matrices(target)
-            boxed = self.checker(None, objects=released)
-            nudges = []
-            for joint in range(7):
-                for delta in (.08, -.08, .16, -.16):
-                    row = np.asarray(start, dtype=float).copy()
-                    row[LEFT[joint]] += delta
-                    row[RIGHT[joint]] += delta
-                    nudges.append((joint, delta, row))
-            if nudges:
-                rows = np.asarray([row for _, _, row in nudges], dtype=float)
-                valid = np.asarray(validity.mask(torch.as_tensor(rows, device='cuda', dtype=torch.float32)).cpu())
-                for ok, (joint, delta, row) in zip(valid, nudges):
-                    if not ok:
-                        continue
-                    moved = self.tool_matrices(row)
-                    separation = min(float(np.linalg.norm(moved[side][:3, 3]-start_tools[side][:3, 3]))
-                                     for side in ('left', 'right'))
-                    if separation < .06:
-                        continue
-                    clear = self.placement_validity(boxed, False, objects=released, exempt_points={
-                        side: [moved[side][:3, 3], home_tools[side][:3, 3]]
-                        for side in ('left', 'right')})
-                    if not bool(clear.mask(torch.as_tensor(row[None], device='cuda', dtype=torch.float32)).any()):
-                        continue
-                    retreat = row[None].copy()
-                    details = dict(strategy='joint_nudge', joint=joint+1, delta_rad=delta,
-                                   tool_separation_m=separation)
+                candidate, candidate_details = self.release_retreat(row, validity)
+                if candidate is not None:
+                    retreat = candidate
+                    details = dict(candidate_details, branch_relaxed=True)
+                    prefix = np.linspace(np.asarray(start), row, 12)[1:-1]
                     break
+        if retreat is None:
+            # The wrist cannot track the tool-axis line and the shorter lines failed too: fall back to
+            # nearby postures whose tools have left the release poses (carriage lift or joint nudge).
+            for row in self.retreat_candidates(start, validity, target, released):
+                retreat = row[None].copy()
+                details = dict(strategy='retreat_candidate')
+                break
         if retreat is None:
             # Last resort: search in joint space from the placed pose with the released boxes in the
             # world (the checker decides whether the start contact is within its tolerance).
@@ -609,27 +642,36 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         path, stats = super().joint_plan(retreat[-1], target, boxed, boxed_validity, seed, stop_at_first_valid, shortcut)
         if path is None and (stats or {}).get('start_nodes') == 1:
             # The tree could not leave its start: the tools still sit against the released boxes
-            # (their margin, not a line-tracking failure). A one-joint carriage lift or lower moves
-            # them off the boxes without anything to track.
-            limits = validity.checker.kinematics.get_joint_limits().position
-            low, high = (float(values[0].item()) for values in limits)
-            for delta in (.04, .08, -.04, -.08):
-                row = np.asarray(retreat[-1], dtype=float).copy()
-                row[0] += delta
-                if not low+1e-5 <= row[0] <= high-1e-5:
+            # (their margin, not a line-tracking failure). First retry from the placement pose on the
+            # arm's other wrist branches, whose full straight retreat usually tracks.
+            for row in self.release_branch_rows(placed):
+                if not self.self_motion_ok(placed, row, validity):
                     continue
-                if not bool(validity.mask(torch.as_tensor(row[None], device='cuda', dtype=torch.float32)).any()):
+                branch_retreat, branch_details = self.release_retreat(row, validity)
+                if branch_retreat is None:
                     continue
+                candidate_path, candidate_stats = home_from(np.asarray(branch_retreat)[-1])
+                if candidate_path is None:
+                    continue
+                prefix = np.linspace(np.asarray(placed), row, 12)[1:-1]
+                retreat = np.asarray(branch_retreat)
+                details = dict(branch_details, branch_relaxed=True)
+                path, stats = candidate_path, candidate_stats
+                break
+        if path is None and (stats or {}).get('start_nodes') == 1:
+            for row in self.retreat_candidates(np.asarray(retreat)[-1], validity, target, released,
+                                               reference=placed):
                 candidate_path, candidate_stats = home_from(row)
                 if candidate_path is not None:
                     retreat = np.vstack([np.asarray(retreat), row[None]])
-                    details = dict(details, lifted_m=delta)
+                    details = dict(details, lifted_from_retreat=True)
                     path, stats = candidate_path, candidate_stats
                     break
         stats = dict(stats, release_retreat=details, released_boxes=[item.object_id for item in released])
         if path is None:
             return None, stats
-        return np.vstack([retreat, np.asarray(path)[1:]]), stats
+        head = np.vstack([prefix, np.asarray(retreat)]) if len(prefix) else np.asarray(retreat)
+        return np.vstack([head, np.asarray(path)[1:]]), stats
 
     def release_retreat(self, start, validity, distance_m=None):
         """Analytic straight lines of the tools back along their tool axes: both at once on a fixed
