@@ -47,6 +47,8 @@ def main():
                    help="plan without the model's MOTION-429 sphere coverage margins")
     p.add_argument('--planner-attributes', nargs='+', default=None, metavar='NAME=VALUE',
                    help='Python-literal DoorPlanner attribute overrides applied after construction')
+    p.add_argument('--payload-carriage-margin', type=float, default=None, metavar='M',
+                   help='override the arm_carriage payload-clearance margin (m) of the coverage margins')
     a = p.parse_args()
     a.output_dir.mkdir(parents=True, exist_ok=True)
     if any(a.output_dir.iterdir()):
@@ -60,6 +62,9 @@ def main():
         started = time.perf_counter()
         planner = DoorPlanner(assets)
         construction_ms = (time.perf_counter()-started)*1000
+        if a.payload_carriage_margin is not None:
+            planner.coverage_payload_links = (('arm_carriage', a.payload_carriage_margin),
+                                              ('left_link4', .01), ('right_link4', .01))
         for override in a.planner_attributes or ():
             name, value = override.split('=', 1)
             if not hasattr(planner, name):

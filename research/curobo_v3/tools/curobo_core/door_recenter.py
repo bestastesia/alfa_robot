@@ -332,6 +332,10 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
         self.recenter_cartesian_attempts = 3
         self.recenter_cartesian_rrt_min_goals = 2
         self.precontact_joint_first = True
+        # The re-zeroed carriage spheres leave ~3-4 cm of the frame's mesh uncovered: a 40 mm payload
+        # margin is the least that keeps the carried boxes out of the mesh (exact-mesh audit: column 3's
+        # pair recenter went from 12 frames at 0.3-8.4 mm to one 0.42 mm box-box tangency).
+        self.coverage_payload_links = (('arm_carriage', .04), ('left_link4', .01), ('right_link4', .01))
         self.side_precontact_cartesian_budget_s = .5
         self.side_precontact_refinement_s = .25
         self.direct_line_first = True
@@ -527,6 +531,40 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
                 details = dict(strategy='carriage_lift', updown_delta_m=delta)
                 break
         if retreat is None:
+            # The straight lines and the carriage lift all failed. Search small symmetric joint
+            # offsets for a posture whose tools have left both release poses: the boxes stay where
+            # they were let go, so tool displacement is separation.
+            start_tools = self.tool_matrices(start)
+            home_tools = self.tool_matrices(target)
+            boxed = self.checker(None, objects=released)
+            nudges = []
+            for joint in range(7):
+                for delta in (.08, -.08, .16, -.16):
+                    row = np.asarray(start, dtype=float).copy()
+                    row[LEFT[joint]] += delta
+                    row[RIGHT[joint]] += delta
+                    nudges.append((joint, delta, row))
+            if nudges:
+                rows = np.asarray([row for _, _, row in nudges], dtype=float)
+                valid = np.asarray(validity.mask(torch.as_tensor(rows, device='cuda', dtype=torch.float32)).cpu())
+                for ok, (joint, delta, row) in zip(valid, nudges):
+                    if not ok:
+                        continue
+                    moved = self.tool_matrices(row)
+                    separation = min(float(np.linalg.norm(moved[side][:3, 3]-start_tools[side][:3, 3]))
+                                     for side in ('left', 'right'))
+                    if separation < .06:
+                        continue
+                    clear = self.placement_validity(boxed, False, objects=released, exempt_points={
+                        side: [moved[side][:3, 3], home_tools[side][:3, 3]]
+                        for side in ('left', 'right')})
+                    if not bool(clear.mask(torch.as_tensor(row[None], device='cuda', dtype=torch.float32)).any()):
+                        continue
+                    retreat = row[None].copy()
+                    details = dict(strategy='joint_nudge', joint=joint+1, delta_rad=delta,
+                                   tool_separation_m=separation)
+                    break
+        if retreat is None:
             # Last resort: search in joint space from the placed pose with the released boxes in the
             # world (the checker decides whether the start contact is within its tolerance).
             boxed = self.checker(None, objects=released)
@@ -560,7 +598,34 @@ class DoorPlanner(DoorExtraction, FullCyclePlanner):
             boxed_validity = self.placement_validity(boxed, False, objects=released, exempt_points={
                 side: [tools[side][:3, 3], home[side][:3, 3]] for side in ('left', 'right')})
             details = dict(details, extended_steps=extended)
+        parent_joint_plan = super().joint_plan
+
+        def home_from(row):
+            row_tools, row_home = self.tool_matrices(row), self.tool_matrices(target)
+            clear = self.placement_validity(boxed, False, objects=released, exempt_points={
+                side: [row_tools[side][:3, 3], row_home[side][:3, 3]] for side in ('left', 'right')})
+            return parent_joint_plan(row, target, boxed, clear, seed, stop_at_first_valid, shortcut)
+
         path, stats = super().joint_plan(retreat[-1], target, boxed, boxed_validity, seed, stop_at_first_valid, shortcut)
+        if path is None and (stats or {}).get('start_nodes') == 1:
+            # The tree could not leave its start: the tools still sit against the released boxes
+            # (their margin, not a line-tracking failure). A one-joint carriage lift or lower moves
+            # them off the boxes without anything to track.
+            limits = validity.checker.kinematics.get_joint_limits().position
+            low, high = (float(values[0].item()) for values in limits)
+            for delta in (.04, .08, -.04, -.08):
+                row = np.asarray(retreat[-1], dtype=float).copy()
+                row[0] += delta
+                if not low+1e-5 <= row[0] <= high-1e-5:
+                    continue
+                if not bool(validity.mask(torch.as_tensor(row[None], device='cuda', dtype=torch.float32)).any()):
+                    continue
+                candidate_path, candidate_stats = home_from(row)
+                if candidate_path is not None:
+                    retreat = np.vstack([np.asarray(retreat), row[None]])
+                    details = dict(details, lifted_m=delta)
+                    path, stats = candidate_path, candidate_stats
+                    break
         stats = dict(stats, release_retreat=details, released_boxes=[item.object_id for item in released])
         if path is None:
             return None, stats
@@ -1609,10 +1674,19 @@ class DoorTask(_SequentialTask):
         if len(endpoints):endpoints=endpoints[validity.mask(self.tensor(endpoints)).cpu().numpy()]
         self.planner.active_side=side;path=stats=None;search_seed=self.request.seed+101+self.counter;self.counter+=1
         if len(endpoints):
-            path,stats=plan_cartesian_transport(self.planner,contact_q,endpoints,validity.checker,budget_s=2.,seed=search_seed,
-                options={'edge_resolution':.05,'batch':128,'connect_candidates':32,'shortcut':True,
-                         'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.25,'workspace_margin_m':.05},
-                validity=validity,active_indices=[0]+moving,row_mapper=mapper,derived_indices=support)
+            def transport(budget_s):
+                return plan_cartesian_transport(self.planner,contact_q,endpoints,validity.checker,budget_s=budget_s,seed=search_seed,
+                    options={'edge_resolution':.05,'batch':128,'connect_candidates':32,'shortcut':True,
+                             'monotonic_progress':True,'strict_budget':True,'budget_reserve_s':.25,'workspace_margin_m':.05},
+                    validity=validity,active_indices=[0]+moving,row_mapper=mapper,derived_indices=support)
+            path,stats=transport(.5)
+            if path is None:
+                first=(stats or {}).get('attempts') or [{}]
+                no_direct=all(entry.get('direct_lines_coarse_valid',0)==0 for entry in first)
+                # Every observed success of this search is a direct line (94 of 94); without one the
+                # 2 s tree has never found a path, so only rerun the full budget when a line existed.
+                if not no_direct:
+                    path,stats=transport(2.)
         details=dict(strategy='support_compensated_cartesian_rrt',search_seed=search_seed,
                      audit_active_indices=list(range(15)),endpoint_candidates=len(endpoints),stats=stats,success=path is not None)
         if path is not None:
