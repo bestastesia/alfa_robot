@@ -2871,3 +2871,7 @@
 - 整理中将generated独立source-contact审计原函数复制到versioned source，CPU测试改用新路径；旧no_dense mock适配共享FK evaluate_state与CPU tensor，生产规划不变。扩大检查305过15失败19跳过，15在原PR82源码同资产下逐项复现；另2旧文件缺alfa_motion_viser不能收集。
 - 原始5.2GB实验先完整tar.zst归档并zstd完整性/SHA/成员校验，后删除冗余旧二进制/重复源快照和275MB旧rolecache；最终44/必要历史fixture/当前Viser8295与活跃runtimecache保留。归档和清理收据随交付保存，Git明确ignore生成物。
 - 用户要求补录后提交推送，不开PR；沿用既有专用分支、本地base ee6dba3，远程交付motion-505-two-box-extraction，具体Git收据在子issue线程，不声称主干已合并。
+
+## 2026-11-26 Codex / MOTION-505远程交付确认
+- 完成阶段补录后实现提交eea760e7ab33bc7d4312250e1474150616f9d920已推fork/motion-505-two-box-extraction，远端ls-remote同SHA；未创建PR/未合主干。MOTION-505仍In Review、Parent419，提交/分支/证据已挂Resources，收口在原进度线程。
+- 提交后清理本轮/tmp隔离基线/临时检查文件，原始检查日志转存验收归档closeout_checks；保持8295验收页、最终44数组与当前runtimecache。收据delivery_receipt_20261126.json记录正式归属/提交及待用户验收边界。

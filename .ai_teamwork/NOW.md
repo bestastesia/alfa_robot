@@ -6,7 +6,7 @@
 - 当前交付入口：`research/curobo_v3/docs/MOTION505_TWO_BOX_REVIEW.md`与`docs/two_box_acceptance_20261125/`（44份原输入、逐例时间/owner/吸附、SHA、边界与失败根因）；原GPU44/相关CPU107证据原样保留。独立吸附审计脚本已从generated复制为版本化源码，函数AST相同；CPU mock适配现有共享FK接口，生产规划源码未在整理阶段再改。
 - 扩大检查：可收集CPU 305过/15失败/19跳过；15失败在隔离PR82源码+同资产下全部复现，无新增失败。另2个旧测试文件缺`alfa_motion_viser`不能收集；不宣称整仓测试全绿。完整报告随交付版本化。
 - 历史实验/失败/源快照完整归档至`/home/astesia/Sevenova/验收归档/motion505-two-box-20261126/two_box_layout-evidence.tar.zst`，SHA5259294b0a1d5bc14d67508485624a66a7a86414c9e18f6387b5e8e320fed7c2；已校验后清掉冗余历史二进制/重复源快照与旧role缓存，最终44实际数组、必要历史集成fixture及Viser8295保留。生成物/编译缓存明确忽略，不提交5GB实验目录。
-- Git：沿用基线PR82 ee6dba3和本地feature/pr82-two-box-extraction；计划远程fork/motion-505-two-box-extraction，本轮只推分支不开PR。提交和推送收据记录在505进度线程；下方历史“未commit/待scope”等仅对应其当时状态。
+- Git：基线PR82 ee6dba3，本地feature/pr82-two-box-extraction；实现提交eea760e7ab33bc7d4312250e1474150616f9d920已推fork/motion-505-two-box-extraction，远端SHA已核对。未开PR/未合主干，505保持In Review。Git/Linear收据见`docs/two_box_acceptance_20261125/delivery_receipt_20261126.json`；下方历史“未commit/待scope”等仅对应其当时状态。
 
 ## 2026-11-25 最终当前结果
 
