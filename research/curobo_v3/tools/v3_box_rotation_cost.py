@@ -20,9 +20,9 @@ def rotation_vector(quaternion):
 
 
 class BoxRotationCost:
-    def __init__(self,checker,joint_names,start,goal,top):
+    def __init__(self,checker,joint_names,start,goal,top,attachments=None):
         self.checker=checker;self.joint_names=joint_names
-        self.attachments={side:torch.tensor(np.roll(Rotation.from_matrix(grasp_transform(side,top)[:3,:3]).as_quat(),1),device='cuda',dtype=torch.float32) for side in ['left','right']}
+        self.attachments={side:torch.tensor(np.roll(Rotation.from_matrix((attachments[side] if attachments is not None else grasp_transform(side,top))[:3,:3]).as_quat(),1),device='cuda',dtype=torch.float32) for side in ['left','right']}
         initial=self.orientations(start[None]);final=self.orientations(goal[None])
         self.initial={side:initial[side].clone() for side in initial}
         self.axes={};self.angles={}

@@ -26,21 +26,27 @@ def test_lm_checks_candidates_but_never_interpolated_edges(monkeypatch):
     engine.solver = SimpleNamespace(joint_names=lm.ACTIVE_JOINTS,
         solve_single=Mock(return_value=SimpleNamespace(js_solution=SimpleNamespace(position=rows), success=torch.tensor([[True, False]]))))
     validity = Mock()
-    validity.mask.side_effect = [torch.tensor([True]), torch.tensor([True, True])]
-    checker = SimpleNamespace(guidance_payload=True, kinematics=SimpleNamespace(get_joint_limits=lambda: SimpleNamespace(position=(-torch.ones(15), torch.ones(15)))))
+    validity.mask.return_value = torch.tensor([True])
+    validity.evaluate_state.return_value = (torch.tensor([True, True]),)
+    checker = SimpleNamespace(guidance_payload=True, setup_batch_tensors=Mock(),
+        kinematics=SimpleNamespace(get_joint_limits=lambda: SimpleNamespace(position=(-torch.ones(15), torch.ones(15))),
+            compute_kinematics=Mock(return_value=SimpleNamespace())))
     monkeypatch.setattr(lm, 'GpuValidity', lambda *args, **kwargs: validity)
     monkeypatch.setattr(lm, 'base_world_audit', lambda checker: dict(valid=True))
     monkeypatch.setattr(lm, 'clock', time.perf_counter)
-    monkeypatch.setattr(lm, 'box_poses', lambda *args: {})
+    monkeypatch.setattr(lm, 'box_poses', lambda *args, **kwargs: {})
     monkeypatch.setattr(lm, 'reference_errors', lambda *args: (np.zeros(2), np.zeros(2)))
     dense = Mock(side_effect=AssertionError('interpolated edge must not be evaluated'))
     monkeypatch.setattr(lm, 'dense_segment', dense)
-    tensor = torch.tensor
+    tensor, as_tensor = torch.tensor, torch.as_tensor
     monkeypatch.setattr(torch, 'tensor', lambda *args, **kwargs: tensor(*args, **dict(kwargs, device='cpu')))
+    monkeypatch.setattr(torch, 'as_tensor', lambda *args, **kwargs: as_tensor(*args, **dict(kwargs, device='cpu')))
     result = engine.plan(dict(start=np.zeros(15), checker=checker, attachments={'left':np.eye(4)}, starts={'left':np.eye(4)}, ends={'left':np.eye(4)}))
     assert result['success'] and len(result['frames']) == 2
     assert result['intermediate_edge_checks'] is False
-    assert validity.mask.call_count == 2
+    assert validity.mask.call_count == 1
+    assert validity.evaluate_state.call_count == 1
+    assert checker.kinematics.compute_kinematics.call_count == 1
     dense.assert_not_called()
 
 

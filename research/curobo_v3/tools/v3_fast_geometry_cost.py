@@ -33,9 +33,16 @@ class ProjectCostManager(RobotCostManager):
 
 class GeometricCostManager(ProjectCostManager):
     geometry_scale = 100.
+    payload_layer = None
 
     def compute_costs(self, state, cost_collection=None, goal=None, **kwargs):
         result = super().compute_costs(state, cost_collection, goal, **kwargs)
+        if not hasattr(self, '_full_payload_layer'):
+            self._full_payload_layer = self.payload_layer
+        if self._full_payload_layer is not None:
+            reference = result.values[0]
+            extra = 10000000. * self._full_payload_layer.cost(state)
+            result.add(extra.unsqueeze(-1).expand_as(reference)/reference.shape[-1], 'full_payload_geometry')
         values = state.joint_state.position
         if not hasattr(self, '_geometry_weights_tensor'):
             self._geometry_weights_tensor = torch.as_tensor(WEIGHTS, device=values.device, dtype=values.dtype)

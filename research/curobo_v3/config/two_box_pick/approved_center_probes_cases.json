@@ -1,0 +1,338 @@
+[
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      0.45,
+      0.7999900000000001
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      0.7999900000000001
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      0.45,
+      0.8
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      0.8
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      0.45,
+      0.201
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      -0.45,
+      0.201
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      0.45,
+      1.84
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.84
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      0.45,
+      0.7999900000000001
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      -0.45,
+      0.7999900000000001
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      0.45,
+      0.8
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      -0.45,
+      0.8
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.0,
+      0.45,
+      0.292
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.0,
+      -0.45,
+      0.292
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      0.45,
+      1.84
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.84
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      0.9956619529559377,
+      0.3889638593697179,
+      1.1700384458387014
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.070285864719004,
+      -0.39699858286203954,
+      1.0687256960183142
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.4447500974811243,
+      0.6444514681000095,
+      0.840985722462414
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.4170514350270014,
+      -0.22154252483245102,
+      0.8143476806603411
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.4459187940274991,
+      0.27917432769516587,
+      1.4207320545407434
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.3511888023302538,
+      -0.24360568791635023,
+      0.5333545524654152
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.2154176584612293,
+      0.2920404739747434,
+      0.6086983883553474
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.3103669375863192,
+      -0.4004143051703424,
+      1.8716541497992765
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      0.9956619529559377,
+      0.3889638593697179,
+      1.2091358569209134
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.070285864719004,
+      -0.39699858286203954,
+      1.1132495110049732
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.4447500974811243,
+      0.6444514681000095,
+      0.8977074995406484
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.4170514350270014,
+      -0.22154252483245102,
+      0.8724962157162028
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.4459187940274991,
+      0.27917432769516587,
+      1.446402085757219
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.3511888023302538,
+      -0.24360568791635023,
+      0.6065533374716819
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.2154176584612293,
+      0.2920404739747434,
+      0.677861688331606
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.3103669375863192,
+      -0.4004143051703424,
+      1.8731723795628232
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "precontact_margin_m": 0.005
+  }
+]

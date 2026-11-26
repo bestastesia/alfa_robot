@@ -1,0 +1,8 @@
+{
+  "frame_id": "world",
+  "front_distance_m": 0.66,
+  "boxes": [
+    {"side": "left", "size": "40x40x30", "center_m": [1.168052051, 0.85, 1.4], "side_min_height_m": 0.79},
+    {"side": "right", "size": "46.5x25.5x58.2", "center_m": [1.168052051, 0.85, 0.8], "side_min_height_m": 0.79}
+  ]
+}

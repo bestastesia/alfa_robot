@@ -1,0 +1,27 @@
+[
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.02
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.0,
+      0.45,
+      0.491
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "carry_offset_m": [
+      0.05,
+      0.0325,
+      0.0
+    ]
+  }
+]

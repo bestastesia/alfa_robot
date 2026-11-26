@@ -1,0 +1,110 @@
+{
+  "frame_id": "world",
+  "objects": [
+    {
+      "object_id": "ground",
+      "dimensions_m": [
+        4.2,
+        2.6,
+        0.1
+      ],
+      "pose": {
+        "position": [
+          -0.29194694893264783,
+          0.0,
+          -0.05
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "object_id": "left_wall",
+      "dimensions_m": [
+        4.0,
+        0.1,
+        2.4
+      ],
+      "pose": {
+        "position": [
+          -0.29194694893264783,
+          -1.25,
+          1.2
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "object_id": "right_wall",
+      "dimensions_m": [
+        4.0,
+        0.1,
+        2.4
+      ],
+      "pose": {
+        "position": [
+          -0.29194694893264783,
+          1.25,
+          1.2
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "object_id": "front_wall",
+      "dimensions_m": [
+        0.1,
+        2.6,
+        2.4
+      ],
+      "pose": {
+        "position": [
+          1.7580530510673522,
+          0.0,
+          1.2
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "object_id": "ceiling",
+      "dimensions_m": [
+        4.2,
+        2.6,
+        0.1
+      ],
+      "pose": {
+        "position": [
+          -0.29194694893264783,
+          0.0,
+          2.45
+        ],
+        "quaternion_wxyz": [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    }
+  ]
+}

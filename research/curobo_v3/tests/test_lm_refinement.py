@@ -58,9 +58,12 @@ def test_world_placement_goal_uses_navigation_pose():
     np.testing.assert_allclose((base @ local)[:3, 3], [1., 3., 1.], atol=1e-8)
 
 
-def test_reference_contract_rejects_zero_invalid_and_copies_input():
-    with pytest.raises(ValueError, match='nonzero'):
-        CartesianReference(np.eye(4), np.eye(4), np.eye(4))
+def test_reference_contract_allows_fixed_pose_but_rejects_unsupported_stationary_rotation():
+    held = CartesianReference(np.eye(4), np.eye(4), np.eye(4))
+    assert not held.start.flags.writeable
+    rotated = np.eye(4);rotated[:3,:3] = Rotation.from_euler('z', 10, degrees=True).as_matrix()
+    with pytest.raises(ValueError, match='fixed orientation'):
+        CartesianReference(np.eye(4), rotated, np.eye(4))
     for value in (np.full((4, 4), np.nan), np.zeros((3, 3)), np.diag([2., 1., 1., 1.])):
         with pytest.raises(ValueError):CartesianReference(value, identity_reference().end, np.eye(4))
     reference = identity_reference()
@@ -96,3 +99,48 @@ def test_stage_setup_uses_correct_payload(monkeypatch, phase, expected_payload):
     _, columns, validity, _ = module.stage_setup(planner, source, phase)
     assert calls == [expected_payload]
     assert len(columns) == 15 and validity.checker is checker
+
+
+def test_layout_extraction_reference_uses_box_center_but_legacy_tcp_is_unchanged(monkeypatch):
+    import v3_lm_refinement as module
+    starts, attachments, poses = {}, {}, {}
+    for index, side in enumerate(('left', 'right')):
+        tool = np.eye(4)
+        tool[:3, :3] = Rotation.from_euler('xyz', [.1, .2, .3]).as_matrix()
+        tool[:3, 3] = [1., index, .8]
+        attachment = np.eye(4)
+        attachment[:3, :3] = Rotation.from_euler('y', np.pi/2).as_matrix()
+        attachment[:3, 3] = [0., 0., .2+index*.05]
+        starts[side], attachments[side] = tool, attachment
+        poses[side+'_tool0'] = SimpleNamespace(position=torch.tensor(tool[:3, 3]),
+            quaternion=torch.tensor(np.roll(Rotation.from_matrix(tool[:3, :3]).as_quat(), 1)))
+    tensor = torch.tensor
+    monkeypatch.setattr(module, 'torch', SimpleNamespace(no_grad=torch.no_grad, float32=torch.float32,
+        tensor=lambda values, device, dtype: tensor(values, dtype=dtype)))
+    checker = SimpleNamespace(guidance_payload=True, task_tool_to_box=attachments,
+        kinematics=SimpleNamespace(compute_kinematics=lambda state:SimpleNamespace(
+            tool_poses=SimpleNamespace(to_dict=lambda:poses))))
+    source = dict(task={'left':0, 'right':1}, visual_tool_to_box=attachments,
+        selected_lm_review=dict(lm_detail=dict(translation_local={s:[-.3, 0., 0.] for s in attachments})))
+    legacy = module.phase_references(None, source, 'extract', np.zeros((2, 15)), checker)
+    source['extraction_reference_frame'] = 'box_center'
+    layout = module.phase_references(None, source, 'extract', np.zeros((2, 15)), checker)
+    for side in attachments:
+        np.testing.assert_allclose(legacy[side].start, starts[side], atol=1e-12)
+        np.testing.assert_array_equal(legacy[side].attachment, np.eye(4))
+        np.testing.assert_allclose(layout[side].start, starts[side]@attachments[side], atol=1e-12)
+        np.testing.assert_array_equal(layout[side].attachment, attachments[side])
+        np.testing.assert_allclose(layout[side].end[:3, 3]-layout[side].start[:3, 3], [-.3, 0., 0.], atol=1e-12)
+
+
+def test_held_reference_has_finite_xyz_and_orientation_residuals_and_gradients():
+    point = torch.tensor([[0., 0., 0.], [.001, -.002, .003]], requires_grad=True)
+    quaternion = torch.tensor([[1., 0., 0., 0.], [1., 0., 0., 0.]], requires_grad=True)
+    reference = tuple(torch.tensor(value, dtype=torch.float32) for value in (
+        [0., 0., 0.], [0., 0., 0.], [0., 0., 0.], [1., 0., 0., 0.], [1., 0., 0., 0.], [1., 0., 0., 0.]))
+    fraction, error, orientation, actual, desired = reference_residuals(point, quaternion, reference)
+    torch.testing.assert_close(fraction, torch.zeros(2))
+    torch.testing.assert_close(error, point)
+    torch.testing.assert_close(actual, desired)
+    (error.square().sum()+orientation.sum()).backward()
+    assert torch.isfinite(point.grad).all() and torch.isfinite(quaternion.grad).all()

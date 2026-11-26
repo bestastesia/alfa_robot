@@ -2237,3 +2237,637 @@
 - 验证：L4/R1、L4/R2顶吸及L18/R11侧吸都返回完整时序候选，18段TimeOpt成功且4001点动力学采样通过；各任务仍有TrajOpt失败阶段，整体success=false，候选运动16.036/15.069/14.521s。初始资源2.094s另列，计算墙钟54.730/5.953/14.454s，不能称全部稳态或3秒。紧凑证据generated/fast_release_20261109/validation.json。
 - 新增/迁入针对性回归26通过1跳过；扩展模型/历史回放检查合计32通过1跳过4失败，未修改历史记录/断言掩盖失败。按用户明确要求保留原软间隙代价兼作约束、迭代质量、冷启动、旧J6/Home/回放一致性等问题，未强制修复；列表及命令见FAST_PIPELINE.md。
 - 8290为本PR检出的点击实时计算页面，旧服务保持。此交付供用户审核，不自动合并；不含硬件发送或MuJoCo联调。
+
+## 2026-11-19 Codex / PR82 两尺寸任意位置抽离专项（未完成）
+- 独立工作树 `/home/astesia/Sevenova/.pr82-two-box-extraction`，`feature/pr82-two-box-extraction` 从 PR82 合并点 ee6dba3 起，不改 `.agv-palletizing-pr82` 及其 dirty 实验/服务。新入口 `tools/v3_two_box_pick.py`，纯几何 `curobo_core/box_pick.py`，复用原解析 IK、15 轴 LM、RRT、四盒/40 球。XYZ 两尺寸(.3,.4,.4)/(.255,.465,.582)，抽离.3/.255；中心直接输入，无旧箱编号绑定/隐藏底盘前移；侧吸高度阈值.8为待标定值，过高顶吸拒绝继续暂挂。
+- 默认45°实际是箱体 Ry=-45°，新增测试直接对照 PR82；不能用+45°通过冒充默认位。CPU 28 项通过；GPU预检ready/Home/fixed-body均通过，Torch2.9.1与冻结2.8.0差异保留，前端未安装/显式跳过。没有实机或TimeOpt新尺寸认证。
+- R1八例4/8、439.242s：40箱左右侧/顶吸4/4完成；高箱四例均能完成.255抽离，但原持箱目标无合法候选。独立诊断两种原位解释、左右各256空载候选，携箱均0；完整OBB证明高箱与base_box_004立柱重叠约7.5mm，CPU保存严格内部交点证据，不把失败点改叫非法。`carry_offset_m`只作显式实验，默认0，未擅自改变要求。
+- R2候选补偿（前.05m、按臂外.0325m、仍-45°）1/4、60.556s，未作为原默认位验收；其余被真实箱体/机器人5–11mm重叠等拒绝。R3已把完整箱体检查加到携箱目标过滤和single_validity搜索节点/边，末尾仍独立审计，不关闭旧约束。当前R3未得GPU结果，不能称已验证。
+- 继续先看 `research/curobo_v3/docs/TWO_BOX_PICK_20261119.md`。工具session73367、队列gpuq-efc637c2136b4316、包装PID2382240，已确认queued/live，后面有现存GPU任务等待，不重启/不绕过锁；stdout `/tmp/pr82-two-box-offset-r3.log`，结果 `generated/two_box_pick/tall_offset_probe_r3`。R2/R3源码快照留source_r2/source_r3。下一步确认高箱默认45°是否允许位置补偿，再做合法域/切换边界/随机位置、Fast/TimeOpt/可视验收；任意合法位置要求尚未完成，目标保持active；未commit/push、未改Linear。
+
+## 2026-11-19 Codex / 两尺寸抽离R3→R5：完整箱体搜索、边界反例修复与独立FK
+- 上条等待已接回，不重复启动：session73367的R3显式补偿四例4/4、60.542s、接缝0，先前端帽/完整箱体搜索修改有真实GPU证据。高箱补偿仍是实验，默认offset=0未改，不能称完成回原位要求。
+- 40箱16个边界任务（保留全部失败）R3=13/16/152.987s；三个失败均Home粗路径加密后碰撞。新子类仅置原有dense_path_rechecks=True，RRT拒绝后继续，R4=15/16/157.025s；旧切换边界失败实际拒绝16候选后成功。
+- 最后一例为高位左臂：冻结模型端帽前伸左32.838mm/右30.710mm，原3cm预接触已进入代理端帽包络，造成极窄对齐通道。纯几何BoxPick新增precontact_margin_m（默认5mm、最小1mm）和precontact_distance=max(.03,capreach+margin)，共享规划取真实端帽参数；不改1mm碰撞口径、不放宽端帽条件。当前R5 16/16、120.575s，旧高位失败首候选即过，接近段无fine rejection。
+- 同R5执行固定seed16个非网格中心（仅现有两尺寸）：16/16，其中40箱8例回原45位、高箱8例回显式补偿45位。高箱补偿指箱心(.55,±.425,1.20)→(.60,±.4575,1.20)，Ry=-45不变；不是TCP位移，也未获采用许可。R3旧4例不混作R5当前源码成绩。
+- 新verify_cases.py独立CPU yourdfpy URDF FK、输入/源码SHA、阶段接缝检查：cube_boundary_r5和continuous_centers_r5各16/16（共32任务，40箱24/高箱实验8），末态/抽离误差在原2mm/1°内，接缝0。它检查保存的碰撞门记录但不独立重做全路径碰撞，不能宣称CCD或连续位置域认证。CPU新增8+原Scene16+TaskScene3+ResearchContract3=30通过；编译/后续GPU命令显式MAKEFLAGS=-j8 -l12/CMAKE_BUILD_PARALLEL_LEVEL=8/MAX_JOBS=8。
+- 当前无本任务live/queued进程，session3529/25504/58077/56661均已终态，不重启旧排队条目。主说明TWO_BOX_PICK_20261119.md、源码快照source_r4/source_r5、各批summary/independent_fk_verification.json为入口。原默认高箱目标碰立柱7.5mm仍真实，待用户确认位置补偿；尚未全合法域/TimeOpt/可视验收，目标保持active，未提交/推送/改Linear。
+- 后续依托证据继续：不能把32有限任务倒定义为合法域。原TorqueModel已支持payload_dimensions，接TimeOpt时传真实尺寸并按尺寸分资源，别另写惯量合成。当前实验运输single_path尚未启用原单臂rotation=True软代价（碰撞检查仍完整），正式回接PR82优化链时应一并恢复/量测，不冒称已保留完整原运动质量与动力学链。
+
+## 2026-11-19 Codex / 两尺寸R6–R8：原生优化/定时、真实尺寸10kg与失败诊断（未完成）
+- 在独立worktree继续，未动其他分支/服务。恢复单臂运输rotation=True。FastThreeLayerPlanner新增可选planner注入（原无参兼容），TorqueModel传当前真实payload_dimensions；按两尺寸分资源复用，不再额外构造规划器。新v3_two_box_timing.py复用原TrajOpt/TimeOpt，--timeopt显式启用，不改默认高箱持箱位置。完整四阶段TimeOpt实际4001点验碰/真实箱体/笛卡尔线/限值/接缝，并用同cuRobo后端另模型RNEA复算；不称独立物理引擎认证。
+- R6首两例完整链1/2、104.548s；原生八例严格4/8、223.236s，28/32原生阶段通过，31/32 TimeOpt有输出且其31段采样/实际碰撞/动力学检查均过，接缝0。三项TrajOpt原生标志失败（case0接近/case1运输/case5运输）不覆盖为绿；case6高箱左顶运输TimeOpt status1没有轨迹，不回读旧数据冒充。高箱四例仍是箱心(.05,±.0325,0)实验补偿，未采用为默认，不能记“回原位”通过。
+- R7定位：cube左侧接近原生mask path/collision=true、limits_and_dynamics=false，未认定具体哪项；不能直接说纯软代价。高箱左顶优化曲线J6采样静态56.50Nm/额定52Nm=1.08654，缩放后1.09200；TimeOpt未找到初始化可行种子。它证明当前路径的静态余量不足，不证明箱位非法/所有路径不可能。下一步应改路径/IK分支与原生约束诊断，而非降10kg、放宽扭矩或重复请求同一条曲线。
+- 控制点已在R7保存，墙钟区分geometry/native initialization/total；R6逐例wall_seconds是几何耗时，整批pipeline以summary为准。新verify_native.py纯CPU核对实际NPZ/源码/输入/端点与URDF FK，保留原生失败；R6/R7按各自source_r6/source_r7验证，不混版本。额外R8保护非法输入不进RNEA，GPU NaN负控status3/PASS，snapshot source_r8、native_invalid_r8留证。
+- 当前CPU36项（新增10+Scene16+TaskScene3+ResearchContract3+冻结发布4）通过，GPU负控另列。与本机已验证76c2f4b源码快照重新对照460源文件0差异，runtime_verify_r6；未改共享cuRobo、冻结模型或降低约束。主说明TWO_BOX_PICK_20261119.md已更新完整命令与限制。所有本任务GPU会话27665/67693/9671/40568均已终态，无待接回任务；未commit/push/Linear。
+- 目标保持active：高箱原默认目标7.5mm立柱冲突和补偿许可仍未解决；任意合法域与最终可视验收仍缺失。已有32有限几何样例/R6原生4/8不能代替完整目标，也不能把R5成绩当R8当前源码全量回归。
+
+## 2026-11-19 Codex / R9–R24根因修复与包络漏门纠正（未完成）
+- 当前工作树仍feature/pr82-two-box-extraction，未提交/推送/改Linear或其他分支。原生拒绝回馈到共享plan_pick候选循环，逐候选保存并继续，部分阶段前缀不算完整；运行中success=false且清旧timing。GPU回归覆盖拒绝后续选/接缝/原生净空及目标合同冲突。R14当时局部门禁从4/8到6/8、282.233s，但见下方纠正，不能作完整PR82成绩。
+- 候选池64全负肘、256中53个可用正肘，当前保留256池双肘交错，不丢重排池候选。R10软旋转权重0/10/100同输入三档均未解，R11负肘直接位姿LM到84.25%停，未采用的生产代码已删，源码证据留source_r10/source_r11。R9诊断曾错reshape完整17列为15列，现按joint_names选活动列。
+- R12具体原生失败是project_base_and_ground，最大.117984，cspace/self/scene为0。R18净空负控用错“无违规末态”，测试正确失败且后续场景未运行；R19真实曲线235点违规，内部样本802成为固定负控，球序映射相同。现在native自由RRT和实际输出对齐原有底盘5mm/地面2mm零集合，接触/LM不扩大，两个净空回归通过。
+- 共享CachedMeshQuery.backward的链式法则真bug已修：原软模式忽略grad_output，实际查询乘7，旧自动梯度-.6000对有限差分-4.2007；解析与真实GPU测试修前均失败、修后均过。不改前向碰撞值/权重/门槛，修复ProjectCost、细化和空闲臂调用的真实加权梯度。证据gradient_regression_r21；R21旧目标两反例仍1/2，不冒称全解。
+- **严重补漏纠正**：新接口曾漏PR82原transport_candidates的1.05m全机持箱球包络。旧高箱“前.05/外.0325”目标仅载荷球就1.1153m，不能采用。此前4/8、6/8及高箱实验成功只覆盖局部门禁，不是完整基线/验收。原记录不改，historical_envelope_audit_r22另列审计；主文档已置顶纠正，旧文档归档doc_before_r23.md。
+- 当前已恢复目标IK全机包络筛选（筛后再取64）及实际TimeOpt持箱末态包络；请求目标计入2mm/1°容差的载荷下界仍必超限时提前报carry_target_contract_conflict，不称输入箱位非法。新增CPU包络回归、GPU目标拒绝负控通过。默认carry_offset仍0，未擅自改目标或1.05m定义；真实箱角半径另外诊断，不偷换球协议。
+- R22合规静态顶吸候选(.51,±.4385,1.2)，Ry=-45，球1.03322m、箱角1.04869m，左右91/129个有效状态；不是已采用默认。R23按它测原生八例6/8、212.093s：四个40箱及两个高箱顶吸通过，高箱侧吸两例无合规持箱IK，不能把不同模式/版本拼8/8。native_array_verification独立CPU URDF末态/全机器人球包络/源与输入/数组检查；不独立重做碰撞或RNEA。
+- R24仅静态侧吸未采用候选：(.38,±.56,1.2)，Ry=-45，球1.02688m、箱角1.04160m，左右6/16个通过真实碰撞/原生净空/全机包络/10kg静态约束。完整运输未测；相对旧默认位后移17cm、外移13.5cm，不能当作默认不变。其他候选数据side_carry_targets_r24.json。
+- 当前CPU38项通过（新增12+Scene16+TaskScene3+ResearchContract3+发布4），GPU候选/净空/目标拒绝3及缓存梯度2回归另列。所有本任务GPU会话均终态，无需重启旧作业；日志/tmp/pr82-two-box-*.log，原始数据及source_rXX在generated/two_box_pick。
+- 原默认名义位与新箱尺寸不兼容、默认位是否允许随尺寸/吸附方式适配尚待用户定义；还需实际障碍和合法中心域合同，不能拿容器边界内单箱有限测试当任意合法位置保证。未进入最终可视验收、未泛化第三尺寸。
+
+## 2026-11-19 Codex / 默认持箱位合同阻塞审计
+- 不是因难、慢、token或GPU排队停止：全部任务已终态，当前CPU38项通过，GPU拒绝续选/净空/错误目标和真实梯度回归已过。R23的新合规顶吸候选八例6/8，经独立CPU全机球包络与URDF/数组核对；四Cube和两TallTop通过，两TallSide无合规持箱IK。R24仅静态找到TallSide箱心(.38,±.56,1.2)、Ry=-45，左右6/16可用状态，未验运输、未采用。
+- 阻塞条件已在原始goal turn及后续至少三轮持续：用户要求回默认45°持箱位，但新高箱按原固定名义位置存在静态碰柱/包络合同冲突。此前+.05/±.0325候选又漏1.05门，已置顶纠正，不能把历史局部门禁6/8当完整成绩。现在已恢复所有包络检查，默认offset仍0。
+- 未收到用户许可就继续在其他XYZ求通过，是不同终点，不是完成原目标；因此停止替代目标调参并请求目标定义。唯一关键问题：默认45是否允许随箱型/吸附方式调整XYZ，同时保持45方向、1.05包络及其他原门禁？如果不允许，不能靠规划器或放宽阈值完成固定名义高箱目标。
+- 当前代码/说明完整快照source_current_blocked，主文档明确阻塞。未commit/push/合并或改Linear，未发送实机。用户明确目标后才恢复本目标；不要把之前静态候选或实验配置擅自升为默认/验收。
+
+## 2026-11-19 Codex / 用户许可后恢复两尺寸验证
+- 用户明确回复“允许”：默认45°持箱位可随箱型及侧吸/顶吸调整XYZ，45°方向/1.05m包络和其他门禁保持。旧合同阻塞解除，不再重复询问。
+- profile 2026-11-19-v1：40箱仍(.55,±.425,1.2)，高箱顶吸(.51,±.4385,1.2)，高箱侧吸(.38,±.56,1.2)。None选择profile，构造即解析成旧anchor显式offset；历史显式offset不叠加新默认。记录实际目标矩阵。
+- 正继续先跑高箱侧吸左右完整原生流程，再以同一版本复跑八例；静态IK不算运输通过，有限样例不算任意合法位置。尚未实机发送、提交或扩展第三尺寸。
+
+## 2026-11-19 Codex / 获准适配后的完整八例与中心扩测
+- 最小接入size/mode/arm持箱profile-v2：Cube不变，高箱Top(.51,±.4385,1.2)，Side左(.34,.56,1.2)/右(.38,-.56,1.2)。v1左(.38,.56,1.2)R25运输失败，内收备选R26完整通过后才采用。显式offset仍相对原anchor，None在构造时解析入记录，旧文件不改。
+- R27同规划版本八例8/8、263.458s；32原生段各4001点，CPU独立FK/数组/全机球包络复核通过，最大1.03321781m。source_r27与approved_defaults_r27留证。不是跨版本拼成功。
+- R28扩测32中心26/32、989.693s；失败4/5(Cube底面1mm)、7(Cube右高位)、14(Tall左高位)、23(Cube右非网格高位)、24(Tall左非网格)保留，未称任意合法位置达成。两个底面1mm的RRT start_nodes始终1；40球最低点-.200000003m与原生2mm地面净空冲突，R29正负对照排队核实。
+- R30新增原生运输起点净空预检查（仍续选接触，不判箱位非法），没有放宽原门禁。正在以16接触候选跑同批八例+四反例+两个3mm近地面点；source_r30。旧1mm负例不删除/替换报通过。
+- 新增CPU只读replay_native.py，直接加载实际TimeOpt NPZ/URDF/真实尺寸箱，按原生时钟播放；viser已安装，无需冻结前端包。CPU服务启动/数组/接缝测试过，未声称浏览器验收。CPU41测试通过；新GPU预检回归待跑。
+
+## 2026-11-19 Codex / R29确认近地面失败根因
+- transport_start_ground_r29.json：Cube底面1mm（z=.201）左右各4个真实抽离末态全部不满足原生地面2mm零集合，base项均0；球最低实际净空约.001，ground项约1.4e-5。改为独立正控底面3mm（z=.203）时左右各4个末态全部base/ground项为0。
+- R28这些运输RRT start_nodes始终1，根节点不合规意味着任何带起点的边都被拒绝；不能用加预算掩盖/误报算法无解。R30已提前拒绝该接触末态并留明确原因，不放宽原生净空，不称输入箱位全局非法，也不把3mm正控改写为原1mm通过。
+
+## 2026-11-19 Codex / R30复测完成与待用户明确的场景合同
+- R30同版本八个代表例+R28四个非地面反例+两个Cube底面3mm正控共14/14完整通过，529.970s；独立CPU复核56段实际时间化数组/FK/全机球包络全过，无原生失败升级。不是把3mm点当作原1mm点通过；R28原32例26/32及失败仍保留。
+- 高位Cube右第13个接触候选才通过，另一个右非网格高位需第5个。因此当前plan_pick与两个CLI默认预算统一为16（与R30显式运行参数一致）；没有新加策略/放宽约束。R30源快照保留原默认值8与实际显式参数16，当前默认调整单独留source_current_approved，不伪装原源码。
+- CPU41项通过；GPU候选续选/原生净空/不合规目标/运输根节点预检4项与真实梯度2项共6项通过。只读CPU回放8294已启动，HTTP200，session49031，日志/tmp/pr82-two-box-native-replay.log；读approved_defaults_r27实际NPZ，未浏览器人工验收，其他端口不动。
+- 本任务GPU作业均已终态。未commit/push/实机发送。位置适配许可已解除旧阻塞，不需重复询问；仍缺“合法中心位置”所对应的实际周围堆箱/障碍布局合同。当前只有容器边界内单目标箱，不可外推完整25箱墙/任意障碍/连续全域；请先明确场景后再按它继续验收，不扩第三尺寸。
+
+## 2026-11-19 Codex / 双箱Viser布局器已搭建（8295）
+- 新入口research/curobo_v3/tools/v3_box_layout.py，CPU服务8295，当前PID3832742/session86390；旧8294只读回放与其他服务未动。操作/完整启动命令见docs/BOX_LAYOUT_VISER_20261119.md，日志/tmp/pr82-box-layout-viser.log。
+- 两箱各自选择两尺寸、长高交换（仅Y/Z，X宽度/抽离长度不变）、世界XYZ数值或平移手柄；世界/root/base_footprint原点固定，没暗移底盘。支持实时布局预览、点击新算、进度/分阶段墙钟与实际运动时长、逐候选拒绝、取消、全流程/分段原生回放。改布局立即回Home预览并禁用旧轨迹；按钮采用Viser async回调冻结提交快照，修复了快速编辑覆盖按钮时输入的竞态。
+- GPU每次由CPU界面启动独立前台gpuq worker，CUDA初始化→联合规划→原生优化→审计全程同一共享锁，不给界面本身套队列。默认估时6m基于双箱约75–255s，增大候选预算按N/16保守放大，均暂估非超时；MAKEFLAGS/CMAKE/MAX_JOBS固定8，无嵌套/改锁/实机连接。
+- 新v3_box_layout_planner.py是真正15轴/共同升降的双臂联合规划（不是单臂结果拼接）；实际每臂尺寸、侧/顶吸附着、X抽离距离、完整箱间/箱机器人/箱环境碰撞一起核对。最小扩展loaded_robot/payload_safety/TorqueModel为每臂尺寸映射，旧同尺寸接口保持；旋转软代价接真实各臂附着。
+- time_pick复用Fast TrajOpt/TimeOpt，双臂抽离补接原PR82 64控制点32轮LM后处理；单臂仍保留原128适配跳过口径。每段4001点/接缝/直线/速度/jerk/10kg每箱力矩/RNEA/实际全机1.05m球末态门禁保留；独立CPU数组/URDF两臂抽离/持箱及球包络核验，完整箱角径另诊断。
+- 单臂原持箱目标不能直接拼为双臂共同升降目标。paired_carry_candidates在已获XYZ适配许可下保留45°和所有门禁，有限候选适配持箱XYZ；侧吸高箱优先Z=2.0m，另一臂保持已验姿态；长高交换顶吸XY(.43,±.50)、侧吸XY(.34,±.56)，避免柱碰/完整箱角出圈。实际选中目标在线框和面板显示，输入箱心不改；显式offset关闭自动适配，仍相对原锚点。
+- 最新CPU49项通过；GPU候选/净空/目标/根节点4项与真实梯度2项共6项通过（r12日志）。r12双40箱77.900s、混合侧吸131.623s、长高交换顶吸+Cube侧吸77.358s完整原生与独立CPU通过。双高箱默认例255.357s仍拒绝（运输搜索/原生净空及完整载荷穿透），r13长高交换混合侧吸291.248s也保留拒绝；不拼成全过/任意合法位置。
+- 当前源码真实界面请求layout_n41vb0ml完整通过73.448s，源码指纹与现文件一致、独立核验真，64/32后处理真。editor_websocket_final.json覆盖真实WS尺寸/长高/XYZ预览、重叠拒绝、取消、按钮→gpuq→解算→子阶段播放及布局变更后旧轨迹失效；HTTP200。协议测试，不冒称浏览器截图/人工可视验收。
+- R1/R7/R9为前期诊断版本，r12/r13及source_rXX分别留证，不伪装同版本全域成绩。当前源码/配置/文档完整留source_current_final；后续改规划源码前先确认本任务GPU worker终态，避免后台加载旧代码而记录新文件指纹。当前本任务GPU均终态，仅8294/8295 CPU服务保留。
+- 工作树仍feature/pr82-two-box-extraction，基于ee6dba3；未commit/push/改Linear/改共享cuRobo，不扩第三尺寸。当前布局场景只有容器边界与两箱，不代表完整25箱墙、任意障碍或全合法域完备性。等待用户交互验收布局器，原全域规划目标未标完成。
+
+## 2026-11-20 Codex / 双箱布局慢解算定位与保守优化
+- 做了什么：确认8295每次点击冷GPU进程导致实例/图缓存丢失，旧默认73.448s中首次native approach34.072s（TimeOpt solve23.520s）、几何抽离11.114s；异构箱重试搜索另有显著开销。没有用热态/单箱/较少门禁数字冒充同工作量基线。
+- 改了哪里：`v3_payload_safety.py`复用一次FK完成完整箱体地面+碰撞审计、接受CUDA关节tensor并预计算固定障碍旋转/球索引；单/双箱包装层不再重复FK或D2H→H2D。SAT移到纯CPU `curobo_core/payload_geometry.py`，仍原15轴/归一化/退化阈值，仅换投影矩阵乘。`v3_box_layout.py`限制TorchInductor编译线程8（含旧CPU编辑器发起的新worker）。新增CPU回归、性能复跑工具与`docs/BOX_LAYOUT_PERFORMANCE_20261120.md`，原布局文档加入口。
+- 验证结果：CPU51通过；同全局gpuq前台锁内GPU6通过；两段4001帧+513扰动帧真实checker审计新旧/NumPy/CUDA拒绝mask一致（扰动417帧拒绝），审计中位数约.72→.58s。匹配完整冷进程单次A/B 77.11→75.92s，仅1.5%；planner67.986→66.759s，原生接近34.246→34.322s基本不变，不声称主瓶颈已解决。异构侧吸新版2候选91.423s planner通过，保留第一候选完整箱体碰撞拒绝；不能与旧4候选131.623s直接算改善率。最终`after_matched`全部运行指纹与当前文件一致，证据`generated/two_box_layout/performance_20261120/`。
+- 留给下个AI：主瓶颈仍是每次重建GPU资源；达到热态需改变生命周期，但常驻/交互会话必须在同一前台gpuq内持锁，等待用户也占卡，未擅自部署。未通过削门禁/4001样本/力矩等参数换速度，未迁入无法证明冷总时间更快的TimeOpt预分配。未停他人任务/绕锁/改共享cuRobo/提交或push；8295 CPU服务及8294旧回放不动，新请求读取优化worker。Torch2.9.1非发布2.8.0完整环境认证。初始探索A/B导入计时不匹配，完整总时间只用`*_matched_process.json`，已明确留档。
+
+## 2026-11-20 Codex / 用户开放GPU锁后的双箱暖会话
+- 做了什么：在原PATH gpuq共享锁内实现有界交互会话，不在锁外常驻CUDA；默认空闲120s、接收窗口600s、8请求，忙请求完成后退出，可手动结束。最多LRU保留2套完整拓扑planner，key为实际两箱尺寸+附着矩阵，不含XYZ；坐标修改仍重新规划，不复用结果。双臂LM/native engine跨请求复用，直接复用planner切换模型也检查native key。
+- 改了哪里：`v3_box_layout.py`的CPU进程控制器/原子请求协议/GPU会话worker/LRU/源码配置失效/独立CPU核验计时与UI；`v3_box_layout_planner.py`缓存LM/native；`curobo_core/box_pick.py::layout_model_key`；新增CPU会话测试及实际GPU驱动器，扩展WS测试warm/过期快照/手动释放。补busy→idle发布边界、取消优先和stopping闩锁，停止中的worker绝不接收下一请求。文档`BOX_LAYOUT_GPU_SESSION_20261120.md`及原布局/性能说明。
+- 验证结果：CPU55通过；gpuq前台GPU6项44.81s通过。同一GPU PID3752162、一次gpuq的6例：默认首次73.786s、相同布局10.087s、X+5mm12.354s、新高箱顶吸拓扑29.542s、同拓扑10.303s、切回默认8.058s；全部实际四阶段4001点/完整箱体碰撞/LM后处理/native/RNEA/CPU核验通过，最后真实空闲10s自动退出。首次/新拓扑冷成本没有隐藏，数据不是分位数或全域保证。
+- 界面与部署：8296真实WS验证取消、尺寸长高XYZ、重叠拒绝、74.257→9.886/7.850/8.107s重复解算、按钮后立即编辑使晚到结果不可播放、手动释放仍可回放，随后关闭8296。后补CPU stopping保护后，确认无活动任务、保存8295原默认尺寸/XYZ/.8阈值/16预算，重启本任务8295；最终真实按钮取消后再计算73.967s通过，全部源码指纹与当前一致，`deployment.json`。旧8294 PID3421938不动；当前8295 CPU PID3792772，当前获准暖会话GPU PID3793740在同一gpuq内idle，120s后自动释放。
+- 留给下个AI：证据`generated/two_box_layout/warm_session_20261120/`，最终源码`source_final/`/`source_manifest.json`。六例后台实验与8296闭环分别保留两次CPU边界保护前源码，不把旧字节误称最终；最终8295验收及CPU55覆盖最终版本。驱动器`check_warm_session.py`本身是CPU，内部自动gpuq，禁止外面再套队列。所有GPU/编译线程约束不变，没有改共享cuRobo或删门禁/4001采样；未commit/push或实机发送。模型资源热复用不是结果缓存，首次/新拓扑/淘汰后/会话过期仍可能冷。Torch2.9.1依然非完整发布冻结环境。WS不是浏览器WebGL人工验收。
+
+## 2026-11-20 Codex / 用户指定PR82后的基准核对与LM共享FK
+- 做了什么：用GitHub CLI读取用户给的PR82（web打开私有页无内容），核对merge ee6dba3280437ea33002ea87a5f8afb8725eadfb就是HEAD。正文CLI L24/R20几何13.779/整单53.574s通过，L18/R11几何3.345/整单5.772s但approach失败，真实页面首次初始化5.854另列/计算67.877s通过；不能把3.345几何时间当所有首单总耗时、也不拿失败例做成功基准。原PR是固定目录6阶段，布局器任意位置4阶段，不冒充同输入整单A/B。
+- 原因：PR82 placement_solver显式禁用LM插值边检查，dense_path_rechecks=False，Fast posthoc_checked_frames=0。新布局器直接构造LM默认检查边，另有最终4001点/完整箱体CPU SAT/直线硬门/RNEA/CPU核验，确实改变工作量；不是只有冷启动。旧热态8.058s中LM本体.467s，候选筛选1.098s、插值检查1.168s，几何运输1.850s。
+- 改了哪里：GpuValidity抽出同一批刚算FK的evaluate_state，默认evaluate仍原分块/碰撞/地面/稳定性计算；v3_lm_conveyor候选及边各一次FK同时用于pose+collision，不缓存可变FK缓冲，批量准备128个参考目标/附着逆矩阵/张量。点数/32种子32迭代/排序/拒绝/边检查不删。layout结果指纹补v3_lm_conveyor。新增CPU共享FK测试、GPU同输入LM A/B工具与docs/BOX_LAYOUT_PR82_COMPARISON_20261120.md。
+- 验证结果：CPU57通过；GPU6项38.98s通过。4次交替同checker/输入LM A/B，去首轮的3次中位数2.745→2.340s（约15%，不是整单提速率）；轨迹1e-7内相同、127步候选/拒绝/边报告完全相同；真实扰动CUDA数据的旧/新/共享FK validity mask和stability在scene0/1mm、base0/2mm均完全一致。首轮共享进程编译缓存不公平，未用11.280→3.079s宣传冷启动速度。
+- 测试合同：v3_lm_conveyor不再字节等同PR80，保留其他7项原文件字节检查，新增与PR82的LM构造/求解预算、精度连续性/种子噪声/排序、边接受及失败分支、输出合同AST对照，未简单删碰撞回归；原发布资产manifest未改。本工作区性能扩展不冒称原冻结源码。
+- 留给下个AI：证据generated/two_box_layout/pr82_comparison_20261120/（pr82.json、pr82_source、before、source_after/SHA、lm_ab_warm_default_return.json、cpu_tests.log、gpu_ab.log）。完整六请求暖会话回归在共享锁被外部Blender占用时排队>10min，主动仅取消本任务未获锁队列PID147254，full_regression_queue_status.json留证；无新整单成绩，不声称5秒目标达成。需后续新目录复跑check_warm_session.py；CPU8295没重启/8294不动，新worker会读取新模块，旧source_stamp会使旧缓存退出。没改共享cuRobo/删门禁/绕锁/停他人任务/commit或push，未实机发送。优先按用户PR82明确“几何/总墙钟、通过/失败、冷/热与门禁”口径，不再让用户重复提供基线。
+
+## 2026-11-20 Codex / 同一失败运输路径修复完整箱体引导，原两项拒绝整单恢复
+- 前轮分类：上一目标轮只有道歉，未推进；本轮重读现场源码/任务/日志并确认无活动自有GPU工作进程，直接处理目标中的失败任务，不再用不同任务耗时表作结论。
+- 根因证据：取`final_both_tall_side_r12`中459行15轴运输RRT路径（源文件/关节SHA留证）；该路径本身完整载荷CPU审计合法，旧TrajOpt仅见40球模型，优化后箱体穿透固定盒约25–27mm而被CPU gate拒绝。同任务同一路径的最终完整几何引导版4001点运输通过，重叠0、native净空/关节/速度/jerk/力矩与独立RNEA全过；不是整单速度A/B。
+- 改了哪里：新`v3_full_payload_cost.py`可微OBB/SAT对世界/内部四盒/原机器人球/另一箱体/地面，复用已有SAT和cuRobo四元数转换；`GeometricCostManager`在实例有载荷层时添加引导，`FastThreeLayerPlanner`只为启用的layout transport挂层/按引导开关与盒数区分资源/原地址更新场景；`BoxLayoutPlanner.full_payload_trajopt=True`且指纹补新模块。PR82原入口、单臂及接近默认不挂载。15mm激活/1e7平方权重仅优化软引导，世界1mm/自碰epsilon/native/RNEA/4001采样门禁不动；32控制/50轮运输、64控制/32轮抽离后处理、X宽度/45度不改。
+- 探索保留：v2/v3不足的引导仍有7.4/4.7mm穿透，未放宽gate；最终v4完整通过。float32指导SAT在近平行轴对CPU double约50um误差，探针对照容差0.1mm只用于诊断，不是验收阈值；真实CUDA姿态梯度与有限差分吻合。CPU几何/箱球/箱箱/地面/更新地址测试通过。
+- 整单验证：原双高箱侧吸16次拒绝→本轮1候选通过81.622s；原混合长高交换侧吸16次拒绝→2候选51.967s；默认双40箱31.104s、新XYZ双40箱9.519s、混合交换顶吸32.058s通过；另批双高箱新XYZ78.183s/1候选、双高箱顶吸新XYZ51.507s/2候选、双40顶吸新XYZ33.963s/1候选通过。两例第一候选仍被原cspace/self/base门拒绝，未删记录。8例均16001样本独立CPU核验；不能拿不同冷/热/拓扑/候选数算提速率，5秒未达成。
+- 测试/界面：CPU58通过、gpuq GPU原6项38.71s通过。临时8296 WS双高箱首次78.849s，3次重算13.515/14.802/13.623s均通过，取消、真实分段播放、按钮后立即改XYZ的迟到结果拒放、显式释放锁均通过；不是浏览器WebGL人工验收。12份整单报告（8布局+4重复UI）当前全部源码SHA一致。只关临时8296，8295 PID3792772/8294 PID3421938原参数/进程不动，无残余自有GPU任务；新8295 worker自动读取新模块。
+- 证据：`generated/two_box_layout/payload_guidance_20261120/`含before、v2/v3/v4、输入指纹、full_batch/new_positions、GUI、verification、source_final/SHA。文档`docs/BOX_LAYOUT_PAYLOAD_GUIDANCE_20261120.md`、原布局说明追加入口；未改共享cuRobo/绕锁/停他人任务/commit/push或实机发送。
+- 目标仍active：8个代表位置不是“任意合法位置”证明；仍需边界/阈值附近/左右异构组合/狭窄净空覆盖，不能把有限IK/RRT预算失败改称非法。下一步热态瓶颈是RRT内完整载荷CPU审计，双高箱仍13–15s；若移GPU必须保留同输入拒绝集合，不能用当前float32引导SAT直接替代CPU门禁（退化轴1e-7 vsCPU1e-10及50um差别），应双精度/歧义回退并真实验证。高位顶吸拒绝继续按用户要求暂挂；45°及用户已允许的尺寸/吸附XYZ适配合同不改，不宣布可验收或完成。
+
+## 2026-11-20 Codex / 精确载荷搜索加速、同输入整单A/B及边界见证
+- 前轮分类/现场：上一轮完整载荷运输引导与8例恢复是进展；本轮重读源码/日志/现场进程，确认无残余自有GPU作业，继续实际热态RRT成本和边界，而非换任务比较。
+- 改了哪里：`curobo_core/payload_geometry.py`新增有符号float64 tensor SAT（全部15轴、CPU1e-10退化阈值）；`FullPayloadCost`仅新增显式double分类通路，原float32 soft guidance默认不变。`payload_search_mask`按1024批次、实际当前FK分类，近退化/1e-7m门限邻域回退原CPU audit并覆盖其判定，明确面轴分离可免除无关微交叉轴歧义；模型/附着/尺寸/场景几何key失效缓存，不保存FK/mask。单/双箱搜索共用；最终4001点CPU完整箱体审计、carry IK CPU、原native/RNEA/独立核验不改。双臂搜索报告增加处理/回退帧数。
+- 精确性证据：4拓扑×真实RRT/4001点/2048随机扰动/真实地面门限，共25575个输入行，CPU和GPU所有mask相同（3072帧实际拒绝）；4组门限实测分别回退4/2/2/8行CPU。场景内插真实障碍拒绝、恢复再合法，缓存失效真测。CPU近平行/门限/随机、double分类和float32误用测试；CPU60通过，原GPU6项38.04s通过。
+- 同任务性能：同一双高箱、同箱位/障碍/附着/目标/预算、同463行RRT路径SHA，交替CPU/GPU各3次热测，最终1024批版整单中位数13.250→7.354s（约44.5%下降），运输几何7.36–7.64→1.35–1.46s，8次含2warmup全1候选通过，GPU每次58226检查行。只覆盖实例search mask切换在结果中明示，不伪装无运行时覆盖；非PR82不同固定任务A/B。冷warmup约80s单列，5秒未达成。256批初版13–15→9s另存，不混版本；1024批相对2048显存99 vs189MiB、速度.179 vs.167s/13024行，选择1024保留余量。
+- 边界：threshold(.8/.8001)双40侧吸、(.7999高箱顶/.8cube侧)、Y±.95高箱、Z2.05顶棚高箱侧吸、X1.55前壁cube全整单通过。静态1.25/1.35/1.45/1.50/1.55均有8个contact见证，不称整个可达边界。低位(.78,±.48,.2)16次起点失败；独立CPU URDF证明所需-30cm末态与固定底盘重叠17cm，而非凭搜索失败判非法。
+- 必要几何拒绝：共享纯CPU `fixed_extraction_blockages`为规定末态提供穿透深于6mm平移+箱角1deg误差包络+世界允许量的保守见证，布局器预检返回`required_extraction_endpoint_blocked`/具体障碍端点深度，微擦碰不提前拒绝，不改变轨迹门限/合法域。最终0候选拒绝堵塞案例；真正留侧向通道的低箱(.90,±.90,.205)2候选通过74.557s，(.95,±.85,.24)1候选通过7.645s，不能笼统把低位当非法。
+- UI与最终源码：临时8296双高箱真实WS首次73.978s、后续8.481/7.123/7.268s全部完整验收；取消/播放/提交后改XYZ过期结果禁播/释放锁均过，非WebGL人工验收。7份最终源码报告SHA匹配（4UI+2低位通过+1阻塞拒绝），代码`source_final/`与SHA保留。只关闭临时8296，8295 PID3792772/8294 PID3421938不动，没有自有GPU进程残留；新8295 worker会读取代码。
+- 证据/后续：`generated/two_box_layout/precise_payload_mask_20261120/`（before/source_256/source_final、parity_v2、batch_sizes、same_task_hot_1024、boundaries、floor_corridor、gui、verification/evidence_versions），文档`BOX_LAYOUT_PRECISE_SEARCH_20261120.md`。性能/部分边界在新增静态末态见证前执行，evidence_versions显式标差异，不改旧指纹；最终UI/低位验证使用当前全部源码。未改共享cuRobo/全局锁/线程8限制/抽离30或25.5cm/45°/动态门禁，未commit/push/实机发送。目标保持active：有限通过不是任意合法位置证明，尚需左右非对称/混合长高/狭窄通道与剩余热成本；高位顶吸拒绝仍暂挂。勿把当前float32 soft guidance用作硬mask；double歧义CPU回退和最终CPU gate必须保留。
+
+## 2026-11-22 Codex / PR82双箱续接、可达性证明与CPU审计宽阶段
+- 做了什么：续接11月20日中断的非对称测试，仅补未完成4例均通过；再补21例均通过。修复模式审计的证据根目录，真实报告/4001×15数组/独立16001采样核对，36种有序尺寸×吸附组合均有历史成功见证；不代表任意连续XYZ，也不伪称旧报告匹配当前新源码。
+- 改了哪里：新增`tools/curobo_core/contact_reach.py`与CPU测试，从URDF SRS几何/J2凸帽/共用升降区间出保守不可达证据，接入`v3_box_layout_planner.py`；`v3_box_layout.py`展示毫米数值理由。四个远交叉分配有约74–84mm不足，不再以有限IK无解冒充证明。近同侧两例通过，近交叉两例仍未解，未收窄合法域。测试catalog选择支持/安全文件名/重复及unknown选择检查已加至原实验脚本。
+- 最小性能改动：仅`v3_payload_safety.exact_payload_audit`增加CPU AABB保守宽阶段；精确SAT/球距、最终4001点与原1mm/1um门限保留，近平行搜索/门限CPU回退未撤。冻结前版与原型12组真实FK对照一致；新增1025组旋转箱/球穷举CPU核验。新增同任务运行脚本`tools/experiments/box_layout_20261119/check_cpu_audit_broadphase.py`，执行替换在报告显式注明并保存原函数SHA，不混淆磁盘源SHA与执行函数。
+- 验证结果：CPU67通过(1.90s)，GPU6通过(25.56s)。同双高箱、GPU搜索不变、全部门禁不变，交替热测各3次：原审计4.426556/4.474046/4.368264s，新审计3.861441/4.023687/4.066970s，中位4.426556→4.023687s(9.10%)。首请求46.470155s、warmup5.216798s单列；八次全1候选通过，运输均463行同SHA`c48d0de6921712a6e7e901ad70e243e446f640515097d12d647c26a9e83b55a9`。不是把11月20日7.35s与今日4.02s跨负载直接归因，亦非PR82另一固定任务A/B。墙钟不含队列/Python启动/UI传播，不能承诺所有输入/首次<5s。
+- 交互：续接时原8295 PID3792772/8294 PID3421938均不存在、端口无监听，非本轮终止；重新起当前CPU布局器8295 PID398497（exec句柄63860），不占GPU。真实WS已跑尺寸/长高互换/重叠拒绝/取消/数值可达性证明拒绝/冷与热整单/播放时间推进/改参数过期结果禁播/明确释放锁，8项通过。双高箱首次44.642778s，热5.193255/3.763279/3.755228s；最后已通过轨迹保持可播放，GPU会话`user_stop`释放。仅WS协议测试，不称WebGL人工验收。所有CUDA仍经PATH gpuq，未另加锁/嵌套/实机发送/commit/push。
+- 未解出定位：`contact_reach_20261122/extraction_scan`两例各256候选全扫未有全门禁粗抽离见证，不可再靠重排说修好。新`endpoint_probe`保留真实失败关节：高箱撞另一臂right_link3 6.9–12.5mm，低cube撞arm_carriage 28.3–30.8mm，首候选91.34%失败。名义与±.75°pitch的5cm/10°/32每臂有限末态池无可行点；CPU固定球/外可达界也不足以证明不可能，故仍记未知，不添加错误“非法”分支。
+- 证据/留给下个AI：`generated/two_box_layout/{asymmetric_coverage_20261122,mode_coverage_20261122,contact_reach_20261122,cpu_audit_broadphase_20261122}/`，最新文档`docs/BOX_LAYOUT_CONTINUATION_20261122.md`。`cpu_audit_broadphase.../source_manifest.json`/`source/`保留本轮当前源码，与旧21+14历史证据分epoch。目标保持active，尚未到任意合法位置/用户验收；下一步先找近交叉可行末态/路径见证再改升降/零空间种子，兼顾狭窄通道与最新源码其他拓扑回归。高位顶吸拒绝仍挂起。勿以有限36组合充当连续XYZ完备性，勿因新单例热4s就隐去UI5.19s和冷启动44s。
+
+## 2026-11-22 Codex / 窄位反向恢复、箱心参考修复（目标续接）
+- 做了什么：上一目标turn属实际进展；本轮继续原两个近交叉未知，不收窄合法域。先证明不是简单32候选/5cm格点充分性：容差内局部几何搜索+精细升降/2°swivel/全部每臂解，找到144个真实完整门禁末态，再做反向15轴LM。早期保存粗几何的四阶段原生验收全通过，明确标saved-geometry feasibility witness，非新鲜解算或性能证据。
+- 根因修复：`v3_two_box_timing`新布局双臂抽离最终验箱心线，但`v3_lm_refinement.phase_references`旧目标是TCP线；有吸附偏置和小转动时不等价。新布局显式选箱心参考，旧PR82无标记调用不变，CPU同测两分支。同粗几何/同固定端点，右箱原生横误差3.107854→1.696596mm，原2mm门禁不放松，旧失败和新成功分存。
+- 改了哪里：`curobo_core/box_pick.extraction_endpoint_proposals`(4个CPU局部种子，≤1.8mm/.95deg，仅引导不作非法证明)；`v3_box_layout_planner`精细末态枚举、反向LM恢复、全payload/接触/Cartesian再验。先4原候选（历史成功最多4），几何均失败再最多8恢复候选，合计≤用户max_contacts。恢复运输可用已验逆抽离前缀多根RRT，从真实全宽抽离末态连续走到选根，不瞬移；明确允许自由搬运阶段先回退部分原路，不声称X单调。恢复分支RRT种子递增避免邻近候选反复同随机流，首分支/普通候选种子不变；生产每次RRT仍8s。`v3_box_layout`新增三阶段中文映射。负stride新缺陷在共享运输入口ascontiguousarray修复并加CPU测试；所有失败记录保留。
+- 新鲜结果：`endpoint_feasibility_20261122/automatic_full_v2`左高箱(1,-.05,1.5)/右cube(1,+.05,.6)全新整单62.311s/5候选通过；`automatic_full_v3`当前种子策略再从原始输入全新整单64.851s/5候选通过，四阶段4001和独立16001点/全宽/真实45°/包络全过，不注入保存轨迹，不称5秒热解算。镜像仍未解，未将其判非法。
+- 非退化检查：`regressions`9/9通过（双高首次49.786s、热5.146/3.996s；混合顶侧/长高、低通道、旧第3/4候选场景、默认双cube等）。CPU80通过4.59s，GPU6通过27.73s；额外在gpuq内审计原LM参考CPU测试11项，前后Torch CUDA未初始化/Warp runtime为None。`verify_evidence.py`核10份当前源码成功报告，四阶段4001×15/独立16001/全部门禁/总预算、SHA均匹配，源码`source_final/`；旧epoch`reference_fix_source`、`recovery_v1_source`、`recovery_v2_source`不篡改。
+- 新诊断阻碍（非blocked）：镜像首恢复运输临时45s诊断两次，在默认Warp缓存及独立WARP_CACHE_PATH都报`Failed to find forward kernel tiled_collision_kernel / tiled_collision_kernel_84eb2579`，未得到45s连通性结论。该共享依赖的生成核horizon=2599、block128，独立缓存cu符号`tiled_collision_kernel_474d7916_cuda_kernel_forward`；不能说磁盘缓存坏，也不能判场景非法。未改共享cuRobo/Warp/生产预算/全局锁；独立缓存不是GPU锁，所有GPU初始化与诊断仍在gpuq中。
+- 留给下个AI：先读`docs/BOX_LAYOUT_REVERSE_RECOVERY_20261122.md`。镜像可达/运输仍关键路径：查实际请求mangled symbol与共享Warp动态模板生命周期，或在布局器RRT内规整尾批减少模板（须mask等价/门限/性能实测，不把workaround说成根因修复），再验证适配预算/方向/持箱目标，不重复已证失败的有限重排。内核源码和异常在`endpoint_feasibility_20261122/{mirror_long_diagnostic,mirror_long_isolated,warp_cache_isolated}/`。当前10成功不是全合法XYZ完成；新恢复路线尚缺实际GUI回放检查。
+- 服务/资源：8295 PID398497仍活且未改用户输入/重启，上轮老CPU formatter会以原英文名显示新阶段耗时，新worker读当前数学代码；不要谎称新CPU UI字节或WebGL已验。GPU命令句柄70921/84234/45428均已终止，最后无自有CUDA任务；只保留CPU编辑器。未commit/push/实机发送。目标active，不提请最终验收。
+
+## 2026-11-22 Codex / 双镜像打通、软间距分权与当前36模式核验
+- 上一目标turn属实际进展。本轮未缩小目标，继续镜像运输。最小2599行查询连续成功，完整追踪也经过该变体并在18.269s找到粗路径，不能归咎horizon本身或宣称磁盘缓存修好了Warp。原生坏点回投搜索也拒绝，完整payload审计却通过，确认为真实手臂自碰而非简单checker差异。
+- 已验证失败探索不留生产：32→64控制点拟合11.013°→5.725°仍自碰，曾遇8000插值buffer不足；控制点扩展和临时测试已全部撤回，`v3_fast_three_layers.py`与本轮before字节完全相同（其原有dirty修改保留），实验在`tested_64/`。保留原穿透+虚拟偏置梯度的线性变体也被base/ground门禁拒绝，未采用。
+- 根因最小修复：`v3_full_payload_cost.FullPayloadCost.cost`把实际穿透强二次项与15mm虚拟间距项分开，后者系数0.001（外部1e7、geometry_scale100不变），不改classify或最终门禁。控制粗路径/端点/32控制点原生对照：原引导geo100自碰，单降geo1仍范围/自碰；分权引导geo100/geo1都通过。不能用这组保存粗几何阶段试验当新鲜整单速度基准。
+- `v3_box_layout_planner`仅搜索查询补齐512倍数并裁输出，限制4096分块后的尾批为8种模板；72组真实FK/122244输入行（含重复）/12917拒绝逐行mask及稳定性完全相同，单查询时间接近，不声称性能大幅提升，不改共享Warp/cuRobo。普通运输单次8s，首反向恢复可集中32s，按实际search_ms扣同一8*max_contacts总运输预算（默认128s），未增加总cap；最后一次GPU迭代仍可越过软边界。原因文本不再对32s分支谎写8s。
+- 新鲜结果：`warp_horizon_20261122/full_recovery`两近交叉镜像均在第5总候选通过：左高/右低59.857198s（运输1.283556s）、左低/右高40.818190s（运输12.023985s），无保存轨迹/目标注入，四阶段4001及独立16001点/全宽容差/实际45°/原球包络/动力学全过。普通9例回归9/9；双高首次49.548s、热5.201/3.899s如实列，不承诺所有请求5秒或拿旧4.024中位数当现行数据。
+- 覆盖与重验：补27例`missing_batch_1/2/3`全部通过，`audit_modes.py`按实际数组和源SHA确认当前36种有序尺寸姿态/顶侧吸组合全部有成功实例（两箱型，不是36箱型）。`verify_final.py`重读39份当前新鲜成功（含热重复/GUI），156原生阶段各4001×15、CPU重验624039去重接缝样本，全部source_sha及完整session stamp匹配；原生collision/payload/RNEA门禁全过，文件SHA/CPU端点重验/源码在`final_verification.json`/`source_manifest.json`/`source_final/`。有限点不能证明任意合法XYZ，目标active不标完成。
+- 检查：CPU82通过（5.49s，微小测试构造清理后需收尾再跑），GPU6通过28.08s。新增CPU测试验证真实穿透项/虚拟间距梯度分权、补行保持原输出、实际预算传递/非法预算；无新依赖、无共享源码修改、无commit/push/实机发送。
+- Viser：新临时8296 CPU PID806964（exec句柄46334），原8295 PID398497不动。`gui/ws_checks.json`5项真实协议检查通过：换尺寸/交换Y/Z、重叠拒绝、实际按钮gpuq求解及播放、新恢复阶段中文时间、终帧实际两箱Ry=-45°、显式释放锁（session_gaeps45r stopped user_stop）。左末态(.55,.425,1.2)、右(.38,-.56,2.0)，wxyz约(.9238795,0,-.3826834,0)。不是WebGL人工验收。8296只保留CPU回放，测试会话idle10s/max2，不能当常驻热性能服务；原8295会话配置保留。
+- 关键工艺澄清：当前继承自由RRT运输语义，先完成全宽抽离（原2mm/1°容差），随后运输允许沿已验原路回退/前探；前缀连续、所有碰撞照查，但**不保证不回插**。不能把已有结果说成满足“抽离后永不前探”。需向用户明确这一点；若禁止回插必须加新工艺约束重解，不可偷换目标。当前39有限成功不等同任意XYZ保证；下一步旧已知合法边界/新非对称位置与该工艺语义确认，不扩到其他箱型。
+- 证据/交接：新文`docs/BOX_LAYOUT_TRANSPORT_GUIDANCE_20261122.md`优先；目录`generated/two_box_layout/warp_horizon_20261122/`。GPU句柄86565/20273/19448/71471已结束，GUI GPU会话释放；收尾确认无自有CUDA进程。留CPU8295/8296供查看；不要盲重启/改用户参数。
+- 收尾补充（重要语义，不可忽略）：`check_transport_reentry.py`CPU重算两条窄位及GUI原生运输全部4001点，实际最大中心前探左高/右低0.223/0.397m、镜像0.380/0.412m，GUI0.379/0.409m，SAT确认重新深入各自原占位区，不只是“代码允许”或小数值误差。现有世界把原位当取走后的空区，所以物理碰撞门禁可通过，但**不得据39技术通过声称满足用户真实工艺**。需向用户确认“抽出后是否禁止再次进入原占位区”，不擅自允许，也不擅自追加约束缩小合法域。若禁止，这是当前任务内的验收口径修正，不是新箱型泛化。
+- 最终CPU82再次通过5.03s；`catalog_known_positions.py`筛出20个同URDF/config/policy/environment的历史成功XYZ（当前未测），在`known_position_catalog.json`并附原完整报告/任务。这批仅证明自由运输口径下的历史可行性，工艺未确认前不能拿来证明禁止回插下合法。
+- 8296已安全seek本次已验数据到“全流程”t0，未触发新计算，CPU可直接播放；其GPU session已user_stop。39份最终重验成功，156原生阶段/624156含接缝采样/624039独立去重采样；`verify_final.py`后续按冻结39个路径重验，用户增加新请求不会误改这份固定证据。GPU无自有遗留任务，保留CPU8295/8296；问题待用户明确，不mark complete/paused/blocked。
+
+## 2026-11-22 Codex / 工艺状态显式化、完整时序与条件几何分析
+- 上一目标turn为实际进展。本轮用户未答禁止回插问题，但不空转：CPU审计全部39条旧原生运输，31条比初始进一步深入原占位超过1cm；1um口径下0条始终分离（含初始微小重叠，不能说39条均宏观回插），13条抽离末态全箱已过原前沿面。原位当前为空区，不是碰撞物，物理过检不代表用户工艺已完成。
+- 生产透明性修正（**没有追加禁止回插规则/缩小拒绝域**）：新增纯`source_slot_observation`，原生运输物理谓词通过后记录前沿差、初始/最大原位重叠、进一步深入、前探与离开后再入；`process_validation.status=unconfirmed`、`task_success=null`，`physical_success`保留物理验收含义，UI限定“仅物理门禁，工艺规则待确认”。harness summary也明确physical-only。原物理布尔表达式AST合同不变；未改规划代价/采样/安全门禁/共享依赖。
+- 实际UI缺陷：首轮108事件只展示后60条、拒绝只后8条，隐藏早期种子耗时导致控件测试失败。已修共享status_markdown显示整个有限请求历史并加>60/>8测试，没通过删除断言掩盖问题。
+- 验证：CPU85通过5.45s；CLI一次、GUI两次新鲜完整物理轨迹都通过并task_success=null。`verify_observability.py`重验CPU端点/数组/包络，再逐点CPU URDF核对原位诊断，最大差约0.153um（数值校核限20um不是工艺容差）。旧39/36证据仍属前观察版本，未改旧SHA；前两新结果仅UI文件SHA旧，最后GUI layout_msjs6vcq全SHA匹配，不能混时代。
+- 条件几何：严格“末态与原位分离”有限SLSQP无种子仍只是未知；另`plane_certificate.py`在更强“全箱已过原前沿平面”假设下用内棱柱+J2投影必要lift界+head/carriage真实球解析区间覆盖，证明两窄位在该条件下无末态。必要lift约[-1,-.167255]，carriage sphere12区间[-1,-.690913]与head sphere6[-.730707,-.167255]重叠覆盖。3mm位置包络/1deg、head锁定/body平移检查、2000允许姿态内棱柱及1200真实球箱交叠自检过。**条件强于仅禁止后续回插，未获用户确认，不入生产拒绝，不宣称箱位全局非法。**
+- 服务：原8295 PID398497不动。临时8296只读快照确认参数未变/无活跃任务，再保留箱体参数两次重启以显示新增观察和完整历史；现PID1374948，exec39660。WS第二次5项通过含physics-only/unconfirmed提示、原位数字、真实播放/两箱-45deg、user_stop释放锁；第一次失败会话是idle_timeout，日志保留。不是WebGL人工验收。GPU83870/GUI69984/37634均终止，待收尾确认无自有GPU残留。
+- 下一步/输入：用户尚未回答“完成抽离后是否必须禁止再次进入原占位区”。当前数据不能算业务任务完成。优先`docs/BOX_LAYOUT_PROCESS_OBSERVABILITY_20261122.md`，证据`generated/two_box_layout/no_reentry_probe_20261122/`。可在不改变默认语义的前提下研究更直观的无回插候选，但不能把更强过面条件当作已要求的规则，也不能继续拿自由搬运样例当严格工艺验收。目标active，不mark complete/paused/blocked；无commit/push/实机发送。
+
+## 2026-11-22 Codex / 删除逆抽离运输根并实算确认自由RRT仍回插
+- 用户质疑重入占位区后，当前8296检查演示保持原PID/参数/回放；未替换成新轨迹。
+- `v3_box_layout_planner.py`移除escape_rows/回退多根/前缀拼接，所有pair_path只从传入实际状态出发并检查返回首状态；原transport传extracted[-1]。CPU测试替换为真实单起点合同；test_box_layout/session/two_box_pick/contact_reach共39通过1.88s。
+- gpuq单前台两请求实算终态：分离侧吸高箱/方箱59.066s、第2候选；当前GUI布局64.391s、第8候选，均物理通过但原位重叠分别继续加深13.40/19.79cm及28.60/33.19cm。显式回退删除仍不能证明无回插，自由运输RRT本身允许通过原占位空区，不能报告任务修复。
+- 证据`generated/two_box_layout/actual_transport_root_20261122/`含请求、每阶段/失败日志、源SHA/补丁、CPU及独立URDF复核；说明`docs/BOX_LAYOUT_ACTUAL_TRANSPORT_ROOT_20261122.md`。结果task_success仍null，不改物理门禁，不将搜索失败定义成非法，不外推全域/5s达标，不把更强的全箱过前沿条件接入拒绝。
+- 下一步需同时约束搜索与最终原生路径中的再深入；本轮不是完成或验收。未commit/push/实机发送。
+
+## 2026-11-22 Codex / 原位工艺约束落地、原生引导与窄起点步长诊断
+- 上一turn是实际进展。本轮不再只观察回插：`box_pick.source_slot_process_checks`检查每箱自身原始OBB，不加深抽离末态重叠、完全离开后不再进入且最终需达到分离（1um为观测数值分辨率，不是毫米安全豁免）。不加“整箱先过X前沿”更强条件，不把中心X前探直接当回插。
+- `v3_box_layout_planner.py`接GPU float64 SAT搜索上限，并在原四段原生物理谓词通过后独立做4001点工艺检查，不合格继续候选。`v3_full_payload_cost.py`/`v3_fast_three_layers.py`加入同一原位的原生软引导，缓冲原地更新保留graph地址；物理代价/门禁不放宽。`v3_box_layout.py`区分单请求物理/工艺成功、独立CPU失败与源码失配仍不能成功；状态面板显示工艺与拒绝原因。源码/结果分三个时代保留，不改旧SHA。
+- A `process_guard_20261122`：无原生原位引导时常规左高箱右方箱第15候选、131.322s物理+工艺通过，独立CPU再验通过；第二请求未完成时显式SIGINT停止自有worker，句柄82102终态254，`all_cases_done=false`，不能声称两例完成。
+- B `process_guidance_20261122`：加引导后同常规请求第2候选、58.816s通过，GPU/独立CPU均无进一步深入/离开后再入；当前演示原布局108.556s未找到几何运输，8个起点树均单节点。该时代两例已结束，57项CPU通过。
+- gpuq有界实际起点探针`root_probe.py`（句柄91491已终态）证实起点有效、1/512帧FK一致；2048随机方向中加权步长.28与.1均无原位受限有效邻点，.03/.01/.003分别4/46/175个。不是非法证明。
+- C `process_multiscale_20261122`：RRT共享实现仅4行新增1行替换，默认原.28不变，仅布局运输启用.28/.03/.01/.003；原边检查不变，无回退根。58项CPU通过2.13s，含旧默认表达式逐位一致合同与原生物理谓词AST合同。当前演示原箱位仍118.691s/16候选未找到运输，但起点树已展开355–936节点；不能报告该箱位已解决或非法。句柄64086终态0表示批处理完成，不代表请求通过。C失败报告源SHA与当前一致，CPU核对已写verification.json。
+- **仍在队列，别重启/复制提交**：同C源码常规布局回归句柄46855，gpuq客户端PID1588006（bash1588000），输出`process_multiscale_20261122/regression.log`，截至17:45后检查客户端存活、无worker子进程/无输出，等待共享队列。冻结tools/config直到它终态或明确取消，不能用B通过冒称C成功。其结束后运行C目录`verify_results.py`（已聚合gpu/与regression/两个catalog）更新独立CPU证据。
+- 文档`docs/BOX_LAYOUT_NO_REENTRY_GATES_20261122.md`优先解释本轮工艺/源码时代。下一步仍需解决当前窄位从可展开局部到45°目标的完整连接并做两尺寸广泛位置回归；未达任意合法XYZ或5s性能目标。8296旧检查演示未重启、未改参数/回放，不能冒称新轨迹已在该页。未commit/push/实机发送。
+
+## 2026-11-22 Codex / 连续横移接通窄位几何目标，定位32控制点表示失真
+- **旧队列46855已完成，不再等待/冻结**：C常规布局124.159s/11候选通过；独立CPU在改D前复核，源SHA匹配。当前D将微步改成仅粗步无法从实际根扩展时激活；58 CPU通过2.08s。D常规真实在线规划2候选48.539s通过，CPU复核通过、源SHA匹配，两个运输均multiscale_used=false。不同进程/拓扑冷热状态，不报PR82加速比或5s达标。
+- CPU复用现成解析桥/URDF得到原箱位“右先清出、左后以1mm笛卡尔步进清出”的551状态正向横移前缀。初版CPU把1um箱体数值容差误用于机器人球自碰撞，漏过carriage-left_link7约0.549um（GPU4756点只拒绝1499号）；真实GPU门禁未放宽。候选生成改5um自碰撞裕量、.001加权边采样后重新生成，原数据不覆盖。
+- `directed_prefix_strict_20261122`：新前缀4756 GPU点全过、与实际抽离根差0，后续真实RRT16.395s接回原45°目标。**仅完整几何成功**，原生前3段通过/运输失败（cspace、自碰撞、底座/箱体512失效帧），physical_success=false。预计算CPU前缀只是单例诊断，不是已接入通用在线规划，不比较其验证时间与5s。
+- 确认32控制点种子拟合严重失真：17.482deg/20.677mm。`directed_shortcut_20261122`保留前缀、复用旧贪心逐边捷径将RRT尾32顶点缩10顶点（.003边检、.001加密复查），关节弧长17.548→11.601；种子仍偏12.658deg/14.204mm，原生运输仍拒绝。CPU独立原位/45°端点复核另存raw_geometry_verification.json，只证明原始几何，不证明原生安全。
+- 优先交接`docs/BOX_LAYOUT_DIRECTED_PREFIX_20261122.md`。下一步修原生保形/分段表示，勿再空转RRT；source-slot15mm强虚拟惩罚是否逼迫提前清出是待验证假设，不能擅自放宽最终门禁；重复FK的优化可复用evaluate_state但须防可变视图被CPU fallback覆盖。
+- GPU46855/40642/15374/18360全部终态，**无本轮自有待运行GPU任务**。当前原箱位没有原生合格轨迹，不能替换/宣称8296已展示新成功；旧8296参数/回放未改。未commit/push/实机发送，目标active，不报任意合法XYZ或5s完成。
+
+## 2026-11-22 Codex / 固定窄位离线分段原生通过，8297可检查（非在线/全域/5s完成）
+- 优先交接`docs/BOX_LAYOUT_NATIVE_PIECEWISE_VERIFIED_20261122.md`。本轮仅生产小修path_validity start/goal显式float32及测试；58 CPU过2.20s。其余复杂策略都在generated实验中，不能冒称已接入通用在线布局器。
+- GPU真审计证实整段32种子529物理/809含原位失效；右横移32、尾32实际门禁均0失效，不能把同参数拟合误差直接当几何失效。右强source原代价中间原生段通过；改弱/L1单调试验失败，未改生产cost。
+- 现成cuRobo公开evaluate_cspace_seed可重验被优化毁掉的合法原输入，真实Result.success接受后仍跑所有外层门禁，原优化失败不伪造为true。输入/结果clone防可变缓冲覆盖；CPU测双失败拒绝。全程原位参考不能子段重置，既会假拒绝，也会漏掉全程24nm超限；阈值始终1um，记住跨段clear。
+- **最终固定布局原生验证通过**：`generated/two_box_layout/native_adaptive_feedback_20261122/run/result.json`，63.8365s只计缓存几何后的新鲜原生验证；31搬运段，搬运29.598s、全运动35.857s，有中途停顿。12段保留经真实原生API复验的输入种子，all_actual_optimizer_results_success=false，所有选中native几何/TimeOpt/碰撞/完整箱体/速度jerk/10kg力矩/独立RNEA/实际接缝及最终1.05m球包络通过。没有改数组端点/插值修补/缩放时间。
+- 94379独立CPU数组/端点/包络+124001运输状态原位核对通过；源SHA匹配。左/右自身原位增加0.4304/0.0939um，离开后未再入。71689额外CPU审计两箱对两原位：交叉原位最大0。初始仍有3.773/7.181mm残余重叠，不能冒称先整箱过前沿；页面明确披露。数据/输入/验证SHA在artifact_manifest.json。
+- **新只读回放8297**：CPU PID2259911、exec58252、日志`/tmp/pr82-native-adaptive-replay-8297.log`，HTTP200。脚本`.../native_adaptive_feedback_20261122/replay.py`；带offline/缓存/31段停顿/非5s非在线验收提示，实际两尺寸、原位红框/45°绿框、父子耗时和拒绝/种子保留历史。WS4项真实控件检查过（先前等待位置未等姿态导致一次竞态失败，已等完整场景目标且保留原检查文件），已全流程t0暂停。不是浏览器/WebGL人工目检；cua仍apps/browsers空，未自动开浏览器。原8295/8296未动。
+- GPU本轮37716/28013/79127/65591/59468/40066失败有日志；44670/68338/47417/7127终态0，其中47417只表示实验完成、并非方案通过。**当前无自有GPU任务**，仅保留CPU服务。没有commit/push/实机发送，goal active，不mark完成/暂停/阻塞。
+- 下一步本地关键路径：把成功策略干净接入生产通用在线流程（不能读固定npy冒充实时），再做两尺寸所有姿态/吸附模式/合法XYZ广覆盖和公平PR82冷热性能。当前只证明一个固定布局的离线原生分段候选，不是全目标或5s达标，不请求整项验收，不扩第三尺寸。
+
+## 2026-11-22 Codex / 已接入新鲜在线正向LM几何，原生适配仍待整合
+- **生产路径进展，不是再读固定npy**：BoxLayoutPlanner新增forward_lateral_prefix，按当前实际抽离q、两尺寸/吸附/当前原位和持箱目标实时生成共享15轴LM横移。保留实际原根和带完整正向连接的额外根；从哪个根出发都检查离开后不再进入，额外根必须已清出；绝无逆抽离根/跳状态。失败保留原根原预算，未定义输入非法。
+- 复用现成LM512点/32种子/32轮；默认提取/放箱构造器和原门禁/选择逻辑/返回合同未改，PR82 AST合同通过。增加可选candidate_filter（原mask AND额外mask）用于source/native margins/full payload，不改物理阈值。payload_search_mask/native_margin_mask可传本查询新鲜FK；CPU回退会覆盖缓冲，最后才做完整载荷分类，不跨查询缓存state。
+- 关键定位：只提高最终1um精度会受内部默认10um提前收敛影响；LM按关节范围比例收缩的内部动作区间还排除了原生合法根left_joint2。仅横移实例对齐两套精度、完整32内迭代，不用该内部收缩；仍显式检查原RRT lower/upper各1e-5余量以及全部原物理/动态硬限值。新拒绝统计分source/native margin/full box/joint，非输入非法证明。
+- `live_forward_lm_20261122`默认精度和`live_forward_precise_20261122`仅最终精度失败都保留。`live_forward_aligned_20261122`新鲜窄位几何成功（前缀19.297s/3936点全过，RRT4.846s）；原单段32原生仍拒绝。常规当次24.134s/1候选通过，但不是稳定性能或PR82公平对比。
+- **当前字节回归**`live_forward_final_20261122`：窄位fresh geometry true/native false，前缀20.810s（右11.546/左8.620）、RRT4.947s、worker79.119s；常规30.939s/2候选完整通过。CPU独立重验分别为raw geometry only与actual native arrays，源SHA匹配；不能把窄位几何通过冒称原生通过。64 CPU通过2.13s。
+- 进度已接入实时事件：lateral_right/left running/done/rejected、实际子时长/拒绝计数；父运输表明确子项包含不重复累加。旧8295/8296/8297均未重启/改输入/轨迹，不称旧UI内存已更新。
+- 8297离线原生通过候选26份登记原源码已精确归档`native_adaptive_feedback_20261122/run/frozen_runtime_sources/`，missing=[]，旧结果SHA不改。新的生产源码版本不同，旧结果只证明其冻结版本。
+- 交接优先`docs/BOX_LAYOUT_LIVE_FORWARD_20261122.md`。**下一关键路径是生产原生保形分段+真实native seed保留/完整反馈+全程原位参考**，把已证明的离线策略干净整合，不能用运行时AST或固定路径冒充在线产品。然后当前两尺寸/姿态/吸附/合法XYZ广回归与同任务冷热5s基线比较，不扩第三尺寸。
+- GPU45912/85815/45989/7165均终态，当前无自有GPU任务；CPU49700终态0。Goal仍active，未commit/push/实机发送，未完成全域或5s指标。
+
+## 2026-11-22 Codex / 生产在线原生适配完整接通，8298真实可编辑计算验证
+- 关键路径完成了一步：`v3_layout_native.time_layout_pick`已接入BoxLayoutPlanner，不再只有实验AST/固定路径。普通请求保留原路径；实际选中实时正向前缀的请求使用实际几何/阶段边界、真实seed/control门禁和完整反馈作自适应32控制点分段，最多64段，最终held不提前施加中间态。所有原物理谓词/原位1um/10kg每箱/jerk速度/RNEA/接缝/1.05m末态保留。
+- `v3_two_box_timing`同一验证器支持显式部分阶段，完整周期不能关最终held；部分报告is_full_cycle=false。`v3_fast_three_layers`保留输入/结果，真实公开evaluate_cspace_seed选中再验证原种子，不伪造失败优化success，区分optimizer_success与native selected result。`curobo_core/native_transport`纯CPU跨段原位/实际接缝/不修补合并。UI展示子段/中途停顿/失败优化与种子保留，不声称单曲线全优化成功。69 CPU通过2.18s，原physical_success AST合同不变。
+- **新鲜生产无预录回归**`online_native_integrated_20261122`：窄位111.145s/35原生搬运段/140001运输样本，常规24.113s/1候选均完整通过；独立CPU数组、端点、持箱包络、逐点原位通过，源SHA匹配；跨另一箱原位最大0。随后只修状态聚合/完整墙钟/UI披露，旧第一版SHA不重写。
+- **新在线CPU布局器8298** PID2709266、exec43456、日志`/tmp/pr82-online-native-editor-8298.log`，HTTP200；原8295/8296/8297没重启/改输入。真实WS改Y/Z、世界X后恢复，点计算生成新请求`online_native_editor_20261122/runs/layout_5b9uq4sq/plan/result.json`，111.259s全流程物理/工艺通过，35段、16段真实seed保留。播放实际native时钟/两箱45°场景终点验证过，已时间0暂停。
+- GUI请求当前字节独立CPU140001运输状态复核通过/源SHA匹配，交叉原位最大0；协议检查不是WebGL/人工验收。会话session_22b5cesd已stopped/user_stop，未继续占GPU。旧8297仍只读离线；**8298是真正在线可改箱位/新算**，但不代表全域/5s完成。
+- 交接优先`docs/BOX_LAYOUT_ONLINE_NATIVE_20261122.md`。尚缺当前版两尺寸/长高/吸附/合法XYZ广回归与公平PR82冷热性能；窄位111s与常规24s性能仍远离5s。初始3.77/7.18mm残余及分段中途停顿必须披露，不冒充整箱先过前沿。高位顶吸拒绝仍挂起，不扩第三尺寸。
+- GPU78392终态0（两个请求均成功）；UI GPU工作已user_stop，CPU客户端15704、70766、42981终态0；仅CPU服务持久。未commit/push/实机发送，goal active，未mark完成/暂停/阻塞。
+
+## 2026-11-22 Codex / 安全加速未奏效已撤回，冷热/长高覆盖与接近种子保留
+- 上一turn为生产在线接通的实际进展。本轮试128→512参考网格，仍按原.001精度全段复核：128窄位插值边失败，512回退后冷112.206s通过，无安全性能收益；256隔离提案同样失败，9.193s不是完整求解。已撤回粗网格生产代码/专属测试，保留证据，不放宽门禁。
+- `coarse_lateral_20261122`热请求29.582s在原生approach失败，明确不是加速成绩；双tall长高交换两不同XYZ28.416s通过。成功项CPU独立重验通过，失败保留。
+- BoxLayout的真实evaluate_cspace_seed候选保留范围从transport扩大至approach；基线其它planner不启用，仍真场景双箱/同native checker/TimeOpt/数组/碰撞/RNEA/接缝全检查。`layout_approach_retention_20261122`冷112.154s、热64.597s、双tall交换33.419s完整通过，CPU独立通过。但热接近原优化这次自身成功，未触发fallback，不声称因果修复；旧失败几何fresh engine原优化复现也成功，缓存诊断不当新鲜性能。
+- CPU最终69项通过2.26s，物理谓词AST等合同未改。详见`docs/BOX_LAYOUT_PERFORMANCE_PROBES_20261122.md`。
+- **当前正在执行/待核对**最终精简源码GPU句柄62547，输出`generated/two_box_layout/final_grid_regression_20261122/gpu.log`，同三新鲜请求（近位冷/热、双高箱Y/Z交换）。不要新提交替代它，先poll同handle/读真实终态。源码冻结到该任务终态；结束后运行同目录verify.py做独立CPU。
+- GPU66274/35266/68920/32013均已终态；CPU55823/29544终态0。保留8298在线及8297只读旧展示，均没重启/改输入。没有commit/push/实机发送。全目标、合法位置全域、5s性能均未完成，goal active，不mark完成/暂停/阻塞。
+- 收尾更新：最终精简代码GPU62547已终态0，三例均通过110.588s冷/63.619s热/28.964s双tall交换；不是5s，也不据此声称全域完成。当前CPU独立复核句柄78009仍live，日志`final_grid_regression_20261122/independent_cpu.log`，不要重复启动；其余本轮GPU无自有遗留。前一版CPU三例通过。8298/旧服务未重启。
+- 随后确认CPU78009终态0，最终三例独立CPU通过（原生数组/端点/包络/全程原位；交叉另一原位最大0，源SHA匹配），已无本轮自有后台核验或GPU任务。Goal仍active，性能和全域覆盖未完成。
+
+## 2026-11-22 Codex / 撤回无收益FK合并，修复拟合控制点越限导致的运输反复细分
+- 上一目标turn验证8298仍HTTP200并尝试打开浏览器（连接器无可用浏览器）；没有改用户输入、重启服务或新算，属服务状态证据，不是全目标完成。本轮继续真实性能根因工作。
+- `search_fk_reuse_20261122`：旧/新真实GPU谓词40组全部mask与stability逐值一致（3布局、随机/扰动/已知微碰撞、原位开关与0/5mm底座裕量）；512分块更慢，4096局部合法路径查询约快8–13%，但完整冷/热/交换115.130/67.397/29.470s均慢于改前，几何数组相同。三例独立CPU通过后撤回该改动：`path_validity`/`source_slot_depths`恢复此前生产AST，去掉复用专属测试/API。证据/试验源码保留，不凭微基准宣布加速。
+- 进一步诊断近位32个细分拒绝区间：20个由无约束32控制点拟合制造left_joint4越限，非原几何/箱位非法。仅投影候选内部控制点的隔离探针使18/20个通过同一4097点原几何/原位门禁；该探针未冒充完整原生成功或新鲜解算。
+- 当前保留最小修复：`v3_fast_path.fit_path(...control_bounds=None)`默认不变；`v3_fast_three_layers`仅布局负载运输、`v3_layout_native`分段预检显式传同checker硬限位。只处理拟合候选内部控制点，固定端点越限拒绝，不修补最终q/v/a、不改任何物理/工艺门禁；fit报告实际投影计数及投影后误差。`tests/test_box_layout.py`新增默认不变/固定端点/凸包限位/坏参数CPU检查，总70通过3.09s。
+- `generated/two_box_layout/native_control_projection_20261122`五个新鲜请求全部成功：近位冷95.584s/热48.453s（改前110.588/63.619s，同原始规划几何，35→17实际原生运输段）；双高箱Y/Z交换33.490s（较改前28.964更慢，两次真实完整箱体拒绝保留；所有候选投影计数0，未证明时差因果）；常规异XYZ两尺寸侧吸冷50.896s/热7.076s。warm仅复用模型，不读取旧路径；不是公平PR825s基准或全域证明。
+- 五例独立CPU完整数组/端点/末态45°包络/逐运输状态原位通过，交叉另一箱原位最大0；近位每例68001运输样本、17段、5段真native种子保留，仍有中途停顿和初始抽离残余，不能称全箱先过X前沿。source SHA及完整runtime source stamp与冻结source/manifest（含新fitter）一致。GPU18300/65984/24474/22445/56427/55725和CPU66021/12815/40460均终态0，无本轮自有遗留GPU/核验任务。
+- 8298在线CPU布局器/原111.259s35段演示、8297只读旧回放均未重启/替换/改输入。新worker会读当前修复。未commit/push/动依赖或实机。详见`docs/BOX_LAYOUT_PERFORMANCE_PROBES_20261122.md`最后两节。全目标active，任意合法XYZ/所有模式充分覆盖/5s未完成，不mark完成/暂停/阻塞；下一步聚焦近位横移LM和初始抽离残余/剩余17段，不再围绕无收益FK合并打转。
+
+## 2026-11-23 Codex / 载荷小批次graph判定及四种额外XYZ/吸附模式回归
+- 上一目标turn实际修复拟合越限、35→17运输子段，属进展。本轮先确认抽离残余主要来自既有倾斜/位移容差，未擅改30/25.5cm距离或放宽原位判据；未将更紧IK当成未经验证的解法。
+- `lateral_filter_profile_20261123`：近位横移热算原约16.97s，LM仅约2.59s、过滤约14.05s；真实剖析2050次载荷分类、CPU回退0，根因是小查询张量调度。首次探针名profile.py遮蔽标准库，GPU21209已失败终态1，失败保留；32.15s剖析含冷编译/开销，不作整单性能。
+- 最小生产改动仅`v3_full_payload_cost.py`+`tests/test_full_payload_cost.py`：旧分类body原样保留`_classify_eager`；float64 CUDA单batch1–32行使用单个32行graph，补末行/裁结果，较大查询/CPU旧逻辑不变；复用现有cuRobo GraphExecutor，不改依赖。私有输入每次复制本次FK、输出clone、几何缓冲可原位更新，无旧状态/判定/轨迹缓存。71CPU通过2.25s。
+- `payload_graph_parity_20261123`：42组真实3布局/7种批量尺寸/路径随机输入旧新valid+uncertain全等；另12组实际GPU世界/地面/箱机器人/箱箱阈值±1nm、1/9/32行及世界更新/结果持有反例通过。局部约2.1–2.2ms→0.78–0.83ms，不据此宣称整单倍数加速。
+- `payload_graph_regression_20261123`五完整新鲜请求均成功：近位冷91.735s/热45.018s（上一版95.584/48.453，原始规划几何逐值相同）；双高箱Y/Z交换28.841s（本次2候选vs先前3候选，未将全部时差归因graph）；常规侧吸冷52.830s/热7.172s（未加速）。近位仍17段68001运输样本、5段真native种子保留、初始残余和停顿披露，不改门禁/模型/原始位置。
+- 用现有`check_asymmetric_layouts.py`额外4个当前输入完整新算：`payload_graph_modes_20261123`左tall顶右cube侧52.427s、两异高度侧吸32.689s、双tall Y/Z交换双顶24.341s、左cube侧右tall顶24.777s，全通过。加上原5次为9次请求/7不同布局，全部独立CPU数组/端点/45°包络/逐运输状态原位通过，交叉另一原位最大0；source SHA/完整runtime stamp/冻结manifest一致。不是全域证明，5s仍未达标。
+- GPU67191/49018/31263/6053/23694/95978及CPU82512/97289/24239均终态0；仅失败命名探针21209终态1，无本轮自有遗留GPU/核验任务。全经过PATH gpuq，未动共享依赖、commit/push/实机。8298/8297原CPU演示未重启/替换/改用户输入，未伪称浏览器目检。
+- 交接优先`docs/BOX_LAYOUT_PAYLOAD_GRAPH_20261123.md`，旧FK合并撤回仍保持。目标active，不mark完成/暂停/阻塞，不提请最终验收；下一步需推进剩余基础碰撞调度、17运输段/前缀与更多合法XYZ/模式，而非将7个有限布局冒充任意位置。
+
+## 2026-11-23 Codex / 诊断导致的TimeOpt图失效修复，已拒绝IK批次短路与当前10请求终态
+- 上一turn有实际生产改动/9请求验证，属进展。本轮`ordinary_warm_profile_20261123`对第二个完整新鲜请求剖析（9.49s含开销），确认4次TimeOpt图初始化及约1.147s GC来自4001点native力矩诊断扩容准备缓冲。库为安全正确reset，未关闭GC/失效保护。注意原实现扩容后后续稳定热算也能复用图，**不是每次永久重建**；不能误说近位17段每段都重建。
+- `v3_fast_three_layers.native_sample_torque`只按既有容量分批审核全部4001点并clone借用结果，不扩容准备缓冲/改数组或门禁；独立RNEA保留。`timeopt_workspace_20261123`组件探针5个阶段配置验证首次q/v/a/jerk/time逐值相同、同点整批native/独立RNEA差值0Nm、graph与缓冲指针在重复调用保持；solve约0.52–0.64ms。未改共享依赖。CPU最小检查覆盖3/3/2分块与覆写。
+- `ik_short_circuit_20261123`隔离实验：3布局11个持箱目标，跳过已完整拒绝批次的native margin/包络后候选及计数全等，常规九目标局部1.104→.849s。生产`enumerate_pair`两个短路复用原计数，无额外同步；生产AST与实验同一方法。CPU覆盖全拒绝/阶段拒绝/有效/held=false/部分有效，不改候选/目标顺序，不缓存IK或轨迹。
+- TimeOpt-only中间字节5新请求成功，近位冷93.568/热45.002s、常规首热5.632s，独立CPU通过后才修改planner短路，历史结果/源hash未重写。当前字节用`warm_cleanup_regression_20261123`重跑：近位冷91.234/热43.734s，双高箱交换27.345s，常规冷50.723/首热5.870/再次热5.639s；都完整成功，warm仅模型复用。常规几何与改前逐值相同；不拿中间版较小数字冒充当前成绩，不将全部差值归因于单项改动。
+- `warm_cleanup_modes_20261123`补充4种实际XYZ/顶侧吸/双高箱长高交换全成功，52.262/31.777/25.226/24.773s。当前总10新鲜请求/7不同布局独立CPU数组/端点/45°包络/逐状态原位均通过，交叉另一原位最大0、source SHA/完整runtime stamp/冻结manifest匹配；近位仍17原生段、初始残余和中途停顿保留披露。73CPU通过2.47s。
+- `direct_transport_probe_20261123`常规56/交换256/近位256候选直连在原粗门禁全失败，未添加无收益生产预检，不当全局不可达证明或新鲜整单时间。源仅任务/初始q，未读历史路线用于生产。
+- GPU81452/38530/59683/29762/54807/29423/63579与CPU46744/94639/95103/18185均终态0，无本轮自有遗留GPU/核验任务。全用PATH gpuq，未共享依赖编辑/commit/push/实机。8298/8297原服务/演示未重启替换或改输入，未伪称浏览器视觉验收。
+- 交接`docs/BOX_LAYOUT_WARM_CLEANUP_20261123.md`优先。全目标仍active，5s和任意合法XYZ/充分模式覆盖/最终用户验收未完成，不mark完成/暂停/阻塞；别重复已失败直连、FK合并、粗128→512回退等旧试验。后续需实测剩余近位13s横移/17子段等大项，不能围绕微小数字取巧。
+
+## 2026-11-23 Codex / 局部自适应横移已原生验证；硬镜像暴露原生接近表示缺口
+- 上一turn修复TimeOpt工作区/IK短路有实际进展。本轮不再重复微优化，新增128参考网格起步、只二分失败区间并保留已检查前缀的横移候选；边直接按原最终.001检查，原父门禁及512几何失败回退保留。LM默认构造/32种子32迭代/接受选择返回AST合同未变；参考网格严格校验，采样器异常/失败均恢复属性。微残余≤10观测eps只保留原512候选，**不改原1um接受阈值**，避免简单模式多4–6s空转。
+- 生产仅`v3_lm_conveyor.py`（可选网格/更细边）+`v3_box_layout_planner.py`（局部续解/原网格回退/逐尝试耗时拒绝可见）及对应CPU检查。探针62198先因numpy bool JSON失败，82364修正后真正通过；失败保留，不计成成功。CPU76通过；初次收集未设tools PYTHONPATH失败，已完整重跑。
+- 第一版`adaptive_lateral_production_20261123`十请求通过：近位冷73.307/热24.405s、运输17→10段，但三微残余案例回退多4–6s，故加策略选择后另跑当前最终源`adaptive_lateral_final_20261123`+`adaptive_lateral_final_modes_20261123`：近位冷73.482/热24.889s，双高箱交换33.580s；常规冷/首热/再次热见最终summary_extra，仍超5s；四补充场景52.749/32.848/24.720/25.391s全通过。热近位改前43.734s，节点求解1022→258，实际40001运输样本/10段，非缓存路线/非单条无停顿全优化。
+- 当前10成功新鲜请求/7不同布局全部独立CPU数组/端点/45°包络/逐状态原位通过，交叉另一原位最大0、源SHA/完整runtime stamp/冻结manifest一致。恢复后76CPU通过2.35s，原32/128默认LM行为合同通过。
+- **新增镜像必须正视**：左tall(1,-.05,1.5)侧/右cube(1,.05,.6)顶，当前算法8候选89.360s和默认16候选139.635s均未解出；不是非法证明。试验取消“横移保持朝向”的额外限制、移动箱体SLERP回世界轴后，隔离前缀几何通过，暂接完整任务的`aligned_lateral_mirror_20261123`仍144.506s失败；未当任务成功。
+- **关键实际卡点**：该aligned记录attempts[4]运输及接近几何均成功（selected_root1，4879帧），是native approach拒绝（场景/底座地面、189样本）；32控制点种子偏差9.205456°/12.106203mm。不要根据最后几条RRT拒绝日志误诊为这个候选未找到运输路。未完成的回正生产分支已仅方法级撤回，`adaptive_lateral_final/source/manifest`全部10文件重新SHA一致，未回滚其它改动或重写历史hash。回正试验保留为组件证据，不在线启用。
+- `mirror_cartesian_tail_probe_20261123`直线盒位姿尾段仅到6.213%无准确IK，未替换RRT、未标成功；1.212m是中间态，不证明目标包络非法。下一步应在上述已保留的完整粗几何上隔离**接近段原32控制点分段**，实际静态双箱障碍/Native/TimeOpt/4001/RNEA/qva接缝全部保留；通过组件后再新鲜整单，不读旧路径冒充实时。当前time_layout_pick只有运输分段，initial前三阶段approach一失败就返回，是明确待修缺口。
+- GPU62198终态1（探针序列化）；82364/94463/46165/38007/27173/99303/18139/2597/23302/84370及CPU17275/37445/31338/27565全终态0，无自有遗留核验/GPU工作。全用PATH gpuq/8编译线程，未改依赖/commit/push/实机；8298/8297未重启/换展示/改用户参数，未伪称视觉验收。
+- 最新交接`docs/BOX_LAYOUT_ADAPTIVE_LATERAL_20261123.md`。目标active：具体镜像缺口/任意合法XYZ/5s及用户验收未完成，不mark完成/暂停/阻塞；勿把10个成功请求缩成“全域已完成”，也勿重复已失败笛卡尔尾段/直连/FK合并/粗网格回退试验。
+
+## 2026-11-23 Codex / 原生接近恢复、双箱回正候选与镜像完整通过
+- 上一turn自适应横移有实际进展但镜像缺口未解，本轮优先该缺口。`native_approach_probe_20261123`明确保存几何组件：单段32失败，两个真实native32接近子段通过（22.003s含初始化，非新鲜整单）。未移除真实静态双箱、未改Native/TimeOpt/4001/RNEA/限值或数组。
+- `v3_layout_native.time_initial_with_approach_recovery`只有真正approach拒绝后才启用，覆盖普通和前缀路径。原成功/其它阶段失败原样返回；保留monolithic rejection，二分原几何，最多64段；仅去掉完全相同的几何重复点。用真实rest-seam数组拼接且审approach→contact跨阶段实际q/v/a，不修端点、不翻native成功标记，部分报告不冒充完整周期。`v3_box_layout`展示接近子段耗时/拒绝。
+- 首次接回镜像`approach_recovery_mirror_20261123`155.506s仍失败；此回approach/contact/extract通过，transport剩单边231→232种子拒绝。GPU逐谓词`mirror_native_edge_20261123`确认右箱–arm_carriage球12在样点间约1.090um，原1um门禁正确拒绝，基本/余量/原位均通过。初始右箱–carriage净空约.895mm；不是应加大容差。
+- 备用生成候选额外要求5um box–robot净空（仅生成，最终1um不变），单箱回正/另一箱朝向冻结时仍失败，未宣称成功。允许两箱都SLERP回世界轴、中心保持真实定义后，通过生成和真实完整任务。原固定朝向候选仍优先、微残余仍原512流程；原主LM/RRT和15轴/10kg/宽度/高度阈值/末态45全部保留，没改依赖或碰撞模型。生成净空先用本查询FK，再允许payload CPU fallback覆写，CPU检查覆盖。
+- **镜像终于整单通过**：`approach_reserve_mirror_20261123`72.735s，5候选，approach2真实原生段/8001点、transport7段/28001点，contact/extract各4001。再次新鲜冷74.856/热23.766s通过；warm仅模型复用，不读旧路线。
+- 当前同字节既有六新请求也全通过：near冷72.477/热23.744，双tall交换32.624，常规冷50.617/首热5.805/再次热5.574s；四补充XYZ/顶侧/长高52.129/33.397/24.467/24.505s全过。总13新鲜请求/8不同布局。旧139s失败不是速度基准，不当成功口径加速。
+- 81CPU通过2.45s；13请求独立CPU数组/端点/45°及原1.05m包络/逐运输状态原位通过，交叉另一原箱占位区最大0、SHA/runtime stamp/冻结manifest匹配。`verify_pieces.py`还逐个真实native32/4001/Native/TimeOpt/RNEA及实际接缝检查并逐值重建全部分段文件，未插值/数组修复/时间缩放。镜像初始残余6.672/3.074mm、分段停顿/真seed保留与优化拒绝继续披露；镜像存在X前探但未进两原OBB，不能称−X单调或全货架前沿门禁。
+- GPU7151/13252/62798/66152/25649/63323/75456/15416/19036/13558、CPU36218/82778/40254/20156全终态，无自有遗留核验/GPU任务。全经PATH gpuq/≤8编译线程，未依赖编辑/commit/push/实机。8298/8297未重启/换展示/改输入，未伪称WebGL人工验收。
+- 当前交接优先`docs/BOX_LAYOUT_MIRROR_NATIVE_20261123.md`。goal active；5s/任意合法XYZ/充分模式覆盖及最终用户验收仍未完成。后续应推进真实不同XYZ/阈值附近与完整延迟，不重做已过镜像或拿13有限请求当全域。旧失败/未完成实验都留档，不覆盖hash。
+
+## 2026-11-23 Codex / 新世界XYZ与0.8/0.85m吸附阈值边界12请求完整通过
+- 上一turn解决镜像原生任务缺口有实际进展。本轮没有更改生产源码，保留同11文件冻结manifest与完整runtime stamp，未重启8298/8297或改用户输入。转向新世界XYZ/阈值覆盖，避免只重测已有成功演示。
+- `suction_threshold_20261123/catalog.json`8个显式新请求：四种两尺寸左右分配/高箱Y-Z交换，各Z=.79999与.80000，阈值.8。GPU53615完整新鲜解算全成功，实际模式严格顶/顶与侧/侧，宽度.300/.255不变，输入箱心没被搬到容易位置。
+- 同目录mixed_catalog4新请求：默认.8及自定义.85阈值两侧10um/精确相等，两臂同场分别顶侧吸；两自定义例高箱Y/Z交换。GPU25810也4例全通过。完整墙钟见summary：首组57.630/23.707/24.025/23.567/26.943/28.934/25.444/22.870s，混合47.783/25.326/22.027/22.419s。包含新拓扑初始化，不当公平PR82速度基准，5s仍未达标。
+- 独立CPU18345/6173分别8/4请求数组/端点/真实45°与原1.05m球包络/逐运输状态原位全通过，跨另一原箱OBB最大0，source SHA/runtime stamp/manifest匹配。CPU71862额外核查全部contact/extract实际数组（24阶段96024状态）URDF FK，对显式请求面中心/方向/宽度比较：最大横向.230627mm、角.046448°、TCP面中心误差约.000179mm、抽离全宽位移误差.246761mm，原2mm/1°不改。不是只验top/side配置标签。
+- cube_left_tall_right_below出现单段approach拒绝后原生分成7段通过；复制的verify_pieces.py在本目录逐段Native32/4001/RNEA/实际接缝并逐值重建合并数组，未覆盖旧13请求证据；其approach28001点、中途停顿继续披露。12个result中73个中间rejected事件均保留，不当73次整单失败。
+- `payload_large_graph_probe_20261123`非生产runtime实验48组真实有效性/歧义标志等价+世界缓冲更新通过，但129/512补1024导致局部明显更慢，3完整新请求52.892/6.179/5.718s无稳定收益（均CPU92890复核通过），未引入生产新cache/graph形状或改依赖。runtime override已显式记gpu_session，不拿磁盘源hash冒充生产运行版本。不要再重复这一无收益补齐方向。
+- GPU53615/16609/25810与CPU18345/6173/71862/92890均终态0，无自有遗留GPU/核验任务；PATH gpuq/编译并行≤8。未commit/push/实机，无WebGL视觉验收声明。生产代码未变，不重复81项CPU套件充当新进展。
+- 最新覆盖交接`docs/BOX_LAYOUT_SUCTION_BOUNDARY_20261123.md`；算法交接仍看`BOX_LAYOUT_MIRROR_NATIVE_20261123.md`。本轮新增12布局全通过，与上一轮13请求同当前字节，但有限样例不能证明任意合法XYZ。goal active，5s/充分全空间模式覆盖/最终用户验收未完成，不mark完成/暂停/阻塞。
+
+## 2026-11-23 Codex / 仅搜索SAT投影算术提速；常规4.900/5.170s，最终门禁与16请求验证
+- 上一turn新增12边界布局覆盖有实际进展。本轮回到完整性能，未重试已证无效1024补齐graph。新增`curobo_core/payload_geometry.box_overlap_depth_projected_tensor`，只让`v3_full_payload_cost`两个signed搜索调用用自身坐标系同6面+9叉积轴投影。仍float64、原轴截止与歧义CPU复核。原显式tensor/NumPy/原位SAT、优化代价/梯度/接受谓词/限值/模型/预算均不改，check_scope.py AST确认；无依赖修改。
+- CPU28672近轴/阈值对最终分类一致；GPU42组真实常规/近位/镜像随机及路径批量valid/uncertain全等，另12CUDA阈值反例。两点raw signed阈值舍入不同，但都由原同一CPU fallback接管，fallback membership与最终接受完全相同，未放宽阈值。最初capture期Python列表索引失败、第二次只比raw阈值断言失败均保留；纯tensor.roll及正确最终谓词验证后才实施生产。82CPU通过2.44s。
+- 生产`sat_projection_production_20261123`8新请求全通过，且输入/实际held目标/原始粗几何都与上一版逐值相同：常规冷49.921/首热4.900/再次热5.170s；近位冷71.241/热22.769s；双tall交换31.123；镜像冷74.273/热24.115。镜像热比原23.766更慢，不能称所有场景加速；常规4.9/5.17也不能称稳定5s。不是PR82公平基准比较。
+- 四补充模式`sat_projection_modes_20261123`52.071/31.794/24.193/24.656s、四混合吸附及0.8/0.85参数边界`sat_projection_mixed_20261123`48.621/25.706/22.011/21.768s全通过。总16当前字节完整新鲜请求/12不同布局，独立CPU数组/端点/45°及原1.05m包络/逐状态原位全过，跨另一原OBB最大0、SHA/runtime stamp/manifest一致；verify_pieces.py全部实际Native32/4001/RNEA/接缝/拼接逐字段重建通过。分段停顿/初始残余/真实优化拒绝保留。
+- **下一潜在大项已隔离定位但未上线**：持箱目标盒姿态与head/head_yaw/arm_carriage碰撞的CPU保守包络可排除10–18/21 lift格点。`lift_pruning_probe_20261123`常规9目标合法goal数组全等、局部合计.930→.325s；近位限256数组不等，工具终态1，未将它当安全生产优化。`lift_pruning_diagnosis_20261123`证明完整1456合法goal有序数组相同、无有效lift错排，限256时因原512行批次停止+肘型交错选择导致1个goal替换/部分顺序变化。若继续，应当显式候选池策略变化做完整近位/镜像/阈值回归，不重做集合诊断、不把断言改松冒充等价；当前生产仍只有SAT改动。
+- 额外JSONcompact序列化CPU实验常规约8ms/近位78ms收益，不是主要瓶颈，未改IO。独立CPU也通过3实验SAT请求，但runtime override显式记录，不当生产source字节证明。
+- GPU74827/21252终态1（capture/raw阈值），44304/10723/45687/34436终态0；早筛2180终态1、诊断65055终态0。CPU21861/40616/92852/89884终态0，无自有遗留GPU/核验任务。全PATH gpuq/≤8编译线程，无commit/push/依赖修改/实机。8298/8297未重启/改输入/换展示，无WebGL人工验收声明。
+- 最新交接`docs/BOX_LAYOUT_SAT_PERFORMANCE_20261123.md`；整体算法仍参`BOX_LAYOUT_MIRROR_NATIVE_20261123.md`。goal active，稳定5s/任意合法XYZ/充分覆盖及最终用户验收未完成，不mark完成/暂停/阻塞。不可拿一次4.900s宣布目标达成。
+
+## 2026-11-23 Codex / 持箱升降强碰撞提案早筛；26请求通过，五热中位4.677但仍有5.441尾延迟
+- 上一turn搜索SAT有实际进展，本轮推进此前已诊断的持箱早筛。新增`BoxLayoutPlanner.carry_lift_blocked`，在真实CPU FK当前lift下用实际目标盒/头部与carriage冻结球+6mm/1°完整保守包络/10um数值余量，仅省去深重叠升降提案的解析IK。原实际接受门禁/模型/限值/15轴/10kg/XYZ/45°不改，contact和held=false恢复不走早筛。无IK或轨迹缓存。记录pruned_lift_m及显式候选池策略。
+- 这是明确候选池策略变化：原512行分批停止+肘型交错会因删除无效行改变限256池；不再宣称完全等价。前述完整1456目标等价证据保留。本轮check_scope.py确认生成后全部原门禁/肘型选择AST及其余11冻结文件不变。仅planner+对应CPU测试，83项通过2.59s，含两尺寸/交换/附件/深重叠/包络内不拒/contact和非held旁路。
+- `lift_pruning_production_20261123`8完整请求全过：常规冷49.689/首热4.393/再次热4.734s，近位冷69.376/热21.945，双tall交换31.340，镜像冷72.200/热24.054。常规与上一版输入/目标/粗几何相同；近位/镜像输入与实际目标相同但粗几何不同，不能套用上一turn所有几何相同的说法。常规九持箱目标早筛129个lift，近位10、镜像11；不是PR82公平基准。
+- 补充4模式+4混合阈值边界全成功，目录`lift_pruning_modes_20261123`/`lift_pruning_mixed_20261123`。另独立冷+五热`lift_pruning_stability_20261123`全成功：冷55.050s，热5.077855/4.559103/4.677142/4.488071/5.441450s，中位4.677、仅3/5低于5s，**未稳定达标**。不能用先前4.39/4.73掩盖这组慢样本。
+- 新4世界XYZ`lift_pruning_new_xyz_20261123`也完整通过：双方箱不等XYZ侧23.381/顶24.421，双高箱不等高度侧60.644，高位交换高箱(1.13,.58,1.30)+低方箱(1.07,-.55,.48)81.818s。输入原样/后续候选拒绝保留，不将困难位置换走或标非法。
+- 共26当前新鲜请求/16不同布局独立CPU数组/端点/45°/原1.05m包络/逐状态原位全通过，跨另一原OBB最大0；source SHA/runtime stamp/manifest一致。verify_pieces全段Native32/4001/TimeOpt/RNEA/实际qva接缝/逐字段原数组重建通过；近位10段、镜像7运输/可能2接近，初始残余与停顿/种子保留/优化拒绝继续披露。
+- **下一性能定位**：五热stage_breakdown中hot1 native1.760s vs通常1.33s；hot5 geometry/native之外.956s vs通常.16s。最终CPU独立核验仍.084s，.8s增量在plan_layout内未细分部分（home验证/报告/运行时等尚无因果实证），不从总墙钟扣除凑5s。应在完整热请求上定位，勿凭猜测禁用GC/源校验/安全门禁。
+- GPU35081/72421/52831/84786/34256及CPU91381/60426/53815/17661/78851全终态0，无自有遗留核验/GPU任务。全PATH gpuq/≤8编译线程，无依赖编辑/commit/push/实机。8298/8297未重启/改参数/换展示，无WebGL人工验收声明。
+- 最新交接`docs/BOX_LAYOUT_CARRY_LIFT_PRUNING_20261123.md`，goal active；任意合法XYZ/充分所有模式覆盖/完整冷热点性能及用户验收未完成，不mark完成/暂停/阻塞。下一步不重复已通过的早筛集合诊断，不拿热中位或单次4.39当全域5s完成。
+
+## 2026-11-23 Codex / 普通抽离64参考提案与128质量回退；当前8299真实在线演示已就绪
+- 上一turn持箱早筛有实际进展，本轮先追未分配约.8s尾延迟。`warm_tail_profile_20261123`完整新鲜GC/status-IO/cProfile观察未复现，不能归咎GC/磁盘；一次GC在worker结束后的剖析整理，不作为因果。`library_timer_probe_20261123`现成诊断Event开关组件逐值等价但无一致收益，**未接入生产**；保留内部诊断计时、完整墙钟、GC和源校验，未用0内部计时凑5s。
+- 转测普通正向抽离64参考IK节点。初版`nominal_extract64_probe_20261123`8整单虽最终通过，双高箱非对称侧吸85.724s/9候选比原60.644/3明显慢；其微米残余触发多次横移/工艺拒绝，未直接采用。`nominal_extract64_clear_probe_20261123`加提案端点数值余量选择，难例用原128并3候选通过；37.206s非同冷条件加速成绩。两实验运行时覆盖/旧hash保留，均独立CPU通过后才改源码。
+- 生产仅planner/GUI计时文案+CPU检查：`nominal_extraction`暂用64参考，单节点32种子/32迭代、原0.25deg边、正式Native/TimeOpt/4001完整审核不变；几何/完整载荷/native端点/原位数值边界质量失败用原128；逆向恢复/横移/原LM默认构造不改。端点质量是观测eps的一半，仅决定候选采样，不改变正式1um门禁或拒绝箱位。sampler成功/失败/异常均恢复，粗拒原因与求解器真实success分别保留。
+- 采用64时复用同一新鲜数组刚做的实际载荷几何审核一次，原正式4001审核原样；无跨请求判定/轨迹缓存。新增extract_reference子阶段显示真实耗时/拒绝、注明计入抽离总耗时；拒绝栏明确包含提案筛选。84CPU通过2.77s，check_scope.py确认其余10冻结文件及逆向/solve_file墙钟/worker逻辑未改。
+- `nominal_extract_production_20261123`8整单全过：近位冷72.815/热21.415，双tall交换32.376，镜像冷72.883/热24.748，常规冷49.901/首热4.092/再次热4.132s。五热独立`nominal_extract_stability_20261123`冷49.647后4.001273/4.240209/4.009953/4.049854/4.040816s，中位4.040816、5/5<5；**只是一种常规布局的本批热样本，不能称全位置/冷/热5s已完成**。
+- 另4模式+4混合阈值+4非对称XYZ均整单通过，目录`nominal_extract_modes/mixed/new_xyz_20261123`。总体26回归+下述2UI=28当前字节新鲜请求/16布局，独立CPU数组/末态45deg/原1.05m包络/逐状态原位全过，跨另一原OBB最大0、SHA/runtime stamp/manifest一致。107单段阶段确有4001点，所有分段逐个Native32/4001/TimeOpt/RNEA/真实qva接缝及逐字段原数组重建通过。初始残余/停顿/真实seed保留/优化拒绝继续披露。
+- **当前可检查在线页面8299** PID194674、exec60485，日志`/tmp/pr82-current-online-editor-8299.log`，HTTP200；原8298/8297未重启改输入。初始左tall(1.16,.49,1.06)、右cube(1.20,-.47,1.00)。`current_online_editor_20261123/check_live.py`实际WS检查Y/Z及worldX/顶侧预览、完整重叠提交拒绝，再真实按钮两请求49.148冷/4.021热，原生播放时钟推进及双箱实际Ry=-45deg末态场景变换匹配；已全流程时间0暂停，成功回放保留。
+- UI结果`runs/layout_mmjbggut/plan/result.json`冷、`layout_n97na4kr/...`热，独立CPU也通过。会话session_7cw_cyul已stopped/2请求/session_limit，锁释放，未留GPU。当前会话配置idle10s/window240s/max2，请求新算会重新排队，不承诺总是热算。**8299已作为当前入口公开，不重启/改其用户输入或重跑会改参数的check_live.py，后续调试另开端口。** 浏览器工具No browser is available，未伪称WebGL人工目检。
+- 所有本轮GPU/CPU试验、回归、WS客户端均已实际终态，详见新文档资源节；仅CPU服务持久，PATH gpuq/≤8编译线程，无依赖编辑/commit/push/实机。最新交接`docs/BOX_LAYOUT_NOMINAL_REFERENCE_AND_LIVE_20261123.md`。goal active，任意合法XYZ充分覆盖/全部布局低延迟/最终用户验收未完成，不mark完成/暂停/阻塞；请勿拿本批5热或新在线UI就认全目标完成。
+
+## 2026-11-23 Codex / 细网格冗余去重与镜像Y+15mm腕部几何反例完整修复
+- 上一turn有实际源码/新8299演示进展，本轮未重启或操作8299/8298/8297的参数/回放。先完整新鲜近位/镜像热请求剖析`hard_layout_profile_20261123`（观察开销不作成绩），定位细网格138万组合的15列np.unique约2.6s。
+- heap原型目标逐值一致，但Python循环抵消近位收益，未接入。更小修复：单臂解已7位唯一+各组取整lift互异，证明组合已唯一；仅arm_limit=None满足该条件时省重复全量unique，普通IK/重复取整lift保留旧逻辑，float32合并候选不再去重以保持原库存。`pair_unique_proof_probe`组件near4.1–4.4→1.65–1.72s、mirror3.66–3.71→1.33–1.53s，256目标逐值同；原型仍全量组合，未接线materialized_rows=0已单列说明不是测量，勿称懒生成。
+- dedup-only生产8请求通过（热near19.551/mirror21.915），但四新Y±15mm样例出现**一个未知失败**：左tall侧(1,-.035,1.5)/右cube顶(1,.065,.6)，36.115s/16候选耗尽，未标非法；旧12请求是11成功1失败，均留档独立CPU核对。失败端点132万组合hard_valid0，尚未到RRT。
+- 独立CPU原URDF/sphere/ignore几何诊断：旧引导盒体净空约2.81mm，但right_link7–carriage约3.328mm深碰；固定tool目标已决定link7姿态，换内部swivel无解。旧引导还偏好lift0腕部93mm深碰。补充**原末端sphere/self几何**引导的运行时完整新算86.367s/7候选全部门禁与独立CPU通过，非生产/source或加速证明。
+- 当前仅planner、core/box_pick及CPU测试：`extraction_endpoint_proposals`可选terminal_geometry来自当前原机器人模型与box/tool/link7固定变换、遵原ignore配对。默认输出两尺寸分配逐值完全同，保留4局部种子/.95deg/1.8mm/lift/350迭代。原提案优先耗尽后才惰性计算补充提案，仍原8恢复成功候选/总maxcontacts限制；不宣称所有晚选forward顺序兼容。0端点用明确提案reject原因，不证明输入非法。87CPU通过2.57s，scope AST/11冻结文件核对原接受门禁不改。
+- 当前生产`terminal_guidance_production_20261123`8核心请求全过：near冷69.280/热19.584，双tall交换32.170，mirror冷71.402/热22.856，ordinary冷49.168/热4.097/再次热4.235s。反例独立冷95.399/热47.102s均7候选完整通过；不可把旧36s失败与新95s成功当速度提升。
+- 四邻近位置生产重验`terminal_guidance_nearby_20261123`全过：mirror+15mm94.071、mirror−15mm20.883、near+15mm35.780、near−15mm15.651s。当前14新鲜成功请求/8布局独立CPU数组/端点/45deg/原1.05m包络/逐状态原位全过，跨另一原OBB最大0，SHA/stamp/manifest一致；actual native32/4001/TimeOpt/RNEA/qva接缝/拼接逐字段重建通过。初始残余/停顿/优化拒绝/真seed保留仍披露。
+- **下一根因已源码确认**：反例warm attempt4的native extract left box–robot深1.7385mm/sample3113；原粗几何loaded_audit通过，refine_lm_path257优化点仅sphere代价无完整盒引导，最后4001原门禁正确拒绝。attempt4/5/6 transport都root1，勿误修普通root0适配/盲加RRT。下一步在同LM refiner隔离增加完整盒引导或验证保留合规原输入样条，守住64controls/32iters/4001/RNEA/线/末态/接缝，不加入源位phantom排斥、不跳LM或改成功/阈值。组件后新鲜整单，勿把保存几何组件当实时成绩。
+- GPU20579/2733/70727/98870/16989/49339/38032/13516/30746及CPU43660/36139/79689/20792/72084均实际终态0；runner0不掩盖旧反例失败。无本轮自有遗留GPU/核验任务，PATH gpuq/≤8编译线程，无依赖修改/commit/push/实机。8299公开现场完全保留；不要重跑会改输入的check_live.py或重启。
+- 最新交接`docs/BOX_LAYOUT_FINE_IK_AND_TERMINAL_FALLBACK_20261123.md`；在线现场说明仍看NOMINAL_REFERENCE_AND_LIVE文档。goal active，连续任意合法XYZ充分覆盖/所有场景5s/最终用户验收未完成，不mark完成/暂停/阻塞；下轮优先上述具体native extract表示/引导缺口。
+
+
+## 2026-11-23 Codex / 原生抽离完整箱体按需引导与运输候选数值余量
+- 保留8299公开验收现场及8298/8297；HTTP8299仍200，CPU194674未重启/改输入/播放。浏览器工具无browser，未伪称WebGL人工目检。
+- 同一端点重建reverse LM128粗路径起止差0，重现困难counterexample contact_index4原native extract左箱–机器人1.738495579mm/sample3113。原LM只有sphere损失，4001正式完整盒门禁正确拒绝。原15mm弱引导超1度、无margin残余56.508µm均失败，未当成功。100µm真实盒软目标修抽离，但always-on整单仍7候选/53.949s热，未直接部署。
+- 更深运输拒绝：原横移允许initial+1µm，native全局回侵1.125920619µm；另index4边界仍约1.0005µm盒–机器人深碰。生产仅adaptive提案留半epsilon，并复用原align分支5µm物理提案净空；原512 fallback与所有正式全局源位/物理门禁不改。core callback默认None，只有原完整盒抽离audit拒绝才以同64controls/32iters重试，无source phantom，保留原拒绝/总耗时并仍过原TimeOpt/RNEA/4001/接缝等。
+- 四生产源码变动及既有两个测试各增一CPU检查。97CPU检查通过（87核心+10发布/FK）；AST还原核对core仅可选cost、adapter原参考/预算相同、原native函数/正式source_progress相同、layout仅两更严提案。旧/新真实运行25SHA仅4预期源文件改变、另21项未改。source/before清单冻结，详见native_extract_recovery_20261123。
+- 当前生产15新鲜请求/8布局全部通过，独立CPU数组/URDF端点/真实45度/原sphere1.05m包络/源位全过程全过，另一原箱位重叠全部0。真实native32/4001/TimeOpt/RNEA/qva接缝与合并逐字段重建通过。普通冷49.178，三热4.247/4.307/4.039；困难冷45.180、热24.022/24.122，均5候选（旧生产同输入热47.102/7）。near冷41.437/热19.828，mirror热23.045/23.101，镜像−15mm22.234，near±15mm15.257/17.182，双tall长高交换冷34.300。**此前实验near仅一次新拓扑，不能与旧near热19秒比较；冷启动顺序差异不作因果速度比较，更不是公平PR82全任务5秒证据。**
+- 4个完整运行时原型each8请求独立CPU/原生拼接核验均完成，当前生产无运行时覆盖/保存路径作为求解输入。lazy_extraction_contract确认普通不引导、困难热保留原1.738495579mm拒绝后成功，同真实64x15/32轮/4001且无抽离源位引导。
+- 下一可定位瓶颈：困难热仍有5.716s精细末态IK无解枚举。可研究在组合展开前用原末端link7–固定头/升降架必要几何安全剔除，但**未实现/数值边界未证**；勿盲加预算/改门禁/把搜索失败判非法。当前无新源码待验证。
+- GPU16680/48760/80801终态0；按需实验904785与gpuq902180已消失、完整8请求summary。CPU85842/43983/76173/74248/48982/5381及各原生重建终态；净空CPU7380句柄已消失且8独立结果完整。无本轮遗留GPU/验证进程。PATH gpuq/≤8编译，无依赖修改/commit/push/实机。最新交接docs/BOX_LAYOUT_NATIVE_EXTRACT_RECOVERY_20261123.md。goal仍active，连续任意合法XYZ充分覆盖、全部布局低延迟及用户验收未完成，不mark完成/暂停/阻塞。
+
+
+## 2026-11-23 Codex / 单臂独立自碰撞预筛与六组新世界位置完整验证
+- 保留8299/8298/8297输入和回放，未重启、未运行会改参数的check_live；CPU8299现场仍保留，无WebGL人工目检。最新交接docs/BOX_LAYOUT_ARM_PRECHECK_20261123.md。
+- 根因：困难反例fine末态提案原展开1324544组合才发现全部自碰撞。对实际round7/float32单臂q，克隆原FK球，保留该臂原球+固定机身原球，以原checker.get_self_collision/pair mask/padding筛出另一臂不能消除的碰撞，再展开组合；附加箱球和另一臂只在临时副本内负半径禁用，禁用值覆盖padding，不改原模型/借用缓冲。只noncontact且arm_limit=None启用，普通32候选算法保留，所有原接受门禁不改。
+- arm_subset_probe_20261123组件7提案AB/BA重复：保留端点与顺序全部逐值相同；144查询另取1736样本随机改另一臂，保留FK逐值相同、子集拒绝必被原完整self拒绝。最慢无解5.523/5.648→.172/.168s、实际组合1324544→0；可行提案仍256。组件不是实时整单计时。
+- 仅planner源及既有test_box_layout新增3CPU检查，100CPU通过5.27s（禁用/padding/附件排除/缓冲/round/URDF祖先不依赖另一臂/仅细网格调用）。AST还原原模块相同，旧新25运行源SHA只planner变、另24相同；before/source完整冻结。
+- 当前生产arm_precheck_production_20261123 **21新鲜整单/14布局全部成功**。普通冷49.569、三热3.978/4.224/4.100；困难冷39.576、热18.006/18.197，均5候选；near冷40.968/热19.666，mirror两热22.696/22.425，mirror−15mm22.120，near±15mm14.155/17.470，双tall交换冷30.636/2候选。
+- 六组新位置均通过：左右X错位24.923冷、低侧/顶混合24.661冷、双cube顶26.800冷、.799m双顶4.700热、.800m双侧23.119冷、双交换tall低顶27.067冷；中心/尺寸/模式/实际.300/.255抽离距离均独立核验。冷初始化不与热耗时直接归因比较。
+- 独立CPU21请求数组/URDF端点/真实Ry−45deg/原1.05m包络/源位全过程全部通过，另一原OBB重叠均0；实际native32/4001/TimeOpt/RNEA/qva接缝/合并逐字段重建通过。新增verify_contacts.py还直接原URDF回算实际原生接触箱心与吸附法向，最大初始箱心偏差2.924µm、最大全局持箱角误差.0000184deg；不得挪输入中心制造成功。源位仍是初始残余不加深/清出不回OBB，非全程X单调/整箱先越无限前沿面。
+- exact_warm_comparison：上一版困难counterexample_warm与本版同请求/resolved task/全部几何帧/四阶段原生6字段逐值完全相同，墙钟24.022→18.006s；只此对照作同真实轨迹声明。批量same_input_motion_comparison保存15对，14几何相同、双tall有合法候选变化，其余原生差异全部如实记录。不能拿热算/有限成功当公平PR82全任务5s或任意合法XYZ证明。
+- 下一瓶颈已换为next_profile中横移连续LM/原生运输；不要再修已移除的5.7s百万无效组合或重复full-box实验。未降低128参考/4001/边密度或改变预算；可先组件测更快横移提案再新鲜整单，不做未经验证更改。
+- 本轮GPU24200/18425、CPU78710/65483/97632均实际终态0，无本轮遗留GPU/核验进程。PATH gpuq共享原锁/≤8编译，无共享依赖编辑/commit/push/实机。goal仍active：连续任意合法XYZ充分覆盖、全部布局低延迟、最终用户验收均未完成，不mark完成/暂停/阻塞。
+
+
+## 2026-11-23 Codex / 同批载荷分类与净空复用、两新位置及有证拒绝
+- 根因进一步精确：横移每侧~2.4s中LM~.3s，候选/边检查~2s；同一FK查询先eager完整几何求5µm提案净空，再重复分类。FullPayloadCost.classify_with_robot_depth同次返回原valid/uncertain与robot最大signed depth（32行graph同步输出），默认classify仍仅两mask。payload_search_mask及TwoBox转发器加可选同批classification，要求state及严格(1,N)形状，原CPU不确定复核/统计不变；callback在CPU覆写FK前消费全部视图，无跨查询分类缓存。
+- 四源文件tools/v3_full_payload_cost.py、v3_payload_safety.py、v3_two_box_pick.py、v3_box_layout_planner.py及三个既有测试文件改动。105CPU通过5.15s；AST还原证明原geometry/classification两mask/CPU fallback及其余方法相同，128参考/.001边/4001/64或32controls/迭代/物理源位和动力学阈值/预算都不改。25运行源SHA4预期项变、另21不变；optimizer cost/primitive与最终独立完整盒审查不变。
+- merged_payload_probe_20261123组件18批（3布局×1/16/32/33/127/257）classification、uncertain、净空、CPU fallback逐值相同；三布局横移AB/BA重复路径全部逐值相同。组件热困难5.251→3.540、near5.092→3.327、mirror6.629→4.413s；首轮含创建不作热比较，保存起点组件非新鲜整单速度。
+- 当前生产merged_payload_production_20261123：24新鲜请求，其中23完整可行请求/16布局全部成功，1个明确URDF可达性拒绝。普通冷48.627、三热4.162/4.110/3.963；困难冷37.052、热15.886/15.987（均5候选），near冷39.435/热18.203，mirror热19.591。更全数据见summary与新文档，cold不与warm直接比较。
+- 新两布局：左tall长高交换侧吸(1.08,.57,1.12)/右cube顶吸(1.18,-.53,.73)，30.154s冷；左cube(1.10,.52,1.35)/右tall(1.16,-.49,1.32)双侧，28.851s冷；均1候选。初始中心保持，宽.300/.255与世界Ry−45deg不改。
+- 明确拒绝：左tall(1.10,.50,1)、右cube(3,-.50,1)，0候选、success/physical_success false、assigned_contact_outside_reach。CPU实际fixed.urdf+offset/sign/升降界复算同证：右腕距离下界2.176745866m>上界.990097501m，非搜索耗尽假称非法。原早返回task_success未置值（未跑轨迹工艺），未改写成功。status_markdown实含URDF reach bound理由/接触可达性证明，rejection_status.md留档；未操作8299触发此例。
+- 独立23可行请求CPU数组/URDF端点/原1.05m包络/源位全过，另一原OBB最大重叠均0；native32/4001/TimeOpt/RNEA/真实qva接缝/拼接逐字段重建通过。原生接触法向/箱心/全局−45独立核验23，最大初始箱心偏差仍2.924µm。same_input_motion_comparison保存前后21对；困难counterexample_warm全部请求/resolved task/几何帧及四阶段原生6字段完全相同，18.006→15.886s，仅此作同真实轨迹声明；其它差异如实记录。
+- 8299原输入/回放/CPU进程保留，未重启/改参数或播放；无WebGL人工目检。GPU48697、CPU82855/32326/76795终态0；组件77226句柄已消失，3组18批报告完整、实际进程无。PATH gpuq共享锁/≤8编译，无共享依赖编辑/commit/push/实机或本轮遗留GPU/核验任务。
+- 最新交接docs/BOX_LAYOUT_MERGED_QUERY_20261123.md。下一步看当前next_profile并继续合法位置覆盖，不要重做已解决的百万组合/抽离盒体引导/重复分类；完整接受门禁不改。goal仍active，连续任意合法XYZ充分覆盖、全部场景低延迟、最终用户验收未完成，未泛化其它尺寸，不mark complete/paused/blocked。
+
+
+## 2026-11-23 Codex / 源位误报根因修复与当前36组合独立验收
+- 开始按三种有效几何×两种吸附/臂枚举36组合，发现此前23成功仅覆盖9组合。旧topology_coverage首批12后端全报成功，但独立发现tall_side__tall_top误报：GPU初始重叠1.040669µm判未清；无状态URDF精确初始.9964855µm已清、下一1.0004060µm回侵（中心X无前探，完整盒投影变化）。原1µm过程阈值不改，旧错误接受记录/原轨迹保留；independent_validation_status明确该旧批11通过1误报，不按12通过累计。
+- 另外查到yourdfpy/trimesh scene graph合并≤1e−8变换更新，原显示循环得1.001525µm且有微小历史依赖。新核心批量float64 FK+无状态标量URDF参考绕过显示缓存；只缓存解析URDF元数据，不缓存FK输出。首点及临近原清出/深入边界行用标量参考重算，1e−7仅分派窗口、未加到接受阈值。17个URDF可动关节含两头部，实际工具链15原生轴完整映射，禁止漏轴/非有限/mimic链。
+- 只生产core/native_transport.py和v3_box_layout_planner.py及既有test_native_transport.py/小原生fixture改动。共同任务终门禁保留原GPU source检查；通过后还要求stateless CPU source通过，root0/root1全覆盖，GPU结果留gpu_pose_process，根观测为双精度。原数组/箱心/宽距/45deg/物理模型/优化/密度/预算不改。107CPU通过5.27s；AST还原其余原生/搜索/物理代码相同、25运行源仅2预期变另23不变。
+- 已保存35条真实数组全量无状态标量复算与快速边界法完全同决定（34通过、上述1拒绝），最大矩阵差~1.2e−15。旧显示循环4001约1.836s、标量参考.727s、批量FK.010s、完整源位复核通常.020–.040s。组件非实时解算成绩。
+- 修复后边界同请求全新cold86.513s/3候选：0原box/world碰撞拒绝，1GPU过但CPU frame1回侵拒绝，2成功；warm11.128s/首候选成功。未把旧错误接受47秒与新正确成功冷86秒作速度比较。真实前15行fixture及共同门禁“GPU拒绝不被CPU恢复”回归保留。
+- 当前唯一组合矩阵topology_verified_20261123：3批各12，36全新组合请求全部成功；全source SHA、原GPU+新CPU source过程、独立每点标量URDF（另一矩阵组合顺序、无显示缓存）、初始吸附法向/原箱心/全局−45/原1.05m sphere包络/native32每段4001/TimeOpt/RNEA/真实qva接缝/拼接逐字段重建全部通过，跨另一原OBB全部0。左右初始X1.18/1.20、Y±.55，side Z1.05/top Z.65，原.8规则自动选模式。36是一处代表/组合，不是任意连续XYZ证明。
+- verified_matrix.json列全部结果SHA、目标XYZ、候选数与实际FK。持箱XYZ沿用此前批准适配，当前选中Z1.0–2.0m，−45度不变，未假称所有箱同1.2m默认高度；初始中心完全按请求。只两尺寸，cube Y/Z相同故无需重复交换相同几何；高顶吸上界仍挂起。原源位为自有OBB初始残余不加深/清后不回，非全程X单调/无限前沿平面；另一原OBB独立诊断0。
+- 当前字节普通/困难6新鲜标准回归全过并独立核验：普通冷48.939、热4.125/4.433；困难冷38.130、热17.055/16.859。工作进程墙钟，冷热分列/不含外部排队，仍非全部布局5秒或公平PR82全任务基准。
+- GPU旧37114/修复focused62615/当前42987/91877/标准57702终态0；当前第3批96454在12结果全落盘后返回143（原因未证、不冒称正常），36全证据已独立校验、未因此重跑。CPU95289旧验证实败1；当前96893/48619/80764/23293/65519/97701/50774/80545等终态0。早期测试65173仅缺json导入，后107绿。所有本轮GPU/核验进程已无；仅原8299/8298/8297CPU现场保留，未重启/改输入/播放，无WebGL人工目检。source_boundary图为原样本生成，工具不支持看图未声称视觉检查。
+- PATH gpuq原共享锁/≤8编译，无共享依赖编辑/commit/push/实机。最新docs/BOX_LAYOUT_STATELESS_SOURCE_AND36_20261123.md。goal active：连续任意合法XYZ、所有场景低延迟及用户验收仍未完成，未进入其它尺寸泛化，不mark complete/paused/blocked。后续请以当前36矩阵/新CPU门禁为基准，别将旧误报或不同冷热相混。
+
+
+## 2026-11-23 Codex / XYZ挑战发现未知失败、RRT已拒池淘汰及正确统计
+- 当前source与上轮25SHA核对后生成12个高度/XY/前后挑战。前4同侧前后排布被原assigned_contact_outside_reach证据拒绝，CPU实际URDF重算相同、0候选；原Y=.55及新增Y=.50输入都保留，不在求解中挪箱。第五低cube左(1.05,.52,.45)顶吸/高tall右(1.12,-.52,1.55)侧吸无必要界排除，但16候选/原32s首恢复+后8s RRT耗尽，249.502s unknown；8恢复抽离几何有效，搬运未连通。未叫非法。runner停止，后7请求未跑。
+- 更正中间误读：旧fine_candidates_checked=64只是收尾次数，不是全精查总数。代码确有已拒短连接占64池/被作informed bound缺陷；只共享v3_multiroot_search.py+既有native_transport测试一项修复：原fine拒绝后记身份、入池/每轮过滤、收尾不重复。保持原validity.mask/quality短路与全部物理/采样/预算，新增正确总数/geometry-vs-quality计数。108CPU5.69s通过，AST关键调用/API/随机/while预算相同，25源仅1预期变另24相同。
+- 原请求当前池修复下完整新算仍失败240.130s/16，不能说解决或拿失败耗时作加速；首恢复2489粗连接、682精查、215dense-geometry/467source-quality拒绝，其他恢复大多0粗路径，第8有4/4quality拒绝。rrt_rejected_pool/failure_diagnostics及所有old/new失败保留，无运行时覆盖/保存路径输入。
+- 六正例当前源码新鲜解算+独立CPU/接触法向/数组/原1.05m/源位全过程/native32/4001/TimeOpt/RNEA/qva接缝/合并逐字段全过，另一原OBB0：普通冷49.897/热4.168/4.173，困难冷39.900/热19.761/16.778。旧36矩阵明确是前版本，未冒称本次新字节36重测。
+- 下一具体方向：状态约束仅原initial+1µm，完成path才no-return，467quality失败应测在树边按真实运动方向施加相同过程规则（start/goal树及连接方向），不要盲加预算/改门禁/直接叫非法；并查fine collision是否粗树坏边继承。尚未实现。先重建首reverse有效端点组件拿精查原因，再完整新算，别反复240秒无端点文件。endpoints来自extraction_recovery[0].proposal/trials.endpoint_index重枚举，保存目标是组件非实时成绩。
+- 新交接docs/BOX_LAYOUT_POSITION_CHALLENGE_AND_RRT_POOL_20261123.md；position_challenge目录仅5已执行，不是12全过。GPU97295/8776/79007、CPU77577/18594/88782/82236终态0。无本轮遗留GPU/验证任务，PATH gpuq原锁/≤8编译，无共享依赖编辑/commit/push/实机；8299/8298/8297现场不动。goal active，未知失败及任意合法XYZ/所有场景低延迟/用户验收尚未完成，不mark complete/paused/blocked。
+
+
+## 2026-11-23 Codex / 定向过程树边+root0原生恢复解决高低差，扩位发现近前native余量未知
+- 起点树parent→child、目标树child→parent、连接边按真实前向调用；仅布局payload transport/start设置edge_process_quality，在原边点执行原clear→return cumsum规则，原物理edge mask只AND不可恢复拒绝，最终密集path质量与GPU/CPU全过程保留。未变步长/密度/随机/预算/阈值/模型/箱心/宽距。
+- directed_source_edges组件重建相同saved target首reverse有效端点（非新鲜速度），原32s cap内16.950s找到路线，fine1、质量拒绝0。原完整request新算找到几何但native单曲线32近似后碰撞（base_box_00146.67mm/left_wall2.164mm），16候选仍失败261.652s，未伪称整单成功。
+- 具体第二缺口：该路selected_root0，旧time_layout_pick只适配用了forward prefix的root1。root0_native_probe先用实际saved monolithic失败/前三已通过数组+同一几何组件，4真实原生子段门禁及CPU source通过，26.768s组件非新鲜。
+- 仅后备触发条件扩展：原monolithic成功和早期失败原对象返回，只有transport失败且前三阶段真实通过才保留原前三arrays/controls/seams并复用同一native32/4001/TimeOpt/RNEA/seed-validation/global-source-progress/qva合并循环，原失败留transport_monolithic_rejection，原分段上限/所有gates不变，原拒绝wall也计入。production v3_layout_native另改；3个directed源+既有测试共111CPU5.38s，AST原物理/最终质量/预算和原native循环相同。
+- 高低差原request新鲜闭环成功root0_native_probe/fresh/result：94.098s/第5候选、4段运输16001行，success/physical/task true；独立每点无状态标量URDF/初始法向/真实初始中心（约4.12µm）/宽距/全局−45/原1.05m/原生32-4001-TimeOpt-RNEA-seams-逐字段拼接全过，另一原OBB0。未移动箱心/额外抽离/降阈值，成功不与旧失败240/249作加速比较。
+- 最终字节正例6新鲜+独立全过（root0_native_probe/standard_regression）：普通冷49.886/热4.581/4.639，困难冷38.838/热16.693/16.645。此前36矩阵是前版本，未冒称本次新字节36重测。旧Meta.task policy仍全局−45，heldXYZ按已批适配。
+- 原剩余7挑战position_resumed全执行：镜像高tall左/低cube右78.302通过（2native运输段），正/负Y vertical各有必要reach证据拒绝（CPU实际URDF复算相同），低swapped双顶22.491通过，unequal X低顶53.861通过，高swapped侧28.116通过。所有成功独立FK/数组/工艺/包络/nativepiece/RNEA/merge全过、跨另一原OBB0。
+- 最后新增UNKNOWN未解：左cube(.95,.60,.65)顶吸、右tall(1.10,-.55,1.0)侧吸；893.272s/16，无非法证明。8 endpoint proposals每个raw_pairs2544640、hard_valid=exact_valid=全部、native_valid=0、envelope0，lift0，guide≈−.33781，单次~107s。重点下一步组件定位native_margin_mask的base/ground具体项/哪个sphere，而非改RRTbudget；测安全原单臂native必要预筛减少百万重复、或原有姿态界内加入native余量引导，先证合法目标，不能擅降margin/挪位置。next_native_margin_diagnostics.json完整，别再反复整单15min取同信息。
+- 最新交接docs/BOX_LAYOUT_DIRECTED_SEARCH_AND_NATIVE_RECOVERY_20261123.md。旧初轮4reach拒绝+新高低成功+剩余7=5新位置成功/6可复算reach拒绝/1未知（跨版本结果分开保存），非所有XYZ覆盖。Source prior错读fine64已更正，rejected pool修复保留，当前geometry路径能找到。
+- GPU10359/86693/60761/38312/80990/76374/30305，CPU68024/3398/8056/48301/12556/9754/78599/5185/92956均终态0，无本轮GPU/验证遗留。PATH gpuq原共享锁/≤8编译，无共享依赖改动/commit/push/实机；8299/8298/8297未重启或改输入/播放，HTTP非WebGL目检。goal active，新近前unknown、连续任意合法XYZ、所有低延迟/用户验收未完成，不mark complete/paused/blocked。
+
+
+## 2026-11-23 Codex / 用户收窄前向距离范围与已有结果收尾
+- 最新用户指令优先：任务范围不覆盖机器人前方距离变化，近前例仅报告已有成果、无需继续优化。取消历史任意X扫描和近前例优化待办；后续固定现有任务前向距离。未将全任务标记完成或暂停。
+- 近前例已有根因：左载荷球/base_box_001间隙约.4463mm < 原native5mm；必要单臂预筛保留自身载荷/原native余量，避免每提案约107s百万无效对；原提案耗尽后才惰性加入原姿态界内base引导。root0物理通过但source失败时保留原拒绝并走已有native分段。3运行源及2既有测试改动；其它22运行文件未改，门禁/预算不放宽。
+- 已有新鲜近前例冷230.911944s/热174.904004s各12候选成功、3实际运输子段，独立核验通过；之前222.678s源位失败保留。该例现已排除，未追加求解或修改算法。实际左抽离X约.298214329m（名义.300m，继承2mm/1°容差），不可表述为实际精确300mm。
+- 当前源码12新鲜回归均成功，独立stateless URDF/源位/接触及原生piece重建日志终态0。普通冷51.474s/热4.453、4.536；困难冷38.022s/热15.574、15.253。其它布局仅保留已有记录，不冒称全为范围内固定X。当前源码未重跑旧36组合，未证明PR82公平同条件/全部5s。
+- 最后CPU测试81710实际终态0，114 passed in7.21s（此前fixture缺字段失败已修正）。最终标准核验32890终态0。证据native_base_guidance_20261123及更新交接docs/BOX_LAYOUT_DIRECTED_SEARCH_AND_NATIVE_RECOVERY_20261123.md；后者最前最新范围覆盖下文历史计划。
+- 8299现场输入/回放保持，HTTP200；浏览器工具返回No browser is available，不能声称打开浏览器/WebGL目检。用户可访问http://127.0.0.1:8299/检查。未启动新GPU任务、未commit/push或操作实机。
+
+
+## 2026-11-23 Codex / 当前源码固定前向距离36组合全量复测
+- 完全遵守最新范围：固定8299现有左X1.16/右X1.20，仅六种几何/吸附组合每臂交叉共36新鲜任务，Y±.55、Z.65/1.05；未改运行源、重启现场或继续近前例优化。
+- GPU6272与独立CPU16357均实际终态0；36/36物理/任务及无状态URDF源位检查通过，接触/抽离/全局−45独立核验36通过，11个分段阶段原native32/4001/TimeOpt/RNEA/qva/拼接逐字段重建通过。最大初始箱心误差.198542µm，最大额外源位侵入.191497µm，清出后返回均false，跨另一原OBB重叠均0。
+- 全36 planner_reused=False，单次22.564–59.042s，总1245.385s；不拿拓扑初次加载批次比较热态5s。之前普通热4.453/4.536、困难热15.574/15.253仍保留，未证明全场景5s/PR82公平同条件。114CPU为此前已通过结果，本轮无代码变化未重跑。
+- 新增证据fixed_forward_acceptance_20261123及docs/BOX_LAYOUT_FIXED_FORWARD_ACCEPTANCE_20261123.md。原现场8299只读协议验证，无GUI消息/重算/参数或播放修改，快照live_readonly记录现场原成功4.021s。
+- 8个固定X阈值(.8m以下/等于四组合)、高低差/左右Y变化请求在fixed_forward_boundaries_20261123；GPU82576（worker2505505）和独立CPU87075已启动，尚待真实终态，不能叫完成。仍沿用gpuq原共享锁，估时9m暂定来自本轮及旧高低差实测。
+- 当前36是有限位置组合覆盖，非连续全部Y/Z证明；goal active，后续按实际8批结果更新交接并等待用户语义验收，不再追逐X覆盖。
+
+
+## 2026-11-23 Codex / 固定X恢复触发修复、44布局证据与交给性能agent
+- 最新用户追加：时间不达标没关系，时间优化将交给另一个agent，只需交接已有内容。本轮已停止追加耗时优化；没有启动子agent、没有调整其它模型/场景/预算，主目标未冒称连续合法位置证明或用户验收完成。
+- 固定X八边界首轮5成功1未知（镜像高低差175.758869s/16），最后2未执行；82576及87075实际终态0只表示批次脚本按未知策略正常停止，失败保留。查到恢复触发只允许抽离几何失败，首4中一项运输RRT耗尽会屏蔽全部原反向恢复；原48.58/128s用量、recovery0，非不可达证明。
+- 仅v3_box_layout_planner.py恢复条件增加joint transport RRT exhausted前缀及policy说明；既有test_box_layout.py加1个CPU回归。max16/最多8反向/总128s/首反向32s/其它8s和全部门禁不变。相关4测试文件79 passed in2.81s，55810终态0；AST前后只此条件及说明，scope.json和before/source SHA保存。36旧成功均最多2候选，执行不到改变的恢复决策，但不宣称编辑后重跑36。
+- 最新6完整新鲜任务全通过，GPU71941及独立CPU42674实际终态0；contacts/pieces最终CPU均终态0。镜像高低差冷168.931508s/热111.446681s各7候选，实际3运输native段12001行；左右内收24.799635s、外展4.237811s；原现场布局新算热4.978034/5.539677s。源位/无状态URDF/实际吸附/宽距/全局−45/原1.05m/native32-4001-TimeOpt-RNEA-qva-逐字段拼接核验全过；初始中心最大6.113µm。
+- fixed_forward_recovery_20261123/acceptance_matrix.json把36+8代表布局逐条链接到成功result、SHA和源码版本，保留旧未知原始175.759s失败。有限44不是连续全部合法Y/Z证明，也不是44都为当前单条件编辑后新鲜复测。
+- 性能留给下一agent：热111.447s中4次均失败横移prefix64.503s，RRT26.612s，最后root0。latency_profile.json和实际GUI格式化ui_timing_markdown.md保留。仅CPU横移必要reach探针无witness，未据此跳过/宣称不可达；没有实施进一步性能优化。
+- 最新可直接给下一agent的文档docs/BOX_LAYOUT_FIXED_FORWARD_HANDOFF_20261123.md，含当前任务语义、全部不可放宽门禁、已解/未证结论、代码入口、冷热表、原始失败、源版本、同worker冷热复现完整命令。NOW及旧交接已指向该文档，不再沿旧近前例/X扫描计划推进。
+- 8299/8298/8297原现场不动，只读协议/HTTP可访问；浏览器工具无浏览器，未声称WebGL人工检查。所有本轮GPU/校验终态，未commit/push/共享依赖编辑/实机。用户验收仍待进行，耗时优化已交接。
+
+
+## 2026-11-23 Codex / 交接后CPU功能验收逐项审计
+- 按用户“耗时交另一agent”范围，仅做CPU功能审计，未启动GPU/性能工作、未改运行源或现场。25运行文件仍匹配最新交接source快照；原GUI协议证据已覆盖参数/非法重叠拒绝/真实提交/播放及−45末态，不重复操作8299。
+- functional_acceptance_audit.json逐条核44代表输入及实际接触/抽离/−45指标、15轴共享updown/10kg每箱/native/source门禁，读取176实际阶段数组检查有限数、时间严格递增、每原生段4001拼接数量；CPU90737实际终态0。未声称独立重算碰撞/力矩。
+- 关键交接澄清：approach/transport控制数组(1,32,15)，contact(1,128,15)，extract(1,64,15)，不可把“native32”泛化到所有阶段。最大抽离向量误差1.804315mm，继承2mm门禁，非实际精确300/255mm。主交接已补充。
+- 实现及有限明确输入验证已有证据；连续全合法Y/Z及用户最终WebGL画面语义验收仍未证，goal未标完成。后续等用户验收，性能优化保持交给下一agent。
+
+
+## 2026-11-23 Codex / 用户双SKU任务语义纠偏与指定关节回中
+- 做了什么：以用户最新目标取代旧左右不同X/世界−45°回中；新双箱入口校验共享箱心X平面、距实际底盘前沿60–90cm的2cm倍数、高差≤60cm。回中直接构造左[40,-46,0,-100,-30,-75,90]°及右相反角，updown逐任务在URDF[-1,0]内选，不再反求回中Cartesian IK。
+- 改了哪里：新增curobo_core/layout_contract.py；box_pick.py增加可回放的关节回中字段；v3_box_layout_planner.py改关节目标并提前过滤原有最终原位清出条件；v3_two_box_timing.py及v3_box_layout.py增加真实关节终点核验。编辑器共用距离选择，X只读；运行例子/CPU测试与asymmetric catalog迁移新平面。旧交接已加失效提示，当前入口docs/BOX_LAYOUT_JOINT_CONTRACT_CORRECTION_20261123.md。
+- 门禁冲突：用户指定角在当前URDF下带箱旧球模型半径约1.41–1.52m；原1.05m圆柱与指定角冲突。新关节合同仅诊断该圆柱（enforced=false），不降低实际碰撞、10kg/箱、TimeOpt/RNEA与源位过程门禁；旧Cartesian回放仍保留圆柱。勿称新任务通过旧1.05m门禁。
+- 验证结果：新合同2项CPU、编辑/会话40项、旧单臂15项通过。新合同首例D=.68m、左40/右高箱Y±.5/Z1.02成功；四阶段4001点、实际运动5.975875s、worker86.939s，updown=-.72m，关节误差1.63e-7rad；独立CPU抽取误差左3.71e-8/右3.98e-7m。该例触发提前过滤编辑之前，source按结果SHA区分。
+- 留给后续：48请求标定正在exec63216/global gpuq中；目录generated/two_box_layout/joint_contract_20261123/distance_calibration_v2，读取CONTINUATION.json和当前活句柄，不重复启动。初版标定因终点漏筛中止并保留，非完成失败。D=.68目前暂定，后续比较三个固定布局选一个D，再测SKU左右/交换、阈值、低位、高差、非对称/堆叠位置。任意合法连续位置未证，goal active。旧44例不计新目标成功数；没有commit/push/实机。
+
+
+## 2026-11-23 Codex / 固定关节回中的连续升降余量与距离边界筛查
+- 上轮属于实质进展，本轮继续轮询原gpuq/exec63216，确认worker162908仍活，未重复启动；48请求标定继续，当前进度以CONTINUATION.json/summary为准。
+- 新增生成目录下source_lift_intervals.py：固定用户关节角/实际URDF附箱几何，把自身原位OBB SAT转为连续updown区间；100随机case×100随机lift与向量SAT一致。D60混合顶/侧60cm高差无共同清出区间；D62区间总宽约23.5mm、D68约143.9mm、D74约822mm。浮点区间分析，不冒充严格区间算术证书/全路径可行性。
+- 相同360挑战/每D的联合必要条件筛查distance_workspace_screen.json：D60/62/64各有58/36/14组无共同原位清出区间；D88/90有2/48组强接触不可达证据；D66–86未触发这两项必要排除，但不等于完整搬运可行，也不把360输入当成用户全域。
+- CPU接触/原生恢复回归20项通过；保存实际原生末态的CPU FK投影carry_joint_fk.png/metadata，PNG1760×1600完整性验证。view_image工具不支持图像输入，未视觉目检。
+- 运行tools源码未修改，原GPU批次source stamp仍一致。待该批次实际终态后再收紧输入边界并继续SKU互换/阈值/非对称及堆叠挑战；最终D尚未固定，goal active。
+
+
+## 2026-11-23 Codex / 同侧上下堆叠揭示“任意合法”范围缺口
+- 在全部D60–90的16值、两种箱臂分配下核验真实反例：两箱Y=.50m，40箱Z=.80m/高箱Z1.40m，净竖直间隔.109m。满足用户当前共面/高差≤.60m，不入地、不相交，与实际environment墙/地/顶无AABB重叠。
+- 全32请求都由实际URDF接触必要条件在完整updown[-1,0]范围内给出右臂不可达证据（不是有限搜索失败）。D60原/交换分配的joint2可达性缺口约.262/.280m，包含位姿/几何包络。
+- 已保存same_side_assignment_witnesses.json及same_side_environment_check.json，新增永久CPU回归，合同测试3项通过。当前固定底盘、双臂各直接吸一箱流程无法由用户两个输入位置条件保证全域；未擅自把反例划为非法。需要明确左右工作区/YZ绝对范围，或同侧/堆叠是否要求分次取箱/交接流程。
+- GPU原exec63216仍在运行，未因澄清问题终止或重复；距离标定与独立物理验证继续。goal active，非blocked，不宣称三代表/对称左右成功覆盖了用户全部目标。
+
+
+## 2026-11-23 Codex / 48距离标定完成、固定默认66cm、接触模型结论纠正
+- 原GPU exec63216实际退出0；48输入全部结束46成功/2未通过。worker累计3102.21356s，独立CPU audit46成功全过（2未通过/0pending）。D60混合顶/侧无回中原位清出候选；D86高箱顶吸16候选耗尽，15次native transport拒绝/1次RRT预算耗尽；保存d86_unknown_failure_diagnosis.json，不称非法。
+- score_distance.py结合三代表任务全部物理/任务/独立成功、360布局必要筛查零强排除，按最差native RNEA利用率排序选出D=.66m。当前默认和所有可运行配置更新为共同worldX1.1680520510673524，GUI固定距离只读，命令覆盖仅标定用途。尚非全域证明。
+- 输入边界修复：拒绝显式禁用关节合同、输入固定回中updown、非有限/不一致D、左右不同阈值、错误箱臂映射与关节合同非零Cartesian偏移。86相关CPU测试通过，source_fixed66保存运行源。旧资源key测试改用合法已解updown变化验证资源缓存不受持箱XYZ影响。
+- 重要认知纠正：此前同侧反例证明当前面中心/既定法向接触模型受限，不能扩张成所有偏心吸附或不同流程的硬件不可能性，用户未明确要求面中心吸附。已对用户说明，不擅自缩小合法箱位。96阈值模式/分配/距离组合全有中心接触可达性排除；D66现有cap球代理足迹约束下1350个偏心/5°roll候选也被必要界排除，但有限采样和代理足迹不是全部吸附方案证明。现有target_in_front_of_contact_plane用center-contact推法向，若以后支持偏心，须改为显式工具接触法向，不能只改TCP目标。
+- 新19布局固定66cm挑战正在共享gpuq exec26417：三基线、SKU互换、长高交换、阈值边界、触地/高位、非对称、堆叠及保留同侧中心吸附反例。估时35m基于48例均值×19及约1.7倍冷启动/边界余量，暂估不是超时。未启动额外GPU/嵌套队列。需继续审计全部结果，goal active。
+
+
+## 2026-11-23 Codex / 近地载荷搬运搜索根因修复与四例独立成功
+- 首个固定66挑战实际为tall_near_ground（左高箱Z.30顶吸、右40箱Z.90侧吸、Y±.5），不是基线；已向用户更正。16候选全部native transport拒绝，490.946s、243次静态力矩诊断最高1.08863。等待完整结果落盘后有意SIGTERM停止原26417，退出241，未把其余18例当完成。
+- 根因修复于v3_box_layout_planner.py：复用现有TorqueModel/RNEA按实际双箱10kg及attachments，对loaded搬运搜索/恢复种子提案筛零速零加速度的原.995力矩界；提早复用native engine，回中与抽离终点同查。最终完整原生动力学/碰撞/源位/关节终点门禁不变。静止保持为保守提案筛法，不是动态补偿路径不可能性证明，代码ponyTail注释明确上限。
+- GPU18961四新鲜请求实际退出0，4全过且CPU独立audit4全过：原近地失败首候选63.18s成功、左40顶/右高侧22.02s、左40侧/右高顶74.67s、双侧22.78s。非严格性能A/B。近地RNEA提案121649，过滤14567，最终updown约-.12m；用户关节角不变。source_gravity_focus与真实SHA核对冻结。
+- 新增CPU test_layout_static_load.py及旧搜索掩码合成回归，87项通过。随后增加抽离终点提前负载筛选（保留既有extracted endpoint恢复路由）并冻结source_gravity_final。GUIactive_axes(False,True,True)实际限制Y/Z拖拽；默认D66未变。
+- 当前GPU12832正按相同19 catalog重跑，目录fixed66_gravity_challenges。源位、薄弱位置不删，后续需完成全批并独立audit；前48/四例都不能替代任意合法位置。CONTINUATION.json为入口，勿复启旧26417/18961。
+
+
+## 2026-11-23 Codex / 按纠偏主线清理本session过期内容
+- 用户要求清理已不可用的旧内容且不影响另一session。删除本session旧生成结果、34份过期说明和20个未被调用的实验脚本等233项，共21459文件，执行时实际释放8.672GiB；旧44例及固定X/世界−45°记录已退出工作区，不计入新合同。
+- 完整保留joint_contract_20261123目录6808文件，清理前后无删除/改写；331个保留源码/配置/测试文件SHA一致。3个仍被运行或测试调用的helper（check_asymmetric_layouts.py、replay_native.py、verify_cases.py）未删。未改共享运行代码、测试、配置、依赖、GPU锁或其它session任务，也未终止任何进程。
+- 旧BOX_LAYOUT_FIXED_FORWARD_HANDOFF_20261123.md保留为指向BOX_LAYOUT_JOINT_CONTRACT_CORRECTION_20261123.md的短跳转；NOW只移除本session已作废的固定前向距离交接节，纠偏session正文不改。旧LOG仅作历史，旧产物链接可能已清理，请按当前纠偏入口接续。
+- 新合同/静态载荷/可达性/双箱及会话CPU回归27 passed in1.77s，无GPU工作。删除清单与保护校验记录：/home/astesia/.local/state/codex-cleanup/pr82-obsolete-20261123-180108.json；同名前缀cpu-tests.log保存测试结果。
+
+
+## 2026-11-23 Codex / 19挑战终态、高位末端升降漏搜修复、同列模型问题保留
+- GPU12832实际退出0，19请求14成功/5未通过，累计worker370.326s，独立audit14成功全过。完整失败目录fixed66_gravity_failure_catalog.json保留高位、触地cube、同列低顶吸、同列侧吸、同侧面中心反例。未把有限失败判非法。
+- 四未解请求诊断exec10313退出0：仅补contact q/最后有效抽离q/失败节点，不变物理。高位在~49.6%时updown逼近0/左肘逼近-145°，旧12恢复提案全在lift0/-1；contact_reach必要界沿129点无排除，不能判物理不可达。
+- GPU89981几何探针12.64s：名义精确末端全21升降点得到256有效IK（-.50/-.45），首个反向LM与完整箱/接触核验通过。随后reverse_extractions保留原提案优先，再加精确末端完整升降/10°swivel格点；原细/容差/几何提案仍保留，全部最终门禁不放宽。87CPU回归通过。
+- GPU55416真实全周期定向复测退出0：高位Z1.6/2.2成功87.70s，reverse recovery，updown-.51，原用户角误差1.63e-7rad，独立CPU1成功全过；同列侧吸仍失败15.93s。source_nominal_lift_recovery与真实SHA相符。勿混版本冒称最新19/19过。
+- 同列侧吸卡肩J2/腕J6限位，完整nominal升降末端池仍0；同列低顶吸独立CPU固定link7球代理与上箱有4球/最大27.1184mm重叠，解释接触IK0，但不排除顺序取箱/偏心吸附。侧吸同列link7对另一箱无该重叠。没有把用户箱位范围缩窄。
+- 当前没有本轮活GPU作业；12832/10313/89981/55416均终态0，早26417有意停止241。下一步先验证有足迹/惯量约束的偏心吸附/90°roll，或顺序取箱状态变化。偏心必须改tool_to_box/动力学/缓存key/接触法向，现contact helper用center-contact推法向不适用，不能只改TCP。详CONTINUATION.json，goal active。
+
+
+## 2026-11-23 Codex / 同源19输入17完整成功，触地与同列侧吸自动恢复落地
+- 新增curobo_core/suction_grasp.py及BoxPick真实suction_offset_m/roll字段；全cap球代理足迹须在所选箱面、严格切向offset；实际tool_to_box同时进入载荷碰撞/惯量/缓存。TaskCyclePlanner给显式contact normal，v3_contact_validity不再把偏心center-contact斜向当法向。默认中心姿态保持数值兼容。89CPU基础测试过。
+- 6显式偏心/roll/阈值候选初试全未通过，原始证据保留。专项同planner末端探针发现backend prepare_task键漏实际attachment，v1整批标无效，不用于物理结论；根因键加入真实不可变task_attachments，v2逐checker断言tool_to_box，只有垂向向外8cm留60有效完整碰撞末端。原完整worker按attachment分开planner，不受专项v1复用问题影响。
+- 修复触地箱建模冲突：冻结payload球恰好贴箱底，原strict0/native2mm规则把载荷当机器人强制离地；只对双箱checker实际payload球后缀登记exempt，机器人2mm保持，完整OBB地面/环境审计及原1mm容差保持。payload_floor_focused三例完整成功/独立CPU全过（触地、普通、真实偏心4cm/roll90基线）。实际触地运输最小箱底-.888mm，如实报告容差内非零。
+- 同列side显式向外8cm垂向吸附在vertical_stack_grasp完成真实全周期117.73s+独立CPU通过，箱心Y0/Z.8/1.4未挪，用户角误差1.63e-7/updown-.52。随后主plan_layout自动在原中心失败后追加该足迹有效吸附型，用户显式指定grasp则尊重不自动改；每种grasp16候选、失败grasp_result.json和总grasp_trials保留。不同阈值不混作同一默认。
+- 最新相同19 catalog的fixed66_auto_grasp_challenges全结束：exec84985退出0，17完整成功/2未通过，累计worker491.527s；独立CPU/用户角表/实际接触代理足迹17全过。不是混合旧版本凑数。最差真实接触cap代理足迹仍在箱面内1.765mm。source_auto_grasp30文件与真实SHA一致，CPU116项全过，git diff--check无错。
+- 最新未通过仅centered_stack_low_top（.79/1.39，80cm阈值低箱顶吸末端撞上箱）与same_side_center_grasp_witness（当前直接模型，不证明所有流程不可能）。有真实世界下箱保留的先上箱几何探针22204/三idle姿态94179都未成功，未冒称支持顺序取箱。
+- 当前仅exec28550正在GPU：显式全局阈值79cm/垂向offset-.07,+.09，把原低stack两工具接触高度对齐到已成功.72/1.48m，不挪箱/底盘；是标定，不自动改默认80cm。下一轮读CONTINUATION.json轮询，勿复启旧作业。goal active，完整任意合法位置仍未完成。
+
+
+## 2026-11-23 Codex / 低堆叠79cm标定真实成功，统一候选22输入重验中
+- 显式threshold79_aligned_stack已完整native+独立CPU1/1成功，GPU28550退出0，worker103.028s；原Z.79/1.39、Y0、D66不变，统一阈值79cm使等值侧吸，偏心-.07/+.09把接触高度对齐至已证明.72/1.48m。未把它当全部任务成功。
+- 当前候选版本双箱parse/CLI/当前config统一79cm；BoxPick单臂/历史默认80cm保留。自动同列侧吸偏心±8cm外加共同0/+1/-1cm接触高度微调，仍完整足迹/载荷/碰撞/native/source验收，不挪箱。117CPU测试通过，含新切换边界和旧默认兼容。
+- 当前唯一活GPU exec34081：fixed66_global79，原19物理箱位全部保留并显式同79cm，加.789/.790/.791三新边界共22，吸附偏心必须规划器自动恢复。估20m参考旧完整19的491.5s+新增恢复/冷启动余量，暂估非超时。source_global79与首个真实结果SHA一致。运行中不要改源导致source stamp中止，勿复启旧作业。
+- 80cm同源19结果确为17/19，独立CPU17全过；不直接计入79cm。待22全终态与独立audit后才决定最终阈值。same-side输入仍保留，完整任意合法位置goal active。
+
+
+## 2026-11-23 Codex / 自动侧面24完整成功与低顶吸顺序几何链贯通
+- 统一79cm22输入结束21成功/1前面模型同侧失败，独立CPU21过；源位与政策不逐例变化。随后发现“抽离−X”被误等同“侧吸仅X−面”，并非用户要求。新增真实side_face X−/X+/Y−/Y+，完整cap代理足迹、实际tool_to_box/惯量/显式法向/缓存同步；右Y−/左Y+侧面roll90可在不挪箱下直接接触同侧箱。显式3全周期及独立CPU全过。
+- 自动近臂箱面恢复接入原请求优先的同一入口；无手工吸附参数的原22+镜像/交换共24，fixed66_global79_all_faces实际24/24 native成功，GPU86973终态0，worker合计697.647s，独立CPU24全过。same-side原/镜像/分配交换都按用户14角，updown约-.94/-.83动态选。旧front/top不可达证据已注明作用面，不再全局外推或要求用户删同侧输入。
+- 整个24会话281文件指纹逐条一致，冻结source_automatic_faces_full；实际依赖SHA并集30文件另存source_automatic_faces。之后只改UI目标完整矩阵/实际箱面/去45文案及足迹说明注释，physics_unchanged_after_preview验证其余278文件不变/规划AST除元数据一致；实际生成event与24真实末态独立CPU校核过。CPU121测试全过，git diff--check过，无浏览器视觉验收声明。
+- 不以24例替代任意位置：below_threshold_stack_contact_family保留低箱.2/.3/.5/.7/.78、上箱+.6同列，统一79规则Top，原同时中心Top代理仍碰上箱27.118mm。输入不删。近Y面先上箱新鲜几何首候选成功（保留真实下箱实体），但刚抽离末端仍堵下箱接触，11264raw IK全筛掉。
+- 先上箱→真实10kg带载让位（world下箱保留、slot/静力）15.048s成功；下箱接近旧探针float64接口失败57065退出1，修成float32后51907退出0，带真实上箱/实体下箱首候选几何成功4.944s；接触后双载下箱抽离和最终14角候选几何76972退出0/15.985s。8段真实候选数组接缝全0，CPU实际URDF核验原右/左抽离向量误差1.07e-7/1.33e-6m，最终角4.37e-8rad。未当成动态定时或主入口顺序执行成功。
+- 当前本轮GPU均终态，无活作业。下一关键是把8阶段实际payload/world/接触/mass状态接到生产ordered分支、TimeOpt/RNEA/4001/qva接缝/独立验收和按阶段附着回放。FastThreeLayerPlanner现仅transport带payload、checker ground注册按selected盒而非actualattached、4阶段viewer/validator均需显式扩展，不能靠拼几何伪造成功。详CONTINUATION.json，goal仍active，任意合法目标未完成。
+
+
+## 2026-11-23 Codex / 顺序取箱8原生+独立验收接入默认入口，31输入回归运行
+- 新增CPU OrderedStage8状态合同与OrderedLayoutPlanner：每原箱始终pending或actual attached，稳定ID00/01；actual payloads空/空/上/上/上/上/双/双，待取下箱对已载上箱仍完整实体。native几何可显式声明载荷（不再把lower approach当空载），FullPayloadCost尺寸/地面例外按实际附着侧，普通同步默认分支保留。
+- native种子集成v1前6过，第7零位移参考拒绝；修复core CartesianReference允许固定pose、finite residual，移动进度不同步held0，原two-moving同步不变。v2种子8原生+CPU32001样本全部过，20.625841s实际运动；独立用URDF关节轴×箱心重力核对两次吸附10kg力矩增量，误差约1e-5Nm，6个丢载荷/删箱/挪源/GPU拒绝不能CPU恢复等负例全拒。
+- 新鲜规划接口不读记录轨迹、自动选面/IK/LM/RRT8段。v1漏导入接线失败保留；v2原生物理全过但GPU原位1.056µm越1µm而CPU.874µm过，任务按GPU拒；v3在2mm窗口内试50µm抽离净空，实际Upper transport碰实体4/3mm拒。v4真实native32种子恢复后物理/源位全过但CPUtuple/list格式拒，修复规范化不改数值门禁；v5全新规划/native/独立CPU成功。
+- 默认v3_box_layout入口现同步候选耗尽的顶吸遮挡堆叠自动转顺序，default_ordered_v1实际成功，10656退出0，worker92.984s/真实运动19.407827s，success/physical/task/replay均真；再独立外部CPU和8阶段24采样回放状态检查全过。无手工箱面或流程输入。源source_default_ordered_v1完整指纹精确重建核验。
+- 原生恢复保留被拒整段，选中真native32种子/子段必须完整碰撞/TimeOpt/RNEA/qva/source过；独立CPU重建merged actual数组，不补帧/改时间/删下箱。回放按phase payload集合、record实际grasp，修复旧raw输入默认grasp画错自动offset/face的问题。阶段标签动态8，旧4兼容。CPU147项全过，历史冻结接触文件仅normal入口有明确AST默认归一化例外，其余原碰撞AST和5个文件锚定基准。
+- 当前仅GPU77418正在default_full31：原24+5更低同列+2下大上小/镜像，31无手工grasp/流程selector，已有SKU倒置成功，未结束不得新开重复或改运行源。估35m由24约698s+7ordered约90s及余量，暂估非超时。source_default_full31指纹与实会话一致，读CONTINUATION。goal active，不能因已过样例替代任意合法连续位置。
+
+
+## 2026-11-23 Codex / 默认31全部终态独立成功、保留更宽同侧范围缺口
+- GPU77418实际终态0，default_full31全31成功（同步24/自动顺序7），worker整批1348.291s；GPU外external_cpu_all31重新逐条打开真实数组，31全过。最大14角误差1.63e-7rad，ordered10kg吸附力矩增量CPU几何Oracle误差最高2.61e-5Nm。source_default_full31同指纹、147CPU检查保持。
+- 未以31绿色替代全域：新增/保留同侧Y=.85、Z=.8/1.4、D66/阈值79，完整箱间/环境/原Home代理无重叠。默认入口6种grasp后仍assigned_contact_outside_reach，GPU36930退出1（12.417s），真实原始失败不改称非法。
+- 连续必要界broader_same_side_y85_any_contact_right_bound：实际joint2球冠支持+fore球+全lift给wristY上界.291163，含原姿态/几何包络.301261；整箱任意点/任意TCP方向、再允许30.71mm前伸后，两箱仍缺83.83/51.33mm。不同于旧只吸X−面的错误外推；Y65尝试此弱界不充分（负缺口）已标inconclusive保留。2000真实URDF随机自检不作为证明，公式本身为连续支持界。
+- 左臂各箱原始IK可用18/21个lift；同物理箱在6个候选转交pose的两工具CPU原始IK也有解，但未做接触碰撞、真实单箱载荷交接或原生验收，不计成功。生产入口仍不含换手交接。
+- goal_requirement_audit逐项区分已验证数值/实现与未达任意合法位置，当前需要用户明确Y/Z工作边界与是否必须包含左取后交给右臂的输入。没有擅自删范围、未markcomplete/blocked；目前本轮无活GPU任务，后续勿无因复启31。CONTINUATION有具体证据和缺口，goal active。
+
+
+## 2026-11-23 Codex / 更宽同侧目标的静态双接触与真实10kg支持状态探针
+- 当前没有新的Y/Z/交接答复，按用户已给几何条件保留Y85，不缩小范围；本轮未改生产运行源，原31/31与外部CPU31证据保持。
+- GPU55755/40445通过PATH共享gpuq真实结束0（原静态探针约10.95s，第二次记录实际支持重力矩，估时1m基于已测+冷启动余量）。两SKU×3中间pose各8个静态目标，共48；原机器人自碰撞/world/ground、实体heldOBB vs非接触球、待取另一原箱、两实际平面cap接触及姿态一致均核对。一个物理箱，无复制/删箱。
+- 同构型下分别仅左臂或仅右臂真实支持该10kg，原.995限制比例最高左.5574/右.9877；CPU独立48重算实际URDF姿态/足迹及两个支持状态重力矩差，误差最高1.95e-5Nm。source stamp未变。
+- 只计静态中间目标，未宣称接近/换吸/退离/动态/原生交接完成，生产入口仍无handover。下一步可做左取Y85→carry到真实双接触目标、右臂接近等几何，但必须stable boxID与owner分离、接触例外限定cap平面、真实单箱质量转移和实际qva缝；不能瞬改attachment造成功。CONTINUATION已更新，goal active。
+
+## 2026-11-24 Codex / 接管纠偏目标并隔离反复实验
+- 保持原任务合同与66cm/79cm当前实验选值，不把有限31例替代任意合法位置。新增可运行CPU检查 `tools/experiments/box_layout_20261119/audit_takeover.py`，重开31例实际数组31/31通过；原284个验证快照文件哈希保持，独立原箱接触/抽离FK和用户14角通过，21个不同升降终点。选取相关CPU回归71/71。
+- 核验产物在 `generated/two_box_layout/takeover_20261124/`，纠偏文档新增接管条目。CPU核验未重算完整GPU动态RNEA/碰撞，保留原原生采样证据与限制。
+- 用户新增要求：需反复设计实验/试验选值时交给subagent，主会话保留目标、结论和证据，避免语义漂移。当前两个隔离子任务：单箱换手接触/支持切换/退离（agent 01a20b94-c8c0-7b63-b804-061b58bf1739；脚本transfer_followup/），已有取箱搬移前缀原生动态验收（agent 01a20b9c-c480-7ee2-8b98-dc3c33d53664；脚本transfer_prefix_native/）。两者仅改各自实验目录与新产物，GPU均走共享gpuq；主会话未改生产规划源。
+- 完整目标仍active；Y85未取得完整双箱搬运原生成功，不得把单箱静态接触、几何前缀或新实验阶段冒充生产入口验收。后续先收集这两个子任务的真实终态与简报，再决定集成；不重启旧31批次。
+
+## 2026-11-24 Codex / Y85单箱真实换手几何通过，原生前缀失败定位到样条数值
+- transfer_followup单箱实验已实际终态：GPU gpuq-17556a7762fe468c退出0、worker4.26s，独立CPU通过。right原箱实际owner left→right，10kg未重复，箱体世界矩阵跳约2.22e−16；donor退离60mm后全部10个cap离箱最小27.16mm，另10mm后续移动也通过。接口与证据在joint_contract_20261124_transfer/takeover_interface.json等；这是几何/静力，尚无完整native qva，不计双箱成功。
+- prefix native实验终态失败保留：原endpoint及最后边沿65点全合法；20001点候选仅一处updown=-1.0000001192092896导致strict joint-bound，其他OBB、world/base/ground、动态RNEA、速度、jerk、source历史与qva缝都过。acceptance.json/endpoint_component_diagnosis.json保留失败，未修补数组或降低门禁。生产与原284文件hash仍匹配。
+- 已复用Newton(01a20b94-c8c0-7b63-b804-061b58bf1739)做transfer_suffix隔离后缀几何；复用Dirac(01a20b9c-c480-7ee2-8b98-dc3c33d53664)做局部隔离kernel样条数值根因修复与原prefix重验（不许改共享安装库）；新增Dewey(01a20ba9-45b1-7c03-94cc-7f0505e32381)做transfer_native接触/退离原生段。三者写入互不重叠，GPU仍统一共享gpuq，主会话不重做逐次实验。
+- 当前生产入口仍无换手分支；后续集成直接复用SceneSnapshot/AttachedObject已支持的稳定object_id与parent_link，避免另造ownership框架。完整目标仍active，66cm/79cm/指定14角/任务选择updown不变。
+
+## 2026-11-24 Codex / 13段几何链、样条根因修复及三个原生组件通过
+- 主会话新增audit_transfer_chain.py，将旧取箱前缀/真实单箱换手/五段suffix交叉核验为13段3116点几何链；原箱ID、实际FK箱C、所有q位置缝、.255/.300抽离及用户14角通过，最终updown≈-.39。产物takeover_20261124/y85_geometry_chain_audit.json，明确非native/fresh/production成功。
+- Dirac隔离修复共享bspline_context.cuh：当前位置及导数改为当前span首control作参考的控制差求和，局部常量-1精确再现。9个CPU64/GPU回归过，766共享源/config及原284项目文件未改；prefix原native全门禁20001点过，运动12.990144s。新公共native_spline.py与一个CPU检查已交付，主会话选取CPU回归72/72；尚未激活旧生产入口。
+- 主会话通过gpuq一次使用已验隔离补丁复验transfer_native/patched_06：实际退出0、worker42.778s、3个optimizer都true，含1s静止支持共3.212450s，独立CPU全物理/动态通过。没有变终点、门禁、输出数组或手工缩时。
+- Newton完成suffix_native/attempt_01：5段/6真实native pieces、24001点、运动13.011309s，GPU/独立CPU通过。final明确为库合法seed-retention，原有genuine native validator/TimeOpt/所有物理门禁通过，不声称全部优化成功；额外标签美化补验已取消。Newton已关闭，必要可resume原ID。
+- 当前两个subagent：Dirac(01a20b9c...)独立组合跨组件真实qva/源位/单箱身份/三次10kg支持力矩跳核验；Dewey(01a20ba9...)从原始请求重新算IK并生成完整换手几何的fresh入口，不允许读取旧成功q/NPZ。下一步收集整链与fresh结果、再激活公共数值模块和自动production fallback。完整目标仍active，未用已存组件替代任意合法位置/新鲜生产入口，绝对Y/Z边界仍待答复。
+
+## 2026-11-24 Codex / 默认入口原Y85新鲜native成功，继续纠正Top附件假设
+- 已实际应用4文件最小default/verifier/native-reader/current-frame replay hook；新鲜13段入口worker152.578s先验证通过，随后真实默认solve_file原请求另跑成功（exec52497退出0）：6同步候选后自动handover，56011点30.663664s、worker149.200s，进程外CPU再核验通过，request未改、旧解读取空、公共kernel树正确。73项CPU回归过，未当成全域完成。
+- 回放helper已改成当前URDF配置的单帧4x4，物理wall_box_00/01映射回输入盒标签，保留actual owner/A；新增CPU测试通过真实默认dispatch/reader/current-frame行为。公共verify删除不必要SKU/高度顺序限制，按对应SKU推导.300/.255真实距离，7项合同检查保持过。
+- full32回归harness（原31+rawY85）已准备CPU smoke，无GPU提交；Main发现必须先修原目标内Top模式：suffix.validate_attachment按arm猜轴会拒绝真实top，donor中间目标应保留原tool_to_box而非按中间高度重新选面。Dewey在边界内修共享函数与该绑定并做独立CPU/新Top native验证，当前不换尺寸/移动原输入/放宽门禁。Dirac等待最终GO后冻结提交整批。
+- 证据与当前活任务见CONTINUATION.takeover_20261124；完整任意合法位置目标仍active，绝对Y/Z域问题尚无答复，未用样例数量替代全目标。
+
+## 2026-11-24 Codex / 原双顶吸成功，34回归保留缓存审计失败并准备定向续验
+- 当前原Both-top(.20/.70,Y85,D66/79) fresh13 native已实际成功：attempt04共60011点39.639646590s、worker386.131s，gpuq-86a9...completed exit0；main当前core再开数组核验过、source无回入、14角4.37e-8、updown约-.54、运行loaded source SHA全匹配。
+- default34 run001单GPU冻结1396文件，原31全31/31过，第32在guard编译缓存JSON误分类处失败后停；33/34明确not_started。exec11953终态1、队列gpuq-2f8...failed、无自身GPU/锁，源码digest abc5...始终一致。独立CPU使用fast同库重开全部34槽位：31pass/1reject/2notstarted，7.025s；source changes[]，FREEZE RELEASED见terminal.json。未把缓存误拒绝当物理不可达，top-level早期reach witness掩盖nestedfallback真实原因已记录。
+- Dirac在原2个harness文件内准备run002 additive continuation，保留父run001全证据，原31从原真实结果引用/重开核验，GPU只补32/33/34；编译缓存移至generated/default_handover_runtime_cache_20261124，几何history外，production/math/vendor不改。等待配置diff/CPU preflight后main GO，绝不默默抹掉run001失败或把新旧不同production混作同源。
+- Linnaeus(01a20c3d...)另在generated/role_generalization_20261124准备Right giver→Left recipient角色适配候选，6files补丁未应用、CPU schema/真实caps/双链7轴检查过、无GPU；待本次source-equivalent续验终态再考虑应用与真实负Y新求解，未镜像成功轨迹。
+- 完整目标保持active，固定66/79/用户14角/任务升降不变，不把34样例或准备候选当全域证明。
+
+## 2026-11-24 Codex / run002真实关节拒绝已由donor规划余量修复
+- run002终态失败并外部fast CPU全34槽位核验31parentpass/1reject/2notstarted，源码1396全匹配、freeze released。Cache误判已消除，真实新拒绝在donor_release native曲线J7过+pi（15/4001点、TrajOpt22 constraint点），完整OBB/world/RNEA均过。没有降门禁把该批算过。
+- Dewey只在full7 donor_retreat规划bounds内预留1mrad（4行），边界起点作为候选拒绝，未改URDF/输出。CPU Side与BothTop真实pose/物理检查过；新鲜真实默认rawY85 GPU gpuq-5a69d9c646864a1e已exit0，13阶段52011点29.890827835s，worker171.281524s；donor release/continue余量1.098542/1.183896mrad，native cspace0，384冻结文件不变，进程外main CPU再核验过。证据retreat_native_margin_20261124/acceptance.json及default_attempt01。Dewey已关闭，无活任务。
+- Main修复失败呈现：v3_box_layout_planner.handover失败报告真实error，failure_before_handover保留原同步原因；加CPU实际method mock，test_box_layout+handover45/45过，不改规划行为。新source不能再说与run002保护1394完全相同。
+- Linnaeus(01a20c3d...)已恢复，按当前源rebase角色候选并保留1mrad，允许应用6files与小CPU角色回归后一次真默认负Y85 fresh13 native；尚无负YGPU成功。其余工作树冻结不改，旧role完整拷贝不能覆盖margin。此轮后再统一安排当前生产源码的必要回归，不对每次无变化原31盲重跑。
+- 原任务66/79/指定14角/任务updown及完整原位/物理门禁保持。有限样例不代表全域，绝对Y/Z验收域仍待用户明确，goal active。
+
+## 2026-11-24 Codex / 实际反向角色接入与负Y第二箱precontact缺口
+- Linnaeus已按当前源重基应用6files角色映射，保留1mrad donor bounds、真实两chain/caps/NAMES/物理ID，OrderedLayoutPlanner可选owner→physicalID映射默认旧行为不变。Main只读运行75CPU合同/角色/现有回归全过，输出takeover_20261124/cpu_role_integration_tests.log。
+- 负Y85(.8/1.4)实际default_attempt02失败在fresh suffix有限4个precontact候选，上箱recipient停车已成功；native0段，不是完整负Y成功或非法证明。原输出保留。CPU诊断暂用停车lift假设、不含实际过滤q，main已提醒不能用原始IK无fail替代真实双臂planner.precontact(q,{giver:d,recipient:0},checker)拒绝层；允许一次必要有因correction+fresh验收，禁止盲增预算或镜像旧q。
+- 11项当前需求审计落takeover_20261124/requirement_audit_current.json，goal_complete=false；最终同源全回归、负Y完整原生、任意合法位置绝对Y/Z范围均未证明。旧run001/002原31通过/32失败/33&34未运行的实证不改写。
+
+## 2026-11-24 Codex / 负Y及先取Cube成功，当前源final36全批已启动
+- 实际负Y07原请求fresh默认13native通过：52011点28.470185s、worker221.909718s，source01高箱R→L后R取Cube，原ID/尺寸/箱位/两次.255/.300/真实10kg支持及最终20kg/14角通过；main外部CPU再开过，source oldreads[]。Checkpoint真实screen4/128可行8.10s先过，导入/JSON启动失败未计物理zero。新terminal在precontact_admission_cpu/admission_terminal_07.json，旧failed05 terminal保留。
+- 原SKU顺序互换正Y85 CubeZ1.4/TallZ.8无需再改源就fresh默认通过：68011点38.207087s/worker163.451189s，source00Cube L→R后L取Tall，实际-.299999653/-.254999557，14角4.37e-8、updown-.10，gpuq-8e6...completed0/1403sourceunchanged，无live。main外部CPU再过；不镜像旧轨迹、不只换label。Linnaeus子任务已close不再改源。
+- final36 dataset前35逐项/字节相同，36raw SKU完全原样。main审阅只2sidecar suite36/原数据保护/禁继承/current sourcefreeze等diff，1474文件全SHA复查匹配52bd2e0cf8b772d37d1797ef812f85c89083ceae077413212b478e1bab1728af后正式GO。单PATHgpuq-a4225670b2fd4131、exec27021、owner1911502/worker1911503正在运行，56mprovisional非timeout；main观察6/36pass、case7running。全量真默认，无旧31继承，失败按请求边界停并保留全部槽位。Dirac负责monitor与终态后外部CPU全36。
+- Freeze直到GPUterminal+CPU外部audit：不要改tools/config/tests/models/vendor/publickernel/rawrequests，不额外开GPU。`.ai_teamwork/NOW.md`已更新正确接管状态，CONTINUATION保存livehandle但仍须PS/queue复核。main只新增generatedCPU姿态图actual_carry_native_endpoints.{png,json}（真实nativeendq+FK/真实A），无GPU/physics rerun/整批claim。
+- 全“任意合法位置”目标仍active，当前有限36未终态，更不自动证明全域；绝对Y/Z工作域仍未收到用户定义。不markcomplete/push/实机执行。
+
+## 2026-11-24 Codex / final36原31已在当前源重过；实际吸附面独立CPU补证
+- final36 main最新实查33/36pass、case34BothTop运行，exec27021/queue-a422...、PIDs1911502/03仍live，source1474与raw36一致。原31全部在当前角色/1mrad/actualprecontact/zero-held-q实现重过，没有继承过去成功。整批尚未终态或外部all36审核，仍不可markcomplete。
+- Plato仅generated新增actual_suction_contract_audit_20261124/audit.py，main已review：actualnativeextract首q/URDFFK对原轴向boxC重算ToolInBox、按原Z79阈值判首次sourceFace、真实arm caps10/11 plane/footprint，不拿声称A构造箱位，也不把换手receiver重当首次吸附。五单例10首次吸附全过，批次快照27verified/0rejected/9unverified；TCP最大误差约7.5e-8m、关键单例footprint最小内缩约1.7655mm。原中心/owner/阈值篡改CPU自检拒绝，所有1474冻结hash一致，noGPU/no source改。Plato已close。
+- main让Dirac在GPU终态原externalCPU36之后，单次运行该纯CPU审计--summary最终summary --output batch_final.json，不忙轮询、不重算全collision/RNEA或新开GPU。工具运行源始终freeze，main只更新docs/state；当前结论段已移到纠偏文档顶部，历史记录保留且不再覆盖最新状态。
+
+## 2026-11-24 Codex / 最终36同源回归、全数组CPU及72吸附合同全部通过；全域边界待明确
+- final36实际36/36fresh默认native成功，24sync/7ordered/5handover；936086原生点，整批worker2633.816680s、queue持锁2640.386613s。无旧成功继承/重试/按结果过滤，全部raw逐项与字节不变；旧34/35准备及run001/002真实失败保留。
+- 同fast环境进程外实际数组全36通过9.529s，raw/boxID/actualA/原位.300/.255抽离/qva/静止10kg支持/最终20kg/source无回入/用户14角通过；actual-suction CPU全36/72first-source接触过（55Side17Top），原raw79规则、actualFK法向/plane/真实caps10/11足迹通过。最大TCP55.196um、plane51.787um、cap最小内缩1.76542mm；最大14角误差4.371e-8rad，25不同updown[-.94,0]。原native采样完整collision/OBB/dynamicRNEA门禁保持，非CCD/实机/全域声明。
+- GPU-a422...completed exit0，owner1911502/worker1911503dead、锁空；1474源码/模型/配置/vendor/raw SHA52bd...完全匹配、changes[]，freeze released，所有subagents关闭，无本任务待跑GPU或测试。权威final36/acceptance.json、run001/terminal.json、independent_cpu36.json与actual_suction_contract_audit/batch_final.json均已main查实。未Git提交/推送/实机执行。
+- Main逐项完成审计takeover_20261124/completion_audit_20261124.json仍goal_complete=false：有限36全部数值/行为验证已足，原“任意合法位置”绝对Y/Z域与全域覆盖仍未定义/证明。实际URDF三角不等式CPU例仅说明原相对条件不足（Y10在当前货舱外，未声称属于本意合法域），不缩小已保留合法难例。下一步向用户澄清是否整个箱体限当前货舱Y±1.2/Z0..2.4或其它域；收到范围后仍需覆盖验证，不能仅确认范围便markcomplete。scope阻塞本轮首次成为剩余唯一输入条件，goal保持active、不pause/complete；若后续3轮真实同阻塞且无独立进展按goal blocked规则处理。
+- NOW与纠偏文档顶部当前结论、CONTINUATION首字段已更新，历史“production无handover/31样例”等不再覆盖新状态。勿无因重跑相同36；用户合法域未答前不伪造全域成功。
+
+## 2026-11-24 Codex / 剩余合法域澄清第2轮：生成具体未确认范围提案
+- 重读get_goal仍active，用户重复原objective没有新增绝对Y/Z答复；36/36及全部独立审核已完，无活GPU/子agent。未无因重跑同36或擅自把任意域收窄到货舱。
+- 新增纯CPU propose_workspace_domain_cpu.py与workspace_domain_proposal.json，从真实environment墙/地/顶内面直接推导待确认Y±1.2/Z0..2.4；当前轴定义下Cube中心Y±1/Z.2..2.2，Tall中心Y±.9675/Z.291..2.109。自检几何面精确回代，原36逐一全在其中。提案明确user_confirmed=false、applied_to_planner=false，未修改实现/测试/模型，未做GPU，未把原36位于其中当授权/全域证明。
+- 此轮将缺失信息变为具体可review的参数，scope_clarification_blocking_turns=2；下轮若仍同一真实输入缺口且无独立推进，按3轮goal blocked审计，不继续耗费实验代替定义。确认范围后仍需域内覆盖/物理可达性验证，不会只凭yes就markcomplete。
+
+## 2026-11-24 Codex / 合法域同一缺口连续3轮复核，goal已blocked
+- 第3轮仍仅收到自动goal继续提示，没有实际Y/Z定义。再次核对当前goal目标未变、36/36验收与独立CPU/72真实吸附全过、1474冻结文件无变化、无自身liveGPU，提案仍user_confirmed=false且未应用到planner。
+- 原合法域全称要求不能由36样例或未确认内腔提案代替；已完成所有不依赖此信息的纠偏实现、有限回归、独立合同核验及具体范围提案，不能继续用重复GPU实验替代定义。functions.update_goal返回status=blocked；未宣告complete/暂停，源与证据不变。
+- 下一步等待用户确认“按现有货舱整个箱体Y±1.2/Z0..2.4”或提供实际箱心Y/Z范围；收到范围后仍需覆盖验证。若用户显式resume而仍未提供范围，按新blocked audit起算，不继承本次3轮直接再次阻塞。
+
+## 2026-11-25 Codex / 双SKU原25箱覆盖范围恢复推进
+- 用户明确新两箱不超出原25箱覆盖范围，绝对Y/Z输入阻塞解除；不再等待货舱域确认。
+- 原25箱几何溯源与小批量边界实验设计已交给subagent，主会话维护合同/证据；D66cm、统一79cm阈值、14角、任务内自由升降不变。
+- 更新NOW、合同顶部、CONTINUATION及当前完成审计为active；旧36/36仅作有限证据，未宣称连续全域完成。新证据目录`generated/two_box_layout/original25_domain_20261125/`。
+
+## 2026-11-25 Codex / 原25箱域共享修复与最终44案验证
+- 用户给定原25箱覆盖，恢复名义完整外沿Y±1.02/Z0–2.04m；原源码与92组fixture交叉核对。D66/阈值79/原抽离/用户14角/任务自由升降保持，未按成功样本裁剪。
+- 修复两个实际域内失败：原标签手臂不可达→共享实际owner↔物理ID自动交换并贯穿场景、验证、回放和预览；拟合抽离曲线低于原5mm→native抽离硬校验/正确LM引导及原≤8rest机制扩展带位移合同抽离，实际2段恢复、原整段位移不变且qva接缝0。原6/8、7/8及违规整段保留。
+- 最终同运行码边界8/8+原36/36，全新无继承，44外部CPU/88实际首次吸附/107CPU测试通过，1,176,114native点；31个实际升降值，14角最大误差4.37e−8rad。1236共享运行文件SHA一致，当前36manifest1445/digest0792610110e60617901f3f648e1ce34315c054d92391d5f930311936fe22de0b，收尾0变化。
+- 汇总及合同：generated/two_box_layout/original25_domain_20261125/acceptance_current44.json 与 docs/BOX_LAYOUT_JOINT_CONTRACT_CORRECTION_20261123.md 顶部。原36中的6例更大范围证据保留；38域内/6更大范围。
+- mainexec54717实际exit0；queuef39e completed0，全部本任务owner/worker、子agent结束，sharedlock空、freeze释放、无GPU/测试待运行，无commit/push/实机执行。停止已知案例优化。有限44与连续必要条件仍不足以证明连续全域，完整任意位置goal未markcomplete；用户范围阻塞已解除，不再索要Y/Z。
+
+## 2026-11-26 Codex / MOTION-505补录、提交整理及归档清理
+- 按用户指定2026-10-19规范新建MOTION-505，Parent419、Project V3抓取规划算法开发与验证、In Review待李昊洋；11/19–23、11/23–24、11/25–26三个阶段在同线程补录，父419唯一验收评论原地补充本子方向，保留原阶段和讨论。
+- 交付文档MOTION505_TWO_BOX_REVIEW.md、44案便携摘要/原始请求/计时/实际owner与sourcecontacts/证据SHA，包含未证全域/CCD/实机/放箱边界。原107CPU和44native报告源版本不重签。
+- 整理中将generated独立source-contact审计原函数复制到versioned source，CPU测试改用新路径；旧no_dense mock适配共享FK evaluate_state与CPU tensor，生产规划不变。扩大检查305过15失败19跳过，15在原PR82源码同资产下逐项复现；另2旧文件缺alfa_motion_viser不能收集。
+- 原始5.2GB实验先完整tar.zst归档并zstd完整性/SHA/成员校验，后删除冗余旧二进制/重复源快照和275MB旧rolecache；最终44/必要历史fixture/当前Viser8295与活跃runtimecache保留。归档和清理收据随交付保存，Git明确ignore生成物。
+- 用户要求补录后提交推送，不开PR；沿用既有专用分支、本地base ee6dba3，远程交付motion-505-two-box-extraction，具体Git收据在子issue线程，不声称主干已合并。

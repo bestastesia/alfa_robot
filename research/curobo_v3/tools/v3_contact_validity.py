@@ -10,7 +10,8 @@ def target_in_front_of_contact_plane(position,normal,target,tolerance_m,allow_co
     contact=torch.as_tensor(target['contact'],device=position.device,dtype=position.dtype)
     rotation=torch.as_tensor(target.get('rotation',np.eye(3)),device=position.device,dtype=position.dtype)
     half=torch.as_tensor(target['dimensions'],device=position.device,dtype=position.dtype)/2
-    inward=center-contact
+    inward=(torch.as_tensor(target['inward_normal'],device=position.device,dtype=position.dtype)
+            if 'inward_normal' in target else center-contact)
     inward=inward/torch.linalg.vector_norm(inward)
     delta=contact-position
     axial=(delta*inward).sum(-1)

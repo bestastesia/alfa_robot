@@ -1,0 +1,2445 @@
+{
+  "schema_version": 1,
+  "date": "2026-11-25",
+  "success": true,
+  "cpu_only": true,
+  "gpu_initialized": false,
+  "source_root": "/home/astesia/Sevenova/.pr82-two-box-extraction/research/curobo_v3",
+  "selected_front_distance_m": 0.66,
+  "distance_semantics": "Current D is base-front to shared carton CENTER X plane; legacy wall_distance was base-front to carton front face. Do not add half-depth to current D.",
+  "original25": {
+    "count": 25,
+    "dimensions_xyz_m": [
+      0.3,
+      0.4,
+      0.4
+    ],
+    "center_grid_m": {
+      "y": [
+        -0.82,
+        -0.41,
+        0.0,
+        0.41,
+        0.82
+      ],
+      "z": [
+        0.2,
+        0.61,
+        1.02,
+        1.43,
+        1.84
+      ]
+    },
+    "center_grid_hull_m": {
+      "y": [
+        -0.82,
+        0.82
+      ],
+      "z": [
+        0.2,
+        1.84
+      ]
+    },
+    "nominal_occupied_envelope_yz_m": {
+      "y": [
+        -1.02,
+        1.02
+      ],
+      "z": [
+        0.0,
+        2.04
+      ]
+    },
+    "legacy_lifted_occupied_envelope_yz_m": {
+      "y": [
+        -1.02,
+        1.02
+      ],
+      "z": [
+        0.001,
+        2.041
+      ]
+    },
+    "carton_pitch_m": 0.41,
+    "inter_carton_gap_m": 0.01,
+    "fixture_pairs_checked": 92
+  },
+  "recommended_continuous_domain": {
+    "interpretation": "Each complete axis-aligned carton must lie in the bounding rectangle of the nominal original25 occupied Y/Z envelope; centers vary continuously, including original grid gaps.",
+    "occupied_envelope_yz_m": {
+      "y": [
+        -1.02,
+        1.02
+      ],
+      "z": [
+        0.0,
+        2.04
+      ]
+    },
+    "canonical_membership": "nominal_closed_full_carton_containment",
+    "numerical_clearance_m": 0.001,
+    "numerical_clearance_policy": "Keep nominal physical domain fixed. Legacy row_obstacles translates all cartons +1 mm in Z; it does not inset Y or increase physical coverage. If floor clearance is required at execution, raise only the nominal lower center Z by 1 mm; retain the nominal upper Z.",
+    "comparison_tolerance_m": 1e-09,
+    "benchmark_contact_surface_offset_m": 1e-06,
+    "center_bounds_formula": "y=[-1.02+dy/2,1.02-dy/2]; z=[dz/2,2.04-dz/2]",
+    "full_volume_containment": true,
+    "reachability_proven": false,
+    "continuous_coverage_proven": false,
+    "pair_constraints_preserved": [
+      "common center X plane at selected D=.66",
+      "absolute center height difference <= .60 m",
+      "full cartons do not overlap",
+      "existing suction, physical, trajectory and carry gates"
+    ]
+  },
+  "center_bounds_variants": [
+    {
+      "size": "40x40x30",
+      "swap_length_height": false,
+      "dimensions_xyz_m": [
+        0.3,
+        0.4,
+        0.4
+      ],
+      "nominal_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.2,
+          1.84
+        ]
+      },
+      "legacy_lifted_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.201,
+          1.841
+        ]
+      },
+      "nominal_with_1mm_floor_clearance_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.201,
+          1.84
+        ]
+      }
+    },
+    {
+      "size": "40x40x30",
+      "swap_length_height": true,
+      "dimensions_xyz_m": [
+        0.3,
+        0.4,
+        0.4
+      ],
+      "nominal_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.2,
+          1.84
+        ]
+      },
+      "legacy_lifted_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.201,
+          1.841
+        ]
+      },
+      "nominal_with_1mm_floor_clearance_center_bounds_m": {
+        "y": [
+          -0.82,
+          0.82
+        ],
+        "z": [
+          0.201,
+          1.84
+        ]
+      }
+    },
+    {
+      "size": "46.5x25.5x58.2",
+      "swap_length_height": false,
+      "dimensions_xyz_m": [
+        0.255,
+        0.465,
+        0.582
+      ],
+      "nominal_center_bounds_m": {
+        "y": [
+          -0.7875,
+          0.7875
+        ],
+        "z": [
+          0.291,
+          1.749
+        ]
+      },
+      "legacy_lifted_center_bounds_m": {
+        "y": [
+          -0.7875,
+          0.7875
+        ],
+        "z": [
+          0.292,
+          1.75
+        ]
+      },
+      "nominal_with_1mm_floor_clearance_center_bounds_m": {
+        "y": [
+          -0.7875,
+          0.7875
+        ],
+        "z": [
+          0.292,
+          1.749
+        ]
+      }
+    },
+    {
+      "size": "46.5x25.5x58.2",
+      "swap_length_height": true,
+      "dimensions_xyz_m": [
+        0.255,
+        0.582,
+        0.465
+      ],
+      "nominal_center_bounds_m": {
+        "y": [
+          -0.729,
+          0.729
+        ],
+        "z": [
+          0.2325,
+          1.8075
+        ]
+      },
+      "legacy_lifted_center_bounds_m": {
+        "y": [
+          -0.729,
+          0.729
+        ],
+        "z": [
+          0.2335,
+          1.8085
+        ]
+      },
+      "nominal_with_1mm_floor_clearance_center_bounds_m": {
+        "y": [
+          -0.729,
+          0.729
+        ],
+        "z": [
+          0.2335,
+          1.8075
+        ]
+      }
+    }
+  ],
+  "cargo_interior_yz_m": {
+    "y": [
+      -1.2,
+      1.2
+    ],
+    "z": [
+      0.0,
+      2.4
+    ]
+  },
+  "cargo_interior_note": "The larger cargo interior is not original25 occupied coverage.",
+  "fixture_evidence": {
+    "config/two_box_pick/cube_boundary_cases.json": {
+      "count": 16,
+      "per_size": {
+        "40x40x30": {
+          "y": [
+            -0.82,
+            0.82
+          ],
+          "z": [
+            0.201,
+            1.84
+          ]
+        }
+      }
+    },
+    "config/two_box_pick/approved_center_probes_cases.json": {
+      "count": 32,
+      "per_size": {
+        "40x40x30": {
+          "y": [
+            -0.45,
+            0.6444514681000095
+          ],
+          "z": [
+            0.201,
+            1.8716541497992765
+          ]
+        },
+        "46.5x25.5x58.2": {
+          "y": [
+            -0.45,
+            0.6444514681000095
+          ],
+          "z": [
+            0.292,
+            1.8731723795628232
+          ]
+        }
+      }
+    }
+  },
+  "fixture_note": "Probe catalogs contain broader height samples; their extrema do not define original25 coverage. cube_boundary combines .201 numerical floor clearance with nominal 1.84 upper center.",
+  "current36_membership": {
+    "total": 36,
+    "inside_nominal": 30,
+    "outside_nominal": 6,
+    "outside_nominal_indices": [
+      3,
+      32,
+      33,
+      34,
+      35,
+      36
+    ],
+    "inside_legacy_lifted": 28,
+    "nominal_inside_but_legacy_floor_boundary_indices": [
+      24,
+      26
+    ],
+    "all_cases_retained": true,
+    "prior_acceptance_passed": 36,
+    "finite_evidence_only": true,
+    "cases": [
+      {
+        "index": 1,
+        "name": "both_tall_side",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/01_both_tall_side.json",
+        "request_sha256": "fd2ba91436c7c5a5e942ad9dd460ccddc66cb90f05ad29117707f935388dec14",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.55,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.55,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "name": "tall_left_cube_right",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/02_tall_left_cube_right.json",
+        "request_sha256": "14f6251830b50ef7f9e87b67df9fec41f6decd8edb9d12b4f6816cdc7cff3c6e",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.02
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.02
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "name": "high_pair_dz60",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/03_high_pair_dz60.json",
+        "request_sha256": "43d9654d881c30d2b1745dfeabadf5ceb71408367a4df999a9938e65181bf0eb",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.6
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              2.2
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "z",
+                "edge": "max",
+                "excess_m": 0.36
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "z",
+                "edge": "max",
+                "excess_m": 0.359
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "name": "asymmetric_right_inner",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/04_asymmetric_right_inner.json",
+        "request_sha256": "440ba3bf26aa6e9e73655481a95c3852f5c09449357155e4a08d59a9f437ed72",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.7,
+              1.1
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.3,
+              1.0
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 5,
+        "name": "same_side_swapped_arm_assignment",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/05_same_side_swapped_arm_assignment.json",
+        "request_sha256": "cd1c5c109cf26edc8ec644066ec6df06fa3f74a7663d9c3d1eb92c278e547011",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 6,
+        "name": "tall_near_ground",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/06_tall_near_ground.json",
+        "request_sha256": "d651696d8f872c059c6ad62e57eb471d1309eeca338cf4033ac14794611d245a",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.3
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              0.9
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 7,
+        "name": "ordered_tall_lower_cube_upper",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/07_ordered_tall_lower_cube_upper.json",
+        "request_sha256": "ccf62bd261a2d94f7a606e4446a2007d68dbe720c14c66f25d1590290f77a873",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.3
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.9
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 8,
+        "name": "swapped_tall_left",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/08_swapped_tall_left.json",
+        "request_sha256": "04559497e45214609efeb6df77eee78c7a0b61cb86387f47b162b6c08508f826",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.55,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.582,
+              0.465
+            ],
+            "swap_length_height": true,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 9,
+        "name": "baseline_mixed_side",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/09_baseline_mixed_side.json",
+        "request_sha256": "fb2cda044a163d1346e20dbbc843ff69f4d61dec9b6ee55a5081ac0b5de500ba",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.02
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.02
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 10,
+        "name": "threshold_below",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/10_threshold_below.json",
+        "request_sha256": "c71d6f4b886d1c5d4d5d0c2b3d6858e4ef5e84c0c8ecbc5f00b1363221b3388f",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.799
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.399
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 11,
+        "name": "threshold_equal",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/11_threshold_equal.json",
+        "request_sha256": "d932bb7f2b83967fc68751851c67229a70afca4b980f387871c6c6be36f099ce",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 12,
+        "name": "threshold_above",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/12_threshold_above.json",
+        "request_sha256": "34cca1cc4657d1ef48c0f635c577102a5b334be6c9d16e5f4dc806777c296cda",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.801
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.401
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 13,
+        "name": "asymmetric_left_inner",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/13_asymmetric_left_inner.json",
+        "request_sha256": "13df708c900cf68466da0e473c246f46fcb09ced952e69efad70aaf5a3d45f1d",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.3,
+              1.0
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.7,
+              1.1
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 14,
+        "name": "centered_stack_side",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/14_centered_stack_side.json",
+        "request_sha256": "5a5d1f93e4bee25bab15e479a1b6230f7dc7a412b800d79a3aabffd655f62fdb",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 15,
+        "name": "centered_stack_low_top",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/15_centered_stack_low_top.json",
+        "request_sha256": "e61a644d3c8fc404fec051d6eb9cd709a14b0fd22fbb9526b1e5353ac27a1838",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.79
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              1.39
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 16,
+        "name": "same_side_center_grasp_witness",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/16_same_side_center_grasp_witness.json",
+        "request_sha256": "57f345a53d6709c80098a83bb8b90130abe003f1734710aa02a00992397e0ec8",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 17,
+        "name": "global79_equal",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/17_global79_equal.json",
+        "request_sha256": "021f3b46e983627fb48e329549fd77b914a5952b2f525d11b9b90cbd52a1f3fc",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.79
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.3900000000000001
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 18,
+        "name": "global79_above",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/18_global79_above.json",
+        "request_sha256": "bf16b7a40611d5b149cebc9046f18e7a557bd85ba20d0f90c9a4a5ebfaa7728d",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.791
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.391
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 19,
+        "name": "same_side_both_right_mirror",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/19_same_side_both_right_mirror.json",
+        "request_sha256": "7e391f223e718d4bc8504badf4451806893008f35c3956c014bf2cf215878ba4",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 20,
+        "name": "baseline_cube_side_tall_top_dz60",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/20_baseline_cube_side_tall_top_dz60.json",
+        "request_sha256": "64cfe3ac5a9cab0cfc96d31b1e69c5f49dd9ac1849397bb1682b9048adf03cb4",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.1
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              0.5
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 21,
+        "name": "ordered_tall_lower_cube_upper_arm_mirror",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/21_ordered_tall_lower_cube_upper_arm_mirror.json",
+        "request_sha256": "c681af3ad62d49d917f01e4a7361ac5faada3ef16ea47cb3bc595c771cf12ca1",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.3
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.9
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 22,
+        "name": "swapped_tall_right",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/22_swapped_tall_right.json",
+        "request_sha256": "5b9a75e52e8c45e7facf7edc006bcd68dc3fcb2a7249f1e6b396207d5545ddf0",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.55,
+              1.05
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.582,
+              0.465
+            ],
+            "swap_length_height": true,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 23,
+        "name": "baseline_cube_top_tall_side_dz60",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/23_baseline_cube_top_tall_side_dz60.json",
+        "request_sha256": "fed8eb5301d58682868905d9fa7c321bbd87bfddba0eed89798eb10195985e3f",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.5
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.1
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 24,
+        "name": "cube_on_ground",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/24_cube_on_ground.json",
+        "request_sha256": "b348a816ff04a6615630c4725bbf972dba3fb808ebf3fb707add2503f8a7a8ae",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.2
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [
+              {
+                "axis": "z",
+                "edge": "min",
+                "excess_m": 0.001
+              }
+            ],
+            "has_1mm_floor_clearance": false
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 25,
+        "name": "global79_below",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/25_global79_below.json",
+        "request_sha256": "948dbeef94eaa4755b2ab69409fb614ca16540ad7260467f5ce1e069ec27c3f0",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.789
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              1.389
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 26,
+        "name": "ordered_low_stack_20cm",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/26_ordered_low_stack_20cm.json",
+        "request_sha256": "9101af19123c7050a714b7f83c77dc0e7727e2ae9c16a63f0b8f7d9e3125de77",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.2
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [
+              {
+                "axis": "z",
+                "edge": "min",
+                "excess_m": 0.001
+              }
+            ],
+            "has_1mm_floor_clearance": false
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 27,
+        "name": "ordered_low_stack_30cm",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/27_ordered_low_stack_30cm.json",
+        "request_sha256": "098e40ec8b1e858913d44d74fe9d6c662e78751221f6e01dd4fd86406e3bc6ca",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.3
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.8999999999999999
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 28,
+        "name": "ordered_low_stack_50cm",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/28_ordered_low_stack_50cm.json",
+        "request_sha256": "927fcfcee3fe2f2789b92d6b68d7ae593696b9877cd9a30afda2e045a4717228",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.5
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              1.1
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 29,
+        "name": "ordered_low_stack_70cm",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/29_ordered_low_stack_70cm.json",
+        "request_sha256": "47a2d49af0e39ae4217a889d0bf421bb42fb1892a1fc263e123316a858b94f8c",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.7
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              1.2999999999999998
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 30,
+        "name": "ordered_low_stack_78cm",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/30_ordered_low_stack_78cm.json",
+        "request_sha256": "f3b7c05c4668a15c1f6be8ca02890537d2b89207d30cc569fd44b7ec13434827",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              0.78
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.0,
+              1.38
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 31,
+        "name": "both_top",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/31_both_top.json",
+        "request_sha256": "cb6b7062f49e6c6ac75bf570f4c9b8701f5f18cc07142e9dad62aa65f57ede44",
+        "inside_nominal_domain": true,
+        "inside_legacy_lifted_domain": true,
+        "evidence_role": "in_domain_finite_regression",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.5,
+              0.4
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              -0.5,
+              0.6
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [],
+            "legacy_lifted_violations": [],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 32,
+        "name": "broader_same_side_y85",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/32_broader_same_side_y85.json",
+        "request_sha256": "e35ee9d2e7ef94d8e81ee6643730f3e9e3c9d385a955fba37780d3455ba7926f",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 33,
+        "name": "y85_top70_high130",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/33_y85_top70_high130.json",
+        "request_sha256": "2ae8bbdd06b28a7b48000d7d271d1aa56c271ebca114fb51e104c7e6b48992a2",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              0.7
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              1.3
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 34,
+        "name": "y85_both_top20_high70",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/34_y85_both_top20_high70.json",
+        "request_sha256": "697d123f04a0c4c4c283e3f97d0be57b29e128702fd4f7b5feaefd02a235d222",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              0.2
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              },
+              {
+                "axis": "z",
+                "edge": "min",
+                "excess_m": 0.001
+              }
+            ],
+            "has_1mm_floor_clearance": false
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.1680520510673524,
+              0.85,
+              0.7
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 35,
+        "name": "negative_y85_actual_roles",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/35_negative_y85_actual_roles.json",
+        "request_sha256": "e8f756b7f737c96315038ac7d14d14022e2616ca1f2c16042c5f4ae57eef9f82",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.168052051,
+              -0.85,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "min",
+                "excess_m": 0.03
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "min",
+                "excess_m": 0.03
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.168052051,
+              -0.85,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "min",
+                "excess_m": 0.0625
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "min",
+                "excess_m": 0.0625
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      },
+      {
+        "index": 36,
+        "name": "positive_y85_cube_upper_tall_lower",
+        "request_path": "generated/two_box_layout/default_handover_final36_20261124/requests/36_positive_y85_cube_upper_tall_lower.json",
+        "request_sha256": "667802e1a57a33ce5c53842149112268fd7b9e0e122895d5c523763f2a06678d",
+        "inside_nominal_domain": false,
+        "inside_legacy_lifted_domain": false,
+        "evidence_role": "retained_broader_evidence",
+        "boxes": [
+          {
+            "side": "left",
+            "size": "40x40x30",
+            "center_m": [
+              1.168052051,
+              0.85,
+              1.4
+            ],
+            "dimensions_xyz_m": [
+              0.3,
+              0.4,
+              0.4
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.03
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          },
+          {
+            "side": "right",
+            "size": "46.5x25.5x58.2",
+            "center_m": [
+              1.168052051,
+              0.85,
+              0.8
+            ],
+            "dimensions_xyz_m": [
+              0.255,
+              0.465,
+              0.582
+            ],
+            "swap_length_height": false,
+            "nominal_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "legacy_lifted_violations": [
+              {
+                "axis": "y",
+                "edge": "max",
+                "excess_m": 0.0625
+              }
+            ],
+            "has_1mm_floor_clearance": true
+          }
+        ]
+      }
+    ]
+  },
+  "sources": {
+    "tools/v3_task_scene.py": {
+      "sha256": "8ea2a41608390c3ee6a36948b04b87cf533a3e70b5c48bc745eb838ff7b99f32",
+      "refs": {
+        "wall_center": {
+          "start_line": 4,
+          "end_line": 6
+        },
+        "row_obstacles": {
+          "start_line": 9,
+          "end_line": 34
+        }
+      }
+    },
+    "tools/v3_wall_ik_benchmark.py": {
+      "sha256": "3f0f9c5736ecd5b5a26a52e5224db5e69153bc857b49f687f0397bd4fc31a7e5",
+      "refs": {
+        "wall_center": {
+          "start_line": 214,
+          "end_line": 219
+        },
+        "make_scene": {
+          "start_line": 233,
+          "end_line": 251
+        },
+        "contact_position": {
+          "start_line": 222,
+          "end_line": 230
+        }
+      }
+    },
+    "tools/curobo_core/fixtures.py": {
+      "sha256": "c5945616ec105fc11f41a925b142f89f9ba613002bc0bde39431f7a18b27d2d7",
+      "refs": {
+        "tasks": {
+          "start_line": 1,
+          "end_line": 23
+        }
+      }
+    },
+    "tools/v3_task_cycle_planner.py": {
+      "sha256": "c05b4e4359546daa4bfd66dfff2fcff18d282d9060a865cfb3ca0a014c07eece",
+      "refs": {
+        "configure_task": {
+          "start_line": 34,
+          "end_line": 60
+        }
+      }
+    },
+    "tools/v3_wall25_demo.py": {
+      "sha256": "cd045a9fb1901b827db77d812cba350dd1ffd78cd55bebdd070c1375cdd534f8",
+      "refs": {
+        "generate": {
+          "start_line": 42,
+          "end_line": 97
+        },
+        "bind_request": {
+          "start_line": 26,
+          "end_line": 33
+        }
+      }
+    },
+    "tests/test_core_task_scene.py": {
+      "sha256": "ddbec54650bd4ef76d64a86dad79bfa6bf0d12de2989175f41e51a5ebb80936b",
+      "refs": {
+        "test_task_partition_and_unique_pairs": {
+          "start_line": 14,
+          "end_line": 25
+        },
+        "test_fill_never_intersects_selected_target_volumes": {
+          "start_line": 27,
+          "end_line": 38
+        }
+      }
+    },
+    "config/tcp_scene_preview.json": {
+      "sha256": "0cf53575c1320fc505b0bad8afd93600b621a3648b6138fc51ae4b457886e537",
+      "refs": {}
+    },
+    "config/two_box_pick/cube_boundary_cases.json": {
+      "sha256": "13d674fe3babc1fb9b1ddb8ce6903f3672a0b890e2c4fc9eb00a9a7e66a4aa48",
+      "refs": {}
+    },
+    "config/two_box_pick/approved_center_probes_cases.json": {
+      "sha256": "5a05702dee483d2e11d2ccffc8a23b62c410ea481dbfb9e5392586286387ccbf",
+      "refs": {}
+    },
+    "tools/curobo_core/box_pick.py": {
+      "sha256": "94877aae3d444f9a3f86afc648262754f3461448dce885482af44d82a4f525f7",
+      "refs": {
+        "dimensions_m": {
+          "start_line": 72,
+          "end_line": 74
+        }
+      }
+    },
+    "tools/curobo_core/layout_contract.py": {
+      "sha256": "e2d79286f9067aebb374b80e3746c548a748c7a849b16236bd5e3fcf5e7aa7c4",
+      "refs": {
+        "validate_pair": {
+          "start_line": 58,
+          "end_line": 82
+        },
+        "base_front_x": {
+          "start_line": 44,
+          "end_line": 55
+        }
+      }
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/catalog.json": {
+      "sha256": "3b12509d145834ae8c12ed62caab2d76b58d14f95fafe36ab2071f95ffa0989d",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/acceptance.json": {
+      "sha256": "6c50ec7fc16881afeb623bb7b652e3dffcd9fde8a71af57b1217f52059947280",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/01_both_tall_side.json": {
+      "sha256": "fd2ba91436c7c5a5e942ad9dd460ccddc66cb90f05ad29117707f935388dec14",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/02_tall_left_cube_right.json": {
+      "sha256": "14f6251830b50ef7f9e87b67df9fec41f6decd8edb9d12b4f6816cdc7cff3c6e",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/03_high_pair_dz60.json": {
+      "sha256": "43d9654d881c30d2b1745dfeabadf5ceb71408367a4df999a9938e65181bf0eb",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/04_asymmetric_right_inner.json": {
+      "sha256": "440ba3bf26aa6e9e73655481a95c3852f5c09449357155e4a08d59a9f437ed72",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/05_same_side_swapped_arm_assignment.json": {
+      "sha256": "cd1c5c109cf26edc8ec644066ec6df06fa3f74a7663d9c3d1eb92c278e547011",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/06_tall_near_ground.json": {
+      "sha256": "d651696d8f872c059c6ad62e57eb471d1309eeca338cf4033ac14794611d245a",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/07_ordered_tall_lower_cube_upper.json": {
+      "sha256": "ccf62bd261a2d94f7a606e4446a2007d68dbe720c14c66f25d1590290f77a873",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/08_swapped_tall_left.json": {
+      "sha256": "04559497e45214609efeb6df77eee78c7a0b61cb86387f47b162b6c08508f826",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/09_baseline_mixed_side.json": {
+      "sha256": "fb2cda044a163d1346e20dbbc843ff69f4d61dec9b6ee55a5081ac0b5de500ba",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/10_threshold_below.json": {
+      "sha256": "c71d6f4b886d1c5d4d5d0c2b3d6858e4ef5e84c0c8ecbc5f00b1363221b3388f",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/11_threshold_equal.json": {
+      "sha256": "d932bb7f2b83967fc68751851c67229a70afca4b980f387871c6c6be36f099ce",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/12_threshold_above.json": {
+      "sha256": "34cca1cc4657d1ef48c0f635c577102a5b334be6c9d16e5f4dc806777c296cda",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/13_asymmetric_left_inner.json": {
+      "sha256": "13df708c900cf68466da0e473c246f46fcb09ced952e69efad70aaf5a3d45f1d",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/14_centered_stack_side.json": {
+      "sha256": "5a5d1f93e4bee25bab15e479a1b6230f7dc7a412b800d79a3aabffd655f62fdb",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/15_centered_stack_low_top.json": {
+      "sha256": "e61a644d3c8fc404fec051d6eb9cd709a14b0fd22fbb9526b1e5353ac27a1838",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/16_same_side_center_grasp_witness.json": {
+      "sha256": "57f345a53d6709c80098a83bb8b90130abe003f1734710aa02a00992397e0ec8",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/17_global79_equal.json": {
+      "sha256": "021f3b46e983627fb48e329549fd77b914a5952b2f525d11b9b90cbd52a1f3fc",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/18_global79_above.json": {
+      "sha256": "bf16b7a40611d5b149cebc9046f18e7a557bd85ba20d0f90c9a4a5ebfaa7728d",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/19_same_side_both_right_mirror.json": {
+      "sha256": "7e391f223e718d4bc8504badf4451806893008f35c3956c014bf2cf215878ba4",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/20_baseline_cube_side_tall_top_dz60.json": {
+      "sha256": "64cfe3ac5a9cab0cfc96d31b1e69c5f49dd9ac1849397bb1682b9048adf03cb4",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/21_ordered_tall_lower_cube_upper_arm_mirror.json": {
+      "sha256": "c681af3ad62d49d917f01e4a7361ac5faada3ef16ea47cb3bc595c771cf12ca1",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/22_swapped_tall_right.json": {
+      "sha256": "5b9a75e52e8c45e7facf7edc006bcd68dc3fcb2a7249f1e6b396207d5545ddf0",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/23_baseline_cube_top_tall_side_dz60.json": {
+      "sha256": "fed8eb5301d58682868905d9fa7c321bbd87bfddba0eed89798eb10195985e3f",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/24_cube_on_ground.json": {
+      "sha256": "b348a816ff04a6615630c4725bbf972dba3fb808ebf3fb707add2503f8a7a8ae",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/25_global79_below.json": {
+      "sha256": "948dbeef94eaa4755b2ab69409fb614ca16540ad7260467f5ce1e069ec27c3f0",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/26_ordered_low_stack_20cm.json": {
+      "sha256": "9101af19123c7050a714b7f83c77dc0e7727e2ae9c16a63f0b8f7d9e3125de77",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/27_ordered_low_stack_30cm.json": {
+      "sha256": "098e40ec8b1e858913d44d74fe9d6c662e78751221f6e01dd4fd86406e3bc6ca",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/28_ordered_low_stack_50cm.json": {
+      "sha256": "927fcfcee3fe2f2789b92d6b68d7ae593696b9877cd9a30afda2e045a4717228",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/29_ordered_low_stack_70cm.json": {
+      "sha256": "47a2d49af0e39ae4217a889d0bf421bb42fb1892a1fc263e123316a858b94f8c",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/30_ordered_low_stack_78cm.json": {
+      "sha256": "f3b7c05c4668a15c1f6be8ca02890537d2b89207d30cc569fd44b7ec13434827",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/31_both_top.json": {
+      "sha256": "cb6b7062f49e6c6ac75bf570f4c9b8701f5f18cc07142e9dad62aa65f57ede44",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/32_broader_same_side_y85.json": {
+      "sha256": "e35ee9d2e7ef94d8e81ee6643730f3e9e3c9d385a955fba37780d3455ba7926f",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/33_y85_top70_high130.json": {
+      "sha256": "2ae8bbdd06b28a7b48000d7d271d1aa56c271ebca114fb51e104c7e6b48992a2",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/34_y85_both_top20_high70.json": {
+      "sha256": "697d123f04a0c4c4c283e3f97d0be57b29e128702fd4f7b5feaefd02a235d222",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/35_negative_y85_actual_roles.json": {
+      "sha256": "e8f756b7f737c96315038ac7d14d14022e2616ca1f2c16042c5f4ae57eef9f82",
+      "refs": {}
+    },
+    "generated/two_box_layout/default_handover_final36_20261124/requests/36_positive_y85_cube_upper_tall_lower.json": {
+      "sha256": "667802e1a57a33ce5c53842149112268fd7b9e0e122895d5c523763f2a06678d",
+      "refs": {}
+    },
+    "generated/two_box_layout/original25_domain_20261125/domain_cpu.py": {
+      "sha256": "797df55c33eb61c5bf176c2bc7297ab46f98e315dd76e8d5e1425f65f66a8179",
+      "refs": {}
+    }
+  },
+  "checks": [
+    "isolated geometry only; no module imports or GPU calls",
+    "25 centers and benchmark cuboids agree",
+    "92 fixture pairs cover all 25 IDs; +1 mm Z lift and nonintersecting fillers checked",
+    "four size/orientation center domains; closed boundaries and outside rejection checked",
+    "catalog acceptance SHA and all 36 raw request SHAs and contents checked",
+    "selected D=.66 preserved; all 36 requests retained"
+  ]
+}

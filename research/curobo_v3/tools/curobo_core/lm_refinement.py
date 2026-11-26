@@ -29,8 +29,11 @@ class CartesianReference:
                 raise ValueError(f'{name} must have a proper rotation')
             value.setflags(write=False)
             object.__setattr__(self, name, value)
-        if np.linalg.norm(self.end[:3, 3] - self.start[:3, 3]) < 1e-7:
-            raise ValueError('Cartesian reference displacement must be nonzero')
+        length = np.linalg.norm(self.end[:3, 3] - self.start[:3, 3])
+        if 0. < length < 1e-7:
+            raise ValueError('moving Cartesian reference displacement is too small')
+        if length == 0. and not np.allclose(self.start[:3, :3], self.end[:3, :3], atol=1e-7, rtol=0.):
+            raise ValueError('stationary Cartesian reference requires fixed orientation')
 
 
 def validate_inputs(checker, rows, references, validity, count, iterations):
@@ -65,7 +68,7 @@ def reference_residuals(point, quaternion, reference):
     origin, direction, offset, attachment_rotation, first, last = reference
     cross = 2 * torch.linalg.cross(quaternion[:, 1:], offset.expand_as(quaternion[:, 1:]))
     center = point + offset + quaternion[:, :1] * cross + torch.linalg.cross(quaternion[:, 1:], cross)
-    fraction = ((center - origin) * direction).sum(-1) / (direction @ direction)
+    fraction = ((center - origin) * direction).sum(-1) / (direction @ direction).clamp_min(torch.finfo(direction.dtype).tiny)
     line_error = center - origin - fraction[:, None] * direction
     angle = torch.acos((first @ last).clamp(-.999999, .999999))
     progress = fraction.clamp(0, 1)[:, None]
@@ -75,7 +78,7 @@ def reference_residuals(point, quaternion, reference):
     return fraction, line_error, orientation_error, actual, desired
 
 
-def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iterations=32):
+def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iterations=32, *, full_payload_cost=None, native_project_margins=False):
     rows = validate_inputs(checker, rows, references, validity, count, iterations)
     def clock():
         torch.cuda.synchronize()
@@ -88,6 +91,7 @@ def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iter
     boundary = torch.tensor(np.vstack((np.tile(start, (3, 1)), np.tile(goal, (3, 1)))), device=device, dtype=torch.float32)
     inner = torch.tensor(controls[:-1], device=device, dtype=torch.float32, requires_grad=True)
     tensors = {}
+    moving_sides = {side for side,item in references.items() if np.linalg.norm(item.end[:3,3]-item.start[:3,3]) > 0.}
     for side, item in references.items():
         first = np.roll(Rotation.from_matrix(item.start[:3, :3]).as_quat(), 1)
         last = np.roll(Rotation.from_matrix(item.end[:3, :3]).as_quat(), 1)
@@ -114,8 +118,9 @@ def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iter
             pose = poses[side + '_tool0']
             fraction, error, orientation, _, _ = reference_residuals(pose.position.reshape(-1, 3), pose.quaternion.reshape(-1, 4), tensors[side])
             loss = loss + 1e6 * error.square().mean() + 1e3 * orientation.mean()
-            progress.append(fraction)
-        loss = loss + 1e4 * (progress[0] - progress[1]).square().mean()
+            if side in moving_sides:progress.append(fraction)
+        if len(progress) == 2:
+            loss = loss + 1e4 * (progress[0] - progress[1]).square().mean()
         for fraction in progress:
             loss = loss + 1e3 * torch.relu(-torch.diff(fraction)).square().mean()
             loss = loss + 1e3 * (torch.relu(-fraction).square() + torch.relu(fraction - 1).square()).mean()
@@ -126,10 +131,16 @@ def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iter
         for cost in (checker.get_self_collision(spheres), checker.collision_constraint.forward(state), checker.get_bound(positions[None])):
             loss = loss + 1e6 * cost.square().mean()
         base_layer = getattr(checker, 'base_mesh_layer', None)
-        if base_layer is not None:loss = loss + 1e6 * base_layer.cost(state, hard=False).square().mean()
+        if base_layer is not None:
+            base_cost = base_layer.cost(state, hard=False)
+            # The activation cost is already quadratic inside the existing base margin.
+            # Squaring it again makes near-boundary clearance violations effectively free.
+            loss = loss + 1e6 * (base_cost.mean() if native_project_margins else base_cost.square().mean())
         ground = spheres[:, :, ground_indices]
-        penetration = torch.where(ground[..., 3] > 0, torch.relu(validity.ground_z + ground[..., 3] - ground[..., 2]), 0.)
+        penetration = torch.where(ground[..., 3] > 0, torch.relu(validity.ground_z + (.002 if native_project_margins else 0.) + ground[..., 3] - ground[..., 2]), 0.)
         loss = loss + 1e6 * penetration.square().mean()
+        if full_payload_cost is not None:
+            loss = loss + 1e6 * full_payload_cost(state).mean()
         loss.backward()
         return loss
     preparation_ms = (clock() - began) * 1000
@@ -155,5 +166,6 @@ def refine_lm_path(checker, rows, references, validity, fit_path, count=64, iter
         actual_iterations=int(optimizer.state[inner].get('n_iter', 0)),evaluations=evaluations,prepare_ms=preparation_ms,
         solve_ms=solve_ms,diagnostics_ms=diagnostics_ms,seed_fit=fit,quality=quality,
         fixed_joint_endpoints=True,reference_frame='current phase robot base',cost_constraints='soft penalties, not feasibility certification',
-        scene_cost_penetration_tolerance_m=0.,acceptance_scene_tolerance_m=validity.scene_penetration_tolerance_m)
+        scene_cost_penetration_tolerance_m=0.,acceptance_scene_tolerance_m=validity.scene_penetration_tolerance_m,
+        native_project_margins_guidance=native_project_margins)
     return output, *endpoints, diagnostics

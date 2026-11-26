@@ -4,28 +4,7 @@ from scipy.spatial.transform import Rotation
 from curobo.types import JointState
 
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
-
-
-def box_sphere_depth(centers,radii,positions,rotations,half):
-    local=np.einsum('bsi,bij->bsj',centers-positions[:,None],rotations)
-    delta=np.abs(local)-np.asarray(half)
-    distance=np.linalg.norm(np.maximum(delta,0),axis=-1)+np.minimum(delta.max(-1),0)
-    return radii-distance
-
-
-def box_overlap_depth(first_position,first_rotation,first_half,second_position,second_rotation,second_half):
-    batch=len(first_position)
-    other=np.broadcast_to(second_rotation,(batch,3,3))
-    axes=np.concatenate((first_rotation.transpose(0,2,1),other.transpose(0,2,1),
-        np.cross(first_rotation.transpose(0,2,1)[:,:,None],other.transpose(0,2,1)[:,None]).reshape(batch,9,3)),axis=1)
-    lengths=np.linalg.norm(axes,axis=-1)
-    normalized=axes/np.maximum(lengths[:,:,None],1e-15)
-    first_extent=np.sum(np.abs(np.einsum('bai,bij->baj',normalized,first_rotation))*first_half,axis=-1)
-    second_extent=np.sum(np.abs(np.einsum('bai,bij->baj',normalized,other))*second_half,axis=-1)
-    separation=np.abs(np.einsum('bi,bai->ba',np.asarray(second_position)-first_position,normalized))
-    overlap=first_extent+second_extent-separation
-    overlap[lengths<1e-10]=np.inf
-    return overlap.min(-1)
+from curobo_core.payload_geometry import box_overlap_depth, box_sphere_depth
 
 
 def base_world_audit(checker,tolerance_m=.001):
@@ -41,7 +20,7 @@ def base_world_audit(checker,tolerance_m=.001):
     return dict(valid=not failures,failures=failures,scope='fixed footprint internal base cuboids versus full world cuboids')
 
 
-def exact_payload_audit(checker,rows,attachments,dimensions,original_robot,tolerance_m=.001):
+def exact_payload_audit(checker,rows,attachments,dimensions,original_robot,tolerance_m=.001,*,check_ground=False):
     if not 0<=tolerance_m<=.001:
         raise ValueError('payload environment penetration limit exceeds approved1mm')
     names=checker.kinematics.config.kinematics_config
@@ -58,11 +37,17 @@ def exact_payload_audit(checker,rows,attachments,dimensions,original_robot,toler
     robot_ids=np.array([index for index in range(sphere_count) if index not in payload_indices],dtype=int)
     scene=list(checker.guidance_scene.cuboid or [])
     internal=list(checker.base_cuboid_layer.scene.cuboid)
+    obstacles=[(obstacle.name,np.asarray(obstacle.pose[:3]),
+        Rotation.from_quat(np.roll(obstacle.pose[3:7],-1)).as_matrix(),np.asarray(obstacle.dims)/2)
+        for obstacle in scene+internal]
+    selected_ids={side:np.asarray([index for index in robot_ids if index not in excluded[side]],dtype=int)
+        for side in attachments}
+    ground={side:np.inf for side in attachments}
     failures=[]
     invalid_frames=set()
     maximum=dict(box_world=0.,box_robot=0.,box_box=0.)
     for offset in range(0,len(rows),256):
-        tensor=torch.tensor(np.asarray(rows[offset:offset+256])[None],device='cuda',dtype=torch.float32)
+        tensor=torch.as_tensor(rows[offset:offset+256],device='cuda',dtype=torch.float32)[None].contiguous()
         state=checker.kinematics.compute_kinematics(JointState.from_position(tensor,joint_names=ACTIVE_JOINTS))
         spheres=state.robot_spheres.reshape(-1,sphere_count,4).detach().cpu().numpy()
         boxes={}
@@ -73,16 +58,38 @@ def exact_payload_audit(checker,rows,attachments,dimensions,original_robot,toler
             positions=pose.position.reshape(-1,3).cpu().numpy()+np.einsum('bij,j->bi',rotations,attachment[:3,3])
             rotations=rotations@attachment[:3,:3]
             boxes[side]=(positions,rotations)
-            for obstacle in scene+internal:
-                other_rotation=Rotation.from_quat(np.roll(obstacle.pose[3:7],-1)).as_matrix()
-                depth=box_overlap_depth(positions,rotations,np.asarray(dimensions)/2,np.asarray(obstacle.pose[:3]),other_rotation,np.asarray(obstacle.dims)/2)
+            size = dimensions[side] if isinstance(dimensions, dict) else dimensions
+            if check_ground:
+                bottom=positions[:,2]-(np.abs(rotations[:,2,:])*np.asarray(size)/2).sum(-1)
+                ground[side]=min(ground[side],float(bottom.min()))
+                bad=np.flatnonzero(bottom<-.001)
+                invalid_frames.update((offset+bad).tolist())
+                if len(bad):
+                    failures.append(dict(kind='box_ground',side=side,frame=offset+int(bad[0]),clearance_m=float(bottom[bad].min())))
+            extent=(np.abs(rotations)*np.asarray(size)/2).sum(-1)
+            for name,position,rotation,half in obstacles:
+                other_extent=np.abs(rotation)@half
+                possible=(np.abs(positions-position)<=extent+other_extent+1e-10).all(-1)
+                if not possible.any():continue
+                depth=np.full(len(positions),-np.inf)
+                depth[possible]=box_overlap_depth(positions[possible],rotations[possible],np.asarray(size)/2,position,rotation,half)
+                if (np.abs(depth-(tolerance_m+1e-7))<1e-12).any():
+                    depth=box_overlap_depth(positions,rotations,np.asarray(size)/2,position,rotation,half)
                 maximum['box_world']=max(maximum['box_world'],float(depth.max(initial=0)))
                 bad=np.flatnonzero(depth>tolerance_m+1e-7)
                 invalid_frames.update((offset+bad).tolist())
                 if len(bad):
-                    failures.append(dict(kind='box_world',side=side,obstacle=obstacle.name,frame=offset+int(bad[0]),depth_m=float(depth[bad].max())))
-            selected=np.asarray([index for index in robot_ids if index not in excluded[side]],dtype=int)
-            depth=box_sphere_depth(spheres[:,selected,:3],spheres[:,selected,3],positions,rotations,np.asarray(dimensions)/2)
+                    failures.append(dict(kind='box_world',side=side,obstacle=name,frame=offset+int(bad[0]),depth_m=float(depth[bad].max())))
+            selected=selected_ids[side]
+            centers,radii=spheres[:,selected,:3],spheres[:,selected,3]
+            possible=(radii>0)&(np.abs(centers-positions[:,None])<=extent[:,None]+radii[...,None]+1e-10).all(-1)
+            depth=np.full(radii.shape,-np.inf)
+            frame,sphere=np.nonzero(possible)
+            if len(frame):
+                depth[frame,sphere]=box_sphere_depth(centers[frame,sphere][:,None],radii[frame,sphere][:,None],
+                    positions[frame],rotations[frame],np.asarray(size)/2)[:,0]
+                if (np.abs(depth-1e-6)<1e-12).any():
+                    depth=box_sphere_depth(centers,radii,positions,rotations,np.asarray(size)/2)
             depth=np.where(spheres[:,selected,3]>0,depth,-np.inf)
             maximum['box_robot']=max(maximum['box_robot'],float(depth.max(initial=0)))
             bad=np.flatnonzero((depth>1e-6).any(-1))
@@ -91,11 +98,65 @@ def exact_payload_audit(checker,rows,attachments,dimensions,original_robot,toler
                 failures.append(dict(kind='box_robot',side=side,frame=offset+int(bad[0]),depth_m=float(depth[bad].max())))
         if len(boxes)==2:
             first,second=boxes.values()
-            depth=box_overlap_depth(first[0],first[1],np.asarray(dimensions)/2,second[0],second[1],np.asarray(dimensions)/2)
+            sizes = [dimensions[s] if isinstance(dimensions, dict) else dimensions for s in boxes]
+            depth=box_overlap_depth(first[0],first[1],np.asarray(sizes[0])/2,second[0],second[1],np.asarray(sizes[1])/2)
             maximum['box_box']=max(maximum['box_box'],float(depth.max(initial=0)))
             bad=np.flatnonzero(depth>1e-6)
             invalid_frames.update((offset+bad).tolist())
             if len(bad):
                 failures.append(dict(kind='box_box',frame=offset+int(bad[0]),depth_m=float(depth[bad].max())))
-    return dict(valid=not failures,failures=failures[:30],invalid_frame_indices=sorted(invalid_frames),maximum_overlap_m=maximum,frames=len(rows),
+    audit=dict(valid=not invalid_frames,failures=failures[:30],invalid_frame_indices=sorted(invalid_frames),maximum_overlap_m=maximum,frames=len(rows),
         scope='independent CPU OBB/SAT cuboid payload vs all scene/internal cuboids, other payload and original robot spheres excluding own link7 touch link; world1mm, payload self1um numeric epsilon')
+    if check_ground:
+        audit['minimum_box_ground_clearance_m']=ground if isinstance(dimensions,dict) else min(ground.values())
+        audit['scope']+='; full box ground clearance >= -1mm'
+    return audit
+
+
+def payload_search_mask(checker, rows, dimensions, original_robot, cpu_audit, *, state=None, classification=None):
+    """Fast search-only classification; ambiguous rows keep the existing CPU decision.
+
+    Final sampled trajectories still run exact_payload_audit independently.
+    Resources store geometry, never mutable FK output or previous classifications.
+    """
+    from types import SimpleNamespace
+    from v3_full_payload_cost import FullPayloadCost
+    if classification is not None and (state is None or len(classification) != 2
+            or any(value.shape != (1, len(rows)) for value in classification)):
+        raise ValueError('payload classification must match this exact FK row batch')
+    attachments = checker.task_tool_to_box
+    sizes = dimensions if isinstance(dimensions, dict) else {s: dimensions for s in attachments}
+    boxes = list(checker.guidance_scene.cuboid or [])+list(checker.base_cuboid_layer.scene.cuboid)
+    key = (tuple((s, tuple(sizes[s]), tuple(np.asarray(a).ravel())) for s, a in attachments.items()),
+           tuple((tuple(box.pose), tuple(box.dims)) for box in boxes))
+    resource = getattr(checker, '_payload_search_resource', None)
+    if resource is None or resource[0] != key:
+        resource = (key, FullPayloadCost(checker, original_robot, sizes, checker.guidance_scene, dtype=torch.float64))
+        checker._payload_search_resource = resource
+    layer = resource[1]
+    statistics = getattr(checker, 'payload_search_statistics', dict(frames=0, cpu_fallback_frames=0))
+    checker.payload_search_statistics = statistics
+    def classify(values, current):
+        valid, uncertain = (layer.classify(SimpleNamespace(cuda_robot_model_state=current, tool_poses=current.tool_poses))
+                            if classification is None else classification)
+        valid = valid.reshape(-1); indices = uncertain.reshape(-1).nonzero().reshape(-1)
+        if len(indices):
+            audit = cpu_audit(values[indices])
+            valid[indices] = True
+            valid[indices[audit['invalid_frame_indices']]] = False
+        statistics['frames'] += len(values)
+        statistics['cpu_fallback_frames'] += len(indices)
+        return valid
+    masks = []
+    with torch.no_grad():
+        if state is not None:
+            if state.robot_spheres.shape[:2] != (1, len(rows)):
+                raise ValueError('payload FK state must match this exact joint-row batch')
+            # Query-local only. The CPU fallback may overwrite the FK buffers;
+            # callers must consume every other view of this state first.
+            return classify(rows, state)
+        for offset in range(0, len(rows), 1024):
+            values = torch.as_tensor(rows[offset:offset+1024], device='cuda', dtype=torch.float32).contiguous()
+            current = checker.kinematics.compute_kinematics(JointState.from_position(values[None], joint_names=ACTIVE_JOINTS))
+            masks.append(classify(values, current))
+    return torch.cat(masks) if masks else torch.empty(0, device='cuda', dtype=torch.bool)

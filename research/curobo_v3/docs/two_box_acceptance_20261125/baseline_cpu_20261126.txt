@@ -1,0 +1,454 @@
+FFFFFFFFF.FFFFFF                                                         [100%]
+=================================== FAILURES ===================================
+_________ test_current_model_uses_matching_fixed_urdf_and_191mm_tools __________
+
+    def test_current_model_uses_matching_fixed_urdf_and_191mm_tools():
+        assets = current_assets()
+>       verify_current_model(assets)
+
+research/curobo_v3/tests/test_current_urdf_forward.py:33:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+research/curobo_v3/tools/v3_current_urdf_forward.py:56: in verify_current_model
+    tree = ET.parse(config['kinematics']['urdf_path']).getroot()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:1219: in parse
+    tree.parse(source, parser)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <xml.etree.ElementTree.ElementTree object at 0x74c15b3dd690>
+source = '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+parser = None
+
+    def parse(self, source, parser=None):
+        """Load external XML document into element tree.
+
+        *source* is a file name or file object, *parser* is an optional parser
+        instance that defaults to XMLParser.
+
+        ParseError is raised if the parser fails to parse the document.
+
+        Returns the root element of the given source document.
+
+        """
+        close_source = False
+        if not hasattr(source, "read"):
+>           source = open(source, "rb")
+                     ^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:570: FileNotFoundError
+____________ DualZeroReviewTest.test_no_duplicate_zero_application _____________
+
+self = <test_dual_zero_review.DualZeroReviewTest testMethod=test_no_duplicate_zero_application>
+
+    def test_no_duplicate_zero_application(self):
+        path=Path(__file__).resolve().parents[1]/'generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+        from v3_dual_zero_review import review_definition
+>       self.assertEqual(ET.tostring(ET.parse(path).getroot()),ET.tostring(review_definition(path).getroot()))
+E       AssertionError: b'<ro[75 chars]tool135-20261105">\n  <link name="base_footpri[42128 chars]bot>' != b'<ro[75 chars]tool191-20261024">\n  <link name="base_footpri[42136 chars]bot>'
+
+research/curobo_v3/tests/test_dual_zero_review.py:72: AssertionError
+________ DualZeroReviewTest.test_zero_geometry_and_new_positive_j6_axes ________
+
+self = <test_dual_zero_review.DualZeroReviewTest testMethod=test_zero_geometry_and_new_positive_j6_axes>
+
+    def test_zero_geometry_and_new_positive_j6_axes(self):
+        path=Path(__file__).resolve().parents[1]/'generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+        definition=ET.parse(OLD)
+        for side in ('left','right'):definition.find(f"joint[@name='{side}_tool0_fixed']/origin").set('xyz','0 0 0.191')
+        old=yourdfpy.URDF.load(io.BytesIO(ET.tostring(definition.getroot())),load_meshes=False)
+        new=load_review(path,False)
+        zero={f'{side}_joint{i}':float(value) for side in ('left','right') for i,value in enumerate(legacy_angles(side,np.zeros(7)),1)}
+        old.update_cfg(zero);new.update_cfg({name:0. for name in new.actuated_joint_names})
+        for link in old.link_map:
+>           np.testing.assert_allclose(old.get_transform(link,old.base_link),new.get_transform(link,new.base_link),atol=1e-8)
+E           AssertionError:
+E           Not equal to tolerance rtol=1e-07, atol=1e-08
+E
+E           Mismatched elements: 6 / 16 (37.5%)
+E           Max absolute difference among violations: 2.
+E           Max relative difference among violations: 2.04881739
+E            ACTUAL: array([[ 1.000000e+00,  4.908700e-08, -6.467845e-09,  4.400000e-01],
+E                  [ 6.467840e-09,  1.040311e-07,  1.000000e+00,  1.182837e+00],
+E                  [ 4.908700e-08, -1.000000e+00,  1.040311e-07,  1.766631e+00],
+E                  [ 0.000000e+00,  0.000000e+00,  0.000000e+00,  1.000000e+00]])
+E            DESIRED: array([[-1.000000e+00, -5.021052e-08, -6.166799e-09,  4.400000e-01],
+E                  [-6.166793e-09, -1.036622e-07,  1.000000e+00,  1.182837e+00],
+E                  [-5.021052e-08,  1.000000e+00,  1.036622e-07,  1.766631e+00],
+E                  [ 0.000000e+00,  0.000000e+00,  0.000000e+00,  1.000000e+00]])
+
+research/curobo_v3/tests/test_dual_zero_review.py:27: AssertionError
+________ test_full_cycle_records_keep_payload_and_actual_terminal_state ________
+
+    def test_full_cycle_records_keep_payload_and_actual_terminal_state():
+        paths=sorted(OUTPUT.glob('[0-9][0-9][0-9].json.gz'))
+        if not paths:pytest.skip('full-cycle recordings unavailable')
+        for path in paths:
+            result=json.loads(gzip.decompress(path.read_bytes()))
+>           assert result['cycle_profile']==PROFILE
+E           AssertionError: assert '20261031-ana...t-frozen40-v1' == '20261106-lm-...t-frozen40-v2'
+E
+E             - 20261106-lm-extraction-rrt-transport-lm-placement-frozen40-v2
+E             ?       --  ^                                                 ^
+E             + 20261031-analytic-extraction-rrt-transport-lm-placement-frozen40-v1
+E             ?      ++  +++ ^^^^                                                 ^
+
+research/curobo_v3/tests/test_frozen_cycle.py:46: AssertionError
+___________________ test_lm_reference_with_independent_urdf ____________________
+
+    def test_lm_reference_with_independent_urdf():
+        import yourdfpy
+        from scipy.spatial.transform import Rotation,Slerp
+        samples=[OUTPUT/f'{index:03d}.json.gz' for index in (0,64,75,116)]
+        if not all(path.exists() for path in samples):pytest.skip('representative recordings unavailable')
+        model=yourdfpy.URDF.load(OUTPUT.parent/'zero_model_candidate_20261018/robot_rezero_candidate.urdf',load_meshes=False)
+        for path in samples:
+            result=json.loads(gzip.decompress(path.read_bytes()))
+            names=result['joint_names']
+            ids=[names.index(name) for name in ACTIVE_JOINTS]
+            rows=np.asarray(result['frames'])
+            phases=np.asarray(result['phases'])
+            placed=rows[phases=='conveyor_place']
+            navigation=rows[np.flatnonzero(phases=='base_reposition')[-1]]
+            base=np.eye(4)
+            base[:3,:3]=Rotation.from_euler('z',navigation[names.index('base_yaw')]).as_matrix()
+            base[:2,3]=[navigation[names.index('base_x')],navigation[names.index('base_y')]]
+            model.update_cfg(dict(zip(ACTIVE_JOINTS,navigation[ids])))
+            attachments={side:np.asarray(matrix) for side,matrix in result['visual_tool_to_box'].items()}
+            starts={side:base@model.get_transform(side+'_tool0',model.base_link)@matrix for side,matrix in attachments.items()}
+            progress=result['conveyor_place_lm']['progress']
+            if len(progress)==len(placed)+1:progress=progress[1:]
+            assert len(progress)==len(placed)
+            for row,fraction in zip(placed,progress):
+                model.update_cfg(dict(zip(ACTIVE_JOINTS,row[ids])))
+                for side,attachment in attachments.items():
+                    actual=base@model.get_transform(side+'_tool0',model.base_link)@attachment
+                    goal=result['conveyor_box_targets'][side]
+                    expected=starts[side][:3,3]+fraction*(np.asarray(goal['position'])-starts[side][:3,3])
+                    rotations=Rotation.from_matrix(np.stack([starts[side][:3,:3],Rotation.from_quat(np.roll(goal['quaternion_wxyz'],-1)).as_matrix()]))
+>                   assert np.linalg.norm(actual[:3,3]-expected)<=.00201
+E                   AssertionError: assert np.float64(0.0020444267751390786) <= 0.00201
+E                    +  where np.float64(0.0020444267751390786) = <function norm at 0x74c158b36b70>((array([-0.63261172, -0.4250002 ,  1.15501441]) - array([-0.63464237, -0.42499999,  1.1552513 ])))
+E                    +    where <function norm at 0x74c158b36b70> = <module 'numpy.linalg' from '/home/astesia/Sevenova/curobo_v2_fast/.venv/lib/python3.11/site-packages/numpy/linalg/__init__.py'>.norm
+E                    +      where <module 'numpy.linalg' from '/home/astesia/Sevenova/curobo_v2_fast/.venv/lib/python3.11/site-packages/numpy/linalg/__init__.py'> = np.linalg
+
+research/curobo_v3/tests/test_frozen_cycle.py:98: AssertionError
+______ LeftJ5ZeroTest.test_only_left_j5_shift_preserves_all_link_geometry ______
+
+self = <test_left_j5_zero.LeftJ5ZeroTest testMethod=test_only_left_j5_shift_preserves_all_link_geometry>
+
+    def test_only_left_j5_shift_preserves_all_link_geometry(self):
+        old = yourdfpy.URDF.load(OLD, load_meshes=False)
+        new = yourdfpy.URDF.load(ROOT / 'generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf', load_meshes=False)
+        rng = np.random.default_rng(20261020)
+        offsets = {'left': [-90,15,0,0,90,0,90], 'right': [90,-15,0,0,-90,0,-90]}
+        for _trial in range(30):
+            values = {name: float(rng.uniform(-.5, .5)) for name in new.actuated_joint_names}
+            prior = dict(values)
+            prior['left_joint5'] += np.pi
+            for side in ('left', 'right'):
+                angles = np.array([prior[f'{side}_joint{index}'] for index in range(1,8)])
+                legacy = np.deg2rad(offsets[side]) + JOINT_SIGNS * angles
+                prior.update({f'{side}_joint{index}': value for index, value in enumerate(legacy,1)})
+            old.update_cfg(prior)
+            new.update_cfg(values)
+            for link in new.link_map:
+>               np.testing.assert_allclose(old.get_transform(link, old.base_link), new.get_transform(link, new.base_link), atol=1e-7)
+E               AssertionError:
+E               Not equal to tolerance rtol=1e-07, atol=1e-07
+E
+E               Mismatched elements: 6 / 16 (37.5%)
+E               Max absolute difference among violations: 1.46159543
+E               Max relative difference among violations: 2.
+E                ACTUAL: array([[-0.699554,  0.599183,  0.389364,  0.536934],
+E                      [ 0.230101, -0.326977,  0.916591,  1.151187],
+E                      [ 0.676519,  0.730798,  0.090866,  2.265849],
+E                      [ 0.      ,  0.      ,  0.      ,  1.      ]])
+E                DESIRED: array([[ 0.699554, -0.599183,  0.389364,  0.536934],
+E                      [-0.230101,  0.326977,  0.916591,  1.151187],
+E                      [-0.676519, -0.730798,  0.090866,  2.265849],
+E                      [ 0.      ,  0.      ,  0.      ,  1.      ]])
+
+research/curobo_v3/tests/test_left_j5_zero.py:33: AssertionError
+_ test_absolute_release_height_is_applied_once_and_historical_profile_remains_available _
+
+    def test_absolute_release_height_is_applied_once_and_historical_profile_remains_available():
+        for height in (.982, 1.082):
+>           planner = NewWarpPlanner(release_box_center_z_m=height)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+research/curobo_v3/tests/test_new_warp_pipeline.py:16:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+research/curobo_v3/tools/v3_new_warp.py:24: in __init__
+    super().__init__(args, reference_source)
+research/curobo_v3/tools/v3_polar_refined_cycle.py:43: in __init__
+    super().__init__(args or current_assets(), reference_source)
+research/curobo_v3/tools/v3_current_urdf_forward.py:133: in __init__
+    verify_current_model(assets)
+research/curobo_v3/tools/v3_current_urdf_forward.py:56: in verify_current_model
+    tree = ET.parse(config['kinematics']['urdf_path']).getroot()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:1219: in parse
+    tree.parse(source, parser)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <xml.etree.ElementTree.ElementTree object at 0x74c038fb9290>
+source = '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+parser = None
+
+    def parse(self, source, parser=None):
+        """Load external XML document into element tree.
+
+        *source* is a file name or file object, *parser* is an optional parser
+        instance that defaults to XMLParser.
+
+        ParseError is raised if the parser fails to parse the document.
+
+        Returns the root element of the given source document.
+
+        """
+        close_source = False
+        if not hasattr(source, "read"):
+>           source = open(source, "rb")
+                     ^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:570: FileNotFoundError
+______ test_timed_strategy_keeps_new_warp_reference_and_joint_adjustment _______
+
+    def test_timed_strategy_keeps_new_warp_reference_and_joint_adjustment():
+>       planner = TimedNewWarpPlanner()
+                  ^^^^^^^^^^^^^^^^^^^^^
+
+research/curobo_v3/tests/test_new_warp_pipeline.py:24:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+research/curobo_v3/tools/v3_current_urdf_timed.py:17: in __init__
+    super().__init__(args or current_assets(), sample_dt=sample_dt)
+research/curobo_v3/tools/v3_timed_single_arm_planner.py:25: in __init__
+    super().__init__(args)
+research/curobo_v3/tools/v3_new_warp.py:24: in __init__
+    super().__init__(args, reference_source)
+research/curobo_v3/tools/v3_polar_refined_cycle.py:43: in __init__
+    super().__init__(args or current_assets(), reference_source)
+research/curobo_v3/tools/v3_current_urdf_forward.py:133: in __init__
+    verify_current_model(assets)
+research/curobo_v3/tools/v3_current_urdf_forward.py:56: in verify_current_model
+    tree = ET.parse(config['kinematics']['urdf_path']).getroot()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:1219: in parse
+    tree.parse(source, parser)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <xml.etree.ElementTree.ElementTree object at 0x74c0226efa50>
+source = '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+parser = None
+
+    def parse(self, source, parser=None):
+        """Load external XML document into element tree.
+
+        *source* is a file name or file object, *parser* is an optional parser
+        instance that defaults to XMLParser.
+
+        ParseError is raised if the parser fails to parse the document.
+
+        Returns the root element of the given source document.
+
+        """
+        close_source = False
+        if not hasattr(source, "read"):
+>           source = open(source, "rb")
+                     ^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:570: FileNotFoundError
+_______ test_old_height_results_cannot_be_loaded_as_new_height_evidence ________
+
+    def test_old_height_results_cannot_be_loaded_as_new_height_evidence():
+        from curobo_core.scene import digest
+>       planner = NewWarpPlanner()
+                  ^^^^^^^^^^^^^^^^
+
+research/curobo_v3/tests/test_new_warp_pipeline.py:38:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+research/curobo_v3/tools/v3_new_warp.py:24: in __init__
+    super().__init__(args, reference_source)
+research/curobo_v3/tools/v3_polar_refined_cycle.py:43: in __init__
+    super().__init__(args or current_assets(), reference_source)
+research/curobo_v3/tools/v3_current_urdf_forward.py:133: in __init__
+    verify_current_model(assets)
+research/curobo_v3/tools/v3_current_urdf_forward.py:56: in verify_current_model
+    tree = ET.parse(config['kinematics']['urdf_path']).getroot()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:1219: in parse
+    tree.parse(source, parser)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <xml.etree.ElementTree.ElementTree object at 0x74c020514710>
+source = '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+parser = None
+
+    def parse(self, source, parser=None):
+        """Load external XML document into element tree.
+
+        *source* is a file name or file object, *parser* is an optional parser
+        instance that defaults to XMLParser.
+
+        ParseError is raised if the parser fails to parse the document.
+
+        Returns the root element of the given source document.
+
+        """
+        close_source = False
+        if not hasattr(source, "read"):
+>           source = open(source, "rb")
+                     ^^^^^^^^^^^^^^^^^^
+E           FileNotFoundError: [Errno 2] No such file or directory: '/mnt/mydisk/ALFA/alfa_robot_v3/research/curobo_v3/generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf'
+
+/home/astesia/miniconda3/envs/writ/lib/python3.11/xml/etree/ElementTree.py:570: FileNotFoundError
+____ AppliedContactFitTest.test_deployed_policy_matches_offline_candidate_a ____
+
+self = <test_probe_applied_fit.AppliedContactFitTest testMethod=test_deployed_policy_matches_offline_candidate_a>
+
+    def test_deployed_policy_matches_offline_candidate_a(self):
+        data=json.loads((ROOT/'generated/probe_contact_fit_20261020/fit_results.json').read_text())
+        selected=data['fits']['zero_only']
+>       np.testing.assert_allclose(POLICY['motor_minus_model_deg'],selected['recommended_motor_minus_model_deg'],atol=1e-12)
+E       AssertionError:
+E       Not equal to tolerance rtol=1e-07, atol=1e-12
+E
+E       Mismatched elements: 5 / 7 (71.4%)
+E       Max absolute difference among violations: 1.19485993
+E       Max relative difference among violations: 1.
+E        ACTUAL: array([0, 0, 0, 0, 0, 0, 0])
+E        DESIRED: array([ 0.      , -0.236381,  0.573635,  1.19486 , -0.268965,  0.758634,
+E               0.      ])
+
+research/curobo_v3/tests/test_probe_applied_fit.py:18: AssertionError
+_____ J2CalibrationTest.test_fitted_corrections_replace_original_j2_offset _____
+
+self = <test_probe_j2_calibration.J2CalibrationTest testMethod=test_fitted_corrections_replace_original_j2_offset>
+
+    def test_fitted_corrections_replace_original_j2_offset(self):
+        motor = np.deg2rad([10., 1., 20., 30., 40., 50., 60.])
+        model = motor_to_model(motor)
+>       np.testing.assert_allclose(np.rad2deg(model-motor),
+            [0.,.23638073957006833,-.5736353095123823,-1.1948599250492464,.2689652652013817,-.7586338532082705,0.],atol=1e-12)
+E       AssertionError:
+E       Not equal to tolerance rtol=1e-07, atol=1e-12
+E
+E       Mismatched elements: 5 / 7 (71.4%)
+E       Max absolute difference among violations: 1.19485993
+E       Max relative difference among violations: 1.
+E        ACTUAL: array([0., 0., 0., 0., 0., 0., 0.])
+E        DESIRED: array([ 0.      ,  0.236381, -0.573635, -1.19486 ,  0.268965, -0.758634,
+E               0.      ])
+
+research/curobo_v3/tests/test_probe_j2_calibration.py:17: AssertionError
+_ ContactRollTest.test_actual_contact_method_does_not_request_half_turn_from_home _
+
+self = <test_rezero_contact_roll.ContactRollTest testMethod=test_actual_contact_method_does_not_request_half_turn_from_home>
+
+    def test_actual_contact_method_does_not_request_half_turn_from_home(self):
+        model=yourdfpy.URDF.load(FOLDER/'robot_rezero_candidate.urdf',load_meshes=False)
+        for top,limit in [(False,35.),(True,70.)]:
+            planner=RezeroTaskPlanner.__new__(RezeroTaskPlanner)
+            planner.top_grasp=top
+            old=grasp_transform('left',top)
+            target={side+'_tool0':dict(position=[1.,0.,1.],quaternion=np.roll(Rotation.from_matrix(old[:3,:3].T).as_quat(),1)) for side in ('left','right')}
+            with patch.object(SingleArmPlanner,'contact_poses_for_task',return_value=target):
+                actual=planner.contact_poses_for_task(dict(left=18,right=22))
+            for side,angles in [('left',[65,-75,20,-90,-180,40,90]),('right',[-65,75,-20,90,0,-40,-90])]:
+                values={name:0. for name in model.actuated_joint_names}
+                values.update({f'{side}_joint{index}':np.deg2rad(angle) for index,angle in enumerate(angles,1)})
+                model.update_cfg(values)
+                home=model.get_transform(side+'_tool0',model.base_link)[:3,:3]
+                goal=Rotation.from_quat(np.roll(actual[side+'_tool0']['quaternion'],-1)).as_matrix()
+                angle=np.rad2deg(Rotation.from_matrix(home.T@goal).magnitude())
+>               self.assertLess(angle,limit,(side,top,angle))
+E               AssertionError: np.float64(178.72921041323968) not less than 35.0 : ('left', False, np.float64(178.72921041323968))
+
+research/curobo_v3/tests/test_rezero_contact_roll.py:66: AssertionError
+___ ContactRollTest.test_carry_atlas_and_attachment_preserve_actual_box_pose ___
+
+self = <test_rezero_contact_roll.ContactRollTest testMethod=test_carry_atlas_and_attachment_preserve_actual_box_pose>
+
+    def test_carry_atlas_and_attachment_preserve_actual_box_pose(self):
+        model=yourdfpy.URDF.load(FOLDER/'robot_rezero_candidate.urdf',load_meshes=False)
+        for top,mode in [(False,'side'),(True,'top')]:
+            with tempfile.TemporaryDirectory() as temporary:
+                path=aligned_atlas(FOLDER/(mode+'_atlas.npz'),Path(temporary)/'aligned.npz')
+                with np.load(path,allow_pickle=False) as stored:
+                    aligned=stored['joints']
+>                   self.assertTrue(all(len(stored[key])==len(aligned) for key in stored.files))
+                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+research/curobo_v3/tests/test_rezero_contact_roll.py:38:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <list_iterator object at 0x74c023621e40>
+
+>   self.assertTrue(all(len(stored[key])==len(aligned) for key in stored.files))
+                        ^^^^^^^^^^^^^^^^
+E   TypeError: len() of unsized object
+
+research/curobo_v3/tests/test_rezero_contact_roll.py:38: TypeError
+__ RezeroJointLimitsTest.test_both_j6_axes_reverse_without_moving_joint_zero ___
+
+self = <test_rezero_j2_limits.RezeroJointLimitsTest testMethod=test_both_j6_axes_reverse_without_moving_joint_zero>
+
+    def test_both_j6_axes_reverse_without_moving_joint_zero(self):
+        old=ET.parse(OLD).getroot()
+        new=ET.parse(ROOT/'generated/zero_model_candidate_20261018/robot_rezero_candidate.urdf').getroot()
+        for side in ('left','right'):
+            before=old.find(f"joint[@name='{side}_joint6']")
+            after=new.find(f"joint[@name='{side}_joint6']")
+>           np.testing.assert_allclose(np.fromstring(after.find('axis').get('xyz'),sep=' '),
+                                       -np.fromstring(before.find('axis').get('xyz'),sep=' '))
+E           AssertionError:
+E           Not equal to tolerance rtol=1e-07, atol=0
+E
+E           Mismatched elements: 1 / 3 (33.3%)
+E           Max absolute difference among violations: 2.
+E           Max relative difference among violations: 2.
+E            ACTUAL: array([0., 0., 1.])
+E            DESIRED: array([-0., -0., -1.])
+
+research/curobo_v3/tests/test_rezero_j2_limits.py:45: AssertionError
+_ RezeroJointLimitsTest.test_selected_home_matches_user_numbers_and_preserved_height _
+
+self = <test_rezero_j2_limits.RezeroJointLimitsTest testMethod=test_selected_home_matches_user_numbers_and_preserved_height>
+
+    def test_selected_home_matches_user_numbers_and_preserved_height(self):
+        root=Path(__file__).resolve().parents[1]
+        policy=json.loads((root/'config/rezero_home.json').read_text())
+        pose=yaml.safe_load((root/'generated/zero_model_candidate_20261018/named_poses.yaml').read_text())['named_poses']['home']
+        self.assertEqual(pose['updown'],-.3)
+        for side,expected in [('left',[65,-75,20,-90,-180,40,90]),('right',[-65,75,-20,90,0,-40,-90])]:
+>           self.assertEqual(policy[side+'_deg'],expected)
+E           AssertionError: Lists differ: [65.0, -75.0, 20.0, -90.0, 0.0, -40.0, 90.0] != [65, -75, 20, -90, -180, 40, 90]
+E
+E           First differing element 4:
+E           0.0
+E           -180
+E
+E           - [65.0, -75.0, 20.0, -90.0, 0.0, -40.0, 90.0]
+E           + [65, -75, 20, -90, -180, 40, 90]
+
+research/curobo_v3/tests/test_rezero_j2_limits.py:36: AssertionError
+=========================== short test summary info ============================
+FAILED research/curobo_v3/tests/test_current_urdf_forward.py::test_current_model_uses_matching_fixed_urdf_and_191mm_tools
+FAILED research/curobo_v3/tests/test_dual_zero_review.py::DualZeroReviewTest::test_no_duplicate_zero_application
+FAILED research/curobo_v3/tests/test_dual_zero_review.py::DualZeroReviewTest::test_zero_geometry_and_new_positive_j6_axes
+FAILED research/curobo_v3/tests/test_frozen_cycle.py::test_full_cycle_records_keep_payload_and_actual_terminal_state
+FAILED research/curobo_v3/tests/test_frozen_cycle.py::test_lm_reference_with_independent_urdf
+FAILED research/curobo_v3/tests/test_left_j5_zero.py::LeftJ5ZeroTest::test_only_left_j5_shift_preserves_all_link_geometry
+FAILED research/curobo_v3/tests/test_new_warp_pipeline.py::test_absolute_release_height_is_applied_once_and_historical_profile_remains_available
+FAILED research/curobo_v3/tests/test_new_warp_pipeline.py::test_timed_strategy_keeps_new_warp_reference_and_joint_adjustment
+FAILED research/curobo_v3/tests/test_new_warp_pipeline.py::test_old_height_results_cannot_be_loaded_as_new_height_evidence
+FAILED research/curobo_v3/tests/test_probe_applied_fit.py::AppliedContactFitTest::test_deployed_policy_matches_offline_candidate_a
+FAILED research/curobo_v3/tests/test_probe_j2_calibration.py::J2CalibrationTest::test_fitted_corrections_replace_original_j2_offset
+FAILED research/curobo_v3/tests/test_rezero_contact_roll.py::ContactRollTest::test_actual_contact_method_does_not_request_half_turn_from_home
+FAILED research/curobo_v3/tests/test_rezero_contact_roll.py::ContactRollTest::test_carry_atlas_and_attachment_preserve_actual_box_pose
+FAILED research/curobo_v3/tests/test_rezero_j2_limits.py::RezeroJointLimitsTest::test_both_j6_axes_reverse_without_moving_joint_zero
+FAILED research/curobo_v3/tests/test_rezero_j2_limits.py::RezeroJointLimitsTest::test_selected_home_matches_user_numbers_and_preserved_height
+15 failed, 1 passed in 4.26s

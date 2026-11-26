@@ -1,0 +1,55 @@
+{
+  "acceptance_current44.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/acceptance_current44.json",
+    "sha256": "4012f21c26ef96625102a01594a328a114ebc7805b16bb635849aead500b3a37",
+    "bytes": 4785
+  },
+  "domain.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/domain.json",
+    "sha256": "3438dfc47a79e37c88e3114c3f6f5c9c03a8e2cfd4332b8bcac53ed80ace4773",
+    "bytes": 73277
+  },
+  "boundary8_audit.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/run_003/acceptance_summary.json",
+    "sha256": "db58370362b68f43e28f7f470b30f72a24561366ad24b38351c783c7ac224170",
+    "bytes": 12165
+  },
+  "original36_audit.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_current36_20261125/run_001/audit_summary.json",
+    "sha256": "55d40dd11b83139a7ddf819d1b39cb0c738ec6c295f3e3552482e9187836bedf",
+    "bytes": 15458
+  },
+  "runtime_sha_comparison.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_current36_20261125/run_001/final8_runtime_sha_comparison.json",
+    "sha256": "091e4c556cbe59fbf13edac0319372f8052f5660dcf80f6b50a2f3391814d501",
+    "bytes": 576
+  },
+  "native_recovery_evidence.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/case06_native_recovery_20261125/attempt_001/recovery_evidence.json",
+    "sha256": "39d079b0526a4c677112fd63b783471e8943e20b19e9be080acb3068a5126a59",
+    "bytes": 26921
+  },
+  "case06_failure_root.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/run_001/case06_root_analysis/cpu_margin_breakdown.json",
+    "sha256": "ec3c81d81d765881d98142fd0f2243ade40f730daaf894ffc2981cdf08872eae",
+    "bytes": 6550
+  },
+  "case07_cpu_evidence.json": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/case07_analysis/cpu_evidence.json",
+    "sha256": "3ab8dbff8889bf88c67439d041f8def3335a33b69231de68a82e15742b2de7d3",
+    "bytes": 2975
+  },
+  "raw_archive": {
+    "path": "/home/astesia/Sevenova/验收归档/motion505-two-box-20261126/two_box_layout-evidence.tar.zst",
+    "sha256": "5259294b0a1d5bc14d67508485624a66a7a86414c9e18f6387b5e8e320fed7c2",
+    "bytes": 3863643104,
+    "format": "tar.zst",
+    "integrity_test": "zstd -t exit0",
+    "excludes": "Active viser_acceptance_20261126 directory/log retained in workspace"
+  },
+  "cpu_final107.txt": {
+    "source": "research/curobo_v3/generated/two_box_layout/original25_domain_20261125/cpu_final107.log",
+    "sha256": "b4c5bb6076e865632a11d356fe934784fdf691622da4976878c49c3c5da59ef2",
+    "bytes": 181
+  }
+}

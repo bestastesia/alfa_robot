@@ -1,0 +1,28 @@
+{
+  "frame_id": "world",
+  "front_distance_m": 0.66,
+  "boxes": [
+    {
+      "side": "left",
+      "size": "40x40x30",
+      "center_m": [
+        1.1680520510673524,
+        0.5,
+        0.2
+      ],
+      "swap_length_height": false,
+      "side_min_height_m": 0.79
+    },
+    {
+      "side": "right",
+      "size": "46.5x25.5x58.2",
+      "center_m": [
+        1.1680520510673524,
+        -0.5,
+        0.8
+      ],
+      "swap_length_height": false,
+      "side_min_height_m": 0.79
+    }
+  ]
+}

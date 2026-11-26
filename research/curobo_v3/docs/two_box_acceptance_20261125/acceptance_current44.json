@@ -1,0 +1,153 @@
+{
+  "success": true,
+  "finite_regression_only": true,
+  "goal_complete": false,
+  "current_date": "2026-11-25",
+  "user_scope_quote": "按原有25箱的覆盖范围，新的两个箱体的范围不会超出中范围",
+  "domain": {
+    "whole_carton_y_m": [
+      -1.02,
+      1.02
+    ],
+    "whole_carton_z_m": [
+      0.0,
+      2.04
+    ],
+    "center_variation": "continuous",
+    "source": "domain.json",
+    "center_bounds_default_orientation": {
+      "40x40x30": {
+        "y_m": [
+          -0.82,
+          0.82
+        ],
+        "z_m": [
+          0.2,
+          1.84
+        ]
+      },
+      "46.5x25.5x58.2": {
+        "y_m": [
+          -0.7875,
+          0.7875
+        ],
+        "z_m": [
+          0.291,
+          1.749
+        ]
+      }
+    },
+    "requested_domain_cases": 38,
+    "retained_broader_cases": 6
+  },
+  "policy": {
+    "front_distance_m": 0.66,
+    "center_plane_x_m": 1.1680520510673524,
+    "side_min_height_m": 0.79,
+    "max_initial_height_difference_m": 0.6,
+    "extraction_world_minusX_m": {
+      "40x40x30": 0.3,
+      "46.5x25.5x58.2": 0.255
+    },
+    "left_carry_degrees": [
+      40,
+      -46,
+      0,
+      -100,
+      -30,
+      -75,
+      90
+    ],
+    "right": "componentwise opposite",
+    "updown": "choose per task within actual URDF [-1,0]m"
+  },
+  "fresh_cases": 44,
+  "passed": 44,
+  "failed": 0,
+  "inherited_successes": 0,
+  "independent_cpu_passed": 44,
+  "actual_source_contacts_valid": 88,
+  "actual_source_modes": {
+    "Side": 66,
+    "Top": 22
+  },
+  "workflow_counts": {
+    "synchronous": 29,
+    "handover_same_side": 7,
+    "ordered_upper_first": 8
+  },
+  "native_samples": 1176114,
+  "native_motion_seconds": 681.63651907444,
+  "final_accepted_solver_batch_wall_seconds": 3236.706385199999,
+  "maximum_final14_error_rad": 4.371139006309477e-08,
+  "actual_return_updown_m": [
+    -0.9399999976158142,
+    -0.8299999833106995,
+    -0.7300000190734863,
+    -0.7099999785423279,
+    -0.699999988079071,
+    -0.6499999761581421,
+    -0.6399999856948853,
+    -0.5699999928474426,
+    -0.5600000023841858,
+    -0.5400000214576721,
+    -0.5199999809265137,
+    -0.5099999904632568,
+    -0.49000000953674316,
+    -0.41999998688697815,
+    -0.4099999964237213,
+    -0.38999998569488525,
+    -0.36000001430511475,
+    -0.3499999940395355,
+    -0.3400000035762787,
+    -0.3100000023841858,
+    -0.28999999165534973,
+    -0.2800000011920929,
+    -0.18000000715255737,
+    -0.17000000178813934,
+    -0.1599999964237213,
+    -0.14000000059604645,
+    -0.11999999731779099,
+    -0.10000000149011612,
+    -0.07000000029802322,
+    -0.009999999776482582,
+    0.0
+  ],
+  "cpu_regression_tests_passed": 107,
+  "cpu_regression_log": "cpu_final107.log",
+  "accepted_batches": {
+    "boundary8": "run_003/acceptance_summary.json",
+    "original36": "../original25_current36_20261125/run_001/audit_summary.json"
+  },
+  "source_manifests": {
+    "boundary8": "run_003/source_manifest.json",
+    "original36": "../original25_current36_20261125/run_001/source_manifest.json"
+  },
+  "source_digests": {
+    "boundary8": "61d8b80c3aa063c429d33412425741bfdc5eb975d1ba35ced234a99a92f58f1f",
+    "original36": "0792610110e60617901f3f648e1ce34315c054d92391d5f930311936fe22de0b"
+  },
+  "runtime_source_comparison": "../original25_current36_20261125/run_001/final8_runtime_sha_comparison.json",
+  "same_runtime_source": true,
+  "current_source_recheck_after_release": true,
+  "current_source_recheck_unix": 1795597811.1216338,
+  "current_source_changes": [],
+  "prior_failed_batches_retained": [
+    "run_001/summary.json",
+    "run_002/summary.json"
+  ],
+  "targeted_native_recovery": "../case06_native_recovery_20261125/attempt_001/recovery_evidence.json",
+  "fixes": [
+    "Original physical IDs independent of actual arm assignment, with shared default fallback and CPU/replay/preview binding.",
+    "Existing native5mm base and2mm robot-ground margins included in extraction validation and guidance; payload-ground exemptions unchanged.",
+    "Existing bounded native rest subdivision supports ordered extraction with actual per-piece axial references, original total distance and exact q/v/a seams."
+  ],
+  "current_task_gpu_work_left": false,
+  "source_freezes_released": true,
+  "all_task_agents_closed": true,
+  "hardware_execution": false,
+  "commit_or_push": false,
+  "continuous_domain_coverage_proven": false,
+  "continuous_collision_detection_proven": false,
+  "scope": "44 fresh finite current-runtime-source requests, native sampled physical/collision/dynamic gates, independent CPU actual arrays/source histories/contact footprints. Continuous necessary geometry analysis is separate and insufficient for universal task feasibility. Neither this report nor the finite successes prove every continuous original25 legal layout."
+}

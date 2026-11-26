@@ -1,0 +1,12 @@
+[
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      0.45,
+      1.02
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  }
+]

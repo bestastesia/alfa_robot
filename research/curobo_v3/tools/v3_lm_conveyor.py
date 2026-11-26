@@ -11,7 +11,7 @@ from curobo.types import GoalToolPose,JointState,Pose
 from curobo_core.adapter import matrix_pose
 from curobo_core.scene import SceneSnapshot
 from curobo_core.distance_metric import joint_distance_weights
-from v3_batched_loaded_search import GpuValidity
+from v3_batched_loaded_search import GpuValidity,densify
 from v3_payload_safety import base_world_audit
 from v3_wall_ik_benchmark import ACTIVE_JOINTS
 
@@ -69,9 +69,10 @@ def prepare_case(planner,record):
         scene_snapshot=planner.snapshot.to_dict())
 
 
-def box_poses(checker,rows,attachments):
-    tensor=torch.as_tensor(np.asarray(rows),device='cuda',dtype=torch.float32).contiguous()
-    state=checker.kinematics.compute_kinematics(JointState.from_position(tensor[None],joint_names=ACTIVE_JOINTS))
+def box_poses(checker,rows,attachments,*,state=None):
+    if state is None:
+        tensor=torch.as_tensor(rows,device='cuda',dtype=torch.float32).contiguous()
+        state=checker.kinematics.compute_kinematics(JointState.from_position(tensor[None],joint_names=ACTIVE_JOINTS))
     result={}
     for side,attachment in attachments.items():
         pose=state.tool_poses.to_dict()[side+'_tool0']
@@ -82,7 +83,13 @@ def box_poses(checker,rows,attachments):
     return result
 
 
-def dense_segment(first,last,first_progress,last_progress):
+def dense_segment(first,last,first_progress,last_progress,maximum_weighted_step=None):
+    if maximum_weighted_step is not None:
+        if (np.ndim(maximum_weighted_step) != 0 or not np.isfinite(maximum_weighted_step)
+                or not 0 < maximum_weighted_step <= np.deg2rad(.25)):
+            raise ValueError('explicit edge step must be finite, positive and no coarser than baseline')
+        rows=np.asarray(densify(np.stack((first,last)),maximum_weighted_step=maximum_weighted_step),dtype=np.float32)
+        return rows,np.linspace(first_progress,last_progress,len(rows))
     count=max(1,int(np.ceil(np.max(np.abs((last-first)*WEIGHTS))/np.deg2rad(.25))))
     return np.linspace(first,last,count+1).astype(np.float32),np.linspace(first_progress,last_progress,count+1)
 
@@ -167,14 +174,32 @@ class SequentialPlacementLm:
         previous_previous=start.copy()
         maximum_position_error=0.
         maximum_angle_error=0.
-        for index,fraction in enumerate(np.linspace(0.,1.,self.samples)[1:],1):
+        fractions=np.asarray(case.get('reference_fractions',np.linspace(0.,1.,self.samples)),dtype=float)
+        if (fractions.shape != (self.samples,) or not np.isfinite(fractions).all()
+                or fractions[0] != 0. or fractions[-1] != 1. or not (np.diff(fractions)>0).all()):
+            raise ValueError('reference fractions must match samples and increase strictly from0 to1')
+        references=interpolate_boxes(case['starts'],case['ends'],fractions)
+        tools={side:matrices@np.linalg.inv(case['attachments'][side]) for side,matrices in references.items()}
+        positions={side:torch.tensor(matrices[:,:3,3],device='cuda',dtype=torch.float32) for side,matrices in tools.items()}
+        quaternions={side:torch.tensor(np.roll(Rotation.from_matrix(matrices[:,:3,:3]).as_quat(),1,axis=1),
+            device='cuda',dtype=torch.float32) for side,matrices in tools.items()}
+        def inspect(values):
+            tensor=torch.as_tensor(values,device='cuda',dtype=torch.float32).contiguous()
+            checker.setup_batch_tensors(1,len(values))
+            state=checker.kinematics.compute_kinematics(JointState.from_position(tensor[None],joint_names=ACTIVE_JOINTS))
+            actual=box_poses(checker,values,case['attachments'],state=state)
+            mask=validity.evaluate_state(tensor,state)[0].cpu().numpy()
+            if case.get('candidate_filter') is not None:
+                extra=np.asarray(case['candidate_filter'](tensor,state,actual),dtype=bool)
+                if extra.shape != mask.shape:raise ValueError('LM candidate filter must return one mask per row')
+                mask &= extra
+            return actual,mask
+        for index,fraction in enumerate(fractions[1:],1):
             if failure:break
-            boxes=interpolate_boxes(case['starts'],case['ends'],[fraction])
-            tools={side:values@np.linalg.inv(case['attachments'][side]) for side,values in boxes.items()}
-            target=GoalToolPose.from_poses({side+'_tool0':Pose(
-                position=torch.tensor(matrix[:,:3,3],device='cuda',dtype=torch.float32),
-                quaternion=torch.tensor(np.roll(Rotation.from_matrix(matrix[:,:3,:3]).as_quat(),1,axis=1),device='cuda',dtype=torch.float32))
-                for side,matrix in tools.items()},ordered_tool_frames=[side+'_tool0' for side in self.active_sides])
+            boxes={side:matrices[index:index+1] for side,matrices in references.items()}
+            target=GoalToolPose.from_poses({side+'_tool0':Pose(position=positions[side][index:index+1],
+                quaternion=quaternions[side][index:index+1]) for side in tools},
+                ordered_tool_frames=[side+'_tool0' for side in self.active_sides])
             noise=generator.normal(size=(self.seeds,15))*np.deg2rad(3.)
             noise[:,0]=generator.normal(size=self.seeds)*.005
             noise[:,self.idle_indices]=0.
@@ -191,11 +216,10 @@ class SequentialPlacementLm:
             solve_ok=solved.success.reshape(-1).cpu().numpy().astype(bool)
             timing['lm_ms']+=(clock()-stamp)*1000
             stamp=clock()
-            actual=box_poses(checker,values,case['attachments'])
+            actual,collision_ok=inspect(values)
             expected={side:np.repeat(matrix,len(values),axis=0) for side,matrix in boxes.items()}
             position_error,angle_error=reference_errors(actual,expected)
             pose_ok=solve_ok&(position_error<=.002)&(angle_error<=1.)&np.isfinite(values).all(-1)
-            collision_ok=validity.mask(torch.tensor(values,device='cuda')).cpu().numpy()
             continuous=np.max(np.abs((values-previous)*WEIGHTS),axis=-1)<=np.deg2rad(15)
             if self.idle_indices:
                 continuous&=np.max(np.abs(values[:,self.idle_indices]-start[self.idle_indices]),axis=-1)<=1e-5
@@ -211,15 +235,14 @@ class SequentialPlacementLm:
                 progress.append(float(fraction))
             for candidate in order:
                 if selected is not None:break
-                segment,fractions=dense_segment(previous,values[candidate],progress[-1],fraction)
-                mask=validity.mask(torch.tensor(segment,device='cuda')).cpu().numpy()
-                expected=interpolate_boxes(case['starts'],case['ends'],fractions)
-                actual=box_poses(checker,segment,case['attachments'])
+                segment,edge_fractions=dense_segment(previous,values[candidate],progress[-1],fraction,maximum_weighted_step=case.get('edge_resolution'))
+                actual,mask=inspect(segment)
+                expected=interpolate_boxes(case['starts'],case['ends'],edge_fractions)
                 position_error,angle_error=reference_errors(actual,expected)
                 if mask.all():
                     selected=values[candidate]
                     rows.extend(segment[1:])
-                    progress.extend(fractions[1:])
+                    progress.extend(edge_fractions[1:])
                     maximum_position_error=max(maximum_position_error,float(np.max(position_error)))
                     maximum_angle_error=max(maximum_angle_error,float(np.max(angle_error)))
                     break

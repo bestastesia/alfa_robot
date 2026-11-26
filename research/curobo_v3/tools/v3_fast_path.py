@@ -48,7 +48,7 @@ def stage_setup(planner, source, phase):
     return full, [names.index(name) for name in ACTIVE_JOINTS], validity, checker.guidance_scene
 
 
-def fit_path(segment, count):
+def fit_path(segment, count, *, control_bounds=None):
     positions = np.asarray(segment['positions'])
     if count < 4 or positions.ndim != 2 or len(positions) < 2 or not np.isfinite(positions).all():
         raise ValueError('Expected finite path with at least two rows and four controls')
@@ -66,8 +66,20 @@ def fit_path(segment, count):
     basis = BSpline(knots, np.eye(count + 5), 3)(grid)
     boundary = basis[:, :3].sum(axis=1)[:, None] * positions[0] + basis[:, -3:].sum(axis=1)[:, None] * positions[-1]
     inner = np.linalg.lstsq(basis[:, 3:-3], reference - boundary, rcond=None)[0]
+    projected = 0
+    if control_bounds is not None:
+        lower, upper = np.asarray(control_bounds)
+        if (lower.shape != positions.shape[1:] or upper.shape != lower.shape
+                or not np.isfinite([lower, upper]).all() or np.any(lower >= upper)):
+            raise ValueError('Expected finite ordered control bounds for every joint')
+        if np.any(positions[[0, -1]] < lower) or np.any(positions[[0, -1]] > upper):
+            raise ValueError('Fixed path endpoints exceed control bounds')
+        projected = int(((inner < lower) | (inner > upper)).sum())
+        # Candidate construction only; never repair sampled native q/v/a arrays.
+        inner = np.clip(inner, lower, upper)
     coefficients = np.vstack([np.tile(positions[0], (3, 1)), inner, np.tile(positions[-1], (3, 1))])
     fitted = basis @ coefficients
     report = dict(arm_max_deviation_deg=float(np.rad2deg(abs(fitted[:, 1:] - reference[:, 1:]).max())),
                   updown_max_deviation_mm=float(abs(fitted[:, 0] - reference[:, 0]).max() * 1000))
+    if control_bounds is not None:report['projected_seed_control_values'] = projected
     return np.vstack([inner, positions[-1]]), positions[0], positions[-1], report, BSpline(knots, coefficients, 3)

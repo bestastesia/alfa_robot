@@ -1,0 +1,164 @@
+[
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      0.45,
+      1.02
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.02
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      0.45,
+      0.491
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      -0.45,
+      0.491
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      0.45,
+      1.02
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.02
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.0,
+      0.45,
+      0.491
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.0,
+      -0.45,
+      0.491
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.18,
+      -0.45,
+      1.84
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "carry_offset_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      1.18,
+      0.45,
+      1.84
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "carry_offset_m": [
+      -0.21,
+      0.135,
+      0.0
+    ],
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.3103669375863192,
+      -0.4004143051703424,
+      1.8716541497992765
+    ],
+    "side": "right",
+    "side_min_height_m": 0.8,
+    "carry_offset_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "46.5x25.5x58.2",
+    "center_m": [
+      0.9956619529559377,
+      0.3889638593697179,
+      1.2091358569209134
+    ],
+    "side": "left",
+    "side_min_height_m": 0.8,
+    "carry_offset_m": [
+      -0.21,
+      0.135,
+      0.0
+    ],
+    "precontact_margin_m": 0.005
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      0.45,
+      0.203
+    ],
+    "side": "left"
+  },
+  {
+    "size": "40x40x30",
+    "center_m": [
+      1.0,
+      -0.45,
+      0.203
+    ],
+    "side": "right"
+  }
+]

@@ -1,0 +1,92 @@
+{
+  "cpu_only": true,
+  "gpu_initialized": false,
+  "checks": {
+    "original": {
+      "reach_witnesses": [
+        {
+          "kind": "assigned_arm_joint2_reach_bound",
+          "side": "left",
+          "shared_lift_interval_m": [
+            -1.0,
+            -0.32789217474923116
+          ],
+          "wrist_to_elbow_distance_lower_m": 0.49285672687148097,
+          "forearm_length_m": 0.47399999757506195,
+          "pose_envelope_m": 0.010097509227438345,
+          "unreachable_gap_m": 0.008759220068980672,
+          "scope": "required contact for this assigned arm, not a global rejection of the box position"
+        },
+        {
+          "kind": "assigned_arm_joint2_reach_bound",
+          "side": "right",
+          "shared_lift_interval_m": [
+            -1.0,
+            -0.32789217474923116
+          ],
+          "wrist_to_elbow_distance_lower_m": 0.49285663055245776,
+          "forearm_length_m": 0.47399999757506167,
+          "pose_envelope_m": 0.010097509227438364,
+          "unreachable_gap_m": 0.008759123749957728,
+          "scope": "required contact for this assigned arm, not a global rejection of the box position"
+        }
+      ],
+      "analytic_rows": {
+        "left": 0,
+        "right": 0
+      },
+      "shared_lifts_m": [],
+      "first_pair_fk_max_abs_error": null
+    },
+    "swapped_actual_arms": {
+      "reach_witnesses": [],
+      "analytic_rows": {
+        "left": 2288,
+        "right": 2288
+      },
+      "shared_lifts_m": [
+        -1.0,
+        -0.95,
+        -0.9,
+        -0.85,
+        -0.8,
+        -0.75,
+        -0.7,
+        -0.65,
+        -0.6,
+        -0.55,
+        -0.5,
+        -0.45,
+        -0.4,
+        -0.35,
+        -0.3,
+        -0.25,
+        -0.2,
+        -0.15
+      ],
+      "first_pair_fk_max_abs_error": 5.96785248937163e-08
+    }
+  },
+  "scope": "Assigned-arm reach certificate and finite deterministic analytic IK/FK only; no collision, native curve, dynamics or full-task success claim.",
+  "suffix_pending_right_arm_witnesses": [
+    {
+      "kind": "assigned_arm_joint2_reach_bound",
+      "side": "right",
+      "shared_lift_interval_m": [
+        -1.0,
+        -0.32789217474923116
+      ],
+      "wrist_to_elbow_distance_lower_m": 0.49285663055245776,
+      "forearm_length_m": 0.47399999757506167,
+      "pose_envelope_m": 0.010097509227438364,
+      "unreachable_gap_m": 0.008759123749957728,
+      "scope": "required contact for this assigned arm, not a global rejection of the box position"
+    }
+  ],
+  "touch_gap_y_m": -2.7755575615628914e-17,
+  "sha256": {
+    "generated/two_box_layout/original25_domain_20261125/requests/07_touch_beside_threshold.json": "88f250ba8805f0c5ce1e3f2ae9879635764625fa431e91c026bcc626f193abee",
+    "generated/fast_runtime_assets/fixed.urdf": "c4c11fcd2237535ab121089e3c6ac30f0c254e410b238afb89b18518fe031f4e",
+    "generated/v3_analytic_071cb95/libv3_analytic_bridge.so": "4cbf2d639a94df095806f49f33c617e6b6e1c1bb86c404503f9088c665ff82c9"
+  }
+}

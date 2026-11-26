@@ -84,7 +84,8 @@ class TaskCyclePlanner(FullCyclePlanner):
         for side, box_id in self.selected_task.items():
             item = self.snapshot.object(f'wall_box_{box_id:02d}')
             targets[side] = dict(center=item.pose.position, dimensions=item.dimensions_m,
-                                 contact=contacts[side + '_tool0']['position'])
+                                 contact=contacts[side + '_tool0']['position'],
+                                 inward_normal=Rotation.from_quat(np.roll(contacts[side + '_tool0']['quaternion'], -1)).as_matrix()[:, 2].tolist())
             sphere_ids = config.get_sphere_index_from_link_name(side + '_link7').cpu().tolist()
             tool_origin=np.fromstring(model_definition.find(f"joint[@name='{side}_tool0_fixed']/origin").get('xyz'),sep=' ')
             indices[side] = []

@@ -45,16 +45,17 @@ def loaded_robot(robot, box_fit, active_sides=("left", "right"), attachments=Non
             origin.attrib.get("xyz") if origin is not None else None,
             origin.attrib.get("rpy") if origin is not None else None,
         )
+        fit = box_fit.get(side, box_fit)  # Uniform legacy fit or one fit per attached arm.
         tool_to_box = canonical_side_tool_to_box(side)
         if attachments is not None:
             from curobo_core.adapter import pose_matrix
 
             attachment = next(item for item in attachments if item.parent_link == side + "_tool0")
-            if not np.allclose(attachment.dimensions_m, box_fit["dimensions_m"], atol=1e-12):
+            if not np.allclose(attachment.dimensions_m, fit["dimensions_m"], atol=1e-12):
                 raise ValueError("payload dimensions do not match sphere model")
             tool_to_box = pose_matrix(attachment.tool_to_object)
         link_to_box = link_to_tool @ tool_to_box
-        for center, radius in zip(box_fit["centers"], box_fit["radii"]):
+        for center, radius in zip(fit["centers"], fit["radii"]):
             point = link_to_box @ np.array([*center, 1.0])
             kin["collision_spheres"][f"{side}_link7"].append({
                 "center": point[:3].tolist(), "radius": radius,
@@ -98,6 +99,7 @@ class GpuValidity:
             self.ground_exempt_sphere_indices = set(
                 kinematics_config.get_sphere_index_from_link_name("base_link").cpu().tolist()
             )
+            self.ground_exempt_sphere_indices.update(getattr(checker, 'payload_ground_exempt_sphere_indices', ()))
 
     def _stability_cost(self, state, horizon):
         if not self.active_sides:
@@ -128,37 +130,46 @@ class GpuValidity:
             state = self.checker.kinematics.compute_kinematics(
                 JointState.from_position(q, joint_names=self.joint_names)
             )
-            spheres = state.robot_spheres.view(1, horizon, -1, 4)
-            self.checker.collision_constraint.update_num_spheres(
-                spheres.shape[2], batch_size=1, horizon=horizon
-            )
-            collision_cost = (
-                self.checker.get_self_collision(spheres).reshape(1, horizon, -1).sum(-1)
-                + (self.checker.get_collision_constraint(scene_query_spheres(spheres, self.scene_penetration_tolerance_m))
-                   if self.scene_penetration_tolerance_m else self.checker.collision_constraint.forward(state)).reshape(1, horizon, -1).sum(-1)
-                + self.checker.get_bound(q).reshape(1, horizon, -1).sum(-1)
-            ).reshape(-1)
-            base_mesh=getattr(self.checker,'base_mesh_layer',None)
-            if base_mesh is not None:
-                base_cost=base_mesh.cost(state,hard=True,margin_m=base_margin_m) if base_margin_m else base_mesh.cost(state,hard=True)
-                collision_cost=collision_cost+base_cost.reshape(1,horizon,-1).sum(-1).reshape(-1)
-            if self.check_ground:
-                ground_indices = [
-                    index for index in range(spheres.shape[2])
-                    if index not in self.ground_exempt_sphere_indices
-                ]
-                ground_spheres = spheres[0, :, ground_indices, :]
-                ground_collision = (
-                    (ground_spheres[..., 3] > 0.0)
-                    & (ground_spheres[..., 2] - ground_spheres[..., 3] < self.ground_z)
-                ).any(dim=1)
-                collision_cost = collision_cost + ground_collision.to(collision_cost.dtype)
-            stability_cost = self._stability_cost(state, horizon)
-            tilt_valid = stability_cost <= 1.0 - self.minimum_box_up_z
-            valid_output.append((collision_cost == 0) & tilt_valid)
-            stability_output.append(stability_cost)
-            self.states_checked += horizon
+            valid, stability = self.evaluate_state(chunk, state, base_margin_m)
+            valid_output.append(valid)
+            stability_output.append(stability)
         return torch.cat(valid_output), torch.cat(stability_output)
+
+    def evaluate_state(self, values, state, base_margin_m=0.0):
+        """Check this exact batch's freshly computed FK; never cache mutable FK buffers."""
+        horizon = len(values)
+        if values.ndim != 2 or not 0 < horizon <= 4096 or state.robot_spheres.shape[:2] != (1, horizon):
+            raise ValueError('FK state must match one nonempty batch of at most4096 joint rows')
+        q = values.unsqueeze(0)
+        spheres = state.robot_spheres.view(1, horizon, -1, 4)
+        self.checker.collision_constraint.update_num_spheres(
+            spheres.shape[2], batch_size=1, horizon=horizon
+        )
+        collision_cost = (
+            self.checker.get_self_collision(spheres).reshape(1, horizon, -1).sum(-1)
+            + (self.checker.get_collision_constraint(scene_query_spheres(spheres, self.scene_penetration_tolerance_m))
+               if self.scene_penetration_tolerance_m else self.checker.collision_constraint.forward(state)).reshape(1, horizon, -1).sum(-1)
+            + self.checker.get_bound(q).reshape(1, horizon, -1).sum(-1)
+        ).reshape(-1)
+        base_mesh=getattr(self.checker,'base_mesh_layer',None)
+        if base_mesh is not None:
+            base_cost=base_mesh.cost(state,hard=True,margin_m=base_margin_m) if base_margin_m else base_mesh.cost(state,hard=True)
+            collision_cost=collision_cost+base_cost.reshape(1,horizon,-1).sum(-1).reshape(-1)
+        if self.check_ground:
+            ground_indices = [
+                index for index in range(spheres.shape[2])
+                if index not in self.ground_exempt_sphere_indices
+            ]
+            ground_spheres = spheres[0, :, ground_indices, :]
+            ground_collision = (
+                (ground_spheres[..., 3] > 0.0)
+                & (ground_spheres[..., 2] - ground_spheres[..., 3] < self.ground_z)
+            ).any(dim=1)
+            collision_cost = collision_cost + ground_collision.to(collision_cost.dtype)
+        stability_cost = self._stability_cost(state, horizon)
+        tilt_valid = stability_cost <= 1.0 - self.minimum_box_up_z
+        self.states_checked += horizon
+        return (collision_cost == 0) & tilt_valid, stability_cost
 
     def mask(self, values):
         return self.evaluate(values)[0]
@@ -199,6 +210,9 @@ class GpuValidity:
         valid = valid.reshape(len(starts), horizon)
         stability = stability.reshape(len(starts), horizon)
         edge_valid = valid.all(dim=1)
+        process_quality = getattr(self, 'edge_process_quality', None)
+        if process_quality is not None:
+            edge_valid &= process_quality(points)
         if not return_stability:
             return edge_valid
         actual_steps = torch.arange(horizon, device=starts.device).reshape(1, -1) <= steps.reshape(-1, 1)

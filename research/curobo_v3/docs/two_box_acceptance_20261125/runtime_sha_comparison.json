@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "final8_source_digest": "61d8b80c3aa063c429d33412425741bfdc5eb975d1ba35ced234a99a92f58f1f",
+  "final36_source_digest": "0792610110e60617901f3f648e1ce34315c054d92391d5f930311936fe22de0b",
+  "final8_file_count": 1379,
+  "final36_file_count": 1445,
+  "common_files": 1367,
+  "common_sha_differences": [],
+  "final8_runtime_files": 1236,
+  "missing_runtime": [],
+  "changed_runtime": [],
+  "reason_for_manifest_digest_difference": "Different source-bound raw request/catalog/adapter inputs; all shared files and runtime/vendor/model/kernel hashes match."
+}

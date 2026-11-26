@@ -1,0 +1,59 @@
+{
+  "date": "2026-11-26",
+  "base_commit": "ee6dba3280437ea33002ea87a5f8afb8725eadfb",
+  "full_collection": {
+    "result": "2 collection errors",
+    "missing_module": "alfa_motion_viser",
+    "files": [
+      "test_current_urdf_timed.py",
+      "test_random_error_display.py"
+    ]
+  },
+  "available_suite": {
+    "passed": 305,
+    "failed": 15,
+    "skipped": 19,
+    "wall_seconds": 21.93,
+    "gpu_queue_used": true,
+    "run_gpu_tests": false
+  },
+  "baseline_comparison": {
+    "isolated_base_source": true,
+    "same_current_assets": true,
+    "retested_original_failed_nodes": 16,
+    "failed": 15,
+    "passed": 1,
+    "matching_failed_node_ids": [
+      "research/curobo_v3/tests/test_current_urdf_forward.py::test_current_model_uses_matching_fixed_urdf_and_191mm_tools",
+      "research/curobo_v3/tests/test_dual_zero_review.py::DualZeroReviewTest::test_no_duplicate_zero_application",
+      "research/curobo_v3/tests/test_dual_zero_review.py::DualZeroReviewTest::test_zero_geometry_and_new_positive_j6_axes",
+      "research/curobo_v3/tests/test_frozen_cycle.py::test_full_cycle_records_keep_payload_and_actual_terminal_state",
+      "research/curobo_v3/tests/test_frozen_cycle.py::test_lm_reference_with_independent_urdf",
+      "research/curobo_v3/tests/test_left_j5_zero.py::LeftJ5ZeroTest::test_only_left_j5_shift_preserves_all_link_geometry",
+      "research/curobo_v3/tests/test_new_warp_pipeline.py::test_absolute_release_height_is_applied_once_and_historical_profile_remains_available",
+      "research/curobo_v3/tests/test_new_warp_pipeline.py::test_old_height_results_cannot_be_loaded_as_new_height_evidence",
+      "research/curobo_v3/tests/test_new_warp_pipeline.py::test_timed_strategy_keeps_new_warp_reference_and_joint_adjustment",
+      "research/curobo_v3/tests/test_probe_applied_fit.py::AppliedContactFitTest::test_deployed_policy_matches_offline_candidate_a",
+      "research/curobo_v3/tests/test_probe_j2_calibration.py::J2CalibrationTest::test_fitted_corrections_replace_original_j2_offset",
+      "research/curobo_v3/tests/test_rezero_contact_roll.py::ContactRollTest::test_actual_contact_method_does_not_request_half_turn_from_home",
+      "research/curobo_v3/tests/test_rezero_contact_roll.py::ContactRollTest::test_carry_atlas_and_attachment_preserve_actual_box_pose",
+      "research/curobo_v3/tests/test_rezero_j2_limits.py::RezeroJointLimitsTest::test_both_j6_axes_reverse_without_moving_joint_zero",
+      "research/curobo_v3/tests/test_rezero_j2_limits.py::RezeroJointLimitsTest::test_selected_home_matches_user_numbers_and_preserved_height"
+    ],
+    "new_failed_node_ids": []
+  },
+  "packaging_changes": [
+    "Versioned copy of source_contact_audit.py: all function ASTs identical to validated generated audit; ROOT/OUT placement adjusted only.",
+    "CPU mock test_no_dense_rechecks now follows existing shared-FK evaluate_state API; production planner unchanged."
+  ],
+  "acceptance_scope": "Prior final-source native44/CPU44/contacts88/relatedCPU107 evidence remains historical and immutable; packaging checks do not claim new GPU44 execution or whole-suite green.",
+  "post_cleanup_related_suite": {
+    "passed": 109,
+    "failed": 0,
+    "wall_seconds": 12.19,
+    "gpu_queue_used": true,
+    "gpu_initialization_not_requested": true,
+    "log": "post_cleanup_cpu109.txt"
+  },
+  "text_log_packaging": "Versioned pytest text logs have trailing whitespace normalized only; raw logs retained locally."
+}

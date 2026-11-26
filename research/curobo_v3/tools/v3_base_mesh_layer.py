@@ -15,7 +15,6 @@ class CachedMeshQuery(torch.autograd.Function):
         masked=copy.copy(template)
         masked.robot_spheres=spheres
         result=operation.forward(masked)
-        ctx.scale_gradient=operation.config.use_grad_input
         if ctx.needs_input_grad[0]:
             ctx.save_for_backward(operation._collision_buffer.gradient.clone())
         return result.clone()
@@ -24,9 +23,8 @@ class CachedMeshQuery(torch.autograd.Function):
     def backward(ctx,gradient_output):
         gradient=None
         if ctx.needs_input_grad[0]:
-            gradient=ctx.saved_tensors[0]
-            if ctx.scale_gradient:
-                gradient=gradient*gradient_output.unsqueeze(-1)
+            # The cached Jacobian is unscaled; outer project/refinement weights must follow the chain rule.
+            gradient=ctx.saved_tensors[0]*gradient_output.unsqueeze(-1)
         return gradient,None,None
 
 

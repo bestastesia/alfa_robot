@@ -204,9 +204,12 @@ class TorqueModel:
     """Compute and constrain arm torque using a dynamics-overlay cuRobo model."""
     def __init__(self, robot_yaml, payload_mass_kg=0.0, payload_dimensions=(.3, .4, .4),
                  torque_limit_scale=.9, joint_torque_profile=None):
-        dimensions = np.asarray(payload_dimensions, dtype=float)
-        if (payload_mass_kg < 0 or not 0 < torque_limit_scale <= 1 or
-                dimensions.shape != (3,) or np.any(dimensions <= 0) or not np.isfinite(dimensions).all()):
+        dimensions = ({side: np.asarray(value, dtype=float) for side, value in payload_dimensions.items()}
+                      if isinstance(payload_dimensions, dict) else np.asarray(payload_dimensions, dtype=float))
+        sizes = list(dimensions.values()) if isinstance(dimensions, dict) else [dimensions]
+        if (not sizes or (isinstance(dimensions, dict) and not set(dimensions) <= {'left', 'right'}) or
+                not np.isfinite(payload_mass_kg) or payload_mass_kg < 0 or not 0 < torque_limit_scale <= 1 or
+                any(d.shape != (3,) or np.any(d <= 0) or not np.isfinite(d).all() for d in sizes)):
             raise ValueError("payload mass must be nonnegative; size and torque scale must be positive finite values")
         import torch
         from curobo._src.robot.kinematics.kinematics_cfg import KinematicsCfg
@@ -257,8 +260,9 @@ class TorqueModel:
         from curobo._src.robot.dynamics.dynamics_cfg import DynamicsCfg
         kp = self.base_kp.clone()
         if self.payload_mass_kg:
-            payload_tensor = cuboid_inertia(self.payload_mass_kg, self.payload_dimensions)
             for side in active_sides:
+                size = self.payload_dimensions[side] if isinstance(self.payload_dimensions, dict) else self.payload_dimensions
+                payload_tensor = cuboid_inertia(self.payload_mass_kg, size)
                 name = side + "_tool0"
                 values = kp.get_link_masses_com(name).detach().cpu().numpy()
                 tensor = self._matrix6(kp.get_link_inertia(name).detach().cpu().numpy())

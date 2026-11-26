@@ -108,7 +108,7 @@ class CuroboBackend:
         )
 
     def prepare_task(self, boxes):
-        key = resource_key(self.snapshot, boxes, self.box_fit)
+        key = resource_key(self.snapshot, boxes, self.box_fit), tuple(self.task_attachments(boxes))
         if key != self._cached_task:
             self._cached_solver = None
             self._cached_checkers.clear()

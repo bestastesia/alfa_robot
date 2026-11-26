@@ -41,8 +41,15 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         selected = values.argmin(dim=0)
         return torch.stack(best_indices)[selected, torch.arange(len(samples), device="cuda")]
 
+    step_choices = torch.as_tensor(getattr(validity, 'steering_steps', (.28,)), device=start.device, dtype=start.dtype)
+    fine_step_limits = step_choices[torch.arange(1024, device=start.device) % len(step_choices)]
+    step_limits = torch.full((1024,), .28, device=start.device, dtype=start.dtype)
+    validity.steering_multiscale_used = False
+
     iterations = 0
     fine_checked = set()
+    fine_rejected = set()
+    fine_collision_rejections = fine_quality_rejections = 0
     fine_rejections = 0
     while time.perf_counter() - started < budget_s:
         if first_verified_ms is not None and (time.perf_counter()-started)*1000 >= first_verified_ms+refinement_s*1000:
@@ -83,13 +90,19 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         nearest_values = tree[nearest_indices]
         delta = samples - nearest_values
         scale = torch.clamp(
-            0.28 / torch.max(torch.abs(delta * weights), dim=1).values, max=1.0
+            step_limits / torch.max(torch.abs(delta * weights), dim=1).values, max=1.0
         )
         steered = nearest_values + delta * scale[:, None]
-        edge_valid, edge_stability = validity.edges(
-            nearest_values, steered, return_stability=True
-        )
+        directed = getattr(validity, 'edge_process_quality', None) is not None
+        edge_starts, edge_goals = ((steered, nearest_values) if directed and not expand_start
+                                  else (nearest_values, steered))
+        edge_valid, edge_stability = validity.edges(edge_starts, edge_goals, return_stability=True)
         if not edge_valid.any():
+            # Keep ordinary searches unchanged. Escalate only when no edge can
+            # leave the actual root, then retain fine steps through the corridor.
+            if expand_start and len(start_tree) == len(roots):
+                step_limits = fine_step_limits
+                validity.steering_multiscale_used = len(step_choices) > 1
             iterations += 1
             continue
         accepted = steered[edge_valid]
@@ -120,9 +133,9 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         other_values = other_tree[other_indices]
         pair_distance = torch.linalg.vector_norm((accepted - other_values) * weights, dim=1)
         candidate_indices = torch.argsort(pair_distance)[:min(256, len(accepted))]
-        connect_valid, connect_stability = validity.edges(
-            accepted[candidate_indices], other_values[candidate_indices], return_stability=True
-        )
+        connect_starts, connect_goals = ((other_values[candidate_indices], accepted[candidate_indices])
+            if directed and not expand_start else (accepted[candidate_indices], other_values[candidate_indices]))
+        connect_valid, connect_stability = validity.edges(connect_starts, connect_goals, return_stability=True)
         if connect_valid.any():
             valid_local = torch.nonzero(connect_valid, as_tuple=False).reshape(-1)
             accepted_indices = candidate_indices[valid_local]
@@ -153,7 +166,9 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                     "goal": goal_roots[goal_node],
                     "cost": float(total_cost[item].item()),
                 })
-            best_connections = sorted(best_connections, key=lambda item: item["cost"])[:64]
+            # Rejected short paths must not starve later connections in the bounded pool.
+            best_connections = sorted((item for item in best_connections
+                if (item['start_node'], item['goal_node']) not in fine_rejected), key=lambda item: item["cost"])[:64]
             solutions_found += len(valid_local)
             if first_solution_ms is None:
                 first_solution_ms = (time.perf_counter() - started) * 1000.0
@@ -181,7 +196,9 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                     dense = densify(candidate_path.detach().cpu().numpy(), getattr(validity, 'collision_weights', weights).detach().cpu().tolist()) if recheck else candidate_path.detach().cpu().numpy()
                     dense_tensor=torch.tensor(dense,device='cuda',dtype=torch.float32)
                     quality=getattr(validity,'path_quality_callback',None)
-                    if (not recheck or bool(validity.mask(dense_tensor).all().item())) and (quality is None or quality(dense_tensor)):
+                    geometry_ok = not recheck or bool(validity.mask(dense_tensor).all().item())
+                    quality_ok = geometry_ok and (quality is None or quality(dense_tensor))
+                    if geometry_ok and quality_ok:
                         if first_verified_ms is None:first_verified_ms=(time.perf_counter()-started)*1000
                         if best_valid_connection is None or connection['cost']<best_valid_connection['cost']:
                             best_valid_path=candidate_path.detach().clone();best_valid_connection=dict(connection)
@@ -197,16 +214,24 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
                             search_ms=(time.perf_counter()-started)*1000, solutions_found=solutions_found,
                             best_weighted_length=connection['cost'], raw_waypoints=len(candidate_path),
                             shortcut_applied=False, fine_candidates_checked=len(fine_checked),
-                            fine_rejections=fine_rejections)
+                            fine_rejections=fine_rejections, fine_collision_rejections=fine_collision_rejections,
+                            fine_quality_rejections=fine_quality_rejections)
                     fine_rejections += 1
+                    fine_rejected.add(identity)
+                    fine_collision_rejections += int(not geometry_ok)
+                    fine_quality_rejections += int(geometry_ok and not quality_ok)
                 if observer is not None and observer(candidate_path, connection['cost'], started):
                     break
+        if fine_rejected:
+            best_connections = [item for item in best_connections
+                if (item['start_node'], item['goal_node']) not in fine_rejected]
     selected_path = None
     selected = None
     checked = 0
     if best_valid_path is not None:
         selected_path=best_valid_path;selected=best_valid_connection
     for connection in best_connections:
+        if (connection['start_node'], connection['goal_node']) in fine_rejected:continue
         if selected is not None and connection['cost']>=selected['cost']:break
         left_indices = []
         current = connection["start_node"]
@@ -237,7 +262,9 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
             "goal_nodes": len(goal_tree), "accepted_nodes": accepted_total,
             "goal_count": len(goals), "selected_goal": None,
             "first_solution_ms": first_solution_ms, "search_ms": elapsed_ms,
-            "solutions_found": solutions_found, "fine_candidates_checked": checked,
+            "solutions_found": solutions_found, "fine_candidates_checked": checked+len(fine_checked),
+            "final_candidates_rechecked": checked, "fine_rejections": fine_rejections,
+            "fine_collision_rejections": fine_collision_rejections, "fine_quality_rejections": fine_quality_rejections,
         }
     return selected_path.detach().cpu().numpy(), {
         "informed_sampling": informed_sampling,
@@ -251,6 +278,7 @@ def batched_rrt_connect_multi_goal(start, goals, lower, upper, validity, budget_
         "fine_candidates_checked": checked + len(fine_checked),
         "first_verified_solution_ms": first_verified_ms,
         "fine_rejections": fine_rejections,
+        "fine_collision_rejections": fine_collision_rejections, "fine_quality_rejections": fine_quality_rejections,
         "total_search_cap_ms": budget_s*1000,
         "refinement_requested_ms":refinement_s*1000,
         "box_rotation_cost_enabled":rotation_cost is not None,

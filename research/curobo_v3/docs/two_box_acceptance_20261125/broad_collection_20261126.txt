@@ -1,0 +1,33 @@
+
+==================================== ERRORS ====================================
+_____ ERROR collecting research/curobo_v3/tests/test_current_urdf_timed.py _____
+ImportError while importing test module '/home/astesia/Sevenova/.pr82-two-box-extraction/research/curobo_v3/tests/test_current_urdf_timed.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../miniconda3/envs/writ/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+research/curobo_v3/tests/test_current_urdf_timed.py:9: in <module>
+    import v3_forward_precontact_demo
+research/curobo_v3/tools/v3_forward_precontact_demo.py:1: in <module>
+    from v3_frozen_cycle_demo import main
+research/curobo_v3/tools/v3_frozen_cycle_demo.py:12: in <module>
+    from alfa_motion_viser import ReadOnlyScene,default_visual_assets
+E   ModuleNotFoundError: No module named 'alfa_motion_viser'
+____ ERROR collecting research/curobo_v3/tests/test_random_error_display.py ____
+ImportError while importing test module '/home/astesia/Sevenova/.pr82-two-box-extraction/research/curobo_v3/tests/test_random_error_display.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+../../miniconda3/envs/writ/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+research/curobo_v3/tests/test_random_error_display.py:10: in <module>
+    from v3_tcp_scene_preview import display_robot_urdf
+research/curobo_v3/tools/v3_tcp_scene_preview.py:13: in <module>
+    from alfa_motion_viser import ReadOnlyScene, default_visual_assets
+E   ModuleNotFoundError: No module named 'alfa_motion_viser'
+=========================== short test summary info ============================
+ERROR research/curobo_v3/tests/test_current_urdf_timed.py
+ERROR research/curobo_v3/tests/test_random_error_display.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+2 errors in 5.36s
