@@ -2,7 +2,7 @@
 
 ## 2026-11-26 MOTION-505 Review与远程交付整理
 
-- 正式进度：MOTION-505（父MOTION-419），状态In Review，负责人文子轩/验收李昊洋；三个阶段已补录同一子issue线程，父419沿用原唯一验收评论追加本方向范围，不新增进度流水，不自动Done。
+- 正式进度：MOTION-505（父MOTION-483「不同SKU箱体抓取方案设计与验证」），状态In Review，负责人文子轩/验收李昊洋；用户2026-11-26更正原419误绑定，419原验收汇总已恢复，本方向按483四条标准另留唯一子方向验收汇总。三个阶段进度仍在505原线程，父483保持In Progress，不自动Done。
 - 当前交付入口：`research/curobo_v3/docs/MOTION505_TWO_BOX_REVIEW.md`与`docs/two_box_acceptance_20261125/`（44份原输入、逐例时间/owner/吸附、SHA、边界与失败根因）；原GPU44/相关CPU107证据原样保留。独立吸附审计脚本已从generated复制为版本化源码，函数AST相同；CPU mock适配现有共享FK接口，生产规划源码未在整理阶段再改。
 - 扩大检查：可收集CPU 305过/15失败/19跳过；15失败在隔离PR82源码+同资产下全部复现，无新增失败。另2个旧测试文件缺`alfa_motion_viser`不能收集；不宣称整仓测试全绿。完整报告随交付版本化。
 - 历史实验/失败/源快照完整归档至`/home/astesia/Sevenova/验收归档/motion505-two-box-20261126/two_box_layout-evidence.tar.zst`，SHA5259294b0a1d5bc14d67508485624a66a7a86414c9e18f6387b5e8e320fed7c2；已校验后清掉冗余历史二进制/重复源快照与旧role缓存，最终44实际数组、必要历史集成fixture及Viser8295保留。生成物/编译缓存明确忽略，不提交5GB实验目录。

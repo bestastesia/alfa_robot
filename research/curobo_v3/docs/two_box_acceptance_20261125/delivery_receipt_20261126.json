@@ -2,8 +2,8 @@
   "date": "2026-11-26",
   "issue": "MOTION-505",
   "issue_status": "In Review",
-  "parent": "MOTION-419",
-  "parent_summary_comment": "699e66eb-d281-4966-821e-993674a66c83",
+  "parent": "MOTION-483",
+  "parent_summary_comment": "34e20c01-4480-42ac-9996-884766c0d0ab",
   "progress_root_comment": "8278f240-a52f-4270-a2c4-273c2d596fe4",
   "closeout_comment": "0df576fd-5a6b-4baf-b6fd-491fda0d8290",
   "implementation_commit": "eea760e7ab33bc7d4312250e1474150616f9d920",
@@ -17,5 +17,14 @@
   "raw_archive": "/home/astesia/Sevenova/验收归档/motion505-two-box-20261126/two_box_layout-evidence.tar.zst",
   "closeout_raw_logs": "/home/astesia/Sevenova/验收归档/motion505-two-box-20261126/closeout_checks",
   "temporary_baseline_checkout_removed": true,
-  "live_viser8295_preserved": true
+  "live_viser8295_preserved": true,
+  "parent_correction": {
+    "date": "2026-11-26",
+    "user_confirmed_parent": "MOTION-483",
+    "previous_incorrect_parent": "MOTION-419",
+    "previous_parent_summary_comment": "699e66eb-d281-4966-821e-993674a66c83",
+    "previous_parent_summary_restored": true,
+    "child_review_status_unchanged": true,
+    "parent483_status_unchanged": "In Progress"
+  }
 }
